@@ -13,7 +13,7 @@ import network.crypta.support.TimeUtil;
  * headers.
  *
  * <p>This class encapsulates the state required to emit standards-compliant {@code Set-Cookie2}
- * headers for the web interface. Callers typically construct an instance with {@link #Cookie(URI,
+ * headers for the web interface. Callers typically build an instance with {@link #create(URI,
  * String, String, Instant)} and pass it to {@link ToadletContext#setCookie(Cookie)} to attach it to
  * a response. Validation routines enforce a conservative subset of RFC2965/RFC2616 so malformed or
  * potentially dangerous values are rejected early. Typical callers treat instances as single-use
@@ -98,9 +98,8 @@ public class Cookie {
   private final boolean discard;
 
   /**
-   * Builds a {@link Cookie} ready for delivery via {@link ToadletContext#setCookie(Cookie)} after
-   * applying strict validation and normalization rules as a host-only cookie (without an explicit
-   * domain attribute).
+   * Internal constructor for validated cookie state. Callers should use {@link #create(URI, String,
+   * String, Instant)} or {@link #create(URI, URI, String, String, Instant)}.
    *
    * <p>The constructor trims and lowercases the name, normalizes the path, rejects invalid ASCII
    * ranges, and converts a {@code null} value to an empty string for compatibility with browsers
@@ -117,10 +116,8 @@ public class Cookie {
    *     value and must avoid control characters and separator tokens.
    * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
    *     {@link IllegalArgumentException} during validation.
-   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules, or
-   *     the expiration time is not in the future.
    */
-  public Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
+  protected Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
     this(null, myPath, myName, myValue, myExpirationDate);
   }
 
@@ -142,18 +139,50 @@ public class Cookie {
    *     value and must avoid control characters and separator tokens.
    * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
    *     {@link IllegalArgumentException} during validation.
-   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules, or
-   *     the expiration time is not in the future.
    */
-  public Cookie(URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
+  protected Cookie(
+      URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
-
-    domain = myDomain != null ? validateDomain(myDomain) : null;
-    path = validatePath(myPath);
-    name = validateName(myName);
-    value = myValue != null ? validateValue(myValue) : "";
-    expirationDate = validateExpirationDate(myExpirationDate);
+    domain = myDomain;
+    path = myPath;
+    name = myName;
+    value = myValue != null ? myValue : "";
+    expirationDate = myExpirationDate;
     discard = true; // Freenet cookies are intended to be discarded when the browser is closed.
+  }
+
+  /**
+   * Creates and validates a host-only cookie.
+   *
+   * @param path cookie path
+   * @param name cookie name
+   * @param value cookie value
+   * @param expirationDate expiration timestamp
+   * @return a validated cookie
+   */
+  public static Cookie create(URI path, String name, String value, Instant expirationDate) {
+    return create(null, path, name, value, expirationDate);
+  }
+
+  /**
+   * Creates and validates a cookie with optional domain scope.
+   *
+   * @param domain optional domain scope
+   * @param path cookie path
+   * @param name cookie name
+   * @param value cookie value
+   * @param expirationDate expiration timestamp
+   * @return a validated cookie
+   */
+  public static Cookie create(
+      URI domain, URI path, String name, String value, Instant expirationDate) {
+    URI validatedDomain = domain != null ? validateDomain(domain) : null;
+    URI validatedPath = validatePath(path);
+    String validatedName = validateName(name);
+    String validatedValue = value != null ? validateValue(value) : "";
+    Instant validatedExpiration = validateExpirationDate(expirationDate);
+    return new Cookie(
+        validatedDomain, validatedPath, validatedName, validatedValue, validatedExpiration);
   }
 
   /** Returns true if two Cookies have equal domain, path, and name. Does not check the value! */
@@ -503,12 +532,5 @@ public class Cookie {
     }
 
     return sb.toString();
-  }
-
-  @Override
-  @SuppressWarnings("removal")
-  protected final void finalize() {
-    // Intentionally empty: a final finalize() prevents subclasses from adding finalizers.
-    // This hardening avoids finalizer-attack risk for constructors that validate inputs.
   }
 }

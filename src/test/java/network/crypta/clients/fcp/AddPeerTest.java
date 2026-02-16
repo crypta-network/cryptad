@@ -148,7 +148,7 @@ class AddPeerTest {
       out.write("ref-line-1\nref-line-2\n".getBytes(StandardCharsets.UTF_8));
     }
 
-    FetchResult fetchResult = new FetchResult(new ClientMetadata("text/plain"), bucket);
+    FetchResult fetchResult = FetchResult.create(new ClientMetadata("text/plain"), bucket);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     when(client.fetch(any(FreenetURI.class), eq(31000L))).thenReturn(fetchResult);
 

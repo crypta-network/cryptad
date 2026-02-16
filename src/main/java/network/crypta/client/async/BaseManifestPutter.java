@@ -109,16 +109,6 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   /**
-   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
-   *
-   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
-   * otherwise define a finalizer and observe partially initialized state.
-   */
-  @Override
-  @SuppressWarnings({"deprecation", "removal"})
-  protected final void finalize() {}
-
-  /**
    * ArchivePutHandler - wrapper for ContainerInserter
    *
    * <p>Archives are not part of the site structure; they are used to group files that not fit into
@@ -598,7 +588,11 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       if (!(this instanceof MetaPutHandler) && metadata != null) {
         failOuter(
-            new IllegalStateException("metdata=" + metadata + " on start(), impossible"), context);
+            new IllegalStateException(
+                "metdata="
+                    + java.util.Objects.toIdentityString(metadata)
+                    + " on start(), impossible"),
+            context);
       }
       validatePlacement();
       validateWaitingForBlockSets();
@@ -1103,6 +1097,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** Crypto algorithm identifier to use for underlying splitfile inserts. */
   final byte cryptoAlgorithm;
 
+  /** Checked initialization failure captured during construction. */
+  private transient TooManyFilesInsertException initializationFailure;
+
+  /** Unchecked initialization failure captured during construction. */
+  private transient RuntimeException initializationRuntimeFailure;
+
   /**
    * Creates a new putter with the provided initialization parameters.
    *
@@ -1114,10 +1114,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    *
    * @param p initialization parameters including callback, target, context, and crypto options.
    *     Must be non-null and internally consistent (e.g., a non-null callback/client).
-   * @throws TooManyFilesInsertException when the manifest would exceed implementation limits on the
-   *     number of concurrently handled files or containers.
    */
-  protected BaseManifestPutter(InitParams p) throws TooManyFilesInsertException {
+  protected BaseManifestPutter(InitParams p) {
     super(p.prioClass, p.cb.getRequestClient());
     this.targetURI = p.target;
     this.cb = p.cb;
@@ -1145,10 +1143,30 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     String defName = p.defaultName;
     Map<String, Object> elements = p.manifestElements;
     if (defName == null) defName = findDefaultName(new HashMap<>(elements));
-    makePutHandlers(new HashMap<>(elements), defName);
-    // builders are no longer needed after constructor
-    rootBuilder = null;
-    rootContainerBuilder = null;
+    try {
+      makePutHandlers(new HashMap<>(elements), defName);
+    } catch (TooManyFilesInsertException e) {
+      initializationFailure = e;
+    } catch (RuntimeException e) {
+      initializationRuntimeFailure = e;
+    } finally {
+      // builders are no longer needed after constructor
+      rootBuilder = null;
+      rootContainerBuilder = null;
+    }
+  }
+
+  /**
+   * Rethrows any failure that occurred while preparing put handlers during construction.
+   *
+   * <p>Callers that need constructor-era validation can use this from a static factory after the
+   * instance is created.
+   *
+   * @throws TooManyFilesInsertException if handler construction exceeded supported limits
+   */
+  protected final void throwInitializationFailure() throws TooManyFilesInsertException {
+    if (initializationRuntimeFailure != null) throw initializationRuntimeFailure;
+    if (initializationFailure != null) throw initializationFailure;
   }
 
   /**
@@ -1259,6 +1277,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    */
   @Override
   public void start(ClientContext context) throws InsertException {
+    if (initializationRuntimeFailure != null) throw initializationRuntimeFailure;
+    if (initializationFailure != null) {
+      throw new InsertException(InsertExceptionMode.TOO_MANY_FILES, initializationFailure, null);
+    }
     if (LOG.isDebugEnabled())
       LOG.debug("Starting {} persistence={} containermode={}", this, persistent(), containerMode);
     PutHandler[] running;
@@ -1787,7 +1809,9 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         addRedirect(name, element.targetURI, cm, isDefaultDoc);
         return;
       }
-      throw new IllegalStateException("ME is neither a redirect nor direct data. " + element);
+      throw new IllegalStateException(
+          "ME is neither a redirect nor direct data. "
+              + java.util.Objects.toIdentityString(element));
     }
 
     /**

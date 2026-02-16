@@ -305,7 +305,7 @@ public final class DelayedFreeBucket implements Bucket, Serializable, DelayedFre
    * @throws IOException on I/O errors
    * @throws ResumeFailedException if nested buckets cannot be resumed
    */
-  protected DelayedFreeBucket(
+  DelayedFreeBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

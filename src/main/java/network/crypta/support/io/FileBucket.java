@@ -32,10 +32,10 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
   @Serial private static final long serialVersionUID = 1L;
 
   /** Absolute path to the backing file. Never {@code null} for normal (non-deserialization) use. */
-  protected final File file;
+  final File file;
 
   /** Whether this bucket rejects further writes. Set by {@link #setReadOnly()}. */
-  protected boolean readOnly;
+  boolean readOnly;
 
   /**
    * Whether {@link #free()} deletes the backing file.
@@ -48,7 +48,7 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * may therefore default to {@code false} on deserialization. Use {@link
    * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
-  protected boolean deleteOnFreeFlag;
+  boolean deleteOnFreeFlag;
 
   /**
    * Whether temporary files created by this instance are registered with {@link
@@ -62,7 +62,7 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * may therefore default to {@code false} on deserialization. Use {@link
    * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
-  protected final boolean deleteOnExitFlag;
+  final boolean deleteOnExitFlag;
 
   /**
    * Whether the target must be created and must not pre-exist on the first open for writing.
@@ -75,7 +75,7 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * may therefore default to {@code false} on deserialization. Use {@link
    * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
-  protected final boolean createFileOnlyFlag;
+  final boolean createFileOnlyFlag;
 
   /*
    * Historical note: some runtimes historically cached file length metadata. This class relies on
@@ -128,7 +128,7 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * form (see the {@link #FileBucket(DataInputStream)} constructor). In this state, {@link #file}
    * is {@code null}.
    */
-  protected FileBucket() {
+  FileBucket() {
     // For serialization frameworks only.
     super();
     file = null;
@@ -269,7 +269,7 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * @throws IOException on I/O errors
    * @throws StorageFormatException if the version is unknown or the data is malformed
    */
-  protected FileBucket(DataInputStream dis) throws IOException, StorageFormatException {
+  FileBucket(DataInputStream dis) throws IOException, StorageFormatException {
     super(dis);
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");

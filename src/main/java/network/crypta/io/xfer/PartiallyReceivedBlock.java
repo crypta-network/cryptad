@@ -210,7 +210,12 @@ public final class PartiallyReceivedBlock {
    */
   public synchronized boolean allReceived() throws AbortedException {
     if (receivedCount == packets) {
-      if (LOG.isTraceEnabled()) LOG.trace("Received {} of {} on {}", receivedCount, packets, this);
+      if (LOG.isTraceEnabled())
+        LOG.trace(
+            "Received {} of {} on {}",
+            receivedCount,
+            packets,
+            java.util.Objects.toIdentityString(this));
       return true;
     }
     if (aborted) {
@@ -224,7 +229,7 @@ public final class PartiallyReceivedBlock {
               + " of "
               + packets
               + " on "
-              + this);
+              + java.util.Objects.toIdentityString(this));
     }
     return false;
   }

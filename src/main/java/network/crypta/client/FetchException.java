@@ -642,7 +642,7 @@ public final class FetchException extends Exception {
    * <p>State is initialized to neutral values and should be populated by the deserialization
    * mechanism. Application code should not call this constructor directly.
    */
-  protected FetchException() {
+  FetchException() {
     // For serialization.
     mode = null;
     newURI = null;

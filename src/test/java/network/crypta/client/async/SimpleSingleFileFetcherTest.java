@@ -147,7 +147,7 @@ class SimpleSingleFileFetcherTest {
     when(parent.isCancelled()).thenReturn(true);
 
     Bucket bucket = mock(Bucket.class);
-    FetchResult fr = new FetchResult(new ClientMetadata(null), bucket);
+    FetchResult fr = FetchResult.create(new ClientMetadata(null), bucket);
 
     f.onSuccess(fr, clientContext);
 
@@ -164,7 +164,7 @@ class SimpleSingleFileFetcherTest {
 
     Bucket bucket = mock(Bucket.class);
     ClientMetadata meta = new ClientMetadata("text/plain");
-    FetchResult fr = new FetchResult(meta, bucket);
+    FetchResult fr = FetchResult.create(meta, bucket);
 
     // Capture onSuccess parameters
     ArgumentCaptor<StreamGenerator> sgCap = ArgumentCaptor.forClass(StreamGenerator.class);

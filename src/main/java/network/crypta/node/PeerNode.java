@@ -563,16 +563,6 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
-   *
-   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
-   * otherwise define a finalizer and observe partially initialized state.
-   */
-  @Override
-  @SuppressWarnings({"deprecation", "removal"})
-  protected final void finalize() {}
-
-  /**
    * Creates a PeerNode from a {@link SimpleFieldSet} node reference.
    *
    * <p>Does not register the instance with {@link PeerManager}.
@@ -599,8 +589,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       throw new IllegalArgumentException("Mismatched NodeCrypto for noderef type");
     }
     this.random = node.bootstrap().createRandom();
-    if (peers == null) throw new NullPointerException("peers");
     this.peers = peers;
+    if (peers == null) throw new NullPointerException("peers");
     this.internals = new PeerNodeInternals(selfPeerNode(), node2, fs.get(SFS_KEY_LOCATION));
     this.myBootID = node2.getBootId();
     this.bootID = 0;

@@ -61,7 +61,7 @@ public final class AEADCryptBucket implements Bucket, Serializable {
   }
 
   @SuppressWarnings("unused")
-  protected AEADCryptBucket() {
+  AEADCryptBucket() {
     // For serialization frameworks that instantiate first and hydrate fields later.
     underlying = null;
     key = null;

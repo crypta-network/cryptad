@@ -78,7 +78,7 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
    * DataInputStream} and metadata helpers.
    */
   @SuppressWarnings("unused")
-  protected PaddedRandomAccessBucket() {
+  PaddedRandomAccessBucket() {
     // For serialization.
     underlying = null;
     size = 0;
@@ -99,7 +99,9 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
   public OutputStream getOutputStream() throws IOException {
     OutputStream os;
     synchronized (this) {
-      if (outputStreamOpen) throw new IOException("Already have an OutputStream for " + this);
+      if (outputStreamOpen)
+        throw new IOException(
+            "Already have an OutputStream for " + java.util.Objects.toIdentityString(this));
       os = underlying.getOutputStream();
       outputStreamOpen = true;
       size = 0;
@@ -121,7 +123,9 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
   public OutputStream getOutputStreamUnbuffered() throws IOException {
     OutputStream os;
     synchronized (this) {
-      if (outputStreamOpen) throw new IOException("Already have an OutputStream for " + this);
+      if (outputStreamOpen)
+        throw new IOException(
+            "Already have an OutputStream for " + java.util.Objects.toIdentityString(this));
       os = underlying.getOutputStreamUnbuffered();
       outputStreamOpen = true;
       size = 0;
@@ -184,7 +188,11 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
 
     @Override
     public String toString() {
-      return "TrivialPaddedBucketOutputStream:" + out + "(" + PaddedRandomAccessBucket.this + ")";
+      return "TrivialPaddedBucketOutputStream:"
+          + out
+          + "("
+          + java.util.Objects.toIdentityString(PaddedRandomAccessBucket.this)
+          + ")";
     }
 
     private static final long MIN_PADDED_SIZE = 1024;
@@ -415,7 +423,7 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
    * @throws StorageFormatException if the on-disk format version is unknown or malformed
    * @throws ResumeFailedException if resuming a persistent artifact fails
    */
-  protected PaddedRandomAccessBucket(
+  PaddedRandomAccessBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

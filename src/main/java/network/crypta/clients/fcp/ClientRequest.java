@@ -293,6 +293,9 @@ public abstract class ClientRequest implements Serializable {
 
   private static RequestClient resolveLowLevelClient(
       ClientRequestParams params, PersistentRequestClient client) {
+    if (client == null) {
+      throw new IllegalStateException("Persistent client must not be null");
+    }
     RequestClient lowLevelClient = client.lowLevelClient(params.realTime());
     if (lowLevelClient == null) {
       throw new NullPointerException(
@@ -327,10 +330,6 @@ public abstract class ClientRequest implements Serializable {
         ? handler.getForeverClient()
         : handler.getRebootClient();
   }
-
-  @Override
-  @SuppressWarnings("removal")
-  protected final void finalize() {}
 
   /**
    * No-argument constructor used only by the serialization framework.

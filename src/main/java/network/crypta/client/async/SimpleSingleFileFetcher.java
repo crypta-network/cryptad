@@ -307,7 +307,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
     if (data == null) return; // failed
     context.uskManager.checkUSK(key.getURI(), fromStore, block.isMetadata());
     if (!block.isMetadata()) {
-      onSuccess(new FetchResult(new ClientMetadata(null), data), context);
+      onSuccess(FetchResult.create(new ClientMetadata(null), data), context);
     } else {
       onFailure(
           new FetchException(FetchExceptionMode.INVALID_METADATA, "Metadata where expected data"),

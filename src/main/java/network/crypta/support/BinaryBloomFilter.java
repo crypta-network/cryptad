@@ -53,7 +53,7 @@ public final class BinaryBloomFilter extends BloomFilter {
    * @param k number of hash functions (non-negative)
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
-  protected BinaryBloomFilter(int length, int k) {
+  BinaryBloomFilter(int length, int k) {
     super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     filter = ByteBuffer.allocate(this.length / 8);
   }
@@ -71,7 +71,7 @@ public final class BinaryBloomFilter extends BloomFilter {
    * @throws IOException if the file cannot be created, resized, or mapped
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
-  protected BinaryBloomFilter(File file, int length, int k) throws IOException {
+  BinaryBloomFilter(File file, int length, int k) throws IOException {
     super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     if (!file.exists() || file.length() != length / 8) needRebuild = true;
 

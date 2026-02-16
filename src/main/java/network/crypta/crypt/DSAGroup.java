@@ -59,7 +59,7 @@ public final class DSAGroup extends CryptoKey {
    * <p>Not intended for direct use. Regular code should build instances via {@link
    * #DSAGroup(BigInteger, BigInteger, BigInteger)} or parse with {@link #readKey(InputStream)}.
    */
-  protected DSAGroup() {
+  DSAGroup() {
     p = null;
     q = null;
     g = null;

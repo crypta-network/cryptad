@@ -484,7 +484,7 @@ public final class USKInserter
    * to satisfy deserialization requirements.
    */
   @SuppressWarnings("unused")
-  protected USKInserter() {
+  USKInserter() {
     // For serialization.
     this.hashCode = 0;
     this.tokenObject = null;

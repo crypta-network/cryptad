@@ -32,7 +32,7 @@ class FetchWaiterTest {
   @Test
   void waitForCompletion_whenSuccessPosted_expectReturnsResult() throws Exception {
     FetchWaiter waiter = new FetchWaiter(requestClient);
-    FetchResult expected = new FetchResult(new ClientMetadata("text/plain"), bucket);
+    FetchResult expected = FetchResult.create(new ClientMetadata("text/plain"), bucket);
 
     // Act
     waiter.onSuccess(expected, null);
@@ -60,7 +60,8 @@ class FetchWaiterTest {
   @Test
   void waitForCompletion_whenConcurrentSuccess_expectUnblocksAndReturnsResult() throws Exception {
     FetchWaiter waiter = new FetchWaiter(requestClient);
-    FetchResult expected = new FetchResult(new ClientMetadata("application/octet-stream"), bucket);
+    FetchResult expected =
+        FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
 
     AtomicReference<FetchResult> resultRef = new AtomicReference<>();
     CountDownLatch done = new CountDownLatch(1);
@@ -157,8 +158,8 @@ class FetchWaiterTest {
   @Test
   void onSuccess_whenCalledTwice_expectSecondIgnored() throws Exception {
     FetchWaiter waiter = new FetchWaiter(requestClient);
-    FetchResult first = new FetchResult(new ClientMetadata("text/plain"), bucket);
-    FetchResult second = new FetchResult(new ClientMetadata("text/html"), bucket);
+    FetchResult first = FetchResult.create(new ClientMetadata("text/plain"), bucket);
+    FetchResult second = FetchResult.create(new ClientMetadata("text/html"), bucket);
 
     waiter.onSuccess(first, null);
     waiter.onSuccess(second, null); // should be ignored

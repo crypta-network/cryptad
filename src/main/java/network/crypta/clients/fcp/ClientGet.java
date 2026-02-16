@@ -315,7 +315,7 @@ public final class ClientGet extends ClientRequest {
    * and {@link ClientGetter}. This constructor exists solely to satisfy the Java serialization
    * framework and keep field initialization centralized in the resume path.
    */
-  protected ClientGet() {
+  ClientGet() {
     // For serialization.
     state = new ClientGetState(this);
     fctx = null;

@@ -135,7 +135,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    * <p>Do not use directly in application code. Fields are initialized during deserialization.
    */
   @SuppressWarnings("unused")
-  protected PaddedEphemerallyEncryptedBucket() {
+  PaddedEphemerallyEncryptedBucket() {
     // For serialization only.
     bucket = null;
     minPaddedSize = 0;
@@ -609,7 +609,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    * @throws IOException on I/O errors
    * @throws ResumeFailedException if nested buckets cannot be resumed
    */
-  protected PaddedEphemerallyEncryptedBucket(
+  PaddedEphemerallyEncryptedBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

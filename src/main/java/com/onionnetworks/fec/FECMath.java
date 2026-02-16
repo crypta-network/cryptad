@@ -820,7 +820,7 @@ public final class FECMath {
    * @return newly allocated {@code k x k} decoding matrix in row-major order
    * @throws IllegalArgumentException if any index is out of bounds or the matrix cannot be inverted
    */
-  protected final char[] createDecodeMatrix(char[] encMatrix, int[] index, int k, int n) {
+  final char[] createDecodeMatrix(char[] encMatrix, int[] index, int k, int n) {
 
     for (int idx : index) {
       if (idx < 0 || idx >= n) {

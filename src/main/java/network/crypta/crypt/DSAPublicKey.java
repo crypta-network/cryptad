@@ -141,7 +141,7 @@ public final class DSAPublicKey extends CryptoKey implements StorableBlock {
   }
 
   /** For use by serialization frameworks only. Do not call directly. */
-  protected DSAPublicKey() {
+  DSAPublicKey() {
     // For serialization.
     y = null;
     group = null;

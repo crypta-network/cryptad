@@ -1734,4 +1734,13 @@ public final class SplitFileFetcherSegmentStorage {
     }
     parent.finishedEncoding(this);
   }
+
+  @Override
+  public String toString() {
+    return "SplitFileFetcherSegmentStorage[segNo="
+        + segNo
+        + ", parent="
+        + java.util.Objects.toIdentityString(parent)
+        + "]";
+  }
 }

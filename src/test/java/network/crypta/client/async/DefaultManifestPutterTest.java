@@ -78,7 +78,7 @@ class DefaultManifestPutterTest {
             /*forceCryptoKey*/ null,
             context);
 
-    assertThrows(IllegalArgumentException.class, () -> new DefaultManifestPutter(params, false));
+    assertThrows(IllegalArgumentException.class, () -> DefaultManifestPutter.create(params, false));
   }
 
   // A subclass that lets us spy on the builders created during packing

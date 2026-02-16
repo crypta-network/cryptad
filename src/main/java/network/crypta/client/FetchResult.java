@@ -33,21 +33,10 @@ public class FetchResult {
   final Bucket data;
 
   /**
-   * Create a new fetch result.
-   *
-   * <p>Constructs a result from the provided {@link ClientMetadata} and data {@link Bucket}. Both
-   * arguments must be non-{@code null}. The references are stored directly; the constructor does
-   * not copy the payload and performs no I/O.
-   *
-   * @param dm non-null client metadata describing the fetched object, including MIME type and
-   *     related attributes; must not be {@code null}.
-   * @param fetched non-null data bucket containing the retrieved payload; ownership remains with
-   *     the caller; must not be {@code null}.
-   * @throws IllegalArgumentException if {@code dm} or {@code fetched} is {@code null}.
+   * Internal constructor; callers should use {@link #create(ClientMetadata, Bucket)} so validation
+   * stays outside constructor paths.
    */
-  public FetchResult(ClientMetadata dm, Bucket fetched) {
-    if (dm == null) throw new IllegalArgumentException(NULL_METADATA_MESSAGE);
-    if (fetched == null) throw new IllegalArgumentException(NULL_BUCKET_MESSAGE);
+  protected FetchResult(ClientMetadata dm, Bucket fetched) {
     metadata = dm;
     data = fetched;
   }
@@ -63,9 +52,35 @@ public class FetchResult {
    * @param output replacement bucket that provides the new payload; must not be {@code null} and is
    *     not copied.
    */
-  public FetchResult(FetchResult fr, Bucket output) {
+  protected FetchResult(FetchResult fr, Bucket output) {
     this.data = output;
     this.metadata = fr.metadata;
+  }
+
+  /**
+   * Creates a validated fetch result.
+   *
+   * @param dm non-null client metadata
+   * @param fetched non-null data bucket
+   * @return a new validated result
+   * @throws IllegalArgumentException if either argument is null
+   */
+  public static FetchResult create(ClientMetadata dm, Bucket fetched) {
+    if (dm == null) throw new IllegalArgumentException(NULL_METADATA_MESSAGE);
+    if (fetched == null) throw new IllegalArgumentException(NULL_BUCKET_MESSAGE);
+    return new FetchResult(dm, fetched);
+  }
+
+  /**
+   * Creates a result by reusing metadata from an existing result and replacing the data bucket.
+   *
+   * @param fr source result; must not be null
+   * @param output replacement bucket (may be null, preserved for legacy behavior)
+   * @return a new result reusing metadata from {@code fr}
+   */
+  public static FetchResult create(FetchResult fr, Bucket output) {
+    if (fr == null) throw new NullPointerException("fr");
+    return new FetchResult(fr, output);
   }
 
   /**
@@ -133,12 +148,5 @@ public class FetchResult {
    */
   public Bucket asBucket() {
     return data;
-  }
-
-  @Override
-  @SuppressWarnings("removal")
-  protected final void finalize() {
-    // Intentionally empty: a final finalize() prevents subclasses from adding finalizers.
-    // This hardening avoids finalizer-attack risk for constructors that validate inputs.
   }
 }

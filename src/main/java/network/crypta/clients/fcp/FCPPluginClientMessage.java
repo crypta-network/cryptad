@@ -176,7 +176,7 @@ public final class FCPPluginClientMessage extends DataCarryingMessage {
    *
    * @return a newly constructed {@link FCPPluginMessage} sharing this instance's bucket and state
    */
-  protected FCPPluginMessage constructFCPPluginMessage() {
+  FCPPluginMessage constructFCPPluginMessage() {
     return FCPPluginMessage.constructRawMessage(
         null, identifier, plugparams, this.bucket, success, errorCode, errorMessage);
   }

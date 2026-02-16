@@ -36,16 +36,6 @@ import java.util.Arrays;
  */
 public abstract class Matrix implements Serializable {
   /**
-   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
-   *
-   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
-   * otherwise define a finalizer and observe partially initialized state.
-   */
-  @Override
-  @SuppressWarnings({"deprecation", "removal"})
-  protected final void finalize() {}
-
-  /**
    * Create a new matrix with all coefficients initialized to zero.
    *
    * <p>The constructor validates that both dimensions are strictly positive and allocates a dense
@@ -63,12 +53,6 @@ public abstract class Matrix implements Serializable {
    * @throws IllegalArgumentException if either dimension is zero or negative
    */
   protected Matrix(int rows, int columns) {
-    // sanity check
-    if (rows <= 0 || columns <= 0) {
-      throw new IllegalArgumentException(
-          "cannot build a matrix" + " with negative or null dimension");
-    }
-
     this.rows = rows;
     this.columns = columns;
     data = new double[rows * columns];
@@ -95,12 +79,6 @@ public abstract class Matrix implements Serializable {
    * @throws IllegalArgumentException if a dimension is zero or negative
    */
   protected Matrix(int rows, int columns, double[] data) {
-    // sanity check
-    if (rows <= 0 || columns <= 0) {
-      throw new IllegalArgumentException(
-          "cannot build a matrix" + " with negative or null dimension");
-    }
-
     this.rows = rows;
     this.columns = columns;
     this.data = (data == null) ? null : data.clone();

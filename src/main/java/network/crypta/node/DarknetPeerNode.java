@@ -1371,7 +1371,14 @@ public final class DarknetPeerNode extends PeerNode {
                 if (LOG.isDebugEnabled()) LOG.debug("Sending file");
                 try {
                   if (!transmitter.send()) {
-                    String err = "Failed to send " + uid + LOG_FOR + FileOffer.this;
+                    String err =
+                        "Failed to send "
+                            + uid
+                            + LOG_FOR
+                            + filename
+                            + " ("
+                            + java.util.Objects.toIdentityString(FileOffer.this)
+                            + ')';
                     LOG.error(err);
                   }
                 } catch (Throwable t) {

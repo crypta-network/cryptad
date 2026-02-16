@@ -845,7 +845,7 @@ public class USKManager {
             if (LOG.isDebugEnabled()) LOG.debug("Starting {}", fetcher);
             fetcher.schedule(context);
           },
-          "USKManager.schedule for " + fetcher);
+          "USKManager.schedule for " + java.util.Objects.toIdentityString(fetcher));
     }
   }
 

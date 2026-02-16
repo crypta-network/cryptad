@@ -709,7 +709,7 @@ public final class LoggingConfigHandler {
    * transitions.
    */
   @SuppressWarnings("java:S106")
-  protected void disableLogger() {
+  void disableLogger() {
     synchronized (enableLoggerLock) {
       // Reconfigure SLF4J/Logback so no further logs are emitted.
       try {
@@ -740,7 +740,7 @@ public final class LoggingConfigHandler {
    * @throws InvalidConfigValueException when the path refers to a non-directory or cannot be
    *     created
    */
-  protected void preSetLogDir(File f) throws InvalidConfigValueException {
+  void preSetLogDir(File f) throws InvalidConfigValueException {
     boolean exists = f.exists();
     if (exists && !f.isDirectory())
       throw new InvalidConfigValueException("Cannot overwrite a file with a log directory");

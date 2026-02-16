@@ -237,7 +237,7 @@ public final class SingleBlockInserter extends SendableInsert
    * @return The encoded client key block representing the input data.
    * @throws InsertException If encoding fails due to URI, bucket I/O, codec, or internal errors.
    */
-  protected ClientKeyBlock innerEncode(RandomSource random) throws InsertException {
+  ClientKeyBlock innerEncode(RandomSource random) throws InsertException {
     try {
       return innerEncode(
           random,
@@ -278,7 +278,7 @@ public final class SingleBlockInserter extends SendableInsert
    * @throws SSKEncodeException If SSK/KSK encoding fails for key-related reasons.
    * @throws InvalidCompressionCodecException If the codec id is not recognized by encoders.
    */
-  protected static ClientKeyBlock innerEncode(
+  static ClientKeyBlock innerEncode(
       RandomSource random, BlockInsertPayload payload, String compressorDescriptor)
       throws InsertException,
           CHKEncodeException,
@@ -316,7 +316,7 @@ public final class SingleBlockInserter extends SendableInsert
    * @param key The client key derived from encoding, used to construct the final URI.
    * @param context Runtime context used to post the notification on the appropriate executor.
    */
-  protected void onEncode(final ClientKey key, final ClientContext context) {
+  void onEncode(final ClientKey key, final ClientContext context) {
     synchronized (this) {
       if (finished) return;
       if (resultingKey != null) return;
@@ -348,7 +348,7 @@ public final class SingleBlockInserter extends SendableInsert
    * @return The newly encoded block, or {@code null} when the inserter is already finished.
    * @throws InsertException If the URI is invalid, the bucket cannot be read, or encoding fails.
    */
-  protected ClientKeyBlock encode(ClientContext context) throws InsertException {
+  ClientKeyBlock encode(ClientContext context) throws InsertException {
     ClientKeyBlock block;
     boolean shouldSend;
     synchronized (this) {

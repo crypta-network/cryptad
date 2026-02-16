@@ -85,7 +85,7 @@ public final class BookmarkCategory extends Bookmark {
    * @param b the bookmark to add; may be {@code null}, in which case this method does nothing
    * @return the bookmark instance present in the category, or {@code null} if {@code b} is null
    */
-  protected synchronized Bookmark addBookmark(Bookmark b) {
+  synchronized Bookmark addBookmark(Bookmark b) {
     if (b == null) {
       return null;
     }
@@ -106,7 +106,7 @@ public final class BookmarkCategory extends Bookmark {
    *
    * @param b the bookmark to remove; may be {@code null}, in which case this method does nothing
    */
-  protected synchronized void removeBookmark(Bookmark b) {
+  synchronized void removeBookmark(Bookmark b) {
     bookmarks.remove(b);
   }
 
@@ -135,7 +135,7 @@ public final class BookmarkCategory extends Bookmark {
    *
    * @param b the bookmark to move; if {@code null} or absent, this method has no effect
    */
-  protected synchronized void moveBookmarkUp(Bookmark b) {
+  synchronized void moveBookmarkUp(Bookmark b) {
     int index = bookmarks.indexOf(b);
     if (index == -1) {
       return;
@@ -155,7 +155,7 @@ public final class BookmarkCategory extends Bookmark {
    *
    * @param b the bookmark to move; if {@code null} or absent, this method has no effect
    */
-  protected synchronized void moveBookmarkDown(Bookmark b) {
+  synchronized void moveBookmarkDown(Bookmark b) {
     int index = bookmarks.indexOf(b);
     if (index == -1) {
       return;

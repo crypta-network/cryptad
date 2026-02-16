@@ -424,7 +424,7 @@ public final class NodeClientCore implements Persistable {
    * times with unchanged configuration is effectively idempotent and performs no I/O beyond the
    * factory update.
    */
-  protected void updatePersistentRAFSpaceLimit() {
+  void updatePersistentRAFSpaceLimit() {
     // The temp bucket factory may have to migrate everything to disk.
     // So we add the RAM limit for the temp factory to the disk limit for the persistent one.
     if (persistence.hasPersistentRafFactory()) {
@@ -1034,7 +1034,7 @@ public final class NodeClientCore implements Persistable {
    *
    * @param val allowlist entries describing tokens or absolute/relative filesystem paths.
    */
-  protected synchronized void setDownloadAllowedDirs(String[] val) {
+  synchronized void setDownloadAllowedDirs(String[] val) {
     transferPolicy.setDownloadAllowedDirs(val);
   }
 
@@ -1049,7 +1049,7 @@ public final class NodeClientCore implements Persistable {
    *
    * @param val allowlist entries describing tokens or filesystem source paths.
    */
-  protected synchronized void setUploadAllowedDirs(String[] val) {
+  synchronized void setUploadAllowedDirs(String[] val) {
     transferPolicy.setUploadAllowedDirs(val);
   }
 

@@ -75,7 +75,7 @@ public final class SimpleFieldSet {
   private volatile String endMarker;
   private final boolean shortLived;
   private final boolean alwaysUseBase64;
-  protected String[] header;
+  String[] header;
 
   /** Separates levels in hierarchical keys (for example, {@code group.key} uses {@code '.'}). */
   public static final char MULTI_LEVEL_CHAR = '.';

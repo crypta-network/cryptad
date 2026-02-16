@@ -31,6 +31,18 @@ import java.io.Serial;
  * @see MatrixFactory
  */
 public class GeneralMatrix extends Matrix {
+  private static final String INVALID_DIMENSION_MESSAGE =
+      "cannot build a matrix with negative or null dimension";
+
+  private static int requireValidRows(int rows, int columns) {
+    if (rows <= 0 || columns <= 0) throw new IllegalArgumentException(INVALID_DIMENSION_MESSAGE);
+    return rows;
+  }
+
+  private static int requireValidColumns(int rows, int columns) {
+    if (rows <= 0 || columns <= 0) throw new IllegalArgumentException(INVALID_DIMENSION_MESSAGE);
+    return columns;
+  }
 
   /**
    * Construct a dense matrix initialized with zeros for every coefficient.
@@ -47,7 +59,7 @@ public class GeneralMatrix extends Matrix {
    * @throws IllegalArgumentException if either dimension is zero or negative during construction
    */
   public GeneralMatrix(int rows, int columns) {
-    super(rows, columns);
+    super(requireValidRows(rows, columns), requireValidColumns(rows, columns));
   }
 
   /**
@@ -66,7 +78,7 @@ public class GeneralMatrix extends Matrix {
    * @throws IllegalArgumentException if either dimension is zero or negative during construction
    */
   public GeneralMatrix(int rows, int columns, double[] data) {
-    super(rows, columns, data);
+    super(requireValidRows(rows, columns), requireValidColumns(rows, columns), data);
   }
 
   /**

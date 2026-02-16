@@ -380,7 +380,10 @@ public final class NodeCryptoConfig {
   synchronized void starting(NodeCrypto crypto2) {
     if (crypto != null)
       throw new IllegalStateException(
-          "Replacing existing NodeCrypto " + crypto + " with " + crypto2);
+          "Replacing existing NodeCrypto "
+              + java.util.Objects.toIdentityString(crypto)
+              + " with "
+              + java.util.Objects.toIdentityString(crypto2));
     crypto = crypto2;
   }
 
@@ -388,7 +391,10 @@ public final class NodeCryptoConfig {
   synchronized void started(NodeCrypto crypto2) {
     if (crypto != null)
       throw new IllegalStateException(
-          "Replacing existing NodeCrypto " + crypto + " with " + crypto2);
+          "Replacing existing NodeCrypto "
+              + java.util.Objects.toIdentityString(crypto)
+              + " with "
+              + java.util.Objects.toIdentityString(crypto2));
   }
 
   synchronized void maybeStarted() {

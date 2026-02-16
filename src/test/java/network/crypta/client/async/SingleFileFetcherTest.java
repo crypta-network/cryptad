@@ -113,7 +113,7 @@ class SingleFileFetcherTest {
     Bucket original = mock(Bucket.class);
     ClientMetadata md = new ClientMetadata("text/plain");
 
-    FetchResult result = new FetchResult(md, original);
+    FetchResult result = FetchResult.create(md, original);
     f.onSuccess(result, clientContext);
 
     verify(cb).onFailure(fetchExceptionCaptor.capture(), eq(f), eq(clientContext));
@@ -132,7 +132,7 @@ class SingleFileFetcherTest {
     Bucket original = mock(Bucket.class);
     ClientMetadata md = new ClientMetadata("text/plain");
 
-    f.onSuccess(new FetchResult(md, original), clientContext);
+    f.onSuccess(FetchResult.create(md, original), clientContext);
 
     verify(cb).onFailure(fetchExceptionCaptor.capture(), eq(f), eq(clientContext));
     assertEquals(FetchExceptionMode.INVALID_METADATA, fetchExceptionCaptor.getValue().getMode());
@@ -148,7 +148,7 @@ class SingleFileFetcherTest {
     when(original.size()).thenReturn(100L);
     ClientMetadata md = new ClientMetadata("application/octet-stream");
 
-    FetchResult result = new FetchResult(md, original);
+    FetchResult result = FetchResult.create(md, original);
     f.onSuccess(result, clientContext);
 
     verify(cb).onFailure(fetchExceptionCaptor.capture(), eq(f), eq(clientContext));
@@ -169,7 +169,7 @@ class SingleFileFetcherTest {
     // Static mock for BucketTools.copy to avoid needing real streams.
     try (var _ = Mockito.mockStatic(BucketTools.class)) {
       ClientMetadata md = new ClientMetadata("text/plain");
-      FetchResult result = new FetchResult(md, original);
+      FetchResult result = FetchResult.create(md, original);
 
       // Execute job immediately when queued
       doAnswer(
@@ -221,7 +221,7 @@ class SingleFileFetcherTest {
           .thenThrow(new IOException("copy fail"));
 
       ClientMetadata md = new ClientMetadata("text/plain");
-      FetchResult result = new FetchResult(md, original);
+      FetchResult result = FetchResult.create(md, original);
 
       f.onSuccess(result, clientContext);
 
@@ -254,7 +254,7 @@ class SingleFileFetcherTest {
           .queueInternal(any(PersistentJob.class));
 
       ClientMetadata md = new ClientMetadata("text/plain");
-      f.onSuccess(new FetchResult(md, original), clientContext);
+      f.onSuccess(FetchResult.create(md, original), clientContext);
 
       // We still should succeed because isFinal=false disables the TOO_MANY_PATH_COMPONENTS guard
       verify(cb)

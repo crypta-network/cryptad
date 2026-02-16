@@ -114,7 +114,7 @@ public final class FailureCodeTracker implements Serializable {
    * is created in fetch mode by default; real instances should be created via the public
    * constructors that explicitly specify the mode.
    */
-  protected FailureCodeTracker() {
+  FailureCodeTracker() {
     // For serialization.
     this.insert = false;
   }

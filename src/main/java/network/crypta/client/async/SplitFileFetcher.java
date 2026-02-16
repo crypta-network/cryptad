@@ -282,7 +282,7 @@ public final class SplitFileFetcher
    * fetcher instance; callers must invoke {@link #onResume(ClientContext)} to reattach runtime
    * resources and resume operation. Do not call directly in regular code.
    */
-  protected SplitFileFetcher() {
+  SplitFileFetcher() {
     // For serialization only.
     parent = null;
     cb = null;

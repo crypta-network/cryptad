@@ -221,7 +221,7 @@ public final class FilenameGenerator {
    * @param file file to test; must be non-null
    * @return {@code true} if the file is under the generator's directory and begins with the prefix
    */
-  protected boolean matches(File file) {
+  boolean matches(File file) {
     return FileUtil.equals(file.getParentFile(), tmpDir) && file.getName().startsWith(prefix);
   }
 

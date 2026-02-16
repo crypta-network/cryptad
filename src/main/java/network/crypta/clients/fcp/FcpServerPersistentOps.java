@@ -744,7 +744,7 @@ final class FcpServerPersistentOps implements DownloadCache {
       throws PersistenceDisabledException {
     ClientGet get = globalRebootClient.getCompletedRequest(key);
     if (get != null) {
-      return new FetchResult(
+      return FetchResult.create(
           new ClientMetadata(get.getMIMEType()), new NoFreeBucket(get.getBucket()));
     }
 

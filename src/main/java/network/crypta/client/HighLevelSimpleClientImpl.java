@@ -600,7 +600,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     DefaultManifestPutter putter;
     try {
       putter =
-          new DefaultManifestPutter(
+          DefaultManifestPutter.create(
               new ManifestPutterParams(
                   new InsertRequestParams(pw, insertURI, getInsertContext(true), priorityClass),
                   BaseManifestPutter.bucketsByNameToManifestEntries(bucketsByName),

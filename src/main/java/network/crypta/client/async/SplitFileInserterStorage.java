@@ -2229,7 +2229,7 @@ public final class SplitFileInserterStorage {
    * @return {@code true} when a failure is pending or the status is terminal or generating
    *     metadata; otherwise {@code false}.
    */
-  protected synchronized boolean isFinishing() {
+  synchronized boolean isFinishing() {
     return this.failing != null
         || status == Status.FAILED
         || status == Status.SUCCEEDED

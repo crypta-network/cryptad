@@ -36,16 +36,6 @@ package org.spaceroots.mantissa.ode;
  */
 public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
   /**
-   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
-   *
-   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
-   * otherwise define a finalizer and observe partially initialized state.
-   */
-  @Override
-  @SuppressWarnings({"deprecation", "removal"})
-  protected final void finalize() {}
-
-  /**
    * Build a Runge–Kutta integrator with constant step size and default no-op step handler.
    *
    * <p>The caller supplies the Butcher tableau rows and an interpolator prototype appropriate for
@@ -68,13 +58,13 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
       double[] c,
       double[][] a,
       double[] b,
-      AbstractStepInterpolator prototype,
+      RungeKuttaStepInterpolator prototype,
       double step) {
     this.fsal = fsal;
     this.c = c;
     this.a = a;
     this.b = b;
-    this.prototype = checkPrototype(prototype);
+    this.prototype = prototype;
     this.step = step;
     handler = DummyStepHandler.getInstance();
     switchesHandler = new SwitchingFunctionsHandler();
@@ -285,13 +275,6 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
   /** Current stepsize. */
   private double stepSize;
-
-  private RungeKuttaStepInterpolator checkPrototype(AbstractStepInterpolator prototype) {
-    if (prototype instanceof RungeKuttaStepInterpolator rungeKuttaPrototype) {
-      return rungeKuttaPrototype;
-    }
-    throw new IllegalArgumentException("Prototype must be a RungeKuttaStepInterpolator");
-  }
 
   private void validateIntegrationRange(
       FirstOrderDifferentialEquations equations, double[] y0, double t0, double t)

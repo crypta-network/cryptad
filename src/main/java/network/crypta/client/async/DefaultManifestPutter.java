@@ -158,6 +158,19 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   public static final long DEFAULT_CONTAINERSIZE_SPARE = 196L * 1024L;
 
   /**
+   * Creates and validates a {@link DefaultManifestPutter} without surfacing constructor-thrown
+   * checked exceptions.
+   *
+   * @throws TooManyFilesInsertException if the input contains too many files for safe packing
+   */
+  public static DefaultManifestPutter create(ManifestPutterParams params, boolean persistent)
+      throws TooManyFilesInsertException {
+    DefaultManifestPutter putter = new DefaultManifestPutter(params, persistent);
+    putter.throwInitializationFailure();
+    return putter;
+  }
+
+  /**
    * Creates a putter that packs and inserts the provided manifest tree.
    *
    * <p>The constructor wires callbacks, establishes packing thresholds, and derives security
@@ -168,11 +181,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    *     and context. The manifest map is defensively copied before packing.
    * @param persistent whether the job participates in persistence across restarts; when {@code
    *     true}, the putter coordinates with persistent job runners.
-   * @throws TooManyFilesInsertException if the input contains an excessive number of files within a
-   *     single directory such that reasonable packing cannot proceed.
    */
-  public DefaultManifestPutter(ManifestPutterParams params, boolean persistent)
-      throws TooManyFilesInsertException {
+  public DefaultManifestPutter(ManifestPutterParams params, boolean persistent) {
     // If the top level key is an SSK, all CHK blocks and particularly splitfiles below it should
     // have
     // randomized keys. This substantially improves security by making it impossible to identify

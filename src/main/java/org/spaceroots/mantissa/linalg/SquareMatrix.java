@@ -25,6 +25,14 @@ package org.spaceroots.mantissa.linalg;
  * @see Matrix
  */
 public abstract class SquareMatrix extends Matrix {
+  private static final String INVALID_DIMENSION_MESSAGE =
+      "cannot build a matrix with negative or null dimension";
+
+  private static int requireValidOrder(int order) {
+    if (order <= 0) throw new IllegalArgumentException(INVALID_DIMENSION_MESSAGE);
+    return order;
+  }
+
   /**
    * Create an empty square matrix initialized with zeros in all positions.
    *
@@ -37,7 +45,7 @@ public abstract class SquareMatrix extends Matrix {
    * @param order number of rows and columns; must be strictly positive to define a valid matrix
    */
   protected SquareMatrix(int order) {
-    super(order, order);
+    super(requireValidOrder(order), requireValidOrder(order));
   }
 
   /**
@@ -53,7 +61,7 @@ public abstract class SquareMatrix extends Matrix {
    * @param data contiguous array of size {@code order * order} containing row-major coefficients
    */
   protected SquareMatrix(int order, double[] data) {
-    super(order, order, data);
+    super(requireValidOrder(order), requireValidOrder(order), data);
   }
 
   /**

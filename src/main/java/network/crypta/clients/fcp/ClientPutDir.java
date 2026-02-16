@@ -274,7 +274,7 @@ public final class ClientPutDir extends ClientPutBase {
    * readObject(ObjectInputStream)} runs. All primitive fields are initialized to benign defaults so
    * that partially restored instances remain stable even if deserialization fails midway.
    */
-  protected ClientPutDir() {
+  ClientPutDir() {
     // For serialization.
     defaultName = null;
     totalSize = 0;
@@ -405,7 +405,7 @@ public final class ClientPutDir extends ClientPutBase {
 
   private void makePutter(ClientContext context) throws TooManyFilesInsertException {
     putter =
-        new DefaultManifestPutter(
+        DefaultManifestPutter.create(
             new ManifestPutterParams(
                 new InsertRequestParams(this, uri, ctx, priorityClass),
                 manifestElements,

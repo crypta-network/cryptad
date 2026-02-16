@@ -135,7 +135,7 @@ class TextModeClientInterfaceTest {
 
     when(client.fetch(any(FreenetURI.class)))
         .thenReturn(
-            new FetchResult(
+            FetchResult.create(
                 new ClientMetadata("text/plain"), new ArrayBucket("Hello!".getBytes(UTF_8))));
 
     String output = runWithInput("GET:" + key + "\nQUIT\n");
@@ -154,7 +154,7 @@ class TextModeClientInterfaceTest {
     // Return a byte 0x1B (ESC) which should be treated as potentially dangerous
     when(client.fetch(any(FreenetURI.class)))
         .thenReturn(
-            new FetchResult(
+            FetchResult.create(
                 new ClientMetadata("application/octet-stream"),
                 new ArrayBucket(new byte[] {0x1B})));
 

@@ -244,7 +244,7 @@ final class SplitFileFetcherSegmentsLoadParams {
   public @NotNull String toString() {
     return "SplitFileFetcherSegmentsLoadParams["
         + "parent="
-        + parent
+        + (parent == null ? "null" : java.util.Objects.toIdentityString(parent))
         + ", totalDataBlocks="
         + totalDataBlocks
         + ", totalCheckBlocks="

@@ -127,7 +127,7 @@ class ReceivedCookieTest {
   @Test
   void equals_withCookieSubtype_isSymmetric() throws ParseException {
     Cookie outgoing =
-        new Cookie(URI.create(VALID_PATH), VALID_NAME, "ignored", Instant.now().plusSeconds(60));
+        Cookie.create(URI.create(VALID_PATH), VALID_NAME, "ignored", Instant.now().plusSeconds(60));
     ReceivedCookie incoming =
         ReceivedCookie.parseHeader(VALID_NAME + "=other;$path=" + VALID_PATH).getFirst();
 

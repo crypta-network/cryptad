@@ -185,7 +185,7 @@ public final class GetFailedMessage extends FCPMessage implements Serializable {
    * not represent a real failure state.
    */
   @SuppressWarnings("unused")
-  protected GetFailedMessage() {
+  GetFailedMessage() {
     // For serialization.
     failureMode = null;
     extraDescription = null;

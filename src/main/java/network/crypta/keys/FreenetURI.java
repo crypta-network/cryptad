@@ -312,7 +312,7 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
   }
 
   // Strip optional http(s)://host/… and scheme prefixes like (web+|ext+)(freenet|hyphanet|hypha):
-  protected static final Pattern URI_PREFIX =
+  static final Pattern URI_PREFIX =
       Pattern.compile("^(https?://[^/]+/+)?(((ext|web)\\+)?(freenet|hyphanet|hypha):)?");
 
   /**
@@ -655,7 +655,7 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
    *
    * <p>Not intended for direct use.
    */
-  protected FreenetURI() {
+  FreenetURI() {
     // For serialization only.
     this.metaStr = null;
     this.keyType = null;
@@ -833,7 +833,7 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
         keyType, docName, newMetaStr, routingKey, cryptoKey, extra, suggestedEdition);
   }
 
-  protected String toStringCache;
+  String toStringCache;
 
   /**
    * Return a cached string representation.
