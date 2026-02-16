@@ -259,7 +259,9 @@ public final class DarknetPeerNode extends PeerNode {
       FRIEND_VISIBILITY visibility2,
       PeerManager peers)
       throws FSParseException {
-    super(prepareConstructorInit(fs, node2, crypto, fromLocal, peers, ConstructorProfile.DARKNET));
+    super(
+        PeerNodeConstructorSupport.prepareConstructorInit(
+            fs, node2, crypto, fromLocal, peers, ConstructorProfile.DARKNET));
 
     String name = fs.get(FS_KEY_MY_NAME);
     if (name == null) throw new FSParseException("No name");
@@ -339,7 +341,7 @@ public final class DarknetPeerNode extends PeerNode {
     if (ignoreSourcePort) {
       FreenetInetAddress addr = detectedPeer == null ? null : detectedPeer.getFreenetAddress();
       int port = detectedPeer == null ? -1 : detectedPeer.getPort();
-      List<Peer> localNominalPeer = nominalPeer.get();
+      List<Peer> localNominalPeer = nominalPeer;
       if (localNominalPeer == null) return detectedPeer;
       for (Peer p : localNominalPeer) {
         if (p.getPort() != port && p.getFreenetAddress().equals(addr)) {
@@ -2572,7 +2574,7 @@ public final class DarknetPeerNode extends PeerNode {
                       return;
                     }
                     synchronized (DarknetPeerNode.this) {
-                      fullFieldSet.set(fs);
+                      fullFieldSet = fs;
                     }
                     node.network().peers().writePeersDarknet();
                   } else {

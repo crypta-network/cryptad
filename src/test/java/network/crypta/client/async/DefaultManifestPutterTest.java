@@ -96,8 +96,7 @@ class DefaultManifestPutterTest {
         InsertContext ctx,
         boolean persistent,
         byte[] forceKey,
-        ClientContext context)
-        throws TooManyFilesInsertException {
+        ClientContext context) {
       super(
           new ManifestPutterParams(
               new InsertRequestParams(cb, target, ctx, prio),

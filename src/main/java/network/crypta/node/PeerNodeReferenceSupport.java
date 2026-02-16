@@ -153,8 +153,12 @@ final class PeerNodeReferenceSupport {
       SignatureVerificationResult result =
           verifySignatureForConstruction(
               fs, noSig, peer.peerECDSAPubKey, !peer.dontKeepFullFieldSet());
-      peer.setSignatureVerificationSuccessfull(result.signatureVerificationSuccessful);
-      if (result.fullFieldSet != null) peer.fullFieldSet.set(result.fullFieldSet);
+      peer.setSignatureVerificationSuccessfull(result.signatureVerificationSuccessful());
+      if (result.fullFieldSet() != null) {
+        synchronized (peer) {
+          peer.fullFieldSet = result.fullFieldSet();
+        }
+      }
     } catch (ReferenceSignatureVerificationException e) {
       peer.setSignatureVerificationSuccessfull(false);
       throw e;
@@ -191,6 +195,7 @@ final class PeerNodeReferenceSupport {
         // We might be talking to a pre-1471 node
         // We need to generate it from the DSA key
         SimpleFieldSet sfs = fs.subset("dsaPubKey");
+        if (sfs == null) throw new FSParseException("No identity");
         id = SHA256.digest(DSAPublicKey.create(sfs, Global.DSAgroupBigA).asBytes());
       }
       if (id == null) throw new FSParseException("No identity");
@@ -614,16 +619,8 @@ final class PeerNodeReferenceSupport {
     fs.put("ecdsa", Curves.P256.getSFS(key));
   }
 
-  static final class SignatureVerificationResult {
-    final boolean signatureVerificationSuccessful;
-    final SimpleFieldSet fullFieldSet;
-
-    SignatureVerificationResult(
-        boolean signatureVerificationSuccessful, SimpleFieldSet fullFieldSet) {
-      this.signatureVerificationSuccessful = signatureVerificationSuccessful;
-      this.fullFieldSet = fullFieldSet;
-    }
-  }
+  record SignatureVerificationResult(
+      boolean signatureVerificationSuccessful, SimpleFieldSet fullFieldSet) {}
 
   static SignatureVerificationResult verifySignatureForConstruction(
       SimpleFieldSet fs, boolean noSig, ECPublicKey peerEcdsaPubKey, boolean keepFullFieldSet)
@@ -683,17 +680,8 @@ final class PeerNodeReferenceSupport {
   @SuppressWarnings("UnusedReturnValue")
   boolean verifyReferenceSignature(SimpleFieldSet fs)
       throws ReferenceSignatureVerificationException {
-    try {
-      SignatureVerificationResult result =
-          verifySignatureForConstruction(
-              fs, false, peer.peerECDSAPubKey, !peer.dontKeepFullFieldSet());
-      peer.setSignatureVerificationSuccessfull(result.signatureVerificationSuccessful);
-      if (result.fullFieldSet != null) peer.fullFieldSet.set(result.fullFieldSet);
-      return true;
-    } catch (ReferenceSignatureVerificationException e) {
-      peer.setSignatureVerificationSuccessfull(false);
-      throw e;
-    }
+    verifySignatureIfPresent(fs, false);
+    return true;
   }
 
   /**

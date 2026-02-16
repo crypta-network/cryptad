@@ -10,11 +10,11 @@ import network.crypta.io.comm.Peer;
  * connection state is finalized. The fields are intentionally mutable, so the handshake pipeline
  * can assemble values incrementally without allocating extra objects. Consumers should treat the
  * instance as single-use, populate every required field, and then pass it directly to {@link
- * PeerNode.PeerNodeHandshake#completedHandshake(HandshakeCompletionParams)}. The class performs no
- * validation or defensive copying, so callers remain responsible for nullability, array ownership,
- * and consistency between related fields (for example, ciphers paired with their key material). It
- * is not thread-safe; the typical lifecycle is construction, population on the handshake thread,
- * and immediate handoff for processing.
+ * PeerNodeHandshake#completedHandshake(Object)}. The class performs no validation or defensive
+ * copying, so callers remain responsible for nullability, array ownership, and consistency between
+ * related fields (for example, ciphers paired with their key material). It is not thread-safe; the
+ * typical lifecycle is construction, population on the handshake thread, and immediate handoff for
+ * processing.
  *
  * <ul>
  *   <li>Groups noderef payload, negotiated keys, and counters in one object.

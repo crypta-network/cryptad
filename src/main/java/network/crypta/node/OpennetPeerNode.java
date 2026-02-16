@@ -57,11 +57,15 @@ public class OpennetPeerNode extends PeerNode {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(prepareConstructorInit(fs, node2, crypto, fromLocal, peers, ConstructorProfile.OPENNET));
+    super(
+        PeerNodeConstructorSupport.prepareConstructorInit(
+            fs, node2, crypto, fromLocal, peers, ConstructorProfile.OPENNET));
 
     if (fromLocal) {
       SimpleFieldSet metadata = fs.subset("metadata");
-      timeLastSuccess = metadata.getLong("timeLastSuccess", 0);
+      if (metadata != null) {
+        timeLastSuccess = metadata.getLong("timeLastSuccess", 0);
+      }
     }
 
     this.opennet = opennet;
