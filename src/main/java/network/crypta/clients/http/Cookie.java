@@ -143,11 +143,11 @@ public class Cookie {
   protected Cookie(
       URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
-    domain = myDomain;
-    path = myPath;
-    name = myName;
-    value = myValue != null ? myValue : "";
-    expirationDate = myExpirationDate;
+    domain = myDomain != null ? validateDomain(myDomain) : null;
+    path = validatePath(myPath);
+    name = validateName(myName);
+    value = myValue != null ? validateValue(myValue) : "";
+    expirationDate = validateExpirationDate(myExpirationDate);
     discard = true; // Freenet cookies are intended to be discarded when the browser is closed.
   }
 
