@@ -259,7 +259,7 @@ public final class ClientGet extends ClientRequest {
    */
   ClientGet(ClientRequestParams params, PersistentRequestClient globalClient, ClientGetSetup setup)
       throws IOException {
-    super(params, null, globalClient);
+    super(prepareConstructorInit(params, null, globalClient));
     state = new ClientGetState(this);
     fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
@@ -279,7 +279,7 @@ public final class ClientGet extends ClientRequest {
    */
   ClientGet(ClientRequestParams params, FCPConnectionHandler handler, ClientGetSetup setup)
       throws IOException {
-    super(params, handler);
+    super(prepareConstructorInit(params, handler));
     state = new ClientGetState(this);
     fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));

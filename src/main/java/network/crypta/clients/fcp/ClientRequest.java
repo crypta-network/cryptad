@@ -136,6 +136,8 @@ public abstract class ClientRequest implements Serializable {
       PersistentRequestClient client,
       RequestClient lowLevelClient) {}
 
+  protected record ConstructorInit(ClientRequestParams params, RuntimeClientState state) {}
+
   private record PersistentState(
       boolean realTime,
       int verbosity,
@@ -151,64 +153,34 @@ public abstract class ClientRequest implements Serializable {
 
   // Legacy threshold callback removed.
 
-  /**
-   * Creates a {@code ClientRequest} associated with an existing persistent client.
-   *
-   * <p>This constructor is used when a {@link PersistentRequestClient} has already been resolved,
-   * typically while resuming a request. It configures core metadata such as the requested {@link
-   * FreenetURI}, client-visible identifier, verbosity, priority class, and persistence mode, and
-   * wires the request to the appropriate global or per-client queue.
-   *
-   * @param params request metadata including identifiers, priority and persistence settings
-   * @param handler connection handler owning the request while persistence is {@code CONNECTION}
-   * @param client persistent request client instance that represents the owning FCP client
-   */
-  protected ClientRequest(
+  protected static ConstructorInit prepareConstructorInit(
       ClientRequestParams params, FCPConnectionHandler handler, PersistentRequestClient client) {
-    RuntimeClientState state = resolveRuntimeState(params, handler, client);
-    int hash = System.identityHashCode(this);
-    if (hash == 0) hash = 1;
-    hashCode = hash;
-    this.uri = params.uri();
-    this.identifier = params.identifier();
-    this.verbosity = state.verbosity();
-    this.clientName = state.clientName();
-    this.finished = false;
-    this.priorityClass = params.priorityClass();
-    this.persistence = params.persistence();
-    this.clientToken = params.clientToken();
-    this.global = params.global();
-    this.origHandler = state.origHandler();
-    this.client = state.client();
-    this.lowLevelClient =
-        state.lowLevelClient() == null
-            ? new RequestClientBuilder()
-                .persistent(persistence == Persistence.FOREVER)
-                .realTime(params.realTime())
-                .build()
-            : state.lowLevelClient();
-    this.startupTime = System.currentTimeMillis();
-    this.realTime = params.realTime();
+    return new ConstructorInit(params, resolveRuntimeState(params, handler, client));
+  }
+
+  protected static ConstructorInit prepareConstructorInit(
+      ClientRequestParams params, FCPConnectionHandler handler) {
+    return new ConstructorInit(params, resolveRuntimeState(params, handler));
   }
 
   /**
-   * Creates a {@code ClientRequest} and resolves the persistent client from the connection.
+   * Creates a {@code ClientRequest} from prevalidated construction state.
    *
-   * <p>This constructor is typically used when a request is first created from an FCP command. It
-   * determines the appropriate persistent client (global or per-connection), configures the
-   * request's persistence mode, priority, and verbosity, and allocates a low-level {@link
-   * RequestClient} suitable for either real-time or bulk scheduling.
-   *
-   * @param params request metadata including identifiers, priority and persistence settings
-   * @param handler connection handler from which persistent client information is derived
+   * <p>Validation and runtime-client resolution are performed by {@link
+   * #prepareConstructorInit(ClientRequestParams, FCPConnectionHandler)} or {@link
+   * #prepareConstructorInit(ClientRequestParams, FCPConnectionHandler, PersistentRequestClient)}
+   * before this constructor executes.
    */
-  protected ClientRequest(ClientRequestParams params, FCPConnectionHandler handler) {
-    RuntimeClientState state = resolveRuntimeState(params, handler);
+  protected ClientRequest(ConstructorInit init) {
+    ClientRequestParams params = init.params();
+    RuntimeClientState state = init.state();
     int hash = System.identityHashCode(this);
     if (hash == 0) hash = 1;
     hashCode = hash;
     this.uri = params.uri();
     this.identifier = params.identifier();
+    this.verbosity = state.verbosity();
+    this.clientName = state.clientName();
     this.finished = false;
     this.priorityClass = params.priorityClass();
     this.persistence = params.persistence();
@@ -223,17 +195,6 @@ public abstract class ClientRequest implements Serializable {
                 .realTime(params.realTime())
                 .build()
             : state.lowLevelClient();
-    this.verbosity = state.verbosity();
-    this.clientName = state.clientName();
-    if (client != null && client.persistence != persistence) {
-      LOG.warn(
-          "Persistent client {} has mismatched persistence {} for request {}; keeping request"
-              + " persistence {}",
-          client.name,
-          client.persistence,
-          identifier,
-          persistence);
-    }
     this.startupTime = System.currentTimeMillis();
     this.realTime = params.realTime();
   }
@@ -277,6 +238,9 @@ public abstract class ClientRequest implements Serializable {
         resolvePersistentClient(handler, params.persistence(), params.global());
     if (client == null) {
       throw new IllegalStateException("Persistent client must not be null");
+    }
+    if (client.persistence != params.persistence()) {
+      throw new IllegalStateException("Persistent client has mismatched persistence");
     }
     RequestClient lowLevelClient = resolveLowLevelClient(params, client);
     return new RuntimeClientState(

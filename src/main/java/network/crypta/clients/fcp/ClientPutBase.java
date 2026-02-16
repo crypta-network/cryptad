@@ -199,7 +199,7 @@ public abstract class ClientPutBase extends ClientRequest
       FCPConnectionHandler handler,
       FCPServer server,
       FreenetURI publicURI) {
-    super(requestParams, handler);
+    super(prepareConstructorInit(requestParams, handler));
     warnIfUnsupportedCharset(charset);
     ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
     ctx.setGetCHKOnly(options.getCHKOnly());
@@ -277,7 +277,7 @@ public abstract class ClientPutBase extends ClientRequest
       PersistentRequestClient client,
       NodeClientCore core,
       FreenetURI publicURI) {
-    super(requestParams, handler, client);
+    super(prepareConstructorInit(requestParams, handler, client));
     warnIfUnsupportedCharset(charset);
     ctx = core.getClientContext().getDefaultPersistentInsertContext();
     ctx.setGetCHKOnly(options.getCHKOnly());

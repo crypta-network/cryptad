@@ -259,7 +259,7 @@ public final class DarknetPeerNode extends PeerNode {
       FRIEND_VISIBILITY visibility2,
       PeerManager peers)
       throws FSParseException {
-    super(fs, node2, crypto, fromLocal, peers);
+    super(prepareConstructorInit(fs, node2, crypto, fromLocal, peers, ConstructorProfile.DARKNET));
 
     String name = fs.get(FS_KEY_MY_NAME);
     if (name == null) throw new FSParseException("No name");

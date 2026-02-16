@@ -562,60 +562,227 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     return this;
   }
 
-  /**
-   * Creates a PeerNode from a {@link SimpleFieldSet} node reference.
-   *
-   * <p>Does not register the instance with {@link PeerManager}.
-   *
-   * @param fs node reference to parse
-   * @param node2 running node instance
-   * @param crypto crypto context for this peer type
-   * @param fromLocal whether the noderef originated from the local peers file (may include unsigned
-   *     local metadata); otherwise the noderef must be signed and should not contain metadata
-   * @param peers peer manager instance
-   * @throws FSParseException if the field set is malformed
-   */
-  PeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal, PeerManager peers)
+  protected enum ConstructorProfile {
+    DARKNET(false, false, true, true),
+    OPENNET(true, false, false, false),
+    SEED_SERVER(true, false, false, true),
+    SEED_CLIENT(true, true, false, false);
+
+    final boolean opennetForNoderef;
+    final boolean anonymousInitiator;
+    final boolean isDarknet;
+    final boolean keepFullFieldSet;
+
+    ConstructorProfile(
+        boolean opennetForNoderef,
+        boolean anonymousInitiator,
+        boolean isDarknet,
+        boolean keepFullFieldSet) {
+      this.opennetForNoderef = opennetForNoderef;
+      this.anonymousInitiator = anonymousInitiator;
+      this.isDarknet = isDarknet;
+      this.keepFullFieldSet = keepFullFieldSet;
+    }
+  }
+
+  protected static final class ConstructorInit {
+    final SimpleFieldSet fs;
+    final Node node;
+    final NodeCrypto crypto;
+    final boolean fromLocal;
+    final PeerManager peers;
+    final OutgoingPacketMangler outgoingMangler;
+    final String version;
+    final int simpleVersion;
+    final String lastGoodVersion;
+    final boolean testnetEnabled;
+    final int[] negTypes;
+    final ECPublicKey validatedPeerECDSAPubKey;
+    final byte[] validatedPeerECDSAPubKeyHash;
+    final boolean signatureVerificationSuccessful;
+    final SimpleFieldSet verifiedFullFieldSet;
+    final IdentityValues identityValues;
+
+    ConstructorInit(
+        SimpleFieldSet fs,
+        Node node,
+        NodeCrypto crypto,
+        boolean fromLocal,
+        PeerManager peers,
+        OutgoingPacketMangler outgoingMangler,
+        String version,
+        int simpleVersion,
+        String lastGoodVersion,
+        boolean testnetEnabled,
+        int[] negTypes,
+        ECPublicKey validatedPeerECDSAPubKey,
+        byte[] validatedPeerECDSAPubKeyHash,
+        boolean signatureVerificationSuccessful,
+        SimpleFieldSet verifiedFullFieldSet,
+        IdentityValues identityValues) {
+      this.fs = fs;
+      this.node = node;
+      this.crypto = crypto;
+      this.fromLocal = fromLocal;
+      this.peers = peers;
+      this.outgoingMangler = outgoingMangler;
+      this.version = version;
+      this.simpleVersion = simpleVersion;
+      this.lastGoodVersion = lastGoodVersion;
+      this.testnetEnabled = testnetEnabled;
+      this.negTypes = negTypes;
+      this.validatedPeerECDSAPubKey = validatedPeerECDSAPubKey;
+      this.validatedPeerECDSAPubKeyHash = validatedPeerECDSAPubKeyHash;
+      this.signatureVerificationSuccessful = signatureVerificationSuccessful;
+      this.verifiedFullFieldSet = verifiedFullFieldSet;
+      this.identityValues = identityValues;
+    }
+  }
+
+  protected static ConstructorInit prepareConstructorInit(
+      SimpleFieldSet fs,
+      Node node2,
+      NodeCrypto crypto,
+      boolean fromLocal,
+      PeerManager peers,
+      ConstructorProfile profile)
       throws FSParseException {
-    boolean noSig = fromLocal || fromAnonymousInitiator();
+    SimpleFieldSet resolvedFs = Objects.requireNonNull(fs, "fs");
+    Node resolvedNode = Objects.requireNonNull(node2, "node2");
+    NodeCrypto resolvedCrypto = Objects.requireNonNull(crypto, "crypto");
+    PeerManager resolvedPeers = Objects.requireNonNull(peers, "peers");
+    Objects.requireNonNull(profile, "profile");
+
+    if (resolvedCrypto.isOpennet() != profile.opennetForNoderef) {
+      throw new IllegalArgumentException("Mismatched NodeCrypto for noderef type");
+    }
+
+    OutgoingPacketMangler resolvedOutgoingMangler = resolvedCrypto.getPacketMangler();
+    String parsedVersion = resolvedFs.get(SFS_KEY_VERSION);
+    Version.seenVersion(parsedVersion);
+    int parsedSimpleVersion;
+    try {
+      parsedSimpleVersion = Version.parseBuildNumberFromVersionStr(parsedVersion);
+    } catch (VersionParseException e2) {
+      throw new FSParseException("Invalid version " + parsedVersion + " : " + e2);
+    }
+
+    boolean parsedTestnetEnabled = resolvedFs.getBoolean(SFS_KEY_TESTNET, false);
+    if (parsedTestnetEnabled) {
+      String err = "Ignoring incompatible testnet node " + resolvedFs.toOrderedString();
+      LOG.error(err);
+      throw new FSParseException(err);
+    }
+
+    int[] parsedNegTypes = resolvedFs.getIntArray(SFS_KEY_NEG_TYPES);
+    if (parsedNegTypes == null || parsedNegTypes.length == 0) {
+      if (profile.anonymousInitiator) {
+        parsedNegTypes = resolvedOutgoingMangler.supportedNegTypes(false);
+      } else {
+        throw new FSParseException("No negTypes!");
+      }
+    }
+
+    boolean parsedOpennet = resolvedFs.getBoolean(SFS_KEY_OPENNET, false);
+    if (parsedOpennet != profile.opennetForNoderef) {
+      throw new FSParseException(
+          "Trying to parse a darknet peer as opennet or an opennet peer as darknet isOpennet="
+              + profile.opennetForNoderef
+              + " boolean = "
+              + parsedOpennet
+              + " string = \""
+              + resolvedFs.get(SFS_KEY_OPENNET)
+              + "\"");
+    }
+
+    ECPublicKey parsedPeerEcdsaKey;
+    try {
+      parsedPeerEcdsaKey = PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(resolvedFs);
+    } catch (Exception e) {
+      if (e instanceof FSParseException fsParseException) {
+        throw fsParseException;
+      }
+      throw new FSParseException("Invalid peer ECDSA key", e);
+    }
+    byte[] parsedPeerEcdsaHash =
+        PeerNodeReferenceSupport.computePeerPublicKeyHash(parsedPeerEcdsaKey);
+
+    boolean noSig = fromLocal || profile.anonymousInitiator;
+    PeerNodeReferenceSupport.SignatureVerificationResult signatureResult;
+    try {
+      signatureResult =
+          PeerNodeReferenceSupport.verifySignatureForConstruction(
+              resolvedFs, noSig, parsedPeerEcdsaKey, profile.keepFullFieldSet);
+    } catch (Exception e) {
+      throw new FSParseException("Invalid peer noderef signature", e);
+    }
+
+    IdentityValues parsedIdentityValues;
+    try {
+      parsedIdentityValues =
+          PeerNodeReferenceSupport.readIdentityValues(
+              resolvedFs, profile.isDarknet, parsedPeerEcdsaHash);
+    } catch (Exception e) {
+      if (e instanceof FSParseException fsParseException) {
+        throw fsParseException;
+      }
+      throw new FSParseException("Invalid peer identity", e);
+    }
+
+    return new ConstructorInit(
+        resolvedFs,
+        resolvedNode,
+        resolvedCrypto,
+        fromLocal,
+        resolvedPeers,
+        resolvedOutgoingMangler,
+        parsedVersion,
+        parsedSimpleVersion,
+        resolvedFs.get(SFS_KEY_LAST_GOOD_VERSION),
+        parsedTestnetEnabled,
+        parsedNegTypes,
+        parsedPeerEcdsaKey,
+        parsedPeerEcdsaHash,
+        signatureResult.signatureVerificationSuccessful,
+        signatureResult.fullFieldSet,
+        parsedIdentityValues);
+  }
+
+  PeerNode(ConstructorInit init) {
     // Core finals
     myRef = new WeakReference<>(selfPeerNode());
     contextRef = castPeerContextRef(myRef);
     this.checkStatusAfterBackoff = new PeerNodeBackoffStatusChecker(myRef);
-    this.outgoingMangler = crypto.getPacketMangler();
-    this.node = node2;
-    this.crypto = crypto;
-    if (crypto.isOpennet() != isOpennetForNoderef()) {
-      throw new IllegalArgumentException("Mismatched NodeCrypto for noderef type");
-    }
+    this.outgoingMangler = init.outgoingMangler;
+    this.node = init.node;
+    this.crypto = init.crypto;
     this.random = node.bootstrap().createRandom();
-    this.peers = peers;
-    if (peers == null) throw new NullPointerException("peers");
-    this.internals = new PeerNodeInternals(selfPeerNode(), node2, fs.get(SFS_KEY_LOCATION));
-    this.myBootID = node2.getBootId();
+    this.peers = init.peers;
+    this.internals =
+        new PeerNodeInternals(selfPeerNode(), init.node, init.fs.get(SFS_KEY_LOCATION));
+    this.myBootID = init.node.getBootId();
     this.bootID = 0;
 
-    parseAndSetVersion(fs);
+    version = init.version;
+    simpleVersion = init.simpleVersion;
+    parsedVersionComponents.set(null); // Invalidate cache
     // Location & routing
     disableRouting = disableRoutingHasBeenSetLocally = false;
     disableRoutingHasBeenSetRemotely = false;
-    lastGoodVersion = fs.get(SFS_KEY_LAST_GOOD_VERSION);
+    lastGoodVersion = init.lastGoodVersion;
     updateVersionRoutablity();
     // Testnet flag (final)
-    this.testnetEnabled = readTestnetEnabled(fs);
-    if (testnetEnabled) {
-      String err = "Ignoring incompatible testnet node " + fs.toOrderedString();
-      LOG.error(err);
-      throw new FSParseException(err);
-    }
-    parseNegotiationTypes(fs);
-    validateOpennetFlag(fs);
+    this.testnetEnabled = init.testnetEnabled;
+    this.negTypes = init.negTypes;
     // Peer key (final)
-    this.peerECDSAPubKey = readPeerEcdsaKeyReturn(fs);
-    this.peerECDSAPubKeyHash = internals.computePeerPublicKeyHash(peerECDSAPubKey);
-    verifySignatureIfPresent(fs, noSig);
+    this.peerECDSAPubKey = init.validatedPeerECDSAPubKey;
+    this.peerECDSAPubKeyHash = init.validatedPeerECDSAPubKeyHash;
+    this.isSignatureVerificationSuccessfull = init.signatureVerificationSuccessful;
+    if (init.verifiedFullFieldSet != null) {
+      fullFieldSet.set(init.verifiedFullFieldSet);
+    }
     // Identity (finals)
-    IdentityValues ids = readIdentityValues(fs);
+    IdentityValues ids = init.identityValues;
     this.identity = ids.identity;
     this.identityAsBase64String = ids.identityAsBase64String;
     this.identityHash = ids.identityHash;
@@ -623,11 +790,11 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     this.swapIdentifier = ids.swapIdentifier;
     this.hashCode = ids.hashCode;
     // Setup keys & ciphers (finals)
-    this.incomingSetupKey = computeIncomingSetupKey(crypto, identityHashHash);
-    this.outgoingSetupKey = computeOutgoingSetupKey(crypto, identityHash);
+    this.incomingSetupKey = computeIncomingSetupKey(init.crypto, identityHashHash);
+    this.outgoingSetupKey = computeOutgoingSetupKey(init.crypto, identityHash);
     this.handshake = new PeerNodeHandshake(incomingSetupKey, outgoingSetupKey, identityHash);
 
-    parseNominalPeers(fs, fromLocal);
+    parseNominalPeers(init.fs, init.fromLocal);
     // Runtime state (finals first)
     // Don't create trackers until we have a key
     currentTracker = null;
@@ -642,10 +809,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     this.decrementHTLAtMinimum = random.nextFloat() < Node.DECREMENT_AT_MIN_PROB;
     pingNumber = random.nextLong();
     // ARK info
-    parseARK(fs, true, false);
+    parseARK(init.fs, true, false);
     // Metadata and counters
     long now = System.currentTimeMillis();
-    MetadataInit meta = parseMetadata(fs, fromLocal, now);
+    MetadataInit meta = parseMetadata(init.fs, init.fromLocal, now);
     if (meta.detectedPeer != null) this.detectedPeer = meta.detectedPeer;
     // Refresh cached short string now that detectedPeer may have changed.
     updateShortToString();
@@ -658,91 +825,22 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     internals.initConnectionState(meta.timeLastConnected);
     // Apply restart-time adjustments after fields are populated from metadata so overrides can
     // act on persisted values and persist their changes.
-    if (fromLocal) maybeClearPeerAddedTimeOnRestart(now);
+    if (init.fromLocal) maybeClearPeerAddedTimeOnRestart(now);
     // Populate handshake IPs quickly
     internals.resetHandshakeIpUpdateTimer();
     // Handshake scheduling
-    scheduleFirstHandshake(fromLocal, now);
+    scheduleFirstHandshake(init.fromLocal, now);
     // Byte counters (finals)
-    this.bytesInAtStartup = fs.getLong("totalInput", 0);
-    this.bytesOutAtStartup = fs.getLong("totalOutput", 0);
-    if (fromLocal) {
-      SimpleFieldSet f = fs.subset("full");
+    this.bytesInAtStartup = init.fs.getLong("totalInput", 0);
+    this.bytesOutAtStartup = init.fs.getLong("totalOutput", 0);
+    if (init.fromLocal) {
+      SimpleFieldSet f = init.fs.subset("full");
       if (f != null) fullFieldSet.compareAndSet(null, f);
     }
     // If we got here, odds are we should consider writing to the peer-file
     writePeers();
     // status may have changed from PEER_NODE_STATUS_DISCONNECTED to
     // PEER_NODE_STATUS_NEVER_CONNECTED
-  }
-
-  private void parseAndSetVersion(SimpleFieldSet fs) throws FSParseException {
-    version = fs.get(SFS_KEY_VERSION);
-    parsedVersionComponents.set(null); // Invalidate cache
-    Version.seenVersion(version);
-    try {
-      simpleVersion = Version.parseBuildNumberFromVersionStr(version);
-    } catch (VersionParseException e2) {
-      throw new FSParseException("Invalid version " + version + " : " + e2);
-    }
-  }
-
-  private boolean readTestnetEnabled(SimpleFieldSet fs) {
-    return fs.getBoolean(SFS_KEY_TESTNET, false);
-  }
-
-  private void parseNegotiationTypes(SimpleFieldSet fs) throws FSParseException {
-    negTypes = fs.getIntArray(SFS_KEY_NEG_TYPES);
-    if (negTypes == null || negTypes.length == 0) {
-      if (fromAnonymousInitiator()) {
-        negTypes = outgoingMangler.supportedNegTypes(false);
-      } else {
-        throw new FSParseException("No negTypes!");
-      }
-    }
-  }
-
-  private void validateOpennetFlag(SimpleFieldSet fs) throws FSParseException {
-    if (fs.getBoolean(SFS_KEY_OPENNET, false) != isOpennetForNoderef()) {
-      throw new FSParseException(
-          "Trying to parse a darknet peer as opennet or an opennet peer as darknet isOpennet="
-              + isOpennetForNoderef()
-              + " boolean = "
-              + fs.getBoolean(SFS_KEY_OPENNET, false)
-              + " string = \""
-              + fs.get(SFS_KEY_OPENNET)
-              + "\"");
-    }
-  }
-
-  private ECPublicKey readPeerEcdsaKeyReturn(SimpleFieldSet fs) throws FSParseException {
-    try {
-      return internals.readPeerEcdsaKeyReturn(fs);
-    } catch (Exception e) {
-      if (e instanceof FSParseException fsParseException) {
-        throw fsParseException;
-      }
-      throw new FSParseException("Invalid peer ECDSA key", e);
-    }
-  }
-
-  private void verifySignatureIfPresent(SimpleFieldSet fs, boolean noSig) throws FSParseException {
-    try {
-      internals.verifySignatureIfPresent(fs, noSig);
-    } catch (Exception e) {
-      throw new FSParseException("Invalid peer noderef signature", e);
-    }
-  }
-
-  private IdentityValues readIdentityValues(SimpleFieldSet fs) throws FSParseException {
-    try {
-      return internals.readIdentityValues(fs);
-    } catch (Exception e) {
-      if (e instanceof FSParseException fsParseException) {
-        throw fsParseException;
-      }
-      throw new FSParseException("Invalid peer identity", e);
-    }
   }
 
   private byte[] computeIncomingSetupKey(NodeCrypto crypto, byte[] identityHashHash) {
@@ -898,40 +996,6 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       routingStats = new PeerNodeRoutingStats(node);
       location = new PeerLocation(locationString);
       loadTracker = new PeerNodeLoadTracker(peerNode);
-    }
-
-    byte[] computePeerPublicKeyHash(ECPublicKey peerECDSAPubKey) {
-      return referenceSupport.computePeerPublicKeyHash(peerECDSAPubKey);
-    }
-
-    ECPublicKey readPeerEcdsaKeyReturn(SimpleFieldSet fs) throws FSParseException {
-      try {
-        return referenceSupport.readPeerEcdsaKeyReturn(fs);
-      } catch (Exception e) {
-        if (e instanceof FSParseException fsParseException) {
-          throw fsParseException;
-        }
-        throw new FSParseException("Invalid peer ECDSA key", e);
-      }
-    }
-
-    void verifySignatureIfPresent(SimpleFieldSet fs, boolean noSig) throws FSParseException {
-      try {
-        referenceSupport.verifySignatureIfPresent(fs, noSig);
-      } catch (Exception e) {
-        throw new FSParseException("Invalid peer noderef signature", e);
-      }
-    }
-
-    IdentityValues readIdentityValues(SimpleFieldSet fs) throws FSParseException {
-      try {
-        return referenceSupport.readIdentityValues(fs);
-      } catch (Exception e) {
-        if (e instanceof FSParseException fsParseException) {
-          throw fsParseException;
-        }
-        throw new FSParseException("Invalid peer identity", e);
-      }
     }
 
     byte[] computeIncomingSetupKey(NodeCrypto crypto, byte[] identityHashHash) {

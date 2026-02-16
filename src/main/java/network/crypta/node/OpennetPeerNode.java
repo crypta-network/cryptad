@@ -57,7 +57,7 @@ public class OpennetPeerNode extends PeerNode {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal, peers);
+    super(prepareConstructorInit(fs, node2, crypto, fromLocal, peers, ConstructorProfile.OPENNET));
 
     if (fromLocal) {
       SimpleFieldSet metadata = fs.subset("metadata");

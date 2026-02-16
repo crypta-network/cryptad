@@ -8,7 +8,7 @@ description: |
 # Spotless → Review → Commit & Push (no direct commits to main/develop)
 
 ## How to invoke
-Invoke the skill and include (optional) branch + commit intent in the same message.
+Invoke the skill and include (optional) branch and commit intent in the same message.
 
 **One-liner**
 `$git-commit-push Branch: feature/my-branch-name | Notes: <what changed / why>`
@@ -69,7 +69,7 @@ For each untracked file, open/read it (do not edit), using an appropriate viewer
 3) If the current branch **IS** `main` or `develop`:
 - If the user provided `Branch: ...`, create and switch:
   - `git checkout -b <branch>`
-- If `Branch:` is omitted, create and switch to a branch whose name is **related to the changed code**, using this deterministic naming heuristic:
+- If `Branch:` is omitted, create and switch to a branch whose name is **related to the changed code and context**, using this deterministic naming heuristic:
 
 #### Default branch naming heuristic (when Branch is omitted)
 - Collect changed paths:
@@ -81,7 +81,7 @@ For each untracked file, open/read it (do not edit), using an appropriate viewer
      (ignore non-scopes like `src`, `build`, `.github`, `gradle`).
   2) Otherwise, if changes are mostly under `src/.../java/...`, derive scope from the package path:
      - take the first “feature” segment after `src/*/java/`, skipping common roots like `com`, `org`, `net`, `io`, `dev`,
-       and skipping the next “company/org” segment if it’s clearly an org identifier.
+       and skipping the next “company/org” segment if it’s an org identifier.
      - Example: `src/main/java/com/acme/payments/...` -> scope `payments`
   3) If changes span multiple unrelated areas, use scope `multi`.
   4) If scope can’t be determined, use `misc`.

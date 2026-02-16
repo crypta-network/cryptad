@@ -38,7 +38,7 @@ public class SeedClientPeerNode extends PeerNode {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, false, peers);
+    super(prepareConstructorInit(fs, node2, crypto, false, peers, ConstructorProfile.SEED_CLIENT));
   }
 
   /**
