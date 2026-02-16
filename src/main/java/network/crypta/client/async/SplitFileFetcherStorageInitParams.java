@@ -75,7 +75,7 @@ public final class SplitFileFetcherStorageInitParams {
    * <p>This builder is a lightweight accumulator: each setter stores the provided reference and
    * returns {@code this} for chaining. It performs no I/O and no validation. Selected mutable
    * inputs (byte arrays and decompressor lists) are defensively copied. The final {@link #build()}
-   * call creates a new parameter snapshot containing the current references; subsequent setter
+   * call creates a new parameter snapshot containing the current references; the following setter
    * calls do not affect already-built instances. Because the builder is mutable and unsynchronized,
    * it should be confined to one thread or externally synchronized if shared.
    *
@@ -134,8 +134,7 @@ public final class SplitFileFetcherStorageInitParams {
      * <p>This setter stores the callback reference without validation, copying, or lifecycle
      * management. If the method is called more than once, the latest callback replaces the prior
      * one. A {@code null} value clears the field and may defer failure until the storage
-     * constructor attempts to publish events. The stored reference is used as-is by downstream
-     * logic.
+     * constructor attempts to publish events. Downstream logic uses the stored reference as-is.
      *
      * @param v callback for progress and completion events; stored as provided.
      * @return this builder instance so further parameters can be chained.
@@ -146,7 +145,7 @@ public final class SplitFileFetcherStorageInitParams {
     }
 
     /**
-     * Configures the decompressor pipeline to apply after block decode.
+     * Configures the decompressor pipeline to apply after block decoding.
      *
      * <p>The list is defensively copied to avoid aliasing with caller-owned mutable lists. Order
      * matters: callers are responsible for supplying the correct sequence for the metadata they
@@ -154,7 +153,7 @@ public final class SplitFileFetcherStorageInitParams {
      * beyond the mandatory decoding performed elsewhere. The last value provided wins when this
      * setter is called repeatedly.
      *
-     * @param v ordered compressor list to apply after decode; may be null.
+     * @param v an ordered compressor list to apply after decoding; may be null.
      * @return this builder instance so further parameters can be chained.
      */
     public Builder decompressors(List<COMPRESSOR_TYPE> v) {
@@ -391,14 +390,14 @@ public final class SplitFileFetcherStorageInitParams {
     }
 
     /**
-     * Sets the time source/scheduler used for delayed tasks and de-duplication.
+     * Sets the time source/scheduler used for delayed tasks and deduplication.
      *
      * <p>The provided ticker reference is stored directly with no validation or wrapping. The
      * builder does not schedule tasks or query time; it only retains the reference for later use.
      * If set repeatedly, the newest value replaces the previous one. A {@code null} value clears
-     * the field and may cause failures if scheduling or de-duplication requires a ticker.
+     * the field and may cause failures if scheduling or deduplication requires a ticker.
      *
-     * @param v time source used for scheduling and de-duplication; stored.
+     * @param v time source used for scheduling and deduplication; stored.
      * @return this builder instance so further parameters can be chained.
      */
     public Builder ticker(Ticker v) {
@@ -504,6 +503,14 @@ public final class SplitFileFetcherStorageInitParams {
       return this;
     }
 
+    private static byte[] copyBytesNullable(byte[] input) {
+      return input == null ? null : input.clone();
+    }
+
+    private static List<COMPRESSOR_TYPE> copyListNullable(List<COMPRESSOR_TYPE> input) {
+      return input == null ? null : new ArrayList<>(input);
+    }
+
     /**
      * Builds a new snapshot of the current builder state.
      *
@@ -511,7 +518,7 @@ public final class SplitFileFetcherStorageInitParams {
      * copies the current builder references into it. No validation, normalization, or defensive
      * copying is performed, so the returned snapshot directly reflects the values last provided to
      * the setters. The builder remains mutable and may be reused to create additional snapshots;
-     * subsequent changes do not affect previously built instances but may share referenced objects.
+     * later changes do not affect previously built instances but may share referenced objects.
      *
      * @return a new parameter snapshot holding the current builder references.
      */
@@ -543,13 +550,5 @@ public final class SplitFileFetcherStorageInitParams {
       p.keysFetching = keysFetching;
       return p;
     }
-  }
-
-  private static byte[] copyBytesNullable(byte[] input) {
-    return input == null ? null : input.clone();
-  }
-
-  private static List<COMPRESSOR_TYPE> copyListNullable(List<COMPRESSOR_TYPE> input) {
-    return input == null ? null : new ArrayList<>(input);
   }
 }

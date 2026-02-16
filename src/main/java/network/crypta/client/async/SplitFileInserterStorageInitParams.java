@@ -307,6 +307,14 @@ public final class SplitFileInserterStorageInitParams {
       return this;
     }
 
+    private static byte[] copyByteArrayNullable(byte[] input) {
+      return input == null ? null : Arrays.copyOf(input, input.length);
+    }
+
+    private static HashResult[] copyHashArrayNullable(HashResult[] input) {
+      return input == null ? null : Arrays.copyOf(input, input.length);
+    }
+
     /**
      * Builds a {@link SplitFileInserterStorageInitParams} snapshot.
      *
@@ -337,13 +345,5 @@ public final class SplitFileInserterStorageInitParams {
       p.origCompressedDataSize = origCompressedDataSize;
       return p;
     }
-  }
-
-  private static byte[] copyByteArrayNullable(byte[] input) {
-    return input == null ? null : Arrays.copyOf(input, input.length);
-  }
-
-  private static HashResult[] copyHashArrayNullable(HashResult[] input) {
-    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 }

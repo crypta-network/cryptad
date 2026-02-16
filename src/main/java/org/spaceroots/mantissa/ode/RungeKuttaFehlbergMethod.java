@@ -10,9 +10,9 @@ import org.jetbrains.annotations.NotNull;
  * <p>The value object groups the immutable method definition shared across Runge-Kutta-Fehlberg
  * constructors: the FSAL flag, tableau coefficients, and the step interpolator prototype that is
  * cloned during integration. Instances defensively copy coefficient arrays on construction and
- * access so callers cannot mutate internal state by retaining external references.
+ * access, so callers cannot mutate internal state by retaining external references.
  */
-@SuppressWarnings("java:S6206")
+@SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class RungeKuttaFehlbergMethod {
   private final boolean fsal;
   private final double[] c;
@@ -64,7 +64,7 @@ public final class RungeKuttaFehlbergMethod {
 
   private static double[][] copyMatrix(double[][] input) {
     if (input == null) {
-      return null;
+      return new double[0][];
     }
     double[][] copy = new double[input.length][];
     for (int i = 0; i < input.length; i++) {

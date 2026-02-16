@@ -2074,7 +2074,21 @@ public final class NodeNetworkSubsystem {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    return new DarknetPeerNode(fs, node, darknetCrypto, false, trust, visibility, peers);
+    try {
+      return new DarknetPeerNode(fs, node, darknetCrypto, false, trust, visibility, peers);
+    } catch (FSParseException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof PeerParseException peerParseException) {
+        throw peerParseException;
+      }
+      if (cause instanceof ReferenceSignatureVerificationException signatureVerificationException) {
+        throw signatureVerificationException;
+      }
+      if (cause instanceof PeerTooOldException peerTooOldException) {
+        throw peerTooOldException;
+      }
+      throw e;
+    }
   }
 
   /**

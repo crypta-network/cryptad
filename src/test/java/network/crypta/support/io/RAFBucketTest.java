@@ -1,9 +1,31 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileAttribute;
@@ -78,9 +100,10 @@ class RAFBucketTest {
   }
 
   @Test
-  void constructorWhenUnderlyingCapturesSizeAndIsReadOnly() throws IOException {
+  void constructorWhenUnderlyingCapturesSizeAndIsReadOnly() {
     LockableRandomAccessBuffer underlying = mock(LockableRandomAccessBuffer.class);
-    when(underlying.size()).thenReturn(123L, 999L); // later change should not affect captured size
+    when(underlying.size())
+        .thenReturn(123L, 999L); // later change should not affect the captured size
 
     RAFBucket bucket = new RAFBucket(underlying);
 
@@ -89,7 +112,7 @@ class RAFBucketTest {
     assertNull(bucket.getName());
     assertNull(bucket.createShadow());
 
-    // Underlying size later changes, but RAFBucket.size() remains the captured value
+    // The underlying size later changes, but RAFBucket.size() remains the captured value
     assertEquals(123L, bucket.size());
   }
 
@@ -126,7 +149,7 @@ class RAFBucketTest {
           moved += read;
         }
         assertArrayEquals(data, out.toByteArray());
-        // Next read must throw EOFException according to RAFInputStream behavior
+        // The next read must throw EOFException according to RAFInputStream behavior
         assertThrows(EOFException.class, () -> is.read(buf));
       }
     }
@@ -156,7 +179,7 @@ class RAFBucketTest {
   }
 
   @Test
-  void freeWhenCalledDelegatesToUnderlying() throws IOException {
+  void freeWhenCalledDelegatesToUnderlying() {
     LockableRandomAccessBuffer underlying = mock(LockableRandomAccessBuffer.class);
     when(underlying.size()).thenReturn(0L);
     RAFBucket bucket = new RAFBucket(underlying);
@@ -175,7 +198,7 @@ class RAFBucketTest {
   }
 
   @Test
-  void toRandomAccessBufferWhenCalledReturnsSameUnderlying() throws IOException {
+  void toRandomAccessBufferWhenCalledReturnsSameUnderlying() {
     LockableRandomAccessBuffer underlying = mock(LockableRandomAccessBuffer.class);
     when(underlying.size()).thenReturn(10L);
     RAFBucket bucket = new RAFBucket(underlying);
@@ -217,7 +240,7 @@ class RAFBucketTest {
     File secureDir = createSecureTempDir("rafbucket-restore-");
     File tmp = File.createTempFile("rafbucket-restore", ".bin", secureDir);
     long length = 2048L;
-    // Write file to the required length; content is irrelevant here
+    // Write the file to the required length; content is irrelevant here
     try (RandomAccessFile raf = new RandomAccessFile(tmp, "rw")) {
       raf.setLength(length);
     }

@@ -11,7 +11,6 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
-import network.crypta.keys.ClientKSK;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
@@ -105,11 +104,11 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
   /**
    * Launches the insert-and-fetch exercise using an on-disk working directory.
    *
-   * <p>This entry point clears any previous working directory, initializes the test nodes with a
-   * deterministic random seed, links them into a Kleinberg-style topology, and then drives repeated
-   * insert and fetch operations until success criteria are met or a failure exit code is produced.
-   * The method is not idempotent because it deletes and recreates the working directory on each
-   * run. It is intended to be executed from the command line in a controlled environment.
+   * <p>This entry point clears any previous working directory. It initializes the test nodes with a
+   * deterministic random seed and links them into a Kleinberg-style topology. It then drives
+   * repeated insert and fetch operations until success criteria are met or a failure exit code is
+   * produced. The method is not idempotent because it deletes and recreates the working directory
+   * on each run. It is intended to be executed from the command line in a controlled environment.
    *
    * @throws NodeInitException if node initialization fails during test setup
    * @throws InterruptedException if the test thread is interrupted while waiting
@@ -325,7 +324,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       testKey = new FreenetURI("KSK", dataString);
 
       insertKey = InsertableClientSSK.create(testKey);
-      fetchKey = ClientKSK.create(testKey);
+      fetchKey = InsertableClientSSK.create(testKey);
 
       block =
           ((InsertableClientSSK) insertKey)

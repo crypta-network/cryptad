@@ -71,7 +71,7 @@ public final class SimpleFieldSet {
   private static final String CANNOT_PARSE = "Cannot parse ";
 
   private final Map<String, String> values;
-  private volatile ConcurrentHashMap<String, SimpleFieldSet> subsets;
+  private ConcurrentHashMap<String, SimpleFieldSet> subsets;
   private volatile String endMarker;
   private final boolean shortLived;
   private final boolean alwaysUseBase64;
