@@ -18,12 +18,15 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.PeerTooOldException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
@@ -187,6 +190,20 @@ class DarknetConnectionsToadletTest {
   }
 
   @Test
+  void addNewNode_whenDarknetPeerTooOld_returnsCantParse() throws Exception {
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.createNewDarknetNode(any(), any(), any()))
+        .thenThrow(new PeerTooOldException("old build", 1, Instant.EPOCH));
+
+    ConnectionsToadlet.PeerAdditionReturnCodes result =
+        invokeAddNewNode("foo=bar\nEnd\n", "", FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
+
+    assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE, result);
+  }
+
+  @Test
   void tryHandlePeerNoderef_withValidFriendHash_sendsAttachmentResponse() throws Exception {
     SimpleFieldSet fieldSet = new SimpleFieldSet(false);
     fieldSet.putSingle("key", "value");
@@ -247,6 +264,17 @@ class DarknetConnectionsToadletTest {
             "tryHandlePeerNoderef", URI.class, HTTPRequest.class, ToadletContext.class);
     method.setAccessible(true);
     return (boolean) method.invoke(toadlet, uri, request, ctx);
+  }
+
+  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNode(
+      String nodeReference, String privateComment, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility)
+      throws Exception {
+    Method method =
+        ConnectionsToadlet.class.getDeclaredMethod(
+            "addNewNode", String.class, String.class, FRIEND_TRUST.class, FRIEND_VISIBILITY.class);
+    method.setAccessible(true);
+    return (ConnectionsToadlet.PeerAdditionReturnCodes)
+        method.invoke(toadlet, nodeReference, privateComment, trust, visibility);
   }
 
   private void assertRedirectIssued() throws Exception {

@@ -45,6 +45,7 @@ import network.crypta.node.PeerNode;
 import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.PeerStatusCounts;
+import network.crypta.node.PeerTooOldException;
 import network.crypta.node.Version;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
@@ -1550,7 +1551,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         pn = node.network().createNewDarknetNode(fs, trust, visibility);
         ((DarknetPeerNode) pn).setPrivateDarknetCommentNote(privateComment);
       }
-    } catch (FSParseException | PeerParseException _) {
+    } catch (FSParseException | PeerParseException | PeerTooOldException _) {
       return PeerAdditionReturnCodes.CANT_PARSE;
     } catch (ReferenceSignatureVerificationException _) {
       return PeerAdditionReturnCodes.INVALID_SIGNATURE;
