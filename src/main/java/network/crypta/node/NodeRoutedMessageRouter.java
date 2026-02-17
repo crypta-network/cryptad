@@ -520,9 +520,6 @@ final class NodeRoutedMessageRouter implements Runnable {
     /** Creation timestamp in milliseconds since epoch; used for expiry checks. */
     long createdTime;
 
-    /** Last access timestamp in milliseconds since epoch; currently informational. */
-    long accessTime;
-
     /** Origin peer for this routed request, or {@code null} for local originators. */
     PeerNode source;
 
@@ -544,7 +541,7 @@ final class NodeRoutedMessageRouter implements Runnable {
      * @param identity target identity bytes copied from the message; must be non-null
      */
     RoutedContext(Message msg, PeerNode source, byte[] identity) {
-      createdTime = accessTime = System.currentTimeMillis();
+      createdTime = System.currentTimeMillis();
       this.source = source;
       routedTo = new HashSet<>();
       this.msg = msg;

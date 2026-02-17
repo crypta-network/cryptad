@@ -73,9 +73,6 @@ final class SplitFileFetcherSegmentsBuilder {
     /** Expected data blocks per segment as reported by metadata. */
     int blocksPerSegment;
 
-    /** Expected check blocks per segment as reported by metadata. */
-    int checkBlocksPerSegment;
-
     /** Original fetch context supplying policy limits for segment sizing. */
     FetchContext origFetchContext;
 

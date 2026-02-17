@@ -256,7 +256,6 @@ public final class SplitFileFetcher
             .topDontCompress(params.topDontCompress)
             .topCompatibilityMode(params.topCompatibilityMode)
             .fetchContext(params.fetchContext)
-            .realTime(realTimeFlag)
             .salt(getSalter())
             .thisKey(requestKey)
             .origKey(parent.getURI())
@@ -688,13 +687,11 @@ public final class SplitFileFetcher
     boolean resumed = parent instanceof ClientGetter cg && cg.resumedFetcher();
     this.context = context;
     try {
-      KeySalter salter = getSalter();
       raf.onResume(context);
       this.storage =
           new SplitFileFetcherStorage(
               new SplitFileFetcherStorageResumeParams.Builder()
                   .raf(raf)
-                  .realTime(realTimeFlag)
                   .callback(this)
                   .context(blockFetchContext)
                   .random(context.random)
@@ -704,8 +701,6 @@ public final class SplitFileFetcher
                   .memoryLimitedJobRunner(context.memoryLimitedJobRunner)
                   .checker(new CRCChecksumChecker())
                   .newSalt(context.jobRunner.newSalt())
-                  .salt(salter)
-                  .resumed(resumed)
                   .completeViaTruncation(callbackCompleteViaTruncation != null)
                   .build());
     } catch (ResumeFailedException | IOException e) {

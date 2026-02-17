@@ -510,9 +510,6 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
     private val chk: FreenetURI,
     private val chkString: String,
   ) : ClientGetCallback, RequestClient, ClientEventListener {
-    /** Active client getter driving the download, if started. */
-    @Volatile private var getter: ClientGetter? = null
-
     /** Last reported percentage (0–100) or -1 when unknown. */
     @Volatile private var lastPct: Int = -1
 
@@ -552,7 +549,6 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
           null,
           null,
         )
-      getter = createdGetter
       ctx.eventProducer.addEventListener(this)
       try {
         manager.getNode().services().clientCore().clientContext.start(createdGetter)
@@ -562,7 +558,6 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
       } catch (e: FetchException) {
         markStartFailure(e.message ?: e.javaClass.simpleName, fatalFlag = safeIsFatal(e))
         ctx.eventProducer.removeEventListener(this)
-        getter = null
         this@CoreUpdater.logError(
           "Failed to start package download: ${errorMsg ?: e.javaClass.simpleName}",
           e,
@@ -570,7 +565,6 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
       } catch (e: Exception) {
         markStartFailure(e.message ?: e.javaClass.simpleName, fatalFlag = false)
         ctx.eventProducer.removeEventListener(this)
-        getter = null
         this@CoreUpdater.logError(
           "Error starting package download: ${errorMsg ?: e.javaClass.simpleName}",
           e,

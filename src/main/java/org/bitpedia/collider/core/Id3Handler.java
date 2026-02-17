@@ -209,7 +209,6 @@ public class Id3Handler {
     String artist;
     String album;
     String year;
-    String comment;
     int track;
     int genre;
 
@@ -238,10 +237,7 @@ public class Id3Handler {
         info.album = new String(buf, 63, 30, StandardCharsets.ISO_8859_1);
         info.year = new String(buf, 93, 4, StandardCharsets.ISO_8859_1);
         if (0 == buf[125]) {
-          info.comment = new String(buf, 97, 28, StandardCharsets.ISO_8859_1);
           info.track = buf[126] >= 0 ? buf[126] : buf[126] + 256;
-        } else {
-          info.comment = new String(buf, 97, 30, StandardCharsets.ISO_8859_1);
         }
         info.genre = buf[127] >= 0 ? buf[127] : buf[127] + 256;
 
@@ -280,7 +276,6 @@ public class Id3Handler {
 
     String tag;
     int versionMajor;
-    int versionRevision;
     int flags;
     int[] size = new int[4];
 
@@ -303,7 +298,6 @@ public class Id3Handler {
         Id3Header h = new Id3Header();
         h.tag = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
         h.versionMajor = buf[3] >= 0 ? buf[3] : buf[3] + 256;
-        h.versionRevision = buf[4] >= 0 ? buf[4] : buf[4] + 256;
         h.flags = buf[5] >= 0 ? buf[5] : buf[5] + 256;
         h.size[0] = buf[6] >= 0 ? buf[6] : buf[6] + 256;
         h.size[1] = buf[7] >= 0 ? buf[7] : buf[7] + 256;
@@ -329,7 +323,6 @@ public class Id3Handler {
 
     String tag;
     int size;
-    int flags;
 
     /** Constructs a placeholder for a single ID3v2.3 frame header before parsing stream bytes. */
     public FrameHeaderv23() {
@@ -346,7 +339,7 @@ public class Id3Handler {
         f.readFully(buf);
         h.tag = new String(buf, StandardCharsets.ISO_8859_1);
         h.size = f.readInt();
-        h.flags = f.readUnsignedShort();
+        f.readUnsignedShort();
 
         return h;
       } catch (Exception _) {

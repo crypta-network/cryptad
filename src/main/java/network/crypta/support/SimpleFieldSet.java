@@ -161,11 +161,16 @@ public final class SimpleFieldSet {
    */
   public SimpleFieldSet(SimpleFieldSet sfs) {
     values = new HashMap<>(sfs.values);
-    if (sfs.subsets != null) subsets = new ConcurrentHashMap<>(sfs.subsets);
+    ConcurrentHashMap<String, SimpleFieldSet> sourceSubsets = sfs.copySubsetsMap();
+    if (sourceSubsets != null) subsets = sourceSubsets;
     this.shortLived = false; // it's been copied!
     this.header = sfs.header;
     this.endMarker = sfs.endMarker;
     this.alwaysUseBase64 = sfs.alwaysUseBase64;
+  }
+
+  private synchronized ConcurrentHashMap<String, SimpleFieldSet> copySubsetsMap() {
+    return subsets == null ? null : new ConcurrentHashMap<>(subsets);
   }
 
   /**
@@ -507,12 +512,13 @@ public final class SimpleFieldSet {
    *
    * @param fs source to copy from; {@code null} is no‑op.
    */
-  public void putAllOverwrite(SimpleFieldSet fs) {
+  public synchronized void putAllOverwrite(SimpleFieldSet fs) {
     // overwrite old
     values.putAll(fs.values);
-    if (fs.subsets == null) return;
+    ConcurrentHashMap<String, SimpleFieldSet> sourceSubsets = fs.copySubsetsMap();
+    if (sourceSubsets == null) return;
     if (subsets == null) subsets = new ConcurrentHashMap<>();
-    for (Map.Entry<String, SimpleFieldSet> entry : fs.subsets.entrySet()) {
+    for (Map.Entry<String, SimpleFieldSet> entry : sourceSubsets.entrySet()) {
       String key = entry.getKey();
       SimpleFieldSet hisFS = entry.getValue();
       SimpleFieldSet myFS = subsets.get(key);
@@ -947,6 +953,7 @@ public final class SimpleFieldSet {
   public class KeyIterator implements Iterator<String> {
     final Iterator<String> valuesIterator;
     final Iterator<String> subsetIterator;
+    final Map<String, SimpleFieldSet> subsetsSnapshot;
     KeyIterator subIterator;
     String prefix;
 
@@ -961,7 +968,8 @@ public final class SimpleFieldSet {
     public KeyIterator(String prefix) {
       synchronized (SimpleFieldSet.this) {
         valuesIterator = values.keySet().iterator();
-        subsetIterator = (subsets != null) ? subsets.keySet().iterator() : null;
+        subsetsSnapshot = (subsets != null) ? new HashMap<>(subsets) : null;
+        subsetIterator = (subsetsSnapshot != null) ? subsetsSnapshot.keySet().iterator() : null;
         initFirstSubIterator(prefix);
         this.prefix = prefix;
       }
@@ -974,7 +982,7 @@ public final class SimpleFieldSet {
       while (subsetIterator.hasNext()) {
         String name = subsetIterator.next();
         if (name != null) {
-          SimpleFieldSet fs = subsets.get(name);
+          SimpleFieldSet fs = subsetsSnapshot.get(name);
           if (fs != null) {
             String newPrefix = prefix + name + MULTI_LEVEL_CHAR;
             KeyIterator ki = fs.keyIterator(newPrefix);
@@ -996,7 +1004,8 @@ public final class SimpleFieldSet {
           if (subIterator != null) subIterator = null;
           if (subsetIterator != null && subsetIterator.hasNext()) {
             String key = subsetIterator.next();
-            SimpleFieldSet fs = subsets.get(key);
+            SimpleFieldSet fs = subsetsSnapshot.get(key);
+            if (fs == null) continue;
             String newPrefix = prefix + key + MULTI_LEVEL_CHAR;
             subIterator = fs.keyIterator(newPrefix);
           } else return false;
@@ -1040,7 +1049,8 @@ public final class SimpleFieldSet {
       if (subsetIterator == null) return false;
       while (subsetIterator.hasNext()) {
         String key = subsetIterator.next();
-        SimpleFieldSet fs = subsets.get(key);
+        SimpleFieldSet fs = subsetsSnapshot.get(key);
+        if (fs == null) continue;
         String newPrefix = prefix + key + MULTI_LEVEL_CHAR;
         KeyIterator ki = fs.keyIterator(newPrefix);
         if (ki.hasNext()) {
@@ -1085,7 +1095,7 @@ public final class SimpleFieldSet {
    *
    * @return immutable map from subset name to the corresponding {@link SimpleFieldSet}.
    */
-  public Map<String, SimpleFieldSet> directSubsets() {
+  public synchronized Map<String, SimpleFieldSet> directSubsets() {
     return subsets == null ? emptyMap() : Collections.unmodifiableMap(subsets);
   }
 
@@ -1111,7 +1121,7 @@ public final class SimpleFieldSet {
    * @throws IllegalArgumentException if {@code fs} is empty or a value already exists at {@code
    *     key}.
    */
-  public void put(String key, SimpleFieldSet fs) {
+  public synchronized void put(String key, SimpleFieldSet fs) {
     if (fs == null) return; // legal no-op, because used everywhere
     if (fs.isEmpty()) { // can't just no-op, because the caller might add the FS then populate it...
       throw new IllegalArgumentException("Empty");
@@ -1192,7 +1202,7 @@ public final class SimpleFieldSet {
    *
    * @return iterator over child subset names, or {@code null} if there are no subsets.
    */
-  public Iterator<String> directSubsetNameIterator() {
+  public synchronized Iterator<String> directSubsetNameIterator() {
     return (subsets == null) ? null : subsets.keySet().iterator();
   }
 
@@ -1201,7 +1211,7 @@ public final class SimpleFieldSet {
    *
    * @return array of child subset names; empty if there are none.
    */
-  public String[] namesOfDirectSubsets() {
+  public synchronized String[] namesOfDirectSubsets() {
     return (subsets == null) ? EMPTY_STRING_ARRAY : subsets.keySet().toArray(new String[0]);
   }
 

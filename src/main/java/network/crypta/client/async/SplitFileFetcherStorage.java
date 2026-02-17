@@ -378,7 +378,6 @@ public final class SplitFileFetcherStorage {
     segCtx.segmentKeys = segmentKeys;
     segCtx.crossCheckBlocks = crossCheckBlocks;
     segCtx.blocksPerSegment = blocksPerSegment;
-    segCtx.checkBlocksPerSegment = checkBlocksPerSegment;
     segCtx.origFetchContext = p.origFetchContext;
     segCtx.salt = p.salt;
     segCtx.keysFetching = p.keysFetching;
