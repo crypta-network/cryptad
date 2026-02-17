@@ -12,8 +12,6 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.FontUIResource
 import network.crypta.fs.AppEnv
-import network.crypta.launcher.ThemeSwitcher.install
-import network.crypta.launcher.ThemeSwitcher.shutdown
 
 /**
  * Applies a FlatLaf look-and-feel that tracks the operating system theme and keeps Swing components

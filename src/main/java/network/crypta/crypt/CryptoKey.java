@@ -1,6 +1,11 @@
 package network.crypta.crypt;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
@@ -34,8 +39,8 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
    *
    * <p>The stream must start with a UTF string containing the fully qualified class name of the
    * concrete key type (as written by {@link DataOutput#writeUTF(String)}). The loader locates that
-   * class, obtains a public static factory with the exact signature {@code readKey(InputStream)},
-   * and invokes it to parse the remainder of the data. For compatibility with older key
+   * class, gets a public static factory with the exact signature {@code readKey(InputStream)}, and
+   * invokes it to parse the remainder of the data. For compatibility with older key
    * implementations, the loader falls back to {@code read(InputStream)} when {@code readKey} is
    * absent.
    *
@@ -76,7 +81,7 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
   private static Method resolveReadMethod(Class<?> keyClass) throws NoSuchMethodException {
     try {
       return keyClass.getMethod("readKey", InputStream.class);
-    } catch (NoSuchMethodException e) {
+    } catch (NoSuchMethodException _) {
       return keyClass.getMethod("read", InputStream.class);
     }
   }

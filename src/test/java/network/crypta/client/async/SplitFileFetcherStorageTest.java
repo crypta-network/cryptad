@@ -1153,12 +1153,12 @@ class SplitFileFetcherStorageTest {
     }
 
     public SplitFileFetcherStorage createStorage(StorageCallback cb)
-        throws FetchException, MetadataParseException, IOException {
+        throws FetchException, IOException {
       return createStorage(cb, makeFetchContext());
     }
 
     public SplitFileFetcherStorage createStorage(final StorageCallback cb, FetchContext ctx)
-        throws FetchException, MetadataParseException, IOException {
+        throws FetchException, IOException {
       LockableRandomAccessBufferFactory f =
           new LockableRandomAccessBufferFactory() {
 

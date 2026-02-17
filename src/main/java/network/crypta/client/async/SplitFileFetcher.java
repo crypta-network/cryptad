@@ -14,7 +14,6 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata;
-import network.crypta.client.MetadataParseException;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
@@ -163,7 +162,7 @@ public final class SplitFileFetcher
     ClientContext context;
   }
 
-  SplitFileFetcher(InitParams p) throws FetchException, MetadataParseException {
+  SplitFileFetcher(InitParams p) throws FetchException {
     this.persistent = p.persistent;
     this.cb = p.rcb;
     this.parent = p.parent;
@@ -246,7 +245,7 @@ public final class SplitFileFetcher
   }
 
   private SplitFileFetcherStorage buildStorage(InitParams params, File fileCompleteViaTruncation)
-      throws IOException, FetchException, MetadataParseException {
+      throws IOException, FetchException {
     ChecksumChecker checker = new CRCChecksumChecker();
     return new SplitFileFetcherStorage(
         new SplitFileFetcherStorageInitParams.Builder()

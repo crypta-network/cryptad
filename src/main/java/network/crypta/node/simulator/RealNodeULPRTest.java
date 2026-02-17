@@ -10,7 +10,6 @@ import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
-import network.crypta.keys.ClientKSK;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
@@ -290,7 +289,7 @@ public class RealNodeULPRTest extends RealNodeTest {
     if (isSSK) {
       testKey = new FreenetURI("KSK", keyName);
       InsertableClientSSK insertKey = InsertableClientSSK.create(testKey);
-      fetchKey = ClientKSK.create(testKey);
+      fetchKey = InsertableClientSSK.create(testKey);
       block =
           insertKey.encode(
               new BlockEncodeParams(
