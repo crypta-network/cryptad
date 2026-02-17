@@ -3,6 +3,7 @@ package org.spaceroots.mantissa.optimization;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -11,6 +12,10 @@ import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class PointCostPairTest {
+
+  private static PointCostPair constructPointCostPair(double[] point, double cost) {
+    return new PointCostPair(point, cost);
+  }
 
   @Test
   @DisplayName("Constructor clones the provided point array and stores cost")
@@ -48,7 +53,8 @@ class PointCostPairTest {
   void constructor_whenPointIsNull_throwsNullPointerException() {
     // Arrange
     // Act / Assert
-    assertThrows(NullPointerException.class, () -> new PointCostPair(null, 1.0));
+    assertThrows(
+        NullPointerException.class, () -> assertNotNull(constructPointCostPair(null, 1.0)));
   }
 
   @Test

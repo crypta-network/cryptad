@@ -55,7 +55,7 @@ class ContainerInserterTest {
   private static final class InMemoryBucket implements RandomAccessBucket {
     private final String name;
     private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    private boolean readOnly;
+    private volatile boolean readOnly;
     private final AtomicInteger resumeCalls;
 
     InMemoryBucket(String name) {

@@ -153,11 +153,12 @@ class ChecksumOutputStreamTest {
     doThrow(new IOException("boom")).when(bad).write(any(byte[].class), anyInt(), anyInt());
 
     CRC32 crc = new CRC32();
-    ChecksumOutputStream cos = new ChecksumOutputStream(bad, crc, false, /* skipPrefix= */ 10);
-
-    byte[] data = new byte[] {1, 2, 3}; // entirely within the prefix
-    assertThrows(IOException.class, () -> cos.write(data));
-    assertEquals(0L, cos.getValue());
+    try (ChecksumOutputStream cos =
+        new ChecksumOutputStream(bad, crc, false, /* skipPrefix= */ 10)) {
+      byte[] data = new byte[] {1, 2, 3}; // entirely within the prefix
+      assertThrows(IOException.class, () -> cos.write(data));
+      assertEquals(0L, cos.getValue());
+    }
   }
 
   @Test
@@ -166,16 +167,17 @@ class ChecksumOutputStreamTest {
     doThrow(new IOException("boom")).when(bad).write(any(byte[].class), anyInt(), anyInt());
 
     CRC32 crc = new CRC32();
-    ChecksumOutputStream cos = new ChecksumOutputStream(bad, crc, false, /* skipPrefix= */ 0);
+    try (ChecksumOutputStream cos =
+        new ChecksumOutputStream(bad, crc, false, /* skipPrefix= */ 0)) {
+      byte[] data = new byte[] {10, 20, 30, 40};
 
-    byte[] data = new byte[] {10, 20, 30, 40};
+      IOException ex = assertThrows(IOException.class, () -> cos.write(data));
+      assertEquals("boom", ex.getMessage());
 
-    IOException ex = assertThrows(IOException.class, () -> cos.write(data));
-    assertEquals("boom", ex.getMessage());
-
-    CRC32 expected = new CRC32();
-    expected.update(data, 0, data.length);
-    assertEquals(expected.getValue(), cos.getValue());
+      CRC32 expected = new CRC32();
+      expected.update(data, 0, data.length);
+      assertEquals(expected.getValue(), cos.getValue());
+    }
   }
 
   @Test

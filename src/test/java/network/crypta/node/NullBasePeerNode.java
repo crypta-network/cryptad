@@ -78,7 +78,6 @@ public class NullBasePeerNode implements BasePeerNode {
 
   SessionKey currentKey;
   SessionKey previousKey;
-  SessionKey unverifiedKey;
 
   @Override
   public SessionKey getCurrentKeyTracker() {
@@ -92,7 +91,7 @@ public class NullBasePeerNode implements BasePeerNode {
 
   @Override
   public SessionKey getUnverifiedKeyTracker() {
-    return unverifiedKey;
+    return null;
   }
 
   @Override

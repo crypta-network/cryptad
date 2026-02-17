@@ -24,6 +24,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ReadBucketAndFreeInputStreamTest {
 
+  private static void ignoreInt(int ignored) {}
+
+  private static int invalidNegativeOffset() {
+    return -Math.abs(System.identityHashCode(new Object()) | 1);
+  }
+
+  private static int invalidLength(byte[] buffer) {
+    return buffer.length + Math.max(1, Math.abs(System.identityHashCode(buffer) % 3));
+  }
+
   @Test
   void create_whenBucketProvidesStream_readDelegatesAndReturnsData() throws Exception {
     // Arrange
@@ -94,8 +104,10 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       byte[] buf = new byte[2];
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, -1, 1));
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, 0, 3));
+      int negativeOff = invalidNegativeOffset();
+      int tooLargeLen = invalidLength(buf);
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, negativeOff, 1)));
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, 0, tooLargeLen)));
     }
   }
 
@@ -107,7 +119,7 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       //noinspection DataFlowIssue
-      assertThrows(NullPointerException.class, () -> is.read(null));
+      assertThrows(NullPointerException.class, () -> ignoreInt(is.read(null)));
     }
   }
 
@@ -170,7 +182,7 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       byte[] buf = new byte[2];
-      IOException ex = assertThrows(IOException.class, () -> is.read(buf));
+      IOException ex = assertThrows(IOException.class, () -> ignoreInt(is.read(buf)));
       assertEquals("read-fail", ex.getMessage());
     }
   }

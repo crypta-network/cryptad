@@ -97,6 +97,10 @@ public class Cookie {
    */
   private final boolean discard;
 
+  /** Immutable validated state used to construct a cookie without throwing from constructors. */
+  private record CookieState(
+      URI domain, URI path, String name, String value, Instant expirationDate) {}
+
   /**
    * Internal constructor for validated cookie state. Callers should use {@link #create(URI, String,
    * String, Instant)} or {@link #create(URI, URI, String, String, Instant)}.
@@ -118,7 +122,7 @@ public class Cookie {
    *     {@link IllegalArgumentException} during validation.
    */
   protected Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
-    this(null, myPath, myName, myValue, myExpirationDate);
+    this(validateState(null, myPath, myName, myValue, myExpirationDate));
   }
 
   /**
@@ -142,12 +146,16 @@ public class Cookie {
    */
   protected Cookie(
       URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
+    this(validateState(myDomain, myPath, myName, myValue, myExpirationDate));
+  }
+
+  private Cookie(CookieState state) {
     version = 1;
-    domain = myDomain != null ? validateDomain(myDomain) : null;
-    path = validatePath(myPath);
-    name = validateName(myName);
-    value = myValue != null ? validateValue(myValue) : "";
-    expirationDate = validateExpirationDate(myExpirationDate);
+    domain = state.domain();
+    path = state.path();
+    name = state.name();
+    value = state.value();
+    expirationDate = state.expirationDate();
     discard = true; // Freenet cookies are intended to be discarded when the browser is closed.
   }
 
@@ -176,12 +184,17 @@ public class Cookie {
    */
   public static Cookie create(
       URI domain, URI path, String name, String value, Instant expirationDate) {
+    return new Cookie(validateState(domain, path, name, value, expirationDate));
+  }
+
+  private static CookieState validateState(
+      URI domain, URI path, String name, String value, Instant expirationDate) {
     URI validatedDomain = domain != null ? validateDomain(domain) : null;
     URI validatedPath = validatePath(path);
     String validatedName = validateName(name);
     String validatedValue = value != null ? validateValue(value) : "";
     Instant validatedExpiration = validateExpirationDate(expirationDate);
-    return new Cookie(
+    return new CookieState(
         validatedDomain, validatedPath, validatedName, validatedValue, validatedExpiration);
   }
 

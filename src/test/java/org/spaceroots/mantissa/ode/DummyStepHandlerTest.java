@@ -67,13 +67,14 @@ class DummyStepHandlerTest {
   @Test
   void serialization_whenSerialized_throwsNotSerializableException() {
     DummyStepHandler handler = DummyStepHandler.getInstance();
+    Object payload = handler;
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
 
     assertThrows(
         NotSerializableException.class,
         () -> {
           try (ObjectOutputStream oos = new ObjectOutputStream(bout)) {
-            oos.writeObject(handler);
+            oos.writeObject(payload);
           }
         });
   }

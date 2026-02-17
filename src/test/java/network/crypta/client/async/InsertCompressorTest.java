@@ -94,8 +94,10 @@ class InsertCompressorTest {
 
   // Minimal Test Inserter that records callbacks without performing full scheduling logic
   private static final class TestInserter extends SingleFileInserter {
-    CompressionOutput lastOutput;
-    ClientContext lastContext;
+    private static final long serialVersionUID = 1L;
+
+    private transient CompressionOutput lastOutput;
+    private transient ClientContext lastContext;
     COMPRESSOR_TYPE lastStartType;
 
     TestInserter(
@@ -129,6 +131,16 @@ class InsertCompressorTest {
     void onCompressed(CompressionOutput output, ClientContext context) {
       lastOutput = output;
       lastContext = context;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      return this == obj;
+    }
+
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(this);
     }
   }
 

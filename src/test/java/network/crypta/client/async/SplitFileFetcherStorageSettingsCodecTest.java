@@ -409,7 +409,7 @@ class SplitFileFetcherStorageSettingsCodecTest {
     private byte cryptoAlgorithm = 0;
     private byte[] cryptoKey;
     private long finalLength = 123L;
-    private final long decompressedLength = 456L;
+    private static final long decompressedLength = 456L;
     private final ClientMetadata clientMetadata = new ClientMetadata("text/plain");
     private boolean writeValidClientMetadata = true;
     private List<COMPRESSOR_TYPE> decompressors =
@@ -417,13 +417,13 @@ class SplitFileFetcherStorageSettingsCodecTest {
     private Integer decompressorCountOverride;
     private List<Short> decompressorIdsOverride;
     private long offsetKeyList = 10L;
-    private final long offsetSegmentStatus = 20L;
-    private final long offsetGeneralProgress = 30L;
-    private final long offsetMainBloomFilter = 40L;
-    private final long offsetSegmentBloomFilters = 50L;
-    private final long offsetOriginalMetadata = 60L;
-    private final long offsetOriginalDetails = 70L;
-    private final long offsetBasicSettings = 80L;
+    private static final long offsetSegmentStatus = 20L;
+    private static final long offsetGeneralProgress = 30L;
+    private static final long offsetMainBloomFilter = 40L;
+    private static final long offsetSegmentBloomFilters = 50L;
+    private static final long offsetOriginalMetadata = 60L;
+    private static final long offsetOriginalDetails = 70L;
+    private static final long offsetBasicSettings = 80L;
     private boolean completeViaTruncation = false;
     private CompatibilityMode compatMode = CompatibilityMode.COMPAT_1250;
     private Integer compatModeOrdinalOverride;

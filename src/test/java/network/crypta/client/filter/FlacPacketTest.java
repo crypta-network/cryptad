@@ -71,6 +71,10 @@ class FlacPacketTest {
     };
   }
 
+  private static boolean objectEquals(Object left, Object right) {
+    return left.equals(right);
+  }
+
   // ---------- Tests: FlacMetadataBlock construction & array ----------
 
   @Test
@@ -224,10 +228,10 @@ class FlacPacketTest {
     FlacFrame frame = new FlacFrame(payload);
     FlacMetadataBlock block = new FlacMetadataBlock(headerInt(false, 0, payload.length), payload);
 
-    CodecPacket framePkt = frame;
-    CodecPacket blockPkt = block;
-    assertEquals(framePkt, blockPkt);
-    assertEquals(blockPkt, framePkt);
+    Object frameObj = frame;
+    Object blockObj = block;
+    assertTrue(objectEquals(frameObj, blockObj));
+    assertTrue(objectEquals(blockObj, frameObj));
     assertEquals(frame.hashCode(), block.hashCode());
   }
 

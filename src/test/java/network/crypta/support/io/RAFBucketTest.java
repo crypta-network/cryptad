@@ -53,6 +53,8 @@ class RAFBucketTest {
   private static final java.util.logging.Logger TEST_LOG =
       java.util.logging.Logger.getLogger(RAFBucketTest.class.getName());
 
+  private static void ignoreInt(int ignored) {}
+
   private static LockableRandomAccessBuffer stubRafWithContent(byte[] content) throws IOException {
     LockableRandomAccessBuffer raf = mock(LockableRandomAccessBuffer.class);
     when(raf.size()).thenReturn((long) content.length);
@@ -150,7 +152,7 @@ class RAFBucketTest {
         }
         assertArrayEquals(data, out.toByteArray());
         // The next read must throw EOFException according to RAFInputStream behavior
-        assertThrows(EOFException.class, () -> is.read(buf));
+        assertThrows(EOFException.class, () -> ignoreInt(is.read(buf)));
       }
     }
 

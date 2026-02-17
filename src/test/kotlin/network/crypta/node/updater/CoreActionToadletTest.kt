@@ -25,7 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension
 @ExtendWith(MockitoExtension::class)
 @Suppress("java:S100")
 internal class CoreActionToadletTest {
-  @TempDir private lateinit var tempDir: Path
+  @TempDir private var tempDir: Path? = null
+
+  private fun tempPath(): Path = requireNotNull(tempDir)
 
   @Test
   internal fun path_whenCalled_expectCoreUpdatePath() {
@@ -143,8 +145,8 @@ internal class CoreActionToadletTest {
     val ctx = mock(ToadletContext::class.java)
     val request = mock(HTTPRequest::class.java)
     val toadlet = CoreActionToadlet(client, node)
-    val baseDir = tempDir.resolve("node").toFile()
-    val invalidPath = tempDir.resolve("outside/installer.deb").toFile().absolutePath
+    val baseDir = tempPath().resolve("node").toFile()
+    val invalidPath = tempPath().resolve("outside/installer.deb").toFile().absolutePath
 
     baseDir.mkdirs()
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
@@ -174,7 +176,7 @@ internal class CoreActionToadletTest {
     val ctx = mock(ToadletContext::class.java)
     val request = mock(HTTPRequest::class.java)
     val toadlet = CoreActionToadlet(client, node)
-    val baseDir = tempDir.resolve("node").toFile()
+    val baseDir = tempPath().resolve("node").toFile()
     val updatesDir = File(baseDir, "updates/core")
     val installer = File(updatesDir, "cryptad.deb")
 

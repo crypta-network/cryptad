@@ -34,6 +34,8 @@ class BufferTest {
       "asldkjaskjdsakdhasdhaskjdhaskjhbkasbhdjkasbduiwbxgdoudgboewuydxbybuewyxbuewyuwe"
           + "dasdkljasndijwnodhnqweoidhnaouidhbnwoduihwnxodiuhnwuioxdhnwqiouhnxwqoiushdnxwqoiudhxnwqoiudhxni";
 
+  private static void ignoreByte(byte ignored) {}
+
   @Test
   @DisplayName("getData_whenFullArray_expectSameInstanceAndCorrectContent")
   void getData_whenFullArray_expectSameInstanceAndCorrectContent() {
@@ -149,8 +151,8 @@ class BufferTest {
   @DisplayName("byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException")
   void byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException() {
     Buffer b = new Buffer(new byte[] {10, 20, 30});
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(3)); // == length
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(-1));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(3))); // == length
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(-1)));
   }
 
   @Test

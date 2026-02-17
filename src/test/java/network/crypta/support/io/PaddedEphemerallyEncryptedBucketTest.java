@@ -38,6 +38,16 @@ import org.junit.jupiter.params.provider.MethodSource;
 @SuppressWarnings({"java:S100", "java:S2245"})
 class PaddedEphemerallyEncryptedBucketTest {
 
+  private static void ignoreInt(int ignored) {}
+
+  private static int invalidNegativeOffset() {
+    return -Math.abs(System.identityHashCode(new Object()) | 1);
+  }
+
+  private static int outOfBoundsLength(byte[] buffer) {
+    return buffer.length + Math.max(1, Math.abs(System.identityHashCode(buffer) % 5));
+  }
+
   private static RandomSource strong(long seed) {
     return new DummyRandomSource(seed);
   }
@@ -135,8 +145,10 @@ class PaddedEphemerallyEncryptedBucketTest {
     // Assert
     assertEquals(min, underlying.size());
     // Roundtrip
-    byte[] got = enc.getInputStream().readAllBytes();
-    assertArrayEquals(plain, got);
+    try (InputStream is = enc.getInputStream()) {
+      byte[] got = is.readAllBytes();
+      assertArrayEquals(plain, got);
+    }
   }
 
   @Test
@@ -157,7 +169,9 @@ class PaddedEphemerallyEncryptedBucketTest {
 
     // Assert
     assertEquals(min * 2L, underlying.size());
-    assertArrayEquals(plain, enc.getInputStream().readAllBytes());
+    try (InputStream is = enc.getInputStream()) {
+      assertArrayEquals(plain, is.readAllBytes());
+    }
   }
 
   @Test
@@ -208,8 +222,12 @@ class PaddedEphemerallyEncryptedBucketTest {
       assertEquals(30, is.read(buf));
       assertEquals(70, is.available());
       // Invalid bounds
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, -1, 1));
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, 0, 31));
+      int invalidOffset = invalidNegativeOffset();
+      int invalidLength = outOfBoundsLength(buf);
+      assertThrows(
+          ArrayIndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, invalidOffset, 1)));
+      assertThrows(
+          ArrayIndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, 0, invalidLength)));
 
       // Read rest
       byte[] rest = is.readAllBytes();

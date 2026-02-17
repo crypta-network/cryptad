@@ -28,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class SHA256Test {
 
+  private static void ignoreInt(int ignored) {}
+
   // ---- Test vectors ----
   static java.util.stream.Stream<Arguments> knownVectors() {
     return java.util.stream.Stream.of(
@@ -85,7 +87,7 @@ class SHA256Test {
     // Assert
     assertArrayEquals(expectedEmpty, md.digest());
     Mockito.verify(is, Mockito.times(1)).close();
-    Mockito.verify(is, Mockito.atLeastOnce()).read(ArgumentMatchers.any(byte[].class));
+    ignoreInt(Mockito.verify(is, Mockito.atLeastOnce()).read(ArgumentMatchers.any(byte[].class)));
   }
 
   @Test
@@ -112,7 +114,7 @@ class SHA256Test {
   void hash_whenIOExceptionOnFirstRead_expectExceptionAndNoUpdateAndClosed() throws Exception {
     // Arrange
     InputStream is = Mockito.mock(InputStream.class);
-    Mockito.doThrow(new IOException("boom")).when(is).read(ArgumentMatchers.any(byte[].class));
+    Mockito.when(is.read(ArgumentMatchers.any(byte[].class))).thenThrow(new IOException("boom"));
     MessageDigest md = SHA256.getMessageDigest();
     byte[] expectedEmpty = SHA256.digest(new byte[0]);
 

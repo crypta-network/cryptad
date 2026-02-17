@@ -59,13 +59,10 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
   private boolean bwlimitDelayAlertRelevant;
   private boolean nodeAveragePingAlertRelevant;
   int darknetConns = 0;
-  int darknetPeers = 0;
   int tooNewPeersDarknet = 0;
   int tooNewPeersTotal = 0;
   boolean isOpennetEnabled;
   boolean darknetDefinitelyPortForwarded;
-  boolean opennetDefinitelyPortForwarded;
-  boolean opennetAssumeNAT;
   boolean darknetAssumeNAT;
   private volatile boolean isOutdated;
 
@@ -574,7 +571,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *     confirmed or is known to be unreachable
    */
   public synchronized void setOpennetDefinitelyPortForwarded(boolean value) {
-    this.opennetDefinitelyPortForwarded = value;
+    // Intentionally no-op: opennet-specific forwarding state does not currently affect alert text.
   }
 
   /**
@@ -596,7 +593,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *     assumption
    */
   public synchronized void setOpennetAssumeNAT(boolean value) {
-    this.opennetAssumeNAT = value;
+    // Intentionally no-op: opennet-specific NAT hints do not currently affect alert text.
   }
 
   /**
@@ -634,7 +631,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * @param value count of darknet peers; negative values are not expected
    */
   public synchronized void setDarknetPeers(int value) {
-    this.darknetPeers = value;
+    // Intentionally no-op: total darknet peer count is not currently consumed by alert predicates.
   }
 
   /**

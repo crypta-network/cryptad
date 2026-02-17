@@ -51,7 +51,6 @@ public final class SplitFileFetcherStorageInitParams {
   boolean topDontCompress;
   short topCompatibilityMode;
   FetchContext origFetchContext;
-  boolean realTime;
   KeySalter salt;
   FreenetURI thisKey;
   FreenetURI origKey;
@@ -93,7 +92,6 @@ public final class SplitFileFetcherStorageInitParams {
     private boolean topDontCompress;
     private short topCompatibilityMode;
     private FetchContext origFetchContext;
-    private boolean realTime;
     private KeySalter salt;
     private FreenetURI thisKey;
     private FreenetURI origKey;
@@ -224,23 +222,6 @@ public final class SplitFileFetcherStorageInitParams {
      */
     public Builder fetchContext(FetchContext v) {
       this.origFetchContext = v;
-      return this;
-    }
-
-    /**
-     * Indicates whether the fetch should prefer reduced buffering (real-time).
-     *
-     * <p>This setter records the boolean flag without additional validation or side effects. The
-     * meaning of real-time mode is interpreted by downstream scheduling and buffering logic rather
-     * than by the builder itself. Repeated calls simply overwrite the previously stored value. When
-     * left {@code false}, default buffering behavior is preserved unless other components override
-     * it.
-     *
-     * @param v flag selecting real-time scheduling preference for the fetch.
-     * @return this builder instance so further parameters can be chained.
-     */
-    public Builder realTime(boolean v) {
-      this.realTime = v;
       return this;
     }
 
@@ -531,7 +512,6 @@ public final class SplitFileFetcherStorageInitParams {
       p.topDontCompress = topDontCompress;
       p.topCompatibilityMode = topCompatibilityMode;
       p.origFetchContext = origFetchContext;
-      p.realTime = realTime;
       p.salt = salt;
       p.thisKey = thisKey;
       p.origKey = origKey;

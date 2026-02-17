@@ -113,7 +113,7 @@ final class PeerNodeHandshake implements PeerNode.HandshakeState {
    * @return current key-agreement context, or {@code null} when no handshake is active.
    */
   @Override
-  public synchronized KeyAgreementSchemeContext getKeyAgreementSchemeContext() {
+  public synchronized Object getKeyAgreementSchemeContext() {
     return ctx;
   }
 

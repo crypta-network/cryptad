@@ -20,12 +20,14 @@ import org.junit.jupiter.params.provider.MethodSource;
 @SuppressWarnings("java:S100") // Allow method names with underscores for readability
 class HTMLDecoderTest {
 
+  private static void ignoreString(String ignored) {}
+
   // -------- decode(String) --------
 
   @Test
   @SuppressWarnings("DataFlowIssue")
   void decode_whenNull_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> HTMLDecoder.decode(null));
+    assertThrows(NullPointerException.class, () -> ignoreString(HTMLDecoder.decode(null)));
   }
 
   @ParameterizedTest
@@ -123,7 +125,7 @@ class HTMLDecoderTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void compact_whenNull_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> HTMLDecoder.compact(null));
+    assertThrows(NullPointerException.class, () -> ignoreString(HTMLDecoder.compact(null)));
   }
 
   @Test

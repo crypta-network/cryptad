@@ -134,13 +134,11 @@ class SplitFileFetcherCrossSegmentStorageTest {
   void setupCodecDefaults() {
     // Keep memory usage small and do-nothing FEC ops for predictable tests.
     org.mockito.Mockito.lenient()
-        .doReturn(0L)
-        .when(codec)
-        .maxMemoryOverheadDecode(any(Integer.class), any(Integer.class));
+        .when(codec.maxMemoryOverheadDecode(any(Integer.class), any(Integer.class)))
+        .thenReturn(0L);
     org.mockito.Mockito.lenient()
-        .doReturn(0L)
-        .when(codec)
-        .maxMemoryOverheadEncode(any(Integer.class), any(Integer.class));
+        .when(codec.maxMemoryOverheadEncode(any(Integer.class), any(Integer.class)))
+        .thenReturn(0L);
     org.mockito.Mockito.lenient()
         .doAnswer(_ -> null)
         .when(codec)

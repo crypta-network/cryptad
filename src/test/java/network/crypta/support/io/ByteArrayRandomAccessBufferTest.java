@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -34,6 +35,10 @@ import org.mockito.Mockito;
 class ByteArrayRandomAccessBufferTest {
   private static final String READ_ONLY_MESSAGE = "Read-only";
   private static final String UNREACHABLE_MESSAGE = "unreachable";
+
+  private static ByteArrayRandomAccessBuffer constructBufferWithSize(int size) {
+    return new ByteArrayRandomAccessBuffer(size);
+  }
 
   /**
    * Produce a deterministic byte array for test assertions.
@@ -83,7 +88,8 @@ class ByteArrayRandomAccessBufferTest {
   @SuppressWarnings("resource")
   void constructor_withNegativeSize_expectNegativeArraySizeException() {
     // Arrange + Act + Assert
-    assertThrows(NegativeArraySizeException.class, () -> new ByteArrayRandomAccessBuffer(-1));
+    assertThrows(
+        NegativeArraySizeException.class, () -> assertNotNull(constructBufferWithSize(-1)));
   }
 
   /**

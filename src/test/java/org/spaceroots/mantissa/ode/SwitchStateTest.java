@@ -124,7 +124,7 @@ class SwitchStateTest {
   @Test
   void valueAt_whenInterpolatorThrowsDerivativeException_wrapsInFunctionException() {
     when(function.g(anyDouble(), any(double[].class)))
-        .thenAnswer(invocation -> (double) invocation.getArgument(0));
+        .thenAnswer(invocation -> invocation.getArgument(0, Double.class));
     LinearInterpolator interpolator = new LinearInterpolator(0.0, 1.0);
 
     SwitchState state = new SwitchState(function, 10.0, CONVERGENCE);

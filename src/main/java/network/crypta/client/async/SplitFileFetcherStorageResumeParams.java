@@ -36,7 +36,6 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  */
 public final class SplitFileFetcherStorageResumeParams {
   LockableRandomAccessBuffer raf;
-  boolean realTime;
   SplitFileFetcherStorageCallback callback;
   FetchContext origContext;
   RandomSource random;
@@ -46,8 +45,6 @@ public final class SplitFileFetcherStorageResumeParams {
   MemoryLimitedJobRunner memoryLimitedJobRunner;
   ChecksumChecker checker;
   boolean newSalt;
-  KeySalter salt;
-  boolean resumed;
   boolean completeViaTruncation;
 
   /**
@@ -76,7 +73,6 @@ public final class SplitFileFetcherStorageResumeParams {
    */
   public static class Builder {
     private LockableRandomAccessBuffer raf;
-    private boolean realTime;
     private SplitFileFetcherStorageCallback callback;
     private FetchContext origContext;
     private RandomSource random;
@@ -86,8 +82,6 @@ public final class SplitFileFetcherStorageResumeParams {
     private MemoryLimitedJobRunner memoryLimitedJobRunner;
     private ChecksumChecker checker;
     private boolean newSalt;
-    private KeySalter salt;
-    private boolean resumed;
     private boolean completeViaTruncation;
 
     /**
@@ -102,21 +96,6 @@ public final class SplitFileFetcherStorageResumeParams {
      */
     public Builder raf(LockableRandomAccessBuffer v) {
       this.raf = v;
-      return this;
-    }
-
-    /**
-     * Configures whether resume should prefer real-time behavior.
-     *
-     * <p>This flag is a hint consumed by the resume logic to prefer lower latency to throughput
-     * where applicable. It is stored as-is without validation. Repeated calls replace the previous
-     * value; setting the same value again is idempotent.
-     *
-     * @param v {@code true} to favor latency; {@code false} to favor throughput.
-     * @return this builder instance for fluent chaining and continued configuration.
-     */
-    public Builder realTime(boolean v) {
-      this.realTime = v;
       return this;
     }
 
@@ -256,36 +235,6 @@ public final class SplitFileFetcherStorageResumeParams {
     }
 
     /**
-     * Provides the salter to use if {@link #newSalt(boolean)} is {@code true}.
-     *
-     * <p>The salter reference is recorded without validation. It may be {@code null}, in which case
-     * the resume logic can decide to skip salting even if {@code newSalt} is requested. The most
-     * recently supplied salter replaces any prior value.
-     *
-     * @param v salter implementation reference; {@code null} disables salting support.
-     * @return this builder instance for fluent chaining and continued configuration.
-     */
-    public Builder salt(KeySalter v) {
-      this.salt = v;
-      return this;
-    }
-
-    /**
-     * Marks that this session represents a true resume rather than a fresh start.
-     *
-     * <p>This flag allows the resume constructor to distinguish between reconstructed state and a
-     * newly initialized fetch. The builder records the value directly; repeated calls overwrite the
-     * prior value, and setting the same value again is idempotent.
-     *
-     * @param v {@code true} when resuming persisted state; {@code false} otherwise.
-     * @return this builder instance for fluent chaining and continued configuration.
-     */
-    public Builder resumed(boolean v) {
-      this.resumed = v;
-      return this;
-    }
-
-    /**
      * Enables completion via truncation when possible.
      *
      * <p>This flag indicates a preference for truncation-based completion optimizations at the end
@@ -314,7 +263,6 @@ public final class SplitFileFetcherStorageResumeParams {
     public SplitFileFetcherStorageResumeParams build() {
       SplitFileFetcherStorageResumeParams p = new SplitFileFetcherStorageResumeParams();
       p.raf = raf;
-      p.realTime = realTime;
       p.callback = callback;
       p.origContext = origContext;
       p.random = random;
@@ -324,8 +272,6 @@ public final class SplitFileFetcherStorageResumeParams {
       p.memoryLimitedJobRunner = memoryLimitedJobRunner;
       p.checker = checker;
       p.newSalt = newSalt;
-      p.salt = salt;
-      p.resumed = resumed;
       p.completeViaTruncation = completeViaTruncation;
       return p;
     }

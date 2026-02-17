@@ -195,22 +195,22 @@ class SingleOffsetReplacingOutputStreamTest {
     int replacementValue = 77;
     ByteArrayOutputStream real = new ByteArrayOutputStream();
     ByteArrayOutputStream target = spy(real);
-    SingleOffsetReplacingOutputStream out =
-        new SingleOffsetReplacingOutputStream(target, replacementOffset, replacementValue);
+    try (SingleOffsetReplacingOutputStream out =
+        new SingleOffsetReplacingOutputStream(target, replacementOffset, replacementValue)) {
+      // Act
+      out.write(src, 0, src.length);
 
-    // Act
-    out.write(src, 0, src.length);
+      // Assert content
+      byte[] expected = new byte[] {9, 8, (byte) replacementValue, 6, 5};
+      byte[] actual = target.toByteArray();
+      assertThat(actual, equalTo(expected));
 
-    // Assert content
-    byte[] expected = new byte[] {9, 8, (byte) replacementValue, 6, 5};
-    byte[] actual = target.toByteArray();
-    assertThat(actual, equalTo(expected));
-
-    // Assert call order: prefix, replacement int, suffix
-    InOrder order = inOrder(target);
-    order.verify((OutputStream) target).write(same(src), eq(0), eq(2));
-    order.verify((OutputStream) target).write(replacementValue);
-    order.verify((OutputStream) target).write(same(src), eq(3), eq(2));
+      // Assert call order: prefix, replacement int, suffix
+      InOrder order = inOrder(target);
+      order.verify((OutputStream) target).write(same(src), eq(0), eq(2));
+      order.verify((OutputStream) target).write(replacementValue);
+      order.verify((OutputStream) target).write(same(src), eq(3), eq(2));
+    }
   }
 
   @Test
@@ -220,16 +220,17 @@ class SingleOffsetReplacingOutputStreamTest {
     byte[] src = new byte[] {1, 2, 3};
     ByteArrayOutputStream real = new ByteArrayOutputStream();
     OutputStream target = spy(real);
-    SingleOffsetReplacingOutputStream out = new SingleOffsetReplacingOutputStream(target, 0, 0x23);
+    try (SingleOffsetReplacingOutputStream out =
+        new SingleOffsetReplacingOutputStream(target, 0, 0x23)) {
+      // Act
+      out.write(src, 0, 0);
 
-    // Act
-    out.write(src, 0, 0);
-
-    // Assert
-    InOrder order = inOrder(target);
-    order.verify(target).write(same(src), eq(0), eq(0));
-    verifyNoMoreInteractions(target);
-    assertThat(real.toByteArray(), equalTo(new byte[0]));
+      // Assert
+      InOrder order = inOrder(target);
+      order.verify(target).write(same(src), eq(0), eq(0));
+      verifyNoMoreInteractions(target);
+      assertThat(real.toByteArray(), equalTo(new byte[0]));
+    }
   }
 
   @Test

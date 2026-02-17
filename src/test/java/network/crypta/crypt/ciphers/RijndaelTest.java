@@ -254,8 +254,10 @@ class RijndaelTest {
             assertNotNull(br.readLine()); // Skip header, ensure present
           }
           String line = br.readLine();
+          assertNotNull(line, "Missing BLOCKSIZE line in " + path);
           int blockSize = Integer.parseInt(line.substring("BLOCKSIZE=".length()));
           line = br.readLine();
+          assertNotNull(line, "Missing KEYSIZE line in " + path);
           int keySize = Integer.parseInt(line.substring("KEYSIZE=  ".length()));
           assert (blockSize == 128 || blockSize == 192 || blockSize == 256);
           assert (keySize == 128 || keySize == 192 || keySize == 256);

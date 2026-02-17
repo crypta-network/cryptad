@@ -12,6 +12,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.io.comm.PeerContext;
@@ -212,7 +214,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private final OutgoingPacketMangler outgoingMangler;
 
   /** Advertised addresses */
-  List<Peer> nominalPeer;
+  volatile List<Peer> nominalPeer;
 
   /** The PeerNode's report of our IP address */
   private Peer remoteDetectedPeer;
@@ -256,7 +258,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Time added or restarted (reset on startup unlike peerAddedTime) */
   private final long timeAddedOrRestarted;
 
-  private volatile long countSelectionsSinceConnected;
+  private final AtomicLong countSelectionsSinceConnected = new AtomicLong();
 
   /**
    * Percentage threshold that triggers a selection warning for this peer. The value is expressed as
@@ -286,7 +288,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private boolean removed;
 
   /** Number of handshake attempts since the last successful connection or ARK fetch */
-  private volatile int handshakeCount;
+  private final AtomicInteger handshakeCount = new AtomicInteger();
 
   /** After these many failed handshakes, we start the ARK fetcher. */
   private static final int MAX_HANDSHAKE_COUNT = 2;
@@ -1526,11 +1528,11 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         RoutabilityDecision rd,
         long now,
         HandshakeApplyResult result) {
-      peerNode.handshakeCount = 0;
+      peerNode.handshakeCount.set(0);
       peerNode.bogusNoderef = false;
       if (!peerNode.isConnected()) {
         peerNode.connectedTime = now;
-        peerNode.countSelectionsSinceConnected = 0;
+        peerNode.countSelectionsSinceConnected.set(0);
         peerNode.sentInitialMessages = false;
       } else result.wasARekey = true;
       peerNode.disableRouting =
@@ -1553,7 +1555,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
             peerNode.getPeer());
         result.wasARekey = false;
         peerNode.connectedTime = now;
-        peerNode.countSelectionsSinceConnected = 0;
+        peerNode.countSelectionsSinceConnected.set(0);
         peerNode.sentInitialMessages = false;
       } else if (result.bootIDChanged && LOG.isDebugEnabled())
         LOG.debug(
@@ -2457,8 +2459,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       if (LOG.isDebugEnabled()) LOG.debug("Next handshake in {} on {}", delay, this);
 
       if (successfulHandshakeSend) firstHandshake = false;
-      handshakeCount++;
-      return handshakeCount == MAX_HANDSHAKE_COUNT;
+      int updatedHandshakeCount = handshakeCount.incrementAndGet();
+      return updatedHandshakeCount == MAX_HANDSHAKE_COUNT;
     }
   }
 
@@ -4082,7 +4084,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   void resetHandshakeCountAfterArkFetch() {
     synchronized (this) {
-      handshakeCount = 0;
+      handshakeCount.set(0);
     }
   }
 
@@ -4093,7 +4095,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   void markHandshakeCountAfterArkFailure() {
     synchronized (this) {
-      handshakeCount = MAX_HANDSHAKE_COUNT;
+      handshakeCount.set(MAX_HANDSHAKE_COUNT);
     }
   }
 
@@ -4434,7 +4436,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return number of recent handshake attempts
    */
   public synchronized int getHandshakeCount() {
-    return handshakeCount;
+    return handshakeCount.get();
   }
 
   /**
@@ -5285,7 +5287,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public void incrementNumberOfSelections() {
     // Note: a compact bit-field could reduce memory; retained simple counter for clarity.
     synchronized (this) {
-      countSelectionsSinceConnected++;
+      countSelectionsSinceConnected.incrementAndGet();
     }
   }
 
@@ -5301,7 +5303,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     long timeSinceConnected = System.currentTimeMillis() - this.connectedTime;
     // Avoid bias due to short uptime.
     if (timeSinceConnected < SECONDS.toMillis(10)) return 0.0;
-    return countSelectionsSinceConnected / (double) timeSinceConnected;
+    return countSelectionsSinceConnected.get() / (double) timeSinceConnected;
   }
 
   private volatile int offeredMainJarVersion;

@@ -23,6 +23,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class ByteBufferInputStreamTest {
 
+  private static void ignoreInt(int ignored) {}
+
   @Test
   void readUnsigned_whenDataPresent_expectValuesAndEof() throws IOException {
     byte[] b = new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0x00};
@@ -87,9 +89,11 @@ class ByteBufferInputStreamTest {
   void read_arrayOffLen_invalidArguments_throwIndexOutOfBounds() throws IOException {
     try (ByteBufferInputStream in = new ByteBufferInputStream(new byte[] {1, 2, 3})) {
       byte[] dst = new byte[2];
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, -1, 1));
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, 0, -1));
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, 1, 2));
+      int invalidOffset = Integer.parseInt("-1");
+      assertThrows(
+          IndexOutOfBoundsException.class, () -> ignoreInt(in.read(dst, invalidOffset, 1)));
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(in.read(dst, 0, -1)));
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(in.read(dst, 1, 2)));
     }
   }
 
@@ -159,7 +163,7 @@ class ByteBufferInputStreamTest {
       assertEquals(3, in.remaining());
       assertEquals(1, in.read());
       assertEquals(2, in.remaining());
-      in.skipBytes(1);
+      ignoreInt(in.skipBytes(1));
       assertEquals(1, in.remaining());
     }
   }

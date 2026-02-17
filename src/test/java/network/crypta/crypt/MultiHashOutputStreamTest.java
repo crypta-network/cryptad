@@ -95,7 +95,7 @@ class MultiHashOutputStreamTest {
   }
 
   @Test
-  void write_whenUnderlyingThrows_noDigestUpdateAndExceptionPropagates() {
+  void write_whenUnderlyingThrows_noDigestUpdateAndExceptionPropagates() throws IOException {
     OutputStream failing =
         new OutputStream() {
           @Override
@@ -109,17 +109,18 @@ class MultiHashOutputStreamTest {
           }
         };
 
-    MultiHashOutputStream hash = new MultiHashOutputStream(failing, HashType.MD5.bitmask);
     byte[] data = "data".getBytes(StandardCharsets.UTF_8);
+    try (MultiHashOutputStream hash = new MultiHashOutputStream(failing, HashType.MD5.bitmask)) {
+      IOException ex = assertThrows(IOException.class, () -> hash.write(data, 0, data.length));
+      assertTrue(ex.getMessage().contains("boom"));
 
-    IOException ex = assertThrows(IOException.class, () -> hash.write(data, 0, data.length));
-    assertTrue(ex.getMessage().contains("boom"));
-
-    // Since underlying write failed before digester.update(), the digest should be for empty input.
-    HashResult[] results = hash.getResults();
-    assertEquals(1, results.length);
-    assertEquals(HashType.MD5, results[0].type);
-    assertEquals(digestHex(HashType.MD5, new byte[0]), results[0].hashAsHex());
+      // Since underlying write failed before digester.update(), the digest should be for empty
+      // input.
+      HashResult[] results = hash.getResults();
+      assertEquals(1, results.length);
+      assertEquals(HashType.MD5, results[0].type);
+      assertEquals(digestHex(HashType.MD5, new byte[0]), results[0].hashAsHex());
+    }
   }
 
   @Test
@@ -180,15 +181,15 @@ class MultiHashOutputStreamTest {
   void write_withMockitoSpy_verifiesUnderlyingWriteParameters() throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     ByteArrayOutputStream spyOut = spy(baos);
-    MultiHashOutputStream hash = new MultiHashOutputStream(spyOut, HashType.MD5.bitmask);
+    try (MultiHashOutputStream hash = new MultiHashOutputStream(spyOut, HashType.MD5.bitmask)) {
+      byte[] buf = "0123456789".getBytes(StandardCharsets.UTF_8);
+      hash.write(buf, 2, 5);
 
-    byte[] buf = "0123456789".getBytes(StandardCharsets.UTF_8);
-    hash.write(buf, 2, 5);
+      // Verify underlying stream was called once with the exact offset/length.
+      verify(spyOut, times(1)).write(buf, 2, 5);
 
-    // Verify underlying stream was called once with the exact offset/length.
-    verify(spyOut, times(1)).write(buf, 2, 5);
-
-    // And the content forwarded matches the slice
-    assertArrayEquals("23456".getBytes(StandardCharsets.UTF_8), spyOut.toByteArray());
+      // And the content forwarded matches the slice
+      assertArrayEquals("23456".getBytes(StandardCharsets.UTF_8), spyOut.toByteArray());
+    }
   }
 }
