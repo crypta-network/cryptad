@@ -23,6 +23,8 @@ class MultiReaderBucketTest {
   private static final String UNDERLYING_NAME = "underlying";
   private static final String MSG_ALREADY_CLOSED = "Already closed";
 
+  private static void ignoreInt(int ignored) {}
+
   // --- Utilities
 
   private static Stream<Boolean> bufferedFlag() {
@@ -191,7 +193,7 @@ class MultiReaderBucketTest {
     reader.free();
 
     // Assert
-    IOException ex = assertThrows(IOException.class, () -> in.read(buf, 0, 1));
+    IOException ex = assertThrows(IOException.class, () -> ignoreInt(in.read(buf, 0, 1)));
     assertTrue(ex.getMessage().contains(MSG_ALREADY_CLOSED));
   }
 

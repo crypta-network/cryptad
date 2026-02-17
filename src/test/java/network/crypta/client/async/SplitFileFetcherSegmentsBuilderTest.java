@@ -89,7 +89,6 @@ class SplitFileFetcherSegmentsBuilderTest {
     ctx.metadata = Mockito.mock(Metadata.class);
     ctx.crossCheckBlocks = crossCheckBlocks;
     ctx.blocksPerSegment = 3;
-    ctx.checkBlocksPerSegment = 1;
     ctx.origFetchContext = fetchContext;
     ctx.salt = salter;
     ctx.keysFetching = Mockito.mock(KeysFetchingLocally.class);
@@ -147,7 +146,6 @@ class SplitFileFetcherSegmentsBuilderTest {
     ctx.metadata = Mockito.mock(Metadata.class);
     ctx.crossCheckBlocks = 0;
     ctx.blocksPerSegment = 4;
-    ctx.checkBlocksPerSegment = 1;
     ctx.origFetchContext = fetchContext;
     ctx.salt = _ -> new byte[] {7, 8};
     ctx.keysFetching = null;

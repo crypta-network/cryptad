@@ -113,10 +113,8 @@ class SectoredRandomGrabArraySimpleTest {
 
     // Use distinct String instances (not interned literals) with equal contents
     // to validate that SRGA compares clients by identity (==), not equals().
-    @SuppressWarnings("RedundantStringConstructorCall")
-    String a1 = new String("clientA");
-    @SuppressWarnings("RedundantStringConstructorCall")
-    String a2 = new String("clientA");
+    String a1 = String.valueOf("clientA".toCharArray());
+    String a2 = String.valueOf("clientA".toCharArray());
 
     srga.add(a1, readyItem(), mock(ClientContext.class));
     srga.add(a2, readyItem(), mock(ClientContext.class));

@@ -3,6 +3,7 @@ package com.onionnetworks.fec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
@@ -11,7 +12,7 @@ class Native8CodeTest {
   private static final class StubNative8Code extends Native8Code {
     int encodeCalls;
     int decodeCalls;
-    volatile int freeCalls;
+    private final AtomicInteger freeCalls = new AtomicInteger();
     int newFecCalls;
     volatile boolean throwOnFree;
 
@@ -67,7 +68,7 @@ class Native8CodeTest {
 
     @Override
     protected synchronized void nativeFreeFEC() {
-      freeCalls++;
+      freeCalls.incrementAndGet();
       if (throwOnFree) {
         throw new RuntimeException("boom");
       }
@@ -162,7 +163,7 @@ class Native8CodeTest {
     code.close();
     code.close();
 
-    assertEquals(1, code.freeCalls);
+    assertEquals(1, code.freeCalls.get());
   }
 
   @Test
@@ -176,7 +177,7 @@ class Native8CodeTest {
 
     code.close();
 
-    assertEquals(1, code.freeCalls);
+    assertEquals(1, code.freeCalls.get());
   }
 
   private static boolean isClosed(Native8Code code) throws Exception {

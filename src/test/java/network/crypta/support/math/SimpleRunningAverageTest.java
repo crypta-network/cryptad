@@ -15,6 +15,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 class SimpleRunningAverageTest {
   private static final double EPS = 1e-9;
 
+  private static void ignoreDouble(double ignored) {}
+
+  private static void constructAverage(int window, double init) {
+    new SimpleRunningAverage(window, init);
+  }
+
   @Test
   void currentValue_whenNoReports_returnsInitValue() {
     // Arrange
@@ -204,14 +210,15 @@ class SimpleRunningAverageTest {
     assertEquals(0L, avg.countReports());
 
     // Act & Assert: operations that access storage fail
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.valueIfReported(1.0));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class, () -> ignoreDouble(avg.valueIfReported(1.0)));
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1.0));
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1L));
   }
 
   @Test
   void constructor_whenNegativeLength_throwsNegativeArraySize() {
-    assertThrows(NegativeArraySizeException.class, () -> new SimpleRunningAverage(-1, 0.0));
+    assertThrows(NegativeArraySizeException.class, () -> constructAverage(-1, 0.0));
   }
 
   @Test

@@ -2,6 +2,7 @@ package org.spaceroots.mantissa.functions.vectorial;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -14,6 +15,10 @@ import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class VectorialValuedPairTest {
+
+  private static VectorialValuedPair constructPair(double x, double[] y) {
+    return new VectorialValuedPair(x, y);
+  }
 
   @Test
   void constructor_whenProvidedValues_copiesAbscissaAndOrdinate() {
@@ -49,7 +54,7 @@ class VectorialValuedPairTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void constructor_whenNullArray_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> new VectorialValuedPair(2.0, null));
+    assertThrows(NullPointerException.class, () -> assertNotNull(constructPair(2.0, null)));
   }
 
   @Test

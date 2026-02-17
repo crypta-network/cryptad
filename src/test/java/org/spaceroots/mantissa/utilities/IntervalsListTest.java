@@ -22,6 +22,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class IntervalsListTest {
 
+  private static void ignoreInterval(Interval ignored) {}
+
   @Test
   void constructor_whenNoArgs_expectEmptyListWithNaNBounds() {
     // Arrange
@@ -124,8 +126,8 @@ class IntervalsListTest {
     IntervalsList list = new IntervalsList(0.0, 1.0);
 
     // Act + Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(-1));
-    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(1));
+    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInterval(list.getInterval(-1)));
+    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInterval(list.getInterval(1)));
   }
 
   @ParameterizedTest

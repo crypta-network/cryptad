@@ -135,7 +135,7 @@ class ClientRequestSelectorTest {
                 .rafFactory(smallRAFFactory)
                 .persistent(false)
                 .ctx(context)
-                .splitfileCryptoAlgorithm(cryptoAlgorithm)
+                .splitfileCryptoAlgorithm(CRYPTO_ALGORITHM)
                 .splitfileCryptoKey(cryptoKey)
                 .hashThisLayerOnly(null)
                 .hashes(hashes)
@@ -187,11 +187,11 @@ class ClientRequestSelectorTest {
   }
 
   private HashResult[] getHashes(LockableRandomAccessBuffer data) throws IOException {
-    InputStream is = new RAFInputStream(data, 0, data.size());
-    MultiHashInputStream hashStream = new MultiHashInputStream(is, HashType.SHA256.bitmask);
-    FileUtil.copy(is, new NullOutputStream(), data.size());
-    is.close();
-    return hashStream.getResults();
+    try (InputStream is = new RAFInputStream(data, 0, data.size());
+        MultiHashInputStream hashStream = new MultiHashInputStream(is, HashType.SHA256.bitmask)) {
+      FileUtil.copy(hashStream, new NullOutputStream(), data.size());
+      return hashStream.getResults();
+    }
   }
 
   private LockableRandomAccessBuffer generateData(
@@ -291,7 +291,7 @@ class ClientRequestSelectorTest {
   final InsertContext baseContext;
   final WaitableExecutor executor;
   final Ticker ticker;
-  final byte cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
+  private static final byte CRYPTO_ALGORITHM = Key.ALGO_AES_CTR_256_SHA256;
   final byte[] cryptoKey;
   final ChecksumChecker checker;
   final MemoryLimitedJobRunner memoryLimitedJobRunner;

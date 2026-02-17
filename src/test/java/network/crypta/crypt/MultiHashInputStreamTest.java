@@ -24,6 +24,8 @@ class MultiHashInputStreamTest {
   private static final byte[] MESSAGE = "Hello, World!".getBytes(StandardCharsets.UTF_8);
   private static final String MESSAGE_MD5 = "65a8e27d8879283831b664bd8b7f0ad4";
 
+  private static void ignoreInt(int ignored) {}
+
   private static MultiHashInputStream newHasher(InputStream in, long bitmask) {
     return new MultiHashInputStream(in, bitmask);
   }
@@ -81,7 +83,7 @@ class MultiHashInputStreamTest {
     ByteArrayInputStream input = new ByteArrayInputStream(MESSAGE);
     MultiHashInputStream hash = newHasher(input, HashType.MD5.bitmask);
 
-    assertThrows(NullPointerException.class, () -> hash.read(null, 0, 1));
+    assertThrows(NullPointerException.class, () -> ignoreInt(hash.read(null, 0, 1)));
   }
 
   @Test
@@ -90,9 +92,11 @@ class MultiHashInputStreamTest {
     MultiHashInputStream hash = newHasher(input, HashType.MD5.bitmask);
 
     byte[] buf = new byte[4];
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, -1, 1));
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 0, -1));
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 3, 2));
+    int invalidOffset = Integer.parseInt("-1");
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, invalidOffset, 1)));
+    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, 0, -1)));
+    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, 3, 2)));
   }
 
   @Test

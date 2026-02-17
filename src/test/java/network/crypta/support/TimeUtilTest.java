@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class TimeUtilTest {
 
   // 1w+1d+1h+1m+1s+1ms
-  private final long oneForTermLong = 694861001;
+  private static final long ONE_FOR_TERM_LONG = 694861001;
 
   @BeforeEach
   void setUp() {
@@ -106,7 +106,7 @@ class TimeUtilTest {
       "1w1d1h1m1.001s"
     };
     for (int i = 0; i < valAndExpected.length; i++)
-      assertEquals(TimeUtil.formatTime(oneForTermLong, i, true), valAndExpected[i]);
+      assertEquals(TimeUtil.formatTime(ONE_FOR_TERM_LONG, i, true), valAndExpected[i]);
   }
 
   /**
@@ -126,7 +126,7 @@ class TimeUtilTest {
    */
   @Test
   void testFormatTime_LongIntBoolean_tooManyTerms() {
-    assertThrows(IllegalArgumentException.class, () -> TimeUtil.formatTime(oneForTermLong, 7));
+    assertThrows(IllegalArgumentException.class, () -> TimeUtil.formatTime(ONE_FOR_TERM_LONG, 7));
   }
 
   /** Tests {@link TimeUtil#setTimeToZero(Instant)} */
@@ -159,7 +159,7 @@ class TimeUtilTest {
 
   @Test
   void testToMillis_oneForTermLong() {
-    assertEquals(oneForTermLong, TimeUtil.toMillis("1w1d1h1m1.001s"));
+    assertEquals(ONE_FOR_TERM_LONG, TimeUtil.toMillis("1w1d1h1m1.001s"));
   }
 
   @Test
@@ -223,7 +223,7 @@ class TimeUtilTest {
   @Test
   void formatTime_whenNegativeIntervalWithFractions_formatsWithLeadingMinus() {
     // Arrange
-    long negative = -oneForTermLong;
+    long negative = -ONE_FOR_TERM_LONG;
     // Act
     String formatted = TimeUtil.formatTime(negative, 6, true);
     // Assert

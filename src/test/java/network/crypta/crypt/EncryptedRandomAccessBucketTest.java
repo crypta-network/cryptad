@@ -361,19 +361,19 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     r.nextBytes(buf);
     FileBucket fb = new FileBucket(tempFile, false, false, false, true);
     EncryptedRandomAccessBucket erab = new EncryptedRandomAccessBucket(types[0], fb, secret);
-    OutputStream os = erab.getOutputStream();
-    os.write(buf, 0, buf.length);
-    os.close();
-    InputStream is = erab.getInputStream();
     byte[] tmp = new byte[buf.length];
-    new DataInputStream(is).readFully(tmp);
-    is.close();
+    try (OutputStream os = erab.getOutputStream()) {
+      os.write(buf, 0, buf.length);
+    }
+    try (InputStream is = erab.getInputStream();
+        DataInputStream dataIn = new DataInputStream(is)) {
+      dataIn.readFully(tmp);
+    }
     assertArrayEquals(buf, tmp);
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    DataOutputStream dos = new DataOutputStream(baos);
-    erab.storeTo(dos);
-    dos.close();
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
+    try (DataOutputStream dos = new DataOutputStream(baos)) {
+      erab.storeTo(dos);
+    }
     ClientContext context =
         new ClientContext(
             0,
@@ -384,17 +384,21 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
                 new ClientContextResources(null, null), null, null, null, null, null),
             new ClientContextDefaults(null, null, null));
     context.setPersistentMasterSecret(secret);
-    EncryptedRandomAccessBucket restored =
-        (EncryptedRandomAccessBucket)
-            BucketTools.restoreFrom(
-                dis, context.persistentFG, context.getPersistentFileTracker(), secret);
+    EncryptedRandomAccessBucket restored;
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      restored =
+          (EncryptedRandomAccessBucket)
+              BucketTools.restoreFrom(
+                  dis, context.persistentFG, context.getPersistentFileTracker(), secret);
+    }
     assertEquals(buf.length, restored.size());
     assertEquals(erab, restored);
     tmp = new byte[buf.length];
-    is = erab.getInputStream();
-    new DataInputStream(is).readFully(tmp);
+    try (InputStream is = erab.getInputStream();
+        DataInputStream dataIn = new DataInputStream(is)) {
+      dataIn.readFully(tmp);
+    }
     assertArrayEquals(buf, tmp);
-    is.close();
     restored.free();
   }
 
@@ -406,19 +410,19 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     r.nextBytes(buf);
     FileBucket fb = new FileBucket(tempFile, false, false, false, true);
     EncryptedRandomAccessBucket erab = new EncryptedRandomAccessBucket(types[0], fb, secret);
-    OutputStream os = erab.getOutputStream();
-    os.write(buf, 0, buf.length);
-    os.close();
-    InputStream is = erab.getInputStream();
     byte[] tmp = new byte[buf.length];
-    new DataInputStream(is).readFully(tmp);
-    is.close();
+    try (OutputStream os = erab.getOutputStream()) {
+      os.write(buf, 0, buf.length);
+    }
+    try (InputStream is = erab.getInputStream();
+        DataInputStream dataIn = new DataInputStream(is)) {
+      dataIn.readFully(tmp);
+    }
     assertArrayEquals(buf, tmp);
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    ObjectOutputStream oos = new ObjectOutputStream(baos);
-    oos.writeObject(erab);
-    oos.close();
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(erab);
+    }
     ClientContext context =
         new ClientContext(
             0,
@@ -429,16 +433,20 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
                 new ClientContextResources(null, null), null, null, null, null, null),
             new ClientContextDefaults(null, null, null));
     context.setPersistentMasterSecret(secret);
-    ObjectInputStream ois = new ObjectInputStream(dis);
-    EncryptedRandomAccessBucket restored = (EncryptedRandomAccessBucket) ois.readObject();
+    EncryptedRandomAccessBucket restored;
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
+        ObjectInputStream ois = new ObjectInputStream(dis)) {
+      restored = (EncryptedRandomAccessBucket) ois.readObject();
+    }
     restored.onResume(context);
     assertEquals(buf.length, restored.size());
     assertEquals(erab, restored);
     tmp = new byte[buf.length];
-    is = erab.getInputStream();
-    new DataInputStream(is).readFully(tmp);
+    try (InputStream is = erab.getInputStream();
+        DataInputStream dataIn = new DataInputStream(is)) {
+      dataIn.readFully(tmp);
+    }
     assertArrayEquals(buf, tmp);
-    is.close();
     restored.free();
   }
 

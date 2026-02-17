@@ -11,9 +11,11 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 class AppDirsTest {
-  @TempDir private lateinit var tmp: Path
+  @TempDir private var tmp: Path? = null
 
   private fun norm(value: String): String = value.replace('\\', '/')
+
+  private fun tmpDirPath(): Path = requireNotNull(tmp)
 
   private fun sysProps(home: Path, tmpdir: Path): Map<String, String> {
     val props = HashMap<String, String>()
@@ -25,8 +27,8 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenLinuxXdgUnset_defaultsUnderHome() {
-    val home = tmp.resolve("home")
-    val t = tmp.resolve("t")
+    val home = tmpDirPath().resolve("home")
+    val t = tmpDirPath().resolve("t")
     Files.createDirectories(home)
     Files.createDirectories(t)
     val env = HashMap<String, String>()
@@ -42,7 +44,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenLinuxXdgSet_respectsEnv() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val t = root.resolve("t")
     val xdgConfig = root.resolve("xdg-config")
@@ -69,11 +71,11 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenMacNative_defaultsToLibrary() {
-    val home = tmp.resolve("home")
+    val home = tmpDirPath().resolve("home")
     Files.createDirectories(home)
     val env = HashMap<String, String>()
     val envResolver = AppEnv(env, "Mac OS X", "user")
-    val props = sysProps(home, tmp).toMutableMap()
+    val props = sysProps(home, tmpDirPath()).toMutableMap()
     props["os.name"] = "Mac OS X"
     val dirs = AppDirs(env, props, HashMap(), envResolver)
 
@@ -87,14 +89,14 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenMacXdgSet_respectsEnv() {
-    val home = tmp.resolve("home")
-    val xdgConfig = tmp.resolve("xdg")
+    val home = tmpDirPath().resolve("home")
+    val xdgConfig = tmpDirPath().resolve("xdg")
     Files.createDirectories(home)
     Files.createDirectories(xdgConfig)
     val env = HashMap<String, String>()
     env["XDG_CONFIG_HOME"] = xdgConfig.toString()
     val envResolver = AppEnv(env, "Mac OS X", "user")
-    val props = sysProps(home, tmp).toMutableMap()
+    val props = sysProps(home, tmpDirPath()).toMutableMap()
     props["os.name"] = "Mac OS X"
     val dirs = AppDirs(env, props, HashMap(), envResolver)
 
@@ -105,7 +107,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenSnapStrict_usesCommonForData() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val common = root.resolve("snap-common")
     Files.createDirectories(home)
@@ -127,7 +129,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenSnapWithoutCommon_usesXdgAndRuntimeUnderXdgRt() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val xdgConfig = root.resolve("xdg-config")
     val xdgData = root.resolve("xdg-data")
@@ -157,7 +159,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenSnapWithCommonAndRuntimeUnwritable_fallsBackToCacheRuntime() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val common = root.resolve("snap-common")
     val xdgCache = common.resolve(".cache")
@@ -185,14 +187,14 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenMacXdgCasing_isLowercaseCryptad() {
-    val home = tmp.resolve("home")
-    val xdgConfig = tmp.resolve("xdg")
+    val home = tmpDirPath().resolve("home")
+    val xdgConfig = tmpDirPath().resolve("xdg")
     Files.createDirectories(home)
     Files.createDirectories(xdgConfig)
     val env = HashMap<String, String>()
     env["XDG_CONFIG_HOME"] = xdgConfig.toString()
     val envResolver = AppEnv(env, "Mac OS X", "user")
-    val props = sysProps(home, tmp).toMutableMap()
+    val props = sysProps(home, tmpDirPath()).toMutableMap()
     props["os.name"] = "Mac OS X"
     val dirs = AppDirs(env, props, HashMap(), envResolver)
 
@@ -203,7 +205,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenWindowsAppDirs_casingIsCryptad() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val roaming = home.resolve("AppData/Roaming")
     val local = home.resolve("AppData/Local")
@@ -225,7 +227,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenXdgRuntimeMissing_fallsBackToCacheRt() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val xdgCache = root.resolve("xdg-cache")
     val xdgConfig = root.resolve("xdg-config")
@@ -249,7 +251,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenFlatpakXdgSet_usesXdgDirs() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     val xdgConfig = root.resolve("xdg-config")
     val env = flatpakEnv(root, home, xdgConfig)
@@ -282,7 +284,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenSystemdService_usesExportedDirs() {
-    val root = tmp
+    val root = tmpDirPath()
     val env = HashMap<String, String>()
     env["CONFIGURATION_DIRECTORY"] = root.resolve("etc").toString()
     env["STATE_DIRECTORY"] = root.resolve("lib").toString()
@@ -300,7 +302,7 @@ class AppDirsTest {
 
   @Test
   fun resolve_whenWindowsService_rootsUnderProgramData() {
-    val root = tmp
+    val root = tmpDirPath()
     val env = HashMap<String, String>()
     env["PROGRAMDATA"] = root.resolve("ProgramData").toString()
     val svc = ServiceDirs(env, AppEnv(env, "Windows 10", "SYSTEM"))
@@ -327,7 +329,7 @@ class AppDirsTest {
   @Test
   @Throws(IOException::class)
   fun expandAll_whenPlaceholdersPresent_expandsAll() {
-    val root = tmp
+    val root = tmpDirPath()
     val home = root.resolve("home")
     Files.createDirectories(home)
     val env = HashMap<String, String>()

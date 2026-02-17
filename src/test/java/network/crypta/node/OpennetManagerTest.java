@@ -121,7 +121,6 @@ class OpennetManagerTest {
   static class TestCallback implements OpennetNoderefWaiter.NoderefCallback {
 
     boolean timedOut;
-    Boolean ackTimedOut;
     byte[] noderef;
 
     @Override
@@ -136,7 +135,7 @@ class OpennetManagerTest {
 
     @Override
     public void acked(boolean timedOutMessage) {
-      this.ackTimedOut = timedOutMessage;
+      // No-op for this test callback.
     }
   }
 

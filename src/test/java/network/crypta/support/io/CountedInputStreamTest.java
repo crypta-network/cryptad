@@ -21,6 +21,10 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class CountedInputStreamTest {
 
+  private static void ignoreInt(int ignored) {}
+
+  private static void ignoreLong(long ignored) {}
+
   @Test
   void constructor_whenNullInput_expectIllegalStateException() {
     assertThrows(
@@ -51,7 +55,7 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).read();
+    ignoreInt(verify(in, times(1)).read());
   }
 
   @ParameterizedTest
@@ -66,7 +70,7 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).read(same(buf));
+    ignoreInt(verify(in, times(1)).read(same(buf)));
   }
 
   @ParameterizedTest
@@ -83,7 +87,7 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).read(same(buf), eq(off), eq(len));
+    ignoreInt(verify(in, times(1)).read(same(buf), eq(off), eq(len)));
   }
 
   @ParameterizedTest
@@ -97,7 +101,7 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).skip(10L);
+    ignoreLong(verify(in, times(1)).skip(10L));
   }
 
   @Test
@@ -106,7 +110,7 @@ class CountedInputStreamTest {
     when(in.read((byte[]) isNull())).thenThrow(new NullPointerException("buf"));
     try (CountedInputStream cis = new CountedInputStream(in)) {
       //noinspection DataFlowIssue
-      assertThrows(NullPointerException.class, () -> cis.read(null));
+      assertThrows(NullPointerException.class, () -> ignoreInt(cis.read(null)));
       assertEquals(0L, cis.count());
     }
   }
@@ -117,7 +121,9 @@ class CountedInputStreamTest {
     InputStream in = mock(InputStream.class);
     when(in.read(same(buf), eq(-1), eq(2))).thenThrow(new IndexOutOfBoundsException("off < 0"));
     try (CountedInputStream cis = new CountedInputStream(in)) {
-      assertThrows(IndexOutOfBoundsException.class, () -> cis.read(buf, -1, 2));
+      int invalidOffset = Integer.parseInt("-1");
+      assertThrows(
+          IndexOutOfBoundsException.class, () -> ignoreInt(cis.read(buf, invalidOffset, 2)));
       assertEquals(0L, cis.count());
     }
   }
@@ -131,7 +137,7 @@ class CountedInputStreamTest {
       assertEquals(2L, ret);
       assertEquals(2L, cis.count());
     }
-    verify(in, times(1)).skip(5L);
+    ignoreLong(verify(in, times(1)).skip(5L));
   }
 
   @Test

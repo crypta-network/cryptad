@@ -3,6 +3,7 @@ package org.spaceroots.mantissa.utilities;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -92,7 +93,7 @@ class ArrayMapperTest {
 
     assertNotSame(null, dataForFirst);
     assertEquals(3, dataForFirst.length);
-    assertEquals(dataForFirst, dataForSecond);
+    assertSame(dataForFirst, dataForSecond);
   }
 
   @Test
@@ -115,7 +116,7 @@ class ArrayMapperTest {
     double[] dataForSecond = captorSecond.getValue();
 
     assertEquals(3, dataForFirst.length);
-    assertEquals(dataForFirst, dataForSecond);
+    assertSame(dataForFirst, dataForSecond);
   }
 
   @Test

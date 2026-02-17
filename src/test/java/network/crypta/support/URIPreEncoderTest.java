@@ -24,6 +24,10 @@ class URIPreEncoderTest {
   private final String printableAscii = new String(UTFUtil.printableAscii());
   private final String stressedUtfChars = new String(UTFUtil.stressedUtf());
 
+  private static void ignoreString(String ignored) {}
+
+  private static void ignoreUri(URI ignored) {}
+
   @Test
   void encode_whenMixedAsciiAndUtf8_expectOnlyAllowedChars() {
     // Arrange
@@ -89,7 +93,7 @@ class URIPreEncoderTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void encode_whenNull_expectNullPointerException() {
-    assertThrows(NullPointerException.class, () -> URIPreEncoder.encode(null));
+    assertThrows(NullPointerException.class, () -> ignoreString(URIPreEncoder.encode(null)));
   }
 
   @Test
@@ -117,7 +121,7 @@ class URIPreEncoderTest {
 
   @Test
   void encodeURI_whenNull_expectNullPointerException() {
-    assertThrows(NullPointerException.class, () -> URIPreEncoder.encodeURI(null));
+    assertThrows(NullPointerException.class, () -> ignoreUri(URIPreEncoder.encodeURI(null)));
   }
 
   private static boolean containsOnlyValidChars(String s) {

@@ -19,6 +19,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class DetectedIPTest {
 
+  private static boolean equalsAsObjects(Object left, Object right) {
+    return left.equals(right);
+  }
+
   @Test
   void DetectedIP_whenConstructed_setsFieldsAndDefaultMtu() {
     // Arrange
@@ -77,10 +81,10 @@ class DetectedIPTest {
     // Arrange
     DetectedIP detectedIP = new DetectedIP(inet4(203, 0, 113, 2), DetectedIP.FULL_INTERNET);
     Object other = "not a DetectedIP";
+    Object left = detectedIP;
 
     // Act
-    //noinspection EqualsBetweenInconvertibleTypes
-    boolean result = detectedIP.equals(other);
+    boolean result = equalsAsObjects(left, other);
 
     // Assert
     assertFalse(result);

@@ -66,7 +66,6 @@ class SplitFileFetcherStorageInitParamsTest {
     assertFalse(params.topDontCompress);
     assertEquals((short) 0, params.topCompatibilityMode);
     assertNull(params.origFetchContext);
-    assertFalse(params.realTime);
     assertNull(params.salt);
     assertNull(params.thisKey);
     assertNull(params.origKey);
@@ -103,7 +102,6 @@ class SplitFileFetcherStorageInitParamsTest {
             .topDontCompress(true)
             .topCompatibilityMode((short) 7)
             .fetchContext(fetchContext)
-            .realTime(true)
             .salt(keySalter)
             .thisKey(thisKey)
             .origKey(origKey)
@@ -132,7 +130,6 @@ class SplitFileFetcherStorageInitParamsTest {
     assertTrue(params.topDontCompress);
     assertEquals((short) 7, params.topCompatibilityMode);
     assertSame(fetchContext, params.origFetchContext);
-    assertTrue(params.realTime);
     assertSame(keySalter, params.salt);
     assertSame(thisKey, params.thisKey);
     assertSame(origKey, params.origKey);

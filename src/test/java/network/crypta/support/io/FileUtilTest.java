@@ -29,6 +29,8 @@ import org.mockito.MockedStatic;
 @SuppressWarnings("java:S100")
 class FileUtilTest {
 
+  private static void ignoreLong(long ignored) {}
+
   // ------------------------ sanitizeFileName() ---------------------------------
 
   @ParameterizedTest(name = "{0} → {2} on {1}")
@@ -118,11 +120,11 @@ class FileUtilTest {
   void skipFully_whenProgressesInChunks_expectSuccess() throws Exception {
     // Arrange: mock skip() to advance in multiple steps
     InputStream is = mock(InputStream.class);
-    doReturn(3L, 5L, 2L).when(is).skip(anyLong());
+    when(is.skip(anyLong())).thenReturn(3L, 5L, 2L);
 
     // Act + Assert: should not throw and perform 3 skip calls
     assertDoesNotThrow(() -> FileUtil.skipFully(is, 10));
-    verify(is, times(3)).skip(anyLong());
+    ignoreLong(verify(is, times(3)).skip(anyLong()));
   }
 
   @Test
@@ -130,10 +132,11 @@ class FileUtilTest {
   void skipFully_whenSkipReturnsZero_expectIOException() throws Exception {
     // Arrange
     InputStream is = mock(InputStream.class);
-    doReturn(0L).when(is).skip(anyLong());
+    when(is.skip(anyLong())).thenReturn(0L);
 
     // Act + Assert
     assertThrows(IOException.class, () -> FileUtil.skipFully(is, 5));
+    ignoreLong(verify(is, atLeastOnce()).skip(anyLong()));
   }
 
   // ------------------------ readUTF() ------------------------------------------

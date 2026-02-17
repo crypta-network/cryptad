@@ -450,20 +450,19 @@ class TempBucketMigrationTest {
     TempBucketFactory tbf =
         new TempBucketFactory(exec, fg, 1024, 65536, false, MIN_DISK_SPACE, secret);
     try (TempBucket bucket = (TempBucket) tbf.makeBucket(64)) {
-      OutputStream os = bucket.getOutputStreamUnbuffered();
-      os.write(new byte[16]);
-      InputStream is = bucket.getInputStream();
+      try (OutputStream os = bucket.getOutputStreamUnbuffered();
+          InputStream is = bucket.getInputStream()) {
+        os.write(new byte[16]);
 
-      // Act
-      bucket.migrateToDisk();
-      byte[] readTo = new byte[16];
-      int read = is.read(readTo, 0, 16);
+        // Act
+        bucket.migrateToDisk();
+        byte[] readTo = new byte[16];
+        int read = is.read(readTo, 0, 16);
 
-      // Assert
-      assertEquals(16, read);
-      for (byte v : readTo) assertEquals(0, v);
-      is.close();
-      os.close();
+        // Assert
+        assertEquals(16, read);
+        for (byte v : readTo) assertEquals(0, v);
+      }
     }
   }
 
@@ -474,21 +473,21 @@ class TempBucketMigrationTest {
     TempBucketFactory tbf =
         new TempBucketFactory(exec, fg, 4096, 65536, false, MIN_DISK_SPACE, secret);
     try (TempBucket bucket = (TempBucket) tbf.makeBucket(2048)) {
-      OutputStream os = bucket.getOutputStreamUnbuffered();
       byte[] data = new byte[2048];
       new java.security.SecureRandom().nextBytes(data);
-      os.write(data);
-      InputStream is = bucket.getInputStream();
+      try (OutputStream os = bucket.getOutputStreamUnbuffered();
+          InputStream is = bucket.getInputStream();
+          DataInputStream dis = new DataInputStream(is)) {
+        os.write(data);
 
-      // Act
-      bucket.migrateToDisk();
-      byte[] readTo = new byte[2048];
-      new DataInputStream(is).readFully(readTo);
+        // Act
+        bucket.migrateToDisk();
+        byte[] readTo = new byte[2048];
+        dis.readFully(readTo);
 
-      // Assert
-      assertArrayEquals(data, readTo);
-      is.close();
-      os.close();
+        // Assert
+        assertArrayEquals(data, readTo);
+      }
     }
   }
 

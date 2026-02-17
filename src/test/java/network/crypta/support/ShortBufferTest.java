@@ -29,6 +29,8 @@ class ShortBufferTest {
       "asldkjaskjdsakdhasdhaskjdhaskjhbkasbhdjkasbduiwbxgdoudgboewuydxbybuewyxbuewyuwe"
           + "dasdkljasndijwnodhnqweoidhnaouidhbnwoduihwnxodiuhnwuioxdhnwqiouhnxwqoiushdnxwqoiudhxnwqoiudhxni";
 
+  private static void ignoreByte(byte ignored) {}
+
   // ---------- Constructors ----------
 
   @Test
@@ -163,8 +165,8 @@ class ShortBufferTest {
   void byteAt_whenNegativeOrAtLength_throws() {
     byte[] data = {9, 8, 7};
     ShortBuffer b = new ShortBuffer(data);
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(-1));
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(data.length));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(-1)));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(data.length)));
   }
 
   // ---------- write/copy semantics ----------

@@ -102,17 +102,18 @@ class SplitFileFetcherStorageTest {
   static byte[][] splitAndPadBlocks(Bucket data, long size) throws IOException {
     int n = (int) ((size + BLOCK_SIZE - 1) / BLOCK_SIZE);
     byte[][] blocks = new byte[n][];
-    InputStream is = data.getInputStream();
-    DataInputStream dis = new DataInputStream(is);
-    for (int i = 0; i < n; i++) {
-      blocks[i] = new byte[BLOCK_SIZE];
-      if (i < n - 1) {
-        dis.readFully(blocks[i]);
-      } else {
-        int length = (int) (size - i * BLOCK_SIZE);
-        dis.readFully(blocks[i], 0, length);
-        // Now pad it ...
-        blocks[i] = BucketTools.pad(blocks[i], BLOCK_SIZE, length);
+    try (InputStream is = data.getInputStream();
+        DataInputStream dis = new DataInputStream(is)) {
+      for (int i = 0; i < n; i++) {
+        blocks[i] = new byte[BLOCK_SIZE];
+        if (i < n - 1) {
+          dis.readFully(blocks[i]);
+        } else {
+          int length = (int) (size - (long) i * BLOCK_SIZE);
+          dis.readFully(blocks[i], 0, length);
+          // Now pad it ...
+          blocks[i] = BucketTools.pad(blocks[i], BLOCK_SIZE, length);
+        }
       }
     }
     return blocks;
@@ -316,7 +317,7 @@ class SplitFileFetcherStorageTest {
     int dataBlocks = 3;
     int checkBlocks = 3;
     TestSplitfile test =
-        TestSplitfile.constructSingleSegment(dataBlocks * BLOCK_SIZE, checkBlocks, true);
+        TestSplitfile.constructSingleSegment((long) dataBlocks * BLOCK_SIZE, checkBlocks, true);
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
     SplitFileFetcherSegmentStorage segment = storage.segments[0];
@@ -1187,7 +1188,6 @@ class SplitFileFetcherStorageTest {
               .topDontCompress(false)
               .topCompatibilityMode(COMPATIBILITY_MODE.code)
               .fetchContext(ctx)
-              .realTime(false)
               .salt(salt)
               .thisKey(uri)
               .origKey(uri)
@@ -1223,7 +1223,6 @@ class SplitFileFetcherStorageTest {
       return new SplitFileFetcherStorage(
           new SplitFileFetcherStorageResumeParams.Builder()
               .raf(raf)
-              .realTime(false)
               .callback(cb)
               .context(ctx)
               .random(random)
@@ -1233,8 +1232,6 @@ class SplitFileFetcherStorageTest {
               .memoryLimitedJobRunner(memoryLimitedJobRunner)
               .checker(new CRCChecksumChecker())
               .newSalt(false)
-              .salt(null)
-              .resumed(false)
               .completeViaTruncation(false)
               .build());
     }

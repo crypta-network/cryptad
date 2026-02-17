@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.support.PriorityAwareExecutor;
@@ -141,7 +142,7 @@ class IPAddressDetectorTest {
     det.lastDetectedTime = -1; // force checkpoint
 
     InetAddress[] out = det.getAddressNoCallback();
-    assertEquals(1, det.checkpointCalls);
+    assertEquals(1, det.checkpointCalls.get());
     assertNotNull(out);
     assertEquals(2, out.length);
     // Result equals the list set by checkpoint()
@@ -293,7 +294,7 @@ class IPAddressDetectorTest {
 
   /** Test subclass that counts checkpoint invocations and supplies a deterministic snapshot. */
   private static final class CountingDetector extends IPAddressDetector {
-    volatile int checkpointCalls = 0;
+    private final AtomicInteger checkpointCalls = new AtomicInteger();
 
     CountingDetector(long interval, NodeIPDetector detector) {
       super(interval, detector);
@@ -301,7 +302,7 @@ class IPAddressDetectorTest {
 
     @Override
     protected synchronized boolean checkpoint() {
-      checkpointCalls++;
+      checkpointCalls.incrementAndGet();
       try {
         this.lastAddressList.set(
             new AtomicReferenceArray<>(

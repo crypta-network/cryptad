@@ -1,5 +1,6 @@
 package network.crypta.client.filter;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -65,8 +66,8 @@ class FilterMIMETypeTest {
     // Assert
     assertEquals(type, mt.primaryMimeType);
     assertEquals(ext, mt.primaryExtension);
-    assertEquals(extraTypes, mt.alternateMimeTypes);
-    assertEquals(extraExts, mt.alternateExtensions);
+    assertArrayEquals(extraTypes, mt.alternateMimeTypes);
+    assertArrayEquals(extraExts, mt.alternateExtensions);
     assertEquals(safeToRead, mt.safeToRead);
     assertEquals(safeToWrite, mt.safeToWrite);
     assertNull(mt.readFilter);

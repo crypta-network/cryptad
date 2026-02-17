@@ -34,16 +34,18 @@ import org.mockito.junit.jupiter.MockitoExtension
 @Suppress("java:S100", "kotlin:S100")
 @ExtendWith(MockitoExtension::class)
 internal class LauncherControllerTest {
-  @TempDir private lateinit var tempDir: Path
+  @TempDir private var tempDir: Path? = null
 
   private companion object {
     private const val TEST_PORT = 8888
   }
 
+  private fun tempPath(): Path = requireNotNull(tempDir)
+
   @Test
   fun start_whenCryptadMissing_logsErrorAndDoesNotRun() {
     val scope = newScope()
-    val controller = LauncherController(scope, Dispatchers.IO, tempDir)
+    val controller = LauncherController(scope, Dispatchers.IO, tempPath())
     val logs = startLogCollector(scope, controller)
 
     try {
@@ -60,10 +62,10 @@ internal class LauncherControllerTest {
   @Test
   fun start_whenScriptRuns_updatesStateAndReadsPort() {
     val scope = newScope()
-    val controller = LauncherController(scope, Dispatchers.IO, tempDir)
+    val controller = LauncherController(scope, Dispatchers.IO, tempPath())
     val logs = startLogCollector(scope, controller)
-    val wrapperConf = writeWrapperConf(tempDir)
-    writeCryptadScript(tempDir)
+    val wrapperConf = writeWrapperConf(tempPath())
+    writeCryptadScript(tempPath())
     setPrivateField(controller, "autoOpenedBrowser", true)
 
     try {
@@ -91,7 +93,7 @@ internal class LauncherControllerTest {
   @Test
   fun stop_whenProcessNotAlive_clearsRunningState() {
     val scope = newScope()
-    val controller = LauncherController(scope, Dispatchers.IO, tempDir)
+    val controller = LauncherController(scope, Dispatchers.IO, tempPath())
     val process = mock(Process::class.java)
     Mockito.`when`(process.isAlive).thenReturn(false)
     setPrivateField(controller, "process", process)
@@ -111,7 +113,7 @@ internal class LauncherControllerTest {
   @Test
   fun launchBrowser_whenDesktopSupported_invokesBrowse() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    val controller = LauncherController(scope, Dispatchers.Unconfined, tempDir)
+    val controller = LauncherController(scope, Dispatchers.Unconfined, tempPath())
     val desktop = mock(Desktop::class.java)
     Mockito.`when`(desktop.isSupported(Desktop.Action.BROWSE)).thenReturn(true)
     setState(controller, AppState(knownPort = 1234))
@@ -133,7 +135,7 @@ internal class LauncherControllerTest {
   @Test
   fun shutdown_setsShuttingDownFlagAndIsIdempotent() {
     val scope = newScope()
-    val controller = LauncherController(scope, Dispatchers.IO, tempDir)
+    val controller = LauncherController(scope, Dispatchers.IO, tempPath())
 
     try {
       controller.shutdown()
@@ -149,7 +151,7 @@ internal class LauncherControllerTest {
   @Test
   fun shutdownAndWait_whenNoProcess_setsShuttingDownFlag() {
     val scope = newScope()
-    val controller = LauncherController(scope, Dispatchers.IO, tempDir)
+    val controller = LauncherController(scope, Dispatchers.IO, tempPath())
 
     try {
       invokeShutdownAndWait(controller)
@@ -167,7 +169,8 @@ internal class LauncherControllerTest {
     controller: LauncherController,
   ): LogCollector {
     val lines = CopyOnWriteArrayList<String>()
-    scope.launch { controller.logs.collect { line -> lines.add(line) } }
+    val logs = controller.logs
+    scope.launch { logs.collect { line -> lines.add(line) } }
     return LogCollector(lines)
   }
 

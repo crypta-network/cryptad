@@ -23,6 +23,8 @@ import org.spaceroots.mantissa.functions.FunctionException;
 @ExtendWith(MockitoExtension.class)
 class BasicSampledFunctionIteratorTest {
 
+  private static void ignoreInt(int ignored) {}
+
   @Mock private SampledFunction function;
 
   @Test
@@ -42,7 +44,7 @@ class BasicSampledFunctionIteratorTest {
     BasicSampledFunctionIterator iterator = new BasicSampledFunctionIterator(function);
 
     assertTrue(iterator.hasNext());
-    verify(function, times(1)).size();
+    ignoreInt(verify(function, times(1)).size());
   }
 
   @Test
@@ -55,7 +57,7 @@ class BasicSampledFunctionIteratorTest {
     iterator.nextSamplePoint();
 
     assertFalse(iterator.hasNext());
-    verify(function, times(2)).size();
+    ignoreInt(verify(function, times(2)).size());
   }
 
   @Test
@@ -77,11 +79,11 @@ class BasicSampledFunctionIteratorTest {
     assertFalse(iterator.hasNext());
 
     var order = inOrder(function);
-    order.verify(function).size();
+    ignoreInt(order.verify(function).size());
     order.verify(function).samplePointAt(0);
-    order.verify(function).size();
+    ignoreInt(order.verify(function).size());
     order.verify(function).samplePointAt(1);
-    order.verify(function).size();
+    ignoreInt(order.verify(function).size());
   }
 
   @Test
@@ -95,7 +97,7 @@ class BasicSampledFunctionIteratorTest {
 
     assertThrows(ExhaustedSampleException.class, iterator::nextSamplePoint);
     // size() is called once on the initial read and twice on the exhausted call (guard + message)
-    verify(function, times(3)).size();
+    ignoreInt(verify(function, times(3)).size());
     verify(function, times(1)).samplePointAt(0);
     verifyNoMoreInteractions(function);
   }

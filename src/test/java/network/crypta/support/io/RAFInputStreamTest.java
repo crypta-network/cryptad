@@ -24,6 +24,10 @@ import org.mockito.ArgumentCaptor;
  */
 class RAFInputStreamTest {
 
+  private static void ignoreInt(int ignored) {
+    // Intentional no-op for tests validating exceptional paths.
+  }
+
   private static byte[] patternBytes(int length) {
     byte[] data = new byte[length];
     for (int i = 0; i < length; i++) {
@@ -40,17 +44,18 @@ class RAFInputStreamTest {
     byte[] content = patternBytes(10);
     RandomAccessBuffer raf = stubRaf(content);
     // Window: start at index 4, length 3 -> bytes [4,5,6]
-    RAFInputStream is = new RAFInputStream(raf, 4, 3);
-    byte[] buf = new byte[8];
+    try (RAFInputStream is = new RAFInputStream(raf, 4, 3)) {
+      byte[] buf = new byte[8];
 
-    // Act
-    int n1 = is.read(buf, 0, buf.length);
+      // Act
+      int n1 = is.read(buf, 0, buf.length);
 
-    // Assert
-    assertEquals(3, n1);
-    assertArrayEquals(
-        new byte[] {content[4], content[5], content[6]}, new byte[] {buf[0], buf[1], buf[2]});
-    assertThrows(EOFException.class, () -> is.read(buf));
+      // Assert
+      assertEquals(3, n1);
+      assertArrayEquals(
+          new byte[] {content[4], content[5], content[6]}, new byte[] {buf[0], buf[1], buf[2]});
+      assertThrows(EOFException.class, () -> ignoreInt(is.read(buf)));
+    }
   }
 
   @Test
@@ -59,12 +64,12 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = patternBytes(6);
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, 1, 2); // expect bytes at indices 1 and 2
-
-    // Act & Assert
-    assertEquals(Byte.toUnsignedInt(content[1]), is.read());
-    assertEquals(Byte.toUnsignedInt(content[2]), is.read());
-    assertThrows(EOFException.class, is::read);
+    try (RAFInputStream is = new RAFInputStream(raf, 1, 2)) { // expect bytes at indices 1 and 2
+      // Act & Assert
+      assertEquals(Byte.toUnsignedInt(content[1]), is.read());
+      assertEquals(Byte.toUnsignedInt(content[2]), is.read());
+      assertThrows(EOFException.class, is::read);
+    }
   }
 
   private static RandomAccessBuffer stubRaf(byte[] content) throws IOException {
@@ -102,13 +107,13 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = new byte[] {(byte) 0xFF, 0x00, 0x7F};
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, 0, content.length);
-
-    // Act & Assert
-    assertEquals(255, is.read());
-    assertEquals(0, is.read());
-    assertEquals(127, is.read());
-    assertThrows(EOFException.class, is::read);
+    try (RAFInputStream is = new RAFInputStream(raf, 0, content.length)) {
+      // Act & Assert
+      assertEquals(255, is.read());
+      assertEquals(0, is.read());
+      assertEquals(127, is.read());
+      assertThrows(EOFException.class, is::read);
+    }
   }
 
   @Test
@@ -116,10 +121,10 @@ class RAFInputStreamTest {
   void readWhenAtEofExpectEOFException() throws Exception {
     // Arrange: zero-length view
     RandomAccessBuffer raf = stubRaf(new byte[0]);
-    RAFInputStream is = new RAFInputStream(raf, 0, 0);
-
-    // Act & Assert
-    assertThrows(EOFException.class, is::read);
+    try (RAFInputStream is = new RAFInputStream(raf, 0, 0)) {
+      // Act & Assert
+      assertThrows(EOFException.class, is::read);
+    }
   }
 
   @Test
@@ -128,20 +133,21 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = patternBytes(5);
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, 0, content.length);
-    byte[] buf = new byte[8];
+    try (RAFInputStream is = new RAFInputStream(raf, 0, content.length)) {
+      byte[] buf = new byte[8];
 
-    // Act & Assert
-    int n1 = is.read(buf, 0, 3);
-    assertEquals(3, n1);
-    assertArrayEquals(
-        new byte[] {content[0], content[1], content[2]}, new byte[] {buf[0], buf[1], buf[2]});
+      // Act & Assert
+      int n1 = is.read(buf, 0, 3);
+      assertEquals(3, n1);
+      assertArrayEquals(
+          new byte[] {content[0], content[1], content[2]}, new byte[] {buf[0], buf[1], buf[2]});
 
-    int n2 = is.read(buf, 0, 3);
-    assertEquals(2, n2); // clamped to remaining
-    assertArrayEquals(new byte[] {content[3], content[4]}, new byte[] {buf[0], buf[1]});
+      int n2 = is.read(buf, 0, 3);
+      assertEquals(2, n2); // clamped to remaining
+      assertArrayEquals(new byte[] {content[3], content[4]}, new byte[] {buf[0], buf[1]});
 
-    assertThrows(EOFException.class, () -> is.read(buf));
+      assertThrows(EOFException.class, () -> ignoreInt(is.read(buf)));
+    }
   }
 
   @Test
@@ -150,27 +156,29 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = patternBytes(5);
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, 0, content.length);
-    byte[] buf = new byte[5];
+    try (RAFInputStream is = new RAFInputStream(raf, 0, content.length)) {
+      byte[] buf = new byte[5];
 
-    // Act: first zero-length read
-    int zero = is.read(buf, 0, 0);
+      // Act: first zero-length read
+      int zero = is.read(buf, 0, 0);
 
-    // Assert
-    assertEquals(0, zero);
+      // Assert
+      assertEquals(0, zero);
 
-    // Next, read all bytes; fileOffset should still be 0 before this call
-    int n = is.read(buf, 0, buf.length);
-    assertEquals(content.length, n);
-    assertArrayEquals(content, buf);
+      // Next, read all bytes; fileOffset should still be 0 before this call
+      int n = is.read(buf, 0, buf.length);
+      assertEquals(content.length, n);
+      assertArrayEquals(content, buf);
 
-    // Verify pread() was invoked twice and the file offset did not advance on the zero-length call
-    ArgumentCaptor<Long> offsets = ArgumentCaptor.forClass(Long.class);
-    verify(raf, times(2)).pread(offsets.capture(), any(byte[].class), anyInt(), anyInt());
-    List<Long> captured = offsets.getAllValues();
-    assertEquals(2, captured.size());
-    assertEquals(0L, captured.get(0)); // zero-length read
-    assertEquals(0L, captured.get(1)); // subsequent full read starts at 0
+      // Verify pread() was invoked twice and the file offset did not advance on the zero-length
+      // call.
+      ArgumentCaptor<Long> offsets = ArgumentCaptor.forClass(Long.class);
+      verify(raf, times(2)).pread(offsets.capture(), any(byte[].class), anyInt(), anyInt());
+      List<Long> captured = offsets.getAllValues();
+      assertEquals(2, captured.size());
+      assertEquals(0L, captured.get(0)); // zero-length read
+      assertEquals(0L, captured.get(1)); // subsequent full read starts at 0
+    }
   }
 
   @Test
@@ -180,10 +188,10 @@ class RAFInputStreamTest {
     byte[] content = patternBytes(3);
     RandomAccessBuffer raf = stubRaf(content);
     // Zero-length window at EOF
-    RAFInputStream is = new RAFInputStream(raf, 3, 0);
-
-    // Act & Assert
-    assertThrows(EOFException.class, () -> is.read(new byte[1], 0, 0));
+    try (RAFInputStream is = new RAFInputStream(raf, 3, 0)) {
+      // Act & Assert
+      assertThrows(EOFException.class, () -> ignoreInt(is.read(new byte[1], 0, 0)));
+    }
   }
 
   @Test
@@ -192,10 +200,10 @@ class RAFInputStreamTest {
   void readBufferWhenNullBufferExpectNullPointerException() throws Exception {
     // Arrange
     RandomAccessBuffer raf = stubRaf(patternBytes(4));
-    RAFInputStream is = new RAFInputStream(raf, 0, 4);
-
-    // Act & Assert
-    assertThrows(NullPointerException.class, () -> is.read(null));
+    try (RAFInputStream is = new RAFInputStream(raf, 0, 4)) {
+      // Act & Assert
+      assertThrows(NullPointerException.class, () -> ignoreInt(is.read(null)));
+    }
   }
 
   @Test
@@ -204,12 +212,13 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = patternBytes(10);
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, 0, content.length);
-    byte[] buf = new byte[8];
+    try (RAFInputStream is = new RAFInputStream(raf, 0, content.length)) {
+      byte[] buf = new byte[8];
 
-    // Act & Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, -1, 1));
-    assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, 0, 9));
+      // Act & Assert
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, -1, 1)));
+      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, 0, 9)));
+    }
   }
 
   @Test
@@ -220,10 +229,10 @@ class RAFInputStreamTest {
     doThrow(new IOException("boom"))
         .when(raf)
         .pread(anyLong(), any(byte[].class), anyInt(), anyInt());
-    RAFInputStream is = new RAFInputStream(raf, 0, 5);
-
-    // Act & Assert
-    assertThrows(IOException.class, () -> is.read(new byte[2]));
+    try (RAFInputStream is = new RAFInputStream(raf, 0, 5)) {
+      // Act & Assert
+      assertThrows(IOException.class, () -> ignoreInt(is.read(new byte[2])));
+    }
   }
 
   @Test
@@ -232,10 +241,10 @@ class RAFInputStreamTest {
     // Arrange
     byte[] content = patternBytes(2);
     RandomAccessBuffer raf = stubRaf(content);
-    RAFInputStream is = new RAFInputStream(raf, -1, 2);
-
-    // Act & Assert
-    assertThrows(IllegalArgumentException.class, () -> is.read(new byte[1]));
+    try (RAFInputStream is = new RAFInputStream(raf, -1, 2)) {
+      // Act & Assert
+      assertThrows(IllegalArgumentException.class, () -> ignoreInt(is.read(new byte[1])));
+    }
   }
 
   @Nested
@@ -248,27 +257,28 @@ class RAFInputStreamTest {
       int length = 5000 + (chunk % 3);
       byte[] content = patternBytes(length);
       RandomAccessBuffer raf = stubRaf(content);
-      RAFInputStream is = new RAFInputStream(raf, 0, content.length);
-      byte[] buf = new byte[Math.max(chunk, 1)];
-      List<Byte> collected = new ArrayList<>(length);
+      try (RAFInputStream is = new RAFInputStream(raf, 0, content.length)) {
+        byte[] buf = new byte[Math.max(chunk, 1)];
+        List<Byte> collected = new ArrayList<>(length);
 
-      // Act
-      while (true) {
-        try {
-          int n = is.read(buf, 0, chunk);
-          for (int i = 0; i < n; i++) {
-            collected.add(buf[i]);
+        // Act
+        while (true) {
+          try {
+            int n = is.read(buf, 0, chunk);
+            for (int i = 0; i < n; i++) {
+              collected.add(buf[i]);
+            }
+          } catch (EOFException _) {
+            break; // expected at the end
           }
-        } catch (EOFException _) {
-          break; // expected at the end
         }
-      }
 
-      // Assert
-      byte[] out = new byte[collected.size()];
-      for (int i = 0; i < out.length; i++) out[i] = collected.get(i);
-      assertArrayEquals(content, out);
-      assertThrows(EOFException.class, () -> is.read(buf));
+        // Assert
+        byte[] out = new byte[collected.size()];
+        for (int i = 0; i < out.length; i++) out[i] = collected.get(i);
+        assertArrayEquals(content, out);
+        assertThrows(EOFException.class, () -> ignoreInt(is.read(buf)));
+      }
     }
   }
 }

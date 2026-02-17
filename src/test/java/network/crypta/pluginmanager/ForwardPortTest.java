@@ -3,6 +3,7 @@ package network.crypta.pluginmanager;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,11 @@ class ForwardPortTest {
   private static final String OPENNET = "opennet";
   private static final String DARKNET = "darknet";
 
+  private static ForwardPort constructForwardPort(
+      String name, boolean isIp6, int protocol, int port) {
+    return new ForwardPort(name, isIp6, protocol, port);
+  }
+
   @Test
   void constructor_whenValidArgs_setsPublicFields() {
     ForwardPort forwardPort = new ForwardPort(OPENNET, true, ForwardPort.PROTOCOL_UDP_IPV4, 12345);
@@ -32,7 +38,8 @@ class ForwardPortTest {
   @Test
   void constructor_whenNameIsNull_throwsNullPointerException() {
     //noinspection DataFlowIssue
-    assertThrows(NullPointerException.class, () -> new ForwardPort(null, false, 0, 0));
+    assertThrows(
+        NullPointerException.class, () -> assertNotNull(constructForwardPort(null, false, 0, 0)));
   }
 
   @Test

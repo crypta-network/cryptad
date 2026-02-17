@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,6 +27,10 @@ class RandomArrayIteratorTest {
   private RandomArrayIterator<Integer> iter;
   private Integer[] numbers;
 
+  private static RandomArrayIterator<Integer> constructIterator(Integer[] data) {
+    return new RandomArrayIterator<>(data);
+  }
+
   @BeforeEach
   void setUp() {
     numbers = new Integer[NUM_ELEMENTS];
@@ -38,7 +43,7 @@ class RandomArrayIteratorTest {
   @Test
   @DisplayName("constructor_whenArrayNull_expectNullPointerException")
   void constructor_whenArrayNull_expectNullPointerException() {
-    assertThrows(NullPointerException.class, () -> new RandomArrayIterator<>(null));
+    assertThrows(NullPointerException.class, () -> assertNotNull(constructIterator(null)));
   }
 
   @Test

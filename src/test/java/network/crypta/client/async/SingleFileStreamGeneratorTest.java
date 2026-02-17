@@ -30,20 +30,19 @@ class SingleFileStreamGeneratorTest {
     byte[] data = "hello world".getBytes(StandardCharsets.UTF_8);
     TrackingInputStream tis = new TrackingInputStream(new ByteArrayInputStream(data));
     FakeBucket bucket = new FakeBucket(tis, data.length);
-    TrackingOutputStream tos = new TrackingOutputStream();
     ClientContext ctx = mock(ClientContext.class);
-
     SingleFileStreamGenerator gen = new SingleFileStreamGenerator(bucket, false);
+    try (TrackingOutputStream tos = new TrackingOutputStream()) {
+      // Act
+      gen.writeTo(tos, ctx);
 
-    // Act
-    gen.writeTo(tos, ctx);
-
-    // Assert
-    assertArrayEquals(data, tos.toByteArray(), "Output must match input");
-    assertTrue(tos.isClosed(), "OutputStream should be closed by generator");
-    assertTrue(bucket.isFreed(), "Bucket should be closed/freed by generator");
-    assertTrue(tis.isClosed(), "InputStream should be closed by generator");
-    assertEquals(data.length, gen.size(), "size() must mirror bucket.size()");
+      // Assert
+      assertArrayEquals(data, tos.toByteArray(), "Output must match input");
+      assertTrue(tos.isClosed(), "OutputStream should be closed by generator");
+      assertTrue(bucket.isFreed(), "Bucket should be closed/freed by generator");
+      assertTrue(tis.isClosed(), "InputStream should be closed by generator");
+      assertEquals(data.length, gen.size(), "size() must mirror bucket.size()");
+    }
   }
 
   @Test
@@ -119,34 +118,32 @@ class SingleFileStreamGeneratorTest {
           }
         };
 
-    TrackingOutputStream tos = new TrackingOutputStream();
     ClientContext ctx = mock(ClientContext.class);
-
     SingleFileStreamGenerator gen = new SingleFileStreamGenerator(bucket, false);
-
-    // Act + Assert
-    IOException ex = assertThrows(IOException.class, () -> gen.writeTo(tos, ctx));
-    assertEquals("boom", ex.getMessage());
-    assertTrue(tos.isClosed(), "OutputStream should be closed when exception occurs");
-    assertTrue(freeCalled.get(), "Bucket should be closed on failure");
+    try (TrackingOutputStream tos = new TrackingOutputStream()) {
+      // Act + Assert
+      IOException ex = assertThrows(IOException.class, () -> gen.writeTo(tos, ctx));
+      assertEquals("boom", ex.getMessage());
+      assertTrue(tos.isClosed(), "OutputStream should be closed when exception occurs");
+      assertTrue(freeCalled.get(), "Bucket should be closed on failure");
+    }
   }
 
   @Test
   void writeTo_whenBucketReturnsNullInputStream_wrapsIntoIOException() {
     // Arrange: Bucket returns null input stream (empty bucket)
     FakeBucket bucket = new FakeBucket(null, 0);
-    TrackingOutputStream tos = new TrackingOutputStream();
     ClientContext ctx = mock(ClientContext.class);
-
     SingleFileStreamGenerator gen = new SingleFileStreamGenerator(bucket, false);
-
-    // Act + Assert
-    IOException ex = assertThrows(IOException.class, () -> gen.writeTo(tos, ctx));
-    assertNotNull(ex.getCause(), "Wrapped exception should carry cause");
-    assertEquals(
-        "Error during stream generation", ex.getMessage(), "Must use defined wrapper message");
-    assertTrue(tos.isClosed(), "OutputStream should be closed by try-with-resources");
-    assertTrue(bucket.isFreed(), "Bucket should be closed even on failure");
+    try (TrackingOutputStream tos = new TrackingOutputStream()) {
+      // Act + Assert
+      IOException ex = assertThrows(IOException.class, () -> gen.writeTo(tos, ctx));
+      assertNotNull(ex.getCause(), "Wrapped exception should carry cause");
+      assertEquals(
+          "Error during stream generation", ex.getMessage(), "Must use defined wrapper message");
+      assertTrue(tos.isClosed(), "OutputStream should be closed by try-with-resources");
+      assertTrue(bucket.isFreed(), "Bucket should be closed even on failure");
+    }
   }
 
   @Test
@@ -155,22 +152,23 @@ class SingleFileStreamGeneratorTest {
     byte[] data = new byte[] {1, 2, 3};
     TrackingInputStream tis = new TrackingInputStream(new ByteArrayInputStream(data));
     FakeBucket bucket = new FakeBucket(tis, data.length);
-    OutputStream failing =
+    ClientContext ctx = mock(ClientContext.class);
+    SingleFileStreamGenerator gen = new SingleFileStreamGenerator(bucket, false);
+    try (OutputStream failing =
         new OutputStream() {
           @Override
           public void write(int b) throws IOException {
             throw new IOException("fail");
           }
-        };
-    ClientContext ctx = mock(ClientContext.class);
-
-    SingleFileStreamGenerator gen = new SingleFileStreamGenerator(bucket, false);
-
-    // Act + Assert
-    IOException ex = assertThrows(IOException.class, () -> gen.writeTo(failing, ctx));
-    assertEquals("fail", ex.getMessage());
-    assertTrue(bucket.isFreed(), "Bucket should be closed on write failure");
-    assertTrue(tis.isClosed(), "InputStream should be closed on write failure");
+        }) {
+      // Act + Assert
+      IOException ex = assertThrows(IOException.class, () -> gen.writeTo(failing, ctx));
+      assertEquals("fail", ex.getMessage());
+      assertTrue(bucket.isFreed(), "Bucket should be closed on write failure");
+      assertTrue(tis.isClosed(), "InputStream should be closed on write failure");
+    } catch (IOException ignored) {
+      // close() on this stream is a no-op and does not throw
+    }
   }
 
   @Test
