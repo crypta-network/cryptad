@@ -55,7 +55,7 @@ class PacketSenderTest {
     when(node.network().opennet()).thenReturn(null);
   }
 
-  // Helper to run one iteration of the internal send loop deterministically.
+  // Helper to run one iteration of the internal sending loop deterministically.
   @SuppressWarnings("java:S3011")
   private static void invokeRealRun(PacketSender ps) throws Exception {
     var m = PacketSender.class.getDeclaredMethod("realRun");
@@ -66,7 +66,7 @@ class PacketSenderTest {
   @SuppressWarnings("java:S3011")
   private static void attachPacketFormat(PeerNode peer, Node node, PacketFormat packetFormat)
       throws Exception {
-    Class<?> internalsClass = Class.forName("network.crypta.node.PeerNode$PeerNodeInternals");
+    Class<?> internalsClass = resolvePeerRuntimeClass();
     var ctor = internalsClass.getDeclaredConstructor(PeerNode.class, Node.class, String.class);
     ctor.setAccessible(true);
     Object internals = ctor.newInstance(peer, node, "0");
@@ -77,6 +77,14 @@ class PacketSenderTest {
     var internalsField = PeerNode.class.getDeclaredField("internals");
     internalsField.setAccessible(true);
     internalsField.set(peer, internals);
+  }
+
+  private static Class<?> resolvePeerRuntimeClass() throws ClassNotFoundException {
+    try {
+      return Class.forName("network.crypta.node.PeerNodeRuntime");
+    } catch (ClassNotFoundException _) {
+      return Class.forName("network.crypta.node.PeerNode$PeerNodeInternals");
+    }
   }
 
   @Test
@@ -121,7 +129,7 @@ class PacketSenderTest {
     when(pn.getNextUrgentTime(anyLong())).thenReturn(Long.MAX_VALUE); // no urgent payload
     when(pn.timeSendAcks()).thenReturn(0L); // acks due now
 
-    // Connectivity thresholds not violated
+    // Connectivity thresholds aren't violated
     when(pn.lastReceivedDataPacketTime()).thenReturn(System.currentTimeMillis());
     when(pn.maxTimeBetweenReceivedPackets()).thenReturn(Long.MAX_VALUE);
     when(pn.lastReceivedAckTime()).thenReturn(System.currentTimeMillis());

@@ -31,7 +31,7 @@ public final class OpennetNoderefValidator {
       byte[] noderef, PeerNode from, boolean forceOpennetEnabled) {
     SimpleFieldSet ref;
     try {
-      ref = PeerNode.compressedNoderefToFieldSet(noderef, noderef.length);
+      ref = PeerNodeReferenceSupport.compressedNoderefToFieldSet(noderef, 0, noderef.length);
     } catch (FSParseException e) {
       LOG.error("Invalid noderef: {}", e, e);
       return null;
