@@ -197,8 +197,7 @@ class DarknetConnectionsToadletTest {
     when(network.createNewDarknetNode(any(), any(), any()))
         .thenThrow(new PeerTooOldException("old build", 1, Instant.EPOCH));
 
-    ConnectionsToadlet.PeerAdditionReturnCodes result =
-        invokeAddNewNode("foo=bar\nEnd\n", "", FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
+    ConnectionsToadlet.PeerAdditionReturnCodes result = invokeAddNewNode();
 
     assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE, result);
   }
@@ -266,15 +265,13 @@ class DarknetConnectionsToadletTest {
     return (boolean) method.invoke(toadlet, uri, request, ctx);
   }
 
-  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNode(
-      String nodeReference, String privateComment, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility)
-      throws Exception {
+  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNode() throws Exception {
     Method method =
         ConnectionsToadlet.class.getDeclaredMethod(
             "addNewNode", String.class, String.class, FRIEND_TRUST.class, FRIEND_VISIBILITY.class);
     method.setAccessible(true);
     return (ConnectionsToadlet.PeerAdditionReturnCodes)
-        method.invoke(toadlet, nodeReference, privateComment, trust, visibility);
+        method.invoke(toadlet, "foo=bar\nEnd\n", "", FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
   }
 
   private void assertRedirectIssued() throws Exception {
