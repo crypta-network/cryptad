@@ -113,8 +113,9 @@ class IPAddressDetectorTest {
   @Test
   void getAddressNoCallback_whenNoSnapshotAndFresh_expectEmptyArray() {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
-    IPAddressDetector det = new IPAddressDetector(10, nodeIPDetector);
-    det.lastDetectedTime = System.currentTimeMillis(); // fresh -> no checkpoint
+    IPAddressDetector det = new IPAddressDetector(60_000, nodeIPDetector);
+    // Keep the snapshot unequivocally "fresh" to avoid flaky timing around the staleness window.
+    det.lastDetectedTime = System.currentTimeMillis() + 60_000;
     det.lastAddressList.set(null); // no snapshot yet
 
     InetAddress[] out = assertDoesNotThrow(det::getAddressNoCallback);

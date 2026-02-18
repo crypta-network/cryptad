@@ -27,7 +27,10 @@ class LzmaBenchTest {
   private ByteArrayOutputStream outContent;
   private PrintStream testOut;
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @BeforeEach
   void setUpStreams() {

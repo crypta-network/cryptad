@@ -19,7 +19,10 @@ import static org.mockito.Mockito.*;
 @SuppressWarnings("java:S100") // test naming style: method_whenCondition_expectOutcome
 class NullInputStreamTest {
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @Test
   void read_whenCalled_expectEOF() throws Exception {

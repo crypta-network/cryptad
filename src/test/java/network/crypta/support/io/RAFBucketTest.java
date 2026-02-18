@@ -53,7 +53,10 @@ class RAFBucketTest {
   private static final java.util.logging.Logger TEST_LOG =
       java.util.logging.Logger.getLogger(RAFBucketTest.class.getName());
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   private static LockableRandomAccessBuffer stubRafWithContent(byte[] content) throws IOException {
     LockableRandomAccessBuffer raf = mock(LockableRandomAccessBuffer.class);

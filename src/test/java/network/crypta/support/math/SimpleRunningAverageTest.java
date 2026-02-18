@@ -15,7 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SimpleRunningAverageTest {
   private static final double EPS = 1e-9;
 
-  private static void ignoreDouble(double ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreDouble(double ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   private static void constructAverage(int window, double init) {
     new SimpleRunningAverage(window, init);

@@ -38,7 +38,10 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "java:S2245"})
 class PaddedEphemerallyEncryptedBucketTest {
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   private static int invalidNegativeOffset() {
     return -Math.abs(System.identityHashCode(new Object()) | 1);
