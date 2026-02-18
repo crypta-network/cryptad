@@ -901,8 +901,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
     };
   }
 
-  private StepDecision handleOtherKind(MetaKind kind, ClientContext context)
-      throws FetchException, MetadataParseException {
+  private StepDecision handleOtherKind(MetaKind kind, ClientContext context) throws FetchException {
     return switch (kind) {
       case SIMPLE_MANIFEST -> {
         processSimpleManifestStep();
@@ -1332,8 +1331,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
     return p;
   }
 
-  private boolean processSplitfileStep(final ClientContext context)
-      throws FetchException, MetadataParseException {
+  private boolean processSplitfileStep(final ClientContext context) throws FetchException {
     Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Fetching splitfile");
     clientMetadata.mergeNoOverwrite(current.getClientMetadata());

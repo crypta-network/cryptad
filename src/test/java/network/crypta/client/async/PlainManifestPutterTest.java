@@ -111,8 +111,7 @@ class PlainManifestPutterTest {
         Map<String, Object> manifest,
         InsertContext ctx,
         byte[] forceKey,
-        ClientContext context)
-        throws TooManyFilesInsertException {
+        ClientContext context) {
       super(
           new ManifestPutterParams(
               new InsertRequestParams(cb, FreenetURI.EMPTY_CHK_URI, ctx, /*prioClass*/ (short) 0),
@@ -172,7 +171,7 @@ class PlainManifestPutterTest {
     // Act: invoke the protected method under test directly
     putter.makePutHandlers(root, "index.html");
 
-    // Assert: directory navigation for the subdir and two adds (default doc in subdir only)
+    // Assert: directory navigation for the subdir and two adding (default doc in subdir only)
     verify(builder, times(1)).pushCurrentDir();
     verify(builder, times(1)).makeSubDirCD("dir");
     verify(builder, times(1)).popCurrentDir();
@@ -226,7 +225,7 @@ class PlainManifestPutterTest {
   }
 
   @Test
-  void makePutHandlers_whenInvalidElement_throwsClassCastException() throws Exception {
+  void makePutHandlers_whenInvalidElement_throwsClassCastException() {
     // Arrange
     HashMap<String, Object> root = new HashMap<>();
     root.put("bad", 123); // not a HashMap nor ManifestElement
