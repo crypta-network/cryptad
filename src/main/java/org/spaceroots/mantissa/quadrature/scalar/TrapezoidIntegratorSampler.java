@@ -1,8 +1,9 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
+import org.spaceroots.mantissa.functions.scalar.*;
+
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
-import org.spaceroots.mantissa.functions.scalar.*;
 
 /**
  * Iterator that builds the cumulative integral of a scalar function using the trapezoid rule while

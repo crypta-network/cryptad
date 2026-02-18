@@ -13,8 +13,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.*;
+
+import static org.mockito.ArgumentMatchers.isA;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

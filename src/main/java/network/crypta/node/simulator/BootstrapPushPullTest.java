@@ -1,5 +1,7 @@
 package network.crypta.node.simulator;
 
+import network.crypta.client.*;
+
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
@@ -8,13 +10,12 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.*;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
+import network.crypta.node.NodeStarter;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;

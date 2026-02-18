@@ -1,8 +1,8 @@
 package network.crypta.pluginmanager;
 
 import java.util.UUID;
-import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
+import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPPluginMessage;
 import network.crypta.support.io.NativeThread;
 

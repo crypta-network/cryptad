@@ -1,7 +1,7 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;

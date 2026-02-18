@@ -1,6 +1,7 @@
 package network.crypta.support.io;
 
 import java.io.*;
+
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;

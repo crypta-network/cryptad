@@ -2,8 +2,8 @@ package network.crypta.client.async;
 
 import java.io.IOException;
 import java.util.Random;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SimpleEventProducer;

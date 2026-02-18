@@ -24,9 +24,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Answers;
 import org.mockito.MockedStatic;
 
+import static org.mockito.Mockito.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for {@link DatastoreUtil}.

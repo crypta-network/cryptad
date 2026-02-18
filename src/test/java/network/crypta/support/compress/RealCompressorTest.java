@@ -5,8 +5,8 @@ import ch.qos.logback.classic.Logger;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
+import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.AfterEach;
@@ -17,11 +17,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
 class RealCompressorTest {
 

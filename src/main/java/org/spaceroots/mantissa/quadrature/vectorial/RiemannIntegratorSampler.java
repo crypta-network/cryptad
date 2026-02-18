@@ -1,9 +1,10 @@
 package org.spaceroots.mantissa.quadrature.vectorial;
 
+import org.spaceroots.mantissa.functions.vectorial.*;
+
 import java.util.Arrays;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
-import org.spaceroots.mantissa.functions.vectorial.*;
 
 /**
  * Riemann-scheme iterator that accumulates the left-hand rectangle integral of a sampled function.

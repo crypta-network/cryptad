@@ -2,8 +2,8 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.DocumentType;
+import network.crypta.client.Metadata;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;

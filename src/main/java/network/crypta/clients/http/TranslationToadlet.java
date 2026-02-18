@@ -14,8 +14,8 @@ import network.crypta.pluginmanager.FredPluginBaseL10n;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
-import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SimpleFieldSet.KeyIterator;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.BucketTools;
 

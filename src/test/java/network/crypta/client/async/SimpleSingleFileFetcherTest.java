@@ -2,8 +2,8 @@ package network.crypta.client.async;
 
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
