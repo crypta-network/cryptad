@@ -1,10 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.lang.ref.WeakReference;
 import java.security.interfaces.ECPublicKey;
 import java.util.Arrays;
@@ -20,6 +15,11 @@ import network.crypta.keys.Key;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Represents a remote peer that this node can handshake with, route to, and exchange traffic

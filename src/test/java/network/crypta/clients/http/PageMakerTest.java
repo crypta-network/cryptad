@@ -1,8 +1,5 @@
 package network.crypta.clients.http;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -11,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")

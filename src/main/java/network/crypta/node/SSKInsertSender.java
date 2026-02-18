@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.SHA256;
 import network.crypta.io.comm.AsyncMessageCallback;
@@ -21,6 +19,8 @@ import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Sends an SSK insert through the network.

@@ -1,16 +1,16 @@
 package network.crypta.clients.fcp;
 
+import network.crypta.client.FetchResult;
+import network.crypta.node.Node;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
-import network.crypta.client.FetchResult;
-import network.crypta.node.Node;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class DataFoundMessageTest {

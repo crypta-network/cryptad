@@ -1,13 +1,13 @@
 package org.sevenzip.compression.lz;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class OutWindowTest {

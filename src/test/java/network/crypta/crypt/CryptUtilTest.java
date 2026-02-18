@@ -1,7 +1,5 @@
 package network.crypta.crypt;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -9,6 +7,8 @@ import java.util.Arrays;
 import network.crypta.support.Fields;
 import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class CryptUtilTest {
 

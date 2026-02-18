@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.xfer.AbortedException;
 import network.crypta.keys.CHKBlock;
@@ -19,6 +17,8 @@ import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.store.KeyCollisionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Coordinates client-side fetch and insert operations for a {@link NodeClientCore} instance.

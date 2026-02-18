@@ -1,8 +1,5 @@
 package network.crypta.clients.http.ajaxpush;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ToadletContext;
@@ -12,6 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")

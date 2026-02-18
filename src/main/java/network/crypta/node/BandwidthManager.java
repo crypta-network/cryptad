@@ -1,12 +1,12 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.*;
-
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
+
+import static java.util.concurrent.TimeUnit.*;
 
 /**
  * Manages bandwidth configuration checks and user-facing upgrade suggestions.

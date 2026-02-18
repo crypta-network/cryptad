@@ -1,10 +1,5 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.util.Arrays;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.crypt.HashResult;
@@ -14,6 +9,11 @@ import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
 import org.mockito.Mockito;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
 class ExpectedHashesTest {

@@ -1,13 +1,13 @@
 package network.crypta.clients.fcp;
 
+import network.crypta.node.probe.Error;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import network.crypta.node.probe.Error;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class ProbeErrorTest {

@@ -1,15 +1,15 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class RedirectDirPutFileTest {

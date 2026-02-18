@@ -1,12 +1,12 @@
 package org.sevenzip.compression.lzma;
 
-import static org.sevenzip.compression.rangecoder.Decoder.initBitModels;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.sevenzip.compression.lz.OutWindow;
 import org.sevenzip.compression.rangecoder.BitTreeDecoder;
+
+import static org.sevenzip.compression.rangecoder.Decoder.initBitModels;
 
 /**
  * Streaming LZMA decoder that materializes compressed input into an {@link OutWindow} backed output

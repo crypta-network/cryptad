@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -13,6 +11,8 @@ import network.crypta.support.api.RandomAccessBuffer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
 

@@ -1,5 +1,20 @@
 package network.crypta.clients.fcp;
 
+import java.lang.reflect.Field;
+import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.async.PersistentJob;
+import network.crypta.client.async.PersistentJobRunner;
+import network.crypta.node.NodeClientCore;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.io.NativeThread;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -15,21 +30,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
-import java.lang.reflect.Field;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.PersistentJobRunner;
-import network.crypta.node.NodeClientCore;
-import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.NativeThread;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100") // method naming: method_whenCondition_expectOutcome

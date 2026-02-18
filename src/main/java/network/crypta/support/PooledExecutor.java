@@ -1,7 +1,5 @@
 package network.crypta.support;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +10,8 @@ import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Lightweight, priority-aware executor that creates workers on demand and retires them after

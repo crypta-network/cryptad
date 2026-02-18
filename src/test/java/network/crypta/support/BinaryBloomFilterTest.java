@@ -1,8 +1,5 @@
 package network.crypta.support;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,6 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Unit tests for {@link BinaryBloomFilter} using JUnit 6 and Mockito. */
 @SuppressWarnings("java:S100") // Allow descriptive test method names with underscores

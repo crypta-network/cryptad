@@ -1,14 +1,14 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.spaceroots.mantissa.functions.FunctionException;
 import org.spaceroots.mantissa.functions.scalar.ComputableFunction;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
 class GaussLegendreIntegratorTest {

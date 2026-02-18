@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.node.OpennetManager.LinkLengthClass;
@@ -11,6 +8,9 @@ import network.crypta.node.updater.UpdateOverMandatoryManager;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Opennet-specific {@link PeerNode} implementation.

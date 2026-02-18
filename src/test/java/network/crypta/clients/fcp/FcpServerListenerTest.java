@@ -1,5 +1,14 @@
 package network.crypta.clients.fcp;
 
+import java.lang.reflect.Field;
+import network.crypta.io.NetworkInterface;
+import network.crypta.node.Node;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.tanukisoftware.wrapper.WrapperManager;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -11,15 +20,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.lang.reflect.Field;
-import network.crypta.io.NetworkInterface;
-import network.crypta.node.Node;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.tanukisoftware.wrapper.WrapperManager;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,6 +23,8 @@ import network.crypta.support.SerialExecutor;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 // Privacy note: Delete ULPR-related state (e.g., requestors) once a key is found. Keeping
 // stale mappings would make it easier to correlate a request after compromise. Offers are

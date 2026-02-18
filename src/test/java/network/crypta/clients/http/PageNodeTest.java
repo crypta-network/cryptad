@@ -1,13 +1,13 @@
 package network.crypta.clients.http;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
-
 import java.util.List;
 import java.util.Map;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 @SuppressWarnings("java:S100")
 class PageNodeTest {

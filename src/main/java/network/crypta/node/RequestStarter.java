@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ChosenBlockImpl;
 import network.crypta.client.async.ClientContext;
@@ -13,6 +11,8 @@ import network.crypta.support.RandomGrabArrayItemExclusionList;
 import network.crypta.support.math.RunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates dequeuing and starting of client requests.

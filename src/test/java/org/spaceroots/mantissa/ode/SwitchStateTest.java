@@ -1,5 +1,15 @@
 package org.spaceroots.mantissa.ode;
 
+import java.io.Externalizable;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.spaceroots.mantissa.functions.FunctionException;
+import org.spaceroots.mantissa.roots.ConvergenceChecker;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,16 +20,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.io.Externalizable;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.spaceroots.mantissa.functions.FunctionException;
-import org.spaceroots.mantissa.roots.ConvergenceChecker;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

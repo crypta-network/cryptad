@@ -1,10 +1,5 @@
 package network.crypta.node.useralerts;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
@@ -12,6 +7,11 @@ import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SuppressWarnings("java:S100") // Test method naming: method_whenCondition_expectOutcome
 class TimeSkewDetectedUserAlertTest {

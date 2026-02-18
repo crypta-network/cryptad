@@ -1,11 +1,5 @@
 package network.crypta.support.compress;
 
-import static network.crypta.support.compress.Compressor.COMPRESSOR_TYPE.GZIP;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,6 +14,12 @@ import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.NullBucket;
 import org.junit.jupiter.api.Test;
+
+import static network.crypta.support.compress.Compressor.COMPRESSOR_TYPE.GZIP;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test case for {@link GzipCompressor} class.

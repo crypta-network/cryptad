@@ -1,5 +1,14 @@
 package network.crypta.node;
 
+import java.lang.reflect.Field;
+import java.util.List;
+import network.crypta.io.comm.DMT;
+import network.crypta.io.comm.Message;
+import network.crypta.node.NodeStats.RequestType;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -15,15 +24,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.lang.reflect.Field;
-import java.util.List;
-import network.crypta.io.comm.DMT;
-import network.crypta.io.comm.Message;
-import network.crypta.node.NodeStats.RequestType;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")

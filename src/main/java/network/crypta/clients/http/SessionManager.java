@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
@@ -15,6 +13,8 @@ import network.crypta.support.LRUMap;
 import network.crypta.support.StringValidityChecker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
  * SessionManager coordinates cookie-backed HTTP sessions for the Crypta HTTP interface and its

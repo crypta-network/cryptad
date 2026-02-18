@@ -1,10 +1,5 @@
 package org.spaceroots.mantissa.fitting;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import org.junit.jupiter.api.Test;
 import org.spaceroots.mantissa.estimation.EstimatedParameter;
 import org.spaceroots.mantissa.estimation.EstimationProblem;
@@ -13,6 +8,11 @@ import org.spaceroots.mantissa.fitting.AbstractCurveFitter.FitMeasurement;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
 import org.spaceroots.mantissa.functions.vectorial.VectorialValuedPair;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
 class F2FP2IteratorTest {

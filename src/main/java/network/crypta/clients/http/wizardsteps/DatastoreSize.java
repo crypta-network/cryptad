@@ -1,7 +1,5 @@
 package network.crypta.clients.http.wizardsteps;
 
-import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
-
 import java.io.File;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
@@ -19,6 +17,8 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
 /**
  * Wizard step that renders and applies a datastore sizing choice.

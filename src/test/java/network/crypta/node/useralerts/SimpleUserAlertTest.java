@@ -1,17 +1,17 @@
 package network.crypta.node.useralerts;
 
+import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.l10n.NodeL10n;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.l10n.NodeL10n;
-import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100") // Test method naming: method_whenCondition_expectOutcome
 class SimpleUserAlertTest {

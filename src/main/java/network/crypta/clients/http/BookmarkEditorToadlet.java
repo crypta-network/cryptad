@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static network.crypta.clients.http.QueueToadlet.MAX_KEY_LENGTH;
-
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -23,6 +21,8 @@ import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static network.crypta.clients.http.QueueToadlet.MAX_KEY_LENGTH;
 
 /**
  * Presents the interactive bookmark management endpoint exposed at {@code /bookmarkEditor/}.

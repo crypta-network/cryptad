@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
@@ -27,6 +25,8 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * JavaScript-based First-Time-Wizard toadlet that guides new nodes through the minimum secure setup

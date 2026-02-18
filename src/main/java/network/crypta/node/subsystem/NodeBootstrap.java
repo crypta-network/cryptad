@@ -1,8 +1,5 @@
 package network.crypta.node.subsystem;
 
-import static network.crypta.node.Node.DEFAULT_HWRNG_PATH;
-import static network.crypta.node.Node.HWRNG_PATH_PROPERTY;
-
 import java.io.File;
 import java.security.SecureRandom;
 import java.util.Random;
@@ -26,6 +23,9 @@ import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static network.crypta.node.Node.DEFAULT_HWRNG_PATH;
+import static network.crypta.node.Node.HWRNG_PATH_PROPERTY;
 
 /**
  * Coordinates early node bootstrap for program directories and randomness initialization.

@@ -1,10 +1,5 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -13,6 +8,11 @@ import org.spaceroots.mantissa.functions.scalar.BasicSampledFunctionIterator;
 import org.spaceroots.mantissa.functions.scalar.SampledFunction;
 import org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator;
 import org.spaceroots.mantissa.functions.scalar.ScalarValuedPair;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")

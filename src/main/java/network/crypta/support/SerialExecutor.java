@@ -1,7 +1,5 @@
 package network.crypta.support;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import network.crypta.node.PrioRunnable;
@@ -9,6 +7,8 @@ import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Executor that guarantees tasks execute one after another on a single worker thread.

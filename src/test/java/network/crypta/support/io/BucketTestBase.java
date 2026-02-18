@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,6 +7,8 @@ import java.io.OutputStream;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public abstract class BucketTestBase {
   private static final String SIZE_EMPTY_MESSAGE = "Size-0";

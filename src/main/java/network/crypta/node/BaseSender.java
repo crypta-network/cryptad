@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
@@ -23,6 +21,8 @@ import network.crypta.node.PeerNodeLoadTracker.SlotWaiterFailedException;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Base class for request and insert senders.

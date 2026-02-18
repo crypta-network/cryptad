@@ -1,7 +1,5 @@
 package network.crypta.node.simulator;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -39,6 +37,8 @@ import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
  * Long-term simulator driver that inserts many single blocks and later re-fetches them at fixed day

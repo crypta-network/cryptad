@@ -1,5 +1,21 @@
 package network.crypta.client.async;
 
+import java.lang.reflect.Field;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
+import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.keys.ClientKey;
+import network.crypta.keys.Key;
+import network.crypta.node.LowLevelGetException;
+import network.crypta.node.RequestClient;
+import network.crypta.node.SendableGet;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,22 +32,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.lang.reflect.Field;
-import network.crypta.client.FetchContext;
-import network.crypta.client.FetchContextOptions;
-import network.crypta.client.events.SimpleEventProducer;
-import network.crypta.keys.ClientKey;
-import network.crypta.keys.Key;
-import network.crypta.node.LowLevelGetException;
-import network.crypta.node.RequestClient;
-import network.crypta.node.SendableGet;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class SplitFileFetcherGetTest {

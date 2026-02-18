@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -33,6 +30,9 @@ import network.crypta.support.io.FileUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
 

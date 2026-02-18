@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -37,6 +35,8 @@ import network.crypta.support.transport.ip.IPAddressDetector;
 import network.crypta.support.transport.ip.IPUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Detects the node's public IP address.

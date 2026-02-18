@@ -1,7 +1,5 @@
 package network.crypta.store;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -12,6 +10,8 @@ import network.crypta.crypt.Global;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class SimplePubkeyCacheTest {
 

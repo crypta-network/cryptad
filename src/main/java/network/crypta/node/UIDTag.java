@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
 import java.util.List;
@@ -9,6 +7,8 @@ import java.util.Set;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Tracks routing and lifecycle state for a single in-flight request UID.

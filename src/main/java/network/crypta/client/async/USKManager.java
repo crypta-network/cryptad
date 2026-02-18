@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,6 +24,8 @@ import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.NullBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Maintains the latest known state for {@link USK} keys and coordinates background update

@@ -1,7 +1,5 @@
 package network.crypta.io.comm;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -9,6 +7,8 @@ import java.util.Map;
 import network.crypta.support.ShortBuffer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100") // Method naming uses AAA style: method_whenCondition_expectOutcome
 class MessageTypeTest {

@@ -1,10 +1,5 @@
 package network.crypta.client.filter;
 
-import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -16,6 +11,11 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import org.junit.jupiter.api.Test;
+
+import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100") // test method names use given_when_then with underscores
 class WAVFilterTest {

@@ -1,7 +1,5 @@
 package network.crypta.support;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +9,8 @@ import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Single-threaded executor with internal priority queues.

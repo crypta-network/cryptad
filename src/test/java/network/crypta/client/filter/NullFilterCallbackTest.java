@@ -1,8 +1,5 @@
 package network.crypta.client.filter;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertNull;
-
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
@@ -12,6 +9,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

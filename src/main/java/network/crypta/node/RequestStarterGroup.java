@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
@@ -18,6 +16,8 @@ import network.crypta.support.api.StringCallback;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates request starters and client schedulers for CHK/SSK fetches and inserts.

@@ -1,12 +1,5 @@
 package network.crypta.client.filter;
 
-import static network.crypta.client.filter.ResourceFileUtil.resourceToDataInputStream;
-import static network.crypta.client.filter.ResourceFileUtil.resourceToOggPage;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -17,6 +10,13 @@ import java.util.Collection;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static network.crypta.client.filter.ResourceFileUtil.resourceToDataInputStream;
+import static network.crypta.client.filter.ResourceFileUtil.resourceToOggPage;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

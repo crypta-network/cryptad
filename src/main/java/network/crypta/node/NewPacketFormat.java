@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -22,6 +20,8 @@ import network.crypta.support.Fields;
 import network.crypta.support.SparseBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Packet format and transport for encrypted peer communication.

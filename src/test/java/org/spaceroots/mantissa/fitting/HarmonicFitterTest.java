@@ -1,5 +1,13 @@
 package org.spaceroots.mantissa.fitting;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.spaceroots.mantissa.estimation.EstimatedParameter;
+import org.spaceroots.mantissa.estimation.EstimationException;
+import org.spaceroots.mantissa.estimation.Estimator;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -8,14 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.spaceroots.mantissa.estimation.EstimatedParameter;
-import org.spaceroots.mantissa.estimation.EstimationException;
-import org.spaceroots.mantissa.estimation.Estimator;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

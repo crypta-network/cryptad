@@ -1,7 +1,5 @@
 package network.crypta.pluginmanager;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -65,6 +63,8 @@ import network.crypta.support.io.NativeThread.PriorityLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates plugin download, loading, and lifecycle management for a {@link Node}.

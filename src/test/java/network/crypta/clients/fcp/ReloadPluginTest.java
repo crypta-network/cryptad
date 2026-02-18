@@ -1,5 +1,17 @@
 package network.crypta.clients.fcp;
 
+import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.pluginmanager.PluginInfoWrapper;
+import network.crypta.pluginmanager.PluginManager;
+import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,18 +25,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-
-import network.crypta.node.Node;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
-import network.crypta.pluginmanager.PluginInfoWrapper;
-import network.crypta.pluginmanager.PluginManager;
-import network.crypta.support.PriorityAwareExecutor;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings({"java:S100", "resource"})
 @ExtendWith(MockitoExtension.class)

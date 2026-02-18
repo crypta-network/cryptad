@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -38,6 +36,8 @@ import network.crypta.node.RequestClient;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Tracks a single FProxy browser fetch from creation until completion or cancellation.

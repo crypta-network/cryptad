@@ -1,10 +1,5 @@
 package network.crypta.client.async;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.DataOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,6 +10,11 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Unit tests for {@link CompressionOutput}. */
 @SuppressWarnings("java:S100") // test method naming: method_whenCondition_expectOutcome

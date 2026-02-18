@@ -1,5 +1,18 @@
 package network.crypta.clients.http;
 
+import java.net.URI;
+import java.util.Arrays;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.api.HTTPRequest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,19 +27,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.net.URI;
-import java.util.Arrays;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.support.HTMLNode;
-import network.crypta.support.api.HTTPRequest;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Answers;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

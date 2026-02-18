@@ -1,8 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -64,6 +61,9 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NoFreeBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Serves as the primary HTTP toadlet for Crypta’s Freenet proxy, mapping incoming browser

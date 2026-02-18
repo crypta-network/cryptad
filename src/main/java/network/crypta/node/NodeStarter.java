@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -42,6 +40,8 @@ import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
 import picocli.CommandLine;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Bridges the Tanuki Wrapper lifecycle and the Crypta node.

@@ -1,8 +1,5 @@
 package network.crypta.node.updater;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -79,6 +76,9 @@ import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Coordinates Update‑Over‑Mandatory (UoM) interactions between this node and its peers.

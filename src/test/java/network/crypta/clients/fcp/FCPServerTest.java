@@ -1,9 +1,5 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.isA;
-import static org.mockito.Mockito.*;
-
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -15,6 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.*;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static network.crypta.node.updater.UpdaterPathsKt.CORE_UPDATE_PATH;
-
 import java.util.Arrays;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
@@ -19,6 +17,8 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
+
+import static network.crypta.node.updater.UpdaterPathsKt.CORE_UPDATE_PATH;
 
 /**
  * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.

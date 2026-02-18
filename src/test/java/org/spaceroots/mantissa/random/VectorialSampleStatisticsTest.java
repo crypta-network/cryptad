@@ -1,14 +1,14 @@
 package org.spaceroots.mantissa.random;
 
+import org.junit.jupiter.api.Test;
+import org.spaceroots.mantissa.linalg.SymetricalMatrix;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import org.junit.jupiter.api.Test;
-import org.spaceroots.mantissa.linalg.SymetricalMatrix;
 
 @SuppressWarnings("java:S100")
 class VectorialSampleStatisticsTest {

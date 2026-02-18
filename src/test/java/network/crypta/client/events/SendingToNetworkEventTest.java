@@ -1,10 +1,10 @@
 package network.crypta.client.events;
 
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class SendingToNetworkEventTest {

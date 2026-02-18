@@ -1,9 +1,5 @@
 package network.crypta.support;
 
-import static java.util.Calendar.MILLISECOND;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
@@ -11,6 +7,10 @@ import java.util.Locale;
 import java.util.TimeZone;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import static java.util.Calendar.MILLISECOND;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Test case for {@link TimeUtil} class.

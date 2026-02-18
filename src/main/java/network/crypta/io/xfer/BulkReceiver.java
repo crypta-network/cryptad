@@ -1,7 +1,5 @@
 package network.crypta.io.xfer;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -11,6 +9,8 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.support.ShortBuffer;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Receives a segmented bulk transfer from a single peer and writes packets into a {@link

@@ -1,7 +1,5 @@
 package network.crypta.node.subsystem;
 
-import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -71,6 +69,8 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.io.DatastoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
 /** Storage subsystem facade (datastores, caches, migration). */
 public final class NodeStorageSubsystem {

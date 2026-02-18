@@ -1,10 +1,10 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100")
 class PutSuccessfulMessageTest {

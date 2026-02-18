@@ -1,9 +1,9 @@
 package org.bitpedia.collider.core;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-
 import java.lang.reflect.Field;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 @SuppressWarnings("java:S100")
 class Ed2HandlerTest {

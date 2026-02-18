@@ -1,5 +1,18 @@
 package network.crypta.clients.http;
 
+import java.net.URI;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.config.PersistentConfig;
+import network.crypta.config.SubConfig;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.support.api.HTTPRequest;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,19 +27,6 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.config.PersistentConfig;
-import network.crypta.config.SubConfig;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.support.api.HTTPRequest;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

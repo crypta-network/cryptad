@@ -1,7 +1,5 @@
 package network.crypta.node.updater;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -30,6 +28,8 @@ import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Monitors and fetches the auto‑update revocation message for this node.

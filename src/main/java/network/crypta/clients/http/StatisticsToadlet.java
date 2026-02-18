@@ -1,10 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.IOException;
 import java.net.URI;
 import java.text.DecimalFormat;
@@ -48,6 +43,11 @@ import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
+
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Serves the statistics page for Crypta's HTTP interface, aggregating peer, bandwidth, request, and

@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +32,9 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.transport.ip.IPUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates IP-detection and port-forwarding plugins and decides when to run them.

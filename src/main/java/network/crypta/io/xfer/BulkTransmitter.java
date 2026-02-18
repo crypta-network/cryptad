@@ -1,8 +1,5 @@
 package network.crypta.io.xfer;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -17,6 +14,9 @@ import network.crypta.support.BitArray;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Sends large, file-like payloads to a single peer using the bulk transfer protocol. The

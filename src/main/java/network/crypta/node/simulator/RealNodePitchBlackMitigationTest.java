@@ -1,7 +1,5 @@
 package network.crypta.node.simulator;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.File;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,6 +21,8 @@ import network.crypta.support.math.SimpleRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Simulates a pitch black attack and mitigation sequence using real node instances.

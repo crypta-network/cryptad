@@ -1,10 +1,5 @@
 package network.crypta.client.filter;
 
-import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -17,6 +12,11 @@ import network.crypta.support.io.BucketTools;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100") // descriptive test method names
 class BMPFilterTest {

@@ -1,9 +1,9 @@
 package com.onionnetworks.util;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.text.ParseException;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100")
 class RangeSetTest {
