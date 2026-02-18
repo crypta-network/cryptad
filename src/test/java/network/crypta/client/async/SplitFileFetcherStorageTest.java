@@ -555,7 +555,7 @@ class SplitFileFetcherStorageTest {
   }
 
   private void testDataBlocksOnly(TestSplitfile test)
-      throws IOException, CHKEncodeException, FetchException, MetadataParseException {
+      throws IOException, CHKEncodeException, FetchException {
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
     SplitFileFetcherSegmentStorage segment = storage.segments[0];
@@ -585,7 +585,7 @@ class SplitFileFetcherStorageTest {
   }
 
   private void testCheckBlocksOnly(TestSplitfile test)
-      throws IOException, CHKEncodeException, FetchException, MetadataParseException {
+      throws IOException, CHKEncodeException, FetchException {
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
     SplitFileFetcherSegmentStorage segment = storage.segments[0];
@@ -618,7 +618,7 @@ class SplitFileFetcherStorageTest {
   }
 
   private void testRandomMixture(TestSplitfile test)
-      throws FetchException, MetadataParseException, IOException, CHKEncodeException {
+      throws FetchException, IOException, CHKEncodeException {
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
     SplitFileFetcherSegmentStorage segment = storage.segments[0];
@@ -825,7 +825,7 @@ class SplitFileFetcherStorageTest {
   }
 
   private void testRandomMixtureMultiSegment(TestSplitfile test)
-      throws CHKEncodeException, IOException, FetchException, MetadataParseException {
+      throws CHKEncodeException, IOException, FetchException {
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
     int total = test.dataBlocks.length + test.checkBlocks.length;
@@ -984,7 +984,7 @@ class SplitFileFetcherStorageTest {
 
   private SplitFileFetcherStorage createSplitFileFetcherStorageTwice(
       TestSplitfile test, StorageCallback cb)
-      throws FetchException, MetadataParseException, IOException, StorageFormatException {
+      throws FetchException, IOException, StorageFormatException {
     test.createStorage(cb);
     // No need to shut down the old storage.
     return test.createStorage(cb, test.makeFetchContext(), cb.getRAF());
