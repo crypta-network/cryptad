@@ -30,7 +30,7 @@ import org.slf4j.event.Level;
  *
  * <p>This class spins up a fixed-size test network, waits for routing to settle, and then provides
  * a console-driven menu for executing probe types from a chosen node. It is intended for manual
- * diagnostics and exploratory checks where you want realistic routing behavior, but also need to
+ * diagnostics and exploratory checks where you want realistic routing behavior but also need to
  * control probe selection and HTL values. The setup uses deterministic random seeds to keep the
  * topology and probe routing comparable across runs, while still exercising real routing logic
  * rather than simulator stubs.
@@ -57,8 +57,8 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
   /**
    * Creates the probe harness with default settings.
    *
-   * <p>Construction performs no setup work; all runtime initialization happens in {@link
-   * #main(String[])} when the harness is executed as a standalone tool.
+   * <p>Construction performs no setup work; all runtime initialization happens in {@link #main()}
+   * when the harness is executed as a standalone tool.
    */
   public RealNodeProbeTest() {
     // Intentionally empty; this harness is executed via the static main entry point.
@@ -77,7 +77,7 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
   private static final boolean DO_INSERT_TEST = true;
 
   /**
-   * First port assigned to probe-test darknet nodes, starting after the routing-test range.
+   * The first port assigned to probe-test darknet nodes, starting after the routing-test range.
    *
    * <p>The value is derived from {@link RealNodeRoutingTest#DARKNET_PORT_END} to avoid overlaps
    * between the two harnesses. It is constant for a process run and is used to map node indexes to
@@ -104,10 +104,10 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
    * background threads, the program terminates via {@link System#exit(int)} when the menu loop
    * ends. This entry point is intended for manual, developer-driven experimentation.
    *
-   * @param args command-line arguments; currently ignored and expected to be empty
-   * @throws Exception if node initialization, startup, or probe configuration fails unexpectedly
+   * @throws NodeInitException if any node fails during initialization or startup
+   * @throws InterruptedException if waiting for connectivity or insert completion is interrupted
    */
-  public static void main(String[] args) throws Exception {
+  public static void main() throws NodeInitException, InterruptedException {
     logIntro();
     String dir = "realNodeProbeTest";
     File baseDirectory = prepareBaseDirectory(dir);

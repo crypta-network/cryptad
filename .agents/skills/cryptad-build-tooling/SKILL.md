@@ -114,6 +114,11 @@ Confirm `gradle/verification-metadata.xml` contains SpotBugs entries such as:
 - SonarLint does **not** run during regular lifecycles (`build`, `check`).
 - `sonarlintMain` / `sonarlintTest` run only when explicitly requested (task name contains `sonarlint`).
 - Default config: `ignoreFailures = true` (non-failing by default).
+- `sonarIssues` queries server-side issues from SonarQube/SonarCloud (`/api/issues/search`) for a
+  specified rule set and can report issues that local `sonarlintMain`, `sonarlintTest`, and
+  `sonarlintFile` do not.
+- `sonarIssues` reads the latest uploaded server analysis; after fixing code locally, its issue list
+  can remain stale until CI runs analysis successfully and uploads fresh results.
 
 ### Tasks
 - Full main sources:
@@ -124,6 +129,27 @@ Confirm `gradle/verification-metadata.xml` contains SpotBugs entries such as:
   - `./gradlew --quiet sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java`
   - Aliases: `-Pfile=...`, `-Psonarlint.sources=...`
   - Report: `build/reports/sonarLint/sonarlintFile/sonarlintFile.xml`
+- Server-side rule query:
+  - `./gradlew sonarIssues -PsonarIssues.rules=java:S1172`
+  - Task name is `sonarIssues` (sometimes informally referred to as “sonarlintIssues”).
+  - Uses `SONAR_TOKEN` automatically when present (required for private projects).
+  - Default report: `build/reports/sonar/issues-page-1.json`
+  - Useful properties:
+    - `-PsonarIssues.rules=<repo:rule>` (comma-separated supported by API)
+    - `-PsonarIssues.page=<n>`
+    - `-PsonarIssues.pageSize=<1..500>`
+    - `-PsonarIssues.output=<path>`
+
+### Rule-specific investigation workflow
+When investigating a specific SonarLint/Sonar rule, always run all three:
+1) `./gradlew sonarlintMain`
+2) `./gradlew sonarlintTest`
+3) `./gradlew sonarIssues -PsonarIssues.rules=<repo:rule>`
+
+Interpretation:
+- Local SonarLint tasks (`sonarlintMain`, `sonarlintTest`, optionally `sonarlintFile`) show what the
+  current local analyzer run reports.
+- `sonarIssues` shows what the server currently reports (may lag until CI analysis completes).
 
 ### Verification refresh on SonarLint bumps
 If strict verification blocks resolution:
