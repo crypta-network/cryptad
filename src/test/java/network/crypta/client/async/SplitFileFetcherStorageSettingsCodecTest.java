@@ -42,7 +42,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
 
     ParsedBasicSettings parsed =
         SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-            buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH);
+            buffer,
+            BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+            values.completeViaTruncation,
+            RAF_LENGTH);
 
     assertParsedValues(values, parsed);
 
@@ -136,7 +139,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
 
     ParsedBasicSettings parsed =
         SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-            encoded, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH);
+            encoded,
+            BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+            values.completeViaTruncation,
+            RAF_LENGTH);
 
     assertParsedValues(values, parsed);
 
@@ -154,7 +160,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -167,7 +176,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -180,7 +192,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -193,7 +208,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -206,7 +224,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -219,7 +240,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -232,7 +256,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -244,7 +271,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings + 1, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS + 1,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -257,7 +287,7 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, false, RAF_LENGTH));
+                buffer, BasicSettingsValues.OFFSET_BASIC_SETTINGS, false, RAF_LENGTH));
   }
 
   @Test
@@ -270,7 +300,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -283,7 +316,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   @Test
@@ -298,7 +334,10 @@ class SplitFileFetcherStorageSettingsCodecTest {
         StorageFormatException.class,
         () ->
             SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-                buffer, values.offsetBasicSettings, values.completeViaTruncation, RAF_LENGTH));
+                buffer,
+                BasicSettingsValues.OFFSET_BASIC_SETTINGS,
+                values.completeViaTruncation,
+                RAF_LENGTH));
   }
 
   private static byte[] fixedKey() {
@@ -326,17 +365,18 @@ class SplitFileFetcherStorageSettingsCodecTest {
     assertEquals(values.cryptoAlgorithm, parsed.getSplitfileSingleCryptoAlgorithm());
     assertArrayEquals(values.cryptoKey, parsed.getSplitfileSingleCryptoKey());
     assertEquals(values.finalLength, parsed.getFinalLength());
-    assertEquals(values.decompressedLength, parsed.getDecompressedLength());
+    assertEquals(BasicSettingsValues.DECOMPRESSED_LENGTH, parsed.getDecompressedLength());
     assertEquals(values.clientMetadata.getMIMEType(), parsed.getClientMetadata().getMIMEType());
     assertEquals(values.decompressors, parsed.getDecompressors());
     assertEquals(values.offsetKeyList, parsed.getOffsetKeyList());
-    assertEquals(values.offsetSegmentStatus, parsed.getOffsetSegmentStatus());
-    assertEquals(values.offsetGeneralProgress, parsed.getOffsetGeneralProgress());
-    assertEquals(values.offsetMainBloomFilter, parsed.getOffsetMainBloomFilter());
-    assertEquals(values.offsetSegmentBloomFilters, parsed.getOffsetSegmentBloomFilters());
-    assertEquals(values.offsetOriginalMetadata, parsed.getOffsetOriginalMetadata());
-    assertEquals(values.offsetOriginalDetails, parsed.getOffsetOriginalDetails());
-    assertEquals(values.offsetBasicSettings, parsed.getOffsetBasicSettings());
+    assertEquals(BasicSettingsValues.OFFSET_SEGMENT_STATUS, parsed.getOffsetSegmentStatus());
+    assertEquals(BasicSettingsValues.OFFSET_GENERAL_PROGRESS, parsed.getOffsetGeneralProgress());
+    assertEquals(BasicSettingsValues.OFFSET_MAIN_BLOOM_FILTER, parsed.getOffsetMainBloomFilter());
+    assertEquals(
+        BasicSettingsValues.OFFSET_SEGMENT_BLOOM_FILTERS, parsed.getOffsetSegmentBloomFilters());
+    assertEquals(BasicSettingsValues.OFFSET_ORIGINAL_METADATA, parsed.getOffsetOriginalMetadata());
+    assertEquals(BasicSettingsValues.OFFSET_ORIGINAL_DETAILS, parsed.getOffsetOriginalDetails());
+    assertEquals(BasicSettingsValues.OFFSET_BASIC_SETTINGS, parsed.getOffsetBasicSettings());
     assertEquals(values.compatMode, parsed.getFinalMinCompatMode());
     assertEquals(values.segmentCount, parsed.getSegmentCount());
     assertEquals(values.totalDataBlocks, parsed.getTotalDataBlocks());
@@ -372,17 +412,18 @@ class SplitFileFetcherStorageSettingsCodecTest {
       setField(storage, "splitfileSingleCryptoAlgorithm", values.cryptoAlgorithm);
       setField(storage, "splitfileSingleCryptoKey", values.cryptoKey);
       setField(storage, "finalLength", values.finalLength);
-      setField(storage, "decompressedLength", values.decompressedLength);
+      setField(storage, "decompressedLength", BasicSettingsValues.DECOMPRESSED_LENGTH);
       setField(storage, "clientMetadata", values.clientMetadata);
       setField(storage, "decompressors", values.decompressors);
       setField(storage, "offsetKeyList", values.offsetKeyList);
-      setField(storage, "offsetSegmentStatus", values.offsetSegmentStatus);
-      setField(storage, "offsetGeneralProgress", values.offsetGeneralProgress);
-      setField(storage, "offsetMainBloomFilter", values.offsetMainBloomFilter);
-      setField(storage, "offsetSegmentBloomFilters", values.offsetSegmentBloomFilters);
-      setField(storage, "offsetOriginalMetadata", values.offsetOriginalMetadata);
-      setField(storage, "offsetOriginalDetails", values.offsetOriginalDetails);
-      setField(storage, "offsetBasicSettings", values.offsetBasicSettings);
+      setField(storage, "offsetSegmentStatus", BasicSettingsValues.OFFSET_SEGMENT_STATUS);
+      setField(storage, "offsetGeneralProgress", BasicSettingsValues.OFFSET_GENERAL_PROGRESS);
+      setField(storage, "offsetMainBloomFilter", BasicSettingsValues.OFFSET_MAIN_BLOOM_FILTER);
+      setField(
+          storage, "offsetSegmentBloomFilters", BasicSettingsValues.OFFSET_SEGMENT_BLOOM_FILTERS);
+      setField(storage, "offsetOriginalMetadata", BasicSettingsValues.OFFSET_ORIGINAL_METADATA);
+      setField(storage, "offsetOriginalDetails", BasicSettingsValues.OFFSET_ORIGINAL_DETAILS);
+      setField(storage, "offsetBasicSettings", BasicSettingsValues.OFFSET_BASIC_SETTINGS);
       setField(storage, "completeViaTruncation", values.completeViaTruncation);
       setField(storage, "finalMinCompatMode", values.compatMode);
       setField(storage, "segments", segments);
@@ -409,7 +450,7 @@ class SplitFileFetcherStorageSettingsCodecTest {
     private byte cryptoAlgorithm = 0;
     private byte[] cryptoKey;
     private long finalLength = 123L;
-    private static final long decompressedLength = 456L;
+    private static final long DECOMPRESSED_LENGTH = 456L;
     private final ClientMetadata clientMetadata = new ClientMetadata("text/plain");
     private boolean writeValidClientMetadata = true;
     private List<COMPRESSOR_TYPE> decompressors =
@@ -417,13 +458,13 @@ class SplitFileFetcherStorageSettingsCodecTest {
     private Integer decompressorCountOverride;
     private List<Short> decompressorIdsOverride;
     private long offsetKeyList = 10L;
-    private static final long offsetSegmentStatus = 20L;
-    private static final long offsetGeneralProgress = 30L;
-    private static final long offsetMainBloomFilter = 40L;
-    private static final long offsetSegmentBloomFilters = 50L;
-    private static final long offsetOriginalMetadata = 60L;
-    private static final long offsetOriginalDetails = 70L;
-    private static final long offsetBasicSettings = 80L;
+    private static final long OFFSET_SEGMENT_STATUS = 20L;
+    private static final long OFFSET_GENERAL_PROGRESS = 30L;
+    private static final long OFFSET_MAIN_BLOOM_FILTER = 40L;
+    private static final long OFFSET_SEGMENT_BLOOM_FILTERS = 50L;
+    private static final long OFFSET_ORIGINAL_METADATA = 60L;
+    private static final long OFFSET_ORIGINAL_DETAILS = 70L;
+    private static final long OFFSET_BASIC_SETTINGS = 80L;
     private boolean completeViaTruncation = false;
     private CompatibilityMode compatMode = CompatibilityMode.COMPAT_1250;
     private Integer compatModeOrdinalOverride;
@@ -443,7 +484,7 @@ class SplitFileFetcherStorageSettingsCodecTest {
         dos.writeShort(resolveSplitfileAlgorithmCode());
         writeCryptoInfo(dos);
         dos.writeLong(finalLength);
-        dos.writeLong(decompressedLength);
+        dos.writeLong(DECOMPRESSED_LENGTH);
         writeClientMetadata(dos);
         writeDecompressors(dos);
         writeOffsets(dos);
@@ -522,13 +563,13 @@ class SplitFileFetcherStorageSettingsCodecTest {
 
     private void writeOffsets(DataOutputStream dos) throws IOException {
       dos.writeLong(offsetKeyList);
-      dos.writeLong(offsetSegmentStatus);
-      dos.writeLong(offsetGeneralProgress);
-      dos.writeLong(offsetMainBloomFilter);
-      dos.writeLong(offsetSegmentBloomFilters);
-      dos.writeLong(offsetOriginalMetadata);
-      dos.writeLong(offsetOriginalDetails);
-      dos.writeLong(offsetBasicSettings);
+      dos.writeLong(OFFSET_SEGMENT_STATUS);
+      dos.writeLong(OFFSET_GENERAL_PROGRESS);
+      dos.writeLong(OFFSET_MAIN_BLOOM_FILTER);
+      dos.writeLong(OFFSET_SEGMENT_BLOOM_FILTERS);
+      dos.writeLong(OFFSET_ORIGINAL_METADATA);
+      dos.writeLong(OFFSET_ORIGINAL_DETAILS);
+      dos.writeLong(OFFSET_BASIC_SETTINGS);
     }
 
     @SuppressWarnings("EnumOrdinal")

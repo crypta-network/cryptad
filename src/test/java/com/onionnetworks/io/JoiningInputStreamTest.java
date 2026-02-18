@@ -20,8 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class JoiningInputStreamTest {
 
-  private static void ignoreInt(int ignored) {}
-
   @Test
   void constructor_whenFirstIsNull_throwsNullPointerException() {
     InputStream second = new ByteArrayInputStream(new byte[0]);
@@ -101,8 +99,8 @@ class JoiningInputStreamTest {
       int read = joiningInputStream.read(buffer, 0, buffer.length);
 
       assertEquals(2, read);
-      ignoreInt(verify(first).read(buffer, 0, buffer.length));
-      ignoreInt(verify(second).read(buffer, 0, buffer.length));
+      verify(first).read(buffer, 0, buffer.length);
+      verify(second).read(buffer, 0, buffer.length);
     }
   }
 

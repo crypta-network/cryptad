@@ -34,8 +34,6 @@ class LineReadingInputStreamTest {
   private static final int MAX_LENGTH = 128;
   private static final int BUFFER_SIZE = 128;
 
-  private static void ignoreInt(int ignored) {}
-
   @Test
   void testReadLineWithoutMarking() throws Exception {
     // try utf8
@@ -74,7 +72,7 @@ class LineReadingInputStreamTest {
                   LENGTH_CHECKING_LINE_LF - 1, BUFFER_SIZE, true));
     }
 
-    // Same test shouldn't throw
+    // The same test shouldn't throw
     try (LineReadingInputStream instance =
         new LineReadingInputStream(
             new ByteArrayInputStream(LENGTH_CHECKING_LINE.getBytes(StandardCharsets.UTF_8)))) {
@@ -128,7 +126,7 @@ class LineReadingInputStreamTest {
           () -> throwingInstance2.readLine(LENGTH_CHECKING_LINE_LF - 1, BUFFER_SIZE, true));
     }
 
-    // Same test shouldn't throw
+    // The same test shouldn't throw
     try (LineReadingInputStream instance =
         new LineReadingInputStream(
             new ByteArrayInputStream(LENGTH_CHECKING_LINE.getBytes(StandardCharsets.UTF_8)))) {
@@ -185,8 +183,8 @@ class LineReadingInputStreamTest {
 
     try (LineReadingInputStream in = new LineReadingInputStream(mocked)) {
       assertThrows(EOFException.class, () -> in.readLine(MAX_LENGTH, BUFFER_SIZE, true));
-      ignoreInt(verify(mocked, atLeastOnce()).read(any(byte[].class), anyInt(), anyInt()));
-      ignoreInt(verify(mocked, never()).read());
+      verify(mocked, atLeastOnce()).read(any(byte[].class), anyInt(), anyInt());
+      verify(mocked, never()).read();
     }
   }
 
@@ -247,7 +245,7 @@ class LineReadingInputStreamTest {
     }
   }
 
-  /** ByteArrayInputStream that disables mark/reset support to force non-marking path. */
+  /** ByteArrayInputStream that disables mark/reset support to force a non-marking path. */
   private static class NonMarkingInputStream extends ByteArrayInputStream {
     NonMarkingInputStream(byte[] buf) {
       super(buf);

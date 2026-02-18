@@ -15,8 +15,6 @@ import org.junit.jupiter.api.Test;
 @SuppressWarnings("java:S100")
 class UnpredictableInputStreamTest {
 
-  private static void ignoreLong(long ignored) {}
-
   @Test
   void skip_whenRandomChoosesZero_returnsZeroAndDoesNotAdvance() throws Exception {
     ByteArrayInputStream base = new ByteArrayInputStream(new byte[] {1, 2, 3});
@@ -106,7 +104,7 @@ class UnpredictableInputStreamTest {
       setRandom(stream, new SequenceRandom(0));
       stream.close();
 
-      assertThrows(IOException.class, () -> ignoreLong(stream.skip(1)));
+      assertThrows(IOException.class, () -> stream.skip(1));
     }
   }
 

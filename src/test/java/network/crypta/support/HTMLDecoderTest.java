@@ -20,14 +20,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 @SuppressWarnings("java:S100") // Allow method names with underscores for readability
 class HTMLDecoderTest {
 
-  private static void ignoreString(String ignored) {}
-
   // -------- decode(String) --------
 
   @Test
   @SuppressWarnings("DataFlowIssue")
   void decode_whenNull_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> ignoreString(HTMLDecoder.decode(null)));
+    assertThrows(NullPointerException.class, () -> HTMLDecoder.decode(null));
   }
 
   @ParameterizedTest
@@ -81,8 +79,8 @@ class HTMLDecoderTest {
         "&1234;", // no leading '#'
         "Phi;", // no leading '&'
         "", // empty
-        "&#229", // decimal without semicolon
-        "&#x6C34", // hex without semicolon
+        "&#229", // decimal without a semicolon
+        "&#x6C34", // hex without a semicolon
         "&#xGG;", // non-hex digits
         "&apos;", // not in decode map
         "abc&", // dangling ampersand
@@ -125,7 +123,7 @@ class HTMLDecoderTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void compact_whenNull_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> ignoreString(HTMLDecoder.compact(null)));
+    assertThrows(NullPointerException.class, () -> HTMLDecoder.compact(null));
   }
 
   @Test

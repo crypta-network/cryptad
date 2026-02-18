@@ -29,12 +29,6 @@ class Base64Test {
 
   private static final String ILLEGAL_CHAR_MSG = "illegal Base64 character";
 
-  private static void ignoreString(String ignored) {}
-
-  private static void ignoreBytes(byte[] ignored) {}
-
-  private static void ignoreInt(int ignored) {}
-
   // ----------------------------
   // Happy-path round trips
   // ----------------------------
@@ -283,35 +277,35 @@ class Base64Test {
   @DisplayName("encode_whenNullBytes_expectNullPointerException")
   void encodeWhenNullBytesExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> ignoreString(Base64.encode(null)));
+    assertThrows(NullPointerException.class, () -> Base64.encode(null));
   }
 
   @Test
   @DisplayName("encodeUTF8_whenNull_expectNullPointerException")
   void encodeUtf8WhenNullExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> ignoreString(Base64.encodeUTF8(null)));
+    assertThrows(NullPointerException.class, () -> Base64.encodeUTF8(null));
   }
 
   @Test
   @DisplayName("decode_whenNull_expectNullPointerException")
   void decodeWhenNullExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> ignoreBytes(Base64.decode(null)));
+    assertThrows(NullPointerException.class, () -> Base64.decode(null));
   }
 
   @Test
   @DisplayName("decodeStandard_whenNull_expectNullPointerException")
   void decodeStandardWhenNullExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> ignoreBytes(Base64.decodeStandard(null)));
+    assertThrows(NullPointerException.class, () -> Base64.decodeStandard(null));
   }
 
   @Test
   @DisplayName("decodeUTF8_whenNull_expectNullPointerException")
   void decodeUtf8WhenNullExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> ignoreString(Base64.decodeUTF8(null)));
+    assertThrows(NullPointerException.class, () -> Base64.decodeUTF8(null));
   }
 
   // ----------------------------
@@ -349,7 +343,7 @@ class Base64Test {
     // Assert
     assertArrayEquals(data, readAll);
     assertArrayEquals(data, decoded);
-    ignoreInt(verify(is, atLeastOnce()).read(any(byte[].class)));
+    verify(is, atLeastOnce()).read(any(byte[].class));
   }
 
   @Test

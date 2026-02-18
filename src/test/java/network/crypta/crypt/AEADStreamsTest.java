@@ -1,7 +1,11 @@
 package network.crypta.crypt;
 
 import static network.crypta.testsupport.TestRandomData.fillBucketWithRandom;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -25,7 +29,7 @@ class AEADStreamsTest {
   private static void closeIgnoringAeadVerification(AEADInputStream cis) throws IOException {
     try {
       cis.close();
-    } catch (AEADVerificationFailedException ignored) {
+    } catch (AEADVerificationFailedException _) {
       // Expected for intentionally corrupted tails in negative tests.
     }
   }
@@ -44,7 +48,7 @@ class AEADStreamsTest {
 
   @Test
   void testCorruptedRoundTrip() throws IOException {
-    Random random = new Random(0x96231307L); // Same seed as first test, intentionally.
+    Random random = new Random(0x96231307L); // Same seed as the first test, intentionally.
     for (int i = 0; i < 10; i++) {
       ArrayBucket input = new ArrayBucket();
       fillBucketWithRandom(input, random, 65536L, true);
@@ -130,22 +134,23 @@ class AEADStreamsTest {
     Random random = new Random(0x47f6709f);
     byte[] key = new byte[keysize];
     random.nextBytes(key);
-    Bucket output = new ArrayBucket();
-    try (OutputStream os = output.getOutputStream();
-        AEADOutputStream cos = AEADOutputStream.innerCreateAES(os, key, random)) {
-      BucketTools.copyTo(input, cos, 2048);
+    try (ArrayBucket output = new ArrayBucket()) {
+      try (OutputStream os = output.getOutputStream();
+          AEADOutputStream cos = AEADOutputStream.innerCreateAES(os, key, random)) {
+        BucketTools.copyTo(input, cos, 2048);
+      }
+      byte[] first1KReadEncrypted = new byte[1024];
+      byte[] first1KReadOriginal = new byte[1024];
+      try (InputStream is = output.getInputStream();
+          AEADInputStream cis = AEADInputStream.createAES(is, key);
+          DataInputStream encryptedIn = new DataInputStream(cis);
+          InputStream originalIs = input.getInputStream();
+          DataInputStream originalIn = new DataInputStream(originalIs)) {
+        encryptedIn.readFully(first1KReadEncrypted);
+        originalIn.readFully(first1KReadOriginal);
+      }
+      assertArrayEquals(first1KReadEncrypted, first1KReadOriginal);
     }
-    byte[] first1KReadEncrypted = new byte[1024];
-    byte[] first1KReadOriginal = new byte[1024];
-    try (InputStream is = output.getInputStream();
-        AEADInputStream cis = AEADInputStream.createAES(is, key);
-        DataInputStream encryptedIn = new DataInputStream(cis);
-        InputStream originalIs = input.getInputStream();
-        DataInputStream originalIn = new DataInputStream(originalIs)) {
-      encryptedIn.readFully(first1KReadEncrypted);
-      originalIn.readFully(first1KReadOriginal);
-    }
-    assertArrayEquals(first1KReadEncrypted, first1KReadOriginal);
   }
 
   /**
@@ -159,29 +164,30 @@ class AEADStreamsTest {
     Random random = new Random(0x47f6709f);
     byte[] key = new byte[keysize];
     random.nextBytes(key);
-    Bucket output = new ArrayBucket();
-    try (OutputStream os = output.getOutputStream()) {
-      try (AEADOutputStream cos =
-          AEADOutputStream.innerCreateAES(new NoCloseProxyOutputStream(os), key, random)) {
-        BucketTools.copyTo(input, cos, -1);
+    try (ArrayBucket output = new ArrayBucket()) {
+      try (OutputStream os = output.getOutputStream()) {
+        try (AEADOutputStream cos =
+            AEADOutputStream.innerCreateAES(new NoCloseProxyOutputStream(os), key, random)) {
+          BucketTools.copyTo(input, cos, -1);
+        }
+        // Now write garbage.
+        FileUtil.fill(os, 1024);
       }
-      // Now write garbage.
-      FileUtil.fill(os, 1024);
+      byte[] first1KReadEncrypted = new byte[1024];
+      byte[] first1KReadOriginal = new byte[1024];
+      assertThrows(
+          AEADVerificationFailedException.class,
+          () -> {
+            try (InputStream is = output.getInputStream();
+                AEADInputStream cis = AEADInputStream.createAES(is, key);
+                DataInputStream encryptedIn = new DataInputStream(cis);
+                InputStream originalIs = input.getInputStream();
+                DataInputStream originalIn = new DataInputStream(originalIs)) {
+              encryptedIn.readFully(first1KReadEncrypted);
+              originalIn.readFully(first1KReadOriginal);
+              assertArrayEquals(first1KReadEncrypted, first1KReadOriginal);
+            }
+          });
     }
-    byte[] first1KReadEncrypted = new byte[1024];
-    byte[] first1KReadOriginal = new byte[1024];
-    assertThrows(
-        AEADVerificationFailedException.class,
-        () -> {
-          try (InputStream is = output.getInputStream();
-              AEADInputStream cis = AEADInputStream.createAES(is, key);
-              DataInputStream encryptedIn = new DataInputStream(cis);
-              InputStream originalIs = input.getInputStream();
-              DataInputStream originalIn = new DataInputStream(originalIs)) {
-            encryptedIn.readFully(first1KReadEncrypted);
-            originalIn.readFully(first1KReadOriginal);
-            assertArrayEquals(first1KReadEncrypted, first1KReadOriginal);
-          }
-        });
   }
 }

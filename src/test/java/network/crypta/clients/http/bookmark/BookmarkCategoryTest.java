@@ -42,8 +42,6 @@ class BookmarkCategoryTest {
 
   @Mock UserAlertManager userAlertManager;
 
-  private static void ignoreBookmark(Bookmark ignored) {}
-
   private BookmarkItem newBookmarkItem(String name, String description, boolean hasAnActiveLink) {
     try {
       FreenetURI uri = new FreenetURI(hasAnActiveLink ? USK_1 : USK_2);
@@ -86,6 +84,7 @@ class BookmarkCategoryTest {
   }
 
   @Test
+  @SuppressWarnings("ConstantValue")
   void addBookmark_whenNull_expectReturnsNullAndDoesNotChangeSize() {
     // Arrange
     BookmarkCategory category = new BookmarkCategory("Root");
@@ -167,7 +166,7 @@ class BookmarkCategoryTest {
     BookmarkCategory root = new BookmarkCategory("Root");
 
     // Act / Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> ignoreBookmark(root.get(index)));
+    assertThrows(IndexOutOfBoundsException.class, () -> root.get(index));
   }
 
   @Test

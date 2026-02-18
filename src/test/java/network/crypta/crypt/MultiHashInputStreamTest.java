@@ -24,8 +24,6 @@ class MultiHashInputStreamTest {
   private static final byte[] MESSAGE = "Hello, World!".getBytes(StandardCharsets.UTF_8);
   private static final String MESSAGE_MD5 = "65a8e27d8879283831b664bd8b7f0ad4";
 
-  private static void ignoreInt(int ignored) {}
-
   private static MultiHashInputStream newHasher(InputStream in, long bitmask) {
     return new MultiHashInputStream(in, bitmask);
   }
@@ -68,7 +66,7 @@ class MultiHashInputStreamTest {
     assertEquals(0, hash.read(buf, 0, 0));
     assertEquals(0, hash.getReadBytes());
 
-    // MD5 of empty string
+    // MD5 of an empty string
     MessageDigest md5 = HashType.MD5.get();
     byte[] emptyDigest = md5.digest();
     HashResult[] results = hash.getResults();
@@ -83,7 +81,7 @@ class MultiHashInputStreamTest {
     ByteArrayInputStream input = new ByteArrayInputStream(MESSAGE);
     MultiHashInputStream hash = newHasher(input, HashType.MD5.bitmask);
 
-    assertThrows(NullPointerException.class, () -> ignoreInt(hash.read(null, 0, 1)));
+    assertThrows(NullPointerException.class, () -> hash.read(null, 0, 1));
   }
 
   @Test
@@ -93,10 +91,9 @@ class MultiHashInputStreamTest {
 
     byte[] buf = new byte[4];
     int invalidOffset = Integer.parseInt("-1");
-    assertThrows(
-        IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, invalidOffset, 1)));
-    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, 0, -1)));
-    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(hash.read(buf, 3, 2)));
+    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, invalidOffset, 1));
+    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 0, -1));
+    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 3, 2));
   }
 
   @Test
@@ -168,7 +165,7 @@ class MultiHashInputStreamTest {
     ByteArrayInputStream input = new ByteArrayInputStream(MESSAGE);
     MultiHashInputStream hash = newHasher(input, HashType.SHA1.bitmask);
 
-    // Read first half and capture digest
+    // Read the first half and capture digest
     int half = MESSAGE.length / 2;
     byte[] buf = new byte[half];
     assertEquals(half, hash.read(buf, 0, buf.length));
@@ -241,7 +238,7 @@ class MultiHashInputStreamTest {
       public int read(byte @NotNull [] b, int off, int len) {
         if (first) {
           first = false;
-          return 0; // Simulate non-blocking stream that returns 0
+          return 0; // Simulate a non-blocking stream that returns 0
         }
         return delegate.read(b, off, len);
       }

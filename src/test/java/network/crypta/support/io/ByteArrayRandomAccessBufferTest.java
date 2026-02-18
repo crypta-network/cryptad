@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -35,10 +34,6 @@ import org.mockito.Mockito;
 class ByteArrayRandomAccessBufferTest {
   private static final String READ_ONLY_MESSAGE = "Read-only";
   private static final String UNREACHABLE_MESSAGE = "unreachable";
-
-  private static ByteArrayRandomAccessBuffer constructBufferWithSize(int size) {
-    return new ByteArrayRandomAccessBuffer(size);
-  }
 
   /**
    * Produce a deterministic byte array for test assertions.
@@ -88,16 +83,15 @@ class ByteArrayRandomAccessBufferTest {
   @SuppressWarnings("resource")
   void constructor_withNegativeSize_expectNegativeArraySizeException() {
     // Arrange + Act + Assert
-    assertThrows(
-        NegativeArraySizeException.class, () -> assertNotNull(constructBufferWithSize(-1)));
+    assertThrows(NegativeArraySizeException.class, () -> new ByteArrayRandomAccessBuffer(-1));
   }
 
   /**
    * Ensures the range-copy constructor copies the requested window and honors the {@code readOnly}
    * flag.
    *
-   * <p>Postconditions: subsequent mutations to the source array do not affect the buffer; reads
-   * return the copied range; writes fail with {@link IOException} when the buffer is read-only.
+   * <p>Postconditions: further mutations to the source array do not affect the buffer; reads return
+   * the copied range; writes fail with {@link IOException} when the buffer is read-only.
    *
    * @throws IOException if write is attempted while {@code readOnly} is set
    */
@@ -445,7 +439,7 @@ class ByteArrayRandomAccessBufferTest {
    * <p>Writes bytes {@code 1,2,3} starting at file offset {@code 2} and validates the final buffer
    * image.
    *
-   * @throws IOException if the write unexpectedly fails
+   * @throws IOException if the writing unexpectedly fails
    */
   @Test
   @DisplayName("pwrite: bufOffset respected and data lands at correct file offset")
@@ -542,7 +536,7 @@ class ByteArrayRandomAccessBufferTest {
     try (ByteArrayRandomAccessBuffer raf =
         (ByteArrayRandomAccessBuffer) factory.makeRAF(src, 3, 4, true)) {
 
-      // Mutate source to verify deep copy
+      // Mutate the source to verify deep copy
       src[3] ^= 0x55;
 
       // Assert
@@ -575,7 +569,7 @@ class ByteArrayRandomAccessBufferTest {
         });
   }
 
-  /** Ensures negative offset is rejected by the underlying copy. */
+  /** Ensures a negative offset is rejected by the underlying copy. */
   @Test
   void makeRAF_withInitialContentsNegativeOffset_expectArrayIndexOutOfBoundsException() {
     // Arrange

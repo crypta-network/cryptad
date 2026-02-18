@@ -166,7 +166,7 @@ class SingleFileStreamGeneratorTest {
       assertEquals("fail", ex.getMessage());
       assertTrue(bucket.isFreed(), "Bucket should be closed on write failure");
       assertTrue(tis.isClosed(), "InputStream should be closed on write failure");
-    } catch (IOException ignored) {
+    } catch (IOException _) {
       // close() on this stream is a no-op and does not throw
     }
   }
