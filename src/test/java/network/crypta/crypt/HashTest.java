@@ -25,8 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class HashTest {
   private static final byte[] HELLO_WORLD = "hello world".getBytes(StandardCharsets.UTF_8);
 
-  private static void ignoreBoolean(boolean ignored) {}
-
   private static Stream<Arguments> hashVectors() {
     return Stream.of(
         // type, correct hex for "hello world", incorrect hex (same length)
@@ -232,15 +230,14 @@ class HashTest {
   @EnumSource(HashType.class)
   void verify_whenNullHashResult_expectNpe(HashType type) {
     byte[] bytes = new Hash(type).genHash(HELLO_WORLD);
-    assertThrows(
-        NullPointerException.class, () -> ignoreBoolean(Hash.verify((HashResult) null, bytes)));
+    assertThrows(NullPointerException.class, () -> Hash.verify((HashResult) null, bytes));
   }
 
   @ParameterizedTest(name = "{0}: static verify(hash, null) -> NPE")
   @MethodSource("hashVectors")
   void verify_whenNullDataForStatic_expectNpe(HashType type, String okHex, String ignored) {
     HashResult h = new HashResult(type, Hex.decode(okHex));
-    assertThrows(NullPointerException.class, () -> ignoreBoolean(Hash.verify(h, (byte[][]) null)));
+    assertThrows(NullPointerException.class, () -> Hash.verify(h, (byte[][]) null));
   }
 
   @ParameterizedTest(name = "{0}: static verify(HashResult, HashResult)")
@@ -259,7 +256,7 @@ class HashTest {
   void verify_whenFirstNull_expectNpe_andSecondNull_expectFalse() {
     HashResult some =
         new HashResult(HashType.SHA256, new Hash(HashType.SHA256).genHash(HELLO_WORLD));
-    assertThrows(NullPointerException.class, () -> ignoreBoolean(Hash.verify(null, some)));
+    assertThrows(NullPointerException.class, () -> Hash.verify(null, some));
     // Use an environment-dependent path so static analysis does not flag a constant null,
     // while keeping the outcome deterministically false in both branches.
     HashResult other =
@@ -279,7 +276,7 @@ class HashTest {
     byte[] world = " world".getBytes(StandardCharsets.UTF_8);
     // First compute hash of "hello"
     byte[] first = h.genHash(hello);
-    // Now ensure second hash includes only new input, not a carry-over
+    // Now ensure the second hash includes only new input, not a carry-over
     byte[] second = h.genHash(world);
     byte[] expectedSecond = type.get().digest(world);
     assertArrayEquals(expectedSecond, second);

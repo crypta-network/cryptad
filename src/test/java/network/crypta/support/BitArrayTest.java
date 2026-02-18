@@ -24,8 +24,6 @@ class BitArrayTest {
 
   private static final int SAMPLE_SIZE = 10;
 
-  private static void ignoreBoolean(boolean ignored) {}
-
   private static BitArray newFilled(int size, boolean value) {
     BitArray arr = new BitArray(size);
     for (int i = 0; i < arr.getSize(); i++) {
@@ -56,7 +54,8 @@ class BitArrayTest {
   void toStringWhenAllOnesOrZerosMatchesExpected() {
     // Arrange
     BitArray ones = newFilled(SAMPLE_SIZE, true);
-    BitArray zeros = newFilled(8, false); // use a different size to avoid constant-parameter smell
+    BitArray zeros =
+        newFilled(8, false); // use a different size to avoid a constant-parameter smell
 
     // Act
     String onesStr = ones.toString();
@@ -95,7 +94,7 @@ class BitArrayTest {
 
     // Act & Assert
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.setBit(-1, true));
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreBoolean(arr.bitAt(-1)));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.bitAt(-1));
   }
 
   @Test

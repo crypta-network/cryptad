@@ -34,8 +34,6 @@ class BufferTest {
       "asldkjaskjdsakdhasdhaskjdhaskjhbkasbhdjkasbduiwbxgdoudgboewuydxbybuewyxbuewyuwe"
           + "dasdkljasndijwnodhnqweoidhnaouidhbnwoduihwnxodiuhnwuioxdhnwqiouhnxwqoiushdnxwqoiudhxnwqoiudhxni";
 
-  private static void ignoreByte(byte ignored) {}
-
   @Test
   @DisplayName("getData_whenFullArray_expectSameInstanceAndCorrectContent")
   void getData_whenFullArray_expectSameInstanceAndCorrectContent() {
@@ -60,7 +58,7 @@ class BufferTest {
     // Act
     Buffer buffer = new Buffer(data, 4, 5);
 
-    // Assert: returns copies, not the same instance
+    // Assert: returns copies, different instance
     byte[] first = buffer.getData();
     byte[] second = buffer.getData();
     assertNotEquals(dataSub, buffer.getData()); // reference inequality
@@ -68,7 +66,7 @@ class BufferTest {
     assertArrayEquals(dataSub, first);
     assertArrayEquals(dataSub, second);
 
-    // Mutating one snapshot does not affect subsequent calls
+    // Mutating one snapshot does not affect later calls
     first[0] = (byte) 123;
     assertArrayEquals(dataSub, buffer.getData());
 
@@ -151,8 +149,8 @@ class BufferTest {
   @DisplayName("byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException")
   void byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException() {
     Buffer b = new Buffer(new byte[] {10, 20, 30});
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(3))); // == length
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ignoreByte(b.byteAt(-1)));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(3)); // == length
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(-1));
   }
 
   @Test

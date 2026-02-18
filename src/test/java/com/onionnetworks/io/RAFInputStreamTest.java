@@ -20,10 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class RAFInputStreamTest {
 
-  private static void ignoreInt(int ignored) {
-    // Intentional no-op for exception-path assertions.
-  }
-
   @Test
   void read_whenDataAvailable_returnsUnsignedByteAndAdvancesPosition() throws Exception {
     byte[] data = new byte[] {(byte) 0xFF};
@@ -79,7 +75,7 @@ class RAFInputStreamTest {
     RAFInputStream stream = new RAFInputStream(raf);
     stream.close();
 
-    assertThrows(EOFException.class, () -> ignoreInt(stream.read(new byte[1], 0, 1)));
+    assertThrows(EOFException.class, () -> stream.read(new byte[1], 0, 1));
     verifyNoMoreInteractions(raf);
   }
 
@@ -95,7 +91,7 @@ class RAFInputStreamTest {
             })
         .when(raf)
         .seekAndRead(anyLong(), any(byte[].class), anyInt(), anyInt());
-    doAnswer(invocation -> 10L).when(raf).length();
+    doAnswer(_ -> 10L).when(raf).length();
 
     try (RAFInputStream stream = new RAFInputStream(raf)) {
       long firstSkip = stream.skip(4);
@@ -118,9 +114,7 @@ class RAFInputStreamTest {
   void skip_whenRequestExceedsFileLength_clampsToRemainingBytes() throws Exception {
     RAF raf = mock(RAF.class);
     org.mockito.Mockito.when(raf.length()).thenReturn(5L);
-    doAnswer(invocation -> -1)
-        .when(raf)
-        .seekAndRead(anyLong(), any(byte[].class), anyInt(), anyInt());
+    doAnswer(_ -> -1).when(raf).seekAndRead(anyLong(), any(byte[].class), anyInt(), anyInt());
 
     try (RAFInputStream stream = new RAFInputStream(raf)) {
       long skipped = stream.skip(10);

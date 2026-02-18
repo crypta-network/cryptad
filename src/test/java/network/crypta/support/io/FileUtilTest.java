@@ -1,10 +1,28 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,8 +47,6 @@ import org.mockito.MockedStatic;
 @SuppressWarnings("java:S100")
 class FileUtilTest {
 
-  private static void ignoreLong(long ignored) {}
-
   // ------------------------ sanitizeFileName() ---------------------------------
 
   @ParameterizedTest(name = "{0} → {2} on {1}")
@@ -54,7 +70,7 @@ class FileUtilTest {
         // Slash is forbidden on Unix-like systems → replaced with space
         Arguments.of("a/b", FileUtil.OperatingSystem.LINUX, "a b"),
         Arguments.of("a/b", FileUtil.OperatingSystem.GENERIC_UNIX, "a b"),
-        // Unknown = conservative rules (union); keep behaviour consistent
+        // Unknown = conservative rules (union); keep behavior consistent
         Arguments.of("a/b.", FileUtil.OperatingSystem.UNKNOWN, "a b"));
   }
 
@@ -110,7 +126,7 @@ class FileUtilTest {
     // Arrange
     InputStream in = new ByteArrayInputStream(new byte[] {1, 2, 3});
 
-    // Act + Assert: should not throw and stream remains at start
+    // Act + Assert: should not throw and stream remains at the start
     assertDoesNotThrow(() -> FileUtil.skipFully(in, 0));
     assertEquals(1, in.read());
   }
@@ -124,7 +140,7 @@ class FileUtilTest {
 
     // Act + Assert: should not throw and perform 3 skip calls
     assertDoesNotThrow(() -> FileUtil.skipFully(is, 10));
-    ignoreLong(verify(is, times(3)).skip(anyLong()));
+    verify(is, times(3)).skip(anyLong());
   }
 
   @Test
@@ -136,7 +152,7 @@ class FileUtilTest {
 
     // Act + Assert
     assertThrows(IOException.class, () -> FileUtil.skipFully(is, 5));
-    ignoreLong(verify(is, atLeastOnce()).skip(anyLong()));
+    verify(is, atLeastOnce()).skip(anyLong());
   }
 
   // ------------------------ readUTF() ------------------------------------------
@@ -229,7 +245,7 @@ class FileUtilTest {
     try (MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
       files
           .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.ATOMIC_MOVE)))
-          .then(invocation -> dst);
+          .then(_ -> dst);
 
       // Act
       boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
@@ -254,7 +270,7 @@ class FileUtilTest {
           .thenThrow(new java.nio.file.AtomicMoveNotSupportedException("a", "b", "nope"));
       files
           .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.REPLACE_EXISTING)))
-          .then(invocation -> dst);
+          .then(_ -> dst);
 
       // Act
       boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
@@ -363,7 +379,7 @@ class FileUtilTest {
     // Arrange
     Path f = tmp.resolve("missing.bin");
 
-    // Act + Assert: should not throw, and path remains absent
+    // Act + Assert: should not throw, and the path remains absent
     assertDoesNotThrow(() -> FileUtil.secureDelete(f.toFile()));
     assertTrue(Files.notExists(f));
   }

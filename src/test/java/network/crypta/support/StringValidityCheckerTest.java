@@ -16,8 +16,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 @SuppressWarnings("java:S100") // Use method_whenCondition_expectOutcome naming
 class StringValidityCheckerTest {
 
-  private static void ignoreBoolean(boolean ignored) {}
-
   // ---------------------------
   // Windows printable characters
   // ---------------------------
@@ -125,8 +123,7 @@ class StringValidityCheckerTest {
   @Test
   void isWindowsReservedFilename_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.isWindowsReservedFilename(null)));
+        NullPointerException.class, () -> StringValidityChecker.isWindowsReservedFilename(null));
   }
 
   // ---------------------------
@@ -159,7 +156,7 @@ class StringValidityCheckerTest {
   void containsNoIDNBlacklistCharacters_whenNull_expectNPE() {
     assertThrows(
         NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.containsNoIDNBlacklistCharacters(null)));
+        () -> StringValidityChecker.containsNoIDNBlacklistCharacters(null));
   }
 
   // ---------------------------
@@ -186,8 +183,7 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoLinebreaks_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.containsNoLinebreaks(null)));
+        NullPointerException.class, () -> StringValidityChecker.containsNoLinebreaks(null));
   }
 
   // ---------------------------
@@ -215,8 +211,7 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoInvalidCharacters_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.containsNoInvalidCharacters(null)));
+        NullPointerException.class, () -> StringValidityChecker.containsNoInvalidCharacters(null));
   }
 
   // ---------------------------
@@ -243,8 +238,7 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoControlCharacters_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.containsNoControlCharacters(null)));
+        NullPointerException.class, () -> StringValidityChecker.containsNoControlCharacters(null));
   }
 
   // ---------------------------
@@ -265,7 +259,7 @@ class StringValidityCheckerTest {
 
   @Test
   void containsNoInvalidFormatting_whenUnbalancedDirectionalExtraPop_expectFalse() {
-    String s = "\u202Cpop-first"; // POP without push
+    String s = "\u202Cpop-first"; // POP without a push
     assertFalse(StringValidityChecker.containsNoInvalidFormatting(s));
   }
 
@@ -293,8 +287,7 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoInvalidFormatting_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class,
-        () -> ignoreBoolean(StringValidityChecker.containsNoInvalidFormatting(null)));
+        NullPointerException.class, () -> StringValidityChecker.containsNoInvalidFormatting(null));
   }
 
   // ---------------------------

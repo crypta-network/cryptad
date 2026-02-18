@@ -24,8 +24,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ReadBucketAndFreeInputStreamTest {
 
-  private static void ignoreInt(int ignored) {}
-
   private static int invalidNegativeOffset() {
     return -Math.abs(System.identityHashCode(new Object()) | 1);
   }
@@ -91,7 +89,7 @@ class ReadBucketAndFreeInputStreamTest {
       // Act + Assert: read(byte[], off, len)
       byte[] buf2 = new byte[4];
       int r2 = is.read(buf2, 1, 3);
-      assertEquals(2, r2); // remaining bytes are 13,14 → only 2 available
+      assertEquals(2, r2); // the remaining bytes are 13,14 → only 2 available
       assertArrayEquals(new byte[] {0, 13, 14, 0}, buf2);
     }
   }
@@ -106,8 +104,8 @@ class ReadBucketAndFreeInputStreamTest {
       byte[] buf = new byte[2];
       int negativeOff = invalidNegativeOffset();
       int tooLargeLen = invalidLength(buf);
-      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, negativeOff, 1)));
-      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, 0, tooLargeLen)));
+      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, negativeOff, 1));
+      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, 0, tooLargeLen));
     }
   }
 
@@ -119,7 +117,7 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       //noinspection DataFlowIssue
-      assertThrows(NullPointerException.class, () -> ignoreInt(is.read(null)));
+      assertThrows(NullPointerException.class, () -> is.read(null));
     }
   }
 
@@ -182,7 +180,7 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       byte[] buf = new byte[2];
-      IOException ex = assertThrows(IOException.class, () -> ignoreInt(is.read(buf)));
+      IOException ex = assertThrows(IOException.class, () -> is.read(buf));
       assertEquals("read-fail", ex.getMessage());
     }
   }

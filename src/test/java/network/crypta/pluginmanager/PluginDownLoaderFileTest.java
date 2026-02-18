@@ -32,8 +32,6 @@ class PluginDownLoaderFileTest {
 
   private static final String PLUGIN_JAR_NAME = "MyPlugin.jar";
 
-  private static void ignoreString(String ignored) {}
-
   @Test
   void checkSource_whenValidPath_expectFileWithMatchingPath() {
     PluginDownLoaderFile downloader = new PluginDownLoaderFile();
@@ -77,7 +75,7 @@ class PluginDownLoaderFileTest {
     PluginDownLoaderFile downloader = new PluginDownLoaderFile();
 
     //noinspection DataFlowIssue
-    assertThrows(NullPointerException.class, () -> ignoreString(downloader.getPluginName(null)));
+    assertThrows(NullPointerException.class, () -> downloader.getPluginName(null));
   }
 
   @Test

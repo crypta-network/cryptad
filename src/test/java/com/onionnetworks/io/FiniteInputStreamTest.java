@@ -18,8 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class FiniteInputStreamTest {
 
-  private static void ignoreInt(int ignored) {}
-
   @Test
   void constructor_whenInputStreamNull_throwsNullPointerException() {
     assertThrows(NullPointerException.class, FiniteInputStreamTest::createStreamWithNullParent);
@@ -74,7 +72,7 @@ class FiniteInputStreamTest {
       int read = stream.read(buffer, 0, buffer.length);
       assertEquals(2, read);
 
-      assertThrows(EOFException.class, () -> ignoreInt(stream.read(new byte[1], 0, 1)));
+      assertThrows(EOFException.class, () -> stream.read(new byte[1], 0, 1));
     }
   }
 
