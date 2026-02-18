@@ -15,11 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SimpleRunningAverageTest {
   private static final double EPS = 1e-9;
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreDouble(double ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   private static void constructAverage(int window, double init) {
     new SimpleRunningAverage(window, init);
   }
@@ -213,8 +208,7 @@ class SimpleRunningAverageTest {
     assertEquals(0L, avg.countReports());
 
     // Act & Assert: operations that access storage fail
-    assertThrows(
-        ArrayIndexOutOfBoundsException.class, () -> ignoreDouble(avg.valueIfReported(1.0)));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.valueIfReported(1.0));
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1.0));
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1L));
   }

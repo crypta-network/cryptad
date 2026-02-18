@@ -38,11 +38,6 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "java:S2245"})
 class PaddedEphemerallyEncryptedBucketTest {
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreInt(int ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   private static int invalidNegativeOffset() {
     return -Math.abs(System.identityHashCode(new Object()) | 1);
   }
@@ -227,10 +222,8 @@ class PaddedEphemerallyEncryptedBucketTest {
       // Invalid bounds
       int invalidOffset = invalidNegativeOffset();
       int invalidLength = outOfBoundsLength(buf);
-      assertThrows(
-          ArrayIndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, invalidOffset, 1)));
-      assertThrows(
-          ArrayIndexOutOfBoundsException.class, () -> ignoreInt(is.read(buf, 0, invalidLength)));
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, invalidOffset, 1));
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, 0, invalidLength));
 
       // Read rest
       byte[] rest = is.readAllBytes();

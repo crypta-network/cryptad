@@ -19,11 +19,6 @@ import static org.mockito.Mockito.*;
 @SuppressWarnings("java:S100") // test naming style: method_whenCondition_expectOutcome
 class NullInputStreamTest {
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreInt(int ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   @Test
   void read_whenCalled_expectEOF() throws Exception {
     try (InputStream in = new NullInputStream()) {
@@ -104,7 +99,7 @@ class NullInputStreamTest {
   void readWithOffset_whenInvalidArgs_expectIndexOutOfBounds(byte[] buf, int off, int len)
       throws Exception {
     try (InputStream in = new NullInputStream()) {
-      assertThrows(IndexOutOfBoundsException.class, () -> ignoreInt(in.read(buf, off, len)));
+      assertThrows(IndexOutOfBoundsException.class, () -> in.read(buf, off, len));
     }
   }
 
@@ -112,7 +107,7 @@ class NullInputStreamTest {
   @Test
   void readWithNullArray_whenCalled_expectNullPointerException() {
     try (InputStream in = new NullInputStream()) {
-      assertThrows(NullPointerException.class, () -> ignoreInt(in.read(null, 0, 1)));
+      assertThrows(NullPointerException.class, () -> in.read(null, 0, 1));
     } catch (IOException e) {
       fail(e);
     }

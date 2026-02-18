@@ -11,11 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SuppressWarnings("java:S100")
 class ArrayUtilsTest {
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreString(String ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   @ParameterizedTest
   @CsvSource({"0,00", "1,01", "15,0f", "16,10", "127,7f", "-1,ff", "-128,80"})
   @DisplayName("byteToHex returns two lowercase hex chars for any byte value")
@@ -61,8 +56,7 @@ class ArrayUtilsTest {
 
     // Act + Assert
     assertThrows(
-        ArrayIndexOutOfBoundsException.class,
-        () -> ignoreString(ArrayUtils.byteArrayToHex(data, -1, 1)));
+        ArrayIndexOutOfBoundsException.class, () -> ArrayUtils.byteArrayToHex(data, -1, 1));
   }
 
   @Test
@@ -71,15 +65,12 @@ class ArrayUtilsTest {
     byte[] data = new byte[] {0x01, 0x02};
 
     // Act + Assert
-    assertThrows(
-        ArrayIndexOutOfBoundsException.class,
-        () -> ignoreString(ArrayUtils.byteArrayToHex(data, 2, 1)));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ArrayUtils.byteArrayToHex(data, 2, 1));
   }
 
   @Test
   void byteArrayToHex_whenArrayIsNull_throwsNullPointerException() {
     // Act + Assert
-    assertThrows(
-        NullPointerException.class, () -> ignoreString(ArrayUtils.byteArrayToHex(null, 0, 1)));
+    assertThrows(NullPointerException.class, () -> ArrayUtils.byteArrayToHex(null, 0, 1));
   }
 }

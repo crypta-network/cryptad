@@ -27,11 +27,6 @@ class LzmaBenchTest {
   private ByteArrayOutputStream outContent;
   private PrintStream testOut;
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreInt(int ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   @BeforeEach
   void setUpStreams() {
     originalOut = System.out;
@@ -115,8 +110,7 @@ class LzmaBenchTest {
   @Test
   void myInputStream_readWithInvalidRange_throwsIndexOutOfBounds() throws Exception {
     try (LzmaBench.MyInputStream stream = new LzmaBench.MyInputStream(new byte[2], 2)) {
-      assertThrows(
-          IndexOutOfBoundsException.class, () -> ignoreInt(stream.read(new byte[1], 1, 1)));
+      assertThrows(IndexOutOfBoundsException.class, () -> stream.read(new byte[1], 1, 1));
     }
   }
 
