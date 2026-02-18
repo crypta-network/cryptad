@@ -11,7 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SuppressWarnings("java:S100")
 class ArrayUtilsTest {
 
-  private static void ignoreString(String ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreString(String ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @ParameterizedTest
   @CsvSource({"0,00", "1,01", "15,0f", "16,10", "127,7f", "-1,ff", "-128,80"})

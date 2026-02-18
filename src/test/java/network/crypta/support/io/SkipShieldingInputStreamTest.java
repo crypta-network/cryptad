@@ -18,7 +18,10 @@ import static org.mockito.Mockito.*;
  */
 class SkipShieldingInputStreamTest {
 
-  private static void ignoreLong(long ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreLong(long ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @Test
   @DisplayName("skip_whenNegative_expectZeroAndNoRead")

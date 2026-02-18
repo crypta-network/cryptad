@@ -22,7 +22,10 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class IntervalsListTest {
 
-  private static void ignoreInterval(Interval ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInterval(Interval ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @Test
   void constructor_whenNoArgs_expectEmptyListWithNaNBounds() {

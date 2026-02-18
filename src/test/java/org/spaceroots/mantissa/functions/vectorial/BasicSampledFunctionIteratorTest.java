@@ -23,7 +23,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class BasicSampledFunctionIteratorTest {
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   @Mock private SampledFunction function;
 

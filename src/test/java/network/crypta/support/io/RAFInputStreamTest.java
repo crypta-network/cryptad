@@ -24,6 +24,7 @@ import static org.mockito.Mockito.*;
  */
 class RAFInputStreamTest {
 
+  @SuppressWarnings("java:S1172")
   private static void ignoreInt(int ignored) {
     // Intentional no-op for tests validating exceptional paths.
   }

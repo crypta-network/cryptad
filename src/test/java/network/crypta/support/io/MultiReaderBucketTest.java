@@ -23,7 +23,10 @@ class MultiReaderBucketTest {
   private static final String UNDERLYING_NAME = "underlying";
   private static final String MSG_ALREADY_CLOSED = "Already closed";
 
-  private static void ignoreInt(int ignored) {}
+  @SuppressWarnings("java:S1172")
+  private static void ignoreInt(int ignored) {
+    // Intentionally empty helper to consume values in assertions.
+  }
 
   // --- Utilities
 
