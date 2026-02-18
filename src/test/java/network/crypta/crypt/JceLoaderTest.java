@@ -164,7 +164,7 @@ class JceLoaderTest {
    * system properties controlled by the parent test.
    */
   public static class ProbeMain {
-    public static void main(String[] args) {
+    static void main() {
       boolean bc = JceLoader.BouncyCastle != null;
       boolean nss = JceLoader.NSS != null;
       boolean sun = JceLoader.SUN != null;

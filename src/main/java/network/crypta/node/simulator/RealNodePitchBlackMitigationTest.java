@@ -172,10 +172,14 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
    * RealNodePitchBlackMitigationTest.main(new String[0]);
    * }</pre>
    *
-   * @param args command-line arguments; unused but accepted for standard entry-point semantics
+   * @param args command-line arguments; ignored by this simulation harness
    * @throws Exception if node initialization or startup fails before the simulation can begin
    */
-  public static void main(@SuppressWarnings("unused") String[] args) throws Exception {
+  public static void main(String[] args) throws Exception {
+    if (args.length > 0) {
+      LOG.info(
+          "Ignoring {} command-line arguments for pitch-black mitigation harness.", args.length);
+    }
     LOG.info("Routing test using real nodes:");
     LOG.info("");
     String dir = "realNodeRequestInsertTest";

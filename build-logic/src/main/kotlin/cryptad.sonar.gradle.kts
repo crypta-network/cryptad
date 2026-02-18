@@ -1,3 +1,9 @@
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
 import javax.xml.stream.XMLInputFactory
 import javax.xml.stream.XMLOutputFactory
 import javax.xml.stream.XMLStreamConstants
@@ -386,3 +392,93 @@ tasks.named("sonarqube").configure {
 tasks
   .findByName("sonar")
   ?.dependsOn("jacocoTestReport", "prepareKotlinTestReports", "prepareTestExecutionReport")
+
+tasks.register("sonarIssues") {
+  group = "verification"
+  description =
+    "Query SonarQube/SonarCloud issues via /api/issues/search and save JSON in build/reports/sonar."
+
+  doLast {
+    val host =
+      providers
+        .gradleProperty("sonarIssues.host")
+        .orElse(providers.gradleProperty("sonar.host.url"))
+        .orElse("https://sonarcloud.io")
+        .get()
+        .trimEnd('/')
+    val organization =
+      providers.gradleProperty("sonarIssues.organization").orElse("crypta-network").get()
+    val componentKeys =
+      providers
+        .gradleProperty("sonarIssues.componentKeys")
+        .orElse(providers.gradleProperty("sonar.projectKey"))
+        .orElse("crypta-network_cryptad")
+        .get()
+    val page = providers.gradleProperty("sonarIssues.page").orElse("1").get()
+    val pageSize = providers.gradleProperty("sonarIssues.pageSize").orElse("500").get()
+    val resolved = providers.gradleProperty("sonarIssues.resolved").orElse("false").get()
+    val rules = providers.gradleProperty("sonarIssues.rules").orNull
+    val branch = providers.gradleProperty("sonarIssues.branch").orNull
+    val pullRequest = providers.gradleProperty("sonarIssues.pullRequest").orNull
+    val statuses = providers.gradleProperty("sonarIssues.statuses").orNull
+    val additionalFields = providers.gradleProperty("sonarIssues.additionalFields").orNull
+    val token = providers.environmentVariable("SONAR_TOKEN").orNull?.takeIf { it.isNotBlank() }
+
+    val params = linkedMapOf<String, String>()
+    params["organization"] = organization
+    params["componentKeys"] = componentKeys
+    params["p"] = page
+    params["ps"] = pageSize
+    params["resolved"] = resolved
+    if (!additionalFields.isNullOrBlank()) params["additionalFields"] = additionalFields
+    if (!rules.isNullOrBlank()) params["rules"] = rules
+    if (!branch.isNullOrBlank()) params["branch"] = branch
+    if (!pullRequest.isNullOrBlank()) params["pullRequest"] = pullRequest
+    if (!statuses.isNullOrBlank()) params["statuses"] = statuses
+
+    val query =
+      params.entries.joinToString("&") { (key, value) ->
+        "${URLEncoder.encode(key, StandardCharsets.UTF_8)}=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
+      }
+    val endpoint = "$host/api/issues/search?$query"
+
+    val requestBuilder =
+      HttpRequest.newBuilder().uri(URI.create(endpoint)).header("Accept", "application/json").GET()
+    token?.let { requestBuilder.header("Authorization", "Bearer $it") }
+
+    val response =
+      HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .build()
+        .send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+
+    if (response.statusCode() !in 200..299) {
+      val bodySnippet = response.body().replace(Regex("\\s+"), " ").take(600)
+      throw GradleException(
+        "Sonar issues query failed with HTTP ${response.statusCode()} at $endpoint. Response: $bodySnippet"
+      )
+    }
+
+    val outputPath =
+      providers
+        .gradleProperty("sonarIssues.output")
+        .orElse("build/reports/sonar/issues-page-$page.json")
+        .get()
+    val outputFile = project.file(outputPath)
+    outputFile.parentFile.mkdirs()
+    outputFile.writeText(response.body(), Charsets.UTF_8)
+
+    val totalIssues =
+      Regex("\"paging\"\\s*:\\s*\\{[^}]*\"total\"\\s*:\\s*(\\d+)", RegexOption.DOT_MATCHES_ALL)
+        .find(response.body())
+        ?.groupValues
+        ?.getOrNull(1)
+    logger.lifecycle("Saved Sonar issues response to ${outputFile.path}")
+    totalIssues?.let { logger.lifecycle("Sonar issues total (server-side): $it") }
+    if (token == null) {
+      logger.lifecycle(
+        "SONAR_TOKEN is not set; request was sent without authentication (works only for public data)."
+      )
+    }
+  }
+}

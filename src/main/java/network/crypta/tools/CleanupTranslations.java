@@ -22,7 +22,7 @@ import org.slf4j.event.Level;
  * <p>This tool treats {@code crypta.l10n.en.properties} as the reference set of translation keys
  * and rewrites other {@code crypta.l10n.*.properties} files to remove entries whose keys are no
  * longer present in the English file. It is intended for repository maintenance (e.g., after
- * renaming or deleting strings) so translators are not left with keys that are never looked up at
+ * renaming or deleting strings), so translators are not left with keys that are never looked up at
  * runtime.
  *
  * <p><b>Notable behaviors</b>:
@@ -63,10 +63,9 @@ public class CleanupTranslations {
    * CLI command. It is not idempotent with respect to formatting because it rewrites the file
    * content exactly as it was read for kept lines.
    *
-   * @param args command-line arguments, currently ignored by this maintenance utility
    * @throws IOException if reading or writing translation files fails with an I/O error
    */
-  public static void main(String[] args) throws IOException {
+  public static void main() throws IOException {
     Logging.bootstrap(Level.ERROR, "");
     File engFile = new File("src/freenet/l10n/crypta.l10n.en.properties");
     SimpleFieldSet english = SimpleFieldSet.readFrom(engFile, false, true);
@@ -93,9 +92,9 @@ public class CleanupTranslations {
   /**
    * Creates a new instance.
    *
-   * <p>This type is primarily used via its {@link #main(String[])} entry point and carries no
-   * instance state. The explicit constructor exists only to satisfy strict doclint checks for the
-   * public default constructor.
+   * <p>This type is primarily used via its {@link #main()} entry point and carries no instance
+   * state. The explicit constructor exists only to satisfy strict doclint checks for the public
+   * default constructor.
    */
   public CleanupTranslations() {
     // Intentionally empty: this utility is invoked via main(...) and has no instance state.

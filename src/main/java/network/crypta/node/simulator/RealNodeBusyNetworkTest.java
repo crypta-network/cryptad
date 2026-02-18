@@ -93,10 +93,13 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
    * queued requests finish. The method is not idempotent: it deletes prior data, consumes ports,
    * and calls {@link System#exit(int)} on failure or normal completion.
    *
-   * @param args command-line arguments that are currently ignored by this test harness
-   * @throws Exception if node initialization, startup, or waiting is interrupted or fails
+   * @param args command-line arguments; ignored by this simulation harness
+   * @throws Exception if node initialization, inserts, or waiting for completion fails
    */
-  public static void main(@SuppressWarnings("unused") String[] args) throws Exception {
+  public static void main(String[] args) throws Exception {
+    if (args.length > 0) {
+      LOG.info("Ignoring {} command-line arguments for busy-network harness.", args.length);
+    }
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
     prepareWorkingDirectory(wd);
