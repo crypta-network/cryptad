@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -54,7 +53,7 @@ class VectorialValuedPairTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void constructor_whenNullArray_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> assertNotNull(constructPair(2.0, null)));
+    assertThrows(NullPointerException.class, () -> constructPair(2.0, null));
   }
 
   @Test

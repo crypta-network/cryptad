@@ -22,11 +22,6 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class IntervalsListTest {
 
-  @SuppressWarnings("java:S1172")
-  private static void ignoreInterval(Interval ignored) {
-    // Intentionally empty helper to consume values in assertions.
-  }
-
   @Test
   void constructor_whenNoArgs_expectEmptyListWithNaNBounds() {
     // Arrange
@@ -129,8 +124,8 @@ class IntervalsListTest {
     IntervalsList list = new IntervalsList(0.0, 1.0);
 
     // Act + Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInterval(list.getInterval(-1)));
-    assertThrows(IndexOutOfBoundsException.class, () -> ignoreInterval(list.getInterval(1)));
+    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(-1));
+    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(1));
   }
 
   @ParameterizedTest

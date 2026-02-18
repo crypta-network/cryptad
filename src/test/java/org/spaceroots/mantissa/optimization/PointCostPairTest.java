@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -53,8 +52,7 @@ class PointCostPairTest {
   void constructor_whenPointIsNull_throwsNullPointerException() {
     // Arrange
     // Act / Assert
-    assertThrows(
-        NullPointerException.class, () -> assertNotNull(constructPointCostPair(null, 1.0)));
+    assertThrows(NullPointerException.class, () -> constructPointCostPair(null, 1.0));
   }
 
   @Test
