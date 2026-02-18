@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.SocketException;
@@ -35,6 +33,8 @@ import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Serves the plugins administration endpoint of the built-in HTTP interface and routes plugin

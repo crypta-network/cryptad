@@ -1,7 +1,5 @@
 package network.crypta.store.saltedhash;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -59,6 +57,8 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Index-less on-disk store that maps keys to slots using a salted hash.

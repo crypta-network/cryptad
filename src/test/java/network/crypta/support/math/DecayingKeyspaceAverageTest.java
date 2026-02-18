@@ -1,5 +1,12 @@
 package network.crypta.support.math;
 
+import java.util.stream.Stream;
+import network.crypta.node.Location;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.equalTo;
@@ -11,13 +18,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
-import java.util.stream.Stream;
-import network.crypta.node.Location;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Tests for {@link DecayingKeyspaceAverage} in AAA style.

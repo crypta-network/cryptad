@@ -1,8 +1,5 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
-// Mockito not required here: no external I/O/time to mock.
-
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.stream.Stream;
@@ -12,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link InetAddressComparator}.

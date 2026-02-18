@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
@@ -33,6 +31,8 @@ import network.crypta.support.api.RandomAccessBucket;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Factory for temporary buckets that prefer RAM and transparently migrate to disk.

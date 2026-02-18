@@ -1,9 +1,5 @@
 package org.spaceroots.mantissa.fitting;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
 import org.spaceroots.mantissa.estimation.EstimatedParameter;
 import org.spaceroots.mantissa.estimation.EstimationException;
@@ -11,6 +7,10 @@ import org.spaceroots.mantissa.estimation.EstimationProblem;
 import org.spaceroots.mantissa.estimation.Estimator;
 import org.spaceroots.mantissa.fitting.AbstractCurveFitter.FitMeasurement;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class HarmonicCoefficientsGuesserTest {

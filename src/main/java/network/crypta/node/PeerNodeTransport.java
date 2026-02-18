@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import network.crypta.io.comm.AsyncMessageCallback;
@@ -17,6 +14,9 @@ import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Transport and messaging helpers bound to a single {@link PeerNode} connection.

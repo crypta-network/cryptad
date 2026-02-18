@@ -1,7 +1,5 @@
 package network.crypta.node.simulator;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
@@ -25,6 +23,8 @@ import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
+
+import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * Simulation harness that stresses a busy, bandwidth-limited network of real nodes.

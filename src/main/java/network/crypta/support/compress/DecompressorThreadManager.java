@@ -1,7 +1,5 @@
 package network.crypta.support.compress;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -16,6 +14,8 @@ import network.crypta.support.TimeUtil;
 import network.crypta.support.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates a chain of decompression stages running on background threads.

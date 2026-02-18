@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -23,6 +21,8 @@ import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
 
 /**
  * Represents a single high-level request that the node carries out on behalf of an FCP client.

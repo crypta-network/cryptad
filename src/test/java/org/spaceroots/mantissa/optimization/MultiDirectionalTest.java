@@ -1,9 +1,9 @@
 package org.spaceroots.mantissa.optimization;
 
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class MultiDirectionalTest {

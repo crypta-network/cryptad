@@ -1,14 +1,14 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
 import org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator;
 import org.spaceroots.mantissa.functions.scalar.ScalarValuedPair;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
 class RiemannIntegratorTest {

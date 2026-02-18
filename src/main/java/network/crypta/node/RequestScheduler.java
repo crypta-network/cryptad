@@ -1,11 +1,11 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestSelector;
 import network.crypta.keys.Key;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Schedules and coordinates client requests for fetching and inserting data.

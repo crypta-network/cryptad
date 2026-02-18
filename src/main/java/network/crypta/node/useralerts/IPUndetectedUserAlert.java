@@ -1,12 +1,12 @@
 package network.crypta.node.useralerts;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.support.HTMLNode;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Alert presented to the user when the node cannot determine an external IP address.

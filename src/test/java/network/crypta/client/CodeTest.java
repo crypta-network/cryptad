@@ -1,7 +1,5 @@
 package network.crypta.client;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.onionnetworks.fec.FECCode;
 import com.onionnetworks.fec.FECCodeFactory;
 import com.onionnetworks.fec.FECMath;
@@ -12,6 +10,8 @@ import network.crypta.support.TestProperty;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class CodeTest {
 

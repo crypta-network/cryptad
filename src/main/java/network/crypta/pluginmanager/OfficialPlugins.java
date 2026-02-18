@@ -1,7 +1,5 @@
 package network.crypta.pluginmanager;
 
-import static java.util.Collections.unmodifiableCollection;
-
 import java.net.MalformedURLException;
 import java.util.Collection;
 import java.util.HashMap;
@@ -9,6 +7,8 @@ import java.util.Map;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.updater.NodeUpdater;
 import network.crypta.node.updater.PluginJarUpdater;
+
+import static java.util.Collections.unmodifiableCollection;
 
 /**
  * Catalog of Crypta’s official plugins.

@@ -1,10 +1,10 @@
 package network.crypta.support;
 
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link URLEncoder}. */
 @SuppressWarnings("java:S100") // test naming uses method_whenCondition_expectOutcome

@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Random;
@@ -9,6 +7,8 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.LRUMap;
 import network.crypta.support.io.InetAddressComparator;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
  * Tracks announce activity per IP address to identify and de-prioritize peers that repeatedly

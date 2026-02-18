@@ -1,5 +1,10 @@
 package network.crypta.support;
 
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import network.crypta.support.DoublyLinkedListImpl.Item;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -7,11 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import network.crypta.support.DoublyLinkedListImpl.Item;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100") // test method naming with underscores per project conventions
 class DoublyLinkedListImplTest {

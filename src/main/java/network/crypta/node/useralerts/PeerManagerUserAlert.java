@@ -1,12 +1,12 @@
 package network.crypta.node.useralerts;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.support.HTMLNode;
+
+import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * User-facing alert that summarizes connectivity and peer-health conditions observed by the {@link

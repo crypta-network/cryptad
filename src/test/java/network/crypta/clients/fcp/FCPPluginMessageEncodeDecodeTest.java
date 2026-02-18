@@ -1,12 +1,12 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-
 import java.util.ArrayList;
 import network.crypta.support.SimpleFieldSet;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Tests encoding and decoding of {@link FCPPluginMessage}s into the on-network format: - Encodes

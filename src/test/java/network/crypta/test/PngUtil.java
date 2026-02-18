@@ -1,7 +1,5 @@
 package network.crypta.test;
 
-import static java.util.Collections.emptyList;
-
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
@@ -16,6 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.zip.CRC32;
+
+import static java.util.Collections.emptyList;
 
 /**
  * Utility class for creating PNG files for tests.

@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -47,6 +45,8 @@ import network.crypta.support.io.NoFreeBucket;
 import network.crypta.support.io.TooLongException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * Concrete {@link ToadletContext} that encapsulates a single HTTP request lifecycle and the

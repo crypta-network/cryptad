@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -42,6 +40,8 @@ import network.crypta.support.io.TempBucketFactory;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Persistence coordinator for client requests (downloads and uploads).

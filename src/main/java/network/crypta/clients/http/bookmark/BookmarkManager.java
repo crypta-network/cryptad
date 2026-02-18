@@ -1,7 +1,5 @@
 package network.crypta.clients.http.bookmark;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -28,6 +26,8 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Manages the in-memory bookmark tree used by the HTTP UI and persists it to the node user

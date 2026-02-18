@@ -1,7 +1,5 @@
 package network.crypta.crypt;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -27,6 +25,8 @@ import java.util.Objects;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
  * Cryptographically secure pseudo‑random number generator implementing Yarrow‑160.

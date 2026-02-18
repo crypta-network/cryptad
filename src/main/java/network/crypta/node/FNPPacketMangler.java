@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.File;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +44,9 @@ import network.crypta.support.io.InetAddressComparator;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Handles authenticated connection setup and complex packet decoding.

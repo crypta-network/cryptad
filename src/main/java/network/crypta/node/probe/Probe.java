@@ -1,8 +1,5 @@
 package network.crypta.node.probe;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,6 +26,9 @@ import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.LongCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Handles starting, routing, and responding to probes corrected via the Metropolis–Hastings

@@ -1,13 +1,13 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Random;
 import network.crypta.support.api.RandomAccessBuffer;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Base JUnit test harness for {@link RandomAccessBuffer} implementations.

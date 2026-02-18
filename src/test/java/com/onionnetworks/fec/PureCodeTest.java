@@ -1,13 +1,13 @@
 package com.onionnetworks.fec;
 
+import com.onionnetworks.util.Buffer;
+import java.util.Arrays;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.onionnetworks.util.Buffer;
-import java.util.Arrays;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class PureCodeTest {

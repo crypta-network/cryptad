@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedReader;
 import java.io.EOFException;
 import java.io.File;
@@ -23,6 +21,8 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Coordinates persistence of peer references for {@link PeerManager}.

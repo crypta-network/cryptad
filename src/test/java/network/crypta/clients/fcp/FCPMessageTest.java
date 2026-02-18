@@ -1,5 +1,11 @@
 package network.crypta.clients.fcp;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import network.crypta.node.Node;
+import network.crypta.support.SimpleFieldSet;
+import org.junit.jupiter.api.Test;
+
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
@@ -7,12 +13,6 @@ import static org.hamcrest.Matchers.sameInstance;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.io.IOException;
-import java.io.OutputStream;
-import network.crypta.node.Node;
-import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
 
 /**
  * Unit test for {@link FCPMessage}.

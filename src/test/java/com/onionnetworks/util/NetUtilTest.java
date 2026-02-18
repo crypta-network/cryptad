@@ -1,7 +1,5 @@
 package com.onionnetworks.util;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
@@ -9,6 +7,8 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100")
 class NetUtilTest {

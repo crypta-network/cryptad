@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static network.crypta.node.NodeStats.DEFAULT_MAX_PING_TIME;
-
 import java.io.IOException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -10,6 +8,8 @@ import java.util.Objects;
 import java.util.function.Predicate;
 import network.crypta.support.Fields;
 import network.crypta.support.LRUCache;
+
+import static network.crypta.node.NodeStats.DEFAULT_MAX_PING_TIME;
 
 /**
  * Comparator for {@link InetAddress} values that prefers IPv6 over IPv4 and applies

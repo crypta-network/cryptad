@@ -1,14 +1,5 @@
 package network.crypta.client.filter;
 
-import static java.util.Arrays.asList;
-import static java.util.Collections.emptyList;
-import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -27,6 +18,15 @@ import network.crypta.test.PngUtil;
 import network.crypta.test.PngUtil.Chunk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PNGFilterTest {
   protected static Object[][] testImages = {

@@ -1,5 +1,14 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.spaceroots.mantissa.functions.ExhaustedSampleException;
+import org.spaceroots.mantissa.functions.FunctionException;
+import org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator;
+import org.spaceroots.mantissa.functions.scalar.ScalarValuedPair;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,15 +18,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-
-import java.util.List;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.spaceroots.mantissa.functions.ExhaustedSampleException;
-import org.spaceroots.mantissa.functions.FunctionException;
-import org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator;
-import org.spaceroots.mantissa.functions.scalar.ScalarValuedPair;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")

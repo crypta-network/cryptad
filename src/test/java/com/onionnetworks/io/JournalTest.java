@@ -1,7 +1,5 @@
 package com.onionnetworks.io;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.onionnetworks.util.Range;
 import com.onionnetworks.util.RangeSet;
 import java.io.File;
@@ -12,6 +10,8 @@ import java.nio.file.Path;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100")
 class JournalTest {

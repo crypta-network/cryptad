@@ -1,15 +1,15 @@
 package network.crypta.client.events;
 
+import network.crypta.crypt.HashResult;
+import network.crypta.crypt.HashType;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-
-import network.crypta.crypt.HashResult;
-import network.crypta.crypt.HashType;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class ExpectedHashesEventTest {

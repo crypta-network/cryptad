@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.io.comm.AsyncMessageCallback;
@@ -26,6 +23,9 @@ import network.crypta.node.subsystem.NodeRoutingSubsystem.ChkInsertOptions;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Sends a CHK insert request and streams the corresponding block to the selected peer while

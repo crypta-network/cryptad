@@ -1,8 +1,8 @@
 package network.crypta.test;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class Asserts {
 

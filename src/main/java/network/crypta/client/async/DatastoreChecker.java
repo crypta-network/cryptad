@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,6 +18,8 @@ import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Checks the node's local datastore for blocks associated with queued transient requests.

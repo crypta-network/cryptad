@@ -1,7 +1,5 @@
 package network.crypta.node.subsystem;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -77,6 +75,8 @@ import network.crypta.support.api.StringCallback;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Network subsystem facade that wires together peer management, message dispatch, sockets, and

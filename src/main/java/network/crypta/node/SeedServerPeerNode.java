@@ -1,8 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.net.InetAddress;
 import java.util.ArrayList;
 import network.crypta.io.comm.FreenetInetAddress;
@@ -12,6 +9,9 @@ import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Sender-side representation of a seed server peer.

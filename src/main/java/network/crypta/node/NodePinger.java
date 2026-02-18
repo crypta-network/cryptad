@@ -1,10 +1,10 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * Periodically samples connected peers to maintain latency and capacity summaries.

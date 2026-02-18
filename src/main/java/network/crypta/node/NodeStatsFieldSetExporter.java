@@ -1,9 +1,9 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.DAYS;
-
 import network.crypta.node.RequestTracker.WaitingForSlots;
 import network.crypta.support.SimpleFieldSet;
+
+import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * Builds volatile statistics snapshots for node and peer reporting.

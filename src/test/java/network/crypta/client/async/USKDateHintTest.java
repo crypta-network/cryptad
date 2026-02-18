@@ -1,13 +1,5 @@
 package network.crypta.client.async;
 
-import static network.crypta.client.async.USKDateHint.Type.DAY;
-import static network.crypta.client.async.USKDateHint.Type.MONTH;
-import static network.crypta.client.async.USKDateHint.Type.WEEK;
-import static network.crypta.client.async.USKDateHint.Type.YEAR;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.time.LocalDate;
 import java.time.temporal.TemporalField;
 import java.time.temporal.WeekFields;
@@ -27,6 +19,14 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static network.crypta.client.async.USKDateHint.Type.DAY;
+import static network.crypta.client.async.USKDateHint.Type.MONTH;
+import static network.crypta.client.async.USKDateHint.Type.WEEK;
+import static network.crypta.client.async.USKDateHint.Type.YEAR;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

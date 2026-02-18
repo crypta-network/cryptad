@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -11,6 +9,8 @@ import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
  * Tracks recent activity for a single {@link Key} and decides when a peer should be avoided or

@@ -1,15 +1,15 @@
 package org.bitpedia.util;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.security.DigestException;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
 import org.bouncycastle.crypto.digests.TigerDigest;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100") // Intentional method naming: method_whenCondition_expectOutcome
 class TigerTreeTest {

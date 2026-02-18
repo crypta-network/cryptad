@@ -1,9 +1,5 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -58,6 +54,10 @@ import network.crypta.support.io.FileUtil;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Base HTTP toadlet used by both darknet and opennet connection pages.

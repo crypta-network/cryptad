@@ -1,5 +1,14 @@
 package network.crypta.node.simulator;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import network.crypta.crypt.RandomSource;
+import network.crypta.node.LocationManager;
+import network.crypta.node.Node;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.MockedStatic;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -10,15 +19,6 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.util.concurrent.atomic.AtomicInteger;
-import network.crypta.crypt.RandomSource;
-import network.crypta.node.LocationManager;
-import network.crypta.node.Node;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.MockedStatic;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)

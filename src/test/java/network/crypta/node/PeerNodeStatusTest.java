@@ -1,5 +1,13 @@
 package network.crypta.node;
 
+import java.net.InetAddress;
+import java.util.LinkedHashMap;
+import network.crypta.io.comm.FreenetInetAddress;
+import network.crypta.io.comm.Peer;
+import network.crypta.io.xfer.PacketThrottle;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,14 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
-import java.net.InetAddress;
-import java.util.LinkedHashMap;
-import network.crypta.io.comm.FreenetInetAddress;
-import network.crypta.io.comm.Peer;
-import network.crypta.io.xfer.PacketThrottle;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
 class PeerNodeStatusTest {

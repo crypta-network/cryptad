@@ -1,8 +1,8 @@
 package network.crypta.support;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests parsing of bandwidth limits optionally specified with some indicator of "(bits) per

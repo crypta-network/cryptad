@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,6 +10,8 @@ import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
  * Generates and maps temporary file names within a configured directory using a stable prefix.

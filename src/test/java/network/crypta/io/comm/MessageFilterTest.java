@@ -1,8 +1,5 @@
 package network.crypta.io.comm;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.PriorityAwareExecutor;
@@ -13,6 +10,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Unit tests for {@link MessageFilter}. */
 @ExtendWith(MockitoExtension.class)

@@ -1,7 +1,5 @@
 package network.crypta.client.filter;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.net.URI;
 import java.util.LinkedHashMap;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
@@ -9,6 +7,8 @@ import network.crypta.client.filter.HTMLFilter.TagVerifier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class TagVerifierTest {
   private static final String BASE_URI_PROTOCOL = "http";

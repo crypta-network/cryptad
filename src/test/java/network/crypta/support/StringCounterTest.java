@@ -1,9 +1,9 @@
 package network.crypta.support;
 
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100") // Allow method names in the given_when_then style
 class StringCounterTest {

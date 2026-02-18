@@ -1,7 +1,5 @@
 package network.crypta.node.useralerts;
 
-import static java.util.Arrays.stream;
-
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
@@ -35,6 +33,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+
+import static java.util.Arrays.stream;
 
 /**
  * Manages the lifecycle, ordering, and presentation of {@link UserAlert} instances for a node.

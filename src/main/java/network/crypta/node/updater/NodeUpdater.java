@@ -1,7 +1,5 @@
 package network.crypta.node.updater;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -37,6 +35,8 @@ import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Base class for components that subscribe to update keys, fetch new editions, and coordinate

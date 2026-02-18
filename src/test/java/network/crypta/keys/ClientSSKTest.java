@@ -1,5 +1,13 @@
 package network.crypta.keys;
 
+import java.math.BigInteger;
+import java.net.MalformedURLException;
+import java.util.Arrays;
+import network.crypta.crypt.DSAPublicKey;
+import network.crypta.crypt.Global;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -10,14 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.math.BigInteger;
-import java.net.MalformedURLException;
-import java.util.Arrays;
-import network.crypta.crypt.DSAPublicKey;
-import network.crypta.crypt.Global;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100") // Test method naming convention per project rules
 class ClientSSKTest {

@@ -1,7 +1,5 @@
 package network.crypta.io.xfer;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -23,6 +21,8 @@ import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.TrivialRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Receives a block from a peer by assembling incoming packets and coordinating acknowledgements.

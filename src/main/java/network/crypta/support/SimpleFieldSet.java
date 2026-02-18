@@ -1,7 +1,5 @@
 package network.crypta.support;
 
-import static java.util.Collections.emptyMap;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -33,6 +31,8 @@ import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.Collections.emptyMap;
 
 /**
  * Hierarchical key-value container with dot-separated keys and an optional Base64 value encoding.

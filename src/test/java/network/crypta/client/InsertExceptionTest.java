@@ -1,7 +1,5 @@
 package network.crypta.client;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.util.stream.Stream;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.keys.FreenetURI;
@@ -9,6 +7,8 @@ import network.crypta.node.LowLevelPutException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("java:S100") // Test method naming: method_whenCondition_expectOutcome
 class InsertExceptionTest {

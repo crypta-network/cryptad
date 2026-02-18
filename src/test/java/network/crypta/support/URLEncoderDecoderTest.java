@@ -1,11 +1,11 @@
 package network.crypta.support;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.test.UTFUtil;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Exercises URL encoding and decoding behavior against representative inputs and edge cases.

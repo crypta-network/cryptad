@@ -1,5 +1,24 @@
 package network.crypta.client.async;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import network.crypta.client.FailureCodeTracker;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.crypt.ChecksumFailedException;
+import network.crypta.keys.ClientCHK;
+import network.crypta.keys.Key;
+import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.io.StorageFormatException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -19,25 +38,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
-import network.crypta.client.FailureCodeTracker;
-import network.crypta.client.FetchException;
-import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.crypt.ChecksumFailedException;
-import network.crypta.keys.ClientCHK;
-import network.crypta.keys.Key;
-import network.crypta.support.api.LockableRandomAccessBuffer;
-import network.crypta.support.io.StorageFormatException;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
