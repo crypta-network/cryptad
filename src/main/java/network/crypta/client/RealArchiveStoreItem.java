@@ -74,13 +74,17 @@ final class RealArchiveStoreItem extends ArchiveStoreItem {
    *     with the cache and the bucket is set read-only by this constructor
    */
   RealArchiveStoreItem(ArchiveStoreContext ctx, FreenetURI key2, String realName, Bucket bucket) {
+    requireBucket(bucket);
     super(new ArchiveKey(key2, realName), ctx);
-    if (bucket == null) throw new NullPointerException();
     mb = new MultiReaderBucket(bucket);
     this.bucket = mb.getReaderBucket();
     if (this.bucket == null) throw new NullPointerException();
     this.bucket.setReadOnly();
     spaceUsed = this.bucket.size();
+  }
+
+  private static void requireBucket(Bucket bucket) {
+    if (bucket == null) throw new NullPointerException();
   }
 
   /**

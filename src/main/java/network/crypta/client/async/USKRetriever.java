@@ -116,13 +116,18 @@ public final class USKRetriever extends BaseClientGetter implements USKCallback 
       final RequestClient client,
       USKRetrieverCallback cb,
       USK origUSK) {
+    requireNonPersistentClient(client);
     super(prio, client);
-    if (client.persistent())
-      throw new UnsupportedOperationException("USKRetriever cannot be persistent");
     this.ctx = fctx;
     this.cb = cb;
     this.origUSK = origUSK;
     this.proxy = this;
+  }
+
+  private static void requireNonPersistentClient(RequestClient client) {
+    if (client != null && client.persistent()) {
+      throw new UnsupportedOperationException("USKRetriever cannot be persistent");
+    }
   }
 
   @Override

@@ -53,14 +53,22 @@ public final class FiniteInputStream extends FilterInputStream {
    * @throws IllegalArgumentException if {@code count} is negative.
    */
   public FiniteInputStream(InputStream is, long count) {
+    requireNonNullStream(is);
+    requireNonNegativeCount(count);
     super(is);
+    left = count;
+  }
+
+  private static void requireNonNullStream(InputStream is) {
     if (is == null) {
       throw new NullPointerException();
     }
+  }
+
+  private static void requireNonNegativeCount(long count) {
     if (count < 0) {
       throw new IllegalArgumentException("count must be > 0");
     }
-    left = count;
   }
 
   /**

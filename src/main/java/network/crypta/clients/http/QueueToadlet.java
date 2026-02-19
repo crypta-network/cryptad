@@ -337,11 +337,11 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    */
   public QueueToadlet(
       NodeClientCore core, FCPServer fcp, HighLevelSimpleClient client, boolean uploads) {
+    requireFcpServer(fcp);
     super(client);
     this.core = core;
     this.fcp = fcp;
     this.uploads = uploads;
-    if (fcp == null) throw new NullPointerException();
     this.postHandler = new QueuePostHandler();
     QueueCompletionTracker completionTracker = new QueueCompletionTracker();
     fcp.setCompletionCallback(completionTracker);
@@ -350,6 +350,10 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     } catch (PersistenceDisabledException _) {
       // The user will know soon enoughUpdate Toadlet.java
     }
+  }
+
+  private static void requireFcpServer(FCPServer fcp) {
+    if (fcp == null) throw new NullPointerException();
   }
 
   /**

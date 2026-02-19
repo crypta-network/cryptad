@@ -89,7 +89,7 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
   public ClientPutComplexDirMessage(
       SimpleFieldSet fs, BucketFactory bfTemp, PersistentTempBucketFactory bfPersistent)
       throws MessageInvalidException {
-    // Parse the standard ClientPutDir headers - URI, etc.
+    requireFilesSection(fs);
     super(parseCommonFields(fs));
 
     filesByName = new HashMap<>();
@@ -97,9 +97,6 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
     long totalBytes = 0;
     // Now parse the meat
     SimpleFieldSet files = fs.subset("Files");
-    if (files == null)
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.MISSING_FIELD, "Missing Files section", identifier, global);
     for (int i = 0; ; i++) {
       SimpleFieldSet subset = files.subset(Integer.toString(i));
       if (subset == null) break;
@@ -279,6 +276,16 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
         ManifestElement e = f.getElement();
         manifestElements.put(tempName, e);
       }
+    }
+  }
+
+  private static void requireFilesSection(SimpleFieldSet fs) throws MessageInvalidException {
+    if (fs.subset("Files") == null) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD,
+          "Missing Files section",
+          fs.get("Identifier"),
+          fs.getBoolean("Global", false));
     }
   }
 }

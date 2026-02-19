@@ -108,8 +108,8 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
       boolean createFileOnly,
       boolean deleteOnExit,
       boolean deleteOnFree) {
-    super(file, deleteOnExit, createFileOnly, false);
     Objects.requireNonNull(file, "file");
+    super(file, deleteOnExit, createFileOnly, false);
     File absFile = file.getAbsoluteFile();
     // Copy it so we can safely delete it.
     if (file.equals(absFile)) absFile = new File(absFile.getPath());
@@ -270,14 +270,16 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
    * @throws StorageFormatException if the version is unknown or the data is malformed
    */
   FileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    super(dis);
-    int version = dis.readInt();
-    if (version != VERSION) throw new StorageFormatException("Bad version");
-    file = new File(dis.readUTF());
-    readOnly = dis.readBoolean();
-    deleteOnFreeFlag = dis.readBoolean();
+    this(readStoredState(dis));
+  }
+
+  private FileBucket(StoredState state) {
+    super(state.freed());
+    file = state.file();
+    readOnly = state.readOnly();
+    deleteOnFreeFlag = state.deleteOnFreeFlag();
     deleteOnExitFlag = false;
-    createFileOnlyFlag = dis.readBoolean();
+    createFileOnlyFlag = state.createFileOnlyFlag();
   }
 
   /** {@inheritDoc} */
@@ -320,4 +322,23 @@ public final class FileBucket extends BaseFileBucket implements Bucket, Serializ
     }
     return readOnly == other.readOnly;
   }
+
+  private static StoredState readStoredState(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    boolean freed = BaseFileBucket.readStoredFreed(dis);
+    int version = dis.readInt();
+    if (version != VERSION) throw new StorageFormatException("Bad version");
+    File file = new File(dis.readUTF());
+    boolean readOnly = dis.readBoolean();
+    boolean deleteOnFreeFlag = dis.readBoolean();
+    boolean createFileOnlyFlag = dis.readBoolean();
+    return new StoredState(freed, file, readOnly, deleteOnFreeFlag, createFileOnlyFlag);
+  }
+
+  private record StoredState(
+      boolean freed,
+      File file,
+      boolean readOnly,
+      boolean deleteOnFreeFlag,
+      boolean createFileOnlyFlag) {}
 }

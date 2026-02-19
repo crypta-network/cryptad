@@ -259,12 +259,11 @@ public final class DarknetPeerNode extends PeerNode {
       FRIEND_VISIBILITY visibility2,
       PeerManager peers)
       throws FSParseException {
+    requirePeerName(fs);
     super(
         PeerNodeConstructorSupport.prepareConstructorInit(
             fs, node2, crypto, fromLocal, peers, ConstructorProfile.DARKNET));
-
     String name = fs.get(FS_KEY_MY_NAME);
-    if (name == null) throw new FSParseException("No name");
     myName = name;
 
     if (fromLocal) {
@@ -282,6 +281,10 @@ public final class DarknetPeerNode extends PeerNode {
 
     // Set up the queuedToSendN2NMExtraPeerDataFileNumbers
     queuedToSendN2NMExtraPeerDataFileNumbers = new LinkedHashSet<>();
+  }
+
+  private static void requirePeerName(SimpleFieldSet fs) throws FSParseException {
+    if (fs.get(FS_KEY_MY_NAME) == null) throw new FSParseException("No name");
   }
 
   private synchronized void initializeFromLocalMetadata(SimpleFieldSet fs, String name) {

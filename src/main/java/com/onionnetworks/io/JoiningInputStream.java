@@ -47,12 +47,16 @@ public final class JoiningInputStream extends FilterInputStream {
    *     non-null and ready to read without further initialization
    */
   public JoiningInputStream(InputStream first, InputStream second) {
+    requireNonNullStreams(first, second);
     super(first);
+    this.first = first;
+    this.second = second;
+  }
+
+  private static void requireNonNullStreams(InputStream first, InputStream second) {
     if (first == null || second == null) {
       throw new NullPointerException();
     }
-    this.first = first;
-    this.second = second;
   }
 
   /**

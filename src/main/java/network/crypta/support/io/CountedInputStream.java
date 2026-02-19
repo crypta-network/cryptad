@@ -36,9 +36,13 @@ public final class CountedInputStream extends FilterInputStream {
    * @throws IllegalStateException if {@code in} is {@code null}
    */
   public CountedInputStream(InputStream in) {
+    requireNonNullInput(in);
     super(in);
-    // Guard against accidental null wiring. Use IllegalStateException to match historical
-    // behavior in this codebase.
+  }
+
+  private static void requireNonNullInput(InputStream in) {
+    // Guard against accidental null wiring. Use IllegalStateException to match historical behavior
+    // in this codebase.
     if (in == null) throw new IllegalStateException("null fed to CountedInputStream");
   }
 
