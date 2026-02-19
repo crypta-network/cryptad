@@ -1,8 +1,9 @@
 package com.onionnetworks.util;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.util.*;
+
+import java.nio.file.Files;
 
 /**
  * Asynchronously persists a {@link Properties} instance to a backing file while allowing callers to

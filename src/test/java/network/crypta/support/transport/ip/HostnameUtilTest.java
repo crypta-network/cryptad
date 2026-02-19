@@ -1,8 +1,8 @@
 package network.crypta.support.transport.ip;
 
 import java.net.Inet6Address;
-import network.crypta.io.AddressIdentifier;
 import network.crypta.io.AddressIdentifier.AddressType;
+import network.crypta.io.AddressIdentifier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

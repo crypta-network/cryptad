@@ -2,8 +2,8 @@ package network.crypta.node;
 
 import java.io.Serial;
 import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetState;
 import network.crypta.client.async.ClientRequestScheduler;

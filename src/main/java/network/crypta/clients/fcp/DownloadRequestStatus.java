@@ -1,10 +1,10 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.InsertContext;
+import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;

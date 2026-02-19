@@ -13,8 +13,8 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FileUtil.OperatingSystem;
+import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

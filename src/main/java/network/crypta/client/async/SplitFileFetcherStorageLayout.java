@@ -1,7 +1,7 @@
 package network.crypta.client.async;
 
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.keys.CHKBlock;
 
 /**

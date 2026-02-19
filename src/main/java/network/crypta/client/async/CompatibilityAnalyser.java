@@ -1,9 +1,10 @@
 package network.crypta.client.async;
 
 import java.io.*;
+
 import java.util.Arrays;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContext;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

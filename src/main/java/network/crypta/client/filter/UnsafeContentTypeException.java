@@ -3,8 +3,8 @@ package network.crypta.client.filter;
 import java.io.IOException;
 import java.io.Serial;
 import java.util.List;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 
 /**
  * Signals that a client-side content filter determined that returned data cannot be considered safe

@@ -1,5 +1,7 @@
 package network.crypta.clients.http.wizardsteps;
 
+import network.crypta.support.*;
+
 import java.text.DecimalFormat;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
@@ -7,7 +9,6 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.pluginmanager.PluginNotFoundException;
-import network.crypta.support.*;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

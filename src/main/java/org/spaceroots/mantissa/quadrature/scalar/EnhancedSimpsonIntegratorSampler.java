@@ -1,8 +1,9 @@
 package org.spaceroots.mantissa.quadrature.scalar;
 
+import org.spaceroots.mantissa.functions.scalar.*;
+
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
-import org.spaceroots.mantissa.functions.scalar.*;
 
 /**
  * Sample iterator that integrates a scalar function on the fly using an enhanced Simpson rule.

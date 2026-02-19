@@ -1,3 +1,5 @@
+import cryptad.SonarS8445ImportOrderFormatter
+
 plugins { id("com.diffplug.spotless") }
 
 spotless {
@@ -5,9 +7,10 @@ spotless {
     googleJavaFormat("1.28.0").reflowLongStrings()
     target("src/**/*.java")
     removeUnusedImports()
-    // Sonar java:S8445 expects non-static imports before static imports, and wildcard imports
-    // before single-type imports.
-    importOrder("", "\\#").wildcardsLast(false)
+    importOrder("module ", "", "\\#").wildcardsLast(false)
+    // Enforce Sonar java:S8445 grouping globally:
+    // module, on-demand package, single-type, static on-demand, single-static.
+    custom("sonarS8445ImportOrder", SonarS8445ImportOrderFormatter)
   }
   kotlin {
     // Restrict to source trees rather than scanning entire repo to avoid special FS entries

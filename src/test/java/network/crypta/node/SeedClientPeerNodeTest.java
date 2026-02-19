@@ -2,8 +2,8 @@ package network.crypta.node;
 
 import java.lang.reflect.Field;
 import java.security.interfaces.ECPublicKey;
-import network.crypta.crypt.ECDSA;
 import network.crypta.crypt.ECDSA.Curves;
+import network.crypta.crypt.ECDSA;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.updater.NodeUpdateManager;

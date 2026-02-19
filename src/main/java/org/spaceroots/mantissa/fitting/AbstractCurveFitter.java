@@ -1,5 +1,7 @@
 package org.spaceroots.mantissa.fitting;
 
+import org.spaceroots.mantissa.estimation.*;
+
 import java.io.IOException;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
@@ -8,7 +10,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import org.spaceroots.mantissa.estimation.*;
 
 /**
  * This class is the base class for all curve fitting classes in the package.

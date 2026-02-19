@@ -1,10 +1,11 @@
 package network.crypta.clients.fcp;
 
 import java.io.*;
+
 import java.net.MalformedURLException;
 import network.crypta.client.FailureCodeTracker;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;

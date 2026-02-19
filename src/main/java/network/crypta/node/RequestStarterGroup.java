@@ -1,8 +1,8 @@
 package network.crypta.node;
 
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
+import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.config.Config;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;

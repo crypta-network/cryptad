@@ -1,10 +1,11 @@
 package network.crypta.support;
 
+import com.sun.jna.win32.*;
+
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
 import com.sun.jna.platform.win32.WinDef.DWORD;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
-import com.sun.jna.win32.*;
 import network.crypta.fs.AppEnv;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

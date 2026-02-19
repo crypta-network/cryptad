@@ -14,8 +14,8 @@ import java.util.zip.CRC32;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.NullBucket;
-import network.crypta.test.PngUtil;
 import network.crypta.test.PngUtil.Chunk;
+import network.crypta.test.PngUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
