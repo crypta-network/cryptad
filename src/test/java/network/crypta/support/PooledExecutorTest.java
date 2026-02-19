@@ -144,7 +144,7 @@ class PooledExecutorTest {
       // When native support is active, creation should be delegated to the ticker and the job
       // should not execute here.
       verify(ticker, times(1)).queueTimedJob(job, "delegation-check", 0, true, false);
-      assertFalse(uninterruptiblyAwait(ran, 150), "job should not have executed here");
+      assertFalse(uninterruptiblyAwaitMillis(ran, 150), "job should not have executed here");
       assertArrayEquals(new int[NativeThread.JAVA_PRIORITY_RANGE + 1], exec.runningThreads());
       assertEquals(0, exec.getWaitingThreadsCount());
     } else {
@@ -296,6 +296,19 @@ class PooledExecutorTest {
 
   private static boolean uninterruptiblyAwait(CountDownLatch latch, long seconds) {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+    boolean done = false;
+    while (!done && System.nanoTime() < deadline) {
+      try {
+        done = latch.await(5, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException _) {
+        // retry until deadline
+      }
+    }
+    return done;
+  }
+
+  private static boolean uninterruptiblyAwaitMillis(CountDownLatch latch, long millis) {
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
     boolean done = false;
     while (!done && System.nanoTime() < deadline) {
       try {

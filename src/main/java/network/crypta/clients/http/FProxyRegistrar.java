@@ -18,7 +18,7 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
 
-import static network.crypta.node.updater.UpdaterPathsKt.CORE_UPDATE_PATH;
+import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
 
 /**
  * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.

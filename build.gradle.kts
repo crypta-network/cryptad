@@ -26,8 +26,6 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
-  // Coroutines (Swing Main dispatcher)
-  implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
@@ -40,6 +38,8 @@ dependencies {
   // compileOnly
   // Compile-time access to Logback classes for runtime reconfiguration
   compileOnly(libs.logbackClassic)
+  // Java source annotations used across the codebase
+  compileOnly("org.jetbrains:annotations:23.0.0")
 
   // runtimeOnly
   runtimeOnly(libs.dbusTransportNativeUnix)
@@ -58,6 +58,7 @@ dependencies {
   testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
+  testCompileOnly("org.jetbrains:annotations:23.0.0")
 
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
