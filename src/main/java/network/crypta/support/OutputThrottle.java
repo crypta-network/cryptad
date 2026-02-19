@@ -22,8 +22,8 @@ public final class OutputThrottle {
   private long nanosPerTick;
 
   /**
-   * @param maxTokens maximum capacity of the bucket (tokens), must be > 0.
-   * @param nanosPerTick nanoseconds per token (rate), must be > 0.
+   * @param maxTokens the maximum capacity of the bucket (tokens) must be > 0.
+   * @param nanosPerTick nanoseconds per token (rate) must be > 0.
    * @param initialTokens initial token count; clamped to maxTokens if higher.
    */
   public OutputThrottle(long maxTokens, long nanosPerTick, long initialTokens) {
@@ -100,7 +100,7 @@ public final class OutputThrottle {
     }
   }
 
-  /** Update token count according to elapsed time, without clipping. */
+  /** Update the token count according to elapsed time, without clipping. */
   private synchronized void addTokensNoClip() {
     long add = tokensToAdd();
     if (add == 0L) {

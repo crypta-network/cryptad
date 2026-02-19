@@ -20,7 +20,7 @@ if [ -n "${SNAP_USER_COMMON:-}" ]; then
 fi
 
 # Start the launcher without replacing this shell, so we can trap Ctrl+C
-"$JAVA_EXE" -cp "$CP" network.crypta.launcher.LauncherKt "$@" &
+"$JAVA_EXE" -cp "$CP" network.crypta.launcher.Launcher "$@" &
 LAUNCHER_PID=$!
 
 cleanup() {

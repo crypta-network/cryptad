@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,15 +53,14 @@ class LauncherControllerTest {
 
     controller.start();
 
-    awaitState(controller, s -> s.isRunning());
+    awaitState(controller, AppState::isRunning);
     AppState stateWithPort =
-        awaitState(controller, s -> s.getKnownPort() != null && s.getKnownPort() == TEST_PORT);
-    assertEquals(TEST_PORT, stateWithPort.getKnownPort());
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
 
     AppState stopped =
         awaitState(
-            controller,
-            s -> !s.isRunning() && s.getKnownPort() != null && s.getKnownPort() == TEST_PORT);
+            controller, s -> !s.isRunning() && s.knownPort() != null && s.knownPort() == TEST_PORT);
     assertFalse(stopped.isRunning());
 
     awaitLog(logs, l -> l.contains("Starting FProxy on"));
@@ -94,10 +94,12 @@ class LauncherControllerTest {
   @Test
   void launchBrowser_whenPortMissing_noop() throws Exception {
     LauncherController controller = new LauncherController(tempDir);
-    setPrivateField(controller, "state", new AppState(false, null, false, false));
+    AppState initial = new AppState(false, null, false, false);
+    setPrivateField(controller, "state", initial);
 
     controller.launchBrowser();
 
+    assertEquals(initial, controller.getState());
     controller.shutdownAndWait();
   }
 
@@ -151,11 +153,10 @@ class LauncherControllerTest {
   }
 
   private static void sleepShort() {
-    try {
-      Thread.sleep(10);
-    } catch (InterruptedException e) {
+    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+    if (Thread.currentThread().isInterrupted()) {
       Thread.currentThread().interrupt();
-      throw new AssertionError("Interrupted while waiting", e);
+      throw new AssertionError("Interrupted while waiting");
     }
   }
 
@@ -166,7 +167,7 @@ class LauncherControllerTest {
     field.set(target, value);
   }
 
-  private static Path writeCryptadScript(Path baseDir) throws Exception {
+  private static void writeCryptadScript(Path baseDir) throws Exception {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
@@ -195,7 +196,6 @@ class LauncherControllerTest {
     if (!isWindows && !script.toFile().setExecutable(true)) {
       throw new AssertionError("Failed to mark script executable: " + script);
     }
-    return script;
   }
 
   private static Path writeWrapperConf(Path baseDir) throws Exception {

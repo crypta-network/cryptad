@@ -33,6 +33,7 @@ public final class Version {
   private static final String BUILD_NUMBER_STRING = "@build_number@";
   private static final String WIRE_NAME = "Fred";
   private static final String STABLE_FRED_NODE_VERSION = "0.7";
+  private static final String[] EMPTY_VERSION_COMPONENTS = new String[0];
 
   private static final int BUILD_NUMBER = computeBuildNumber();
   private static final Logger LOG = LoggerFactory.getLogger("network.crypta.node.Version");
@@ -89,7 +90,7 @@ public final class Version {
   /** Checks whether a peer version string is compatible with this node. */
   public static boolean isCompatibleVersion(String version) {
     String[] v = parseVersionOrNull(version);
-    if (v == null) {
+    if (v.length == 0) {
       return false;
     }
     if (rejectIfCryptadTooOld(v, version)) {
@@ -108,11 +109,11 @@ public final class Version {
   public static boolean isCompatibleVersionWithLastGood(
       String versionStr, String lastGoodVersionStr) {
     String[] v = parseVersionOrNull(versionStr);
-    if (v == null) {
+    if (v.length == 0) {
       return false;
     }
     String[] lgv = parseVersionOrNull(lastGoodVersionStr, "lastGoodVersion");
-    if (lgv == null) {
+    if (lgv.length == 0) {
       return false;
     }
 
@@ -144,7 +145,7 @@ public final class Version {
     }
 
     String[] v = Fields.commaList(version);
-    if (v.length < 3 || !isValidProtocol(v[2])) {
+    if (v.length < 3 || hasInvalidProtocol(v[2])) {
       throw new VersionParseException("not long enough or bad protocol: " + version);
     }
 
@@ -153,7 +154,7 @@ public final class Version {
         return Integer.parseInt(v[1]);
       }
       if (WIRE_NAME.equals(v[0])) {
-        if (v.length <= 3) {
+        if (v.length == 3) {
           throw new VersionParseException("Fred version missing build number: " + version);
         }
         return Integer.parseInt(v[3]);
@@ -173,7 +174,7 @@ public final class Version {
   public static int parseBuildNumberFromVersionStr(String version, int defaultValue) {
     try {
       return parseBuildNumberFromVersionStr(version);
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       return defaultValue;
     }
   }
@@ -185,19 +186,19 @@ public final class Version {
       return;
     }
 
-    Integer version = null;
+    int version;
     try {
       if (NODE_NAME.equals(v[0])) {
         version = Integer.parseInt(v[1]);
       } else if (WIRE_NAME.equals(v[0])) {
-        if (v.length <= 3) {
+        if (v.length == 3) {
           return;
         }
         version = Integer.parseInt(v[3]);
       } else {
         return;
       }
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       return;
     }
 
@@ -220,6 +221,7 @@ public final class Version {
   }
 
   /** Returns true when two version arrays represent compatible series. */
+  @SuppressWarnings("unused")
   public static boolean isCompatibleSeries(String[] v, String[] lgv) {
     if (v.length < 2 || lgv.length < 2) {
       return false;
@@ -231,8 +233,8 @@ public final class Version {
     };
   }
 
-  private static boolean isValidProtocol(String protocol) {
-    return LAST_GOOD_FRED_PROTOCOL_VERSION.equals(protocol);
+  private static boolean hasInvalidProtocol(String protocol) {
+    return !LAST_GOOD_FRED_PROTOCOL_VERSION.equals(protocol);
   }
 
   private static boolean checkCryptadCompatibility(
@@ -262,11 +264,11 @@ public final class Version {
   private static String[] parseVersionOrNull(String version, String label) {
     if (version == null) {
       LOG.error("{} == null!", label, new Exception("error"));
-      return null;
+      return EMPTY_VERSION_COMPONENTS;
     }
     String[] v = Fields.commaList(version);
-    if (v.length < 3 || !isValidProtocol(v[2])) {
-      return null;
+    if (v.length < 3 || hasInvalidProtocol(v[2])) {
+      return EMPTY_VERSION_COMPONENTS;
     }
     return v;
   }
@@ -391,13 +393,11 @@ public final class Version {
     return parts.length > 0 ? parts[0] : null;
   }
 
+  @SuppressWarnings("DataFlowIssue")
   private static int computeBuildNumber() {
-    if (BUILD_NUMBER_STRING.startsWith("@") && BUILD_NUMBER_STRING.endsWith("@")) {
-      return 0;
-    }
     try {
       return Integer.parseInt(BUILD_NUMBER_STRING);
-    } catch (NumberFormatException ignored) {
+    } catch (NumberFormatException _) {
       return 0;
     }
   }
@@ -408,7 +408,7 @@ public final class Version {
     }
     try {
       return Integer.parseInt(s);
-    } catch (NumberFormatException ignored) {
+    } catch (NumberFormatException _) {
       return null;
     }
   }

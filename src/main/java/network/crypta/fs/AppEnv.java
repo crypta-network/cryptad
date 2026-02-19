@@ -17,6 +17,8 @@ import java.util.function.Function;
  * <p>New code is written in Java for the Kotlin-to-Java migration.
  */
 public final class AppEnv {
+  private static final String CRYPTAD_SERVICE_ENV = "CRYPTAD_SERVICE";
+
   private final Map<String, String> env;
   private final String osName;
   private final String userName;
@@ -39,15 +41,11 @@ public final class AppEnv {
    *
    * <p>- `availableManagers`: Linux-only package tools present on PATH.
    */
-  public static final class EnvDetection {
-    private final OsKind os;
-    private final String arch;
-    private final List<String> availableManagers;
-
-    public EnvDetection(OsKind os, String arch, List<String> availableManagers) {
-      this.os = Objects.requireNonNull(os);
-      this.arch = Objects.requireNonNull(arch);
-      this.availableManagers = List.copyOf(availableManagers);
+  public record EnvDetection(OsKind os, String arch, List<String> availableManagers) {
+    public EnvDetection {
+      Objects.requireNonNull(os);
+      Objects.requireNonNull(arch);
+      availableManagers = List.copyOf(Objects.requireNonNull(availableManagers));
     }
 
     public OsKind getOs() {
@@ -60,37 +58,6 @@ public final class AppEnv {
 
     public List<String> getAvailableManagers() {
       return availableManagers;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (!(o instanceof EnvDetection that)) {
-        return false;
-      }
-      return os == that.os
-          && Objects.equals(arch, that.arch)
-          && Objects.equals(availableManagers, that.availableManagers);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(os, arch, availableManagers);
-    }
-
-    @Override
-    public String toString() {
-      return "EnvDetection{"
-          + "os="
-          + os
-          + ", arch='"
-          + arch
-          + '\''
-          + ", availableManagers="
-          + availableManagers
-          + '}';
     }
   }
 
@@ -167,7 +134,7 @@ public final class AppEnv {
     if (!isLinux()) {
       return false;
     }
-    if ("1".equals(env.get("CRYPTAD_SERVICE"))) {
+    if ("1".equals(env.get(CRYPTAD_SERVICE_ENV))) {
       return true;
     }
     return env.containsKey("CONFIGURATION_DIRECTORY")
@@ -181,7 +148,7 @@ public final class AppEnv {
     if (!isWindows()) {
       return false;
     }
-    if ("1".equals(env.get("CRYPTAD_SERVICE"))) {
+    if ("1".equals(env.get(CRYPTAD_SERVICE_ENV))) {
       return true;
     }
     String user = uppercaseOrNull(env.get("USERNAME"));
@@ -193,7 +160,7 @@ public final class AppEnv {
     if (!isMac()) {
       return false;
     }
-    if ("1".equals(env.get("CRYPTAD_SERVICE"))) {
+    if ("1".equals(env.get(CRYPTAD_SERVICE_ENV))) {
       return true;
     }
     return "root".equals(userName) || env.containsKey("LAUNCHD_JOB");
@@ -210,7 +177,7 @@ public final class AppEnv {
         return false;
       }
     }
-    return "1".equals(env.get("CRYPTAD_SERVICE"))
+    return "1".equals(env.get(CRYPTAD_SERVICE_ENV))
         || isSystemdService()
         || isWindowsService()
         || isMacService();
@@ -308,7 +275,7 @@ public final class AppEnv {
         return Files.readString(path);
       }
       return null;
-    } catch (IOException ignored) {
+    } catch (IOException _) {
       return null;
     }
   }

@@ -43,11 +43,11 @@ public abstract class BaseDirs {
     Overrides envO = envOverrides();
     Overrides cliO = cliOverrides();
 
-    Path finalConfig = firstNonNull(cliO.getConfig(), envO.getConfig(), base.getConfigDir());
-    Path finalData = firstNonNull(cliO.getData(), envO.getData(), base.getDataDir());
-    Path finalCache = firstNonNull(cliO.getCache(), envO.getCache(), base.getCacheDir());
-    Path finalRun = firstNonNull(cliO.getRun(), envO.getRun(), base.getRunDir());
-    Path finalLogs = firstNonNull(cliO.getLogs(), envO.getLogs(), base.getLogsDir());
+    Path finalConfig = firstNonNull(cliO.config(), envO.config(), base.configDir());
+    Path finalData = firstNonNull(cliO.data(), envO.data(), base.dataDir());
+    Path finalCache = firstNonNull(cliO.cache(), envO.cache(), base.cacheDir());
+    Path finalRun = firstNonNull(cliO.run(), envO.run(), base.runDir());
+    Path finalLogs = firstNonNull(cliO.logs(), envO.logs(), base.logsDir());
 
     if (shouldEnsureDirectories()) {
       Dirs.ensureDir(finalConfig, Dirs.PERM_USER_RWX);

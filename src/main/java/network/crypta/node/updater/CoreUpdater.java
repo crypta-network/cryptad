@@ -9,7 +9,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -26,6 +28,7 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.io.FileBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,15 +40,21 @@ import org.slf4j.LoggerFactory;
 public class CoreUpdater extends NodeUpdater {
   private static final String LOG_TAG = "[CoreUpdater]";
   private static final String UNKNOWN_VERSION = "unknown";
+  private static final String LOG_MESSAGE_PATTERN = "{} {}";
+  private static final String EXT_FLATPAK = "flatpak";
+  private static final String EXT_SNAP = "snap";
+  private static final String FORM_FIELD_ACTION = "action";
+  private static final String FORM_FIELD_FORM_PASSWORD = "formPassword";
+  private static final int[] NO_BLOCK_PROGRESS = new int[0];
 
   private final Logger log = LoggerFactory.getLogger(CoreUpdater.class);
   private final AppEnv appEnv = new AppEnv();
 
-  private volatile CoreInfo latestInfo;
+  private final AtomicReference<CoreInfo> latestInfo = new AtomicReference<>();
   private volatile String selectedKey; // "<arch>.<ext>"
-  private volatile PackageSpec selectedSpec;
-  private volatile PackageFetcher fetcher;
-  private volatile AppEnv.EnvDetection env;
+  private final AtomicReference<PackageSpec> selectedSpec = new AtomicReference<>();
+  private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
+  private final AtomicReference<AppEnv.EnvDetection> env = new AtomicReference<>();
 
   public CoreUpdater(NodeUpdaterParams params) {
     super(params);
@@ -56,14 +65,14 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private void logInfo(String message) {
-    log.info("{} {}", LOG_TAG, message);
+    log.info(LOG_MESSAGE_PATTERN, LOG_TAG, message);
   }
 
   private void logError(String message, Throwable throwable) {
     if (throwable != null) {
-      log.error("{} {}", LOG_TAG, message, throwable);
+      log.error(LOG_MESSAGE_PATTERN, LOG_TAG, message, throwable);
     } else {
-      log.error("{} {}", LOG_TAG, message);
+      log.error(LOG_MESSAGE_PATTERN, LOG_TAG, message);
     }
   }
 
@@ -80,13 +89,13 @@ public class CoreUpdater extends NodeUpdater {
   @Override
   protected void maybeParseManifest(FetchResult result, int build) {
     CoreInfo info = parseInfo(result);
-    latestInfo = info;
+    latestInfo.set(info);
     AppEnv.EnvDetection detected = appEnv.detectEnvironment();
-    env = detected;
+    env.set(detected);
     selectArtifact(info, detected);
 
     try {
-      String versionLabel = info.getVersion() != null ? info.getVersion() : "?";
+      String versionLabel = info.version() != null ? info.version() : "?";
       String managers = String.join(",", detected.getAvailableManagers());
       logInfo(
           "info.json parsed: version="
@@ -99,24 +108,25 @@ public class CoreUpdater extends NodeUpdater {
               + managers
               + " selectedKey="
               + (selectedKey != null ? selectedKey : "none"));
-      if (info.getReleasePageUrl() != null && !info.getReleasePageUrl().isBlank()) {
-        logInfo("release_page_url=" + info.getReleasePageUrl());
+      if (info.releasePageUrl() != null && !info.releasePageUrl().isBlank()) {
+        logInfo("release_page_url=" + info.releasePageUrl());
       }
-      if ((info.getChangelogChk() != null && !info.getChangelogChk().isEmpty())
-          || (info.getFullChangelogChk() != null && !info.getFullChangelogChk().isEmpty())) {
+      if ((info.changelogChk() != null && !info.changelogChk().isEmpty())
+          || (info.fullChangelogChk() != null && !info.fullChangelogChk().isEmpty())) {
         logInfo(
             "changelogs: short="
-                + (info.getChangelogChk() != null ? info.getChangelogChk() : "-")
+                + (info.changelogChk() != null ? info.changelogChk() : "-")
                 + ", full="
-                + (info.getFullChangelogChk() != null ? info.getFullChangelogChk() : "-"));
+                + (info.fullChangelogChk() != null ? info.fullChangelogChk() : "-"));
       }
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       // best effort logging
     }
 
+    PackageSpec selected = selectedSpec.get();
     if (manager.isAutoUpdateAllowed()
-        && selectedSpec != null
-        && selectedSpec.getChk() != null
+        && selected != null
+        && selected.chk() != null
         && !hasUsableFetcher()) {
       tryStartDownload();
     }
@@ -124,19 +134,22 @@ public class CoreUpdater extends NodeUpdater {
 
   @Override
   protected void processSuccess(int fetched, FetchResult result, File blobFile) {
-    // Nothing to persist from info JSON beyond in-memory state.
+    // Nothing to persist from info JSON beyond the in-memory state.
   }
 
   public String getShortChangelogCHK() {
-    return latestInfo != null ? latestInfo.getChangelogChk() : null;
+    CoreInfo info = latestInfo.get();
+    return info != null ? info.changelogChk() : null;
   }
 
   public String getFullChangelogCHK() {
-    return latestInfo != null ? latestInfo.getFullChangelogChk() : null;
+    CoreInfo info = latestInfo.get();
+    return info != null ? info.fullChangelogChk() : null;
   }
 
   private CoreInfo parseInfo(FetchResult result) {
-    try (InputStream input = result.asBucket().getInputStream();
+    try (Bucket bucket = result.asBucket();
+        InputStream input = bucket.getInputStream();
         Reader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
       String json = readerToString(reader);
       return CoreJson.parse(json);
@@ -156,7 +169,7 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private void selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
-    Map<String, PackageSpec> pkgs = info.getPackages();
+    Map<String, PackageSpec> pkgs = info.packages();
     String arch = env.getArch();
     List<String> order = preferredExtensions(env);
 
@@ -164,17 +177,7 @@ public class CoreUpdater extends NodeUpdater {
     for (String ext : order) {
       String key = arch + "." + ext;
       PackageSpec spec = pkgs.get(key);
-      if (spec == null) {
-        continue;
-      }
-      if (spec.getChk() != null) {
-        chosen = Map.entry(key, spec);
-        break;
-      }
-      if (env.getOs() == AppEnv.OsKind.LINUX
-          && ("flatpak".equals(ext) || "snap".equals(ext))
-          && spec.getStoreUrl() != null
-          && !spec.getStoreUrl().isEmpty()) {
+      if (isSelectableArtifact(env, ext, spec)) {
         chosen = Map.entry(key, spec);
         break;
       }
@@ -183,7 +186,24 @@ public class CoreUpdater extends NodeUpdater {
       chosen = firstAvailableForArch(pkgs, arch);
     }
     selectedKey = chosen != null ? chosen.getKey() : null;
-    selectedSpec = chosen != null ? chosen.getValue() : null;
+    selectedSpec.set(chosen != null ? chosen.getValue() : null);
+  }
+
+  private static boolean isSelectableArtifact(
+      AppEnv.EnvDetection env, String extension, PackageSpec spec) {
+    if (spec == null) {
+      return false;
+    }
+    if (spec.chk() != null) {
+      return true;
+    }
+    return env.getOs() == AppEnv.OsKind.LINUX
+        && isStorePackageExtension(extension)
+        && hasText(spec.storeUrl());
+  }
+
+  private static boolean isStorePackageExtension(String extension) {
+    return EXT_FLATPAK.equals(extension) || EXT_SNAP.equals(extension);
   }
 
   private List<String> preferredExtensions(AppEnv.EnvDetection env) {
@@ -198,41 +218,43 @@ public class CoreUpdater extends NodeUpdater {
   private List<String> linuxPreferredExtensions(AppEnv.EnvDetection env) {
     List<String> managers = env.getAvailableManagers();
     List<String> preferred = new ArrayList<>();
-    List<String> fallback = List.of("rpm", "deb", "flatpak", "snap");
     if (safeIsFlatpak()) {
-      preferred.add("flatpak");
+      preferred.add(EXT_FLATPAK);
     } else {
-      if (managers.contains("rpm")) {
-        preferred.add("rpm");
-      }
-      if (managers.contains("dpkg")) {
-        preferred.add("deb");
-      }
-      if (managers.contains("flatpak")) {
-        preferred.add("flatpak");
-      }
-      if (managers.contains("snap")) {
-        preferred.add("snap");
-      }
+      addIfManagerPresent(managers, preferred, "rpm", "rpm");
+      addIfManagerPresent(managers, preferred, "dpkg", "deb");
+      addIfManagerPresent(managers, preferred, EXT_FLATPAK, EXT_FLATPAK);
+      addIfManagerPresent(managers, preferred, EXT_SNAP, EXT_SNAP);
     }
+    return mergeWithFallback(preferred, List.of("rpm", "deb", EXT_FLATPAK, EXT_SNAP));
+  }
+
+  private static void addIfManagerPresent(
+      List<String> managers, List<String> preferred, String manager, String extension) {
+    if (managers.contains(manager)) {
+      preferred.add(extension);
+    }
+  }
+
+  private static List<String> mergeWithFallback(List<String> preferred, List<String> fallback) {
     List<String> out = new ArrayList<>();
-    for (String e : preferred) {
-      if (!out.contains(e)) {
-        out.add(e);
-      }
-    }
-    for (String e : fallback) {
-      if (!out.contains(e)) {
-        out.add(e);
-      }
-    }
+    addMissing(out, preferred);
+    addMissing(out, fallback);
     return out;
+  }
+
+  private static void addMissing(List<String> out, List<String> values) {
+    for (String value : values) {
+      if (!out.contains(value)) {
+        out.add(value);
+      }
+    }
   }
 
   private boolean safeIsFlatpak() {
     try {
       return appEnv.isFlatpak();
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       return false;
     }
   }
@@ -240,7 +262,7 @@ public class CoreUpdater extends NodeUpdater {
   private static Map.Entry<String, PackageSpec> firstAvailableForArch(
       Map<String, PackageSpec> packages, String arch) {
     for (Map.Entry<String, PackageSpec> entry : packages.entrySet()) {
-      if (entry.getKey().startsWith(arch + ".") && entry.getValue().getChk() != null) {
+      if (entry.getKey().startsWith(arch + ".") && entry.getValue().chk() != null) {
         return Map.entry(entry.getKey(), entry.getValue());
       }
     }
@@ -248,10 +270,8 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private File updatesDir() {
-    String version =
-        latestInfo != null && latestInfo.getVersion() != null
-            ? latestInfo.getVersion()
-            : UNKNOWN_VERSION;
+    CoreInfo info = latestInfo.get();
+    String version = info != null && info.version() != null ? info.version() : UNKNOWN_VERSION;
     return new File(getUpdatesRoot(), version);
   }
 
@@ -269,12 +289,12 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private PackageFetcher fetcherMatchesSelection() {
-    PackageSpec spec = selectedSpec;
-    if (spec == null || spec.getChk() == null) {
+    PackageSpec spec = selectedSpec.get();
+    if (spec == null || spec.chk() == null) {
       return null;
     }
-    PackageFetcher f = fetcher;
-    if (f != null && f.matchesChk(spec.getChk())) {
+    PackageFetcher f = fetcher.get();
+    if (f != null && f.matchesChk(spec.chk())) {
       return f;
     }
     return null;
@@ -286,12 +306,12 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private void tryStartDownload() {
-    PackageSpec spec = selectedSpec;
+    PackageSpec spec = selectedSpec.get();
     File target = downloadTarget();
-    if (spec == null || target == null || spec.getChk() == null) {
+    if (spec == null || target == null || spec.chk() == null) {
       return;
     }
-    String chk = spec.getChk();
+    String chk = spec.chk();
     FreenetURI uri;
     try {
       uri = new FreenetURI(chk);
@@ -300,7 +320,7 @@ public class CoreUpdater extends NodeUpdater {
       return;
     }
     PackageFetcher f = new PackageFetcher(target, uri, chk);
-    fetcher = f;
+    fetcher.set(f);
     logInfo(
         "starting download: key="
             + (selectedKey != null ? selectedKey : "?")
@@ -313,17 +333,17 @@ public class CoreUpdater extends NodeUpdater {
 
   /** Start downloading the currently selected package if not already in progress. */
   public void startDownloadFromUI() {
-    if (selectedSpec == null) {
+    if (selectedSpec.get() == null) {
       return;
     }
     PackageFetcher matchingFetcher = fetcherMatchesSelection();
     if (matchingFetcher != null) {
-      if (!matchingFetcher.isComplete() || matchingFetcher.isSuccess()) {
+      if (matchingFetcher.isInProgress() || matchingFetcher.isSuccess()) {
         return;
       }
     } else {
-      PackageFetcher inFlight = fetcher;
-      if (inFlight != null && !inFlight.isComplete()) {
+      PackageFetcher inFlight = fetcher.get();
+      if (inFlight != null && inFlight.isInProgress()) {
         logInfo("Skipping download start: another package download is still running");
         return;
       }
@@ -340,28 +360,28 @@ public class CoreUpdater extends NodeUpdater {
     return null;
   }
 
-  /** Renders updater status section into the supplied Alerts HTML node. */
+  /** Renders the updater status section into the supplied Alerts HTML node. */
   public void renderProperties(HTMLNode alertNode) {
-    CoreInfo info = latestInfo;
+    CoreInfo info = latestInfo.get();
     if (info == null) {
       return;
     }
 
-    AppEnv.EnvDetection envNow = env;
+    AppEnv.EnvDetection envNow = env.get();
     if (envNow == null) {
       envNow = appEnv.detectEnvironment();
-      env = envNow;
+      env.set(envNow);
     }
 
     String chosen = selectedKey;
-    PackageSpec spec = selectedSpec;
+    PackageSpec spec = selectedSpec.get();
 
     addHeader(alertNode, info, envNow, chosen, spec);
     alertNode.addChild(buildLinksNode(info, spec, chosen));
 
     PackageFetcher f = fetcherMatchesSelection();
     if (f == null) {
-      if (spec != null && spec.getChk() != null) {
+      if (spec != null && spec.chk() != null) {
         alertNode.addChild(buildDownloadForm());
       }
       return;
@@ -387,8 +407,7 @@ public class CoreUpdater extends NodeUpdater {
       HTMLNode alertNode, CoreInfo info, AppEnv.EnvDetection env, String chosen, PackageSpec spec) {
     HTMLNode status = new HTMLNode("p");
     status.addChild(
-        "#",
-        "Core update available: version " + (info.getVersion() != null ? info.getVersion() : "?"));
+        "#", "Core update available: version " + (info.version() != null ? info.version() : "?"));
     alertNode.addChild(status);
 
     HTMLNode det = new HTMLNode("p");
@@ -402,7 +421,7 @@ public class CoreUpdater extends NodeUpdater {
             + (chosen != null ? chosen : "n/a"));
     alertNode.addChild(det);
 
-    Long size = spec != null ? spec.getSize() : null;
+    Long size = spec != null ? spec.size() : null;
     if (size != null && size > 0) {
       HTMLNode sizeLine = new HTMLNode("p");
       sizeLine.addChild("#", "Package size: " + SizeUtil.formatSize(size, true));
@@ -412,53 +431,83 @@ public class CoreUpdater extends NodeUpdater {
 
   private HTMLNode buildLinksNode(CoreInfo info, PackageSpec spec, String chosenKey) {
     HTMLNode links = new HTMLNode("p");
-    if (info.getReleasePageUrl() != null && !info.getReleasePageUrl().isEmpty()) {
-      links.addChild(
-          "a", "href", ExternalLinkToadlet.escape(info.getReleasePageUrl()), "Release Notes");
-      links.addChild("#", "  ");
-    }
+    addReleaseNotesLink(links, info.releasePageUrl());
 
-    String storeUrl = spec != null ? spec.getStoreUrl() : null;
-    String ext = null;
-    if (chosenKey != null) {
-      int idx = chosenKey.lastIndexOf('.');
-      if (idx >= 0 && idx + 1 < chosenKey.length()) {
-        ext = chosenKey.substring(idx + 1).toLowerCase();
-      }
-    }
-    boolean isLinux = (env != null && env.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
-    String kind = "flatpak".equals(ext) ? "flatpak" : ("snap".equals(ext) ? "snap" : null);
+    String storeUrl = spec != null ? spec.storeUrl() : null;
+    String kind = storeKind(chosenKey);
 
-    if (storeUrl != null && !storeUrl.isEmpty() && kind != null && isLinux) {
+    if (shouldRenderStoreForm(storeUrl, kind)) {
       String id = deriveStoreId(kind, storeUrl);
       links.addChild(buildOpenStoreForm(kind, id, storeUrl));
       links.addChild("#", "  ");
-    } else if (storeUrl != null && !storeUrl.isEmpty()) {
+    } else if (hasText(storeUrl)) {
       links.addChild("a", "href", ExternalLinkToadlet.escape(storeUrl), "Open in Store");
       links.addChild("#", "  ");
     }
     return links;
   }
 
+  private static void addReleaseNotesLink(HTMLNode links, String releasePageUrl) {
+    if (hasText(releasePageUrl)) {
+      links.addChild("a", "href", ExternalLinkToadlet.escape(releasePageUrl), "Release Notes");
+      links.addChild("#", "  ");
+    }
+  }
+
+  private static String storeKind(String chosenKey) {
+    String extension = extensionFromChosenKey(chosenKey);
+    if (EXT_FLATPAK.equals(extension)) {
+      return EXT_FLATPAK;
+    }
+    if (EXT_SNAP.equals(extension)) {
+      return EXT_SNAP;
+    }
+    return null;
+  }
+
+  private static String extensionFromChosenKey(String chosenKey) {
+    if (!hasText(chosenKey)) {
+      return null;
+    }
+    int idx = chosenKey.lastIndexOf('.');
+    if (idx < 0 || idx + 1 >= chosenKey.length()) {
+      return null;
+    }
+    return chosenKey.substring(idx + 1).toLowerCase(Locale.ROOT);
+  }
+
+  private boolean shouldRenderStoreForm(String storeUrl, String kind) {
+    return hasText(storeUrl) && kind != null && isLinuxEnvironment();
+  }
+
+  private boolean isLinuxEnvironment() {
+    AppEnv.EnvDetection detected = env.get();
+    return (detected != null && detected.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && !value.isEmpty();
+  }
+
   private boolean safeIsLinux() {
     try {
       return appEnv.isLinux();
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       return false;
     }
   }
 
   private HTMLNode buildOpenStoreForm(String kind, String id, String url) {
     HTMLNode form = newPostForm();
-    hiddenInput(form, "action", "openStore");
+    hiddenInput(form, FORM_FIELD_ACTION, "openStore");
     hiddenInput(form, "kind", kind);
-    if (id != null && !id.isEmpty()) {
+    if (hasText(id)) {
       hiddenInput(form, "id", id);
     }
-    if (url != null && !url.isEmpty()) {
+    if (hasText(url)) {
       hiddenInput(form, "url", url);
     }
-    hiddenInput(form, "formPassword", formPassword());
+    hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
     submitButton(form, "Open in Store", "openStore", false);
     return form;
   }
@@ -467,24 +516,19 @@ public class CoreUpdater extends NodeUpdater {
     try {
       java.net.URI u = java.net.URI.create(url);
       String path = u.getPath();
-      if (path == null) {
+      if (!hasText(path)) {
         return null;
       }
-      String[] segs = path.split("/");
-      String last = null;
-      for (String s : segs) {
-        if (!s.isEmpty()) {
-          last = s;
-        }
-      }
-      if (last == null) {
+      int lastSeparator = path.lastIndexOf('/');
+      String last = lastSeparator >= 0 ? path.substring(lastSeparator + 1) : path;
+      if (!hasText(last)) {
         return null;
       }
-      if ("snap".equalsIgnoreCase(kind) || "flatpak".equalsIgnoreCase(kind)) {
+      if (EXT_SNAP.equalsIgnoreCase(kind) || EXT_FLATPAK.equalsIgnoreCase(kind)) {
         return last;
       }
       return null;
-    } catch (Throwable ignored) {
+    } catch (Exception _) {
       return null;
     }
   }
@@ -496,7 +540,7 @@ public class CoreUpdater extends NodeUpdater {
   private HTMLNode newPostForm() {
     return new HTMLNode(
         "form",
-        new String[] {"action", "method"},
+        new String[] {FORM_FIELD_ACTION, "method"},
         new String[] {UpdaterPaths.CORE_UPDATE_PATH, "post"});
   }
 
@@ -525,22 +569,23 @@ public class CoreUpdater extends NodeUpdater {
 
   private HTMLNode buildDownloadForm() {
     HTMLNode form = newPostForm();
-    hiddenInput(form, "action", "download");
-    hiddenInput(form, "formPassword", formPassword());
+    hiddenInput(form, FORM_FIELD_ACTION, "download");
+    hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
     submitButton(form, defaultDownloadLabel(), "start", false);
     return form;
   }
 
   private HTMLNode buildRetryForm(boolean isRetry) {
     HTMLNode form = newPostForm();
-    hiddenInput(form, "action", "download");
-    hiddenInput(form, "formPassword", formPassword());
+    hiddenInput(form, FORM_FIELD_ACTION, "download");
+    hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
     submitButton(form, isRetry ? "Retry" : defaultDownloadLabel(), "start", false);
     return form;
   }
 
   private String defaultDownloadLabel() {
-    Long bytes = selectedSpec != null ? selectedSpec.getSize() : null;
+    PackageSpec spec = selectedSpec.get();
+    Long bytes = spec != null ? spec.size() : null;
     if (bytes != null && bytes > 0) {
       return "Download (" + SizeUtil.formatSize(bytes, true) + ")";
     }
@@ -554,7 +599,7 @@ public class CoreUpdater extends NodeUpdater {
     String text;
     if (f.isSuccess()) {
       text = "Download Completed";
-    } else if (pct >= 0 && blocks != null) {
+    } else if (pct >= 0 && blocks.length == 2) {
       text = "Downloading: " + pct + "% (" + blocks[0] + "/" + blocks[1] + ")";
     } else if (pct >= 0) {
       text = "Downloading: " + pct + "%";
@@ -567,9 +612,9 @@ public class CoreUpdater extends NodeUpdater {
 
   private HTMLNode buildInstallForm(boolean ready, String path) {
     HTMLNode form = newPostForm();
-    hiddenInput(form, "action", "install");
+    hiddenInput(form, FORM_FIELD_ACTION, "install");
     hiddenInput(form, "path", path != null ? path : "");
-    hiddenInput(form, "formPassword", formPassword());
+    hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
     submitButton(form, "Install", null, !ready);
     return form;
   }
@@ -631,8 +676,8 @@ public class CoreUpdater extends NodeUpdater {
       }
     }
 
-    boolean isComplete() {
-      return complete;
+    boolean isInProgress() {
+      return !complete;
     }
 
     File completedFileOrNull() {
@@ -647,7 +692,7 @@ public class CoreUpdater extends NodeUpdater {
       if (lastNeed > 0 && lastDone >= 0) {
         return new int[] {lastDone, lastNeed};
       }
-      return null;
+      return NO_BLOCK_PROGRESS;
     }
 
     boolean isSuccess() {
@@ -687,7 +732,7 @@ public class CoreUpdater extends NodeUpdater {
       failed = true;
       try {
         fatal = e.isFatal();
-      } catch (Throwable ignored) {
+      } catch (Exception _) {
         fatal = false;
       }
       errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -744,7 +789,7 @@ public class CoreUpdater extends NodeUpdater {
                     + ")");
           }
         }
-      } catch (Throwable ignored) {
+      } catch (Exception _) {
         // ignore progress failures
       }
     }
@@ -752,7 +797,7 @@ public class CoreUpdater extends NodeUpdater {
     private boolean safeIsFatal(FetchException e) {
       try {
         return e.isFatal();
-      } catch (Throwable ignored) {
+      } catch (Exception _) {
         return false;
       }
     }
@@ -908,10 +953,9 @@ final class JsonMini {
       p.i++;
     }
     if (peek(p) == '.') {
-      p.i++;
-      while (Character.isDigit(peek(p))) {
+      do {
         p.i++;
-      }
+      } while (Character.isDigit(peek(p)));
     }
     String sub = p.s.substring(start, p.i);
     double d = Double.parseDouble(sub);

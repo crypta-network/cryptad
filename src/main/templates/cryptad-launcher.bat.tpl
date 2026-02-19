@@ -12,5 +12,5 @@ if not exist "%JAVA_EXE%" (
   set JAVA_EXE=java
 )
 
-"%JAVA_EXE%" -cp "%CP%" network.crypta.launcher.LauncherKt %*
+"%JAVA_EXE%" -cp "%CP%" network.crypta.launcher.Launcher %*
 

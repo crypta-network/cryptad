@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jetbrains.annotations.NotNull;
 import org.sevenzip.compression.lzma.Decoder;
 
 /**
@@ -18,7 +20,7 @@ public final class LzmaInputStream extends InputStream {
   private final PipedInputStream pipeIn = new PipedInputStream();
   private final PipedOutputStream pipeOut;
   private final CountDownLatch started = new CountDownLatch(1);
-  private volatile IOException thrown;
+  private final AtomicReference<IOException> thrown = new AtomicReference<>();
 
   public LzmaInputStream(InputStream source) throws IOException {
     this.source = source;
@@ -32,8 +34,9 @@ public final class LzmaInputStream extends InputStream {
       Thread.currentThread().interrupt();
       throw new IOException("Interrupted while starting LZMA decoder", ie);
     }
-    if (thrown != null) {
-      throw thrown;
+    IOException constructorError = thrown.get();
+    if (constructorError != null) {
+      throw constructorError;
     }
   }
 
@@ -49,7 +52,7 @@ public final class LzmaInputStream extends InputStream {
         if (b < 0) {
           throw new IOException("Unexpected EOF reading LZMA size header");
         }
-        outSize |= ((long) b & 0xFFL) << (8 * i);
+        outSize |= (b & 0xFFL) << (8 * i);
       }
 
       Decoder decoder = new Decoder();
@@ -63,11 +66,11 @@ public final class LzmaInputStream extends InputStream {
       }
       out.flush();
     } catch (IOException ioe) {
-      thrown = ioe;
+      thrown.set(ioe);
       started.countDown();
       try {
         pipeOut.close();
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Pipe may already be closed.
       }
     }
@@ -86,31 +89,35 @@ public final class LzmaInputStream extends InputStream {
 
   @Override
   public int read() throws IOException {
-    if (thrown != null) {
-      throw thrown;
+    IOException readError = thrown.get();
+    if (readError != null) {
+      throw readError;
     }
     int b = pipeIn.read();
-    if (b < 0 && thrown != null) {
-      throw thrown;
+    IOException eofError = thrown.get();
+    if (b < 0 && eofError != null) {
+      throw eofError;
     }
     return b;
   }
 
   @Override
-  public int read(byte[] b, int off, int len) throws IOException {
-    if (thrown != null) {
-      throw thrown;
+  public int read(byte @NotNull [] b, int off, int len) throws IOException {
+    IOException readError = thrown.get();
+    if (readError != null) {
+      throw readError;
     }
     int r = pipeIn.read(b, off, len);
-    if (r < 0 && thrown != null) {
-      throw thrown;
+    IOException eofError = thrown.get();
+    if (r < 0 && eofError != null) {
+      throw eofError;
     }
     return r;
   }
 
   @Override
   public void close() throws IOException {
-    try (InputStream ignored = source) {
+    try (var _ = source) {
       pipeIn.close();
     }
   }

@@ -301,7 +301,7 @@ val jpackageImageCryptad by
       val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
       val os = currentOs()
       val imageName = appName
-      val mainClass = "network.crypta.launcher.LauncherKt"
+      val mainClass = "network.crypta.launcher.Launcher"
 
       // We'll point jpackage at our distribution lib dir for the classpath and main jar
       val libDir = cryptadDistDir.get().dir("lib").asFile
@@ -513,8 +513,8 @@ val enrichAppImageWithDist by
             appendLine("Categories=Network;Utility;")
             appendLine("MimeType=")
             // Ensure GNOME docks associate the window with this entry.
-            appendLine("StartupWMClass=network-crypta-launcher-LauncherKt")
-            appendLine("X-GNOME-WMClass=network-crypta-launcher-LauncherKt")
+            appendLine("StartupWMClass=network-crypta-launcher-Launcher")
+            appendLine("X-GNOME-WMClass=network-crypta-launcher-Launcher")
           }
           desktop.writeText(desktopContent)
           logger.lifecycle("Wrote Linux desktop entry -> {}", desktop.absolutePath)
@@ -600,7 +600,7 @@ val enrichAppImageWithDist by
         // Compose a fresh config that keeps only the sections we need.
         val out = mutableListOf<String>()
         out += "[Application]"
-        out += "app.mainclass=network.crypta.launcher.LauncherKt"
+        out += "app.mainclass=network.crypta.launcher.Launcher"
         // Add classpath entries for jars under cryptad-dist/lib
         val jarDir = target.resolve("lib")
         val jars =

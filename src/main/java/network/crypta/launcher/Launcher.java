@@ -19,14 +19,14 @@ import network.crypta.fs.AppEnv;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
-/** Java launcher entrypoint kept at {@code LauncherKt} for compatibility with existing scripts. */
-public final class LauncherKt {
+/** Java launcher entrypoint. */
+public final class Launcher {
   private static final String APP_NAME = "Crypta Launcher";
   private static final AtomicReference<CryptaLauncher> INSTANCE = new AtomicReference<>();
 
-  private LauncherKt() {}
+  private Launcher() {}
 
-  public static void main(String[] args) {
+  static void main() {
     installLookAndFeel();
     SwingUtilities.invokeLater(
         () -> {
@@ -48,18 +48,18 @@ public final class LauncherKt {
   private static void installLookAndFeel() {
     try {
       ThemeSwitcher.install();
-    } catch (Throwable t) {
-      logDebug("ThemeSwitcher.install() failed", t);
+    } catch (Exception e) {
+      logDebug("ThemeSwitcher.install() failed", e);
       try {
         javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
-      } catch (Exception fallbackIgnored) {
-        // Keep default Swing look and feel.
+      } catch (Exception _) {
+        // Keep the default Swing look and feel.
       }
     }
   }
 
   private static final class CryptaLauncher extends JFrame {
-    private final LauncherController controller;
+    private final transient LauncherController controller;
     private final JButton startStopBtn;
     private final JButton launchBtn;
     private final JButton quitBtn;
@@ -95,7 +95,7 @@ public final class LauncherKt {
           BorderLayout.SOUTH);
 
       startStopBtn.addActionListener(
-          e -> {
+          _ -> {
             AppState state = controller.getState();
             if (state.isStoppingOrShuttingDown()) {
               return;
@@ -106,8 +106,8 @@ public final class LauncherKt {
               controller.start();
             }
           });
-      launchBtn.addActionListener(e -> controller.launchBrowser());
-      quitBtn.addActionListener(e -> quitApp());
+      launchBtn.addActionListener(_ -> controller.launchBrowser());
+      quitBtn.addActionListener(_ -> quitApp());
 
       controller.addLogListener(this::appendLogLine);
       controller.addStateListener(this::renderState);
@@ -138,7 +138,7 @@ public final class LauncherKt {
         if (icon != null) {
           setIconImage(icon);
         }
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // Optional visual enhancement.
       }
 
@@ -211,7 +211,8 @@ public final class LauncherKt {
               0,
               pane.getVerticalScrollBar().getMaximum()
                   - pane.getVerticalScrollBar().getVisibleAmount());
-      int next = Math.max(0, Math.min(upper, pane.getVerticalScrollBar().getValue() + delta));
+      long rawTarget = (long) pane.getVerticalScrollBar().getValue() + delta;
+      int next = (int) Math.clamp(rawTarget, 0L, upper);
       pane.getVerticalScrollBar().setValue(next);
     }
 
@@ -230,11 +231,11 @@ public final class LauncherKt {
             startStopBtn.setText(state.isRunning() ? "Stop" : "Start");
             startStopBtn.setEnabled(!state.isShuttingDown());
             launchBtn.setEnabled(
-                state.isRunning() && state.getKnownPort() != null && !state.isShuttingDown());
+                state.isRunning() && state.knownPort() != null && !state.isShuttingDown());
             launchBtn.setToolTipText(
-                state.getKnownPort() == null
+                state.knownPort() == null
                     ? "Open http://localhost:<port>/ in your browser"
-                    : "Open http://localhost:" + state.getKnownPort() + "/ in your browser");
+                    : "Open http://localhost:" + state.knownPort() + "/ in your browser");
           });
     }
 
@@ -245,8 +246,8 @@ public final class LauncherKt {
       controller.shutdownAndWait();
       try {
         ThemeSwitcher.shutdown();
-      } catch (Throwable t) {
-        logDebug("ThemeSwitcher.shutdown() failed", t);
+      } catch (Exception e) {
+        logDebug("ThemeSwitcher.shutdown() failed", e);
       }
       dispose();
       INSTANCE.compareAndSet(this, null);

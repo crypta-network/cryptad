@@ -570,9 +570,9 @@ public final class NodeStorageSubsystem {
   public Path defaultStoreBaseDir() {
     AppEnv appEnv = new AppEnv();
     if (appEnv.isServiceMode()) {
-      return new ServiceDirs().resolve().getDataDir();
+      return new ServiceDirs().resolve().dataDir();
     }
-    return new AppDirs().resolve().getDataDir();
+    return new AppDirs().resolve().dataDir();
   }
 
   public void initializeDatastoreSize(long storeSize) throws NodeInitException {

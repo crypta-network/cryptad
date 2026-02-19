@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,39 +21,43 @@ import static network.crypta.launcher.LauncherLog.logDebug;
 
 /** Utility helpers shared by the launcher runtime and launcher-focused tests. */
 public final class LauncherUtils {
-  private static final Pattern PORT_RE =
-      Pattern.compile(
-          "Starting\\s+FProxy\\s+on\\s+.*:(\\d{2,5})(?:\\s*|$)", Pattern.CASE_INSENSITIVE);
   private static final Pattern CONF_RE_1 = Pattern.compile("CONF=\"([^\"]*wrapper\\.conf)\"");
   private static final Pattern CONF_RE_2 = Pattern.compile("-c\\s+\"([^\"]*wrapper\\.conf)\"");
 
   public static final String CRYPTAD_PATH_ENV = "CRYPTAD_PATH";
+  private static final String CRYPTAD_SCRIPT = "cryptad";
+  private static final String CRYPTAD_SCRIPT_WINDOWS = "cryptad.bat";
 
   private LauncherUtils() {}
 
   /** Parse the FProxy listen port from a launcher log line. */
   public static Integer parseFProxyPortFromLine(String line) {
-    Matcher matcher = PORT_RE.matcher(line);
-    if (matcher.find()) {
-      return parsePort(matcher.group(1));
+    String lower = line.toLowerCase(Locale.ROOT);
+    if (!(lower.contains("starting") && lower.contains("fproxy") && lower.contains("on "))) {
+      return null;
     }
-    String lower = line.toLowerCase();
-    if (lower.contains("starting") && lower.contains("fproxy") && lower.contains("on ")) {
-      int idx = line.lastIndexOf(':');
-      if (idx > 0 && idx + 1 < line.length()) {
-        String tail = line.substring(idx + 1).trim();
-        if (tail.length() >= 2 && tail.length() <= 5 && tail.chars().allMatch(Character::isDigit)) {
-          return parsePort(tail);
-        }
-      }
+    int idx = line.lastIndexOf(':');
+    if (idx <= 0 || idx + 1 >= line.length()) {
+      return null;
     }
-    return null;
+    String tail = line.substring(idx + 1).trim();
+    int digits = 0;
+    while (digits < tail.length() && Character.isDigit(tail.charAt(digits))) {
+      digits++;
+    }
+    if (digits < 2 || digits > 5) {
+      return null;
+    }
+    if (digits < tail.length() && !Character.isWhitespace(tail.charAt(digits))) {
+      return null;
+    }
+    return parsePort(tail.substring(0, digits));
   }
 
   private static Integer parsePort(String value) {
     try {
       return Integer.parseInt(value);
-    } catch (NumberFormatException ignored) {
+    } catch (NumberFormatException _) {
       return null;
     }
   }
@@ -62,11 +67,8 @@ public final class LauncherUtils {
     Map<String, String> props = new LinkedHashMap<>();
     for (String raw : lines) {
       String line = raw.trim();
-      if (line.isEmpty() || line.startsWith("#")) {
-        continue;
-      }
       int idx = line.indexOf('=');
-      if (idx <= 0) {
+      if (line.isEmpty() || line.startsWith("#") || idx <= 0) {
         continue;
       }
       String key = line.substring(0, idx).trim();
@@ -136,7 +138,7 @@ public final class LauncherUtils {
     return normalized.getParent() != null ? normalized.getParent() : normalized;
   }
 
-  /** Guess wrapper.conf location for a cryptad wrapper script. */
+  /** Guess the wrapper.conf location for a cryptad wrapper script. */
   public static Path guessWrapperConfPathForCryptadScript(Path cryptadPath) {
     Path scriptDir = cryptadPath.getParent();
     if (scriptDir == null) {
@@ -160,7 +162,7 @@ public final class LauncherUtils {
     }
   }
 
-  /** Scan script lines for explicit wrapper.conf assignment. */
+  /** Scan script lines for the explicit wrapper.conf assignment. */
   public static Path scanWrapperConfPath(List<String> lines) {
     int max = Math.min(lines.size(), 200);
     for (int i = 0; i < max; i++) {
@@ -204,7 +206,7 @@ public final class LauncherUtils {
     if (fromCwd != null) {
       return fromCwd;
     }
-    return cwd.resolve(isWindows ? "cryptad.bat" : "cryptad");
+    return cwd.resolve(isWindows ? CRYPTAD_SCRIPT_WINDOWS : CRYPTAD_SCRIPT);
   }
 
   /** Locate the running cryptad jar by protection domain or class path scan. */
@@ -213,7 +215,9 @@ public final class LauncherUtils {
       var location = LauncherUtils.class.getProtectionDomain().getCodeSource();
       if (location != null) {
         Path decoded =
-            Paths.get(URLDecoder.decode(location.getLocation().toURI().getPath(), "UTF-8"));
+            Paths.get(
+                URLDecoder.decode(
+                    location.getLocation().toURI().getPath(), StandardCharsets.UTF_8));
         if (isCryptadJarFile(decoded)) {
           return decoded.normalize();
         }
@@ -230,24 +234,32 @@ public final class LauncherUtils {
     if (classPath == null || classPath.isBlank()) {
       return null;
     }
-    Pattern namePattern = Pattern.compile("^cryptad(?:[-.].*)?\\.jar$", Pattern.CASE_INSENSITIVE);
+    Pattern namePattern =
+        Pattern.compile("^" + CRYPTAD_SCRIPT + "(?:[-.].*)?\\.jar$", Pattern.CASE_INSENSITIVE);
     for (String raw : classPath.split(Pattern.quote(File.pathSeparator))) {
-      if (raw == null || raw.isBlank()) {
-        continue;
-      }
-      try {
-        Path path = Paths.get(raw);
-        if (Files.isRegularFile(path)) {
-          String name = path.getFileName() != null ? path.getFileName().toString() : "";
-          if (namePattern.matcher(name).matches()) {
-            return path.normalize();
-          }
-        }
-      } catch (Exception e) {
-        logDebug("Error scanning classpath entry for cryptad jar: '" + raw + "'", e);
+      Path jarPath = resolveCryptadJarFromClassPathEntry(raw, namePattern);
+      if (jarPath != null) {
+        return jarPath;
       }
     }
     return null;
+  }
+
+  private static Path resolveCryptadJarFromClassPathEntry(String raw, Pattern namePattern) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    try {
+      Path path = Paths.get(raw);
+      if (!Files.isRegularFile(path)) {
+        return null;
+      }
+      String name = path.getFileName() != null ? path.getFileName().toString() : "";
+      return namePattern.matcher(name).matches() ? path.normalize() : null;
+    } catch (Exception e) {
+      logDebug("Error scanning classpath entry for cryptad jar: '" + raw + "'", e);
+      return null;
+    }
   }
 
   private static boolean matchesWrapperKey(String raw, String key) {
@@ -283,11 +295,11 @@ public final class LauncherUtils {
 
     List<Path> candidates = new ArrayList<>();
     if (isWindows) {
-      candidates.add(jarDir.resolve("cryptad.bat").normalize());
-      candidates.add(jarDir.resolve("../bin/cryptad.bat").normalize());
+      candidates.add(jarDir.resolve(CRYPTAD_SCRIPT_WINDOWS).normalize());
+      candidates.add(jarDir.resolve("../bin/" + CRYPTAD_SCRIPT_WINDOWS).normalize());
     }
-    candidates.add(jarDir.resolve("cryptad").normalize());
-    candidates.add(jarDir.resolve("../bin/cryptad").normalize());
+    candidates.add(jarDir.resolve(CRYPTAD_SCRIPT).normalize());
+    candidates.add(jarDir.resolve("../bin/" + CRYPTAD_SCRIPT).normalize());
 
     for (Path candidate : candidates) {
       if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
@@ -300,13 +312,13 @@ public final class LauncherUtils {
   private static Path resolveCryptadPathFromCwd(Path cwd, boolean isWindows) {
     List<Path> candidates = new ArrayList<>();
     if (isWindows) {
-      candidates.add(cwd.resolve("bin/cryptad.bat"));
+      candidates.add(cwd.resolve("bin/" + CRYPTAD_SCRIPT_WINDOWS));
     }
-    candidates.add(cwd.resolve("bin/cryptad"));
+    candidates.add(cwd.resolve("bin/" + CRYPTAD_SCRIPT));
     if (isWindows) {
-      candidates.add(cwd.resolve("cryptad.bat"));
+      candidates.add(cwd.resolve(CRYPTAD_SCRIPT_WINDOWS));
     }
-    candidates.add(cwd.resolve("cryptad"));
+    candidates.add(cwd.resolve(CRYPTAD_SCRIPT));
 
     for (Path candidate : candidates) {
       if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
@@ -321,7 +333,7 @@ public final class LauncherUtils {
       return false;
     }
     String name = path.getFileName() != null ? path.getFileName().toString() : "";
-    return name.startsWith("cryptad") && name.endsWith(".jar");
+    return name.startsWith(CRYPTAD_SCRIPT) && name.endsWith(".jar");
   }
 
   /** Build the process command line for launching the daemon wrapper script. */

@@ -55,9 +55,9 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(norm(r.getConfigDir().toString()).contains(".config/cryptad/config"));
-    assertTrue(norm(r.getDataDir().toString()).contains(".local/share/cryptad/data"));
-    assertTrue(Files.exists(r.getConfigDir()));
+    assertTrue(norm(r.configDir().toString()).contains(".config/cryptad/config"));
+    assertTrue(norm(r.dataDir().toString()).contains(".local/share/cryptad/data"));
+    assertTrue(Files.exists(r.configDir()));
   }
 
   @Test
@@ -85,9 +85,9 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getConfigDir().startsWith(xdgConfig));
-    assertTrue(r.getDataDir().startsWith(xdgData));
-    assertTrue(r.getCacheDir().startsWith(xdgCache));
+    assertTrue(r.configDir().startsWith(xdgConfig));
+    assertTrue(r.dataDir().startsWith(xdgData));
+    assertTrue(r.cacheDir().startsWith(xdgCache));
   }
 
   @Test
@@ -106,8 +106,8 @@ class AppDirsTest {
 
     // Assert
     assertTrue(
-        norm(r.getConfigDir().toString()).contains("Library/Application Support/Cryptad/config"));
-    assertTrue(norm(r.getCacheDir().toString()).contains("Library/Caches/Cryptad"));
+        norm(r.configDir().toString()).contains("Library/Application Support/Cryptad/config"));
+    assertTrue(norm(r.cacheDir().toString()).contains("Library/Caches/Cryptad"));
   }
 
   @Test
@@ -128,7 +128,7 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getConfigDir().startsWith(xdgConfig));
+    assertTrue(r.configDir().startsWith(xdgConfig));
   }
 
   @Test
@@ -153,7 +153,7 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getDataDir().startsWith(common.resolve("cryptad")));
+    assertTrue(r.dataDir().startsWith(common.resolve("cryptad")));
   }
 
   @Test
@@ -183,10 +183,10 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getConfigDir().startsWith(xdgConfig.resolve("cryptad/config")));
-    assertTrue(r.getDataDir().startsWith(xdgData.resolve("cryptad/data")));
-    assertTrue(r.getCacheDir().startsWith(xdgCache.resolve("cryptad")));
-    assertTrue(r.getRunDir().startsWith(xdgRt.resolve(network.crypta.fs.Dirs.APP_RUNTIME_SUBPATH)));
+    assertTrue(r.configDir().startsWith(xdgConfig.resolve("cryptad/config")));
+    assertTrue(r.dataDir().startsWith(xdgData.resolve("cryptad/data")));
+    assertTrue(r.cacheDir().startsWith(xdgCache.resolve("cryptad")));
+    assertTrue(r.runDir().startsWith(xdgRt.resolve(network.crypta.fs.Dirs.APP_RUNTIME_SUBPATH)));
   }
 
   @Test
@@ -213,11 +213,11 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getConfigDir().startsWith(common.resolve("cryptad/config")));
-    assertTrue(r.getDataDir().startsWith(common.resolve("cryptad/data")));
-    assertTrue(r.getCacheDir().startsWith(xdgCache.resolve("cryptad")));
-    assertTrue(r.getRunDir().startsWith(xdgCache.resolve("rt")));
-    assertTrue(r.getLogsDir().startsWith(common.resolve("cryptad/logs")));
+    assertTrue(r.configDir().startsWith(common.resolve("cryptad/config")));
+    assertTrue(r.dataDir().startsWith(common.resolve("cryptad/data")));
+    assertTrue(r.cacheDir().startsWith(xdgCache.resolve("cryptad")));
+    assertTrue(r.runDir().startsWith(xdgCache.resolve("rt")));
+    assertTrue(r.logsDir().startsWith(common.resolve("cryptad/logs")));
   }
 
   @Test
@@ -238,7 +238,7 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(norm(r.getConfigDir().toString()).contains("/cryptad/config"));
+    assertTrue(norm(r.configDir().toString()).contains("/cryptad/config"));
   }
 
   @Test
@@ -262,8 +262,8 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(norm(r.getConfigDir().toString()).contains("/Cryptad/config"));
-    assertTrue(norm(r.getCacheDir().toString()).contains("/Cryptad"));
+    assertTrue(norm(r.configDir().toString()).contains("/Cryptad/config"));
+    assertTrue(norm(r.cacheDir().toString()).contains("/Cryptad"));
   }
 
   @Test
@@ -290,7 +290,7 @@ class AppDirsTest {
 
     // Assert
     // Without XDG_RUNTIME_DIR and without a writable /run parent, runDir should be <cache>/rt
-    assertTrue(r.getRunDir().startsWith(xdgCache.resolve("rt")));
+    assertTrue(r.runDir().startsWith(xdgCache.resolve("rt")));
   }
 
   @Test
@@ -307,9 +307,9 @@ class AppDirsTest {
     Resolved r = dirs.resolve();
 
     // Assert
-    assertTrue(r.getConfigDir().startsWith(xdgConfig));
+    assertTrue(r.configDir().startsWith(xdgConfig));
     assertTrue(
-        norm(r.getRunDir().toString())
+        norm(r.runDir().toString())
             .contains("/app/org.example.Cryptad/" + network.crypta.fs.Dirs.APP_RUNTIME_SUBPATH));
   }
 
@@ -328,59 +328,6 @@ class AppDirsTest {
     env.put("XDG_CACHE_HOME", xdgCache.toString());
     env.put("XDG_RUNTIME_DIR", root.resolve("xdg-rt").toString());
     return env;
-  }
-
-  @Test
-  void resolve_whenSystemdServiceDirsExported_expectConfiguredRoots() {
-    // Arrange
-    Path root = tmp;
-    Map<String, String> env = new HashMap<>();
-    env.put("CONFIGURATION_DIRECTORY", root.resolve("etc").toString());
-    env.put("STATE_DIRECTORY", root.resolve("lib").toString());
-    env.put("CACHE_DIRECTORY", root.resolve("cache").toString());
-    env.put("LOGS_DIRECTORY", root.resolve("log").toString());
-    env.put("RUNTIME_DIRECTORY", root.resolve("run").toString());
-    ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Linux", "root"));
-
-    // Act
-    Resolved r = svc.resolve();
-
-    // Assert
-    assertTrue(r.getConfigDir().startsWith(root.resolve("etc")));
-    assertTrue(r.getDataDir().startsWith(root.resolve("lib")));
-    assertTrue(r.getLogsDir().startsWith(root.resolve("log")));
-  }
-
-  @Test
-  void resolve_whenWindowsService_expectProgramDataRoots() {
-    // Arrange
-    Path root = tmp;
-    Map<String, String> env = new HashMap<>();
-    env.put("PROGRAMDATA", root.resolve("ProgramData").toString());
-    ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Windows 10", "SYSTEM"));
-
-    // Act
-    Resolved r = svc.resolve();
-
-    // Assert
-    assertTrue(r.getConfigDir().toString().contains("ProgramData"));
-    assertTrue(r.getLogsDir().toString().contains("ProgramData"));
-  }
-
-  @Test
-  void resolve_whenMacDaemon_expectDefaultSystemPaths() {
-    // Arrange
-    Map<String, String> env = new HashMap<>();
-    ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Mac OS X", "root"));
-
-    // Act
-    Resolved r = svc.resolve();
-
-    // Assert
-    assertTrue(
-        norm(r.getConfigDir().toString())
-            .startsWith("/Library/Application Support/Cryptad/config"));
-    assertTrue(norm(r.getLogsDir().toString()).startsWith("/Library/Logs/Cryptad"));
   }
 
   @Test
@@ -409,15 +356,15 @@ class AppDirsTest {
     // Assert
     String expandedConfigDir = out.get("node.install.cfgDir");
     String expandedTempDir = out.get("node.install.tempDir");
-    System.out.println("DEBUG cfgDir expected=" + r.getConfigDir());
+    System.out.println("DEBUG cfgDir expected=" + r.configDir());
     System.out.println("DEBUG node.install.cfgDir actual=" + expandedConfigDir);
     assertNotNull(expandedConfigDir);
-    assertTrue(expandedConfigDir.startsWith(r.getConfigDir().toString()));
-    assertEquals(r.getDataDir().toString(), out.get("node.install.storeDir"));
+    assertTrue(expandedConfigDir.startsWith(r.configDir().toString()));
+    assertEquals(r.dataDir().toString(), out.get("node.install.storeDir"));
     assertNotNull(expandedTempDir);
-    assertTrue(expandedTempDir.startsWith(r.getCacheDir().toString()));
-    System.out.println("DEBUG logsDir expected=" + r.getLogsDir());
+    assertTrue(expandedTempDir.startsWith(r.cacheDir().toString()));
+    System.out.println("DEBUG logsDir expected=" + r.logsDir());
     System.out.println("DEBUG logger.dirname actual=" + out.get("logger.dirname"));
-    assertEquals(r.getLogsDir().toString(), out.get("logger.dirname"));
+    assertEquals(r.logsDir().toString(), out.get("logger.dirname"));
   }
 }

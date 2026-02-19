@@ -50,12 +50,12 @@ public final class CryptadConfig {
     String tmp = systemProps.getProperty("java.io.tmpdir");
     Map<String, String> base =
         Map.of(
-            "configDir", dirs.getConfigDir().toString(),
-            "dataDir", dirs.getDataDir().toString(),
-            "stateDir", dirs.getDataDir().toString(),
-            "cacheDir", dirs.getCacheDir().toString(),
-            "runDir", dirs.getRunDir().toString(),
-            "logsDir", dirs.getLogsDir().toString(),
+            "configDir", dirs.configDir().toString(),
+            "dataDir", dirs.dataDir().toString(),
+            "stateDir", dirs.dataDir().toString(),
+            "cacheDir", dirs.cacheDir().toString(),
+            "runDir", dirs.runDir().toString(),
+            "logsDir", dirs.logsDir().toString(),
             "home", home,
             "tmp", tmp);
 

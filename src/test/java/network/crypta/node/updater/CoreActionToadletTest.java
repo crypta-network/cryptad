@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -150,7 +151,7 @@ class CoreActionToadletTest {
 
     File baseDir = tempDir.resolve("node").toFile();
     String invalidPath = tempDir.resolve("outside/installer.deb").toFile().getAbsolutePath();
-    baseDir.mkdirs();
+    assertTrue(baseDir.mkdirs() || baseDir.isDirectory());
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(node.services()).thenReturn(services);
@@ -183,7 +184,7 @@ class CoreActionToadletTest {
     File baseDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(baseDir, "updates/core");
     File installer = new File(updatesDir, "cryptad.deb");
-    updatesDir.mkdirs();
+    assertTrue(updatesDir.mkdirs() || updatesDir.isDirectory());
     assertTrue(installer.createNewFile());
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
@@ -198,7 +199,6 @@ class CoreActionToadletTest {
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
     when(appEnv.isServiceMode()).thenReturn(true);
-    when(appEnv.onPath(anyString())).thenReturn(false);
     replaceAppEnv(toadlet, appEnv);
 
     stubHtmlContext(ctx);
@@ -261,6 +261,6 @@ class CoreActionToadletTest {
     Field field = CoreActionToadlet.class.getDeclaredField("appEnv");
     field.setAccessible(true);
     field.set(toadlet, appEnv);
-    assertTrue(field.get(toadlet) == appEnv);
+    assertSame(field.get(toadlet), appEnv);
   }
 }

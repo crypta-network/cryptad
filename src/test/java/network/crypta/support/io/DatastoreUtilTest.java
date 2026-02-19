@@ -75,7 +75,7 @@ class DatastoreUtilTest {
   private static Path resolveDataDirPath() {
     AppEnv env = new AppEnv();
     Resolved dirs = env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
-    return dirs.getDataDir();
+    return dirs.dataDir();
   }
 
   // --- maxDatastoreSize() ------------------------------------------------------

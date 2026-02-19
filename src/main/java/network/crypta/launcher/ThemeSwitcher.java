@@ -6,6 +6,7 @@ import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 import com.formdev.flatlaf.themes.FlatMacLightLaf;
 import com.jthemedetecor.OsThemeDetector;
+import java.awt.Font;
 import java.util.function.Consumer;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -20,8 +21,8 @@ import static network.crypta.launcher.LauncherLog.logWarn;
 
 /** Simple FlatLaf theme switcher with OS theme listener support. */
 public final class ThemeSwitcher {
-  private static volatile OsThemeDetector detector;
-  private static volatile Consumer<Boolean> listener;
+  private static OsThemeDetector detector;
+  private static Consumer<Boolean> listener;
 
   private ThemeSwitcher() {}
 
@@ -38,8 +39,8 @@ public final class ThemeSwitcher {
         JFrame.setDefaultLookAndFeelDecorated(true);
         JDialog.setDefaultLookAndFeelDecorated(true);
       }
-    } catch (Throwable t) {
-      logDebug("Failed to enable client decorations on Linux", t);
+    } catch (Exception e) {
+      logDebug("Failed to enable client decorations on Linux", e);
     }
 
     OsThemeDetector osThemeDetector = FlatpakAwareOsThemeDetector.getDetector();
@@ -81,6 +82,10 @@ public final class ThemeSwitcher {
       } else {
         try {
           SwingUtilities.invokeAndWait(apply);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          logDebug("invokeAndWait failed; applying LAF on caller thread", e);
+          apply.run();
         } catch (Exception e) {
           logDebug("invokeAndWait failed; applying LAF on caller thread", e);
           apply.run();
@@ -94,7 +99,7 @@ public final class ThemeSwitcher {
   private static void applyLafInternal(LookAndFeel laf, boolean mac, boolean synchronous) {
     try {
       if (mac) {
-        UIManager.put("defaultFont", new FontUIResource("SansSerif", FontUIResource.PLAIN, 13));
+        UIManager.put("defaultFont", new FontUIResource("SansSerif", Font.PLAIN, 13));
       }
       boolean inFlatpak = !System.getenv().getOrDefault("FLATPAK_ID", "").isEmpty();
       FlatLaf.setUseNativeWindowDecorations(!mac && !inFlatpak);

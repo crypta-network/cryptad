@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import network.crypta.fs.Dirs;
 import picocli.CommandLine.ArgGroup;
@@ -58,7 +59,7 @@ public class NodeCli {
       names = {"-c", "--config-file"},
       paramLabel = "FILE",
       description = {"Path to configuration file (cryptad.ini). Overrides --config-dir."})
-  private File configFileOpt;
+  private File configFileOpt = null;
 
   /** Optional explicit config file path (positional). */
   @Parameters(
@@ -67,7 +68,7 @@ public class NodeCli {
       description = {
         "Optional positional configuration file (cryptad.ini). Same as --config-file."
       })
-  private File configFilePositional;
+  private File configFilePositional = null;
 
   /** Override the config directory where cryptad.ini is located. */
   @Option(
@@ -97,14 +98,14 @@ public class NodeCli {
       description = {"Override run directory (PID, sockets, runtime files)."})
   public String runDir;
 
-  /** Override the logs directory. */
+  /** Override the logs' directory. */
   @Option(
       names = {"-L", "--logs-dir"},
       paramLabel = "PATH",
       description = {"Override logs directory (log files destination)."})
   public String logsDir;
 
-  /** Choose service mode explicitly. */
+  /** Choose a service mode explicitly. */
   @Option(
       names = {"-m", "--service-mode"},
       paramLabel = "MODE",
@@ -115,8 +116,7 @@ public class NodeCli {
   public String serviceMode;
 
   /** Shortcut flags for service/user modes. */
-  @ArgGroup(exclusive = true, multiplicity = "0..1")
-  public ModeShortcuts modeShortcuts;
+  @ArgGroup() public ModeShortcuts modeShortcuts;
 
   public static class ModeShortcuts {
     @Option(
@@ -159,7 +159,7 @@ public class NodeCli {
   /** Compute the service mode override based on flags, or null. */
   public String serviceModeOverride() {
     if (serviceMode != null) {
-      String m = serviceMode.toLowerCase();
+      String m = serviceMode.toLowerCase(Locale.ROOT);
       if ("service".equals(m) || "user".equals(m)) {
         return m;
       }
@@ -192,6 +192,7 @@ public class NodeCli {
   /** Pretty exception handler for picocli usage errors. */
   public static class PrettyExceptionHandler implements IExecutionExceptionHandler {
     @Override
+    @SuppressWarnings("java:S106")
     public int handleExecutionException(
         Exception ex, CommandLine commandLine, ParseResult parseResult) {
       PrintWriter out =

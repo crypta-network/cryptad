@@ -337,7 +337,7 @@ class LauncherUtilsTest {
         if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
           return candidate.toString();
         }
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // ignore malformed path segments
       }
     }

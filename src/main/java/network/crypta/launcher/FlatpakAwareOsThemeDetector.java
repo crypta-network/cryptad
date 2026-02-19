@@ -27,7 +27,7 @@ public final class FlatpakAwareOsThemeDetector {
     }
     try {
       return new com.jthemedetecor.PortalThemeDetector();
-    } catch (Throwable t) {
+    } catch (Exception t) {
       LauncherLog.logDebug(
           "XDG portal theme detector unavailable; falling back to upstream detector", t);
       return null;

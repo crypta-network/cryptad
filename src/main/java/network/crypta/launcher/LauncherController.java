@@ -26,8 +26,8 @@ public class LauncherController {
   private final List<Consumer<String>> logListeners = new CopyOnWriteArrayList<>();
   private final List<Consumer<AppState>> stateListeners = new CopyOnWriteArrayList<>();
 
-  private volatile Process process;
-  private volatile AppState state = new AppState();
+  private Process process;
+  private AppState state = new AppState();
   private volatile boolean shuttingDown;
 
   public LauncherController() {
@@ -48,6 +48,7 @@ public class LauncherController {
     }
   }
 
+  @SuppressWarnings("unused")
   public void removeLogListener(Consumer<String> listener) {
     logListeners.remove(listener);
   }
@@ -59,15 +60,17 @@ public class LauncherController {
     }
   }
 
+  @SuppressWarnings("unused")
   public void removeStateListener(Consumer<AppState> listener) {
     stateListeners.remove(listener);
   }
 
   public synchronized void start() {
+    AppState currentState = state;
     if (shuttingDown) {
       return;
     }
-    if (state.isRunning()) {
+    if (currentState.isRunning()) {
       return;
     }
 
@@ -77,7 +80,7 @@ public class LauncherController {
       return;
     }
 
-    setState(state.withStopping(false).withShuttingDown(false));
+    setState(currentState.withStopping(false).withShuttingDown(false));
     emitLog(ts() + " Starting '" + cryptadPath.getFileName() + "' ...");
 
     io.execute(
@@ -115,6 +118,10 @@ public class LauncherController {
             }
 
             started.waitFor();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logDebug("Launcher process start/watch failed", e);
+            emitLog(ts() + " ERROR: " + e.getMessage());
           } catch (Exception e) {
             logDebug("Launcher process start/watch failed", e);
             emitLog(ts() + " ERROR: " + e.getMessage());
@@ -140,7 +147,7 @@ public class LauncherController {
             if (!current.waitFor(5, TimeUnit.SECONDS)) {
               current.destroyForcibly();
             }
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           } finally {
             setState(state.withRunning(false).withStopping(false));
@@ -149,7 +156,7 @@ public class LauncherController {
   }
 
   public void launchBrowser() {
-    Integer port = state.getKnownPort();
+    Integer port = state.knownPort();
     if (port == null) {
       return;
     }
@@ -187,8 +194,11 @@ public class LauncherController {
   public void shutdownAndWait() {
     shutdown();
     try {
-      io.awaitTermination(10, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
+      boolean terminated = io.awaitTermination(10, TimeUnit.SECONDS);
+      if (!terminated) {
+        logDebug("Timed out waiting for launcher IO executor to terminate");
+      }
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

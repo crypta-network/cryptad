@@ -6,6 +6,8 @@ import java.util.Map;
 
 /** Service-aware directories based on systemd (Linux), launchd (macOS), and Windows Service. */
 public final class ServiceDirs extends BaseDirs {
+  private static final String APP_DIR_NAME = "Cryptad";
+
   public ServiceDirs(
       Map<String, String> env,
       Map<String, String> systemProperties,
@@ -49,7 +51,7 @@ public final class ServiceDirs extends BaseDirs {
                       "AppData",
                       "Local")
                   .toString());
-      Path root = Paths.get(programData).resolve("Cryptad");
+      Path root = Paths.get(programData).resolve(APP_DIR_NAME);
       return new Resolved(
           root.resolve("config"),
           root.resolve("data"),
@@ -59,13 +61,13 @@ public final class ServiceDirs extends BaseDirs {
     }
 
     if (appEnv.isMac()) {
-      Path root = Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Application Support", "Cryptad");
+      Path root = Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Application Support", APP_DIR_NAME);
       return new Resolved(
           root.resolve("config"),
           root.resolve("data"),
-          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Caches", "Cryptad"),
-          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Caches", "Cryptad", "run"),
-          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Logs", "Cryptad"));
+          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Caches", APP_DIR_NAME),
+          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Caches", APP_DIR_NAME, "run"),
+          Paths.get("/" + Dirs.MACOS_LIBRARY_PATH, "Logs", APP_DIR_NAME));
     }
 
     return new Resolved(

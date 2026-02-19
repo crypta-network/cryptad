@@ -16,110 +16,187 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-public class AppEnvTest {
+@SuppressWarnings("java:S100") // Enforce method_whenCondition_expectOutcome naming for tests.
+class AppEnvTest {
 
   @Test
-  public void dockerEnvOverride_isTrue() {
+  void isDocker_whenCryptadDockerOverrideSet_expectTrue() {
+    // Arrange
     Map<String, String> env = new HashMap<>();
     env.put("CRYPTAD_DOCKER", "1");
-    AppEnv ae = new AppEnv(env, "Linux", "tester", p -> null);
-    assertTrue(ae.isDocker());
+    AppEnv ae = new AppEnv(env, "Linux", "tester", _ -> null);
+
+    // Act
+    boolean isDocker = ae.isDocker();
+
+    // Assert
+    assertTrue(isDocker);
   }
 
   @Test
-  public void nonLinux_isDockerFalse() {
+  void isDocker_whenNonLinux_expectFalse() {
+    // Arrange
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Mac OS X", "tester", Path::toString);
-    assertFalse(ae.isDocker());
+
+    // Act
+    boolean isDocker = ae.isDocker();
+
+    // Assert
+    assertFalse(isDocker);
   }
 
   @Test
-  public void osKind_basicFamilies() {
-    AppEnv win = new AppEnv(new HashMap<>(), "Windows 11", "u", p -> null);
-    AppEnv mac = new AppEnv(new HashMap<>(), "Mac OS X", "u", p -> null);
-    AppEnv lin = new AppEnv(new HashMap<>(), "Linux", "u", p -> null);
-    assertTrue(win.isWindows());
-    assertTrue(mac.isMac());
-    assertTrue(lin.isLinux());
-    assertEquals(AppEnv.OsKind.WINDOWS, win.osKind());
-    assertEquals(AppEnv.OsKind.MAC, mac.osKind());
-    assertEquals(AppEnv.OsKind.LINUX, lin.osKind());
+  void osKind_whenDifferentOsNames_expectCorrectFamilies() {
+    // Arrange
+    AppEnv win = new AppEnv(new HashMap<>(), "Windows 11", "u", _ -> null);
+    AppEnv mac = new AppEnv(new HashMap<>(), "Mac OS X", "u", _ -> null);
+    AppEnv lin = new AppEnv(new HashMap<>(), "Linux", "u", _ -> null);
+
+    // Act
+    boolean winDetected = win.isWindows();
+    boolean macDetected = mac.isMac();
+    boolean linDetected = lin.isLinux();
+    AppEnv.OsKind winKind = win.osKind();
+    AppEnv.OsKind macKind = mac.osKind();
+    AppEnv.OsKind linKind = lin.osKind();
+
+    // Assert
+    assertTrue(winDetected);
+    assertTrue(macDetected);
+    assertTrue(linDetected);
+    assertEquals(AppEnv.OsKind.WINDOWS, winKind);
+    assertEquals(AppEnv.OsKind.MAC, macKind);
+    assertEquals(AppEnv.OsKind.LINUX, linKind);
   }
 
   @Test
-  public void flatpak_snap_detection() {
-    Map<String, String> env = new HashMap<>();
-    env.put("FLATPAK_ID", "network.crypta.Cryptad");
-    assertTrue(new AppEnv(env, "Linux", "u", p -> null).isFlatpak());
-    env.clear();
-    env.put("SNAP", "1");
-    assertTrue(new AppEnv(env, "Linux", "u", p -> null).isSnap());
+  void isFlatpakAndIsSnap_whenMarkersPresent_expectTrue() {
+    // Arrange
+    Map<String, String> flatpakEnv = new HashMap<>();
+    flatpakEnv.put("FLATPAK_ID", "network.crypta.Cryptad");
+    AppEnv flatpakAppEnv = new AppEnv(flatpakEnv, "Linux", "u", _ -> null);
+
+    Map<String, String> snapEnv = new HashMap<>();
+    snapEnv.put("SNAP", "1");
+    AppEnv snapAppEnv = new AppEnv(snapEnv, "Linux", "u", _ -> null);
+
+    // Act
+    boolean flatpakDetected = flatpakAppEnv.isFlatpak();
+    boolean snapDetected = snapAppEnv.isSnap();
+
+    // Assert
+    assertTrue(flatpakDetected);
+    assertTrue(snapDetected);
   }
 
   @Test
-  public void systemd_service_detection_via_exported_dirs() {
+  void isSystemdServiceAndServiceMode_whenSystemdDirectoriesExported_expectTrue() {
+    // Arrange
     Map<String, String> env = new HashMap<>();
     env.put("LOGS_DIRECTORY", "/var/log/cryptad");
-    AppEnv ae = new AppEnv(env, "Linux", "cryptad", p -> null);
-    assertTrue(ae.isSystemdService());
-    assertTrue(ae.isServiceMode());
+    AppEnv ae = new AppEnv(env, "Linux", "cryptad", _ -> null);
+
+    // Act
+    boolean systemdService = ae.isSystemdService();
+    boolean serviceMode = ae.isServiceMode();
+
+    // Assert
+    assertTrue(systemdService);
+    assertTrue(serviceMode);
   }
 
   @Test
-  public void windows_service_detection_via_username_system() {
+  void isWindowsServiceAndServiceMode_whenSystemUser_expectTrue() {
+    // Arrange
     Map<String, String> env = new HashMap<>();
     env.put("USERNAME", "SYSTEM");
-    AppEnv ae = new AppEnv(env, "Windows 10", "SYSTEM", p -> null);
-    assertTrue(ae.isWindowsService());
-    assertTrue(ae.isServiceMode());
+    AppEnv ae = new AppEnv(env, "Windows 10", "SYSTEM", _ -> null);
+
+    // Act
+    boolean windowsService = ae.isWindowsService();
+    boolean serviceMode = ae.isServiceMode();
+
+    // Assert
+    assertTrue(windowsService);
+    assertTrue(serviceMode);
   }
 
   @Test
-  public void mac_service_detection_via_root_or_launchd() {
-    Map<String, String> env = new HashMap<>();
-    AppEnv rootMac = new AppEnv(env, "Mac OS X", "root", p -> null);
-    assertTrue(rootMac.isMacService());
-    env.put("LAUNCHD_JOB", "network.crypta.cryptad");
-    AppEnv launchdMac = new AppEnv(env, "Mac OS X", "user", p -> null);
-    assertTrue(launchdMac.isMacService());
+  void isMacService_whenRootOrLaunchd_expectTrue() {
+    // Arrange
+    Map<String, String> rootEnv = new HashMap<>();
+    AppEnv rootMac = new AppEnv(rootEnv, "Mac OS X", "root", _ -> null);
+
+    Map<String, String> launchdEnv = new HashMap<>();
+    launchdEnv.put("LAUNCHD_JOB", "network.crypta.cryptad");
+    AppEnv launchdMac = new AppEnv(launchdEnv, "Mac OS X", "user", _ -> null);
+
+    // Act
+    boolean rootDetected = rootMac.isMacService();
+    boolean launchdDetected = launchdMac.isMacService();
+
+    // Assert
+    assertTrue(rootDetected);
+    assertTrue(launchdDetected);
   }
 
   @Test
-  public void serviceMode_property_override() {
+  void isServiceMode_whenPropertyOverrideSet_expectOverrideWins() {
+    // Arrange
     String old = System.getProperty("cryptad.service.mode");
     try {
       Map<String, String> env = new HashMap<>();
       env.put("CRYPTAD_SERVICE", "1");
-      AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
+      AppEnv ae = new AppEnv(env, "Linux", "u", _ -> null);
+
+      // Act
       System.setProperty("cryptad.service.mode", "user");
-      assertFalse(ae.isServiceMode(), "system property should force user mode");
+      boolean forcedUserMode = ae.isServiceMode();
       System.setProperty("cryptad.service.mode", "service");
-      assertTrue(ae.isServiceMode(), "system property should force service mode");
+      boolean forcedServiceMode = ae.isServiceMode();
+
+      // Assert
+      assertFalse(forcedUserMode, "system property should force user mode");
+      assertTrue(forcedServiceMode, "system property should force service mode");
     } finally {
-      if (old != null) System.setProperty("cryptad.service.mode", old);
-      else System.clearProperty("cryptad.service.mode");
+      if (old != null) {
+        System.setProperty("cryptad.service.mode", old);
+      } else {
+        System.clearProperty("cryptad.service.mode");
+      }
     }
   }
 
   @Test
-  public void arch_mapping_from_osArch_property() {
+  void arch_whenOsArchVaries_expectNormalizedValue() {
+    // Arrange
     String old = System.getProperty("os.arch");
     try {
+      // Act
       System.setProperty("os.arch", "aarch64");
-      assertEquals("arm64", new AppEnv(new HashMap<>(), "Linux", "u", p -> null).arch());
+      String arm64 = new AppEnv(new HashMap<>(), "Linux", "u", _ -> null).arch();
       System.setProperty("os.arch", "x86_64");
-      assertEquals("amd64", new AppEnv(new HashMap<>(), "Linux", "u", p -> null).arch());
+      String amd64 = new AppEnv(new HashMap<>(), "Linux", "u", _ -> null).arch();
+
+      // Assert
+      assertEquals("arm64", arm64);
+      assertEquals("amd64", amd64);
     } finally {
-      if (old != null) System.setProperty("os.arch", old);
-      else System.clearProperty("os.arch");
+      if (old != null) {
+        System.setProperty("os.arch", old);
+      } else {
+        System.clearProperty("os.arch");
+      }
     }
   }
 
   @Test
-  public void availableManagers_and_onPath_linux() throws Exception {
+  void availableManagersAndOnPath_whenLinuxPathContainsExecutables_expectDetected()
+      throws Exception {
+    // Arrange
     Path tmp = createTempDirectory("aptenv");
     try {
-      // Create mock executables
       File rpm = tmp.resolve("rpm").toFile();
       File flatpak = tmp.resolve("flatpak").toFile();
       write(
@@ -132,41 +209,48 @@ public class AppEnvTest {
           new byte[] {0},
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
-      // Make them executable on *nix
       boolean rpmExec = rpm.setExecutable(true);
       boolean flatpakExec = flatpak.setExecutable(true);
+      Map<String, String> env = new HashMap<>();
+      env.put("PATH", tmp.toString());
+      AppEnv ae = new AppEnv(env, "Linux", "u", _ -> null);
+
+      // Act
+      boolean rpmOnPath = ae.onPath("rpm");
+      boolean flatpakOnPath = ae.onPath("flatpak");
+      boolean rpmManagerDetected = ae.availableManagers().contains("rpm");
+      boolean flatpakManagerDetected = ae.availableManagers().contains("flatpak");
+
+      // Assert
       assertTrue(rpmExec || rpm.canExecute(), "Failed to mark rpm test binary executable");
       assertTrue(
           flatpakExec || flatpak.canExecute(), "Failed to mark flatpak test binary executable");
-
-      Map<String, String> env = new HashMap<>();
-      env.put("PATH", tmp.toString());
-      AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
-      assertTrue(ae.onPath("rpm"));
-      assertTrue(ae.onPath("flatpak"));
-      assertTrue(ae.availableManagers().contains("rpm"));
-      assertTrue(ae.availableManagers().contains("flatpak"));
+      assertTrue(rpmOnPath);
+      assertTrue(flatpakOnPath);
+      assertTrue(rpmManagerDetected);
+      assertTrue(flatpakManagerDetected);
     } finally {
       try {
         deleteIfExists(tmp.resolve("rpm"));
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         /* best-effort cleanup; ignore */
       }
       try {
         deleteIfExists(tmp.resolve("flatpak"));
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         /* best-effort cleanup; ignore */
       }
       try {
         deleteIfExists(tmp);
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         /* best-effort cleanup; ignore */
       }
     }
   }
 
   @Test
-  public void detectEnvironment_integrates_all() throws Exception {
+  void detectEnvironment_whenLinuxArmAndFlatpakOnPath_expectConsistentSummary() throws Exception {
+    // Arrange
     String oldArch = System.getProperty("os.arch");
     try {
       System.setProperty("os.arch", "aarch64");
@@ -178,56 +262,77 @@ public class AppEnvTest {
             new byte[] {0},
             StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING);
-        // Mark executable after creating the file
-        boolean ok = flatpak.setExecutable(true);
-        assertTrue(ok || flatpak.canExecute(), "Failed to mark flatpak test binary executable");
+        boolean executable = flatpak.setExecutable(true);
         Map<String, String> env = new HashMap<>();
         env.put("PATH", tmp.toString());
-        AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
+        AppEnv ae = new AppEnv(env, "Linux", "u", _ -> null);
+
+        // Act
         AppEnv.EnvDetection det = ae.detectEnvironment();
+
+        // Assert
+        assertTrue(
+            executable || flatpak.canExecute(), "Failed to mark flatpak test binary executable");
         assertEquals(AppEnv.OsKind.LINUX, det.getOs());
-        assertEquals(det.getArch(), "arm64");
+        assertEquals("arm64", det.getArch());
         assertTrue(det.getAvailableManagers().contains("flatpak"));
       } finally {
         try {
           deleteIfExists(tmp.resolve("flatpak"));
-        } catch (Exception ignored) {
+        } catch (Exception _) {
           /* best-effort cleanup; ignore */
         }
         try {
           deleteIfExists(tmp);
-        } catch (Exception ignored) {
+        } catch (Exception _) {
           /* best-effort cleanup; ignore */
         }
       }
     } finally {
-      if (oldArch != null) System.setProperty("os.arch", oldArch);
-      else System.clearProperty("os.arch");
+      if (oldArch != null) {
+        System.setProperty("os.arch", oldArch);
+      } else {
+        System.clearProperty("os.arch");
+      }
     }
   }
 
   @Test
-  public void docker_detection_via_cgroup_reader() {
-    // Skip on hosts where cgroup file does not exist (non-Linux or unusual setups)
+  void isDocker_whenCgroupContainsDockerMarker_expectTrue() {
+    // Arrange
     assumeTrue(
-        exists(java.nio.file.Path.of("/proc/1/cgroup")),
-        "Skipping cgroup-based docker test on non-Linux host");
+        exists(Path.of("/proc/1/cgroup")), "Skipping cgroup-based docker test on non-Linux host");
     Map<String, String> env = new HashMap<>();
-    AppEnv ae = new AppEnv(env, "Linux", "tester", p -> "12:devices:/docker/abcdef\n");
-    assertTrue(ae.isDocker());
+    AppEnv ae = new AppEnv(env, "Linux", "tester", _ -> "12:devices:/docker/abcdef\n");
+
+    // Act
+    boolean isDocker = ae.isDocker();
+
+    // Assert
+    assertTrue(isDocker);
   }
 
   @Test
-  public void osNameRaw_and_osVersionRaw_provide_values() {
+  void osNameRawAndOsVersionRaw_whenPropertiesSet_expectValuesReturned() {
+    // Arrange
     String old = System.getProperty("os.version");
     try {
       System.setProperty("os.version", "13.3.1");
-      AppEnv ae = new AppEnv(new HashMap<>(), "Mac OS X", "u", p -> null);
-      assertEquals(ae.osNameRaw(), "Mac OS X");
-      assertEquals(ae.osVersionRaw(), "13.3.1");
+      AppEnv ae = new AppEnv(new HashMap<>(), "Mac OS X", "u", _ -> null);
+
+      // Act
+      String osNameRaw = ae.osNameRaw();
+      String osVersionRaw = ae.osVersionRaw();
+
+      // Assert
+      assertEquals("Mac OS X", osNameRaw);
+      assertEquals("13.3.1", osVersionRaw);
     } finally {
-      if (old != null) System.setProperty("os.version", old);
-      else System.clearProperty("os.version");
+      if (old != null) {
+        System.setProperty("os.version", old);
+      } else {
+        System.clearProperty("os.version");
+      }
     }
   }
 }

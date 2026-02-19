@@ -17,13 +17,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -54,10 +53,10 @@ class ThemeSwitcherTest {
 
     try (MockedStatic<FlatpakAwareOsThemeDetector> detectorFactory =
             mockStatic(FlatpakAwareOsThemeDetector.class);
-        MockedConstruction<AppEnv> appEnvConstruction =
+        var _ =
             mockConstruction(
                 AppEnv.class,
-                (mock, context) -> {
+                (mock, _) -> {
                   when(mock.isMac()).thenReturn(false);
                   when(mock.isLinux()).thenReturn(false);
                 });
@@ -85,8 +84,8 @@ class ThemeSwitcherTest {
               });
       uiManagerMock
           .when(() -> UIManager.setLookAndFeel(any(LookAndFeel.class)))
-          .thenAnswer(invocation -> null);
-      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(invocation -> null);
+          .thenAnswer(_ -> null);
+      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(_ -> null);
 
       ArgumentCaptor<Consumer<Boolean>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
 
@@ -100,8 +99,8 @@ class ThemeSwitcherTest {
       listener.accept(false);
 
       uiManagerMock.verify(() -> UIManager.setLookAndFeel(lookAndFeelCaptor.capture()), times(2));
-      assertTrue(lookAndFeelCaptor.getAllValues().get(0) instanceof FlatDarkLaf);
-      assertTrue(lookAndFeelCaptor.getAllValues().get(1) instanceof FlatLightLaf);
+      assertInstanceOf(FlatDarkLaf.class, lookAndFeelCaptor.getAllValues().get(0));
+      assertInstanceOf(FlatLightLaf.class, lookAndFeelCaptor.getAllValues().get(1));
 
       boolean expectedNativeDeco =
           System.getenv("FLATPAK_ID") == null || System.getenv("FLATPAK_ID").isEmpty();
@@ -124,10 +123,10 @@ class ThemeSwitcherTest {
 
     try (MockedStatic<FlatpakAwareOsThemeDetector> detectorFactory =
             mockStatic(FlatpakAwareOsThemeDetector.class);
-        MockedConstruction<AppEnv> appEnvConstruction =
+        var _ =
             mockConstruction(
                 AppEnv.class,
-                (mock, context) -> {
+                (mock, _) -> {
                   when(mock.isMac()).thenReturn(true);
                   when(mock.isLinux()).thenReturn(false);
                 });
@@ -147,8 +146,8 @@ class ThemeSwitcherTest {
               });
       uiManagerMock
           .when(() -> UIManager.setLookAndFeel(any(LookAndFeel.class)))
-          .thenAnswer(invocation -> null);
-      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(invocation -> null);
+          .thenAnswer(_ -> null);
+      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(_ -> null);
 
       ThemeSwitcher.install();
 
@@ -160,7 +159,7 @@ class ThemeSwitcherTest {
 
       ArgumentCaptor<LookAndFeel> lookAndFeelCaptor = ArgumentCaptor.forClass(LookAndFeel.class);
       uiManagerMock.verify(() -> UIManager.setLookAndFeel(lookAndFeelCaptor.capture()));
-      assertTrue(lookAndFeelCaptor.getValue() instanceof FlatMacLightLaf);
+      assertInstanceOf(FlatMacLightLaf.class, lookAndFeelCaptor.getValue());
       assertEquals(FlatMacLightLaf.class.getName(), System.getProperty(SWING_DEFAULT_LAF_KEY));
 
       flatLafMock.verify(FlatLaf::updateUI, times(0));
@@ -180,10 +179,10 @@ class ThemeSwitcherTest {
 
     try (MockedStatic<FlatpakAwareOsThemeDetector> detectorFactory =
             mockStatic(FlatpakAwareOsThemeDetector.class);
-        MockedConstruction<AppEnv> appEnvConstruction =
+        var _ =
             mockConstruction(
                 AppEnv.class,
-                (mock, context) -> {
+                (mock, _) -> {
                   when(mock.isMac()).thenReturn(false);
                   when(mock.isLinux()).thenReturn(true);
                 });
@@ -213,8 +212,8 @@ class ThemeSwitcherTest {
               });
       uiManagerMock
           .when(() -> UIManager.setLookAndFeel(any(LookAndFeel.class)))
-          .thenAnswer(invocation -> null);
-      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(invocation -> null);
+          .thenAnswer(_ -> null);
+      uiManagerMock.when(() -> UIManager.put(anyString(), any())).thenAnswer(_ -> null);
 
       ArgumentCaptor<Consumer<Boolean>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
 

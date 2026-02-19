@@ -63,12 +63,12 @@ public final class HexUtil {
     }
     int i = 0;
     while (i < slen) {
-      byte b1 = (byte) Character.digit(str.charAt(i), 16);
-      byte b2 = (byte) Character.digit(str.charAt(i + 1), 16);
-      if (b1 < 0 || b2 < 0) {
+      int highNibble = Character.digit(str.charAt(i), 16);
+      int lowNibble = Character.digit(str.charAt(i + 1), 16);
+      if (highNibble < 0 || lowNibble < 0) {
         throw new NumberFormatException();
       }
-      out[off + i / 2] = (byte) ((b1 << 4) | b2);
+      out[off + i / 2] = (byte) ((highNibble << 4) | lowNibble);
       i += 2;
     }
   }
@@ -89,7 +89,7 @@ public final class HexUtil {
           ba,
           size,
           bytesToHex(b),
-          debugBuilder.toString());
+          debugBuilder);
     }
     return b;
   }

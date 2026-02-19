@@ -3,6 +3,7 @@ package network.crypta.support;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -62,25 +63,23 @@ public final class Logging {
     if (details == null || details.isBlank()) {
       return;
     }
-    for (String rawToken : details.split(",")) {
+    for (String rawToken : details.split(",", -1)) {
       String token = rawToken.trim();
-      if (token.isEmpty() || !token.contains(":")) {
-        continue;
-      }
       int idx = token.indexOf(':');
-      String section = token.substring(0, idx);
-      String lvl = token.substring(idx + 1).trim().toUpperCase();
-      if ("NONE".equals(lvl) || "OFF".equals(lvl)) {
-        setOff(section);
-        APPLIED_LOGGER_NAMES.add(section);
-        continue;
+      if (idx >= 0) {
+        String section = token.substring(0, idx);
+        String lvl = token.substring(idx + 1).trim().toUpperCase(Locale.ROOT);
+        if ("NONE".equals(lvl) || "OFF".equals(lvl)) {
+          setOff(section);
+          APPLIED_LOGGER_NAMES.add(section);
+        } else {
+          Level level = toSlf4jLevelOrNull(lvl);
+          if (level != null) {
+            setLevel(section, level);
+            APPLIED_LOGGER_NAMES.add(section);
+          }
+        }
       }
-      Level level = toSlf4jLevelOrNull(lvl);
-      if (level == null) {
-        continue;
-      }
-      setLevel(section, level);
-      APPLIED_LOGGER_NAMES.add(section);
     }
   }
 

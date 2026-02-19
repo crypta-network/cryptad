@@ -133,15 +133,15 @@ public final class NodeBootstrap {
     if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
       Resolved serviceResolved = serviceDirs.resolve();
-      defaultConfigDir = serviceResolved.getConfigDir();
-      defaultDataDir = serviceResolved.getDataDir();
-      defaultRunDir = serviceResolved.getRunDir();
+      defaultConfigDir = serviceResolved.configDir();
+      defaultDataDir = serviceResolved.dataDir();
+      defaultRunDir = serviceResolved.runDir();
     } else {
       AppDirs dirs = new AppDirs();
       Resolved appResolved = dirs.resolve();
-      defaultConfigDir = appResolved.getConfigDir();
-      defaultDataDir = appResolved.getDataDir();
-      defaultRunDir = appResolved.getRunDir();
+      defaultConfigDir = appResolved.configDir();
+      defaultDataDir = appResolved.dataDir();
+      defaultRunDir = appResolved.runDir();
     }
 
     ProgramDirectory userDirLocal =

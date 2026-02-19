@@ -73,9 +73,9 @@ tasks.register("printVersion") {
 }
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
-// distribution; it's only to inform launchers that invoke the Kotlin main directly.
-// Align with actual top-level entry in Launcher.kt
-application { mainClass.set("network.crypta.launcher.LauncherKt") }
+// distribution; it's only to inform launchers that invoke the launcher main class directly.
+// Align with the actual launcher entrypoint in Launcher.java
+application { mainClass.set("network.crypta.launcher.Launcher") }
 
 val nodeRuntimeJvmArgs =
   listOf(
@@ -100,7 +100,7 @@ tasks.register<JavaExec>("runLauncher") {
   group = "application"
   description = "Runs the Cryptad Swing launcher"
   javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
-  mainClass.set("network.crypta.launcher.LauncherKt")
+  mainClass.set("network.crypta.launcher.Launcher")
   classpath = sourceSets.main.get().runtimeClasspath
 }
 

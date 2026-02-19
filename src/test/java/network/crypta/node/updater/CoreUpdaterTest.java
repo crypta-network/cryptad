@@ -25,12 +25,12 @@ class CoreUpdaterTest {
 
     CoreInfo info = CoreJson.parse(json);
 
-    assertEquals("1.2.3+build123", info.getVersion());
-    assertEquals("https://example.com/r/1.2.3", info.getReleasePageUrl());
-    assertEquals("CHK@abc", info.getPackages().get("amd64.deb").getChk());
-    assertEquals(10L, info.getPackages().get("amd64.deb").getSize());
-    assertEquals("CHK@chg", info.getChangelogChk());
-    assertEquals("CHK@full", info.getFullChangelogChk());
+    assertEquals("1.2.3+build123", info.version());
+    assertEquals("https://example.com/r/1.2.3", info.releasePageUrl());
+    assertEquals("CHK@abc", info.packages().get("amd64.deb").chk());
+    assertEquals(10L, info.packages().get("amd64.deb").size());
+    assertEquals("CHK@chg", info.changelogChk());
+    assertEquals("CHK@full", info.fullChangelogChk());
   }
 
   @Test
@@ -39,8 +39,8 @@ class CoreUpdaterTest {
 
     CoreInfo info = CoreJson.parse(json);
 
-    assertEquals("2", info.getVersion());
-    assertNotNull(info.getPackages().get("amd64.exe"));
-    assertNull(info.getReleasePageUrl());
+    assertEquals("2", info.version());
+    assertNotNull(info.packages().get("amd64.exe"));
+    assertNull(info.releasePageUrl());
   }
 }

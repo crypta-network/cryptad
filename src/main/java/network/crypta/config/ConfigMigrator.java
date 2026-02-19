@@ -16,11 +16,12 @@ public final class ConfigMigrator {
   private static final Logger LOG = LoggerFactory.getLogger("network.crypta.config.ConfigMigrator");
 
   public static final String CONFIG_FILE = "cryptad.ini";
+  private static final String PLUGINS_DIR = "plugins";
 
   private ConfigMigrator() {}
 
   public static void migrateIfNeeded(Resolved dirs, Path executableDir) throws IOException {
-    Path cfgFile = dirs.getConfigDir().resolve(CONFIG_FILE);
+    Path cfgFile = dirs.configDir().resolve(CONFIG_FILE);
 
     Path cwd = Paths.get("").toAbsolutePath().normalize();
     Path cwdCfg = cwd.resolve(CONFIG_FILE);
@@ -46,13 +47,13 @@ public final class ConfigMigrator {
       rewriteLegacyPaths(cfgFile);
     }
 
-    moveIfPresent(cwd.resolve("datastore"), dirs.getDataDir().resolve("datastore"));
-    moveIfPresent(cwd.resolve("plugins"), dirs.getDataDir().resolve("plugins"));
-    moveIfPresent(cwd.resolve("plugin-data"), dirs.getDataDir().resolve("plugins"));
-    moveIfPresent(cwd.resolve("temp"), dirs.getCacheDir().resolve("tmp"));
-    moveIfPresent(cwd.resolve("persistent-temp"), dirs.getCacheDir().resolve("persistent-temp"));
-    moveIfPresent(cwd.resolve("downloads"), dirs.getDataDir().resolve("downloads"));
-    moveIfPresent(cwd.resolve("logs"), dirs.getLogsDir());
+    moveIfPresent(cwd.resolve("datastore"), dirs.dataDir().resolve("datastore"));
+    moveIfPresent(cwd.resolve(PLUGINS_DIR), dirs.dataDir().resolve(PLUGINS_DIR));
+    moveIfPresent(cwd.resolve("plugin-data"), dirs.dataDir().resolve(PLUGINS_DIR));
+    moveIfPresent(cwd.resolve("temp"), dirs.cacheDir().resolve("tmp"));
+    moveIfPresent(cwd.resolve("persistent-temp"), dirs.cacheDir().resolve("persistent-temp"));
+    moveIfPresent(cwd.resolve("downloads"), dirs.dataDir().resolve("downloads"));
+    moveIfPresent(cwd.resolve("logs"), dirs.logsDir());
   }
 
   private static void moveIfPresent(Path src, Path dst) {
@@ -66,7 +67,7 @@ public final class ConfigMigrator {
       }
       Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE);
       LOG.info("Moved {} -> {} (atomic)", src, dst);
-    } catch (AtomicMoveNotSupportedException ignored) {
+    } catch (AtomicMoveNotSupportedException _) {
       try {
         Files.move(src, dst);
         LOG.info("Moved {} -> {} (non-atomic fallback)", src, dst);

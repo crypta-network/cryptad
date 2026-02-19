@@ -66,9 +66,9 @@ public final class Dirs {
 
   static Resolved buildResolved(Bases b, String appDirName, Path runtime, Path logs) {
     return new Resolved(
-        b.config.resolve(appDirName).resolve("config"),
-        b.data.resolve(appDirName).resolve("data"),
-        b.cache.resolve(appDirName),
+        b.config().resolve(appDirName).resolve("config"),
+        b.data().resolve(appDirName).resolve("data"),
+        b.cache().resolve(appDirName),
         runtime,
         logs);
   }
@@ -136,29 +136,19 @@ public final class Dirs {
         return candidate;
       }
       return cacheBase.resolve("rt");
-    } catch (Exception ignored) {
+    } catch (Exception _) {
       return cacheBase.resolve("rt");
     }
   }
 
   private static boolean hasClass(String name) {
     try {
-      Class.forName(name);
+      Class.forName(name, false, Dirs.class.getClassLoader());
       return true;
-    } catch (Throwable ignored) {
+    } catch (ClassNotFoundException | LinkageError _) {
       return false;
     }
   }
 
-  static final class Bases {
-    final Path config;
-    final Path data;
-    final Path cache;
-
-    Bases(Path config, Path data, Path cache) {
-      this.config = config;
-      this.data = data;
-      this.cache = cache;
-    }
-  }
+  record Bases(Path config, Path data, Path cache) {}
 }

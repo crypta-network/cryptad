@@ -430,11 +430,11 @@ public class NodeStarter implements WrapperListener {
           """,
           (serviceMode ? "service" : "user"),
           configFile.getAbsolutePath(),
-          r.getConfigDir(),
-          r.getDataDir(),
-          r.getCacheDir(),
-          r.getRunDir(),
-          r.getLogsDir());
+          r.configDir(),
+          r.dataDir(),
+          r.cacheDir(),
+          r.runDir(),
+          r.logsDir());
     } catch (Exception _) {
       // Do not fail to start up due to logging
     }
@@ -560,11 +560,11 @@ public class NodeStarter implements WrapperListener {
     if (serviceMode) {
       ServiceDirs svc = new ServiceDirs(overrides);
       Resolved r = svc.resolve();
-      return r.getConfigDir();
+      return r.configDir();
     } else {
       AppDirs dirs = new AppDirs(overrides);
       Resolved r = dirs.resolve();
-      return r.getConfigDir();
+      return r.configDir();
     }
   }
 

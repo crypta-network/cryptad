@@ -5,10 +5,11 @@ import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 
+@SuppressWarnings("java:S106")
 public final class PrintDirs {
   private PrintDirs() {}
 
-  public static void main(String[] args) {
+  static void main() {
     AppEnv appEnv = new AppEnv(System.getenv());
     System.out.println("cryptad.service.mode=" + System.getProperty("cryptad.service.mode"));
     if (appEnv.isServiceMode()) {
@@ -23,10 +24,10 @@ public final class PrintDirs {
   }
 
   private static void printDirs(Resolved resolved) {
-    System.out.println("configDir=" + resolved.getConfigDir());
-    System.out.println("dataDir=" + resolved.getDataDir());
-    System.out.println("cacheDir=" + resolved.getCacheDir());
-    System.out.println("runDir=" + resolved.getRunDir());
-    System.out.println("logsDir=" + resolved.getLogsDir());
+    System.out.println("configDir=" + resolved.configDir());
+    System.out.println("dataDir=" + resolved.dataDir());
+    System.out.println("cacheDir=" + resolved.cacheDir());
+    System.out.println("runDir=" + resolved.runDir());
+    System.out.println("logsDir=" + resolved.logsDir());
   }
 }

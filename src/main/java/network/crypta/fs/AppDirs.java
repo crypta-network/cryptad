@@ -70,7 +70,7 @@ public final class AppDirs extends BaseDirs {
       Dirs.Bases bases =
           new Dirs.Bases(
               appSupport, appSupport, Paths.get(home, Dirs.MACOS_LIBRARY_PATH, "Caches"));
-      Path runtimeBase = bases.cache.resolve(APP_DIR_NAME).resolve("run");
+      Path runtimeBase = bases.cache().resolve(APP_DIR_NAME).resolve("run");
       Path logsBase = Paths.get(home, Dirs.MACOS_LIBRARY_PATH, "Logs", APP_DIR_NAME);
       return Dirs.buildResolved(bases, appDirName, runtimeBase, logsBase);
     }
@@ -81,13 +81,13 @@ public final class AppDirs extends BaseDirs {
       if (!isBlank(snapCommon)) {
         Path snapCommonPath = Paths.get(snapCommon);
         bases = new Dirs.Bases(snapCommonPath, snapCommonPath, snapCommonPath.resolve(".cache"));
-        Path runtimeBase = Dirs.computeSnapRuntime(env, bases.cache);
-        Path logsBase = bases.data.resolve(appDirName).resolve("logs");
+        Path runtimeBase = Dirs.computeSnapRuntime(env, bases.cache());
+        Path logsBase = bases.data().resolve(appDirName).resolve("logs");
         return Dirs.buildResolved(bases, appDirName, runtimeBase, logsBase);
       }
     }
-    Path runtimeBase = Dirs.computeStandardXdgRuntime(env, systemProperties, appEnv, bases.cache);
-    Path logsBase = bases.data.resolve(appDirName).resolve("logs");
+    Path runtimeBase = Dirs.computeStandardXdgRuntime(env, systemProperties, appEnv, bases.cache());
+    Path logsBase = bases.data().resolve(appDirName).resolve("logs");
     return Dirs.buildResolved(bases, appDirName, runtimeBase, logsBase);
   }
 
@@ -106,11 +106,11 @@ public final class AppDirs extends BaseDirs {
     }
 
     return new Overrides(
-        coalesce(asPath(env.get("APP_CONFIG_DIR")), base.getConfig()),
-        coalesce(asPath(env.get("APP_DATA_DIR")), base.getData()),
-        coalesce(asPath(env.get("APP_CACHE_DIR")), base.getCache()),
-        base.getRun(),
-        base.getLogs());
+        coalesce(asPath(env.get("APP_CONFIG_DIR")), base.config()),
+        coalesce(asPath(env.get("APP_DATA_DIR")), base.data()),
+        coalesce(asPath(env.get("APP_CACHE_DIR")), base.cache()),
+        base.run(),
+        base.logs());
   }
 
   private static Path asPath(String value) {
