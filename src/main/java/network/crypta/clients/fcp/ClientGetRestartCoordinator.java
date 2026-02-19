@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.util.Objects;
+import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
@@ -85,10 +86,15 @@ final class ClientGetRestartCoordinator {
    */
   boolean restart(ClientContext context, boolean disableFilterData) {
     if (!canRestart()) return false;
-    FreenetURI redirect = resetStateForRestart(disableFilterData);
+    FetchContext fetchContext = request.fetchContextForGetter();
+    if (fetchContext == null) {
+      LOG.warn("Cannot restart because fetch context is missing for {}", request.identifier);
+      return false;
+    }
+    FreenetURI redirect = resetStateForRestart(disableFilterData, fetchContext);
     notifyCacheAboutRedirect(redirect);
     try {
-      if (getter().restart(redirect, request.fetchContextForGetter().getFilterData(), context)) {
+      if (getter().restart(redirect, fetchContext.getFilterData(), context)) {
         markRestarted(redirect);
       }
       notifyCacheStartedFlag();
@@ -122,9 +128,10 @@ final class ClientGetRestartCoordinator {
    * the fetch context. The returned redirect, if present, should be applied before restarting.
    *
    * @param disableFilterData true to disable filtering for the next attempt.
+   * @param fetchContext fetch context bound to the request.
    * @return redirect URI to apply, or {@code null} if none was stored.
    */
-  private FreenetURI resetStateForRestart(boolean disableFilterData) {
+  private FreenetURI resetStateForRestart(boolean disableFilterData, FetchContext fetchContext) {
     synchronized (request.persistenceLock()) {
       request.finished = false;
       GetFailedMessage failure = request.state().getFailedMessage();
@@ -135,7 +142,7 @@ final class ClientGetRestartCoordinator {
       request.state().clearExpectedHashes();
       request.started = false;
       if (disableFilterData) {
-        request.fetchContextForGetter().setFilterData(false);
+        fetchContext.setFilterData(false);
       }
       return redirect;
     }
