@@ -251,9 +251,13 @@ public class NewLZMACompressor extends AbstractCompressor {
     private final long max;
 
     BoundedOutputStream(OutputStream out, long max) {
+      requireNonNegativeMax(max);
       super(out);
-      if (max < 0) throw new IllegalArgumentException("maxWriteLength < 0");
       this.max = max;
+    }
+
+    private static void requireNonNegativeMax(long max) {
+      if (max < 0) throw new IllegalArgumentException("maxWriteLength < 0");
     }
 
     @Override

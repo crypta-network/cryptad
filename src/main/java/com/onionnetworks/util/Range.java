@@ -78,10 +78,8 @@ public final class Range {
    * @throws IllegalArgumentException if {@code posInf} is {@code false}
    */
   public Range(long min, boolean posInf) {
+    requirePositiveInfinity(posInf);
     this(min, Long.MAX_VALUE, false, posInf);
-    if (!posInf) {
-      throw new IllegalArgumentException("posInf must be true");
-    }
   }
 
   /**
@@ -97,10 +95,8 @@ public final class Range {
    * @throws IllegalArgumentException if {@code negInf} is {@code false}
    */
   public Range(boolean negInf, long max) {
+    requireNegativeInfinity(negInf);
     this(Long.MIN_VALUE, max, negInf, false);
-    if (!negInf) {
-      throw new IllegalArgumentException("negInf must be true");
-    }
   }
 
   /**
@@ -116,10 +112,8 @@ public final class Range {
    * @throws IllegalArgumentException if either flag is {@code false}
    */
   public Range(boolean negInf, boolean posInf) {
+    requireInfiniteBounds(negInf, posInf);
     this(Long.MIN_VALUE, Long.MAX_VALUE, negInf, posInf);
-    if (!negInf || !posInf) {
-      throw new IllegalArgumentException("negInf && posInf must be true");
-    }
   }
 
   private Range(long min, long max, boolean negInf, boolean posInf) {
@@ -137,6 +131,24 @@ public final class Range {
     this.max = max;
     this.negInf = negInf;
     this.posInf = posInf;
+  }
+
+  private static void requirePositiveInfinity(boolean posInf) {
+    if (!posInf) {
+      throw new IllegalArgumentException("posInf must be true");
+    }
+  }
+
+  private static void requireNegativeInfinity(boolean negInf) {
+    if (!negInf) {
+      throw new IllegalArgumentException("negInf must be true");
+    }
+  }
+
+  private static void requireInfiniteBounds(boolean negInf, boolean posInf) {
+    if (!negInf || !posInf) {
+      throw new IllegalArgumentException("negInf && posInf must be true");
+    }
   }
 
   /**

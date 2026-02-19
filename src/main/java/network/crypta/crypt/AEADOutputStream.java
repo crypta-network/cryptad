@@ -58,11 +58,10 @@ public final class AEADOutputStream extends FilterOutputStream {
   public AEADOutputStream(
       OutputStream os, byte[] key, byte[] writtenNonce, byte[] gcmNonce, BlockCipher mainCipher)
       throws IOException {
+    Objects.requireNonNull(mainCipher, "mainCipher");
     super(os);
     // Persist the 16‑byte prefix (AES block size is 16) to keep the on‑disk overhead stable.
     os.write(writtenNonce);
-    // Validate the cipher parameter to mirror prior behavior and fail early if misused.
-    Objects.requireNonNull(mainCipher, "mainCipher");
     cipher = GCMBlockCipher.newInstance(mainCipher);
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, gcmNonce);

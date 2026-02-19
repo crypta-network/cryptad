@@ -123,15 +123,8 @@ public final class CountingBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   public CountingBloomFilter(int length, int k, byte[] buffer) {
+    requireBufferForLength(buffer, length);
     super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
-    if (buffer == null) {
-      throw new NullPointerException("buffer");
-    }
-    int expected = length / 4;
-    if (buffer.length != expected) {
-      throw new IllegalArgumentException(
-          "Invalid buffer length: " + buffer.length + " (expected " + expected + ")");
-    }
     filter = ByteBuffer.wrap(buffer);
   }
 
@@ -276,6 +269,17 @@ public final class CountingBloomFilter extends BloomFilter {
     }
     f.deleteOnExit();
     return f;
+  }
+
+  private static void requireBufferForLength(byte[] buffer, int length) {
+    if (buffer == null) {
+      throw new NullPointerException("buffer");
+    }
+    int expected = requireNonNegativeLength(length) / 4;
+    if (buffer.length != expected) {
+      throw new IllegalArgumentException(
+          "Invalid buffer length: " + buffer.length + " (expected " + expected + ")");
+    }
   }
 
   private static class LockResource implements Closeable {

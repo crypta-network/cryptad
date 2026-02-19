@@ -50,15 +50,19 @@ public final class JournalingRAF extends FilterRAF {
    * @throws IllegalStateException if the provided RAF is open in read-only mode.
    */
   public JournalingRAF(RAF raf, Journal journal) {
+    requireWritableRaf(raf);
     super(raf);
-    if (raf.getMode().equals("r")) {
-      throw new IllegalStateException("Can't create a journal for a " + "read-only file.");
-    }
 
     this.journal = journal;
 
     // Track the initial file path.
     journal.setTargetFile(raf.getFile());
+  }
+
+  private static void requireWritableRaf(RAF raf) {
+    if (raf.getMode().equals("r")) {
+      throw new IllegalStateException("Can't create a journal for a " + "read-only file.");
+    }
   }
 
   /**

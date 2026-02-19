@@ -68,14 +68,11 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * @throws MessageInvalidException if the {@code Filename} field is absent.
    */
   public ClientPutDiskDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
+    requireFilename(fs);
     super(parseCommonFields(fs));
     allowUnreadableFiles = fs.getBoolean("AllowUnreadableFiles", false);
     includeHiddenFiles = fs.getBoolean("includeHiddenFiles", false);
-    String fnam = fs.get("Filename");
-    if (fnam == null)
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.MISSING_FIELD, "Filename missing", identifier, global);
-    dirname = new File(fnam);
+    dirname = new File(fs.get("Filename"));
   }
 
   /**
@@ -251,5 +248,15 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
   @Override
   protected void writeData(OutputStream os) throws IOException {
     // Do nothing
+  }
+
+  private static void requireFilename(SimpleFieldSet fs) throws MessageInvalidException {
+    if (fs.get("Filename") == null) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD,
+          "Filename missing",
+          fs.get("Identifier"),
+          fs.getBoolean("Global", false));
+    }
   }
 }

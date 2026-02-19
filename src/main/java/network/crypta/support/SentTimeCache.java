@@ -37,11 +37,15 @@ public class SentTimeCache {
      * @throws IllegalArgumentException if {@code maxSize <= 0}
      */
     BoundedSentTimeMap(int maxSize) {
+      requirePositiveMaxSize(maxSize);
       super(maxSize);
+      this.maxSize = maxSize;
+    }
+
+    private static void requirePositiveMaxSize(int maxSize) {
       if (maxSize <= 0) {
         throw new IllegalArgumentException("Negative or zero maxSize");
       }
-      this.maxSize = maxSize;
     }
 
     /**
