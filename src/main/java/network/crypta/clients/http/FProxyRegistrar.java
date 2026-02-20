@@ -29,14 +29,14 @@ import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
  * endpoints—browsing, queue management, configuration, alerts, and update actions—are available
  * before handling requests. The registrar is intentionally package-private and stateless; it relies
  * on the provided {@link NodeClientCore}, {@link Node}, and {@link Config} instances for runtime
- * settings, threat posture, and plugin availability.
+ * settings and threat posture.
  *
  * <p>Responsibilities include:
  *
  * <ul>
  *   <li>Creating a shared {@link HighLevelSimpleClient} and fetch tracker used by toadlets.
  *   <li>Registering navigation menus under canonical categories for consistent UI grouping.
- *   <li>Instantiating functional toadlets for downloads, uploads, security, plugins, chat, stats,
+ *   <li>Instantiating functional toadlets for downloads, uploads, security, chat, stats,
  *       connectivity, first-time wizard flows, and core updates.
  * </ul>
  *
@@ -53,13 +53,13 @@ final class FProxyRegistrar {
    * <p>The method seeds shared randomness, prepares a high-level client with interactive priority,
    * wires a {@link FProxyFetchTracker}, and then registers every relevant toadlet with the provided
    * server. Registration order aligns with menu placement: browsing first, followed by queue
-   * handlers, configuration, status/alerts, chat, and maintenance endpoints. Plugin-backed toadlets
-   * are added conditionally based on the node’s plugin manager. This method must be called exactly
-   * once during startup; it performs no deduplication and assumes the server is empty.
+   * handlers, configuration, status/alerts, chat, and maintenance endpoints. This method must be
+   * called exactly once during startup; it performs no deduplication and assumes the server is
+   * empty.
    *
    * @param core node client core supplying security levels, download directories, and RNG access;
    *     must be initialized and non-null.
-   * @param node running node instance providing plugin manager and transport data; never null.
+   * @param node running node instance providing transport and runtime data; never null.
    * @param config composite configuration used to enumerate sub-configs for dynamic toadlets.
    * @param server toadlet server that exposes HTTP endpoints; expected to be in registration phase.
    */
@@ -82,23 +82,20 @@ final class FProxyRegistrar {
     core.getEndpoints().setFProxy(fproxy);
 
     server.registerMenu(
-        "/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing", null);
+        "/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
     server.registerMenu(
         FProxyToadlet.DOWNLOADS_PATH,
         FProxyToadlet.CATEGORY_QUEUE,
-        "FProxyToadlet.categoryTitleQueue",
-        null);
+        "FProxyToadlet.categoryTitleQueue");
     server.registerMenu(
         FProxyToadlet.FRIENDS_PATH,
         FProxyToadlet.CATEGORY_FRIENDS,
-        "FProxyToadlet.categoryTitleFriends",
-        null);
+        "FProxyToadlet.categoryTitleFriends");
+    server.registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     server.registerMenu(
-        "/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat", null);
+        "/alerts/", FProxyToadlet.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
     server.registerMenu(
-        "/alerts/", FProxyToadlet.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus", null);
-    server.registerMenu(
-        "/seclevels/", FProxyToadlet.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig", null);
+        "/seclevels/", FProxyToadlet.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
 
     server.register(
         fproxy,
@@ -218,26 +215,12 @@ final class FProxyRegistrar {
             true,
             null));
 
-    if (node.services().pluginManager().isEnabled()) {
-      PproxyToadlet pproxy = new PproxyToadlet(client, node);
-      server.register(
-          pproxy,
-          ToadletRegistration.menuLink(
-              FProxyToadlet.CATEGORY_CONFIG,
-              "/plugins/",
-              true,
-              "FProxyToadlet.pluginsTitle",
-              "FProxyToadlet.plugins",
-              true,
-              null));
-    }
-
     SubConfig[] sc = config.getConfigs();
     Arrays.sort(sc);
 
     for (SubConfig cfg : sc) {
       String prefix = cfg.getPrefix();
-      if (prefix.equals("security-levels") || prefix.equals("pluginmanager")) continue;
+      if (prefix.equals("security-levels")) continue;
       LocalDirectoryConfigToadlet localDirectoryConfigToadlet =
           new LocalDirectoryConfigToadlet(core, client, FProxyToadlet.CONFIG_PATH + prefix);
       ConfigToadlet configtoadlet =
@@ -306,8 +289,7 @@ final class FProxyRegistrar {
             true,
             opennetToadlet));
 
-    ChatForumsToadlet chatForumsToadlet =
-        new ChatForumsToadlet(client, node.services().pluginManager());
+    ChatForumsToadlet chatForumsToadlet = new ChatForumsToadlet(client);
     server.register(
         chatForumsToadlet,
         ToadletRegistration.menuLink(

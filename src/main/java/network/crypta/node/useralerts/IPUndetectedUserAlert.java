@@ -12,12 +12,10 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * Alert presented to the user when the node cannot determine an external IP address.
  *
  * <p>This alert explains the probable causes and offers concrete next steps. Depending on the
- * current {@link Node} state, it may indicate that detection is still running, that no detector
- * plugins are loaded, or that the address remains unknown and the user should provide a temporary
- * hint or adjust network configuration.
+ * current {@link Node} state, it may indicate that detection is still running, or that the address
+ * remains unknown and the user should provide a temporary hint or adjust network configuration.
  *
  * <ul>
- *   <li>Suggests loading detection plugins (e.g., UPnP) from the Plugins page.
  *   <li>Embeds a link to the relevant configuration section and a form for a temporary IP hint.
  *   <li>Recommends forwarding one or two UDP ports to improve reachability.
  * </ul>
@@ -83,7 +81,6 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    * <p>The content varies by node state:
    *
    * <ul>
-   *   <li>If no detector plugins are present, instructs the user to load them.
    *   <li>If detection is running, informs that the node is attempting discovery.
    *   <li>Otherwise, explains the unknown address and appends a port-forwarding suggestion.
    * </ul>
@@ -92,7 +89,6 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public String getText() {
-    if (node.network().ipDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
     if (node.network().ipDetector().isDetecting()) return l10n("detecting");
     else
       return l10n("unknownAddress", "port", Integer.toString(node.network().darknetPortNumber()))
@@ -135,7 +131,6 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    *
    * <ul>
    *   <li>A paragraph with a link to the configuration section.
-   *   <li>Optional plugin-loading guidance when no detector is available.
    *   <li>A suggestion to forward one or two UDP ports determined from node settings.
    *   <li>A form to submit a temporary IP address hint (including a form password).
    * </ul>
@@ -161,27 +156,6 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
     int peers = node.network().peers().roster().getDarknetPeers().length;
     if (peers > 0)
       textNode.addChild("p", l10n("noIPMaybeFromPeers", "number", Integer.toString(peers)));
-
-    if (node.network().ipDetector().noDetectPlugins()) {
-      HTMLNode p = textNode.addChild("p");
-      NodeL10n.getBase()
-          .addL10nSubstitution(
-              p,
-              "IPUndetectedUserAlert.loadDetectPlugins",
-              new String[] {
-                "plugins", "config",
-              },
-              new HTMLNode[] {HTMLNode.link("/plugins/"), HTMLNode.link("/config/node")});
-    } else if (!node.network().ipDetector().hasJSTUN()
-        && !node.network().ipDetector().isDetecting()) {
-      HTMLNode p = textNode.addChild("p");
-      NodeL10n.getBase()
-          .addL10nSubstitution(
-              p,
-              "IPUndetectedUserAlert.loadJSTUN",
-              new String[] {"plugins"},
-              new HTMLNode[] {HTMLNode.link("/plugins/")});
-    }
 
     addPortForwardSuggestion(textNode);
 
@@ -287,7 +261,6 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public String getShortText() {
-    if (node.network().ipDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
     if (node.network().ipDetector().isDetecting()) return l10n("detectingShort");
     else return l10n("unknownAddressShort");
   }

@@ -4,9 +4,11 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
 import network.crypta.clients.http.wizardsteps.DatastoreSize;
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
@@ -18,8 +20,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
-import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
@@ -124,7 +124,7 @@ class FirstTimeWizardNewToadletTest {
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
 
-    FredPluginBandwidthIndicator bandwidthIndicator = mock(FredPluginBandwidthIndicator.class);
+    BandwidthIndicator bandwidthIndicator = mock(BandwidthIndicator.class);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
     network.crypta.node.subsystem.NodeNetworkSubsystem network =
         org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
@@ -220,7 +220,7 @@ class FirstTimeWizardNewToadletTest {
       datastore.when(() -> DatastoreUtil.autodetectDatastoreSize(core, config)).thenReturn(0L);
       bandwidth
           .when(() -> BandwidthManipulator.detectBandwidthLimits(any()))
-          .thenThrow(new PluginNotFoundException("none"));
+          .thenThrow(new BandwidthDetectionUnavailableException("none"));
 
       toadlet.handleMethodPOST(new URI(FirstTimeWizardNewToadlet.TOADLET_URL), request, ctx);
 
@@ -283,7 +283,7 @@ class FirstTimeWizardNewToadletTest {
       datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(10L * DatastoreUtil.ONE_GIB);
       bandwidth
           .when(() -> BandwidthManipulator.detectBandwidthLimits(any()))
-          .thenThrow(new PluginNotFoundException("none"));
+          .thenThrow(new BandwidthDetectionUnavailableException("none"));
 
       toadlet.handleMethodPOST(new URI(FirstTimeWizardNewToadlet.TOADLET_URL), request, ctx);
     }

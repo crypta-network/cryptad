@@ -57,7 +57,7 @@ final class FcpServerConfigRegistrar {
    * server.maybeStart();
    * }</pre>
    *
-   * @param node owning node providing executors and plugin services for the server.
+   * @param node owning node providing executors and core services for the server.
    * @param core client core used for endpoint access and persisted settings lookups.
    * @param config root configuration registry where the {@code fcp} subsection is registered.
    * @param root persistent request root used to wire global request queues.

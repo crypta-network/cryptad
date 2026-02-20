@@ -1,12 +1,12 @@
 package network.crypta.node;
 
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.Ticker;
@@ -47,7 +47,7 @@ class BandwidthManagerTest {
   @Mock private NodeIPDetector ipDetector;
   @Mock private PersistentConfig config;
   @Mock private SubConfig nodeSubConfig;
-  @Mock private FredPluginBandwidthIndicator indicator;
+  @Mock private BandwidthIndicator indicator;
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alerts;
 

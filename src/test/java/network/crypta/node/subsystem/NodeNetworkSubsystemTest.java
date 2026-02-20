@@ -2,6 +2,7 @@ package network.crypta.node.subsystem;
 
 import java.lang.reflect.Field;
 import java.util.Set;
+import network.crypta.compat.ForwardPort;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.Peer;
@@ -16,7 +17,6 @@ import network.crypta.node.OpennetManager;
 import network.crypta.node.OpennetPeerNode;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
-import network.crypta.pluginmanager.ForwardPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;

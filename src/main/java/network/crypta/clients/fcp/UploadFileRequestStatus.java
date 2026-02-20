@@ -11,7 +11,7 @@ import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
  * filename if one was provided by the submitting client. Instances are created by the request cache
  * to mirror the lifecycle of {@code ClientPut} operations and remain mutable while the upload runs.
  * Consumer code typically reads these objects via the status cache to drive web UIs, command-line
- * monitors, or plugin notifications without keeping strong references to the live request.
+ * monitors, or automated notifications without keeping strong references to the live request.
  *
  * <p>The class is intentionally lightweight and thread-safe for concurrent readers: the mutable
  * compression state is guarded by {@link #updateCompressionStatus(ClientPut.COMPRESS_STATE)}, while

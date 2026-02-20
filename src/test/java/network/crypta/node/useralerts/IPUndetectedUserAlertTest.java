@@ -90,17 +90,17 @@ class IPUndetectedUserAlertTest {
   }
 
   @Test
-  @DisplayName("shortText_whenNoPlugins_returnsNoDetectorPlugins")
-  void shortText_whenNoPlugins_returnsNoDetectorPlugins() {
-    when(ipDetector.noDetectPlugins()).thenReturn(true);
-    String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.noDetectorPlugins");
+  @DisplayName("shortText_whenNoPlugins_returnsUnknownAddressShort")
+  void shortText_whenNoPlugins_returnsUnknownAddressShort() {
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(true);
+    String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.unknownAddressShort");
     assertEquals(expected, alert.getShortText());
   }
 
   @Test
   @DisplayName("shortText_whenDetecting_returnsDetectingShort")
   void shortText_whenDetecting_returnsDetectingShort() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(true);
     String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.detectingShort");
     assertEquals(expected, alert.getShortText());
@@ -109,24 +109,30 @@ class IPUndetectedUserAlertTest {
   @Test
   @DisplayName("shortText_whenNotDetecting_returnsUnknownAddressShort")
   void shortText_whenNotDetecting_returnsUnknownAddressShort() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
     String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.unknownAddressShort");
     assertEquals(expected, alert.getShortText());
   }
 
   @Test
-  @DisplayName("text_whenNoPlugins_returnsNoDetectorPlugins")
-  void text_whenNoPlugins_returnsNoDetectorPlugins() {
-    when(ipDetector.noDetectPlugins()).thenReturn(true);
-    String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.noDetectorPlugins");
+  @DisplayName("text_whenNoPlugins_returnsUnknownAddressWithPortForwardSuggestion")
+  void text_whenNoPlugins_returnsUnknownAddressWithPortForwardSuggestion() {
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(true);
+    String unknown =
+        NodeL10n.getBase()
+            .getString("IPUndetectedUserAlert.unknownAddress", "port", Integer.toString(12345));
+    String suggest =
+        NodeL10n.getBase()
+            .getString("IPUndetectedUserAlert.suggestForwardPort", "port", Integer.toString(12345));
+    String expected = unknown + ' ' + suggest;
     assertEquals(expected, alert.getText());
   }
 
   @Test
   @DisplayName("text_whenDetecting_returnsDetecting")
   void text_whenDetecting_returnsDetecting() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(true);
     String expected = NodeL10n.getBase().getString("IPUndetectedUserAlert.detecting");
     assertEquals(expected, alert.getText());
@@ -135,7 +141,7 @@ class IPUndetectedUserAlertTest {
   @Test
   @DisplayName("text_whenUnknownAndSinglePort_includesPortForwardSuggestion")
   void text_whenUnknownAndSinglePort_includesPortForwardSuggestion() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
     when(node.network().darknetPortNumber()).thenReturn(7777);
     when(node.network().opennetFnpPort()).thenReturn(-1);
@@ -154,7 +160,7 @@ class IPUndetectedUserAlertTest {
   @Test
   @DisplayName("text_whenUnknownAndTwoPorts_includesTwoPortSuggestionWithSpacing")
   void text_whenUnknownAndTwoPorts_includesTwoPortSuggestionWithSpacing() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
     when(node.network().darknetPortNumber()).thenReturn(7000);
     when(node.network().opennetFnpPort()).thenReturn(8000);
@@ -212,8 +218,8 @@ class IPUndetectedUserAlertTest {
   @DisplayName("htmlText_commonStructure_containsConfigLinkFormAndOptionFields")
   void htmlText_commonStructure_containsConfigLinkFormAndOptionFields() {
     when(ipDetector.isDetecting()).thenReturn(false);
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
-    when(ipDetector.hasJSTUN()).thenReturn(true);
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
+    when(ipDetector.hasStunDetector()).thenReturn(true);
     when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[1]);
 
     HTMLNode html = alert.getHTMLText();
@@ -268,28 +274,26 @@ class IPUndetectedUserAlertTest {
   }
 
   @Test
-  @DisplayName("htmlText_whenNoPlugins_includesLoadDetectPluginsMessageAndLinks")
-  void htmlText_whenNoPlugins_includesLoadDetectPluginsMessageAndLinks() {
-    when(ipDetector.noDetectPlugins()).thenReturn(true);
+  @DisplayName("htmlText_whenNoPlugins_doesNotRenderPluginsLink")
+  void htmlText_whenNoPlugins_doesNotRenderPluginsLink() {
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(true);
     when(ipDetector.isDetecting()).thenReturn(false);
     when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
 
     String out = alert.getHTMLText().generate();
-    // Verify links for plugins and config are present; message is rendered via substitutions
-    assertTrue(out.contains("href=\"/plugins/\""));
     assertTrue(out.contains("href=\"/config/node\""));
+    assertFalse(out.contains("href=\"/plugins/\""));
   }
 
   @Test
-  @DisplayName("htmlText_whenMissingJSTUNAndNotDetecting_includesLoadJSTUNMessage")
-  void htmlText_whenMissingJSTUNAndNotDetecting_includesLoadJSTUNMessage() {
-    when(ipDetector.noDetectPlugins()).thenReturn(false);
+  @DisplayName("htmlText_whenMissingJSTUNAndNotDetecting_doesNotRenderPluginsLink")
+  void htmlText_whenMissingJSTUNAndNotDetecting_doesNotRenderPluginsLink() {
+    when(ipDetector.hasNoExternalIpDetectors()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
-    when(ipDetector.hasJSTUN()).thenReturn(false);
+    when(ipDetector.hasStunDetector()).thenReturn(false);
     when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
 
     String out = alert.getHTMLText().generate();
-    // Ensure the plugins link is present for loading JSTUN
-    assertTrue(out.contains("href=\"/plugins/\""));
+    assertFalse(out.contains("href=\"/plugins/\""));
   }
 }

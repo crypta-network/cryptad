@@ -22,10 +22,10 @@ import network.crypta.support.api.HTTPRequest;
  * redirect logic that respects node directory restrictions and localization keys.
  *
  * <p>Use this type when an HTTP UI needs to prompt the operator for a local file or directory
- * (upload destinations, download targets, plugin storage, and similar flows). The instance keeps
- * the last successful directory so subsequent visits open nearby locations, and it renders only
- * readable, allowed entries. It assumes the surrounding toadlet infrastructure provides per-request
- * threading and authorization; the class itself is not synchronized and should not be shared across
+ * (upload destinations, download targets, and similar flows). The instance keeps the last
+ * successful directory so subsequent visits open nearby locations, and it renders only readable,
+ * allowed entries. It assumes the surrounding toadlet infrastructure provides per-request threading
+ * and authorization; the class itself is not synchronized and should not be shared across
  * concurrent mutation without external guarding.
  *
  * <ul>

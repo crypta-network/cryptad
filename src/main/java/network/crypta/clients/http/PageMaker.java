@@ -12,7 +12,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.SecurityLevels;
-import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
@@ -23,9 +22,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>It assembles the document head (favicons, stylesheets, scripts), navigation menus, status
  * indicators, and main content containers while honoring theme selection, localization, and the
- * caller's access level. Typical callers configure menus once per plugin or request handler and
- * then obtain a {@link PageNode} for each response via {@link #getPageNode(String,
- * ToadletContext)}, injecting their own content into the returned container.
+ * caller's access level. Typical callers configure menus once per request handler and then obtain a
+ * {@link PageNode} for each response via {@link #getPageNode(String, ToadletContext)}, injecting
+ * their own content into the returned container.
  *
  * <p>State is limited to configured menus and the active {@linkplain #setTheme(THEME) theme};
  * rendering itself is stateless and produces fresh node trees on each invocation. The class is safe
@@ -35,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Composes page heads with optional web-push bootstrap and theme assets.
  *   <li>Renders navigation/status controls that adapt to advanced-mode and access rights.
- *   <li>Provides helpers for localization-aware CSS identifiers and infobox creation.
+ *   <li>Provides helpers for CSS identifiers and infobox creation.
  * </ul>
  *
  * @see PageMaker.RenderParameters
@@ -173,23 +172,6 @@ public final class PageMaker {
   }
 
   /**
-   * Builds a stable CSS identifier from a plugin class name and localization key.
-   *
-   * <p>The identifier is sanitized via {@link #filterCSSIdentifier(String)} so that it can be used
-   * safely as an HTML {@code id} or class name regardless of plugin package naming conventions or
-   * translation keys. Callers typically use the result to tag navigation items or infoboxes for
-   * styling while keeping selectors resilient to localization changes.
-   *
-   * @param plugin plugin localization instance supplying the class name namespace; must not be
-   *     {@code null}
-   * @param key translation key or other logical identifiers to append after the plugin name
-   * @return sanitized CSS identifier combining plugin and key components
-   */
-  public static String getPluginL10nCSSIdentifier(FredPluginL10n plugin, String key) {
-    return filterCSSIdentifier(plugin.getClass().getName() + '-' + key);
-  }
-
-  /**
    * Filters a string into a syntactically valid CSS identifier.
    *
    * <p>The filter replaces any character outside {@code [-_a-zA-Z0-9]} with an underscore, and
@@ -198,7 +180,7 @@ public final class PageMaker {
    * grammar requirements. The filter is intentionally ASCII-only to avoid surprises in selectors
    * and tools that do not fully support Unicode identifiers.
    *
-   * @param input raw identifier candidate, such as a localization key or plugin name
+   * @param input raw identifier candidate, such as a localization key or menu name
    * @return a sanitized identifier that may be used in HTML id/class attributes
    * @see <a href="http://www.w3.org/TR/CSS21/syndata.html#tokenization">CSS 2.1 tokenization</a>
    * @see <a href="http://www.w3.org/TR/CSS21/grammar.html#scanner">CSS 2.1 scanner</a>
@@ -216,19 +198,15 @@ public final class PageMaker {
    * Registers a navigation category that appears in the main menu bar.
    *
    * <p>The category is keyed by {@code name} and points to {@code link} when clicked. The provided
-   * {@code title} is shown as the tooltip. If a plugin localization object is supplied, generated
-   * CSS identifiers and text fall back to plugin-local translations; otherwise node-local strings
-   * are used. Existing entries with the same name are replaced.
+   * {@code title} is shown as the tooltip. Entries are localized using node-local strings and
+   * replaced when an existing category uses the same name.
    *
    * @param link default navigation target when the category itself is clicked
    * @param name menu label used for both CSS identifiers and the visible link text
    * @param title tooltip text describing the category’s purpose
-   * @param plugin optional plugin localization provider that owns the link text; {@code null}
-   *     yields node-local translations
    */
-  public synchronized void addNavigationCategory(
-      String link, String name, String title, FredPluginL10n plugin) {
-    SubMenu menu = new SubMenu(link, name, title, plugin);
+  public synchronized void addNavigationCategory(String link, String name, String title) {
+    SubMenu menu = new SubMenu(link, name, title);
     subMenus.put(name, menu);
     menuList.add(menu);
   }
@@ -236,22 +214,20 @@ public final class PageMaker {
   /**
    * Adds a navigation category at a specific position in the menu bar.
    *
-   * <p>This overload mirrors {@link #addNavigationCategory(String, String, String, FredPluginL10n)}
-   * but inserts the category at {@code menuOffset} instead of appending. Positions are counted from
-   * the left starting at zero; out-of-range offsets behave like {@link List#add(int, Object)} and
-   * may throw if negative.
+   * <p>This overload mirrors {@link #addNavigationCategory(String, String, String)} but inserts the
+   * category at {@code menuOffset} instead of appending. Positions are counted from the left
+   * starting at zero; out-of-range offsets behave like {@link List#add(int, Object)} and may throw
+   * if negative.
    *
    * @param link default navigation target when the category itself is clicked
    * @param name menu label used for both CSS identifiers and the visible link text
    * @param title tooltip text describing the category’s purpose
-   * @param plugin optional plugin localization provider that owns the link text; {@code null}
-   *     yields node-local translations
    * @param menuOffset The position of the link in FProxy's menu. 0 = left.
    */
   @SuppressWarnings("unused")
   public synchronized void addNavigationCategory(
-      String link, String name, String title, FredPluginL10n plugin, int menuOffset) {
-    SubMenu menu = new SubMenu(link, name, title, plugin);
+      String link, String name, String title, int menuOffset) {
+    SubMenu menu = new SubMenu(link, name, title);
     subMenus.put(name, menu);
     menuList.add(menuOffset, menu);
   }
@@ -261,7 +237,7 @@ public final class PageMaker {
    *
    * <p>If the category does not exist, a log entry is emitted and the method returns without
    * throwing. Callers typically pair this with {@link #addNavigationCategory(String, String,
-   * String, FredPluginL10n)} when plugins are unloaded.
+   * String)} when categories are removed.
    *
    * @param name category key previously registered via {@code addNavigationCategory}
    */
@@ -280,8 +256,7 @@ public final class PageMaker {
    *
    * <p>Links can be marked {@code fullOnly} to hide them from limited-access sessions. When {@code
    * cb} is provided, the link is rendered only if the callback returns {@code true} for the current
-   * {@link ToadletContext}. Titles and link text are localized using the supplied plugin
-   * localization when present; otherwise node-local strings are used.
+   * {@link ToadletContext}. Titles and link text are localized using node-local strings.
    *
    * @param menutext name of the parent menu as registered via {@code addNavigationCategory}
    * @param path relative path invoked when the link is clicked
@@ -291,7 +266,6 @@ public final class PageMaker {
    *     all users
    * @param cb optional callback evaluated to decide whether the link is enabled for the current
    *     request; may be {@code null}
-   * @param l10n optional plugin localization used to translate link text and titles
    * @throws NullPointerException if no submenu exists for {@code menutext}
    */
   public synchronized void addNavigationLink(
@@ -300,13 +274,12 @@ public final class PageMaker {
       String name,
       String title,
       boolean fullOnly,
-      LinkEnabledCallback cb,
-      FredPluginL10n l10n) {
+      LinkEnabledCallback cb) {
     SubMenu menu = subMenus.get(menutext);
     if (menu == null) {
       throw new NullPointerException("there is no menu named " + menutext);
     }
-    menu.addNavigationLink(path, name, title, fullOnly, cb, l10n);
+    menu.addNavigationLink(path, name, title, fullOnly, cb);
   }
 
   /**
@@ -418,7 +391,7 @@ public final class PageMaker {
    * callers that need deterministic output across different embedding scenarios.
    *
    * @param title page title shown in the browser and within the header
-   * @param ctx request context; may be {@code null} for out-of-band rendering such as plugin
+   * @param ctx request context; may be {@code null} for out-of-band rendering such as non-request
    *     dashboards
    * @param renderParameters immutable set of flags controlling which UI chrome is rendered
    * @return {@link PageNode} containing a ready-to-populate content container
@@ -859,48 +832,24 @@ public final class PageMaker {
       isSelected = false;
     }
 
-    FredPluginL10n l10n = menu.navigationLinkL10n.getOrDefault(navigationLink, menu.plugin);
-    NavigationText navigationText =
-        localiseNavigationEntries(navigationTitle, navigationLink, l10n);
+    NavigationText navigationText = localiseNavigationEntries(navigationTitle, navigationLink);
 
     String cssIdKey =
         navigationText.titleLocalizationKey() != null
             ? navigationText.titleLocalizationKey()
             : navigationLink;
     if (cssIdKey != null) {
-      if (l10n != null) {
-        sublistItem.addAttribute("id", getPluginL10nCSSIdentifier(l10n, cssIdKey));
-      } else {
-        sublistItem.addAttribute("id", filterCSSIdentifier(cssIdKey));
-      }
+      sublistItem.addAttribute("id", filterCSSIdentifier(cssIdKey));
     }
     addNavigationLink(sublistItem, navigationPath, navigationText);
     return isSelected;
   }
 
-  private NavigationText localiseNavigationEntries(
-      String navigationTitle, String navigationLink, FredPluginL10n l10n) {
-    String localizedTitle =
-        l10n != null
-            ? getOptionalString(l10n, navigationTitle)
-            : getOptionalString(NodeL10n.getBase(), navigationTitle);
-    String localizedLink =
-        l10n != null
-            ? getOptionalString(l10n, navigationLink)
-            : getOptionalString(NodeL10n.getBase(), navigationLink);
+  private NavigationText localiseNavigationEntries(String navigationTitle, String navigationLink) {
+    String localizedTitle = getOptionalString(NodeL10n.getBase(), navigationTitle);
+    String localizedLink = getOptionalString(NodeL10n.getBase(), navigationLink);
     return new NavigationText(
         navigationTitle, localizedTitle, localizedLink == null ? navigationLink : localizedLink);
-  }
-
-  private String getOptionalString(FredPluginL10n l10n, String key) {
-    if (key == null) {
-      return null;
-    }
-    String result = l10n.getString(key);
-    if (result == null) {
-      LOG.error("Navigation l10n returned null for getString(key); plugin={}", l10n);
-    }
-    return result;
   }
 
   private String getOptionalString(BaseL10n l10n, String key) {
@@ -933,15 +882,9 @@ public final class PageMaker {
     }
     String menuItemTitle = menu.defaultNavigationLinkTitle;
     String text = menu.navigationLinkText;
-    if (menu.plugin == null) {
-      listItem.addAttribute("id", filterCSSIdentifier(menuItemTitle));
-      menuItemTitle = NodeL10n.getBase().getString(menuItemTitle);
-      text = NodeL10n.getBase().getString(text);
-    } else {
-      listItem.addAttribute("id", getPluginL10nCSSIdentifier(menu.plugin, text));
-      menuItemTitle = replaceNullWithLocalization(menu.plugin, menuItemTitle);
-      text = replaceNullWithLocalization(menu.plugin, text);
-    }
+    listItem.addAttribute("id", filterCSSIdentifier(menuItemTitle));
+    menuItemTitle = NodeL10n.getBase().getString(menuItemTitle);
+    text = NodeL10n.getBase().getString(text);
 
     listItem.addChild(
         TAG_A,
@@ -950,15 +893,6 @@ public final class PageMaker {
         text);
     listItem.addChild(subnavlist);
     return listItem;
-  }
-
-  private String replaceNullWithLocalization(FredPluginL10n plugin, String key) {
-    String localized = plugin.getString(key);
-    if (localized == null) {
-      LOG.error("Menu label l10n returned null for getString(key); plugin={}", plugin);
-      return key;
-    }
-    return localized;
   }
 
   private void renderSelectedSubmenu(
@@ -1004,15 +938,8 @@ public final class PageMaker {
                 ? "submenuitem-selected"
                 : "submenuitem-not-selected");
 
-    FredPluginL10n l10n = selected.navigationLinkL10n.getOrDefault(navigationLink, selected.plugin);
-    String localizedTitle =
-        l10n != null
-            ? getOptionalString(l10n, navigationTitle)
-            : getOptionalString(NodeL10n.getBase(), navigationTitle);
-    String localizedLink =
-        l10n != null
-            ? getOptionalString(l10n, navigationLink)
-            : getOptionalString(NodeL10n.getBase(), navigationLink);
+    String localizedTitle = getOptionalString(NodeL10n.getBase(), navigationTitle);
+    String localizedLink = getOptionalString(NodeL10n.getBase(), navigationLink);
 
     addNavigationLink(
         sublistItem,
@@ -1418,20 +1345,14 @@ public final class PageMaker {
 
   private static class SubMenu {
 
-    public SubMenu(String link, String name, String title, FredPluginL10n plugin) {
+    public SubMenu(String link, String name, String title) {
       this.navigationLinkText = name;
       this.defaultNavigationLink = link;
       this.defaultNavigationLinkTitle = title;
-      this.plugin = plugin;
     }
 
     public void addNavigationLink(
-        String path,
-        String name,
-        String title,
-        boolean fullOnly,
-        LinkEnabledCallback cb,
-        FredPluginL10n l10n) {
+        String path, String name, String title, boolean fullOnly, LinkEnabledCallback cb) {
       navigationLinkTexts.add(name);
       if (!fullOnly) {
         navigationLinkTextsNonFull.add(name);
@@ -1441,9 +1362,6 @@ public final class PageMaker {
       if (cb != null) {
         navigationLinkCallbacks.put(name, cb);
       }
-      if (l10n != null) {
-        navigationLinkL10n.put(name, l10n);
-      }
     }
 
     /** Remove a link from this submenu. */
@@ -1452,8 +1370,7 @@ public final class PageMaker {
       navigationLinkTextsNonFull.remove(name);
       navigationLinkTitles.remove(name);
       navigationLinks.remove(name);
-      navigationLinkL10n.remove(
-          name); // Should this be here? If so, why not remove from navigationLinkCallbacks either
+      navigationLinkCallbacks.remove(name);
     }
 
     /** Name of the submenu */
@@ -1465,13 +1382,11 @@ public final class PageMaker {
     /** Tooltip */
     private final String defaultNavigationLinkTitle;
 
-    private final FredPluginL10n plugin;
     private final List<String> navigationLinkTexts = new ArrayList<>();
     private final List<String> navigationLinkTextsNonFull = new ArrayList<>();
     private final Map<String, String> navigationLinkTitles = new HashMap<>();
     private final Map<String, String> navigationLinks = new HashMap<>();
     private final Map<String, LinkEnabledCallback> navigationLinkCallbacks = new HashMap<>();
-    private final Map<String, FredPluginL10n> navigationLinkL10n = new HashMap<>();
   }
 
   /** Parameter for simple/advanced mode switch. */

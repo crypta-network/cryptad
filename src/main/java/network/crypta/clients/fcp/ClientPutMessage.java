@@ -420,7 +420,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
    * <p>The returned structure mirrors the current in-memory state, including normalized upload
    * configuration, persistence flags, metadata hints, and codec descriptors. Callers typically pass
    * the snapshot to downstream protocol layers whenever the request must be echoed, logged, or
-   * forwarded to plugins for auditing or deferred processing.
+   * forwarded for auditing or deferred processing.
    *
    * <pre>{@code
    * SimpleFieldSet snapshot = message.getFieldSet();

@@ -37,8 +37,7 @@ import org.slf4j.LoggerFactory;
  * <p>Instances are stateful (selected language and overrides). Only {@link #loadFallback()} is
  * synchronized; coordinate externally if sharing an instance across threads.
  *
- * <p>Do not use this class directly in application code; prefer {@code NodeL10n.getBase()} or
- * {@code PluginL10n.getBase()}.
+ * <p>Do not use this class directly in most application code; prefer {@code NodeL10n.getBase()}.
  *
  * <p>This class also supports reading, saving, and editing overridden translations on disk.
  *
@@ -136,16 +135,16 @@ public final class BaseL10n {
             "WINDOWS180C")),
     ITALIAN("it", "Italiano", "ita", aliases("WINDOWS0410", "WINDOWS0810")),
     // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
-    // migration path to avoid breaking plugin identifiers.
+    // migration path to avoid breaking external identifiers.
     NORWEGIAN("nb-no", "Bokmål", "nob", aliases("WINDOWS0414", "WINDOWS0814")),
     POLISH("pl", "Polski", "pol", aliases("WINDOWS0415")),
     SWEDISH("sv", "Svenska", "swe", aliases("WINDOWS041D", "WINDOWS081D")),
     // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
-    // migration path to avoid breaking plugin identifiers.
+    // migration path to avoid breaking external identifiers.
     CHINESE("zh-cn", "中文(简体)", "chn", aliases("WINDOWS0804", "WINDOWS1004")),
     // simplified chinese, used on the mainland, Singapore and Malaysia
     // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
-    // migration path to avoid breaking plugin identifiers.
+    // migration path to avoid breaking external identifiers.
     CHINESE_TAIWAN(
         "zh-tw", "中文(繁體)", "zh-tw", aliases("WINDOWS0404", "WINDOWS0C04", "WINDOWS1404")),
     // traditional Chinese, used in Taiwan, Hong Kong and Macau
@@ -160,7 +159,7 @@ public final class BaseL10n {
     JAPANESE("ja", "日本語", "jpn", aliases("WINDOWS0411")),
     PORTUGUESE("pt-PT", "Português do Portugal", "pt", aliases("WINDOWS0816")),
     // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
-    // migration path to avoid breaking plugin identifiers.
+    // migration path to avoid breaking external identifiers.
     BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", aliases("WINDOWS0416")),
     GREEK("el", "Ελληνικά", "ell", aliases("WINDOWS0408")),
     UNLISTED(UNLISTED_LITERAL, UNLISTED_LITERAL, UNLISTED_LITERAL, "");
@@ -359,8 +358,7 @@ public final class BaseL10n {
   /**
    * Create a new instance.
    *
-   * <p>Prefer using higher-level helpers in application code ({@code NodeL10n} / {@code
-   * PluginL10n}).
+   * <p>Prefer using higher-level helpers in application code (typically {@code NodeL10n}).
    *
    * @param l10nFilesBasePath Base path under which l10n resources live, for example {@code
    *     "com/mycorp/myproject/l10n"}. A trailing slash is added if missing.

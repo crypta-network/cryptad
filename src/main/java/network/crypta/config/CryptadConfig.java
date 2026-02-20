@@ -184,12 +184,6 @@ public final class CryptadConfig {
     setIfMissing(sfs, "node.install.cfgDir", base.get("configDir"));
     setIfMissing(sfs, "node.install.storeDir", base.get(DATA_DIR_KEY));
     setIfMissing(sfs, "node.install.userDir", userDir);
-    setIfMissing(
-        sfs,
-        "node.install.pluginStoresDir",
-        Path.of(base.get(DATA_DIR_KEY), "plugin-data").toString());
-    setIfMissing(
-        sfs, "node.install.pluginDir", Path.of(base.get(DATA_DIR_KEY), "plugins").toString());
     setIfMissing(sfs, "node.install.tempDir", Path.of(base.get(CACHE_DIR_KEY), "tmp").toString());
     setIfMissing(
         sfs,
@@ -212,7 +206,7 @@ public final class CryptadConfig {
    * Expands and validates a single configuration value against known base directories.
    *
    * <p>The expansion pipeline applies placeholder replacement (for example {@code ${configDir}} and
-   * {@code ${dataDir}}), resolves leading-token shorthand such as {@code dataDir/plugins}, and
+   * {@code ${dataDir}}), resolves leading-token shorthand such as {@code dataDir/node}, and
    * normalizes anchored values beneath recognized base directories. When a normalized anchored
    * value escapes its base, or when unanchored substituted content still includes traversal
    * segments, expansion fails. Internal checked failures are rethrown via a sneaky-throw helper to
@@ -326,8 +320,6 @@ public final class CryptadConfig {
             "node.install.cfgDir",
             "node.install.storeDir",
             "node.install.userDir",
-            "node.install.pluginStoresDir",
-            "node.install.pluginDir",
             "node.install.tempDir",
             "node.install.persistentTempDir",
             "node.install.nodeDir",

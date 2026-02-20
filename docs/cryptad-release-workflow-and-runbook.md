@@ -40,7 +40,7 @@
 - **Release notes**: prepare short (user-facing) and full (developer) changelog text files for CHK publishing.
 - **Package matrix**: decide which OS/arch artifacts to ship this cycle. Minimum recommendation is macOS (DMG), Windows (EXE), Linux desktop/server (DEB + RPM), and Flatpak if maintained.
 - **Environment validation**: run smoke tests on each target OS using `build/jpackage/Crypta`, `build/distributions/`, or the staged Flatpak bundle. Ensure the installers launch and locate `cryptad-dist/` correctly.
-- **Dependency review**: plugin updates are unchanged; publish plugin jars as before.
+- **Dependency review**: verify updater metadata and package checksums are consistent with produced artifacts.
 
 ## Build
 1. Clean build for deterministic artifacts:
@@ -140,12 +140,12 @@
 - Alerts now show retry messaging for transient failures; use the `Retry` button without restarting the node.
 
 ## Appendix: Code Path Reference
-- `NodeUpdateManager`: orchestrates CoreUpdater lifecycle, changelog exposure, download state, auto-download toggles, and legacy plugin flows.
+- `NodeUpdateManager`: orchestrates CoreUpdater lifecycle, changelog exposure, download state, and auto-download toggles.
 - `CoreUpdater`: subscribes to the update USK, parses `core-info.json`, selects packages based on `AppEnv`, manages `PackageFetcher`, and auto-downloads when allowed.
 - `CoreActionToadlet`: handles `/core-update/` POST actions (download, install, open store) and surfaces status transitions.
 - `PackageFetcher`: wraps the client getter to track splitfile progress and expose retryable status to the UI.
 - `AppEnv`: single source of truth for OS/arch/service detection (replaces direct `os.name` probes).
-- `UpdateOverMandatoryManager`: still provides peer-assisted fetches for plugin artifacts; core jar UoM paths are disabled (`supportsJarUOM=false`).
+- `UpdateOverMandatoryManager`: core JAR UoM paths are disabled (`supportsJarUOM=false`).
 
 ## Release Runbook (Template)
 

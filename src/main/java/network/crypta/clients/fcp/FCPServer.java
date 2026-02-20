@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.UUID;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
@@ -13,37 +12,31 @@ import network.crypta.io.AllowedHosts;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMessageHandler;
-import network.crypta.pluginmanager.PluginNotFoundException;
-import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.api.Bucket;
 
 /**
  * Server endpoint for the Freenet Client Protocol (FCP).
  *
  * <p>This class owns the inbound network listener for FCP, accepts new socket connections, and
- * coordinates request lifecycle management for both external clients and in-process plugins. It
- * wires persistent request queues, plugin-to-plugin messaging via {@link FCPPluginConnection}, and
- * the download cache so clients can resume work across node restarts. The server is created from
- * configured defaults, started lazily through {@link #maybeStart()}, and runs a dedicated
+ * coordinates request lifecycle management for external clients. It wires persistent request queues
+ * and the download cache so clients can resume work across node restarts. The server is created
+ * from configured defaults, started lazily through {@link #maybeStart()}, and runs a dedicated
  * accept-loop on a daemon thread so shutdown does not block. Concurrency is managed through the
- * executor supplied by {@link Node}, request jobs are marshaled onto the {@link ClientContext} job
- * runner, and weakly referenced plugin connections are cleaned up automatically by {@link
- * FCPPluginConnectionTracker} to avoid leaks.
+ * executor supplied by {@link Node}, and request jobs are marshaled onto the {@link ClientContext}
+ * job runner.
  *
  * <p>Responsibilities include:
  *
  * <ul>
  *   <li>Binding the configured interface/port and enforcing the allowed-hosts lists.
- *   <li>Exposing intra-node plugin connection helpers with direction-aware adapters.
  *   <li>Managing global persistent request queues for reboot and forever persistence classes.
  *   <li>Providing cache lookups that avoid extra copies when callers permit zero-copy access.
  * </ul>
  *
  * <p>Instances are not thread-safe for direct field mutation; the class instead encapsulates the
  * mutable state (bind address, allowed hosts, queues) and uses synchronized sections or
- * thread-confined startup hooks. Network listeners are long-lived, while plugin connection trackers
- * start regardless of network enablement, so non-networked plugins can still talk over FCP.
+ * thread-confined startup hooks. Network listeners are long-lived and started only when enabled by
+ * configuration.
  */
 public class FCPServer implements Runnable, DownloadCache {
 
@@ -71,7 +64,6 @@ public class FCPServer implements Runnable, DownloadCache {
   final AllowedHosts allowedHostsFullAccess;
 
   private final FcpServerListener listener;
-  private final FcpServerPluginConnections pluginConnections;
   private final FcpServerPersistentOps persistentOps;
 
   /**
@@ -102,9 +94,9 @@ public class FCPServer implements Runnable, DownloadCache {
    * Constructs a server instance from precomputed configuration and dependencies.
    *
    * <p>The constructor copies the immutable configuration fields, initializes the mutable runtime
-   * flags, and wires helper components such as the listener, plugin connection tracker, and
-   * persistence operations. It does not bind sockets or spawn threads; callers must invoke {@link
-   * #maybeStart()} to begin accepting network connections or to activate plugin tracking.
+   * flags, and wires helper components such as the listener and persistence operations. It does not
+   * bind sockets or spawn threads; callers must invoke {@link #maybeStart()} to begin accepting
+   * network connections.
    *
    * @param config immutable configuration values used to initialize server state.
    * @param dependencies node services required to satisfy listener and persistence wiring.
@@ -121,7 +113,6 @@ public class FCPServer implements Runnable, DownloadCache {
     this.neverDropAMessage = config.neverDropAMessage();
     this.maxMessageQueueLength = config.maxMessageQueueLength();
     this.listener = new FcpServerListener(this, node, config);
-    this.pluginConnections = new FcpServerPluginConnections(node);
     this.persistentOps = new FcpServerPersistentOps(this, core, dependencies.persistentRoot());
   }
 
@@ -139,9 +130,9 @@ public class FCPServer implements Runnable, DownloadCache {
    * @param allowedHostsFullAccess allowlist used for privileged operations that bypass client-side
    *     restrictions.
    * @param port TCP port number for the FCP listener, in the host byte order.
-   * @param node owning {@link Node} providing executors, plugin management, and lifecycle hooks.
+   * @param node owning {@link Node} providing executors and lifecycle hooks.
    * @param core node client core exposing persistence, download directories, and cache factories.
-   * @param isEnabled whether networked FCP should start; plugin messaging may still operate.
+   * @param isEnabled whether networked FCP should start.
    * @param assumeDDADownloadAllowed flag to treat download DDA as preapproved globally.
    * @param assumeDDAUploadAllowed flag to treat upload DDA as preapproved globally.
    * @param neverDropAMessage whether outbound queues retain messages under backpressure.
@@ -181,27 +172,24 @@ public class FCPServer implements Runnable, DownloadCache {
    *
    * <p>This call is typically used during node startup, so the request state is readily available
    * to FCP clients without requiring additional disk scans. The implementation delegates to the
-   * persistence helper, which updates internal caches and prepares lookup state before any network
-   * or plugin clients start querying the queues. It performs no network activity and is safe to
-   * call multiple times, although repeated calls may incur extra disk or database work.
+   * persistence helper, which updates internal caches and prepares lookup state before clients
+   * start querying the queues. It performs no network activity and is safe to call multiple times,
+   * although repeated calls may incur extra disk or database work.
    */
   public void load() {
     persistentOps.load();
   }
 
   /**
-   * Starts the network listener and plugin connection tracker when configuration allows.
+   * Starts the network listener when configuration allows.
    *
    * <p>If {@link #enabled} is {@code true}, the method binds the configured interface, logs
-   * startup, and launches the accept-loop on a daemon thread. When disabled, it skips binding but
-   * still starts {@link FCPPluginConnectionTracker} so intra-node plugin messaging remains
-   * available. Repeated invocations are safe; only the first call performs initialization. The
-   * method does not block on socket acceptance, so callers can continue startup immediately after
-   * invoking it.
+   * startup, and launches the accept-loop on a daemon thread. When disabled, it skips binding.
+   * Repeated invocations are safe; only the first call performs initialization. The method does not
+   * block on socket acceptance, so callers can continue startup immediately after invoking it.
    */
   public void maybeStart() {
     listener.maybeStart();
-    pluginConnections.startTrackerIfEnabled();
   }
 
   /**
@@ -224,9 +212,9 @@ public class FCPServer implements Runnable, DownloadCache {
    * constructs the server with immutable values derived from that configuration. It does not start
    * network listeners; callers still invoke {@link #maybeStart()} at the appropriate lifecycle
    * point. The returned server is fully wired to the supplied node, client core, and persistence
-   * root, so it can immediately serve plugin-based FCP traffic once started.
+   * root, so it can immediately serve FCP traffic once started.
    *
-   * @param node owning node providing executors and plugin services for the server.
+   * @param node owning node providing executors and core services for the server.
    * @param core client core used for persistence and endpoint access.
    * @param config configuration registry where the {@code fcp} subsection is registered.
    * @param root persistence root used to back global request queues.
@@ -262,73 +250,6 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public int maxMessageQueueLength() {
     return maxMessageQueueLength;
-  }
-
-  /**
-   * Creates and registers a plugin connection for a networked FCP client.
-   *
-   * <p>The returned {@link FCPPluginConnectionImpl} represents a connection where the client lives
-   * outside the node and communicates over the TCP listener. It is stored inside {@link
-   * FCPPluginConnectionTracker} using a weak reference so callers do not need to explicitly
-   * unregister; holding a strong reference keeps the connection alive. When the last strong
-   * reference is dropped, the tracker will automatically recycle the entry and later lookups via
-   * {@link #getPluginConnectionByID(UUID)} will fail.
-   *
-   * @param serverPluginName plugin name that should receive messages on the server side.
-   * @param messageHandler handler associated with the network connection driving message flow.
-   * @return connection wrapper bound to the tracker for the specified plugin.
-   * @throws PluginNotFoundException if the plugin cannot be located or instantiated.
-   */
-  final FCPPluginConnectionImpl createFCPPluginConnectionForNetworkedFCP(
-      String serverPluginName, FCPConnectionHandler messageHandler) throws PluginNotFoundException {
-    return pluginConnections.createFCPPluginConnectionForNetworkedFCP(
-        serverPluginName, messageHandler);
-  }
-
-  /**
-   * Creates and registers an intra-node {@link FCPPluginConnection} for plugin-to-plugin traffic.
-   *
-   * <p>This shortcut is used by {@link PluginRespirator#connectToOtherPlugin(String,
-   * ClientSideFCPMessageHandler)} to establish a logical FCP link without leaving the process. The
-   * connection is inserted into {@link FCPPluginConnectionTracker} and stays reachable as long as
-   * the caller keeps a strong reference. To match the client perspective, the returned adapter
-   * defaults the sending direction to {@link FCPPluginConnection.SendDirection#TO_SERVER}.
-   *
-   * <p>The method is synchronous and does not perform network I/O; it only consults the plugin
-   * manager and registers the resulting connection. Callers should retain the returned reference
-   * for as long as they intend to receive responses, because once the reference is lost, the
-   * tracker will allow the weakly referenced entry to expire.
-   *
-   * @param serverPluginName name of the server-side plugin that receives incoming messages.
-   * @param messageHandler handler on the client-side plugin that processes responses.
-   * @return connection adapter configured for server-directed sendings and tracking.
-   * @throws PluginNotFoundException if the target plugin cannot be found or instantiated.
-   */
-  public final FCPPluginConnection createFCPPluginConnectionForIntraNodeFCP(
-      String serverPluginName, ClientSideFCPMessageHandler messageHandler)
-      throws PluginNotFoundException {
-    return pluginConnections.createFCPPluginConnectionForIntraNodeFCP(
-        serverPluginName, messageHandler);
-  }
-
-  /**
-   * Retrieves a plugin connection by identifier and adapts it for server-originated traffic.
-   *
-   * <p>The lookup delegates to {@link FCPPluginConnectionTracker#getConnection(UUID)} and wraps the
-   * result so the default send direction points to the client side. The connection must still be
-   * strongly referenced elsewhere; once only weakly reachable, it will be absent from the tracker.
-   *
-   * <p>This method performs no network I/O; it resolves metadata from the in-memory tracking state
-   * and returns a lightweight adapter. The returned connection shares the underlying state with the
-   * tracked entry, so callers should treat it as a view rather than a copy.
-   *
-   * @param connectionID identifier returned when the corresponding connection was created.
-   * @return connection adapted to default-sending toward the client side.
-   * @throws IOException if the connection metadata cannot be resolved or the underlying state
-   *     fails.
-   */
-  public final FCPPluginConnection getPluginConnectionByID(UUID connectionID) throws IOException {
-    return pluginConnections.getPluginConnectionByID(connectionID);
   }
 
   /**

@@ -17,7 +17,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.pluginmanager.FredPluginConfigurable;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLEncoder;
@@ -29,23 +28,22 @@ import org.slf4j.LoggerFactory;
 /**
  * Node Configuration Toadlet. Accessible from http://...<code>/config/</code>.
  *
- * <p>This toadlet renders and processes the node and plugin configuration UI that lives under the
- * {@code /config/<subconfig>} path. It translates {@link Option} metadata into HTML controls,
- * handles form submissions, persists updates to {@link Config}, and surfaces restart requirements
- * through both inline notices and {@link UserAlert} instances. The handler also wires the optional
- * directory chooser loop so users can browse for filesystem paths without manually editing text
- * fields.
+ * <p>This toadlet renders and processes the node configuration UI that lives under the {@code
+ * /config/<subconfig>} path. It translates {@link Option} metadata into HTML controls, handles form
+ * submissions, persists updates to {@link Config}, and surfaces restart requirements through both
+ * inline notices and {@link UserAlert} instances. The handler also wires the optional directory
+ * chooser loop so users can browse for filesystem paths without manually editing text fields.
  *
  * <p>Typical call flow is a GET request to display grouped options followed by a POST that either
  * applies changes, redirects to the directory selector, or confirms a reset to defaults. The class
  * is stateful only for per-request restart tracking, and instances are tied to a single {@link
- * SubConfig} (or plugin-provided equivalent). It is not thread-safe; callers rely on the
- * surrounding HTTP server to serialize handling per session. Inputs are trusted only after {@link
+ * SubConfig}. It is not thread-safe; callers rely on the surrounding HTTP server to serialize
+ * handling per session. Inputs are trusted only after {@link
  * ToadletContext#checkFullAccess(Toadlet)} succeeds, so external callers must provide a properly
  * authorized context.
  *
  * <ul>
- *   <li>Renders localized labels and descriptions from {@link NodeL10n} and plugin resources.
+ *   <li>Renders localized labels and descriptions from {@link NodeL10n}.
  *   <li>Normalizes directory selection callbacks to maintain form state across redirects.
  *   <li>Surfaces wrapper JVM memory overrides when the node configuration prefix is {@code node}.
  * </ul>
@@ -86,9 +84,6 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   private final Config config;
   private final NodeClientCore core;
   private final Node node;
-
-  /** plugin is always null except when this ConfigToadlet serves a plugin */
-  private final FredPluginConfigurable plugin;
 
   private boolean needRestart = false;
   private NeedRestartUserAlert needRestartUserAlert;
@@ -191,8 +186,8 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The provided {@code directoryBrowserPath} is normalized to include leading and trailing
    * slashes so directory selection redirects remain stable. This constructor is typically used when
-   * the caller controls where directory browsing should occur (for example, a plugin exposing its
-   * own chooser endpoint) while still relying on the standard rendering and persistence logic.
+   * the caller controls where directory browsing should occur while still relying on the standard
+   * rendering and persistence logic.
    *
    * @param directoryBrowserPath path segment for directory browsing, with or without slashes; never
    *     {@code null} after normalization.
@@ -209,12 +204,12 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       SubConfig subConfig,
       Node node,
       NodeClientCore core) {
-    this(directoryBrowserPath, client, conf, subConfig, node, core, null);
+    this(client, conf, subConfig, node, core);
+    this.directoryBrowserPath = normalizeDirectoryBrowserPath(directoryBrowserPath);
   }
 
   /**
-   * Creates a configuration toadlet with a default directory browser path when no plugin is
-   * involved.
+   * Creates a configuration toadlet with a default directory browser path.
    *
    * <p>This overload is suited for core node configuration pages that do not need to override the
    * directory browsing endpoint. The path defaults to {@code /unset-browser-path/} until the caller
@@ -232,65 +227,11 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       SubConfig subConfig,
       Node node,
       NodeClientCore core) {
-    this(client, conf, subConfig, node, core, null);
-  }
-
-  /**
-   * Creates a configuration toadlet bound to a plugin with a custom directory browser path.
-   *
-   * <p>Use this overload when a plugin contributes configurable options and wants directory
-   * browsing to defer to a plugin-owned endpoint. The plugin is stored for later localization
-   * lookups on option descriptions.
-   *
-   * @param directoryBrowserPath path segment for directory browsing, with or without slashes.
-   * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
-   * @param conf configuration root that persists option values once form submission succeeds.
-   * @param subConfig logical configuration group that provides the options to render and update.
-   * @param node running node instance required for restart checks and wrapper awareness.
-   * @param core node client core used to locate directories such as the default downloads path.
-   * @param plugin plugin contributing the configuration group; may be {@code null} when unused.
-   */
-  public ConfigToadlet(
-      String directoryBrowserPath,
-      HighLevelSimpleClient client,
-      Config conf,
-      SubConfig subConfig,
-      Node node,
-      NodeClientCore core,
-      FredPluginConfigurable plugin) {
-    this(client, conf, subConfig, node, core, plugin);
-    this.directoryBrowserPath = normalizeDirectoryBrowserPath(directoryBrowserPath);
-  }
-
-  /**
-   * Creates a configuration toadlet bound to the given configuration group, optionally for a
-   * plugin.
-   *
-   * <p>This is the central constructor used by the other overloads. It normalizes the directory
-   * browser path, remembers the owning plugin for localization lookups, and delegates rendering and
-   * persistence to the shared helpers. Instances created here are ready to handle GET/POST cycles
-   * immediately after construction.
-   *
-   * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
-   * @param conf configuration root that persists option values once form submission succeeds.
-   * @param subConfig logical configuration group that provides the options to render and update.
-   * @param node running node instance required for restart checks and wrapper awareness.
-   * @param core node client core used to locate directories such as the default downloads path.
-   * @param plugin plugin contributing the configuration group; may be {@code null} when unused.
-   */
-  public ConfigToadlet(
-      HighLevelSimpleClient client,
-      Config conf,
-      SubConfig subConfig,
-      Node node,
-      NodeClientCore core,
-      FredPluginConfigurable plugin) {
     super(client);
     config = conf;
     this.core = core;
     this.node = node;
     this.subConfig = subConfig;
-    this.plugin = plugin;
     this.directoryBrowserPath = normalizeDirectoryBrowserPath(null);
   }
 
@@ -611,11 +552,11 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * Renders the configuration UI for the current subconfig.
    *
-   * <p>The response includes any active alerts, all eligible options (filtered by advanced mode and
-   * plugin context), and helper controls such as wrapper memory tuning. If the request carries
-   * directory selection results, the relevant option value is overridden before rendering so the
-   * chosen path is visible immediately. The form posts back to the same path and preserves the
-   * subconfig prefix as a hidden field.
+   * <p>The response includes any active alerts, all eligible options (filtered by advanced mode),
+   * and helper controls such as wrapper memory tuning. If the request carries directory selection
+   * results, the relevant option value is overridden before rendering so the chosen path is visible
+   * immediately. The form posts back to the same path and preserves the subconfig prefix as a
+   * hidden field.
    *
    * @param uri absolute request URI, passed for interface completeness.
    * @param req HTTP request used to detect advanced mode, pre-filled values, and directory chooser
@@ -649,11 +590,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
         addOptionGroups(req, configGroupUlNode, advancedModeEnabled, selectionOverride);
 
     if (displayedConfigElements > 0) {
-      formNode.addChild(
-          "div",
-          ATTR_CLASS,
-          "configprefix",
-          (plugin == null) ? l10n(subConfig.getPrefix()) : plugin.getString(subConfig.getPrefix()));
+      formNode.addChild("div", ATTR_CLASS, "configprefix", l10n(subConfig.getPrefix()));
       formNode.addChild("a", "id", subConfig.getPrefix());
       formNode.addChild(configGroupUlNode);
     }
@@ -757,8 +694,8 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     ConfigCallback<?> callback = option.getCallback();
     OptionType optionType = resolveOptionType(callback);
 
-    HTMLNode shortDesc = option.getShortDescNode(plugin);
-    HTMLNode longDesc = option.getLongDescNode(plugin);
+    HTMLNode shortDesc = option.getShortDescNode();
+    HTMLNode longDesc = option.getLongDescNode();
 
     HTMLNode configItemNode = configGroupUlNode.addChild("li");
     String defaultValue =

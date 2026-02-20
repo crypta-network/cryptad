@@ -21,10 +21,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This toadlet keeps a synchronized in-memory map of aliases and redirects any request whose
  * path starts with a known alias to the mapped target. It bootstraps from persisted configuration,
- * seeds a couple of built-in plugin aliases, and can persist later edits on demand. Synchronization
- * on the internal {@link Map} keeps link updates and lookups thread-safe. Callers typically create
- * one instance per node, let it register its configuration, and rely on {@link
- * #handleMethodGET(URI, HTTPRequest, ToadletContext)} to perform the resolution work.
+ * and can persist later edits on demand. Synchronization on the internal {@link Map} keeps link
+ * updates and lookups thread-safe. Callers typically create one instance per node, let it register
+ * its configuration, and rely on {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} to
+ * perform the resolution work.
  *
  * <p>Responsibilities include:
  *
@@ -46,13 +46,12 @@ public class SymlinkerToadlet extends Toadlet {
   SubConfig tslconfig;
 
   /**
-   * Creates a new symlinker toadlet, registers its configuration, and seeds built-in aliases.
+   * Creates a new symlinker toadlet and registers its configuration.
    *
    * <p>The constructor reads the {@code toadletsymlinker.symlinks} array from the node
    * configuration, populates the in-memory map, and finalizes the configuration section to prevent
-   * external modifications. Two convenience aliases are added for the Librarian and TestGallery
-   * plugins. Construction is not thread-safe, but subsequent alias access is synchronized on the
-   * internal map.
+   * external modifications. Construction is not thread-safe, but subsequent alias access is
+   * synchronized on the internal map.
    *
    * @param client high-level HTTP client used to write responses and redirects for requests.
    * @param node node instance supplying configuration storage and persistence hooks for aliases.
@@ -74,7 +73,7 @@ public class SymlinkerToadlet extends Toadlet {
 
           @Override
           public void set(String[] val) throws InvalidConfigValueException {
-            throw new InvalidConfigValueException("Cannot set the plugins that's loaded.");
+            throw new InvalidConfigValueException("Cannot set loaded symlinks directly.");
           }
 
           @Override
@@ -94,9 +93,6 @@ public class SymlinkerToadlet extends Toadlet {
     }
 
     tslconfig.finishedInitialization();
-
-    addLink("/sl/search/", "/plugins/plugins.Librarian/", false);
-    addLink("/sl/gallery/", "/plugins/plugins.TestGallery/", false);
   }
 
   /**

@@ -19,10 +19,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.PluginRespirator;
-import network.crypta.pluginmanager.PluginStores;
 import network.crypta.support.Base64;
-import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
@@ -101,9 +98,7 @@ public final class NodeClientCore implements Persistable {
    * Anti-CSRF token used by the HTTP UI.
    *
    * <p>Include this value as a hidden field in any POST that changes server-side state and verify
-   * it on receipt. To render a form that includes the token use {@link
-   * PluginRespirator#addFormChild(HTMLNode, String, String)}. To verify a request use {@code
-   * WebInterfaceToadlet.isFormPassword(HTTPRequest)}.
+   * it on receipt.
    */
   private final String formPassword;
 
@@ -172,7 +167,6 @@ public final class NodeClientCore implements Persistable {
   static final int MAX_CACHED_ELEMENTS =
       256 * 1024; // equally arbitrary; hopefully, we can cache many of these though
   private boolean alwaysCommit;
-  private final PluginStores pluginStores;
   private boolean lazyStartDatastoreChecker;
 
   private boolean finishedInitStorage;
@@ -188,7 +182,6 @@ public final class NodeClientCore implements Persistable {
       throws NodeInitException {
     this.node = node;
     this.random = node.bootstrap().random();
-    this.pluginStores = new PluginStores(node, init.installConfig());
 
     sortOrder = registerLazyStartDatastoreChecker(init, sortOrder);
 
@@ -387,7 +380,7 @@ public final class NodeClientCore implements Persistable {
     sortOrder = registerMaxBackgroundUSKFetchers(init, sortOrder);
 
     // This is all part of construction, not of start().
-    // Some plugins depend on it, so it needs to be *created* before they are started.
+    // Create it early so all client-facing endpoints can rely on it during startup.
 
     // TMCI and FCP (including persistent requests so needs to start before FProxy)
     ClientEndpoints.InitResult endpointsInit =
@@ -400,7 +393,7 @@ public final class NodeClientCore implements Persistable {
     }
 
     // FProxy
-    // Note: This wiring is a stopgap; plugins should handle this in the future.
+    // Startup alerts are wired here so the HTTP layer can render early boot progress.
     endpoints.registerStartupAlerts(
         alerts,
         this,
@@ -1056,13 +1049,13 @@ public final class NodeClientCore implements Persistable {
   /**
    * Starts client-layer services and resumes persisted requests.
    *
-   * <p>This method activates request starters, the datastore checker, client endpoints, and
-   * plugins, then schedules a low-priority completion task to migrate persistent temporary buckets
-   * and resume pending requests. Call it during node startup after construction has finished
-   * wiring. Exceptions during migration are logged and do not prevent the remaining services from
-   * running. The startup sequence is asynchronous: it returns immediately after scheduling the
-   * completion task, so callers should not assume persistent requests are resumed when it returns.
-   * The method is intended to be called once per node lifecycle.
+   * <p>This method activates request starters, the datastore checker, and client endpoints, then
+   * schedules a low-priority completion task to migrate persistent temporary buckets and resume
+   * pending requests. Call it during node startup after construction has finished wiring.
+   * Exceptions during migration are logged and do not prevent the remaining services from running.
+   * The startup sequence is asynchronous: it returns immediately after scheduling the completion
+   * task, so callers should not assume persistent requests are resumed when it returns. The method
+   * is intended to be called once per node lifecycle.
    */
   public void start() {
 
@@ -1072,7 +1065,6 @@ public final class NodeClientCore implements Persistable {
 
     storeChecker.start();
     endpoints.maybeStart();
-    node.services().pluginManager().start();
     node.network().ipDetector().ipDetectorManager.start();
 
     node.network()
@@ -1449,20 +1441,6 @@ public final class NodeClientCore implements Persistable {
    */
   public long checkRecentlyFailed(Key key, boolean realTime) {
     return NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
-  }
-
-  /**
-   * Returns the plugin stores accessor for this node.
-   *
-   * <p>The returned {@link PluginStores} instance provides access to plugin-managed storage and is
-   * created during core initialization. It is shared across the node lifecycle and may be used by
-   * multiple threads, so callers should treat it as core-owned and avoid replacing or shutting it
-   * down directly. The accessor performs no I/O and returns the existing reference immediately.
-   *
-   * @return shared plugin stores instance used by plugin storage.
-   */
-  public PluginStores getPluginStores() {
-    return pluginStores;
   }
 
   /**

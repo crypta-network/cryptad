@@ -1,8 +1,8 @@
 /**
- * Localization (l10n) utilities and translation resources for the Crypta node and its plugins.
+ * Localization (l10n) utilities and translation resources for the Crypta node.
  *
  * <p>This package provides the components that load, resolve, and format localized strings used by
- * the application and by plugins.
+ * the application.
  *
  * <p>Core types:
  *
@@ -12,8 +12,6 @@
  *   <li>{@link network.crypta.l10n.NodeL10n} — Application-wide façade that exposes a single shared
  *       {@code BaseL10n}. Lazily initialized on the first access or re-initialized via its
  *       constructors.
- *   <li>{@link network.crypta.l10n.PluginL10n} — Per-plugin bridge that wires a {@code BaseL10n}
- *       using paths, masks, and class loader provided by the plugin.
  *   <li>{@link network.crypta.l10n.BaseL10n.LANGUAGE} — Supported language registry with ISO-style
  *       short codes and display names.
  * </ul>
@@ -75,7 +73,6 @@
  *
  * @see network.crypta.l10n.BaseL10n
  * @see network.crypta.l10n.NodeL10n
- * @see network.crypta.l10n.PluginL10n
  * @see network.crypta.l10n.BaseL10n.LANGUAGE
  * @see network.crypta.support.HTMLNode
  */

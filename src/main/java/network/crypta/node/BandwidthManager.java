@@ -1,10 +1,10 @@
 package network.crypta.node;
 
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 
 import static java.util.concurrent.TimeUnit.*;
 
@@ -22,8 +22,7 @@ import static java.util.concurrent.TimeUnit.*;
  * </ul>
  *
  * <p>Units: limits are expressed in bytes per second. Auto-detected rates from {@link
- * FredPluginBandwidthIndicator} are in bits per second and are converted to bytes per second
- * internally.
+ * BandwidthIndicator} are in bits per second and are converted to bytes per second internally.
  */
 public class BandwidthManager {
 
@@ -69,7 +68,7 @@ public class BandwidthManager {
               @Override
               public void run() {
                 try {
-                  FredPluginBandwidthIndicator bandwidthIndicator =
+                  BandwidthIndicator bandwidthIndicator =
                       node.network().ipDetector().getBandwidthIndicator();
                   if (!node.getConfig().get("node").getBoolean("connectionSpeedDetection")
                       || bandwidthIndicator == null) {

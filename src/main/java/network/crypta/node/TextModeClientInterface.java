@@ -75,10 +75,10 @@ import org.slf4j.LoggerFactory;
  * <p>This component reads line‑oriented commands from an {@code InputStream}, executes them using
  * the node's high‑level client APIs, and writes human‑readable results to an {@code OutputStream}.
  * It is intended for scripting, quick diagnostics, and environments where a graphical UI is not
- * available. The interface supports fetching and inserting content, managing peers, inspecting
- * memory and system information, and loading or unloading plugins. Commands are deliberately
- * conservative: operations that might affect the terminal (for example, output containing escape
- * sequences) are guarded to reduce the risk of unintended terminal control.
+ * available. The interface supports fetching and inserting content, managing peers, and inspecting
+ * memory and system information. Commands are deliberately conservative: operations that might
+ * affect the terminal (for example, output containing escape sequences) are guarded to reduce the
+ * risk of unintended terminal control.
  *
  * <p>Lifecycle and concurrency: instances are designed to be used by a single thread. The class
  * implements {@code Runnable}; typical usage creates an instance and executes it on a background
@@ -117,13 +117,6 @@ public class TextModeClientInterface implements Runnable {
       "n.network().getPeerNode() failed to get peer details for ";
   private static final String CRLF2 = "\r\n\r\n";
   private static final String FILTER_BASE_URL = "http://127.0.0.1:8888/";
-  private static final String PLUGLOAD_HELP =
-      """
-        PLUGLOAD:O: pluginName         - Load official plugin from freenetproject.org\r
-        PLUGLOAD:F: file://<filename>  - Load plugin from file\r
-        PLUGLOAD:U: http://...         - Load plugin from online file\r
-        PLUGLOAD:K: freenet key        - Load plugin from freenet uri\r
-      """;
 
   final RandomSource r;
   final Node n;
@@ -154,8 +147,6 @@ public class TextModeClientInterface implements Runnable {
           "BLOW",
           "UPDATE",
           "MAKESSK",
-          "PLUGLIST",
-          "PLUGLOAD",
           "ANNOUNCE");
 
   private static String commandToken(String uline) {
@@ -266,9 +257,6 @@ public class TextModeClientInterface implements Runnable {
     handlers.put("PEER", this::handlePeer);
     handlers.put("PEERWMD", this::handlePeerWmd);
     handlers.put("PEERS", this::handlePeers);
-    handlers.put("PLUGLOAD", this::handlePlugLoad);
-    handlers.put("PLUGLIST", this::handlePlugList);
-    handlers.put("PLUGKILL", this::handlePlugKill);
     handlers.put("ANNOUNCE", this::handleAnnounce);
   }
 
@@ -366,9 +354,6 @@ public class TextModeClientInterface implements Runnable {
     sb.append(
         "PUTSSKDIR:<insert uri>#<path>[#<defaultfile>] - Insert an entire directory to an"
             + " SSK.\r\n");
-    sb.append("PLUGLOAD: - Load plugin. (use \"PLUGLOAD:?\" for more info)\r\n");
-    sb.append("PLUGLIST - List all loaded plugins.\r\n");
-    sb.append("PLUGKILL:<pluginID> - Unload the plugin with the given ID (see PLUGLIST).\r\n");
     sb.append("CONNECT:<filename|URL> - see ADDPEER:<filename|URL> below\r\n");
     sb.append("CONNECT:\\r\\n<noderef> - see ADDPEER:\\r\\n<noderef> below\r\n");
     sb.append("DISCONNECT:<ip:port|name> - see REMOVEPEER:<ip:port|name|identity> below\r\n");
@@ -1421,103 +1406,6 @@ public class TextModeClientInterface implements Runnable {
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     outsb.append(n.getTMCIPeerList());
     outsb.append("PEERS done.\r\n");
-    return false;
-  }
-
-  /**
-   * Handle the PLUGLOAD command.
-   *
-   * <p>Loads a plugin and keeps the session open; intentionally returns {@code false}.
-   */
-  @SuppressWarnings({"java:S3516", "SameReturnValue"})
-  private boolean handlePlugLoad(
-      String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    // Support legacy bare form "PLUGLOAD" (no colon) by showing help
-    if (!uline.startsWith("PLUGLOAD:")) {
-      outsb.append(PLUGLOAD_HELP);
-      return false;
-    }
-
-    String cmd = line.substring("PLUGLOAD:".length());
-    // Help
-    if (cmd.startsWith("?")) {
-      outsb.append(PLUGLOAD_HELP);
-      return false;
-    }
-
-    // Dispatch per legacy prefixes
-    if (uline.startsWith("PLUGLOAD:O:")) {
-      String name = line.substring("PLUGLOAD:O:".length()).trim();
-      n.services().pluginManager().startPluginOfficial(name, true);
-      return false;
-    }
-    if (uline.startsWith("PLUGLOAD:F:")) {
-      String name = line.substring("PLUGLOAD:F:".length()).trim();
-      n.services().pluginManager().startPluginFile(name, true);
-      return false;
-    }
-    if (uline.startsWith("PLUGLOAD:U:")) {
-      String name = line.substring("PLUGLOAD:U:".length()).trim();
-      n.services().pluginManager().startPluginURL(name, true);
-      return false;
-    }
-    if (uline.startsWith("PLUGLOAD:K:")) {
-      String name = line.substring("PLUGLOAD:K:".length()).trim();
-      n.services().pluginManager().startPluginFreenet(name, true);
-      return false;
-    }
-
-    // Unknown form → show help
-    outsb.append(PLUGLOAD_HELP);
-    return false;
-  }
-
-  /**
-   * Handle the PLUGLIST command.
-   *
-   * <p>Lists plugins and keeps the session open; intentionally returns {@code false}.
-   */
-  @SuppressWarnings({"java:S3516", "SameReturnValue"})
-  private boolean handlePlugList(
-      String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    outsb.append(n.services().pluginManager().dumpPlugins());
-    return false;
-  }
-
-  /**
-   * Handle the PLUGKILL command.
-   *
-   * <p>Kills a plugin and keeps the session open; intentionally returns {@code false}.
-   */
-  @SuppressWarnings({"java:S3516", "SameReturnValue"})
-  private boolean handlePlugKill(
-      String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    String id = line.substring("PLUGKILL:".length()).trim();
-    boolean killed = false;
-
-    // Prefer PLUGLIST-style IDs (thread names)
-    for (network.crypta.pluginmanager.PluginInfoWrapper pi :
-        n.services().pluginManager().getPlugins()) {
-      if (id.equals(pi.getThreadName())) {
-        pi.stopPlugin(
-            n.services().pluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
-        killed = true;
-        break;
-      }
-    }
-
-    // Fallback: class or filename identifiers
-    if (!killed) {
-      network.crypta.pluginmanager.PluginInfoWrapper info =
-          n.services().pluginManager().findPluginByIdentifier(id);
-      if (info != null) {
-        info.stopPlugin(
-            n.services().pluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
-        killed = true;
-      }
-    }
-
-    outsb.append(killed ? "OK\r\n" : "FAIL\r\n");
     return false;
   }
 

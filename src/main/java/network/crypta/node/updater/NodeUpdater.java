@@ -42,12 +42,12 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * Base class for components that subscribe to update keys, fetch new editions, and coordinate
  * post‑fetch processing.
  *
- * <p>This class encapsulates the common control flow used by both core and plugin updaters. It
- * subscribes to a USK, reacts to discovered editions, schedules and runs a {@code ClientGetter}
- * fetch, and then hands the result to subclass hooks for validation and deployment. Instances are
- * long‑lived and typically created once per updater type. They maintain internal state such as the
- * latest available and fetched versions, whether a fetch is currently in progress, and temporary
- * file paths used to persist fetched blobs.
+ * <p>This class encapsulates the common control flow used by updater components. It subscribes to a
+ * USK, reacts to discovered editions, schedules and runs a {@code ClientGetter} fetch, and then
+ * hands the result to subclass hooks for validation and deployment. Instances are long‑lived and
+ * typically created once per updater type. They maintain internal state such as the latest
+ * available and fetched versions, whether a fetch is currently in progress, and temporary file
+ * paths used to persist fetched blobs.
  *
  * <p>Thread‑safety: the updater uses synchronized blocks to protect mutable fields that are shared
  * across callbacks (e.g., edition discovery, fetch success/failure). Subclasses should assume that
@@ -62,7 +62,6 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  *   <li>Exposes helper accessors for blob files and progress reporting.
  * </ul>
  *
- * @see network.crypta.node.updater.PluginJarUpdater
  * @see network.crypta.node.updater.CoreUpdater
  */
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
@@ -129,8 +128,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   /**
    * Returns a human‑readable name for the artifact handled by this updater.
    *
-   * <p>The name appears in log messages and user alerts. Implementations typically return a plugin
-   * identifier or a concise descriptor of the core manifest.
+   * <p>The name appears in log messages and user alerts. Implementations typically return a concise
+   * descriptor of the artifact being updated.
    *
    * @return a concise artifact name suitable for logs and UI; never {@code null}
    */
@@ -508,7 +507,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     Bucket bucket = result.asBucket();
     if (bucket == null) return;
     // Borrow the bucket for reading only; do NOT close/free it here because
-    // PluginJarUpdater keeps the FetchResult around to deploy the JAR later.
+    // subclasses may retain the FetchResult for later deployment handling.
     try (InputStream is = bucket.getInputStream()) {
       parseManifestBounded(is);
     } catch (IOException _) {

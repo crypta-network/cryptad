@@ -11,6 +11,10 @@ import java.util.Map.Entry;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import network.crypta.compat.BandwidthIndicator;
+import network.crypta.compat.DetectedIP;
+import network.crypta.compat.ExternalIpDetector;
+import network.crypta.compat.PortForwardProvider;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
@@ -22,10 +26,6 @@ import network.crypta.node.useralerts.IPUndetectedUserAlert;
 import network.crypta.node.useralerts.InvalidAddressOverrideUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.pluginmanager.DetectedIP;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
-import network.crypta.pluginmanager.FredPluginIPDetector;
-import network.crypta.pluginmanager.FredPluginPortForward;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.StringCallback;
@@ -46,7 +46,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  *
  * <ul>
  *   <li>Local interface inspection via {@link IPAddressDetector}
- *   <li>Plugin reports (e.g., STUN) via {@link IPDetectorPluginManager}
+ *   <li>External detector reports (e.g., STUN) via {@link IPDetectorManager}
  *   <li>Peer observations (what connected peers report)
  *   <li>User-provided overrides and temporary hints
  * </ul>
@@ -76,8 +76,8 @@ public class NodeIPDetector {
   /** Previously used IP address, if any. */
   FreenetInetAddress oldIPAddress;
 
-  /** Plugin-detected public addresses and associated NAT characteristics. */
-  DetectedIP[] pluginDetectedIPs;
+  /** Public addresses and NAT characteristics reported by external detectors. */
+  DetectedIP[] externalDetectedIPs;
 
   /** Most recent detection result (may contain multiple candidates). */
   FreenetInetAddress[] lastIPAddress;
@@ -114,8 +114,8 @@ public class NodeIPDetector {
   /** Low-level IP address detector for local interfaces. */
   private final IPAddressDetector ipDetector;
 
-  /** Manages plugin-based IP detectors (for example, STUN). */
-  final IPDetectorPluginManager ipDetectorManager;
+  /** Manages external IP detectors (for example, STUN). */
+  final IPDetectorManager ipDetectorManager;
 
   /** UserAlert shown when {@code ipAddressOverride} has invalid hostname or IP syntax. */
   private final InvalidAddressOverrideUserAlert invalidAddressOverrideAlert;
@@ -131,8 +131,8 @@ public class NodeIPDetector {
   /** Set when there is evidence that the node may be behind a symmetric NAT. */
   boolean maybeSymmetric;
 
-  /** Whether plugin detectors have completed (or none are present). */
-  private boolean hasDetectedPM;
+  /** Whether external detectors have completed (or none are present). */
+  private boolean hasDetectedDetectors;
 
   /** Whether local interfaces and peers have been queried for address inference. */
   private boolean hasDetectedIAD;
@@ -152,7 +152,7 @@ public class NodeIPDetector {
    */
   public NodeIPDetector(Node node) {
     this.node = node;
-    ipDetectorManager = new IPDetectorPluginManager(node, this);
+    ipDetectorManager = new IPDetectorManager(node, this);
     ipDetector = new IPAddressDetector(SECONDS.toMillis(10), this);
     invalidAddressOverrideAlert = new InvalidAddressOverrideUserAlert(node);
     primaryIPUndetectedAlert = new IPUndetectedUserAlert(node);
@@ -172,19 +172,20 @@ public class NodeIPDetector {
   }
 
   /**
-   * Notifies detector plugins about changes in the public interface port set.
+   * Notifies external port-forward providers about changes in the public interface port set.
    *
    * @param ports current set of public interface ports to announce
    */
-  public void notifyPortChange(Set<network.crypta.pluginmanager.ForwardPort> ports) {
+  public void notifyPortChange(Set<network.crypta.compat.ForwardPort> ports) {
     ipDetectorManager.notifyPortChange(ports);
   }
 
   /**
    * Detects the current primary IP address candidates.
    *
-   * <p>Combines local interface detection, plugin reports, peer inference, and configuration
-   * overrides. The result may contain multiple addresses when more than one source is plausible.
+   * <p>Combines local interface detection, external detector reports, peer inference, and
+   * configuration overrides. The result may contain multiple addresses when more than one source is
+   * plausible.
    *
    * @param dumpLocalAddresses when {@code true}, filters out non-routable entries unless they are
    *     explicit hostnames; otherwise returns all candidates
@@ -290,7 +291,7 @@ public class NodeIPDetector {
     InetAddress[] detectedAddrs = getDirectDetectionsAndMarkDetected();
 
     addedValidIP |= addDirectDetections(addresses, detectedAddrs);
-    addedValidIP |= addPluginDetections(addresses);
+    addedValidIP |= addExternalDetections(addresses);
 
     boolean hadAddedValidIP = addedValidIP;
     PeerInferenceResult peers = inferFromPeers(addresses, detectedAddrs);
@@ -331,15 +332,15 @@ public class NodeIPDetector {
     return addedValidIP;
   }
 
-  private boolean addPluginDetections(List<FreenetInetAddress> addresses) {
+  private boolean addExternalDetections(List<FreenetInetAddress> addresses) {
     boolean addedValidIP = false;
-    if (pluginDetectedIPs == null) return false;
-    for (DetectedIP pluginDetectedIP : pluginDetectedIPs) {
-      InetAddress addr = pluginDetectedIP.publicAddress;
+    if (externalDetectedIPs == null) return false;
+    for (DetectedIP detectedIp : externalDetectedIPs) {
+      InetAddress addr = detectedIp.publicAddress;
       if (addr == null) continue;
       FreenetInetAddress a = new FreenetInetAddress(addr);
       if (!addresses.contains(a)) {
-        LOG.info("Plugin reports public address {}", a);
+        LOG.info("External detector reports public address {}", a);
         addresses.add(a);
         if (a.isRealInternetAddress(false, false, false)) addedValidIP = true;
       }
@@ -505,17 +506,18 @@ public class NodeIPDetector {
   }
 
   /**
-   * Processes plugin-reported detections.
+   * Processes detections reported by external detectors.
    *
    * <p>Each {@link DetectedIP} may include the public address and an MTU estimate. This method
    * updates MTU minima and triggers an address re-detection.
    *
-   * @param list plugin detection results; {@code null} entries are ignored
+   * @param list detection results; {@code null} entries are ignored
    */
   public void processDetectedIPs(DetectedIP[] list) {
-    pluginDetectedIPs = list;
-    for (DetectedIP pluginDetectedIP : pluginDetectedIPs)
-      reportMTU(pluginDetectedIP.getMtu(), pluginDetectedIP.publicAddress instanceof Inet6Address);
+    externalDetectedIPs = list;
+    for (DetectedIP detectedIp : externalDetectedIPs) {
+      reportMTU(detectedIp.getMtu(), detectedIp.publicAddress instanceof Inet6Address);
+    }
     redetectAddress();
   }
 
@@ -552,7 +554,7 @@ public class NodeIPDetector {
   }
 
   /**
-   * Sets a previously used address as a hint for inference when peers/plugins provide little data.
+   * Sets a previously used address as a hint for inference when peer evidence is limited.
    *
    * @param freenetAddress the historical address to consider
    */
@@ -787,7 +789,7 @@ public class NodeIPDetector {
   }
 
   /**
-   * Hints that a peer connected, prompting plugin detectors to run at elevated priority.
+   * Hints that a peer connected, prompting external detectors to run at elevated priority.
    *
    * <p>Runs asynchronously on a high-priority thread.
    */
@@ -812,29 +814,29 @@ public class NodeIPDetector {
             });
   }
 
-  /** Registers a plugin-based IP detector. */
-  public void registerIPDetectorPlugin(FredPluginIPDetector detector) {
-    ipDetectorManager.registerDetectorPlugin(detector);
+  /** Registers an external IP detector. */
+  public void registerExternalIpDetector(ExternalIpDetector detector) {
+    ipDetectorManager.registerExternalDetector(detector);
   }
 
-  /** Unregisters a plugin-based IP detector. */
-  public void unregisterIPDetectorPlugin(FredPluginIPDetector detector) {
-    ipDetectorManager.unregisterDetectorPlugin(detector);
+  /** Unregisters an external IP detector. */
+  public void unregisterExternalIpDetector(ExternalIpDetector detector) {
+    ipDetectorManager.unregisterExternalDetector(detector);
   }
 
   /**
    * Returns whether all detection paths have completed.
    *
-   * @return {@code true} when neither plugin nor interface detection is still pending
+   * @return {@code true} when neither external nor interface detection is still pending
    */
   public synchronized boolean isDetecting() {
-    return !(hasDetectedPM && hasDetectedIAD);
+    return !(hasDetectedDetectors && hasDetectedIAD);
   }
 
-  void hasDetectedPM() {
-    if (LOG.isDebugEnabled()) LOG.debug("Mark plugin detection complete");
+  void markExternalDetectionsComplete() {
+    if (LOG.isDebugEnabled()) LOG.debug("Mark external detection complete");
     synchronized (this) {
-      hasDetectedPM = true;
+      hasDetectedDetectors = true;
     }
   }
 
@@ -882,50 +884,48 @@ public class NodeIPDetector {
     }
   }
 
-  /** Registers a port-forward plugin (e.g., UPnP/NATPMP). */
-  public void registerPortForwardPlugin(FredPluginPortForward forward) {
-    ipDetectorManager.registerPortForwardPlugin(forward);
+  /** Registers a port-forward provider (for example, UPnP/NAT-PMP). */
+  public void registerPortForwardProvider(PortForwardProvider forward) {
+    ipDetectorManager.registerPortForwardProvider(forward);
   }
 
-  /** Unregisters a port-forward plugin. */
-  public void unregisterPortForwardPlugin(FredPluginPortForward forward) {
-    ipDetectorManager.unregisterPortForwardPlugin(forward);
+  /** Unregisters a port-forward provider. */
+  public void unregisterPortForwardProvider(PortForwardProvider forward) {
+    ipDetectorManager.unregisterPortForwardProvider(forward);
   }
 
   // Note: multiple instances are not supported; a single indicator is tracked.
   /**
-   * Registers the active bandwidth indicator plugin.
+   * Registers the active bandwidth indicator.
    *
-   * @param indicator the plugin instance to register
+   * @param indicator indicator instance to register
    */
-  public synchronized void registerBandwidthIndicatorPlugin(
-      FredPluginBandwidthIndicator indicator) {
+  public synchronized void registerBandwidthIndicator(BandwidthIndicator indicator) {
     bandwidthIndicator = indicator;
   }
 
   /**
-   * Unregisters the active bandwidth indicator plugin.
+   * Unregisters the active bandwidth indicator.
    *
-   * @param indicator the plugin instance to unregister (logged for diagnostics)
+   * @param indicator indicator instance to unregister (logged for diagnostics)
    */
-  public synchronized void unregisterBandwidthIndicatorPlugin(
-      FredPluginBandwidthIndicator indicator) {
+  public synchronized void unregisterBandwidthIndicator(BandwidthIndicator indicator) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Unregistering bandwidth indicator plugin: {}", indicator);
+      LOG.debug("Unregistering bandwidth indicator: {}", indicator);
     }
     bandwidthIndicator = null;
   }
 
   /**
-   * Returns the currently registered bandwidth indicator plugin, if any.
+   * Returns the currently registered bandwidth indicator, if any.
    *
    * @return the indicator or {@code null}
    */
-  public synchronized FredPluginBandwidthIndicator getBandwidthIndicator() {
+  public synchronized BandwidthIndicator getBandwidthIndicator() {
     return bandwidthIndicator;
   }
 
-  private FredPluginBandwidthIndicator bandwidthIndicator;
+  private BandwidthIndicator bandwidthIndicator;
 
   boolean hasValidAddressOverride() {
     synchronized (this) {
@@ -937,22 +937,22 @@ public class NodeIPDetector {
     node.services().clientCore().getAlerts().register(invalidAddressOverrideAlert);
   }
 
-  /** Adds the connection type UI box content via the plugin manager. */
+  /** Adds the connection type UI box content via the detector manager. */
   public void addConnectionTypeBox(HTMLNode contentNode) {
     ipDetectorManager.addConnectionTypeBox(contentNode);
   }
 
   /**
-   * Returns whether there are no registered IP detector plugins.
+   * Returns whether no external IP detectors are currently registered.
    *
    * @return {@code true} when detection relies solely on local interfaces and peers
    */
-  public boolean noDetectPlugins() {
+  public boolean hasNoExternalIpDetectors() {
     return !ipDetectorManager.hasDetectors();
   }
 
-  /** Returns whether the JSTUN plugin is present. */
-  public boolean hasJSTUN() {
-    return ipDetectorManager.hasJSTUN();
+  /** Returns whether a STUN detector is present. */
+  public boolean hasStunDetector() {
+    return ipDetectorManager.hasStunDetector();
   }
 }

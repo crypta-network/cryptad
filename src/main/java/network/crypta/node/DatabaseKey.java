@@ -10,14 +10,13 @@ import network.crypta.support.api.Bucket;
 /**
  * Immutable wrapper around the node-local database secret.
  *
- * <p>Derives context-separated symmetric keys for persisted components (client layer and plugin
- * stores) using HMAC-SHA-256. The key bytes are kept private, defensively copied on construction,
- * and never returned directly. Instances are thread-safe.
+ * <p>Derives context-separated symmetric keys for persisted components using HMAC-SHA-256. The key
+ * bytes are kept private, defensively copied on construction, and never returned directly.
+ * Instances are thread-safe.
  */
 public class DatabaseKey {
 
-  // KDF context labels (ASCII) for domain separation between derived keys.
-  private static final byte[] PLUGIN = "PLUGIN".getBytes(StandardCharsets.UTF_8);
+  // KDF context label (ASCII) for domain separation between derived keys.
   private static final byte[] CLIENT_LAYER = "CLIENT".getBytes(StandardCharsets.UTF_8);
 
   // Backing key material. Not exposed and never mutated after construction.
@@ -61,29 +60,6 @@ public class DatabaseKey {
     byte[] databaseKey = new byte[32];
     random.nextBytes(databaseKey);
     return new DatabaseKey(databaseKey);
-  }
-
-  /**
-   * Derives a per-plugin encryption key.
-   *
-   * <p>Formula: {@code HMAC-SHA-256(key, key || "PLUGIN" || id)}, where {@code id} is the UTF-8
-   * bytes of {@code storeIdentifier}. The {@code "PLUGIN"} label provides domain separation from
-   * other derived keys.
-   *
-   * @param storeIdentifier plugin identifier (for example, a class name); must not be {@code null}.
-   *     The value should be stable across restarts so existing data remains readable.
-   * @return a 32-byte key derived with HMAC-SHA-256.
-   */
-  public byte[] getPluginStoreKey(String storeIdentifier) {
-    byte[] id = storeIdentifier.getBytes(StandardCharsets.UTF_8);
-    byte[] full = new byte[key.length + PLUGIN.length + id.length];
-    int x = 0;
-    System.arraycopy(key, 0, full, 0, key.length);
-    x += key.length;
-    System.arraycopy(PLUGIN, 0, full, x, PLUGIN.length);
-    x += PLUGIN.length;
-    System.arraycopy(id, 0, full, x, id.length);
-    return HMAC.macWithSHA256(key, full);
   }
 
   /**

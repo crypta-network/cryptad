@@ -28,7 +28,7 @@ public interface HTTPRequest {
   /**
    * Returns the request path.
    *
-   * <p>The segment identifying the toadlet/plugin is already removed from this path.
+   * <p>The segment identifying the dispatched toadlet is already removed from this path.
    *
    * @return the normalized path component of the request URI
    */

@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -38,10 +37,10 @@ class PageMakerTest {
   }
 
   @Test
-  void getPluginL10nCSSIdentifier_buildsFromClassNameAndKey() {
-    DummyPlugin plugin = new DummyPlugin();
-
-    String identifier = PageMaker.getPluginL10nCSSIdentifier(plugin, "testKey");
+  void filterCSSIdentifier_whenInputContainsClassNameLikeChars_filtersDeterministically() {
+    String identifier =
+        PageMaker.filterCSSIdentifier(
+            "network.crypta.clients.http.PageMakerTest$DummyPlugin-testKey");
 
     assertEquals("network_crypta_clients_http_PageMakerTest_DummyPlugin-testKey", identifier);
   }
@@ -191,18 +190,6 @@ class PageMakerTest {
 
     assertThrows(
         NullPointerException.class,
-        () -> maker.addNavigationLink("missing", "/path", "name", "title", false, null, null));
-  }
-
-  private static final class DummyPlugin implements FredPluginL10n {
-    @Override
-    public String getString(String key) {
-      return key;
-    }
-
-    @Override
-    public void setLanguage(network.crypta.l10n.BaseL10n.LANGUAGE newLanguage) {
-      // no-op for tests
-    }
+        () -> maker.addNavigationLink("missing", "/path", "name", "title", false, null));
   }
 }

@@ -36,8 +36,6 @@ import network.crypta.node.stats.DataStoreInstanceType;
 import network.crypta.node.stats.DataStoreStats;
 import network.crypta.node.stats.StatsNotAvailableException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.pluginmanager.PluginInfoWrapper;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.BandwidthStatsContainer;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
@@ -46,11 +44,11 @@ import network.crypta.support.api.HTTPRequest;
  * Serves the `/diagnostic/` HTTP endpoint that aggregates runtime status for a running Crypta node.
  *
  * <p>This toadlet renders a plain-text snapshot that combines JVM resource details, datastore
- * sizes, success rates, bandwidth usage, peer health, plugin state, work queues, and thread
- * diagnostics into a single page intended for administrators. Callers typically access it via the
- * built-in web interface when troubleshooting connectivity, storage pressure, or performance
- * anomalies. The handler executes synchronously on the toadlet thread and consults live {@link
- * Node} services, so values reflect the moment of invocation rather than cached metrics.
+ * sizes, success rates, bandwidth usage, peer health, update/runtime status, work queues, and
+ * thread diagnostics into a single page intended for administrators. Callers typically access it
+ * via the built-in web interface when troubleshooting connectivity, storage pressure, or
+ * performance anomalies. The handler executes synchronously on the toadlet thread and consults live
+ * {@link Node} services, so values reflect the moment of invocation rather than cached metrics.
  *
  * <p>The instance is tied to a specific node and reuses shared formatters to ensure stable numeric
  * output. No state is retained between requests beyond these formatters, making the class safe for
@@ -59,7 +57,7 @@ import network.crypta.support.api.HTTPRequest;
  * instances from concurrent use.
  *
  * <ul>
- *   <li>Gathers node, datastore, bandwidth, peer, plugin, queue, and thread information.
+ *   <li>Gathers node, datastore, bandwidth, peer, queue, and thread information.
  *   <li>Requires full-access authentication before emitting diagnostics.
  *   <li>Designed for operational observability rather than end-user presentation.
  * </ul>
@@ -115,8 +113,8 @@ public class DiagnosticToadlet extends Toadlet {
    * <p>The handler first enforces full-access permissions on the {@link ToadletContext}, then
    * refreshes bandwidth statistics and gathers a series of live metrics: version data, system
    * memory and CPU figures, datastore usage and success rates, activity counters, peer summaries,
-   * bandwidth caps, plugin state, queued requests, and thread diagnostics. Formatting occurs inside
-   * a synchronized block to guard shared {@link DecimalFormat} instances. On success, it responds
+   * bandwidth caps, queued requests, and thread diagnostics. Formatting occurs inside a
+   * synchronized block to guard shared {@link DecimalFormat} instances. On success, it responds
    * with HTTP 200 and the assembled plaintext body; on failure it lets I/O and toadlet-specific
    * exceptions propagate to the caller for higher-level handling.
    *
@@ -156,7 +154,6 @@ public class DiagnosticToadlet extends Toadlet {
       appendActivity(textBuilder);
       appendPeerStatistics(textBuilder);
       appendBandwidth(textBuilder, nodeConfig);
-      appendPlugins(textBuilder);
       appendQueue(textBuilder);
       appendThreadDiagnostics(textBuilder);
     }
@@ -846,32 +843,6 @@ public class DiagnosticToadlet extends Toadlet {
                   Integer.toString((int) (totalBytesSentRemaining * 100 / total[0]))
                 }))
         .append("\n");
-  }
-
-  private void appendPlugins(StringBuilder textBuilder) {
-    textBuilder.append("Plugins:\n");
-    PluginManager pluginManager = node.services().pluginManager();
-    if (!pluginManager.getPlugins().isEmpty()) {
-      textBuilder.append(baseL10n.getString("PluginToadlet.pluginListTitle")).append("\n");
-      for (PluginInfoWrapper plugin : pluginManager.getPlugins()) {
-        appendPlugin(textBuilder, plugin);
-      }
-    }
-    textBuilder.append("\n");
-  }
-
-  private void appendPlugin(StringBuilder textBuilder, PluginInfoWrapper plugin) {
-    long version = plugin.getPluginLongVersion();
-    textBuilder
-        .append(plugin.getFilename())
-        .append(" (")
-        .append(plugin.getPluginClassName())
-        .append(") - ")
-        .append(plugin.getPluginVersion());
-    if (version != -1) {
-      textBuilder.append(" (").append(version).append(")");
-    }
-    textBuilder.append(" ").append(plugin.getThreadName()).append("\n");
   }
 
   private void appendQueue(StringBuilder textBuilder) {

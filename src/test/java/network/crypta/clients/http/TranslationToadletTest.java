@@ -2,11 +2,9 @@ package network.crypta.clients.http;
 
 import java.lang.reflect.Field;
 import java.net.URI;
-import java.util.Collections;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
@@ -40,7 +38,6 @@ class TranslationToadletTest {
   @Mock private HighLevelSimpleClient client;
   @Mock private network.crypta.node.Node node;
   @Mock private network.crypta.node.NodeClientCore core;
-  @Mock private PluginManager pluginManager;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
 
@@ -64,8 +61,6 @@ class TranslationToadletTest {
     network.crypta.node.subsystem.NodeServicesSubsystem services =
         org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
     when(node.services()).thenReturn(services);
-    when(services.pluginManager()).thenReturn(pluginManager);
-    when(pluginManager.getPlugins()).thenReturn(Collections.emptySet());
 
     toadlet = new TranslationToadlet(client, core);
   }

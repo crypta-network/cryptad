@@ -6,11 +6,8 @@ import network.crypta.crypt.HMAC;
 import network.crypta.crypt.RandomSource;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -35,19 +32,6 @@ class DatabaseKeyTest {
     return key;
   }
 
-  private static byte[] derivePluginExpected(byte[] dbKey, String storeId) {
-    byte[] id = storeId.getBytes(StandardCharsets.UTF_8);
-    byte[] plugin = "PLUGIN".getBytes(StandardCharsets.UTF_8);
-    byte[] full = new byte[dbKey.length + plugin.length + id.length];
-    int x = 0;
-    System.arraycopy(dbKey, 0, full, 0, dbKey.length);
-    x += dbKey.length;
-    System.arraycopy(plugin, 0, full, x, plugin.length);
-    x += plugin.length;
-    System.arraycopy(id, 0, full, x, id.length);
-    return HMAC.macWithSHA256(dbKey, full);
-  }
-
   private static byte[] deriveClientExpected(byte[] dbKey) {
     byte[] client = "CLIENT".getBytes(StandardCharsets.UTF_8);
     byte[] full = new byte[dbKey.length + client.length];
@@ -56,44 +40,6 @@ class DatabaseKeyTest {
     x += dbKey.length;
     System.arraycopy(client, 0, full, x, client.length);
     return HMAC.macWithSHA256(dbKey, full);
-  }
-
-  static String[] storeIds() {
-    return new String[] {"", "MyPlugin", "πlugïn-数据"};
-  }
-
-  @ParameterizedTest
-  @MethodSource("storeIds")
-  @DisplayName("getPluginStoreKey derives expected 32-byte key for various identifiers")
-  void getPluginStoreKey_variousInputs_returnsExpectedKey(String storeId) {
-    // Arrange
-    byte[] key = fixedKey32();
-    DatabaseKey dbKey = new DatabaseKey(key);
-    byte[] expected = derivePluginExpected(key, storeId);
-
-    // Act
-    byte[] actual = dbKey.getPluginStoreKey(storeId);
-
-    // Assert
-    assertEquals(32, actual.length, "HMAC-SHA-256 output length");
-    assertArrayEquals(expected, actual);
-  }
-
-  @Test
-  @SuppressWarnings("DataFlowIssue")
-  void getPluginStoreKey_whenStoreIdNull_throwsNPE() {
-    DatabaseKey dbKey = new DatabaseKey(fixedKey32());
-    assertThrows(NullPointerException.class, () -> dbKey.getPluginStoreKey(null));
-  }
-
-  @Test
-  void getPluginStoreKey_whenKeyNot32_throwsIAE() {
-    // Arrange: 16-byte key triggers HMAC key-length guard
-    byte[] bad = new byte[16];
-    DatabaseKey dbKey = new DatabaseKey(bad);
-
-    // Act + Assert
-    assertThrows(IllegalArgumentException.class, () -> dbKey.getPluginStoreKey("x"));
   }
 
   @Test

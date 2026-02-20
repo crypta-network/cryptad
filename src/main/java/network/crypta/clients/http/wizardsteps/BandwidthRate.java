@@ -8,7 +8,6 @@ import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
-import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,9 +16,9 @@ import org.slf4j.LoggerFactory;
  * Wizard step that configures rate-based bandwidth limits.
  *
  * <p>This step renders a set of common “connection profile” presets and optionally adds a
- * recommendation derived from the bandwidth-indicator plugin when available. It presents these
- * choices as a radio group containing byte-per-second pairs (download/upload), and also provides a
- * custom entry row where the user may type their own limits.
+ * recommendation derived from the bandwidth indicator when available. It presents these choices as
+ * a radio group containing byte-per-second pairs (download/upload), and also provides a custom
+ * entry row where the user may type their own limits.
  *
  * <p>A typical interaction is: {@link #getStep(HTTPRequest, PageHelper)} renders the form, the user
  * selects a preset or enters both custom fields, and {@link #postStep(HTTPRequest)} validates and
@@ -49,7 +48,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
    * PageHelper)}. Construction does not apply configuration changes; persistence occurs only after
    * a successful {@link #postStep(HTTPRequest)} submission.
    *
-   * @param core node core used to access runtime services such as plugin indicators
+   * @param core node core used to access runtime services such as bandwidth indicators
    * @param config node configuration instance that receives the selected bandwidth limits
    */
   public BandwidthRate(NodeClientCore core, Config config) {
@@ -131,7 +130,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
               detected.downBytes / 2, detected.upBytes / 2, "bandwidthDetected", true);
       addLimitRow(table, usable, true, true);
       addedDefault = true;
-    } catch (PluginNotFoundException | IllegalValueException e) {
+    } catch (BandwidthDetectionUnavailableException | IllegalValueException e) {
       LOG.info(e.getMessage(), e);
     }
 

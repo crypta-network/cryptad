@@ -1,7 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.pluginmanager.FredPluginL10n;
-
 /**
  * Immutable registration payload describing how a {@link Toadlet} is exposed by a {@link
  * ToadletContainer}.
@@ -21,7 +19,7 @@ import network.crypta.pluginmanager.FredPluginL10n;
  *
  * <ul>
  *   <li>Captures routing state: menu identifier, URL prefix, and ordering flag.
- *   <li>Captures menu metadata: name/title keys, optional visibility callback, and localization.
+ *   <li>Captures menu metadata: name/title keys and optional visibility callback.
  *   <li>Remains immutable so registration decisions are repeatable and thread-safe.
  * </ul>
  *
@@ -32,7 +30,6 @@ import network.crypta.pluginmanager.FredPluginL10n;
  * @param title localization key for tooltip text; may be {@code null} if unused
  * @param fullOnly whether the menu link is limited to clients with full access
  * @param callback optional callback that can enable or hide the link at runtime
- * @param l10n optional localization helper to resolve {@code name} and {@code title}
  */
 public record ToadletRegistration(
     String menu,
@@ -41,8 +38,7 @@ public record ToadletRegistration(
     String name,
     String title,
     boolean fullOnly,
-    LinkEnabledCallback callback,
-    FredPluginL10n l10n) {
+    LinkEnabledCallback callback) {
 
   /**
    * Create a registration that routes requests without defining a menu entry.
@@ -63,7 +59,7 @@ public record ToadletRegistration(
    */
   public static ToadletRegistration basic(
       String menu, String urlPrefix, boolean atFront, boolean fullOnly) {
-    return new ToadletRegistration(menu, urlPrefix, atFront, null, null, fullOnly, null, null);
+    return new ToadletRegistration(menu, urlPrefix, atFront, null, null, fullOnly, null);
   }
 
   /**
@@ -94,38 +90,6 @@ public record ToadletRegistration(
       String title,
       boolean fullOnly,
       LinkEnabledCallback callback) {
-    return new ToadletRegistration(menu, urlPrefix, atFront, name, title, fullOnly, callback, null);
-  }
-
-  /**
-   * Create a registration that includes menu metadata and an explicit localization helper.
-   *
-   * <p>Use this factory when the caller owns the {@link FredPluginL10n} instance responsible for
-   * resolving menu labels and tooltips. The localization helper is stored alongside the menu keys,
-   * so the container can defer translation until render time. All routing inputs are retained
-   * as-is; callers should supply a stable {@code urlPrefix} and decide whether the toadlet should
-   * be prioritized ahead of earlier registrations. If {@code menu} or {@code name} is {@code null},
-   * the container will still register the toadlet but will omit the navigation link entirely.
-   *
-   * @param menu menu grouping key used to place the link in navigation
-   * @param urlPrefix leading path segment used for routing and prefix matching
-   * @param atFront whether to register ahead of earlier matching prefixes
-   * @param name localization key or label token for the menu entry
-   * @param title localization key or tooltip token for the menu entry
-   * @param fullOnly whether the menu link should require full-access permissions
-   * @param callback optional link-visibility callback invoked when rendering menus
-   * @param l10n localization helper used to resolve menu labels and tooltip text
-   * @return immutable registration including menu metadata and localization helper
-   */
-  public static ToadletRegistration menuLink(
-      String menu,
-      String urlPrefix,
-      boolean atFront,
-      String name,
-      String title,
-      boolean fullOnly,
-      LinkEnabledCallback callback,
-      FredPluginL10n l10n) {
-    return new ToadletRegistration(menu, urlPrefix, atFront, name, title, fullOnly, callback, l10n);
+    return new ToadletRegistration(menu, urlPrefix, atFront, name, title, fullOnly, callback);
   }
 }

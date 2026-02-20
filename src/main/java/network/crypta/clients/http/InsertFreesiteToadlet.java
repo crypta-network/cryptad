@@ -44,7 +44,7 @@ public class InsertFreesiteToadlet extends Toadlet {
   /**
    * Handle {@code GET /insertsite/} by emitting a localized help page that explains how to publish
    * a freesite. The method assembles a {@link PageNode}, injects the current alert summary, builds
-   * an infobox with helper links (plugins page, jSite downloads, on-network tutorials, and
+   * an infobox with helper links (FlogHelper, jSite downloads, on-network tutorials, and
    * Thingamablog), and returns a 200 OK HTML response via {@link #writeHTMLReply(ToadletContext,
    * int, String, String)}. No request parameters are inspected and no state is modified.
    *
@@ -72,12 +72,7 @@ public class InsertFreesiteToadlet extends Toadlet {
 
     contentBox.addChild("p", l10n("content1"));
 
-    NodeL10n.getBase()
-        .addL10nSubstitution(
-            contentBox.addChild("p"),
-            "InsertFreesiteToadlet.contentFlogHelper",
-            new String[] {"plugins"},
-            new HTMLNode[] {HTMLNode.link(PproxyToadlet.PLUGINS_PATH)});
+    contentBox.addChild("p", l10n("contentFlogHelper"));
 
     NodeL10n.getBase()
         .addL10nSubstitution(

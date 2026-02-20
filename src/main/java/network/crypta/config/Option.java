@@ -2,7 +2,6 @@ package network.crypta.config;
 
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.pluginmanager.FredPluginConfigurable;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -362,47 +361,15 @@ public abstract class Option<T> {
     return getLocalisedLongDesc(NodeL10n.getBase());
   }
 
-  /**
-   * Returns the localized short description as an {@link HTMLNode}.
-   *
-   * <p>When {@code plugin} is {@code null}, the text is produced via {@link NodeL10n} and may
-   * include translation metadata. When {@code plugin} is non-null, the string is obtained from the
-   * plugin and wrapped in a simple anchor node.
-   *
-   * @param plugin Optional plugin to resolve translations from.
-   * @return HTML node containing the translated short description.
-   */
-  public HTMLNode getShortDescNode(FredPluginConfigurable plugin) {
-    return (plugin == null)
-        ? NodeL10n.getBase()
-            .getHTMLNode(
-                getShortDesc(), new String[] {DEFAULT_L10N_KEY}, new String[] {getDefault()})
-        : new HTMLNode("#", plugin.getString(getShortDesc()));
-  }
-
-  /** Convenience overload of {@link #getShortDescNode(FredPluginConfigurable)} without a plugin. */
+  /** Returns the localized short description as an {@link HTMLNode}. */
   public HTMLNode getShortDescNode() {
-    return getShortDescNode(null);
+    return NodeL10n.getBase()
+        .getHTMLNode(getShortDesc(), new String[] {DEFAULT_L10N_KEY}, new String[] {getDefault()});
   }
 
-  /**
-   * Returns the localized long description as an {@link HTMLNode}.
-   *
-   * <p>See {@link #getShortDescNode(FredPluginConfigurable)} for resolution rules.
-   *
-   * @param plugin Optional plugin to resolve translations from.
-   * @return HTML node containing the translated long description.
-   */
-  public HTMLNode getLongDescNode(FredPluginConfigurable plugin) {
-    return (plugin == null)
-        ? NodeL10n.getBase()
-            .getHTMLNode(
-                getLongDesc(), new String[] {DEFAULT_L10N_KEY}, new String[] {getDefault()})
-        : new HTMLNode("#", plugin.getString(getLongDesc()));
-  }
-
-  /** Convenience overload of {@link #getLongDescNode(FredPluginConfigurable)} without a plugin. */
+  /** Returns the localized long description as an {@link HTMLNode}. */
   public HTMLNode getLongDescNode() {
-    return getLongDescNode(null);
+    return NodeL10n.getBase()
+        .getHTMLNode(getLongDesc(), new String[] {DEFAULT_L10N_KEY}, new String[] {getDefault()});
   }
 }

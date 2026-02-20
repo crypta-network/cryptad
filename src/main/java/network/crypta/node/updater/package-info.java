@@ -6,8 +6,7 @@
  * the core ("CoreUpdater"), replacing self-replacement of {@code cryptad.jar}. Core updates fetch a
  * descriptor (for example, {@code info/<N>} over the existing update USK), select an installer that
  * matches the current OS and architecture, download it under a versioned directory, and offer a
- * guided installation. Plugin updates continue to use JAR downloads and deploys without changing
- * the running core binary.
+ * guided installation.
  *
  * <p>At a high level the updater strives to be robust, explicit, and user-driven. Network and file
  * operations surface progress and errors clearly so callers can present actionable status to users
@@ -22,12 +21,11 @@
  * <ul>
  *   <li>Discovers the platform (OS and CPU architecture) and available package managers before
  *       selecting an installer.
- *   <li>Downloads installers and plugin JARs to a predictable, versioned location and reports
- *       progress when available.
+ *   <li>Downloads installers to a predictable, versioned location and reports progress when
+ *       available.
  *   <li>Validates content by cryptographic checks; only verified artifacts proceed to the install
  *       or deploy phase.
- *   <li>Handles core updates via external installers (for example DEB/RPM/DMG/EXE) and keeps plugin
- *       update logic unchanged.
+ *   <li>Handles core updates via external installers (for example DEB/RPM/DMG/EXE).
  *   <li>Exposes HTTP actions such as {@code /core-update/?action=download|install|openStore} so
  *       user interfaces can drive the flow without embedding update logic.
  * </ul>

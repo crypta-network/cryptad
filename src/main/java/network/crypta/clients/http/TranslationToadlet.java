@@ -8,10 +8,7 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.l10n.PluginL10n;
 import network.crypta.node.NodeClientCore;
-import network.crypta.pluginmanager.FredPluginBaseL10n;
-import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet.KeyIterator;
@@ -82,13 +79,11 @@ public class TranslationToadlet extends Toadlet {
   private static final String L10N_CURRENT_TRANSLATION_LABEL = "currentTranslationLabel";
   private static final String PATTERN_LANG = "lang";
   private static final String L10N_CONTRIBUTING_WITH_LANG = "contributingToLabelWithLang";
-  private final NodeClientCore core;
   private BaseL10n base;
   private String translatingFor;
 
   TranslationToadlet(HighLevelSimpleClient client, NodeClientCore core) {
     super(client);
-    this.core = core;
     this.base = NodeL10n.getBase();
     this.translatingFor = "Node";
   }
@@ -356,14 +351,6 @@ public class TranslationToadlet extends Toadlet {
         ctx.getPageMaker().getInfobox(null, translation("selectTranslation"), contentNode);
     ArrayList<String> elementsToTranslate = new ArrayList<>();
     elementsToTranslate.add("Node");
-    for (PluginInfoWrapper pluginInfo :
-        this.core.getNode().services().pluginManager().getPlugins()) {
-      if (!pluginInfo.isBaseL10nPlugin()) {
-        continue;
-      }
-
-      elementsToTranslate.add(pluginInfo.getPluginClassName());
-    }
 
     HTMLNode translatingForForm =
         ctx.addFormChild(translatingForBox, TOADLET_URL, "ChooseWhatToTranslate")
@@ -421,15 +408,6 @@ public class TranslationToadlet extends Toadlet {
 
   private void updateTranslationTarget(HTTPRequest request) {
     final String translateFor = request.getPartAsStringFailsafe(PARAM_TRANSLATING_FOR, 255);
-
-    for (PluginInfoWrapper pluginInfo :
-        this.core.getNode().services().pluginManager().getPlugins()) {
-      if (translateFor.equals(pluginInfo.getPluginClassName()) && pluginInfo.isBaseL10nPlugin()) {
-        FredPluginBaseL10n plugin = (FredPluginBaseL10n) pluginInfo.getPlugin();
-        this.translatingFor = translateFor;
-        this.base = new PluginL10n(plugin).getBase();
-      }
-    }
 
     if ("Node".equals(translateFor)) {
       this.translatingFor = "Node";

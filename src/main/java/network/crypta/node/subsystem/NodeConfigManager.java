@@ -11,19 +11,17 @@ import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.ProgramDirectory;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.StringCallback;
 
 /**
  * Registers node configuration keys and supplies callback implementations for core options.
  *
- * <p>This class wires the {@link SubConfig} entries that the node exposes to users and plugins, and
- * it owns small callback classes that translate configuration changes into live node actions.
- * Typical call sites create one instance per {@link Node} and invoke the configuration setup during
- * startup, before subsystems begin serving requests. The callbacks intentionally keep the logic
- * close to the node so that validation, side effects, and alert updates are performed in a
- * consistent order.
+ * <p>This class wires the {@link SubConfig} entries that the node exposes to users, and it owns
+ * small callback classes that translate configuration changes into live node actions. Typical call
+ * sites create one instance per {@link Node} and invoke the configuration setup during startup,
+ * before subsystems begin serving requests. The callbacks intentionally keep the logic close to the
+ * node so that validation, side effects, and alert updates are performed in a consistent order.
  *
  * <p>Thread safety is constrained to the callback methods themselves. Several callbacks synchronize
  * on their instance to coordinate with the {@link Node} state they mutate. Callers should treat
@@ -344,7 +342,6 @@ public final class NodeConfigManager {
       } catch (MissingResourceException e) {
         throw new InvalidConfigValueException(e.getLocalizedMessage());
       }
-      PluginManager.setLanguage(NodeL10n.getBase().getSelectedLanguage());
     }
 
     @Override

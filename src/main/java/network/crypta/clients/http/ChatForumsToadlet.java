@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
@@ -13,44 +12,34 @@ import network.crypta.support.api.HTTPRequest;
  *
  * <p>This handler produces a simple informational page that points new users to curated discussion
  * tools such as FSNG, FMS, and Sone. It relies solely on localization strings and static USK/SSK
- * links, so responses are deterministic and do not depend on mutable node state. The toadlet keeps
- * only a reference to the {@link PluginManager}, making it effectively stateless and safe to share
- * across requests as long as the underlying dependencies are thread-safe. Because it subclasses
- * {@link Toadlet}, it integrates with the node's HTTP routing and inherits common behaviors such as
- * alert rendering and response framing.
+ * links, so responses are deterministic and do not depend on mutable node state. Because it
+ * subclasses {@link Toadlet}, it integrates with the node's HTTP routing and inherits common
+ * behaviors such as alert rendering and response framing.
  *
  * <p>Typical usage registers the toadlet during node startup so the page appears at {@code /chat/}.
  * The page is intentionally lightweight: it does not initiate background lookups and performs no
  * outbound network access itself; instead, it advertises entry points that users can fetch on
- * demand. The view is suppressed when the Freetalk plugin is active to avoid showing duplicate chat
- * functionality.
+ * demand.
  *
  * <ul>
  *   <li>Provides a localized headline and summary of chat ecosystem options.
  *   <li>Lists stable USK/SSK links for bundled or recommended chat tools.
- *   <li>Omits rendering when Freetalk is present, deferring to the plugin UI.
  * </ul>
  */
 public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
 
-  private final PluginManager plugins;
-
   /**
    * Creates a toadlet that can render the chat/forums landing page using the provided dependencies.
    *
-   * <p>The constructor stores the supplied {@link PluginManager} for later feature gating while
-   * passing the {@link HighLevelSimpleClient} to the {@link Toadlet} base class. No network
-   * operations occur here; the instance is ready for registration immediately after construction
-   * and may be reused across requests because it contains no per-request state.
+   * <p>The constructor passes the {@link HighLevelSimpleClient} to the {@link Toadlet} base class.
+   * No network operations occur here; the instance is ready for registration immediately after
+   * construction and may be reused across requests because it contains no per-request state.
    *
    * @param client high-level client used by the superclass to perform standard toadlet duties; must
    *     be non-null and already initialized for HTTP routing.
-   * @param plugins plugin manager that determines whether chat listings should be shown; must be
-   *     non-null and reflect the current plugin load status.
    */
-  protected ChatForumsToadlet(HighLevelSimpleClient client, PluginManager plugins) {
+  protected ChatForumsToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.plugins = plugins;
   }
 
   /**
@@ -143,22 +132,16 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
   }
 
   /**
-   * Reports whether this toadlet should be reachable based on the current plugin state.
+   * Reports whether this toadlet should be reachable.
    *
-   * <p>The method suppresses the chat/forums listing when the Freetalk plugin is loaded, thereby
-   * avoiding duplicate navigation entries. It performs a lightweight lookup against the provided
-   * {@link ToadletContext}, which is accepted to satisfy the interface but not inspected in the
-   * current implementation. The decision is deterministic for a given plugin manager snapshot and
-   * safe to call from multiple threads provided the {@link PluginManager} implementation supports
-   * concurrent reads.
+   * <p>Plugin runtime support has been removed, so this endpoint is always enabled.
    *
    * @param ctx current toadlet context, unused but available for future environment checks; may be
    *     {@code null} depending on caller conventions.
-   * @return {@code true} when Freetalk is absent and the landing page should be linked, otherwise
-   *     {@code false} to hide the entry point.
+   * @return always {@code true}.
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return !plugins.isPluginLoaded("plugins.Freetalk.Freetalk");
+    return true;
   }
 }

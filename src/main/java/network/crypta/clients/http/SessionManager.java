@@ -17,8 +17,7 @@ import org.slf4j.LoggerFactory;
 import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
- * SessionManager coordinates cookie-backed HTTP sessions for the Crypta HTTP interface and its
- * plugins.
+ * SessionManager coordinates cookie-backed HTTP sessions for the Crypta HTTP interface.
  *
  * <p>It maintains a strict 1:1 mapping between an opaque session ID and a user-provided user ID
  * while keeping lookups in both directions at constant time. A session ID is scoped by cookie path
@@ -83,8 +82,8 @@ public final class SessionManager {
     if (!myCookiePath.toString().startsWith("/"))
       throw new IllegalArgumentException("Illegal cookie path, must start with /: " + myCookiePath);
 
-    // Legacy global-path cookies are intentionally allowed for backward compatibility with plugins
-    // that still rely on the root path.
+    // Legacy global-path cookies are intentionally allowed for backward compatibility with older
+    // clients that still rely on the root path.
 
     mCookiePath = myCookiePath;
     mCookieNamespace = "";

@@ -147,7 +147,6 @@ class FirstTimeWizardToadletTest {
 
     toadlet.handleMethodPOST(new URI(FirstTimeWizardToadlet.TOADLET_URL), request, ctx);
 
-    verify(misc).setUPnP(true);
     verify(misc).setAutoUpdate(true);
     verify(securityNetwork).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
     verify(securityPhysical).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);

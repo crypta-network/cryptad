@@ -56,7 +56,6 @@ class NodeBootstrapTest {
       ProgramDirectory cfgDir = mock(ProgramDirectory.class);
       ProgramDirectory nodeDir = mock(ProgramDirectory.class);
       ProgramDirectory runDir = mock(ProgramDirectory.class);
-      ProgramDirectory pluginDir = mock(ProgramDirectory.class);
       Resolved resolved = new AppDirs().resolve();
 
       when(node.setupProgramDir(
@@ -87,14 +86,6 @@ class NodeBootstrapTest {
               "Node.runDir",
               "Node.runDirLong"))
           .thenReturn(runDir);
-      when(node.setupProgramDir(
-              installConfig,
-              "pluginDir",
-              resolved.dataDir().resolve("plugins").toString(),
-              "Node.pluginDir",
-              "Node.pluginDirLong"))
-          .thenReturn(pluginDir);
-
       NodeBootstrap bootstrap = new NodeBootstrap(node);
       NodeBootstrap.NodeProgramDirs dirs = bootstrap.setupProgramDirectories(installConfig);
 
@@ -102,7 +93,6 @@ class NodeBootstrapTest {
       assertSame(cfgDir, dirs.cfgDir());
       assertSame(nodeDir, dirs.nodeDir());
       assertSame(runDir, dirs.runDir());
-      assertSame(pluginDir, dirs.pluginDir());
 
       InOrder order = inOrder(node);
       order
@@ -137,14 +127,6 @@ class NodeBootstrapTest {
               resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong");
-      order
-          .verify(node)
-          .setupProgramDir(
-              installConfig,
-              "pluginDir",
-              resolved.dataDir().resolve("plugins").toString(),
-              "Node.pluginDir",
-              "Node.pluginDirLong");
       verifyNoMoreInteractions(node);
     } finally {
       resetServiceMode(previousMode);
@@ -162,7 +144,6 @@ class NodeBootstrapTest {
       ProgramDirectory cfgDir = mock(ProgramDirectory.class);
       ProgramDirectory nodeDir = mock(ProgramDirectory.class);
       ProgramDirectory runDir = mock(ProgramDirectory.class);
-      ProgramDirectory pluginDir = mock(ProgramDirectory.class);
       Resolved resolved = new ServiceDirs().resolve();
 
       when(node.setupProgramDir(
@@ -193,14 +174,6 @@ class NodeBootstrapTest {
               "Node.runDir",
               "Node.runDirLong"))
           .thenReturn(runDir);
-      when(node.setupProgramDir(
-              installConfig,
-              "pluginDir",
-              resolved.dataDir().resolve("plugins").toString(),
-              "Node.pluginDir",
-              "Node.pluginDirLong"))
-          .thenReturn(pluginDir);
-
       NodeBootstrap bootstrap = new NodeBootstrap(node);
       NodeBootstrap.NodeProgramDirs dirs = bootstrap.setupProgramDirectories(installConfig);
 
@@ -208,7 +181,6 @@ class NodeBootstrapTest {
       assertSame(cfgDir, dirs.cfgDir());
       assertSame(nodeDir, dirs.nodeDir());
       assertSame(runDir, dirs.runDir());
-      assertSame(pluginDir, dirs.pluginDir());
 
       InOrder order = inOrder(node);
       order
@@ -243,14 +215,6 @@ class NodeBootstrapTest {
               resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong");
-      order
-          .verify(node)
-          .setupProgramDir(
-              installConfig,
-              "pluginDir",
-              resolved.dataDir().resolve("plugins").toString(),
-              "Node.pluginDir",
-              "Node.pluginDirLong");
       verifyNoMoreInteractions(node);
     } finally {
       resetServiceMode(previousMode);

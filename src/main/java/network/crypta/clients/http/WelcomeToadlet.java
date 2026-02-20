@@ -218,59 +218,43 @@ public class WelcomeToadlet extends Toadlet {
   }
 
   /**
-   * Determines whether the full search box should be rendered on the welcome page by checking the
-   * Library plugin state.
+   * Determines whether the full search box should be rendered on the welcome page.
    *
-   * <p>The search UI is visible only when the Library plugin is fully loaded so that requests can
-   * be served immediately. Callers use this to decide between showing the search form, a loading
-   * message, or a “not available” warning. The check is fast and side effect free; it reads plugin
-   * state without scheduling any background work.
+   * <p>The in-page search integration is currently unavailable. Callers use this to decide between
+   * showing the search form and the fallback warning.
    *
-   * @return {@code true} when the Library plugin reports as loaded; {@code false} otherwise,
-   *     including when the plugin manager itself is unavailable
+   * @return always {@code false}.
    */
   public boolean showSearchBox() {
-    // Only show it if Library is loaded.
-    return (node.services().pluginManager() != null
-        && node.services().pluginManager().isPluginLoaded("plugins.Library.Main"));
+    return false;
   }
 
   /**
-   * Indicates that the search plugin is installing or scheduled so the UI can display a progress
-   * notice instead of the full search form.
+   * Indicates whether search integration is currently in a loading state.
    *
-   * <p>The method returns {@code true} while the Library plugin is loading or requested but not yet
-   * active, and also if the plugin manager is absent (treated as “loading” to avoid flicker). This
-   * allows the welcome page to inform users that search will appear once the plugin finishes
-   * starting. No side effects are performed; callers may invoke this on every page render.
+   * <p>Search integration is currently disabled, so this method always reports not-loading.
    *
-   * @return {@code true} when search capability is pending activation; {@code false} once the
-   *     Library plugin is fully loaded or explicitly unavailable
+   * @return always {@code false}.
    */
   public boolean showSearchBoxLoading() {
-    // Only show it if Library is loaded.
-    return (node.services().pluginManager() == null
-        || (!node.services().pluginManager().isPluginLoaded("plugins.Library.Main")
-            && node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad("Library")));
+    return false;
   }
 
   /**
    * Renders the search UI panel into the supplied content node, selecting the appropriate message
-   * or form based on the Library plugin state.
+   * or form based on search availability.
    *
    * <p>When {@link #showSearchBox()} is true, this method builds a text field and submit button
-   * that post to {@code /library/} in a new tab so bookmark browsing remains uninterrupted. If the
-   * plugin is still loading, it emits a localized “loading” notice; when absent, it shows guidance
-   * with a link to the plugins page. The method mutates only the provided {@link HTMLNode} tree and
-   * performs no network or disk I/O, making it safe to call during page rendering on the request
-   * thread.
+   * that post to {@code /library/} in a new tab so bookmark browsing remains uninterrupted.
+   * Otherwise it emits a localized “not available” warning. The method mutates only the provided
+   * {@link HTMLNode} tree and performs no network or disk I/O, making it safe to call during page
+   * rendering on the request thread.
    *
    * @param contentNode the container node within the welcome page that receives the search box
    *     markup; must be non-null and already attached to the page
    */
   public void addSearchBox(HTMLNode contentNode) {
-    // This function still contains legacy cruft because we might
-    // need that again when Library becomes usable again.
+    // Keep structure for potential future search integration restoration.
     HTMLNode searchBox = contentNode.addChild("div", ATTR_CLASS, "infobox infobox-normal");
     searchBox.addAttribute("id", "search-freenet");
     searchBox
@@ -297,25 +281,11 @@ public class WelcomeToadlet extends Toadlet {
       // Search must be in a new window so that the user is able to browse the bookmarks.
       searchForm.addAttribute(ATTR_TARGET, TARGET_BLANK);
     } else if (showSearchBoxLoading()) {
-      // Warn that search plugin is not loaded.
-      HTMLNode textSpan =
-          searchBoxContent.addChild("span", ATTR_CLASS, "search-not-availible-warning");
-      NodeL10n.getBase()
-          .addL10nSubstitution(
-              textSpan,
-              "WelcomeToadlet.searchPluginLoading",
-              new String[] {"link"},
-              new HTMLNode[] {HTMLNode.link("/plugins/")});
+      searchBoxContent.addChild(
+          "span", ATTR_CLASS, "search-not-availible-warning", l10n("searchUnavailableLoading"));
     } else {
-      // Warn that search plugin is not loaded.
-      HTMLNode textSpan =
-          searchBoxContent.addChild("span", ATTR_CLASS, "search-not-availible-warning");
-      NodeL10n.getBase()
-          .addL10nSubstitution(
-              textSpan,
-              "WelcomeToadlet.searchPluginNotLoaded",
-              new String[] {"link"},
-              new HTMLNode[] {HTMLNode.link("/plugins/")});
+      searchBoxContent.addChild(
+          "span", ATTR_CLASS, "search-not-availible-warning", l10n("searchUnavailable"));
     }
   }
 

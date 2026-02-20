@@ -318,7 +318,7 @@ public abstract class FCPMessage {
       case SendURIMessage.NAME -> new SendURIMessage(fs);
       case SendTextMessage.NAME -> new SendTextMessage(fs);
       case DisconnectMessage.NAME -> new DisconnectMessage(fs);
-      case FCPPluginClientMessage.NAME -> new FCPPluginClientMessage(fs);
+      case "FCPPluginMessage" -> new UnsupportedPluginMessage(fs, "FCPPluginMessage");
       default -> null;
     };
   }
@@ -329,14 +329,14 @@ public abstract class FCPMessage {
       case GenerateSSKMessage.NAME -> new GenerateSSKMessage(fs);
       case GetConfig.NAME -> new GetConfig(fs);
       case GetNode.NAME -> new GetNode(fs);
-      case GetPluginInfo.NAME -> new GetPluginInfo(fs);
+      case "GetPluginInfo" -> new UnsupportedPluginMessage(fs, "GetPluginInfo");
       case GetRequestStatusMessage.NAME -> new GetRequestStatusMessage(fs);
       case ListPeerMessage.NAME -> new ListPeerMessage(fs);
       case ListPeersMessage.NAME -> new ListPeersMessage(fs);
       case ListPeerNotesMessage.NAME -> new ListPeerNotesMessage(fs);
       case ListPersistentRequestsMessage.NAME -> new ListPersistentRequestsMessage(fs);
-      case LoadPlugin.NAME -> new LoadPlugin(fs);
-      case ReloadPlugin.NAME -> new ReloadPlugin(fs);
+      case "LoadPlugin" -> new UnsupportedPluginMessage(fs, "LoadPlugin");
+      case "ReloadPlugin" -> new UnsupportedPluginMessage(fs, "ReloadPlugin");
       default -> null;
     };
   }
@@ -351,7 +351,7 @@ public abstract class FCPMessage {
       case RemovePeer.NAME -> new RemovePeer(fs);
       case RemovePersistentRequest.NAME, RemovePersistentRequest.ALT_NAME ->
           new RemovePersistentRequest(fs);
-      case RemovePlugin.NAME -> new RemovePlugin(fs);
+      case "RemovePlugin" -> new UnsupportedPluginMessage(fs, "RemovePlugin");
       case WatchFeedsMessage.NAME -> new WatchFeedsMessage(fs);
       case WatchGlobal.NAME -> new WatchGlobal(fs);
       case ShutdownMessage.NAME -> new ShutdownMessage();

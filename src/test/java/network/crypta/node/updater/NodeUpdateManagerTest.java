@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.HighLevelSimpleClient;
@@ -24,7 +23,6 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,7 +63,6 @@ class NodeUpdateManagerTest {
   @Mock PeerManager peerManager;
   @Mock PeerMessenger peerMessenger;
   @Mock NodeStats nodeStats;
-  @Mock PluginManager pluginManager;
 
   private NodeUpdateManager manager;
 
@@ -87,8 +84,6 @@ class NodeUpdateManagerTest {
     when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.messenger()).thenReturn(peerMessenger);
     when(node.network().stats()).thenReturn(nodeStats);
-    when(node.services().pluginManager()).thenReturn(pluginManager);
-    when(pluginManager.getOfficialPlugins()).thenReturn(Collections.emptyList());
 
     // Provide values read when building announcements
     when(nodeStats.getNodeAveragePingTime()).thenReturn(100.0);

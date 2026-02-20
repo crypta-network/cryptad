@@ -107,7 +107,7 @@ class InsertFreesiteToadletTest {
 
     assertTrue(body.contains("Publish!"));
     assertTrue(body.contains("Freesite HOWTO"));
-    assertTrue(body.contains("/plugins/"));
+    assertTrue(!body.contains("/plugins/"));
     assertTrue(body.contains("/jSite-15/"));
     assertTrue(body.contains("thingamablog.zip"));
     assertTrue(body.contains("freesite-insert"));

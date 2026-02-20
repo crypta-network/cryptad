@@ -1,12 +1,11 @@
 package network.crypta.clients.http.wizardsteps;
 
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
-import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.IllegalValueException;
 import org.slf4j.Logger;
@@ -18,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * <p>This type centralizes the small pieces of logic that multiple bandwidth wizard pages need:
  * applying user-selected bandwidth limits to the node configuration, rendering a consistent warning
  * infobox when a value cannot be applied, and persisting the “wizard completed” flag. It also
- * contains a static helper for turning raw plugin-reported bit rates into the {@link
+ * contains a static helper for turning raw indicator-reported bit rates into the {@link
  * BandwidthLimit} value object used by the wizard UI.
  *
  * <p>Instances are lightweight and hold references to a {@link NodeClientCore} and {@link Config}
@@ -155,33 +154,34 @@ public abstract class BandwidthManipulator {
   }
 
   /**
-   * Detects upstream and downstream bandwidth limits using the bandwidth-indicator plugin.
+   * Detects upstream and downstream bandwidth limits using the bandwidth indicator.
    *
    * <p>The indicator reports bit rates in bits per second. This method converts those values to
    * bytes per second for use by the wizard UI, logs the raw reported numbers for diagnostics, and
    * rejects values that are clearly invalid (negative or implausibly low). This protects the wizard
-   * from presenting misleading “detected” values when the plugin has not yet initialized or cannot
-   * provide accurate limits.
+   * from presenting misleading “detected” values when the indicator has not yet initialized or
+   * cannot provide accurate limits.
    *
-   * <p>This method performs no network operations itself; it only queries the provided plugin
+   * <p>This method performs no network operations itself; it only queries the provided indicator
    * instance.
    *
    * <pre>{@code
    * BandwidthLimit detected = BandwidthManipulator.detectBandwidthLimits(bwIndicator);
    * }</pre>
    *
-   * @param bwIndicator Plugin instance used to obtain upstream and downstream bit rates; may be
-   *     null, in which case detection fails as if the plugin is unavailable.
+   * @param bwIndicator indicator instance used to obtain upstream and downstream bit rates; may be
+   *     null, in which case detection fails as if the indicator is unavailable.
    * @return Detected upstream and downstream bandwidth in bytes per second, suitable for display.
-   * @throws PluginNotFoundException If the plugin is not loaded, not ready, or {@code bwIndicator}
-   *     is null and detection cannot proceed.
-   * @throws IllegalValueException If the plugin reports unavailable rates or values that are
+   * @throws BandwidthDetectionUnavailableException If auto-detection is unavailable, or {@code
+   *     bwIndicator} is null and detection cannot proceed.
+   * @throws IllegalValueException If the indicator reports unavailable rates or values that are
    *     nonsensically low for wizard defaults.
    */
-  public static BandwidthLimit detectBandwidthLimits(FredPluginBandwidthIndicator bwIndicator)
-      throws PluginNotFoundException, IllegalValueException {
+  public static BandwidthLimit detectBandwidthLimits(BandwidthIndicator bwIndicator)
+      throws BandwidthDetectionUnavailableException, IllegalValueException {
     if (bwIndicator == null) {
-      throw new PluginNotFoundException("The node does not have a bandwidthIndicator.");
+      throw new BandwidthDetectionUnavailableException(
+          "The node does not have a bandwidthIndicator.");
     }
 
     int downstreamBits = bwIndicator.getDownstreamMaxBitRate();

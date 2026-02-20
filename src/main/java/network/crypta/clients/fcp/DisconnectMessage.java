@@ -16,8 +16,8 @@ import network.crypta.support.SimpleFieldSet;
  * <p>Instances are immutable and therefore thread-safe; a single instance can be reused whenever
  * the protocol stack needs to convey the same action. Lifecycle management is straightforward: once
  * {@link #run(FCPConnectionHandler, Node)} executes, resources such as socket registrations,
- * throttling counters, and plugin callbacks are released as part of the handler's {@code close()}
- * routine, ensuring accounting remains balanced even under load.
+ * throttling counters, and per-request callbacks are released as part of the handler's {@code
+ * close()} routine, ensuring accounting remains balanced even under load.
  *
  * <ul>
  *   <li>Preserves explicit shutdown semantics rather than relying on TCP FIN/RST heuristics.
