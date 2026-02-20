@@ -111,7 +111,14 @@ class LzmaInputStreamTest {
     // Act
     try (LzmaInputStream stream = new LzmaInputStream(source)) {
       source.allowFailure();
-      exception = assertThrows(IOException.class, stream::read);
+      exception =
+          assertThrows(
+              IOException.class,
+              () -> {
+                while (stream.read() >= 0) {
+                  // Keep consuming until decoder failure is observed.
+                }
+              });
     }
 
     // Assert
@@ -127,7 +134,15 @@ class LzmaInputStreamTest {
     // Act
     try (LzmaInputStream stream = new LzmaInputStream(source)) {
       source.allowFailure();
-      exception = assertThrows(IOException.class, () -> stream.read(new byte[8], 0, 8));
+      exception =
+          assertThrows(
+              IOException.class,
+              () -> {
+                byte[] buffer = new byte[8];
+                while (stream.read(buffer, 0, buffer.length) >= 0) {
+                  // Keep consuming until decoder failure is observed.
+                }
+              });
     }
 
     // Assert
