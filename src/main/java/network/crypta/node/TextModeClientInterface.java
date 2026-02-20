@@ -934,7 +934,7 @@ public class TextModeClientInterface implements Runnable {
         start = i + 1;
       }
     }
-    parts[partIndex] = value.substring(start, value.length());
+    parts[partIndex] = value.substring(start);
 
     int end = parts.length;
     while (end > 0 && parts[end - 1].isEmpty()) {
@@ -1116,11 +1116,11 @@ public class TextModeClientInterface implements Runnable {
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     outsb.append("DARKNET:\n");
     SimpleFieldSet fs = n.network().exportDarknetPublicFieldSet();
-    outsb.append(fs.toString());
+    outsb.append(fs);
     if (n.network().isOpennetEnabled()) {
       outsb.append("OPENNET:\n");
       fs = n.network().exportOpennetPublicFieldSet();
-      outsb.append(fs.toString());
+      outsb.append(fs);
     }
     outsb.append(n.getStatus());
     if (Version.currentBuildNumber() < Version.getHighestSeenBuild()) {

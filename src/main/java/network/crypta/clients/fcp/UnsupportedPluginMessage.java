@@ -15,11 +15,11 @@ final class UnsupportedPluginMessage extends FCPMessage {
       "Plugin system has been removed; this command is no longer supported.";
 
   private final String messageName;
-  private final String identifier;
+  private final String requestIdentifier;
 
   UnsupportedPluginMessage(SimpleFieldSet fs, String messageName) {
     this.messageName = messageName;
-    this.identifier = fs.get("Identifier");
+    this.requestIdentifier = fs.get("Identifier");
   }
 
   @Override
@@ -36,6 +36,10 @@ final class UnsupportedPluginMessage extends FCPMessage {
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     handler.send(
         new ProtocolErrorMessage(
-            ProtocolErrorMessage.INVALID_MESSAGE, false, UNSUPPORTED_TEXT, identifier, false));
+            ProtocolErrorMessage.INVALID_MESSAGE,
+            false,
+            UNSUPPORTED_TEXT,
+            requestIdentifier,
+            false));
   }
 }

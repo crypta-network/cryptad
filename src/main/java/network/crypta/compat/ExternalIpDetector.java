@@ -4,6 +4,7 @@ package network.crypta.compat;
 public interface ExternalIpDetector {
   DetectedIP[] getAddress();
 
+  @SuppressWarnings("unused")
   boolean hasDirectlyDetectedIP();
 
   default void terminate() {

@@ -1,13 +1,15 @@
 package network.crypta.clients.http.wizardsteps;
 
-import network.crypta.support.*;
-
 import java.text.DecimalFormat;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.IllegalValueException;
+import network.crypta.support.SizeUtil;
+import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,8 +19,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This step renders a set of common “connection profile” presets and optionally adds a
  * recommendation derived from the bandwidth indicator when available. It presents these choices as
- * a radio group containing byte-per-second pairs (download/upload), and also provides a custom
- * entry row where the user may type their own limits.
+ * a radio group containing byte-per-second pairs (download/upload) and also provides a custom entry
+ * row where the user may type their own limits.
  *
  * <p>A typical interaction is: {@link #getStep(HTTPRequest, PageHelper)} renders the form, the user
  * selects a preset or enters both custom fields, and {@link #postStep(HTTPRequest)} validates and
@@ -56,8 +58,8 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
     final long KiB = 1024L;
     limits =
         new BandwidthLimit[] {
-          // Feedback on typical real world ratios on slow connections would be helpful.
-          // 6Mbps/256kbps - 6Mbps is common in parts of china, as well as being the real value in
+          // Feedback on typical real-world ratios on slow connections would be helpful.
+          // 6Mbps/256kbps - 6Mbps is common in parts of China, as well as being the real value in
           // lots of DSL areas
           new BandwidthLimit(384 * KiB, 16 * KiB, "bandwidthConnection6M", false),
           // 8Mbps/512kbps - UK DSL1 is either 448k up or 832k up
@@ -124,7 +126,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
       BandwidthLimit detected =
           detectBandwidthLimits(core.getNode().network().ipDetector().getBandwidthIndicator());
 
-      // Detected limits reasonable; add half of both as recommended option.
+      // Detected limits reasonable; add half of both as a recommended option.
       BandwidthLimit usable =
           new BandwidthLimit(
               detected.downBytes / 2, detected.upBytes / 2, "bandwidthDetected", true);
@@ -144,7 +146,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
       addLimitRow(table, limit, false, !addedDefault);
     }
 
-    // Add custom option.
+    // Add the custom option.
     HTMLNode customForm = table.addChild("tr");
     customForm.addChild("td", WizardL10n.l10n("bandwidthCustom"));
     customForm
@@ -189,7 +191,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
     String down = request.getPartAsStringFailsafe("customDown", 20);
     String up = request.getPartAsStringFailsafe("customUp", 20);
 
-    // Try to parse custom limit first.
+    // Try to parse a custom limit first.
     if (!down.isEmpty() && !up.isEmpty()) {
       String failedLimits = attemptSet(up, down);
 
@@ -254,7 +256,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
   }
 
   /**
-   * Adds a row to the table for the given limit. Adds download limit, upload limit, and selection
+   * Adds a row to the table for the given limit. Adds a download limit, upload limit, and selection
    * button.
    *
    * @param table Table to add a row to.

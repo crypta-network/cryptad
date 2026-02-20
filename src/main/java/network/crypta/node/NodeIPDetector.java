@@ -396,7 +396,8 @@ public class NodeIPDetector {
     FreenetInetAddress addr = p.getFreenetAddress();
     LOG.debug("Peer-provided address: {}", addr);
     if (addr == null) return null;
-    if (!IPUtil.isValidAddress(addr.getAddress(false), false)) {
+    InetAddress peerAddress = addr.getAddress(false);
+    if (peerAddress == null || !IPUtil.isValidAddress(peerAddress, false)) {
       LOG.debug("Ignore peer address; not a valid Internet address");
       return null;
     }
@@ -820,6 +821,7 @@ public class NodeIPDetector {
   }
 
   /** Unregisters an external IP detector. */
+  @SuppressWarnings("unused")
   public void unregisterExternalIpDetector(ExternalIpDetector detector) {
     ipDetectorManager.unregisterExternalDetector(detector);
   }
@@ -885,11 +887,13 @@ public class NodeIPDetector {
   }
 
   /** Registers a port-forward provider (for example, UPnP/NAT-PMP). */
+  @SuppressWarnings("unused")
   public void registerPortForwardProvider(PortForwardProvider forward) {
     ipDetectorManager.registerPortForwardProvider(forward);
   }
 
   /** Unregisters a port-forward provider. */
+  @SuppressWarnings("unused")
   public void unregisterPortForwardProvider(PortForwardProvider forward) {
     ipDetectorManager.unregisterPortForwardProvider(forward);
   }
@@ -900,6 +904,7 @@ public class NodeIPDetector {
    *
    * @param indicator indicator instance to register
    */
+  @SuppressWarnings("unused")
   public synchronized void registerBandwidthIndicator(BandwidthIndicator indicator) {
     bandwidthIndicator = indicator;
   }
@@ -909,6 +914,7 @@ public class NodeIPDetector {
    *
    * @param indicator indicator instance to unregister (logged for diagnostics)
    */
+  @SuppressWarnings("unused")
   public synchronized void unregisterBandwidthIndicator(BandwidthIndicator indicator) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Unregistering bandwidth indicator: {}", indicator);

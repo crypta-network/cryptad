@@ -6,7 +6,8 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 
-import static java.util.concurrent.TimeUnit.*;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Manages bandwidth configuration checks and user-facing upgrade suggestions.
@@ -85,7 +86,7 @@ public class BandwidthManager {
                   int currentOutputBandwidth =
                       node.getConfig().get("node").getInt("outputBandwidthLimit");
 
-                  // Trigger only on a large step-up (≥3×) vs current and last offer.
+                  // Trigger only on a large step-up (≥3×) vs. current and last offer.
                   if ((detectedInputBandwidth > currentInputBandwidth * 3
                           && detectedInputBandwidth > lastOfferedInputBandwidth * 3)
                       || (detectedOutputBandwidth > currentOutputBandwidth * 3

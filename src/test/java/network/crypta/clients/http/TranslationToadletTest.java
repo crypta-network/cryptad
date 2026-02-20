@@ -36,8 +36,6 @@ import static org.mockito.Mockito.when;
 class TranslationToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private network.crypta.node.Node node;
-  @Mock private network.crypta.node.NodeClientCore core;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
 
@@ -57,12 +55,7 @@ class TranslationToadletTest {
     when(baseL10n.getString(anyString(), any(String[].class), any(String[].class)))
         .thenAnswer(invocation -> invocation.getArgument(0, String.class));
 
-    when(core.getNode()).thenReturn(node);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-
-    toadlet = new TranslationToadlet(client, core);
+    toadlet = new TranslationToadlet(client);
   }
 
   @AfterEach

@@ -17,7 +17,6 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +41,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -74,9 +72,8 @@ class MiscTest {
 
   @Test
   void getStep_whenCalled_buildsAutoUpdateFormInputs() {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -180,9 +177,8 @@ class MiscTest {
   @CsvSource({"true,true", "TRUE,true", "false,false", "'',false", "notABool,false"})
   void postStep_whenAutodeployValueProvided_parsesBooleanAndReturnsOpenNet(
       String autodeployValue, boolean expectedEnabled) {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Misc misc = spy(new Misc(core, config));
+    Misc misc = spy(new Misc(config));
 
     doNothing().when(misc).setAutoUpdate(anyBoolean());
 
@@ -197,12 +193,11 @@ class MiscTest {
 
   @Test
   void setAutoUpdate_whenConfigWriteSucceeds_setsAutoupdateOption() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
     SubConfig updaterConfig = mock(SubConfig.class);
     when(config.get("node.updater")).thenReturn(updaterConfig);
 
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     misc.setAutoUpdate(true);
 
@@ -211,26 +206,22 @@ class MiscTest {
 
   @Test
   void setAutoUpdate_whenConfigThrowsConfigException_doesNotPropagate() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
     SubConfig updaterConfig = mock(SubConfig.class);
     when(config.get("node.updater")).thenReturn(updaterConfig);
     doThrow(new InvalidConfigValueException("invalid")).when(updaterConfig).set("autoupdate", true);
 
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     assertDoesNotThrow(() -> misc.setAutoUpdate(true));
   }
 
   @Test
   void setUPnP_whenCalled_isNoOp() {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
-    assertDoesNotThrow(() -> misc.setUPnP(true));
-    assertDoesNotThrow(() -> misc.setUPnP(false));
-    verifyNoInteractions(core);
+    assertDoesNotThrow(misc::setUPnP);
   }
 
   private static List<HTMLNode> findNodes(HTMLNode root, Predicate<HTMLNode> predicate) {

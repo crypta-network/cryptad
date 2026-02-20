@@ -103,7 +103,7 @@ public abstract class Option<T> {
    * @param val String representation of the value (format defined by the subclass).
    * @throws InvalidConfigValueException If {@link #parseString(String)} rejects {@code val}, or if
    *     the callback refuses the value.
-   * @throws NodeNeedRestartException If applying the value succeeds but a restart is required.
+   * @throws NodeNeedRestartException If applying the value succeeds, but a restart is required.
    */
   public final void setValue(String val)
       throws InvalidConfigValueException, NodeNeedRestartException {

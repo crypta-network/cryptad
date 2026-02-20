@@ -50,7 +50,7 @@ public final class SessionManager {
 
   /**
    * Maximum idle time in milliseconds before a session is considered expired and purged lazily; by
-   * default this is one hour, enforcing short-lived browser sessions without persistent storage.
+   * default, this is one hour, enforcing short-lived browser sessions without persistent storage.
    */
   public static final long MAX_SESSION_IDLE_TIME = HOURS.toMillis(1);
 
@@ -206,7 +206,7 @@ public final class SessionManager {
      * <p>Attributes are stored in a simple in-memory map and are not persisted beyond the lifetime
      * of the session. Lookups are case-sensitive and treat {@code null} names the same way as any
      * other map key. Use this method when you need to branch on optional values without triggering
-     * a retrieval or default computation. The call is constant-time and does not alter the session
+     * retrieval or default computation. The call is constant-time and does not alter the session
      * state or expiration timer.
      *
      * @param name attribute key to test; expected to be non-null and meaningful to the caller
@@ -255,9 +255,9 @@ public final class SessionManager {
      *
      * <p>If no mapping exists, the call is a no-op. Removing an attribute frees the entry from the
      * in-memory map but does not alter session expiration or other state. Use this method when
-     * clearing sensitive or temporary data after it is no longer needed, or before reusing the key
-     * for a different type. The operation returns immediately and does not signal whether a value
-     * was present beforehand.
+     * clearing sensitive or temporary data after it is no longer necessary or before reusing the
+     * key for a different type. The operation returns immediately and does not signal whether a
+     * value was present beforehand.
      *
      * @param name attribute key to delete; treated exactly as the key originally stored
      */
@@ -331,7 +331,7 @@ public final class SessionManager {
   public synchronized Session createSession(String userID, ToadletContext context) {
     // We must synchronize around the fetching of the time and mSessionsByID.push() because
     // mSessionsByID is no sorting data structure: It's a plain
-    // LRUMap so to ensure that it stays sorted the operation "getTime(); push();" must be atomic.
+    // LRUMap, so to ensure that it stays sorted, the operation "getTime(); push();" must be atomic.
     long time = System.currentTimeMillis();
 
     removeExpiredSessions(time);
@@ -353,7 +353,7 @@ public final class SessionManager {
    * <p>This method is intended for lightweight "peek" operations such as deciding whether to show
    * authenticated UI controls. It does not refresh the idle timer or modify cookies; it merely
    * validates that the cookie maps to an existing, non-expired {@link Session}. Expired sessions
-   * are purged before the check to avoid false positives. The call is synchronized to maintain
+   * are purged before the check to avoid false positives. The call is synchronized to maintain a
    * consistent cache state during expiration cleanup.
    *
    * @param context HTTP toadlet context whose cookies should be inspected for a session identifier
@@ -388,7 +388,7 @@ public final class SessionManager {
 
     // We must synchronize around the fetching of the time and mSessionsByID.push() because
     // mSessionsByID is no sorting data structure: It's a plain
-    // LRUMap so to ensure that it stays sorted the operation "getTime(); push();" must be atomic.
+    // LRUMap, so to ensure that it stays sorted, the operation "getTime(); push();" must be atomic.
     long time = System.currentTimeMillis();
 
     removeExpiredSessions(time);
@@ -481,8 +481,8 @@ public final class SessionManager {
 
   /**
    * Garbage-collects any expired sessions. Must be called before client-interface functions do
-   * anything which relies on the existence a session, that is: creating sessions, using sessions or
-   * checking whether sessions exist.
+   * anything that relies on the existence of a session, that is: creating sessions, using sessions,
+   * or checking whether sessions exist.
    *
    * <p>Sessions are garbage-collected lazily when clients interact with the SessionManager; if no
    * client activity occurs, expired sessions remain until the next access. A periodic collector
@@ -503,8 +503,8 @@ public final class SessionManager {
   }
 
   /**
-   * Debug function which checks whether the sessions by user ID table does not contain any sessions
-   * which do not exist anymore;
+   * Debug function which checks whether the sessions by user ID table do not contain any sessions
+   * that do not exist anymore;
    */
   private synchronized void verifySessionsByUserIDTable() {
 

@@ -85,9 +85,9 @@ public class DisconnectMessage extends FCPMessage {
    *
    * <p>Calling this method is idempotent with respect to protocol semantics: on the first
    * invocation the handler closes its socket, cancels queued state, and notifies observers, while
-   * subsequent calls simply operate on an already-closed channel. The {@link Node} reference is
-   * supplied for parity with other messages yet remains unused, emphasizing that the logic lives
-   * entirely in the connection layer.
+   * later calls simply operate on an already-closed channel. The {@link Node} reference is supplied
+   * for parity with other messages yet remains unused, emphasizing that the logic lives entirely in
+   * the connection layer.
    *
    * <pre>{@code
    * // Example: proactively terminate a misbehaving client

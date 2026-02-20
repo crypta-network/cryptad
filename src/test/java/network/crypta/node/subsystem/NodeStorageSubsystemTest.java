@@ -230,16 +230,16 @@ class NodeStorageSubsystemTest {
     when(wrapperStore.getUnderlyingStore()).thenReturn(saltedHashStore);
     chkDatastore.setStore(wrapperStore);
 
-    setPrivateField(subsystem, "chkDatastore", chkDatastore);
+    setChkDatastore(subsystem, chkDatastore);
 
     subsystem.setStorePreallocate(true);
 
     verify(saltedHashStore).setPreallocate(true);
   }
 
-  private static void setPrivateField(Object target, String fieldName, Object value)
+  private static void setChkDatastore(NodeStorageSubsystem target, CHKStore value)
       throws ReflectiveOperationException {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = target.getClass().getDeclaredField("chkDatastore");
     field.setAccessible(true);
     field.set(target, value);
   }

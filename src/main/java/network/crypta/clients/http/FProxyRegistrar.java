@@ -352,7 +352,7 @@ final class FProxyRegistrar {
             true,
             null));
 
-    TranslationToadlet translationToadlet = new TranslationToadlet(client, core);
+    TranslationToadlet translationToadlet = new TranslationToadlet(client);
     server.register(
         translationToadlet,
         ToadletRegistration.menuLink(

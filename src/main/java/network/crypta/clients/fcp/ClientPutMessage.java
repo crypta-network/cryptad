@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * <p>Each instance is constructed once the peer's {@link SimpleFieldSet} payload passes validation,
  * capturing the destination {@link FreenetURI}, persistence policy, upload mode, and optional hints
  * such as compressor descriptors or redirect targets. The parsed structure is passed to the server
- * pipeline so payload streaming, request accounting, and insert scheduling can start immediately
+ * pipeline, so payload streaming, request accounting, and insert scheduling can start immediately
  * without repeatedly decoding textual headers.
  *
  * <p>The object is effectively immutable after construction because all exposed fields are final
@@ -71,7 +71,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
   final UploadFrom uploadFromType;
 
   /**
-   * The hash of the file you want the node to deal with. it is MANDATORY to do DDA operations and
+   * The hash of the file you want the node to deal with. It is MANDATORY to do DDA operations and
    * should be computed like that:
    *
    * <p>Base64Encode(SHA256( Handler.connectionIdentifer + ClientPutMessage.identifier + content))

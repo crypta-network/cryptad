@@ -481,6 +481,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * been finalized on disk. The implementation enforces bounded parsing and delegates each line to
    * {@link #parseManifestLine(String)}.
    */
+  @SuppressWarnings("unused")
   protected void parseManifest() {
     // Fallback: parse from the finalized on-disk blob if available, enforcing size cap.
     File jarFile = getBlobFile();
@@ -501,7 +502,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * @param result a non‑empty {@link FetchResult} containing the fetched JAR bytes
    */
-  @SuppressWarnings({"resource", "java:S2095"})
+  @SuppressWarnings({"resource", "java:S2095", "unused"})
   protected void parseManifest(FetchResult result) {
     if (result == null || result.size() == 0) return;
     Bucket bucket = result.asBucket();
@@ -669,6 +670,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * @param line a single raw manifest line to interpret; never {@code null}
    */
+  @SuppressWarnings("unused")
   protected void parseManifestLine(String line) {
     // Do nothing by default; subclasses override if they need to parse manifest entries.
   }

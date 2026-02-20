@@ -55,7 +55,7 @@ class BandwidthManagerTest {
 
   @BeforeEach
   void setUp() {
-    // Intentionally do not stub here to avoid unnecessary stubbing violations on tests that
+    // Intentionally, do not stub here to avoid unnecessary stubbing violations on tests that
     // validate static methods only. Each scheduler test wires its own minimal stubs.
   }
 
@@ -180,7 +180,7 @@ class BandwidthManagerTest {
     // Running the task should early‑exit and reschedule itself
     scheduled.run();
 
-    // Scheduled twice total (initial + reschedule with same instance)
+    // Scheduled twice totally (initial + reschedule with same instance)
     verify(ticker, times(2)).queueTimedJob(scheduled, DELAY_MS);
     // Should not attempt detection or create alerts
     // getBandwidthIndicator() is called before checking the flag; we stubbed it to return null
@@ -215,7 +215,7 @@ class BandwidthManagerTest {
     when(nodeSubConfig.getInt("inputBandwidthLimit")).thenReturn(currentIn);
     when(nodeSubConfig.getInt("outputBandwidthLimit")).thenReturn(currentOut);
 
-    // Detected values are exactly 3x current (no alert because condition uses >, not >=)
+    // Detected values are exactly 3x current (no alert because the condition uses >, not >=)
     when(indicator.getDownstreamMaxBitRate()).thenReturn(currentIn * 3 * 8);
     when(indicator.getUpstreamMaxBitRate()).thenReturn(currentOut * 3 * 8);
 
@@ -243,7 +243,7 @@ class BandwidthManagerTest {
     when(nodeSubConfig.getInt("inputBandwidthLimit")).thenReturn(currentIn);
     when(nodeSubConfig.getInt("outputBandwidthLimit")).thenReturn(currentOut);
 
-    // Downstream (download) detected at 4000 bytes/s (32000 bps); upstream small (100 bytes/s)
+    // Downstream (download) detected at 4000 bytes/s (32,000 bps); upstream small (100 bytes/s)
     when(indicator.getDownstreamMaxBitRate()).thenReturn(4000 * 8);
     when(indicator.getUpstreamMaxBitRate()).thenReturn(100 * 8);
 
@@ -301,9 +301,9 @@ class BandwidthManagerTest {
     verify(ticker).queueTimedJob(runnableCaptor.capture(), eq(DELAY_MS));
     Runnable scheduled = runnableCaptor.getValue();
 
-    scheduled.run(); // First run will alert
+    scheduled.run(); // The first run will alert
 
-    // Second run with same detected values should not alert again
+    // The second run with the same detected values should not alert again
     scheduled.run();
 
     verify(alerts, times(1)).register(any(UserAlert.class));

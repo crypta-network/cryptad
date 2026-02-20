@@ -226,7 +226,7 @@ class IPUndetectedUserAlertTest {
     assertNotNull(html);
     String out = html.generate();
 
-    // Intro with config link
+    // Intro with the config link
     assertTrue(out.contains("href=\"/config/node\""), "Should link to /config/node");
 
     // If we have peers, we include a note that it may be detectable from peers

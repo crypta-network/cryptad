@@ -268,8 +268,8 @@ public abstract class FCPMessage {
    *     type
    * @param fs field set containing the decoded protocol fields; must at least contain the fields
    *     required by the target message implementation
-   * @param bfTemp factory used for transient bucket storage, for example while constructing complex
-   *     directory upload messages; may be {@code null} when not needed
+   * @param bfTemp factory used for transient bucket storage, for example, while constructing
+   *     complex directory upload messages; may be {@code null} when not needed
    * @param bfPersistent factory used for longer-lived bucket storage backing persistent operations;
    *     may be {@code null} when the selected message does not use it
    * @return a fully constructed {@link FCPMessage} instance matching {@code name}, or {@code null}
@@ -323,8 +323,7 @@ public abstract class FCPMessage {
     };
   }
 
-  private static FCPMessage createConfigAndStatusMessages(String name, SimpleFieldSet fs)
-      throws MessageInvalidException {
+  private static FCPMessage createConfigAndStatusMessages(String name, SimpleFieldSet fs) {
     return switch (name) {
       case GenerateSSKMessage.NAME -> new GenerateSSKMessage(fs);
       case GetConfig.NAME -> new GetConfig(fs);

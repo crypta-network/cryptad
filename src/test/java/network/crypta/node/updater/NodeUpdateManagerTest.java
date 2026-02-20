@@ -155,7 +155,7 @@ class NodeUpdateManagerTest {
     HTMLNode last =
         root.getChildren().stream()
             .filter(n -> "a".equals(n.getName()))
-            .reduce((a, b) -> b)
+            .reduce((_, b) -> b)
             .orElseThrow();
     assertEquals('/' + changelogSsk + "?type=text/plain", first.getAttributes().get("href"));
     assertEquals('/' + devSsk + "?type=text/plain", last.getAttributes().get("href"));
@@ -177,7 +177,7 @@ class NodeUpdateManagerTest {
 
   @Test
   void getInstallerFiles_whenMissingOrPresent_expectNullOrFile() throws Exception {
-    // Arrange: ensure clean state
+    // Arrange: ensure a clean state
     File winFile = NodeFile.INSTALLER_WINDOWS.getFile(node);
     Files.deleteIfExists(winFile.toPath());
     File nonWinFile = NodeFile.INSTALLER_NON_WINDOWS.getFile(node);

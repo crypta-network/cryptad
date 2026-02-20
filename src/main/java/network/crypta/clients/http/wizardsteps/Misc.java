@@ -4,7 +4,6 @@ import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
@@ -18,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * with localized labels, and {@link #postStep(HTTPRequest)} persists the selected values into node
  * configuration.
  *
- * <p>The implementation is intentionally side-effect free during rendering: {@link #getStep} only
+ * <p>The implementation is intentionally side-effect-free during rendering: {@link #getStep} only
  * builds the form structure. State changes happen only when the form is posted.
  *
  * <ul>
@@ -40,16 +39,13 @@ public class Misc implements Step {
   private final Config config;
 
   /**
-   * Creates a wizard step instance bound to a node core and configuration store.
+   * Creates a wizard step instance bound to a configuration store.
    *
-   * <p>The {@link Config} instance is used to persist the auto-update preference. The {@link
-   * NodeClientCore} parameter is retained only for constructor compatibility with existing call
-   * sites after plugin-system removal.
+   * <p>The {@link Config} instance is used to persist the auto-update preference.
    *
-   * @param core node core parameter retained for compatibility; not used.
    * @param config the configuration root used to persist wizard-selected settings.
    */
-  public Misc(NodeClientCore core, Config config) {
+  public Misc(Config config) {
     this.config = config;
   }
 
@@ -142,10 +138,8 @@ public class Misc implements Step {
    * Legacy compatibility hook for historical wizard presets that toggled UPnP.
    *
    * <p>The plugin runtime has been removed, so this method intentionally performs no work.
-   *
-   * @param enableUPnP ignored.
    */
-  public void setUPnP(final boolean enableUPnP) {
+  public void setUPnP() {
     // No-op: plugin runtime removed.
   }
 }

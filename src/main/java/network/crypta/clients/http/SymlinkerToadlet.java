@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
  * Toadlet that resolves short alias paths to other toadlet URLs via HTTP redirects.
  *
  * <p>This toadlet keeps a synchronized in-memory map of aliases and redirects any request whose
- * path starts with a known alias to the mapped target. It bootstraps from persisted configuration,
+ * path starts with a known alias to the mapped target. It bootstraps from persisted configuration
  * and can persist later edits on demand. Synchronization on the internal {@link Map} keeps link
  * updates and lookups thread-safe. Callers typically create one instance per node, let it register
  * its configuration, and rely on {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} to
@@ -50,7 +50,7 @@ public class SymlinkerToadlet extends Toadlet {
    *
    * <p>The constructor reads the {@code toadletsymlinker.symlinks} array from the node
    * configuration, populates the in-memory map, and finalizes the configuration section to prevent
-   * external modifications. Construction is not thread-safe, but subsequent alias access is
+   * external modifications. Construction is not thread-safe, but further alias access is
    * synchronized on the internal map.
    *
    * @param client high-level HTTP client used to write responses and redirects for requests.

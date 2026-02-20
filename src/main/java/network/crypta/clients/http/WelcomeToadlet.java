@@ -206,7 +206,7 @@ public class WelcomeToadlet extends Toadlet {
    * {@link ToadletContext#checkFormPassword(network.crypta.support.api.HTTPRequest)} before they
    * perform any privileged operation such as restart, shutdown, or upgrades. This method is purely
    * declarative and introduces no side effects or security bypasses; it simply tells the container
-   * to forward POST traffic so that subsequent forms can validate credentials.
+   * to forward POST traffic so that later forms can validate credentials.
    *
    * @return {@code true} to permit POST routing without a pre-validated password while preserving
    *     per-action verification
@@ -246,7 +246,7 @@ public class WelcomeToadlet extends Toadlet {
    *
    * <p>When {@link #showSearchBox()} is true, this method builds a text field and submit button
    * that post to {@code /library/} in a new tab so bookmark browsing remains uninterrupted.
-   * Otherwise it emits a localized “not available” warning. The method mutates only the provided
+   * Otherwise, it emits a localized “not available” warning. The method mutates only the provided
    * {@link HTMLNode} tree and performs no network or disk I/O, making it safe to call during page
    * rendering on the request thread.
    *
@@ -1188,8 +1188,8 @@ public class WelcomeToadlet extends Toadlet {
    * <p>The method reads up to 2,000 lines (respecting the byte cap in {@link
    * FileUtil#getLogTailReader(File, long)}) and streams them into an infobox labeled “Current
    * status”. It is safe to call even when the file is absent or unreadable; failures are logged at
-   * DEBUG and the page continues rendering without interruption. No locks are taken beyond standard
-   * file reads, and the caller retains ownership of the provided {@link HTMLNode}.
+   * DEBUG, and the page continues rendering without interruption. No locks are taken beyond
+   * standard file reads, and the caller retains ownership of the provided {@link HTMLNode}.
    *
    * @param ctx toadlet context used to create localized infobox markup
    * @param contentNode the page node that receives the log output if available

@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -41,7 +42,7 @@ class InsertFreesiteToadletTest {
 
   @BeforeEach
   void setUp() {
-    // Ensure localization base is initialized for deterministic string lookups.
+    // Ensure the localization base is initialized for deterministic string lookups.
     new NodeL10n();
     toadlet = new InsertFreesiteToadlet(client);
   }
@@ -107,7 +108,7 @@ class InsertFreesiteToadletTest {
 
     assertTrue(body.contains("Publish!"));
     assertTrue(body.contains("Freesite HOWTO"));
-    assertTrue(!body.contains("/plugins/"));
+    assertFalse(body.contains("/plugins/"));
     assertTrue(body.contains("/jSite-15/"));
     assertTrue(body.contains("thingamablog.zip"));
     assertTrue(body.contains("freesite-insert"));

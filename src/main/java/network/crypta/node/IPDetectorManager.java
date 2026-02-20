@@ -1114,45 +1114,45 @@ public class IPDetectorManager implements ForwardPortCallback {
     for (ForwardPort p : currentPorts) {
       ForwardPortStatus status = statuses.get(p);
       if (status == null) continue;
-      if (status.status == ForwardPortStatus.DEFINITE_SUCCESS) {
+      if (status.status() == ForwardPortStatus.DEFINITE_SUCCESS) {
         LOG.info(
             "event=port_forward_definite_success name={} port={} for " + PROTOCOL_AND_REASON,
-            p.name,
-            p.portNumber,
-            p.protocol,
-            status.reasonString);
-      } else if (status.status == ForwardPortStatus.PROBABLE_SUCCESS) {
+            p.name(),
+            p.portNumber(),
+            p.protocol(),
+            status.reasonString());
+      } else if (status.status() == ForwardPortStatus.PROBABLE_SUCCESS) {
         LOG.info(
             "event=port_forward_probable_success name={} port={} for " + PROTOCOL_AND_REASON,
-            p.name,
-            p.portNumber,
-            p.protocol,
-            status.reasonString);
-      } else if (status.status == ForwardPortStatus.MAYBE_SUCCESS) {
+            p.name(),
+            p.portNumber(),
+            p.protocol(),
+            status.reasonString());
+      } else if (status.status() == ForwardPortStatus.MAYBE_SUCCESS) {
         LOG.info(
             "event=port_forward_maybe_success name={} port={} for {}; recommend out-of-band"
                 + " verification ({})",
-            p.name,
-            p.portNumber,
-            p.protocol,
-            status.reasonString);
-      } else if (status.status == ForwardPortStatus.DEFINITE_FAILURE) {
+            p.name(),
+            p.portNumber(),
+            p.protocol(),
+            status.reasonString());
+      } else if (status.status() == ForwardPortStatus.DEFINITE_FAILURE) {
         LOG.error(
             "event=port_forward_definite_failure name={} port={} for " + PROTOCOL_AND_REASON,
-            p.name,
-            p.portNumber,
-            p.protocol,
-            status.reasonString);
-      } else if (status.status == ForwardPortStatus.PROBABLE_FAILURE) {
+            p.name(),
+            p.portNumber(),
+            p.protocol(),
+            status.reasonString());
+      } else if (status.status() == ForwardPortStatus.PROBABLE_FAILURE) {
         LOG.error(
             "event=port_forward_probable_failure name={} port={} for " + PROTOCOL_AND_REASON,
-            p.name,
-            p.portNumber,
-            p.protocol,
-            status.reasonString);
+            p.name(),
+            p.portNumber(),
+            p.protocol(),
+            status.reasonString());
       }
       // Not much more we can do / want to do for now
-      // Note: status.externalPort is currently unused.
+      // Note: status.externalPort() is currently unused.
     }
     node.network().executor().execute(this::maybeRun, "Redetect IP after port forward changed");
   }

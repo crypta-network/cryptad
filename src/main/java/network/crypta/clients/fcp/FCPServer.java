@@ -214,7 +214,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * point. The returned server is fully wired to the supplied node, client core, and persistence
    * root, so it can immediately serve FCP traffic once started.
    *
-   * @param node owning node providing executors and core services for the server.
+   * @param node the owning node providing executors and core services for the server.
    * @param core client core used for persistence and endpoint access.
    * @param config configuration registry where the {@code fcp} subsection is registered.
    * @param root persistence root used to back global request queues.

@@ -169,7 +169,7 @@ public abstract class BandwidthManipulator {
    * BandwidthLimit detected = BandwidthManipulator.detectBandwidthLimits(bwIndicator);
    * }</pre>
    *
-   * @param bwIndicator indicator instance used to obtain upstream and downstream bit rates; may be
+   * @param bwIndicator indicator instance used to get upstream and downstream bit rates; may be
    *     null, in which case detection fails as if the indicator is unavailable.
    * @return Detected upstream and downstream bandwidth in bytes per second, suitable for display.
    * @throws BandwidthDetectionUnavailableException If auto-detection is unavailable, or {@code
@@ -223,7 +223,7 @@ public abstract class BandwidthManipulator {
    * UI warnings elsewhere.
    */
   protected void setWizardComplete() {
-    // Set wizard completion flag
+    // Set the wizard completion flag
     try {
       config.get("fproxy").set("hasCompletedWizard", true);
       config.store();

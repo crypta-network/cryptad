@@ -220,7 +220,7 @@ class IPDetectorManagerTest {
     mgr.registerPortForwardProvider(pf1);
     mgr.registerPortForwardProvider(pf2);
 
-    // Remove first plugin
+    // Remove the first plugin
     reset(pf1);
     reset(pf2);
     mgr.unregisterPortForwardProvider(pf1);
@@ -245,7 +245,7 @@ class IPDetectorManagerTest {
 
     Map<ForwardPort, ForwardPortStatus> statuses = new HashMap<>();
     statuses.put(
-        fp, new ForwardPortStatus(ForwardPortStatus.PROBABLE_SUCCESS, "ok", fp.portNumber));
+        fp, new ForwardPortStatus(ForwardPortStatus.PROBABLE_SUCCESS, "ok", fp.portNumber()));
 
     // maybeRun() should be invoked via executor runnable
     doAnswer(
@@ -325,7 +325,7 @@ class IPDetectorManagerTest {
 
           @Override
           public void isValid(boolean validity) {
-            // Intentionally empty: this test stub does not track alert lifecycle state.
+            // Intentionally empty: this test stub does not track the alert lifecycle state.
           }
 
           @Override
@@ -431,7 +431,7 @@ class IPDetectorManagerTest {
     // Peer manager reports some peers overall (none currently connected).
     when(peerManager.countValidPeers()).thenReturn(3);
 
-    // Build three eligible, recently-disconnected peers to trigger the override.
+    // Build three eligible, recently disconnected peers to trigger the override.
     long now = System.currentTimeMillis();
     PeerNode p1 = mock(PeerNode.class);
     PeerNode p2 = mock(PeerNode.class);
@@ -465,7 +465,7 @@ class IPDetectorManagerTest {
 
     // Capture startDetect via executor scheduling.
     reset(executor);
-    doAnswer(inv -> null).when(executor).execute(any(Runnable.class), any(String.class));
+    doAnswer(_ -> null).when(executor).execute(any(Runnable.class), any(String.class));
 
     mgr.maybeRun();
 

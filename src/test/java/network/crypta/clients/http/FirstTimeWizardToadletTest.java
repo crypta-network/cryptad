@@ -164,7 +164,7 @@ class FirstTimeWizardToadletTest {
     when(request.getPartAsStringFailsafe("preset", 4)).thenReturn("");
     when(request.isPartSet(anyString())).thenReturn(false);
 
-    // Force current step handler to throw.
+    // Force the current step handler to throw.
     EnumMap<WIZARD_STEP, Step> steps = getSteps(toadlet);
     Step failingStep =
         new Step() {

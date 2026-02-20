@@ -12,7 +12,7 @@ import network.crypta.support.api.HTTPRequest;
  *
  * <p>This handler produces a simple informational page that points new users to curated discussion
  * tools such as FSNG, FMS, and Sone. It relies solely on localization strings and static USK/SSK
- * links, so responses are deterministic and do not depend on mutable node state. Because it
+ * links, so responses are deterministic and do not depend on the mutable node state. Because it
  * subclasses {@link Toadlet}, it integrates with the node's HTTP routing and inherits common
  * behaviors such as alert rendering and response framing.
  *
@@ -47,12 +47,12 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The method builds a standard page via the {@link network.crypta.clients.http.PageMaker}
    * obtained from the supplied context, adds the node's alert summary, and appends an infobox that
-   * links to well-known chat/forum resources. All links are static USK/SSK targets so the handler
+   * links to well-known chat/forum resources. All links are static USK/SSK targets, so the handler
    * avoids additional lookups or background work. The response is written immediately to the
    * provided context and finishes with a 200 status code when successful. The method does not
    * mutate shared state and is idempotent for the same inputs.
    *
-   * @param uri original request URI, preserved for compatibility with the Toadlet contract; may
+   * @param uri the original request URI, preserved for compatibility with the Toadlet contract, may
    *     include query parameters but is not modified.
    * @param req parsed HTTP request carrying headers and form data; the handler reads only to
    *     satisfy interface expectations and does not alter it.
@@ -120,7 +120,7 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * Returns the mount path under which this toadlet is exposed to HTTP clients.
    *
-   * <p>The value is constant and ends with a trailing slash so relative links on the rendered page
+   * <p>The value is constant and ends with a trailing slash, so relative links on the rendered page
    * resolve correctly. Consumers typically register the toadlet with the HTTP server using this
    * path verbatim.
    *

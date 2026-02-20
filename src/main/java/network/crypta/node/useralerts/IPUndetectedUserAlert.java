@@ -110,7 +110,7 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
   /**
    * Determines whether the alert should be displayed for the current node state.
    *
-   * <p>The alert is hidden when Opennet is enabled. Otherwise it remains valid if there are fewer
+   * <p>The alert is hidden when Opennet is enabled. Otherwise, it remains valid if there are fewer
    * than five connectible peers or if the node has been up for at least one minute and detection is
    * not in progress.
    *

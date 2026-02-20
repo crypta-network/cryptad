@@ -554,9 +554,9 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The response includes any active alerts, all eligible options (filtered by advanced mode),
    * and helper controls such as wrapper memory tuning. If the request carries directory selection
-   * results, the relevant option value is overridden before rendering so the chosen path is visible
-   * immediately. The form posts back to the same path and preserves the subconfig prefix as a
-   * hidden field.
+   * results, the relevant option value is overridden before rendering, so the chosen path is
+   * visible immediately. The form posts back to the same path and preserves the subconfig prefix as
+   * a hidden field.
    *
    * @param uri absolute request URI, passed for interface completeness.
    * @param req HTTP request used to detect advanced mode, pre-filled values, and directory chooser
@@ -789,13 +789,13 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * Builds a single-line text input for a configuration option.
    *
-   * <p>The caller supplies the current value and the fully qualified option name so the generated
+   * <p>The caller supplies the current value and the fully qualified option name, so the generated
    * field integrates with the existing POST handling. When {@code disabled} is true the input is
    * rendered read-only and styled accordingly, preserving the displayed value for clarity. The
    * option's short description is attached as the {@code alt} attribute to support screen readers
    * and contextual help popups.
    *
-   * @param value current option value to render inside the text box; empty strings are allowed.
+   * @param value the current option value to render inside the text box; empty strings are allowed.
    * @param fullName full option name (including prefix) used as the form field name.
    * @param o option metadata providing the short description for accessibility and tooltips.
    * @param disabled whether the input should be rendered with the {@code disabled} attribute.
@@ -834,7 +834,8 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    * @param o enumerable callback supplying the finite list of allowed values and read-only flag.
    * @param fullName full option name (including prefix) used as the form field name for POST data.
    * @param disabled whether the select element should be disabled while still showing options.
-   * @return select node containing option children for every allowed value with selection applied.
+   * @return the select node containing option children for every allowed value with selection
+   *     applied.
    */
   public static HTMLNode addComboBox(
       String value, EnumerableOptionCallback o, String fullName, boolean disabled) {
@@ -870,13 +871,13 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The resulting element contains two options labeled with localized {@code true}/{@code false}
    * strings and selects the entry that matches {@code value}. It is used for both editable and
-   * read-only boolean settings so the current state is always displayed consistently. Callers may
+   * read-only boolean settings, so the current state is always displayed consistently. Callers may
    * attach additional attributes to the returned select element before serialization.
    *
    * @param value boolean value to preselect within the rendered options.
    * @param fullName full option name (including prefix) used as the form field name for POST data.
    * @param disabled whether the select element should be disabled while still showing choices.
-   * @return select node with two option children reflecting the localized boolean values.
+   * @return the select node with two option children reflecting the localized boolean values.
    */
   public static HTMLNode addBooleanComboBox(boolean value, String fullName, boolean disabled) {
     HTMLNode result;
@@ -915,7 +916,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The path is the configuration root for the associated {@link SubConfig} and matches the form
    * action used in both GET and POST flows. It is deterministic for the lifetime of the instance
-   * and does not change when advanced mode is toggled.
+   * and does not change when the advanced mode is toggled.
    *
    * @return absolute path segment used to access this configuration toadlet.
    */

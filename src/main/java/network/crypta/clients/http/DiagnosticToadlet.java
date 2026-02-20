@@ -111,10 +111,10 @@ public class DiagnosticToadlet extends Toadlet {
    * node health.
    *
    * <p>The handler first enforces full-access permissions on the {@link ToadletContext}, then
-   * refreshes bandwidth statistics and gathers a series of live metrics: version data, system
+   * refreshes bandwidth statistics, and gathers a series of live metrics: version data, system
    * memory and CPU figures, datastore usage and success rates, activity counters, peer summaries,
    * bandwidth caps, queued requests, and thread diagnostics. Formatting occurs inside a
-   * synchronized block to guard shared {@link DecimalFormat} instances. On success, it responds
+   * synchronized block to guard shared {@link DecimalFormat} instances. In success, it responds
    * with HTTP 200 and the assembled plaintext body; on failure it lets I/O and toadlet-specific
    * exceptions propagate to the caller for higher-level handling.
    *
@@ -125,7 +125,7 @@ public class DiagnosticToadlet extends Toadlet {
    *     the duration of the call.
    * @throws ToadletContextClosedException if the client disconnects or the context closes before a
    *     response is written.
-   * @throws IOException if reading from the request or writing the diagnostic output fails.
+   * @throws IOException if reading from the request or writing, the diagnostic output fails.
    * @throws RedirectException if the caller lacks permission and the framework triggers a redirect
    *     to the login or permissions page.
    */
@@ -312,7 +312,7 @@ public class DiagnosticToadlet extends Toadlet {
     try {
       appendTotalSuccessRate(textBuilder, totalAccess);
     } catch (StatsNotAvailableException _) {
-      // Ignore failures from total stats so we still show the session success rate.
+      // Ignore failures from total stats, so we still show the session success rate.
     }
     textBuilder.append("\n");
   }
@@ -649,6 +649,7 @@ public class DiagnosticToadlet extends Toadlet {
         .append("\n");
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class BandwidthSessionData {
     private final long[] total;
     private final long totalPayload;

@@ -76,7 +76,7 @@ class DatabaseKeyTest {
     assertNotNull(wrapped);
     assertTrue(
         wrapped.getClass().getName().endsWith("AEADCryptBucket"), "Should return AEADCryptBucket");
-    // AEADCryptBucket#getName prefixes with "AEADEncrypted:" and appends underlying name
+    // AEADCryptBucket#getName prefixes with "AEADEncrypted:" and appends the underlying name
     assertTrue(wrapped.getName().contains("underlyingBucket"));
   }
 
@@ -138,7 +138,7 @@ class DatabaseKeyTest {
     // Act
     DatabaseKey dbKey = DatabaseKey.createRandom(rs);
 
-    // Assert: derived client key matches expectation from pattern 0..31
+    // Assert: the derived client key matches expectation from pattern 0..31
     byte[] expected = deriveClientExpected(fixedKey32());
     assertArrayEquals(expected, dbKey.getKeyForClientLayer());
   }

@@ -38,12 +38,12 @@ import org.slf4j.LoggerFactory;
  * HTTP toadlet that guides a first-time user through configuring a Crypta node. The wizard
  * sequences a fixed set of UI steps, persists choices across page transitions, and applies
  * side-effecting actions (such as enabling auto-update) only when the relevant presets or form
- * controls are chosen. It is intentionally self-contained so the launcher and embedded HTTP UI can
+ * controls are chosen. It is intentionally self-contained, so the launcher and embedded HTTP UI can
  * share identical onboarding logic.
  *
  * <p>The toadlet coordinates several step handlers, each responsible for rendering and validating a
  * portion of the workflow. Requests are stateless; the wizard rebuilds its flow from submitted form
- * parameters and redirects between steps instead of maintaining server-side session state. All
+ * parameters and redirects between steps instead of maintaining a server-side session state. All
  * mutations funnel through the injected {@link NodeClientCore} instance, so external callers can
  * rely on consistent authorization and threading policies enforced by the core.
  *
@@ -65,10 +65,10 @@ public class FirstTimeWizardToadlet extends Toadlet {
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   /**
-   * Enumerates every screen in the first-time wizard. The ordering matches the forward navigation
-   * flow when no preset is selected; preset-specific shortcuts may skip some steps. Consumers
-   * should not reorder entries because the wizard uses ordinal switching and explicit mappings to
-   * compute redirects, back-links, and preset behavior.
+   * Lists every screen in the first-time wizard. The ordering matches the forward navigation flow
+   * when no preset is selected; preset-specific shortcuts may skip some steps. Consumers should not
+   * reorder entries because the wizard uses ordinal switching and explicit mappings to compute
+   * redirects, backlinks, and preset behavior.
    */
   public enum WIZARD_STEP {
     /**
@@ -128,13 +128,13 @@ public class FirstTimeWizardToadlet extends Toadlet {
      * Terminal pseudo-step that redirects the user to the home page once onboarding is done and the
      * node is ready for regular use.
      */
-    COMPLETE // Redirects to front page
+    COMPLETE // Redirects to the front page
   }
 
   /**
    * Preset bundles that adjust wizard defaults. Presets primarily change threat level and
    * auto-update settings while skipping intermediate screens to reduce friction. When no preset is
-   * selected the wizard executes the full manual flow and defers side effects until explicit form
+   * selected, the wizard executes the full manual flow and defers side effects until explicit form
    * submission.
    */
   public enum WIZARD_PRESET {
@@ -159,7 +159,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
     addWizardConfiguration(config);
 
-    // Add step handlers that aren't set by presets
+    // Add step handlers that presets don't set
     steps = new EnumMap<>(WIZARD_STEP.class);
     steps.put(WIZARD_STEP.WELCOME, new Welcome(config));
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
@@ -170,8 +170,8 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(core, config));
     steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
 
-    // Add step handlers that are set by presets
-    stepMISC = new Misc(core, config);
+    // Add step handlers that presets set
+    stepMISC = new Misc(config);
     steps.put(WIZARD_STEP.MISC, stepMISC);
 
     stepSecurityNetwork = new SecurityNetwork(core);
@@ -225,7 +225,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    * conditions require skipping ahead. The method validates access rights, normalizes the step
    * parameter, applies preset-driven shortcuts, and ensures required parameters such as opennet
    * flags are present before continuing. Responses are generated synchronously; any failure while
-   * producing HTML results in a redirect to the internal error page so users are not left on a
+   * producing HTML results in a redirect to the internal error page, so users are not left on a
    * partial screen.
    *
    * @param uri request URI provided by the toadlet dispatcher; currently used only for context
@@ -296,7 +296,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
   /**
    * Indicates whether wizard components should emit minor debug-level events. This is a thin helper
-   * around the shared logger so step implementations do not repeat the {@link
+   * around the shared logger, so step implementations do not repeat the {@link
    * Logger#isDebugEnabled()} check. Returning {@code false} discourages verbose logging during
    * normal operation, while a {@code true} value makes it safe to log granular state transitions
    * that aid troubleshooting without changing behavior.
@@ -312,7 +312,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    * Processes HTTP POST submissions for the wizard. The method normalizes the current step, routes
    * preset button presses through {@link #handlePresetSelection(HTTPRequest, ToadletContext)}, and
    * delegates form handling to the relevant step implementation. Redirect targets are calculated
-   * eagerly to keep clients on a consistent flow even when optional fields are missing. Any IO or
+   * eagerly to keep clients in a consistent flow even when optional fields are missing. Any IO or
    * context failures are surfaced immediately because partial application of wizard state is
    * undesirable.
    *
@@ -474,7 +474,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    * Computes the previous wizard step given the current position and any preset in effect. The
    * method respects preset-specific jumps (for example, HIGH can skip directly from the security
    * pages back to the welcome screen) while maintaining the default linear ordering for manual
-   * flows. {@code null} presets are treated as manual mode. This helper is side effect free and can
+   * flows. {@code null} presets are treated as manual mode. This helper is side-effect-free and can
    * be used by both server logic and template code when building back buttons.
    *
    * @param currentStep step for which the caller needs the previous page; must not be {@code null}.

@@ -6,6 +6,7 @@ public class BandwidthDetectionUnavailableException extends Exception {
     super(message);
   }
 
+  @SuppressWarnings("unused")
   public BandwidthDetectionUnavailableException(String message, Throwable cause) {
     super(message, cause);
   }
