@@ -6,11 +6,9 @@ import org.gradle.api.logging.StandardOutputListener
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
 import org.gradle.api.tasks.compile.JavaCompile
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
   java
-  kotlin("jvm")
   jacoco
   id("com.github.spotbugs")
   id("net.ltgt.errorprone")
@@ -128,18 +126,9 @@ repositories {
   }
 }
 
-// Allow Kotlin sources to live under src/main/java and src/test/java, and exclude Version.kt
-extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension>(
-  org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension::class
-) {
-  sourceSets.getByName("main").kotlin.srcDir("src/main/java")
-  sourceSets.getByName("test").kotlin.srcDir("src/test/java")
-  sourceSets.named("main") { kotlin.exclude("**/Version.kt") }
-}
-
 sourceSets.named("main") {
-  // Exclude templated Version.kt from direct Java compilation
-  java.exclude("network/crypta/node/Version.kt")
+  // Exclude templated Version.java from direct compilation; generated source is compiled instead.
+  java.exclude("network/crypta/node/Version.java")
 }
 
 dependencies { add("errorprone", libs.findLibrary("errorproneCore").get()) }
@@ -213,13 +202,6 @@ tasks.withType<Javadoc>().configureEach {
   options.encoding = "UTF-8"
   isFailOnError = false
 }
-
-tasks.withType<KotlinCompile>().configureEach {
-  compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
-}
-
-// Ensure Kotlin sources compile before Java when Java depends on Kotlin types
-tasks.named("compileJava") { dependsOn(tasks.named("compileKotlin")) }
 
 // Tests: settings and module opens needed at runtime
 tasks.withType<Test>().configureEach {

@@ -62,35 +62,35 @@ class NodeBootstrapTest {
       when(node.setupProgramDir(
               installConfig,
               "userDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.userDir",
               "Node.userDirLong"))
           .thenReturn(userDir);
       when(node.setupProgramDir(
               installConfig,
               "cfgDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.cfgDir",
               "Node.cfgDirLong"))
           .thenReturn(cfgDir);
       when(node.setupProgramDir(
               installConfig,
               "nodeDir",
-              resolved.getDataDir().resolve("node").toString(),
+              resolved.dataDir().resolve("node").toString(),
               "Node.nodeDir",
               "Node.nodeDirLong"))
           .thenReturn(nodeDir);
       when(node.setupProgramDir(
               installConfig,
               "runDir",
-              resolved.getRunDir().toString(),
+              resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong"))
           .thenReturn(runDir);
       when(node.setupProgramDir(
               installConfig,
               "pluginDir",
-              resolved.getDataDir().resolve("plugins").toString(),
+              resolved.dataDir().resolve("plugins").toString(),
               "Node.pluginDir",
               "Node.pluginDirLong"))
           .thenReturn(pluginDir);
@@ -110,7 +110,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "userDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.userDir",
               "Node.userDirLong");
       order
@@ -118,7 +118,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "cfgDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.cfgDir",
               "Node.cfgDirLong");
       order
@@ -126,7 +126,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "nodeDir",
-              resolved.getDataDir().resolve("node").toString(),
+              resolved.dataDir().resolve("node").toString(),
               "Node.nodeDir",
               "Node.nodeDirLong");
       order
@@ -134,7 +134,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "runDir",
-              resolved.getRunDir().toString(),
+              resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong");
       order
@@ -142,7 +142,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "pluginDir",
-              resolved.getDataDir().resolve("plugins").toString(),
+              resolved.dataDir().resolve("plugins").toString(),
               "Node.pluginDir",
               "Node.pluginDirLong");
       verifyNoMoreInteractions(node);
@@ -168,35 +168,35 @@ class NodeBootstrapTest {
       when(node.setupProgramDir(
               installConfig,
               "userDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.userDir",
               "Node.userDirLong"))
           .thenReturn(userDir);
       when(node.setupProgramDir(
               installConfig,
               "cfgDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.cfgDir",
               "Node.cfgDirLong"))
           .thenReturn(cfgDir);
       when(node.setupProgramDir(
               installConfig,
               "nodeDir",
-              resolved.getDataDir().resolve("node").toString(),
+              resolved.dataDir().resolve("node").toString(),
               "Node.nodeDir",
               "Node.nodeDirLong"))
           .thenReturn(nodeDir);
       when(node.setupProgramDir(
               installConfig,
               "runDir",
-              resolved.getRunDir().toString(),
+              resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong"))
           .thenReturn(runDir);
       when(node.setupProgramDir(
               installConfig,
               "pluginDir",
-              resolved.getDataDir().resolve("plugins").toString(),
+              resolved.dataDir().resolve("plugins").toString(),
               "Node.pluginDir",
               "Node.pluginDirLong"))
           .thenReturn(pluginDir);
@@ -216,7 +216,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "userDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.userDir",
               "Node.userDirLong");
       order
@@ -224,7 +224,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "cfgDir",
-              resolved.getConfigDir().toString(),
+              resolved.configDir().toString(),
               "Node.cfgDir",
               "Node.cfgDirLong");
       order
@@ -232,7 +232,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "nodeDir",
-              resolved.getDataDir().resolve("node").toString(),
+              resolved.dataDir().resolve("node").toString(),
               "Node.nodeDir",
               "Node.nodeDirLong");
       order
@@ -240,7 +240,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "runDir",
-              resolved.getRunDir().toString(),
+              resolved.runDir().toString(),
               "Node.runDir",
               "Node.runDirLong");
       order
@@ -248,7 +248,7 @@ class NodeBootstrapTest {
           .setupProgramDir(
               installConfig,
               "pluginDir",
-              resolved.getDataDir().resolve("plugins").toString(),
+              resolved.dataDir().resolve("plugins").toString(),
               "Node.pluginDir",
               "Node.pluginDirLong");
       verifyNoMoreInteractions(node);

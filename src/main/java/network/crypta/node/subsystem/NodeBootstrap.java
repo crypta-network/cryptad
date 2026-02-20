@@ -41,7 +41,7 @@ import static network.crypta.node.Node.HWRNG_PATH_PROPERTY;
  * <p>State is mutable and not inherently thread-safe beyond volatile publication of the readiness
  * flag; callers should perform bootstrap sequencing on a single thread, then treat the getters as
  * read-only accessors. The entropy gathering thread is optional and starts only when no pre-seeded
- * random source is provided. Directory defaults differ for user-session vs service mode, using
+ * random source is provided. Directory defaults differ for user-session vs. service mode, using
  * {@link AppDirs} or {@link ServiceDirs} respectively.
  *
  * <ul>
@@ -82,10 +82,10 @@ public final class NodeBootstrap {
    * Logs a one-line summary of startup environment information.
    *
    * <p>The log line includes build identifiers, JVM vendor/version, and the raw OS name and version
-   * from {@link AppEnv}. The method has no return value and does not modify node state, making it
-   * safe to call multiple times if the launcher repeats initialization or retries startup. Because
-   * it uses system properties, callers should ensure these are stable before invocation. Any
-   * exceptions are handled by the logging framework; the method itself does not throw.
+   * from {@link AppEnv}. The method has no return value and does not modify the node state, making
+   * it safe to call multiple times if the launcher repeats initialization or retries startup.
+   * Because it uses system properties, callers should ensure these are stable before invocation.
+   * Any exceptions are handled by the logging framework; the method itself does not throw.
    */
   public void logStartupInfo() {
     String tmp =
@@ -133,15 +133,15 @@ public final class NodeBootstrap {
     if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
       Resolved serviceResolved = serviceDirs.resolve();
-      defaultConfigDir = serviceResolved.getConfigDir();
-      defaultDataDir = serviceResolved.getDataDir();
-      defaultRunDir = serviceResolved.getRunDir();
+      defaultConfigDir = serviceResolved.configDir();
+      defaultDataDir = serviceResolved.dataDir();
+      defaultRunDir = serviceResolved.runDir();
     } else {
       AppDirs dirs = new AppDirs();
       Resolved appResolved = dirs.resolve();
-      defaultConfigDir = appResolved.getConfigDir();
-      defaultDataDir = appResolved.getDataDir();
-      defaultRunDir = appResolved.getRunDir();
+      defaultConfigDir = appResolved.configDir();
+      defaultDataDir = appResolved.dataDir();
+      defaultRunDir = appResolved.runDir();
     }
 
     ProgramDirectory userDirLocal =
@@ -204,7 +204,7 @@ public final class NodeBootstrap {
    * and notifies the startup toadlet so the UI can drop the entropy warning. For the fast weak
    * random, {@code weakRandom} is used when provided; otherwise {@link #createRandom()} is invoked.
    *
-   * <p>This method should be called once during bootstrap; subsequent calls overwrite the published
+   * <p>This method should be called once during bootstrap; later calls overwrite the published
    * random instances. It is not synchronized, so callers must ensure a single-threaded startup
    * sequence.
    *
@@ -249,7 +249,7 @@ public final class NodeBootstrap {
    *
    * <p>The instance is set by {@link #setupRandomSources(RandomSource, RandomSource,
    * SimpleToadletServer, NativeThread, ProgramDirectory)} and is expected to remain stable for the
-   * lifetime of the node. Callers should treat the returned reference as shared mutable state and
+   * lifetime of the node. Callers should treat the returned reference as a shared mutable state and
    * avoid replacing or reconfiguring it outside bootstrap.
    *
    * @return the configured {@link RandomSource} used for cryptographic operations.

@@ -92,8 +92,8 @@ install_desktop() {
     for f in "$DESKTOP_DST" "$DESKTOP_SRC"; do
       sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$f" || true
       sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$f" || true
-      grep -q '^StartupWMClass=' "$f" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$f"
-      grep -q '^X-GNOME-WMClass=' "$f" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$f"
+      grep -q '^StartupWMClass=' "$f" || echo 'StartupWMClass=network-crypta-launcher-Launcher' >> "$f"
+      grep -q '^X-GNOME-WMClass=' "$f" || echo 'X-GNOME-WMClass=network-crypta-launcher-Launcher' >> "$f"
     done
   fi
   # Refresh desktop databases (both system and local share paths)

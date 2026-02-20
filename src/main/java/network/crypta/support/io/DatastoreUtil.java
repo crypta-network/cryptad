@@ -71,7 +71,7 @@ public final class DatastoreUtil {
     try {
       AppEnv env = new AppEnv();
       Resolved dirs = env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
-      Path dataDirPath = dirs.getDataDir();
+      Path dataDirPath = dirs.dataDir();
       long unallocatedSpace = Files.getFileStore(dataDirPath).getUnallocatedSpace();
       // Constrain by the lesser of disk-free space and the memory-derived cap.
       // Any additional reserve policy is handled elsewhere.

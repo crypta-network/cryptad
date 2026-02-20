@@ -99,7 +99,7 @@ class NodeClientCoreSupportTest {
 
     File cacheDir = NodeClientCoreSupport.resolveDefaultCacheDir();
 
-    assertEquals(resolved.getCacheDir().toFile(), cacheDir);
+    assertEquals(resolved.cacheDir().toFile(), cacheDir);
   }
 
   @Test
@@ -109,7 +109,7 @@ class NodeClientCoreSupportTest {
 
     File dataDir = NodeClientCoreSupport.resolveDefaultDataDir();
 
-    assertEquals(resolved.getDataDir().toFile(), dataDir);
+    assertEquals(resolved.dataDir().toFile(), dataDir);
   }
 
   @Test
@@ -119,7 +119,7 @@ class NodeClientCoreSupportTest {
 
     File cacheDir = NodeClientCoreSupport.resolveDefaultCacheDir();
 
-    assertEquals(resolved.getCacheDir().toFile(), cacheDir);
+    assertEquals(resolved.cacheDir().toFile(), cacheDir);
   }
 
   @Test
@@ -129,7 +129,7 @@ class NodeClientCoreSupportTest {
 
     File dataDir = NodeClientCoreSupport.resolveDefaultDataDir();
 
-    assertEquals(resolved.getDataDir().toFile(), dataDir);
+    assertEquals(resolved.dataDir().toFile(), dataDir);
   }
 
   @Test

@@ -137,14 +137,14 @@ if is_desktop; then
     # Normalize Exec/Icon to the actual app dir; ensure WM_CLASS keys exist.
     sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$DESKTOP_DST" || true
     sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$DESKTOP_DST" || true
-    grep -q '^StartupWMClass=' "$DESKTOP_DST" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_DST"
-    grep -q '^X-GNOME-WMClass=' "$DESKTOP_DST" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_DST"
+    grep -q '^StartupWMClass=' "$DESKTOP_DST" || echo 'StartupWMClass=network-crypta-launcher-Launcher' >> "$DESKTOP_DST"
+    grep -q '^X-GNOME-WMClass=' "$DESKTOP_DST" || echo 'X-GNOME-WMClass=network-crypta-launcher-Launcher' >> "$DESKTOP_DST"
     log_line "post: patched $DESKTOP_DST (Exec/Icon/WM_CLASS)"
     # Also patch the image copy for consistency so future packaging picks up the same values.
     sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$DESKTOP_SRC" || true
     sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$DESKTOP_SRC" || true
-    grep -q '^StartupWMClass=' "$DESKTOP_SRC" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_SRC"
-    grep -q '^X-GNOME-WMClass=' "$DESKTOP_SRC" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_SRC"
+    grep -q '^StartupWMClass=' "$DESKTOP_SRC" || echo 'StartupWMClass=network-crypta-launcher-Launcher' >> "$DESKTOP_SRC"
+    grep -q '^X-GNOME-WMClass=' "$DESKTOP_SRC" || echo 'X-GNOME-WMClass=network-crypta-launcher-Launcher' >> "$DESKTOP_SRC"
     log_line "post: patched image copy $DESKTOP_SRC"
   else
     log_line "post: WARNING: missing $DESKTOP_SRC; cannot install desktop entry"

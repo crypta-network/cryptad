@@ -16,7 +16,6 @@ spotless {
     // Restrict to source trees rather than scanning entire repo to avoid special FS entries
     // created by Flatpak builder (e.g., .flatpak-builder/**/host/proc/**/map_files).
     target("src/**/*.kt")
-    targetExclude("**/Version.kt")
     ktfmt("0.58").googleStyle()
     trimTrailingWhitespace()
     endWithNewline()

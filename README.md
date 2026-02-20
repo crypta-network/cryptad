@@ -311,7 +311,7 @@ Outputs (macOS example)
 Details
 
 - App metadata: Name `Crypta`, Vendor `crypta.network`, App ID `network.crypta.cryptad`.
-- Main entry: `network.crypta.launcher.LauncherKt`.
+- Main entry: `network.crypta.launcher.Launcher`.
 - Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
 - Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
@@ -394,7 +394,7 @@ build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
 
 ```bash
 cd build/jpackage/Crypta.app/Contents
-./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
+./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.Launcher
 ```
 
 ## Launcher Details

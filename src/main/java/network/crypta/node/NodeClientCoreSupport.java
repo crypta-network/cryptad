@@ -82,7 +82,7 @@ public final class NodeClientCoreSupport {
    * @return default cache directory for the current environment, as a {@link File}.
    */
   public static File resolveDefaultCacheDir() {
-    return resolveDefaultDirs().getCacheDir().toFile();
+    return resolveDefaultDirs().cacheDir().toFile();
   }
 
   /**
@@ -96,7 +96,7 @@ public final class NodeClientCoreSupport {
    * @return default data directory for the current environment, as a {@link File}.
    */
   public static File resolveDefaultDataDir() {
-    return resolveDefaultDirs().getDataDir().toFile();
+    return resolveDefaultDirs().dataDir().toFile();
   }
 
   /**

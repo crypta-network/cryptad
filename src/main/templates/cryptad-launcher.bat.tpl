@@ -12,5 +12,5 @@ if not exist "%JAVA_EXE%" (
   set JAVA_EXE=java
 )
 
-"%JAVA_EXE%" -cp "%CP%" network.crypta.launcher.LauncherKt %*
-
+rem Required for JNA on modern JDKs.
+"%JAVA_EXE%" --enable-native-access=ALL-UNNAMED -cp "%CP%" network.crypta.launcher.Launcher %*

@@ -18,7 +18,6 @@ pluginManagement {
         ?: error("Version '$key' not found in libs.versions.toml")
     }
 
-    id("org.jetbrains.kotlin.jvm") version ver("kotlin")
     id("com.diffplug.spotless") version ver("spotless")
   }
 }

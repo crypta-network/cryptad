@@ -26,12 +26,15 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
-  // Coroutines (Swing Main dispatcher)
-  implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
   implementation(libs.jsystemThemeDetector)
+  constraints {
+    implementation("com.github.oshi:oshi-core:6.9.3") {
+      because("Use newer OSHI for modern macOS version handling in theme detection")
+    }
+  }
   // Flatpak/Portal detection via D-Bus
   implementation(libs.dbusCore)
   // CLI parsing and UX
@@ -40,6 +43,8 @@ dependencies {
   // compileOnly
   // Compile-time access to Logback classes for runtime reconfiguration
   compileOnly(libs.logbackClassic)
+  // Java source annotations used across the codebase
+  compileOnly("org.jetbrains:annotations:23.0.0")
 
   // runtimeOnly
   runtimeOnly(libs.dbusTransportNativeUnix)
@@ -58,6 +63,7 @@ dependencies {
   testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
+  testCompileOnly("org.jetbrains:annotations:23.0.0")
 
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
@@ -72,9 +78,9 @@ tasks.register("printVersion") {
 }
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
-// distribution; it's only to inform launchers that invoke the Kotlin main directly.
-// Align with actual top-level entry in Launcher.kt
-application { mainClass.set("network.crypta.launcher.LauncherKt") }
+// distribution; it's only to inform launchers that invoke the launcher main class directly.
+// Align with the actual launcher entrypoint in Launcher.java
+application { mainClass.set("network.crypta.launcher.Launcher") }
 
 val nodeRuntimeJvmArgs =
   listOf(
@@ -99,8 +105,9 @@ tasks.register<JavaExec>("runLauncher") {
   group = "application"
   description = "Runs the Cryptad Swing launcher"
   javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
-  mainClass.set("network.crypta.launcher.LauncherKt")
+  mainClass.set("network.crypta.launcher.Launcher")
   classpath = sourceSets.main.get().runtimeClasspath
+  jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 // Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'

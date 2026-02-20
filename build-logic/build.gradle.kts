@@ -22,7 +22,6 @@ repositories {
 
 dependencies {
   // Allow precompiled plugins to apply these without specifying versions in their scripts
-  implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
   implementation(
     "com.github.spotbugs:com.github.spotbugs.gradle.plugin:${libs.versions.spotbugs.get()}"
