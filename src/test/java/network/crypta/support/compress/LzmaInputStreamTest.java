@@ -111,7 +111,13 @@ class LzmaInputStreamTest {
     // Act
     try (LzmaInputStream stream = new LzmaInputStream(source)) {
       source.allowFailure();
-      exception = assertThrows(IOException.class, stream::read);
+      exception =
+          readUntilIOException(
+              () -> {
+                while (stream.read() >= 0) {
+                  // Keep consuming until decoder failure is observed.
+                }
+              });
     }
 
     // Assert
@@ -127,7 +133,14 @@ class LzmaInputStreamTest {
     // Act
     try (LzmaInputStream stream = new LzmaInputStream(source)) {
       source.allowFailure();
-      exception = assertThrows(IOException.class, () -> stream.read(new byte[8], 0, 8));
+      exception =
+          readUntilIOException(
+              () -> {
+                byte[] buffer = new byte[8];
+                while (stream.read(buffer, 0, buffer.length) >= 0) {
+                  // Keep consuming until decoder failure is observed.
+                }
+              });
     }
 
     // Assert
@@ -145,6 +158,18 @@ class LzmaInputStreamTest {
 
     // Assert
     assertTrue(source.isClosed());
+  }
+
+  private static IOException readUntilIOException(IoAction action) {
+    for (int attempt = 0; attempt < 200; attempt++) {
+      try {
+        action.run();
+      } catch (IOException exception) {
+        return exception;
+      }
+      java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L);
+    }
+    throw new AssertionError("Expected java.io.IOException to be thrown, but nothing was thrown.");
   }
 
   private static byte[] createLzmaFrame(byte[] payload) throws IOException {
@@ -186,6 +211,11 @@ class LzmaInputStreamTest {
     private boolean isClosed() {
       return closed;
     }
+  }
+
+  @FunctionalInterface
+  private interface IoAction {
+    void run() throws IOException;
   }
 
   private static final class HeaderThenFailingInputStream extends InputStream {

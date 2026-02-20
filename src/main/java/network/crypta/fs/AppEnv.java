@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
  * Detects runtime platform characteristics and service/container execution modes for Cryptad.
@@ -379,7 +380,8 @@ public final class AppEnv {
     }
     char sep = File.pathSeparatorChar;
     boolean isWin = isWindows();
-    String[] dirs = path.split(java.util.regex.Pattern.quote(String.valueOf(sep)));
+    Pattern pathSeparator = Pattern.compile(Pattern.quote(String.valueOf(sep)));
+    String[] dirs = pathSeparator.split(path, 0);
     for (String dir : dirs) {
       File base = new File(dir, cmd);
       if (base.exists() && base.canExecute()) {

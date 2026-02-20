@@ -844,6 +844,7 @@ public class LauncherController {
   }
 
   private static String ts() {
-    return java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_TIME);
+    return java.time.LocalDateTime.now(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ISO_LOCAL_TIME);
   }
 }

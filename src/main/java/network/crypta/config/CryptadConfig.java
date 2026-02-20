@@ -39,6 +39,23 @@ public final class CryptadConfig {
   private static final String DATA_DIR_KEY = "dataDir";
   private static final String CACHE_DIR_KEY = "cacheDir";
 
+  /**
+   * Minimal default configuration template used for first-run file creation.
+   *
+   * <p>The template intentionally contains only baseline keys required for startup and updater
+   * behavior, leaving directory and path keys to be derived during expansion. A trailing newline is
+   * included so generated files follow standard text-file termination conventions.
+   */
+  public static final String DEFAULT_TEMPLATE =
+      """
+      # Cryptad config (auto-generated)
+      logger.priority=NORMAL
+      node.updater.enabled=true
+      node.updater.autoupdate=false
+      End
+
+      """;
+
   private CryptadConfig() {}
 
   /**
@@ -65,10 +82,10 @@ public final class CryptadConfig {
    * Loads configuration, expands placeholders, and ensures required directories exist.
    *
    * <p>If the target file does not exist, this method creates parent directories as needed and
-   * writes {@link #defaultTemplate()} using UTF-8. It then parses the file, expands placeholders
-   * and leading-token shorthand through {@link #expandAll(SimpleFieldSet, Resolved, Properties)},
-   * and finally attempts to create all configured directories. Directory creation is best-effort,
-   * but configuration file creation and parsing failures propagate to the caller.
+   * writes {@link #DEFAULT_TEMPLATE} using UTF-8. It then parses the file, expands placeholders and
+   * leading-token shorthand through {@link #expandAll(SimpleFieldSet, Resolved, Properties)}, and
+   * finally attempts to create all configured directories. Directory creation is best-effort, but
+   * configuration file creation and parsing failures propagate to the caller.
    *
    * @param configFile path to the on-disk configuration file
    * @param dirs resolved directory set that defines placeholder base paths
@@ -83,7 +100,7 @@ public final class CryptadConfig {
       Files.createDirectories(parent);
     }
     if (!Files.exists(configFile)) {
-      Files.writeString(configFile, defaultTemplate(), StandardCharsets.UTF_8);
+      Files.writeString(configFile, DEFAULT_TEMPLATE, StandardCharsets.UTF_8);
     }
     SimpleFieldSet sfs = SimpleFieldSet.readFrom(Files.newInputStream(configFile), true, true);
     SimpleFieldSet expanded = expandAll(sfs, dirs, systemProps);
@@ -334,26 +351,6 @@ public final class CryptadConfig {
         // Best effort.
       }
     }
-  }
-
-  /**
-   * Returns the minimal default configuration template used for first-run file creation.
-   *
-   * <p>The template intentionally contains only baseline keys required for startup and updater
-   * behavior, leaving directory and path keys to be derived during expansion. A trailing newline is
-   * included so generated files follow standard text-file termination conventions.
-   *
-   * @return default UTF-8 configuration template text with a terminating newline
-   */
-  public static String defaultTemplate() {
-    return """
-    # Cryptad config (auto-generated)
-    logger.priority=NORMAL
-    node.updater.enabled=true
-    node.updater.autoupdate=false
-    End
-    """
-        + "\n";
   }
 
   /**

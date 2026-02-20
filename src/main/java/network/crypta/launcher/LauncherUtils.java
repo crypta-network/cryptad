@@ -40,6 +40,7 @@ import static network.crypta.launcher.LauncherLog.logDebug;
 public final class LauncherUtils {
   private static final Pattern CONF_RE_1 = Pattern.compile("CONF=\"([^\"]*wrapper\\.conf)\"");
   private static final Pattern CONF_RE_2 = Pattern.compile("-c\\s+\"([^\"]*wrapper\\.conf)\"");
+  private static final Pattern PATH_SPLITTER = Pattern.compile(Pattern.quote(File.pathSeparator));
 
   /**
    * Environment variable key used to explicitly override launcher script location.
@@ -352,7 +353,7 @@ public final class LauncherUtils {
     }
     Pattern namePattern =
         Pattern.compile("^" + CRYPTAD_SCRIPT + "(?:[-.].*)?\\.jar$", Pattern.CASE_INSENSITIVE);
-    for (String raw : classPath.split(Pattern.quote(File.pathSeparator))) {
+    for (String raw : PATH_SPLITTER.split(classPath, 0)) {
       Path jarPath = resolveCryptadJarFromClassPathEntry(raw, namePattern);
       if (jarPath != null) {
         return jarPath;
@@ -500,7 +501,7 @@ public final class LauncherUtils {
     if (path == null) {
       return null;
     }
-    for (String dir : path.split(Pattern.quote(File.pathSeparator))) {
+    for (String dir : PATH_SPLITTER.split(path, 0)) {
       try {
         Path candidate = Paths.get(dir).resolve(cmd);
         if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
