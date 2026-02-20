@@ -4,8 +4,10 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
 import org.junit.jupiter.api.Test;
@@ -16,10 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"java:S100"})
 @ExtendWith(MockitoExtension.class)
@@ -74,19 +72,14 @@ class LauncherControllerTest {
   }
 
   @Test
-  void stop_whenProcessNotAlive_clearsRunningState() throws Exception {
+  void stop_whenNoTrackedProcess_noop() throws Exception {
     LauncherController controller = new LauncherController(tempDir);
-
-    Process process = mock(Process.class);
-    when(process.waitFor(anyLong(), any(TimeUnit.class))).thenReturn(true);
-    setPrivateField(controller, "process", process);
-    setPrivateField(controller, "state", new AppState(true, null, false, false));
+    AppState initial = new AppState(true, null, false, false);
+    setPrivateStateField(controller, initial);
 
     controller.stop();
 
-    AppState state = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
-    assertFalse(state.isRunning());
-    assertFalse(state.isStopping());
+    assertEquals(initial, controller.getState());
 
     controller.shutdownAndWait();
   }
@@ -95,11 +88,45 @@ class LauncherControllerTest {
   void launchBrowser_whenPortMissing_noop() throws Exception {
     LauncherController controller = new LauncherController(tempDir);
     AppState initial = new AppState(false, null, false, false);
-    setPrivateField(controller, "state", initial);
+    setPrivateStateField(controller, initial);
 
     controller.launchBrowser();
 
     assertEquals(initial, controller.getState());
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void launchBrowser_whenRunningWithoutDetectedPort_noop() throws Exception {
+    LauncherController controller = new LauncherController(tempDir);
+    AppState initial = new AppState(true, null, false, false);
+    setPrivateStateField(controller, initial);
+
+    controller.launchBrowser();
+
+    assertEquals(initial, controller.getState());
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void stop_whenScriptRunsLong_processStopsAndStateClears() throws Exception {
+    LauncherController controller = new LauncherController(tempDir);
+
+    writeWrapperConf(tempDir);
+    Path heartbeat = tempDir.resolve("heartbeat.log");
+    writeLongRunningCryptadScript(tempDir, heartbeat);
+
+    controller.start();
+    awaitState(controller, AppState::isRunning);
+    awaitHeartbeat(heartbeat);
+
+    controller.stop();
+
+    AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
+    assertFalse(stopped.isRunning());
+    assertFalse(stopped.isStopping());
+    awaitFileSizeStable(heartbeat, Duration.ofMillis(2500));
+
     controller.shutdownAndWait();
   }
 
@@ -160,11 +187,47 @@ class LauncherControllerTest {
     }
   }
 
-  private static void setPrivateField(Object target, String fieldName, Object value)
-      throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+  private static void setPrivateStateField(Object target, Object value) throws Exception {
+    Field field = target.getClass().getDeclaredField("state");
     field.setAccessible(true);
+    Object fieldValue = field.get(target);
+    if (fieldValue instanceof AtomicReference<?> ref) {
+      @SuppressWarnings("unchecked")
+      AtomicReference<Object> typed = (AtomicReference<Object>) ref;
+      typed.set(value);
+      return;
+    }
     field.set(target, value);
+  }
+
+  private static void awaitHeartbeat(Path heartbeat) throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (System.nanoTime() < deadline) {
+      if (Files.isRegularFile(heartbeat) && Files.size(heartbeat) > 0) {
+        return;
+      }
+      sleepShort();
+    }
+    throw new AssertionError("Timed out waiting for launcher heartbeat output");
+  }
+
+  private static void awaitFileSizeStable(Path file, Duration stableFor) throws Exception {
+    long stableNs = stableFor.toNanos();
+    long stableSince = System.nanoTime();
+    long previousSize = Files.exists(file) ? Files.size(file) : 0L;
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (System.nanoTime() < deadline) {
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100));
+      long sizeNow = Files.exists(file) ? Files.size(file) : 0L;
+      if (sizeNow != previousSize) {
+        previousSize = sizeNow;
+        stableSince = System.nanoTime();
+      }
+      if (System.nanoTime() - stableSince >= stableNs) {
+        return;
+      }
+    }
+    throw new AssertionError("Heartbeat file kept changing; process still appears alive");
   }
 
   private static void writeCryptadScript(Path baseDir) throws Exception {
@@ -190,6 +253,45 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "echo \"READY\"",
               "sleep 0.2");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLongRunningCryptadScript(Path baseDir, Path heartbeat) throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String heartbeatPath = heartbeat.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "setlocal",
+              "set \"HEARTBEAT=" + heartbeatPath + "\"",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              ":loop",
+              "echo %TIME%>>\"%HEARTBEAT%\"",
+              "ping -n 2 127.0.0.1 > nul",
+              "goto loop");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "HEARTBEAT=\"" + heartbeatPath + "\"",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "while true; do",
+              "  date +%s%N >> \"$HEARTBEAT\"",
+              "  sleep 1",
+              "done");
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 

@@ -1243,6 +1243,7 @@ public final class SimpleToadletServer
    * call is idempotent when {@link #myThread} is already {@code null} or the thread has previously
    * been started.
    */
+  @SuppressWarnings("java:S106")
   public void start() {
     Thread thread;
     synchronized (this) {
@@ -1252,6 +1253,8 @@ public final class SimpleToadletServer
       maybeGetNetworkInterface();
       thread.start();
       LOG.info("Starting FProxy on {}:{}", bindTo, port);
+      // Keep a plain stdout line for the launcher parser when INFO logs are filtered by default.
+      System.out.println("Starting FProxy on " + bindTo + ":" + port);
     }
   }
 

@@ -1,17 +1,31 @@
 package network.crypta.launcher;
 
 import java.awt.Desktop;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
+import network.crypta.fs.AppEnv;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
@@ -22,25 +36,47 @@ import static network.crypta.launcher.LauncherLog.logDebug;
  * {@code cryptad} process. It handles start/stop/shutdown transitions, tails process output,
  * extracts runtime metadata (such as detected browser port), and emits immutable state snapshots to
  * registered listeners. Long-running and blocking work executes on a dedicated single-thread
- * executor to keep UI interactions responsive while preserving operation ordering.
+ * executor pool to keep UI interactions responsive while allowing concurrent lifecycle tasks.
  *
  * <p>Notable behavior:
  *
  * <ul>
- *   <li>Serializes process lifecycle operations through a single worker thread.
+ *   <li>Runs process lifecycle, browser launch, and log tailing tasks asynchronously.
  *   <li>Tracks shutdown intent to prevent restarts during the termination flow.
  *   <li>Publishes both structured state updates and raw log lines for view rendering.
  * </ul>
  */
 public class LauncherController {
-  private final ExecutorService io = Executors.newSingleThreadExecutor();
+  private static final ThreadFactory IO_THREAD_FACTORY =
+      runnable -> {
+        Thread thread = new Thread(runnable, "launcher-io");
+        thread.setDaemon(true);
+        return thread;
+      };
+  private final ExecutorService io = Executors.newCachedThreadPool(IO_THREAD_FACTORY);
   private final Path cwd;
   private final List<Consumer<String>> logListeners = new CopyOnWriteArrayList<>();
   private final List<Consumer<AppState>> stateListeners = new CopyOnWriteArrayList<>();
 
-  private Process process;
-  private AppState state = new AppState();
-  private volatile boolean shuttingDown;
+  private final AtomicReference<Process> process = new AtomicReference<>();
+  private final AtomicReference<AppState> state = new AtomicReference<>(new AppState());
+  private final AtomicReference<Path> wrapperConfPath = new AtomicReference<>();
+  private final AtomicBoolean autoOpenedBrowser = new AtomicBoolean();
+  private final AtomicReference<Thread> tailThread = new AtomicReference<>();
+  private static final String UNIX_KILL_EXECUTABLE = "/bin/kill";
+  private static final String WINDOWS_TASKKILL_EXECUTABLE =
+      Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"), "System32", "taskkill.exe")
+          .toString();
+  private static final String WINDOWS_RUNDLL32_EXECUTABLE =
+      Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"), "System32", "rundll32.exe")
+          .toString();
+  private static final String MAC_OPEN_EXECUTABLE = "/usr/bin/open";
+  private static final String LINUX_XDG_OPEN_EXECUTABLE = "/usr/bin/xdg-open";
+  private static final String LINUX_XDG_OPEN_EXECUTABLE_FALLBACK = "/bin/xdg-open";
+  private static final long TAIL_BASE_DELAY_MS = 200L;
+  private static final long TAIL_MAX_DELAY_MS = 1500L;
+  private static final long TAIL_CANCEL_POLL_MS = 50L;
+  private static final int TAIL_READ_CHUNK = 64 * 1024;
 
   /**
    * Creates a controller rooted at the current working directory.
@@ -67,7 +103,7 @@ public class LauncherController {
    * @return current application state representing process and shutdown flags
    */
   public AppState getState() {
-    return state;
+    return state.get();
   }
 
   /**
@@ -106,7 +142,7 @@ public class LauncherController {
   public void addStateListener(Consumer<AppState> listener) {
     if (listener != null) {
       stateListeners.add(listener);
-      listener.accept(state);
+      listener.accept(state.get());
     }
   }
 
@@ -130,70 +166,88 @@ public class LauncherController {
    * line is emitted and state is restored to non-running.
    */
   public synchronized void start() {
-    AppState currentState = state;
-    if (shuttingDown) {
-      return;
-    }
-    if (currentState.isRunning()) {
+    Process currentProcess = process.get();
+    if (state.get().isRunning() || (currentProcess != null && currentProcess.isAlive())) {
       return;
     }
 
+    io.execute(this::startProcessAndWatch);
+  }
+
+  private void startProcessAndWatch() {
     Path cryptadPath = LauncherUtils.resolveCryptadPath(cwd);
     if (!Files.isRegularFile(cryptadPath) || !Files.isExecutable(cryptadPath)) {
       emitLog(ts() + " ERROR: Cannot find executable 'cryptad' at " + cryptadPath);
       return;
     }
 
-    setState(currentState.withStopping(false).withShuttingDown(false));
     emitLog(ts() + " Starting '" + cryptadPath.getFileName() + "' ...");
+    updateState(s -> s.withRunning(true).withKnownPort(null));
 
-    io.execute(
-        () -> {
-          try {
-            maybeEnableWrapperConsoleFlush(cryptadPath);
-            List<String> command = LauncherUtils.buildCryptadCommand(cryptadPath);
-            emitLog(
-                ts()
-                    + " exec: "
-                    + String.join(" ", command)
-                    + " (cwd="
-                    + cwd.toAbsolutePath()
-                    + ")");
+    tryEnableConsoleFlush(cryptadPath);
 
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.directory(cwd.toFile());
-            pb.redirectErrorStream(true);
-            Process started = pb.start();
-            process = started;
-            setState(state.withRunning(true).withStopping(false));
+    List<String> command = LauncherUtils.buildCryptadCommand(cryptadPath);
+    emitLog(
+        ts() + " exec: " + formatCommandForLog(command) + " (cwd=" + cwd.toAbsolutePath() + ")");
+    ProcessBuilder pb = new ProcessBuilder(command);
+    pb.directory(cwd.toFile());
+    pb.redirectErrorStream(true);
 
-            try (var reader =
-                new java.io.BufferedReader(
-                    new java.io.InputStreamReader(
-                        started.getInputStream(), StandardCharsets.UTF_8))) {
-              String line;
-              while ((line = reader.readLine()) != null) {
-                emitLog(line);
-                Integer parsedPort = LauncherUtils.parseFProxyPortFromLine(line);
-                if (parsedPort != null) {
-                  setState(state.withKnownPort(parsedPort));
-                }
-              }
-            }
+    Process started;
+    try {
+      started = pb.start();
+    } catch (Exception e) {
+      logDebug("Launcher process start failed", e);
+      emitLog(ts() + " ERROR: " + e.getMessage());
+      updateState(s -> s.withRunning(false));
+      return;
+    }
 
-            started.waitFor();
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logDebug("Launcher process start/watch failed", e);
-            emitLog(ts() + " ERROR: " + e.getMessage());
-          } catch (Exception e) {
-            logDebug("Launcher process start/watch failed", e);
-            emitLog(ts() + " ERROR: " + e.getMessage());
-          } finally {
-            process = null;
-            setState(state.withRunning(false).withStopping(false));
-          }
-        });
+    process.set(started);
+    wrapperConfPath.set(LauncherUtils.guessWrapperConfPathForCryptadScript(cryptadPath));
+    startTailingWrapperLogIfAvailable();
+    io.execute(() -> readProcessOutput(started));
+    io.execute(() -> watchProcess(started));
+  }
+
+  private void readProcessOutput(Process started) {
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        emitLog(line);
+        Integer detectedPort = LauncherUtils.parseFProxyPortFromLine(line);
+        if (detectedPort != null) {
+          handleDetectedPort(detectedPort);
+        }
+      }
+    } catch (Exception e) {
+      logDebug("Launcher process output reader failed", e);
+    }
+  }
+
+  private void handleDetectedPort(int port) {
+    Integer oldPort = state.get().knownPort();
+    if (!Objects.equals(oldPort, port)) {
+      updateState(s -> s.withKnownPort(port));
+    }
+    if (autoOpenedBrowser.compareAndSet(false, true)) {
+      launchBrowser();
+    }
+  }
+
+  private void watchProcess(Process started) {
+    int exitCode;
+    try {
+      exitCode = started.waitFor();
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      return;
+    }
+    emitLog(ts() + " cryptad exited with code " + exitCode);
+    clearTrackedProcess(started);
+    updateState(s -> s.withRunning(false));
   }
 
   /**
@@ -202,26 +256,464 @@ public class LauncherController {
    * <p>If no process is active, the state is normalized to non-running immediately.
    */
   public synchronized void stop() {
-    Process current = process;
+    Process current = process.get();
     if (current == null) {
-      setState(state.withRunning(false).withStopping(false));
       return;
     }
 
-    setState(state.withStopping(true));
+    if (!current.isAlive()) {
+      updateState(s -> s.withRunning(false));
+      return;
+    }
+
+    updateState(s -> s.withStopping(true));
     io.execute(
         () -> {
           try {
-            current.destroy();
-            if (!current.waitFor(5, TimeUnit.SECONDS)) {
-              current.destroyForcibly();
-            }
-          } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
+            stopManagedProcess(current);
           } finally {
-            setState(state.withRunning(false).withStopping(false));
+            updateState(s -> s.withStopping(false));
           }
         });
+  }
+
+  private void stopManagedProcess(Process current) {
+    try {
+      long rootPid = current.pid();
+      List<Long> trackedPids = snapshotProcessTreePids(rootPid);
+      if (trackedPids.isEmpty()) {
+        trackedPids = List.of(rootPid);
+      }
+      AppEnv env = new AppEnv();
+      if (env.isWindows()) {
+        stopProcessTreeWindows(rootPid, trackedPids);
+      } else {
+        stopProcessTreeUnix(trackedPids);
+      }
+      if (current.isAlive()) {
+        current.destroyForcibly();
+      }
+    } catch (Exception e) {
+      emitLog(ts() + " ERROR: Failed to stop process: " + e.getMessage());
+      logDebug("Failed to stop process gracefully", e);
+    }
+  }
+
+  private void stopProcessTreeUnix(List<Long> pids) {
+    if (!pids.isEmpty()) {
+      emitLog(ts() + " Sending SIGINT to wrapper tree (root PID " + pids.getFirst() + ") ...");
+    }
+    sendSignalToPids(pids, "INT");
+    if (waitForPidsToExit(pids, 20)) {
+      return;
+    }
+
+    emitLog(ts() + " Escalating: sending SIGTERM to remaining processes ...");
+    List<Long> alive = alivePids(pids);
+    sendSignalToPids(alive, "TERM");
+    if (waitForPidsToExit(pids, 5)) {
+      return;
+    }
+
+    emitLog(ts() + " Escalating: sending SIGKILL to remaining processes ...");
+    sendSignalToPids(alivePids(pids), "KILL");
+    waitForPidsToExit(pids, 2);
+  }
+
+  private void stopProcessTreeWindows(long rootPid, List<Long> pids) {
+    if (!tryWindowsGracefulStopViaAnchor(pids)) {
+      runTaskkill(rootPid, false);
+      if (waitForPidsToExit(pids, 20)) {
+        return;
+      }
+      runTaskkill(rootPid, true);
+      waitForPidsToExit(pids, 5);
+    }
+  }
+
+  private List<Long> snapshotProcessTreePids(long rootPid) {
+    List<Long> pids = new ArrayList<>();
+    pids.add(rootPid);
+    try {
+      ProcessHandle.of(rootPid)
+          .ifPresent(root -> root.descendants().map(ProcessHandle::pid).forEach(pids::add));
+    } catch (Exception e) {
+      logDebug("Failed to snapshot descendants for pid=" + rootPid, e);
+    }
+    return pids;
+  }
+
+  private void sendSignalToPids(List<Long> pids, String signal) {
+    for (long pid : pids) {
+      if (isPidAlive(pid)) {
+        runUnixKill(pid, signal);
+      }
+    }
+  }
+
+  private void runUnixKill(long pid, String signal) {
+    Process kill = null;
+    try {
+      kill = new ProcessBuilder(UNIX_KILL_EXECUTABLE, "-" + signal, Long.toString(pid)).start();
+      if (!kill.waitFor(2, TimeUnit.SECONDS)) {
+        kill.destroyForcibly();
+      }
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      kill.destroyForcibly();
+    } catch (Exception e) {
+      logDebug("Failed sending signal " + signal + " to pid=" + pid, e);
+      if (kill != null) {
+        kill.destroyForcibly();
+      }
+    }
+  }
+
+  private void runTaskkill(long pid, boolean force) {
+    Process taskkill = null;
+    try {
+      List<String> command =
+          new ArrayList<>(List.of(WINDOWS_TASKKILL_EXECUTABLE, "/PID", Long.toString(pid), "/T"));
+      if (force) {
+        command.add("/F");
+      }
+      taskkill = new ProcessBuilder(command).start();
+      if (!taskkill.waitFor(5, TimeUnit.SECONDS)) {
+        taskkill.destroyForcibly();
+      }
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      taskkill.destroyForcibly();
+    } catch (Exception e) {
+      logDebug("Failed running taskkill for pid=" + pid + " force=" + force, e);
+      if (taskkill != null) {
+        taskkill.destroyForcibly();
+      }
+    }
+  }
+
+  private boolean waitForPidsToExit(List<Long> pids, long timeoutSeconds) {
+    List<CompletableFuture<ProcessHandle>> exitFutures =
+        pids.stream()
+            .map(ProcessHandle::of)
+            .flatMap(java.util.Optional::stream)
+            .map(ProcessHandle::onExit)
+            .toList();
+    if (exitFutures.isEmpty()) {
+      return pids.stream().noneMatch(this::isPidAlive);
+    }
+
+    CompletableFuture<Void> allExited =
+        CompletableFuture.allOf(exitFutures.toArray(CompletableFuture[]::new));
+    try {
+      allExited.get(timeoutSeconds, TimeUnit.SECONDS);
+      return true;
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      return false;
+    } catch (TimeoutException _) {
+      return pids.stream().noneMatch(this::isPidAlive);
+    } catch (ExecutionException e) {
+      logDebug("Failed waiting for process exit futures", e);
+      return pids.stream().noneMatch(this::isPidAlive);
+    }
+  }
+
+  private List<Long> alivePids(List<Long> pids) {
+    List<Long> alive = new ArrayList<>(pids.size());
+    for (long pid : pids) {
+      if (isPidAlive(pid)) {
+        alive.add(pid);
+      }
+    }
+    return alive;
+  }
+
+  private boolean isPidAlive(long pid) {
+    try {
+      return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+    } catch (Exception e) {
+      logDebug("Failed checking pid liveness for pid=" + pid, e);
+      return false;
+    }
+  }
+
+  private void clearTrackedProcess(Process expected) {
+    if (expected != null) {
+      process.compareAndSet(expected, null);
+    } else {
+      process.set(null);
+    }
+  }
+
+  private boolean tryWindowsGracefulStopViaAnchor(List<Long> pids) {
+    Path anchorPath = resolveWindowsAnchorPath();
+    if (anchorPath == null) {
+      return false;
+    }
+
+    try {
+      boolean deleted = Files.deleteIfExists(anchorPath);
+      if (!deleted) {
+        emitLog(
+            ts()
+                + " Anchor file not found or not deleted at "
+                + anchorPath
+                + "; skipping anchor stop.");
+        return false;
+      }
+      emitLog(
+          ts() + " Requested graceful shutdown via anchor: " + anchorPath.getFileName() + " ...");
+      return waitForPidsToExit(pids, 25);
+    } catch (Exception e) {
+      emitLog(
+          ts() + " WARN: Failed to delete anchor file at " + anchorPath + ": " + e.getMessage());
+      logDebug("Failed to use wrapper.anchorfile for graceful stop", e);
+      return false;
+    }
+  }
+
+  private Path resolveWindowsAnchorPath() {
+    Path conf = wrapperConfPath.get();
+    if (conf != null && Files.isRegularFile(conf)) {
+      String anchorSpec = readWrapperProperty(conf, "wrapper.anchorfile");
+      String workingDir = readWrapperProperty(conf, "wrapper.working.dir");
+      Path resolved = LauncherUtils.computeWrapperFilePath(conf, anchorSpec, workingDir);
+      if (resolved != null) {
+        return resolved;
+      }
+    }
+
+    String localAppData = System.getenv("LOCALAPPDATA");
+    if (localAppData != null && !localAppData.isBlank()) {
+      return Path.of(localAppData).resolve("Cryptad.anchor").normalize();
+    }
+    return null;
+  }
+
+  private String readWrapperProperty(Path conf, String key) {
+    try {
+      for (String raw : Files.readAllLines(conf, StandardCharsets.UTF_8)) {
+        String line = raw.trim();
+        int idx = line.indexOf('=');
+        boolean isCandidate = !line.isEmpty() && !line.startsWith("#") && idx > 0;
+        if (isCandidate) {
+          String foundKey = line.substring(0, idx).trim();
+          if (foundKey.equals(key)) {
+            return line.substring(idx + 1).trim();
+          }
+        }
+      }
+      return null;
+    } catch (Exception e) {
+      logDebug("Failed to read " + key + " from " + conf, e);
+      return null;
+    }
+  }
+
+  private void startTailingWrapperLogIfAvailable() {
+    interruptTailThread();
+
+    Path conf = wrapperConfPath.get();
+    if (conf == null) {
+      return;
+    }
+
+    String logSpec = readWrapperProperty(conf, "wrapper.logfile");
+    Path logPath = LauncherUtils.computeWrapperLogPath(conf, logSpec);
+    Thread tailer =
+        Thread.ofPlatform()
+            .name("launcher-log-tail")
+            .daemon(true)
+            .unstarted(() -> tailFileWhileAlive(logPath, Thread.currentThread()));
+    tailThread.set(tailer);
+    tailer.start();
+  }
+
+  private void interruptTailThread() {
+    Thread tailer = tailThread.getAndSet(null);
+    if (tailer != null) {
+      tailer.interrupt();
+    }
+  }
+
+  private void tailFileWhileAlive(Path path, Thread tailingThread) {
+    TailState tailState = new TailState();
+    try {
+      while (!tailingThread.isInterrupted() && isTrackedProcessAlive()) {
+        try {
+          boolean madeProgress = tailOnce(path, tailState);
+          tailState.idleCount = madeProgress ? 0 : tailState.idleCount + 1;
+        } catch (Exception _) {
+          resetTailOnError(tailState);
+        }
+        if (!sleepWhileThreadActive(tailingThread, calcTailDelayMs(tailState.idleCount))) {
+          return;
+        }
+      }
+    } finally {
+      closeTailFile(tailState);
+    }
+  }
+
+  private boolean isTrackedProcessAlive() {
+    Process tracked = process.get();
+    return tracked != null && tracked.isAlive();
+  }
+
+  private boolean sleepWhileThreadActive(Thread worker, long delayMs) {
+    long remaining = delayMs;
+    while (remaining > 0) {
+      if (worker.isInterrupted()) {
+        return false;
+      }
+      long chunk = Math.min(remaining, TAIL_CANCEL_POLL_MS);
+      try {
+        Thread.sleep(chunk);
+      } catch (InterruptedException _) {
+        Thread.currentThread().interrupt();
+        return false;
+      }
+      remaining -= chunk;
+    }
+    return !worker.isInterrupted();
+  }
+
+  private long calcTailDelayMs(int idleCount) {
+    int shifts = Math.min(idleCount, 3);
+    long delay = TAIL_BASE_DELAY_MS << shifts;
+    return Math.min(delay, TAIL_MAX_DELAY_MS);
+  }
+
+  private void resetTailOnError(TailState state) {
+    closeTailFile(state);
+    state.currentKey = null;
+    state.idleCount++;
+  }
+
+  private void closeTailFile(TailState state) {
+    RandomAccessFile raf = state.raf;
+    state.raf = null;
+    if (raf != null) {
+      try {
+        raf.close();
+      } catch (Exception _) {
+        // Best-effort close.
+      }
+    }
+  }
+
+  private boolean tailOnce(Path path, TailState state) throws IOException {
+    if (!Files.exists(path)) {
+      closeTailFile(state);
+      state.currentKey = null;
+      return false;
+    }
+
+    Object newKey = readFileKey(path);
+    openTailFileIfNeeded(path, newKey, state);
+    RandomAccessFile handle = state.raf;
+    if (handle == null) {
+      return false;
+    }
+
+    long length = handle.length();
+    if (length < state.pos) {
+      state.pos = 0;
+    }
+    if (length <= state.pos) {
+      return false;
+    }
+
+    handle.seek(state.pos);
+    int toRead = (int) Math.min(length - state.pos, TAIL_READ_CHUNK);
+    byte[] buffer = new byte[toRead];
+    int read = handle.read(buffer);
+    if (read <= 0) {
+      return false;
+    }
+
+    state.pos += read;
+    emitTailText(state, new String(buffer, 0, read, StandardCharsets.UTF_8));
+    return true;
+  }
+
+  private Object readFileKey(Path path) {
+    try {
+      return Files.readAttributes(path, BasicFileAttributes.class).fileKey();
+    } catch (Exception _) {
+      return null;
+    }
+  }
+
+  private void openTailFileIfNeeded(Path path, Object newKey, TailState state) throws IOException {
+    if (state.raf == null
+        || (state.currentKey != null && newKey != null && !state.currentKey.equals(newKey))) {
+      closeTailFile(state);
+      RandomAccessFile opened = new RandomAccessFile(path.toFile(), "r");
+      state.raf = opened;
+      state.currentKey = newKey;
+      state.pos = opened.length();
+    }
+  }
+
+  private void emitTailText(TailState state, String text) {
+    String[] parts = text.split("\n", -1);
+    if (parts.length == 1) {
+      state.leftover.append(parts[0]);
+      return;
+    }
+
+    String first = state.leftover.append(parts[0]).toString();
+    if (!first.isEmpty()) {
+      emitLog(first);
+    }
+    state.leftover = new StringBuilder();
+
+    for (int i = 1; i < parts.length - 1; i++) {
+      emitLog(parts[i]);
+    }
+    String last = parts[parts.length - 1];
+    if (text.endsWith("\n")) {
+      emitLog(last);
+    } else {
+      state.leftover.append(last);
+    }
+  }
+
+  private String formatCommandForLog(List<String> command) {
+    boolean isWindows = new AppEnv().isWindows();
+    StringBuilder out = new StringBuilder();
+    for (int i = 0; i < command.size(); i++) {
+      if (i > 0) {
+        out.append(' ');
+      }
+      out.append(formatCommandArgument(command.get(i), isWindows));
+    }
+    return out.toString();
+  }
+
+  private String formatCommandArgument(String arg, boolean isWindows) {
+    if (isWindows) {
+      if (arg.chars().anyMatch(ch -> Character.isWhitespace(ch) || ch == '"')) {
+        return "\"" + arg.replace("\"", "\\\"") + "\"";
+      }
+      return arg;
+    }
+
+    if (arg.chars()
+        .anyMatch(ch -> Character.isWhitespace(ch) || ch == '\'' || ch == '"' || ch == '\\')) {
+      return LauncherUtils.shellQuote(arg);
+    }
+    return arg;
+  }
+
+  private static final class TailState {
+    private RandomAccessFile raf;
+    private Object currentKey;
+    private long pos;
+    private StringBuilder leftover = new StringBuilder();
+    private int idleCount;
   }
 
   /**
@@ -231,29 +723,48 @@ public class LauncherController {
    * throwing and may emit warning log lines.
    */
   public void launchBrowser() {
-    Integer port = state.knownPort();
+    Integer port = state.get().knownPort();
     if (port == null) {
       return;
     }
+    URI uri = URI.create("http://localhost:" + port + "/");
 
     io.execute(
         () -> {
           try {
             if (!Desktop.isDesktopSupported()) {
-              emitLog(ts() + " WARN: Desktop integration is not available");
+              launchBrowserFallback(uri);
               return;
             }
             Desktop desktop = Desktop.getDesktop();
-            if (!desktop.isSupported(Desktop.Action.BROWSE)) {
-              emitLog(ts() + " WARN: Desktop browser action is not available");
-              return;
+            if (desktop.isSupported(Desktop.Action.BROWSE)) {
+              desktop.browse(uri);
+            } else {
+              launchBrowserFallback(uri);
             }
-            desktop.browse(URI.create("http://localhost:" + port + "/"));
           } catch (Exception e) {
-            emitLog(ts() + " WARN: Failed to open browser: " + e.getMessage());
+            emitLog(ts() + " ERROR: Failed to launch browser: " + e.getMessage());
             logDebug("Browser launch failure", e);
           }
         });
+  }
+
+  private void launchBrowserFallback(URI uri) throws IOException {
+    AppEnv env = new AppEnv();
+    if (env.isMac()) {
+      new ProcessBuilder(MAC_OPEN_EXECUTABLE, uri.toString()).start();
+      return;
+    }
+    if (env.isWindows()) {
+      new ProcessBuilder(WINDOWS_RUNDLL32_EXECUTABLE, "url.dll,FileProtocolHandler", uri.toString())
+          .start();
+      return;
+    }
+    String xdgOpenExecutable =
+        Files.isExecutable(Path.of(LINUX_XDG_OPEN_EXECUTABLE))
+            ? LINUX_XDG_OPEN_EXECUTABLE
+            : LINUX_XDG_OPEN_EXECUTABLE_FALLBACK;
+    new ProcessBuilder(xdgOpenExecutable, uri.toString()).start();
   }
 
   /**
@@ -262,13 +773,17 @@ public class LauncherController {
    * <p>Subsequent start requests are ignored after shutdown begins.
    */
   public synchronized void shutdown() {
-    if (shuttingDown) {
+    if (state.get().isShuttingDown()) {
       return;
     }
-    shuttingDown = true;
-    setState(state.withShuttingDown(true));
-    stop();
-    io.shutdown();
+    updateState(s -> s.withShuttingDown(true));
+    io.execute(
+        () -> {
+          Process current = process.get();
+          if (current != null && current.isAlive()) {
+            stopManagedProcess(current);
+          }
+        });
   }
 
   /**
@@ -277,18 +792,16 @@ public class LauncherController {
    * <p>The wait is bounded to ten seconds; timeout is logged at debug level.
    */
   public void shutdownAndWait() {
-    shutdown();
-    try {
-      boolean terminated = io.awaitTermination(10, TimeUnit.SECONDS);
-      if (!terminated) {
-        logDebug("Timed out waiting for launcher IO executor to terminate");
-      }
-    } catch (InterruptedException _) {
-      Thread.currentThread().interrupt();
+    if (!state.get().isShuttingDown()) {
+      updateState(s -> s.withShuttingDown(true));
+    }
+    Process current = process.get();
+    if (current != null && current.isAlive()) {
+      stopManagedProcess(current);
     }
   }
 
-  private void maybeEnableWrapperConsoleFlush(Path cryptadPath) {
+  private void tryEnableConsoleFlush(Path cryptadPath) {
     try {
       Path conf = LauncherUtils.guessWrapperConfPathForCryptadScript(cryptadPath);
       if (conf == null || !Files.isRegularFile(conf)) {
@@ -305,8 +818,12 @@ public class LauncherController {
     }
   }
 
-  private void setState(AppState newState) {
-    state = newState;
+  private void updateState(UnaryOperator<AppState> updater) {
+    AppState newState = state.updateAndGet(updater);
+    notifyStateListeners(newState);
+  }
+
+  private void notifyStateListeners(AppState newState) {
     for (Consumer<AppState> listener : stateListeners) {
       try {
         listener.accept(newState);
@@ -327,6 +844,6 @@ public class LauncherController {
   }
 
   private static String ts() {
-    return java.time.LocalTime.now().toString();
+    return java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_TIME);
   }
 }

@@ -113,9 +113,6 @@ public final class Launcher {
       startStopBtn.addActionListener(
           _ -> {
             AppState state = controller.getState();
-            if (state.isStoppingOrShuttingDown()) {
-              return;
-            }
             if (state.isRunning()) {
               controller.stop();
             } else {
@@ -166,7 +163,12 @@ public final class Launcher {
     private boolean handleShortcut(KeyEvent event) {
       switch (event.getKeyCode()) {
         case KeyEvent.VK_S -> {
-          if (controller.getState().isRunning()) {
+          AppState state = controller.getState();
+          if (state.isStoppingOrShuttingDown()) {
+            event.consume();
+            return true;
+          }
+          if (state.isRunning()) {
             controller.stop();
           } else {
             controller.start();
@@ -267,6 +269,7 @@ public final class Launcher {
       }
       dispose();
       INSTANCE.compareAndSet(this, null);
+      System.exit(0);
     }
 
     private void startAutomatically() {
