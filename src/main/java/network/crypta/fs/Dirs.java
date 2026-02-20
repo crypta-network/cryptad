@@ -14,13 +14,70 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Shared filesystem constants and helper routines for directory resolution. */
+/**
+ * Provides shared filesystem constants and low-level helpers for directory resolution flows.
+ *
+ * <p>This class centralizes common path tokens, permission templates, and reusable runtime helpers
+ * that are consumed by user-mode and service-mode directory strategies. The utilities keep behavior
+ * consistent across platforms by handling directory creation, POSIX permission application when
+ * available, XDG base-path derivation, runtime directory fallbacks, and environment-sensitive test
+ * detection. Most methods are package-private because they are implementation details for {@code
+ * network.crypta.fs} strategy classes rather than public APIs.
+ *
+ * <p>The public constants expose stable naming and permission values used by multiple components
+ * during path construction and configuration expansion.
+ *
+ * <ul>
+ *   <li>Defines canonical permission strings for private and group-readable directories.
+ *   <li>Encapsulates common path fragments reused by Linux, macOS, and sandbox runtime logic.
+ *   <li>Supports deterministic directory building through shared utility methods.
+ * </ul>
+ */
 public final class Dirs {
+  /**
+   * POSIX permission template for directories writable by owner and readable/executable by group.
+   *
+   * <p>Used for data, cache, runtime, and logs directories where collaborative group access is
+   * permitted while access for others is denied.
+   */
   public static final String PERM_GROUP_RX = "rwxr-x---";
+
+  /**
+   * POSIX permission template for directories accessible only by the owning user.
+   *
+   * <p>Used for sensitive paths such as configuration directories that should not be
+   * group-readable.
+   */
   public static final String PERM_USER_RWX = "rwx------";
+
+  /**
+   * Standard macOS user-library directory segment used for platform-native path composition.
+   *
+   * <p>Callers combine this segment with user home paths to derive Application Support, Caches, and
+   * Logs roots.
+   */
   public static final String MACOS_LIBRARY_PATH = "Library";
+
+  /**
+   * Relative runtime subpath used beneath runtime base directories.
+   *
+   * <p>This value keeps runtime sockets and pid-like files under a namespaced location specific to
+   * Cryptad.
+   */
   public static final String APP_RUNTIME_SUBPATH = "network/crypta";
+
+  /**
+   * Linux base prefix used when deriving per-user runtime directories under {@code /run}.
+   *
+   * <p>The prefix is combined with a user identifier and runtime subpath to form platform defaults.
+   */
   public static final String LINUX_RUN_USER_PREFIX = "/run/user";
+
+  /**
+   * JVM system property key that exposes the current user home directory.
+   *
+   * <p>This key is referenced by directory strategies when constructing fallback paths.
+   */
   public static final String USER_HOME = "user.home";
 
   private static final Logger LOG = LoggerFactory.getLogger("network.crypta.fs.Dirs");

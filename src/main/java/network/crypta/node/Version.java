@@ -8,7 +8,16 @@ import org.slf4j.LoggerFactory;
 /**
  * Version information and helpers for the Cryptad node.
  *
- * <p>Centralizes version strings, protocol constants, compatibility checks, and parsing helpers.
+ * <p>This class is the canonical source for node identity values, wire-version descriptors, and
+ * compatibility decisions used during peer negotiation. It exposes both static constants and helper
+ * methods that parse and compare serialized version strings exchanged by peers. Callers use these
+ * helpers to answer whether a remote peer is acceptable, to extract build identifiers from
+ * user-visible version text, and to track the highest build observed in the network.
+ *
+ * <p>All methods are static and side effects are intentionally limited to updating a single
+ * in-process "highest seen build" counter. Returned version component arrays are defensive copies,
+ * so callers cannot mutate internal cached values. Logging is used for rejection diagnostics but
+ * does not alter compatibility outcomes.
  */
 public final class Version {
   /** Human-readable product name of the node. */
@@ -56,38 +65,67 @@ public final class Version {
 
   private Version() {}
 
-  /** Returns the current build number at runtime (not inlined). */
+  /**
+   * Returns the build number embedded at runtime.
+   *
+   * @return current node build number resolved during class initialization
+   */
   public static int currentBuildNumber() {
     return BUILD_NUMBER;
   }
 
-  /** Runtime accessor for {@link #GIT_REVISION}. */
+  /**
+   * Returns the Git revision string embedded at build time.
+   *
+   * @return build-time Git revision token for this runtime
+   */
   public static String gitRevision() {
     return GIT_REVISION;
   }
 
-  /** Returns current node version components. */
+  /**
+   * Returns the current node version tuple as components.
+   *
+   * @return a new array containing node name, build, protocol, and compatibility build fields
+   */
   public static String[] getVersionComponents() {
     return Arrays.copyOf(CACHED_VERSION_COMPONENTS, CACHED_VERSION_COMPONENTS.length);
   }
 
-  /** Returns minimum acceptable version components for Fred compatibility. */
+  /**
+   * Returns minimum acceptable peer-version components for Fred compatibility.
+   *
+   * @return a new array containing the minimum acceptable wire peer descriptor components
+   */
   public static String[] getMinAcceptableVersionComponents() {
     return Arrays.copyOf(
         CACHED_MIN_ACCEPTABLE_VERSION_COMPONENTS, CACHED_MIN_ACCEPTABLE_VERSION_COMPONENTS.length);
   }
 
-  /** Returns the comma-separated version string used on the wire. */
+  /**
+   * Returns the current node version in serialized wire format.
+   *
+   * @return comma-separated version string advertised to remote peers
+   */
   public static String getVersionString() {
     return Fields.commaList(getVersionComponents());
   }
 
-  /** Returns the comma-separated minimum acceptable version string. */
+  /**
+   * Returns the serialized minimum acceptable peer-version descriptor.
+   *
+   * @return comma-separated minimum acceptable version string
+   */
   public static String getMinAcceptableVersionString() {
     return Fields.commaList(getMinAcceptableVersionComponents());
   }
 
-  /** Checks whether a peer version string is compatible with this node. */
+  /**
+   * Checks whether a peer version string is compatible with this node.
+   *
+   * @param version peer-reported serialized version string to validate
+   * @return {@code true} when the version parses successfully and passes compatibility checks
+   */
   public static boolean isCompatibleVersion(String version) {
     String[] v = parseVersionOrNull(version);
     if (v.length == 0) {
@@ -105,7 +143,13 @@ public final class Version {
     return true;
   }
 
-  /** Checks compatibility using a peer-provided minimum acceptable version. */
+  /**
+   * Checks compatibility using the peer version and its stated minimum acceptable version.
+   *
+   * @param versionStr peer-reported serialized version string
+   * @param lastGoodVersionStr peer-reported minimum acceptable version string
+   * @return {@code true} when both descriptors parse and satisfy compatibility rules
+   */
   public static boolean isCompatibleVersionWithLastGood(
       String versionStr, String lastGoodVersionStr) {
     String[] v = parseVersionOrNull(versionStr);
@@ -136,7 +180,9 @@ public final class Version {
   /**
    * Parses a version string and extracts its build number.
    *
-   * @throws VersionParseException if the version string is invalid.
+   * @param version serialized peer version string to parse
+   * @return parsed build number extracted from the provided version descriptor
+   * @throws VersionParseException if the version string format is invalid
    */
   public static int parseBuildNumberFromVersionStr(String version) throws VersionParseException {
     if (version == null) {
@@ -170,7 +216,13 @@ public final class Version {
     }
   }
 
-  /** Parses build number with a default fallback. */
+  /**
+   * Parses a build number and falls back to a default when parsing fails.
+   *
+   * @param version serialized peer version string to parse
+   * @param defaultValue fallback value returned when parsing fails
+   * @return parsed build number, or {@code defaultValue} if parsing throws
+   */
   public static int parseBuildNumberFromVersionStr(String version, int defaultValue) {
     try {
       return parseBuildNumberFromVersionStr(version);
@@ -179,7 +231,11 @@ public final class Version {
     }
   }
 
-  /** Records the highest build number observed among peers. */
+  /**
+   * Records a peer version and updates the highest seen build when applicable.
+   *
+   * @param versionStr serialized peer version string observed from the network
+   */
   public static void seenVersion(String versionStr) {
     String[] v = Fields.commaList(versionStr);
     if (v.length < 3) {
@@ -210,17 +266,32 @@ public final class Version {
     }
   }
 
-  /** Returns the highest build number observed from peers. */
+  /**
+   * Returns the highest peer build number observed in this process.
+   *
+   * @return highest build number accepted by {@link #seenVersion(String)}
+   */
   public static int getHighestSeenBuild() {
     return highestSeenBuild;
   }
 
-  /** Returns true if version components refer to a Cryptad node. */
+  /**
+   * Returns whether parsed version components identify a Cryptad node.
+   *
+   * @param v parsed version components array to inspect
+   * @return {@code true} when the first component identifies {@link #NODE_NAME}
+   */
   public static boolean isCryptad(String[] v) {
     return v.length >= 2 && NODE_NAME.equals(v[0]);
   }
 
-  /** Returns true when two version arrays represent compatible series. */
+  /**
+   * Returns whether two parsed version arrays belong to compatible release series.
+   *
+   * @param v parsed peer version components
+   * @param lgv parsed peer "last good" version components
+   * @return {@code true} when both arrays represent a compatible version family
+   */
   @SuppressWarnings("unused")
   public static boolean isCompatibleSeries(String[] v, String[] lgv) {
     if (v.length < 2 || lgv.length < 2) {
@@ -358,6 +429,12 @@ public final class Version {
    * Compares two build numbers considering node names first.
    *
    * <p>Cryptad nodes are always considered newer than Fred nodes.
+   *
+   * @param nodeName1 node-name component for the first build number
+   * @param buildNumber1 first build number to compare
+   * @param nodeName2 node-name component for the second build number
+   * @param buildNumber2 second build number to compare
+   * @return a negative value, zero, or a positive value following {@link Integer#compare(int, int)}
    */
   public static int compareBuildNumbers(
       String nodeName1, int buildNumber1, String nodeName2, int buildNumber2) {
@@ -376,6 +453,11 @@ public final class Version {
 
   /**
    * Checks if a peer's build is at least the specified minimum build number, considering node name.
+   *
+   * @param nodeName peer node-name component
+   * @param buildNumber peer build number
+   * @param minBuildNumber minimum acceptable build number for non-Cryptad peers
+   * @return {@code true} when the peer satisfies minimum build requirements
    */
   public static boolean isBuildAtLeast(String nodeName, int buildNumber, int minBuildNumber) {
     if (NODE_NAME.equals(nodeName)) {
@@ -384,7 +466,12 @@ public final class Version {
     return buildNumber >= minBuildNumber;
   }
 
-  /** Extracts the node name from a version string, or null when absent/invalid. */
+  /**
+   * Extracts the node-name component from a serialized version string.
+   *
+   * @param version serialized version string to parse
+   * @return first version component, or {@code null} when missing or input is {@code null}
+   */
   public static String parseNodeNameFromVersionStr(String version) {
     if (version == null) {
       return null;

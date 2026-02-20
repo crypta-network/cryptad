@@ -21,8 +21,17 @@ import picocli.CommandLine;
 /**
  * Command line options for the Cryptad daemon.
  *
- * <p>Provides standard help/version flags and clear options for directory overrides and service
- * mode.
+ * <p>This type is the top-level picocli command model used to parse daemon startup arguments. It
+ * exposes fields for explicit directory overrides, service-mode selection, and optional
+ * configuration-file selection through both named and positional options. After parsing, callers
+ * consume the normalized helper methods to translate raw command-line values into values used by
+ * node startup wiring.
+ *
+ * <p>Instances are mutable during argument parsing and then typically treated as read-only for the
+ * remainder of the startup. The class performs lightweight validation for service-mode input and
+ * throws a picocli {@link ParameterException} with usage context when the supplied value is
+ * invalid. Directory override keys intentionally match the names expected by app-directory
+ * resolution code.
  */
 @Command(
     name = Dirs.APP_RUNTIME_SUBPATH,
@@ -54,6 +63,15 @@ import picocli.CommandLine;
     },
     versionProvider = NodeCli.CryptadVersionProvider.class)
 public class NodeCli {
+  /**
+   * Creates a mutable CLI option model for one parse operation.
+   *
+   * <p>Picocli populates fields on this instance directly while parsing command-line arguments.
+   */
+  public NodeCli() {
+    // Intentionally empty: picocli instantiates and populates this option holder reflectively.
+  }
+
   /** Optional explicit config file path (flag). */
   @Option(
       names = {"-c", "--config-file"},
@@ -118,24 +136,54 @@ public class NodeCli {
   /** Shortcut flags for service/user modes. */
   @ArgGroup() public ModeShortcuts modeShortcuts;
 
+  /**
+   * Mutually exclusive shortcut switches that map directly to {@code --service-mode}.
+   *
+   * <p>These flags exist to provide concise command-line ergonomics for common launch scenarios
+   * while preserving a single normalized mode value used by startup logic.
+   */
   public static class ModeShortcuts {
+    /** Creates an empty shortcut container populated by picocli during parsing. */
+    public ModeShortcuts() {
+      // Intentionally empty: picocli writes shortcut-flag fields after construction.
+    }
+
+    /** Forces service-managed mode, equivalent to {@code --service-mode=service}. */
     @Option(
         names = {"--service", "--daemon"},
         description = {"Shortcut for --service-mode=service"})
     public boolean service;
 
+    /** Forces interactive user mode, equivalent to {@code --service-mode=user}. */
     @Option(
         names = {"--user", "--app"},
         description = {"Shortcut for --service-mode=user"})
     public boolean user;
   }
 
-  /** Resolve the explicit config file if provided via either channel. */
+  /**
+   * Resolves the explicitly requested configuration file path.
+   *
+   * <p>The named option {@code --config-file} takes precedence over the optional positional file
+   * argument when both are present. If neither channel supplies a file path, this method returns
+   * {@code null} and callers should continue with default config-path resolution.
+   *
+   * @return the chosen explicit configuration file path, or {@code null} when not provided
+   */
   public File explicitConfigFile() {
     return configFileOpt != null ? configFileOpt : configFilePositional;
   }
 
-  /** Copy directory overrides into a mutable map for AppDirs. */
+  /**
+   * Collects non-null directory override options into a mutable map.
+   *
+   * <p>The returned map only includes keys for options that were explicitly passed by the user.
+   * Keys are inserted in a stable order matching option declaration order to keep diagnostics and
+   * downstream processing deterministic. Callers may safely mutate the returned map without
+   * affecting this CLI object.
+   *
+   * @return a new map containing user-supplied directory override entries
+   */
   public Map<String, String> directoryOverrides() {
     Map<String, String> out = new LinkedHashMap<>();
     if (configDir != null) {
@@ -156,7 +204,16 @@ public class NodeCli {
     return out;
   }
 
-  /** Compute the service mode override based on flags, or null. */
+  /**
+   * Computes a normalized service-mode override from explicit options.
+   *
+   * <p>If {@code --service-mode} is present, accepted values are {@code service} and {@code user}
+   * (case-insensitive). If that option is absent, shortcut flags are evaluated. When no mode option
+   * is provided, this method returns {@code null} to indicate environment-based auto-detection.
+   *
+   * @return {@code "service"}, {@code "user"}, or {@code null} when no explicit override exists
+   * @throws ParameterException if {@code --service-mode} is supplied with an unsupported value
+   */
   public String serviceModeOverride() {
     if (serviceMode != null) {
       String m = serviceMode.toLowerCase(Locale.ROOT);
@@ -177,8 +234,23 @@ public class NodeCli {
     return null;
   }
 
-  /** Provides a richer, dynamic version string. */
+  /**
+   * Produces CLI version output using runtime build metadata.
+   *
+   * <p>The provider format includes node name/build identity and protocol compatibility values, so
+   * support tooling and operators can quickly verify the running binary.
+   */
   public static class CryptadVersionProvider implements IVersionProvider {
+    /** Creates a provider instance used by picocli when rendering {@code --version}. */
+    public CryptadVersionProvider() {
+      // Intentionally empty: stateless provider used by picocli's version rendering hook.
+    }
+
+    /**
+     * Returns the lines printed for the {@code --version} option.
+     *
+     * @return an ordered array of human-readable version and protocol detail lines
+     */
     @Override
     public String[] getVersion() {
       return new String[] {
@@ -189,8 +261,27 @@ public class NodeCli {
     }
   }
 
-  /** Pretty exception handler for picocli usage errors. */
+  /**
+   * Renders user-friendly error output for command-line usage failures.
+   *
+   * <p>When parsing or execution fails, this handler writes the error message and usage synopsis to
+   * stderr and returns picocli's usage exit code.
+   */
   public static class PrettyExceptionHandler implements IExecutionExceptionHandler {
+    /** Creates an exception handler instance for command execution. */
+    public PrettyExceptionHandler() {
+      // Intentionally empty: this handler is stateless and only exposes behavior via interface
+      // methods.
+    }
+
+    /**
+     * Writes the failure message and usage text, then returns a usage error code.
+     *
+     * @param ex the thrown exception describing the failure; may be {@code null}
+     * @param commandLine the active command instance used to get configured output and usage
+     * @param parseResult parse metadata for the current invocation; provided by picocli
+     * @return {@link ExitCode#USAGE} to signal a command-line usage error
+     */
     @Override
     @SuppressWarnings("java:S106")
     public int handleExecutionException(

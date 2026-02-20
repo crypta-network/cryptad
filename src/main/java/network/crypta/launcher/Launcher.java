@@ -19,7 +19,23 @@ import network.crypta.fs.AppEnv;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
-/** Java launcher entrypoint. */
+/**
+ * Swing launcher entry point for starting and controlling a local Cryptad node process.
+ *
+ * <p>This class owns desktop bootstrap for the Java launcher UI: it installs look-and-feel support,
+ * enforces a single visible launcher window per process, and wires the top-level frame to
+ * controller-driven start, stop, browser launch, and shutdown actions. UI work is dispatched on the
+ * Swing event thread, and state rendering is fed by listener callbacks from the controller, so
+ * button behavior reflects the current node lifecycle state.
+ *
+ * <p>Notable behavior:
+ *
+ * <ul>
+ *   <li>Uses an {@link AtomicReference} to prevent multiple active launcher instances.
+ *   <li>Falls back to system look-and-feel if theme installation fails.
+ *   <li>Integrates keyboard shortcuts and platform-specific close handling.
+ * </ul>
+ */
 public final class Launcher {
   private static final String APP_NAME = "Crypta Launcher";
   private static final AtomicReference<CryptaLauncher> INSTANCE = new AtomicReference<>();

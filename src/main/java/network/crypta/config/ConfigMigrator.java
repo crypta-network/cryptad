@@ -11,15 +11,56 @@ import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Best-effort migration from legacy relative paths to adaptive directories. */
+/**
+ * Performs one-time migration of legacy filesystem layout into adaptive Cryptad directories.
+ *
+ * <p>This utility is invoked during startup to keep existing installations working when path
+ * defaults change from relative locations to directory placeholders such as {@code ${dataDir}} and
+ * {@code ${configDir}}. It first ensures a configuration file exists in the configured location by
+ * copying a legacy file from historical locations or creating a default template when no prior file
+ * is found. It then rewrites known legacy path keys in the configuration and attempts to move
+ * well-known data folders from the current working directory into their adaptive destinations.
+ *
+ * <p>Migration is intentionally best-effort: recoverable move and rewrite failures are logged,
+ * while setup steps that cannot proceed safely surface as {@link IOException}.
+ *
+ * <ul>
+ *   <li>Preserves existing destination content by skipping moves when target paths already exist.
+ *   <li>Prefers atomic moves and falls back to non-atomic moves when required by the filesystem.
+ *   <li>Restricts automatic rewrites to specific legacy keys and exact legacy values.
+ * </ul>
+ */
 public final class ConfigMigrator {
   private static final Logger LOG = LoggerFactory.getLogger("network.crypta.config.ConfigMigrator");
 
+  /**
+   * Canonical file name of the node configuration file handled by migration.
+   *
+   * <p>This constant is used when probing legacy locations and when creating or loading the target
+   * configuration file in the adaptive configuration directory.
+   */
   public static final String CONFIG_FILE = "cryptad.ini";
+
   private static final String PLUGINS_DIR = "plugins";
 
   private ConfigMigrator() {}
 
+  /**
+   * Migrates legacy configuration and data paths into the adaptive directory layout when needed.
+   *
+   * <p>The method ensures {@value #CONFIG_FILE} exists in {@code dirs.configDir()}, sourcing it
+   * from legacy current-working-directory or executable-directory locations when present, otherwise
+   * creating a default template. Afterward it rewrites selected legacy configuration keys to
+   * placeholder-based values and attempts to move known legacy folders into adaptive destinations.
+   * Move and rewrite failures are treated as best-effort and logged, while unrecoverable setup
+   * problems during configuration creation or copy propagate as an exception.
+   *
+   * @param dirs resolved adaptive directories used as migration destinations and path placeholders
+   * @param executableDir absolute directory containing the launcher executable for legacy config
+   *     lookup
+   * @throws IOException if creating, copying, or initially writing the target configuration file
+   *     fails
+   */
   public static void migrateIfNeeded(Resolved dirs, Path executableDir) throws IOException {
     Path cfgFile = dirs.configDir().resolve(CONFIG_FILE);
 
@@ -84,7 +125,7 @@ public final class ConfigMigrator {
     }
   }
 
-  private static void rewriteLegacyPaths(Path configFile) throws IOException {
+  private static void rewriteLegacyPaths(Path configFile) {
     try {
       SimpleFieldSet sfs = SimpleFieldSet.readFrom(Files.newInputStream(configFile), true, true);
 

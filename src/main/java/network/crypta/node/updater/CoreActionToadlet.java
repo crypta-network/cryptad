@@ -93,6 +93,15 @@ public class CoreActionToadlet extends Toadlet {
   private final AppEnv appEnv = new AppEnv();
   private final BaseL10n l10n = NodeL10n.getBase();
 
+  /**
+   * Creates the toadlet that handles core-update action requests from the updater UI.
+   *
+   * <p>The provided node is used to access updater services, runtime environment information, and
+   * localization resources for generated response pages.
+   *
+   * @param client high-level client used by the toadlet base class for HTTP operations
+   * @param node node instance that owns updater state and request handling dependencies
+   */
   public CoreActionToadlet(HighLevelSimpleClient client, Node node) {
     super(client);
     this.node = node;
@@ -109,6 +118,20 @@ public class CoreActionToadlet extends Toadlet {
     redirect(ctx);
   }
 
+  /**
+   * Handles action form submissions for core updater operations.
+   *
+   * <p>Accepted actions include download start, local installer launch, and package-store opening.
+   * Requests are rejected when form-password validation fails, and unknown actions are redirected
+   * back to the updater path.
+   *
+   * @param uri request URI for the POST action endpoint
+   * @param request parsed HTTP form request containing action and payload fields
+   * @param ctx request context used for authentication, redirects, and response writes
+   * @throws ToadletContextClosedException if the client connection is closed before response
+   *     writing
+   * @throws IOException if response generation or downstream action dispatch fails with I/O errors
+   */
   public void handleMethodPOST(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     logInfo("POST /core-update uri=" + uri);

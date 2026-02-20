@@ -13,7 +13,16 @@ import org.sevenzip.compression.lzma.Decoder;
 /**
  * Streaming LZMA decoder exposed as a standard {@link InputStream}.
  *
- * <p>Reads 5-byte coder properties plus an 8-byte little-endian uncompressed size header.
+ * <p>This adapter turns an LZMA payload stream into a regular byte-oriented input stream by running
+ * the decoder on a background daemon thread and forwarding decoded bytes through an internal pipe.
+ * Consumers can therefore pull data with normal {@code read(...)} calls while decode work proceeds
+ * asynchronously.
+ *
+ * <p>The source format is expected to begin with the classic LZMA header: five bytes of coder
+ * properties followed by an eight-byte little-endian uncompressed-size field. Construction starts
+ * decoder initialization eagerly and waits until header validation either succeeds or fails. Any
+ * decoding failure is captured and rethrown from later read operations, so callers observe I/O
+ * errors in-band with stream consumption.
  */
 public final class LzmaInputStream extends InputStream {
   private final InputStream source;
@@ -22,6 +31,16 @@ public final class LzmaInputStream extends InputStream {
   private final CountDownLatch started = new CountDownLatch(1);
   private final AtomicReference<IOException> thrown = new AtomicReference<>();
 
+  /**
+   * Creates a streaming LZMA decoder over the given source stream.
+   *
+   * <p>The constructor starts a background decode loop immediately, validates LZMA header data, and
+   * blocks until initialization either succeeds or reports an error. After a successful return,
+   * reads from this stream produce decompressed bytes.
+   *
+   * @param source stream positioned at the beginning of an LZMA payload with standard header bytes
+   * @throws IOException if decoder initialization fails or thread startup is interrupted
+   */
   public LzmaInputStream(InputStream source) throws IOException {
     this.source = source;
     this.pipeOut = new PipedOutputStream(pipeIn);

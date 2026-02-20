@@ -19,18 +19,49 @@ import network.crypta.fs.AppEnv;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
-/** Utility helpers shared by the launcher runtime and launcher-focused tests. */
+/**
+ * Utility methods shared by launcher runtime code and launcher-focused tests.
+ *
+ * <p>This class centralizes reusable logic that would otherwise be duplicated across controller,
+ * startup, and test code paths. It includes parser helpers for launcher output and wrapper
+ * configuration files, path resolution logic for locating scripts and jar files, small command-line
+ * construction helpers, and icon resource loading utilities. Methods are static and side-effect
+ * free where practical, so call sites can use them without owning additional state.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Resolving executable and wrapper locations from environment, classpath, and filesystem
+ *       fallbacks.
+ *   <li>Parsing runtime output and wrapper properties into structured values.
+ *   <li>Building launcher command lines and loading platform-appropriate icon assets.
+ * </ul>
+ */
 public final class LauncherUtils {
   private static final Pattern CONF_RE_1 = Pattern.compile("CONF=\"([^\"]*wrapper\\.conf)\"");
   private static final Pattern CONF_RE_2 = Pattern.compile("-c\\s+\"([^\"]*wrapper\\.conf)\"");
 
+  /**
+   * Environment variable key used to explicitly override launcher script location.
+   *
+   * <p>When set, path resolution treats this value as highest-precedence input.
+   */
   public static final String CRYPTAD_PATH_ENV = "CRYPTAD_PATH";
+
   private static final String CRYPTAD_SCRIPT = "cryptad";
   private static final String CRYPTAD_SCRIPT_WINDOWS = "cryptad.bat";
 
   private LauncherUtils() {}
 
-  /** Parse the FProxy listen port from a launcher log line. */
+  /**
+   * Parses a likely FProxy listening port from a launcher log line.
+   *
+   * <p>The parser uses conservative heuristics and returns {@code null} unless the line appears to
+   * describe FProxy startup and contains a plausible numeric tail after the last colon.
+   *
+   * @param line launcher output line to inspect
+   * @return parsed port number when recognized, otherwise {@code null}
+   */
   public static Integer parseFProxyPortFromLine(String line) {
     String lower = line.toLowerCase(Locale.ROOT);
     if (!(lower.contains("starting") && lower.contains("fproxy") && lower.contains("on "))) {
@@ -62,7 +93,15 @@ public final class LauncherUtils {
     }
   }
 
-  /** Parse key/value wrapper.conf lines, ignoring blank and comment lines. */
+  /**
+   * Parses wrapper property lines into a key/value map.
+   *
+   * <p>Blank lines, comment lines, and malformed lines without a key/value separator are skipped.
+   * Later duplicate keys overwrite earlier values in the insertion order.
+   *
+   * @param lines raw wrapper configuration lines
+   * @return parsed properties in encounter order
+   */
   public static Map<String, String> parseWrapperProperties(List<String> lines) {
     Map<String, String> props = new LinkedHashMap<>();
     for (String raw : lines) {
@@ -79,7 +118,15 @@ public final class LauncherUtils {
   }
 
   /**
-   * Upsert a single wrapper property line, replacing the first existing occurrence when present.
+   * Upserts one wrapper property line in a copy of the provided configuration lines.
+   *
+   * <p>The first existing occurrence of {@code key} is replaced when present; otherwise a new line
+   * is appended at the end.
+   *
+   * @param lines existing wrapper configuration lines
+   * @param key property key to update or insert
+   * @param value property value to store
+   * @return updated line list containing exactly one inserted or replaced property line
    */
   public static List<String> upsertWrapperProperty(List<String> lines, String key, String value) {
     String updatedLine = key + "=" + value;
@@ -100,7 +147,16 @@ public final class LauncherUtils {
     return updated;
   }
 
-  /** Compute the effective wrapper log path relative to wrapper.conf when needed. */
+  /**
+   * Computes the effective wrapper log path.
+   *
+   * <p>When {@code logSpec} is missing, a default relative path is applied. Relative values are
+   * resolved from the wrapper configuration directory.
+   *
+   * @param confPath wrapper configuration file path
+   * @param logSpec configured log path string, absolute or relative
+   * @return normalized absolute or relative filesystem path for wrapper logging
+   */
   public static Path computeWrapperLogPath(Path confPath, String logSpec) {
     String spec = (logSpec == null || logSpec.isBlank()) ? "../logs/wrapper.log" : logSpec;
     Path path = Paths.get(spec);
@@ -110,7 +166,17 @@ public final class LauncherUtils {
     return wrapperConfDirectory(confPath).resolve(path).normalize();
   }
 
-  /** Resolve a wrapper-declared file path against wrapper.conf and wrapper.working.dir. */
+  /**
+   * Resolves a wrapper-declared file path using wrapper configuration context.
+   *
+   * <p>Absolute file specifications are normalized directly. Relative paths are resolved from the
+   * wrapper configuration directory or the optional wrapper working directory when supplied.
+   *
+   * @param confPath wrapper configuration file path
+   * @param fileSpec configured file path string to resolve
+   * @param workingDirSpec optional wrapper working directory specification
+   * @return normalized resolved path, or {@code null} when {@code fileSpec} is missing
+   */
   public static Path computeWrapperFilePath(Path confPath, String fileSpec, String workingDirSpec) {
     if (fileSpec == null || fileSpec.isBlank()) {
       return null;
@@ -138,7 +204,16 @@ public final class LauncherUtils {
     return normalized.getParent() != null ? normalized.getParent() : normalized;
   }
 
-  /** Guess the wrapper.conf location for a cryptad wrapper script. */
+  /**
+   * Guesses the wrapper configuration path associated with a cryptad wrapper script.
+   *
+   * <p>The method first checks the conventional relative configuration location. When the script is
+   * readable, it scans the script header for explicit wrapper configuration assignments.
+   *
+   * @param cryptadPath path to the cryptad wrapper script
+   * @return inferred wrapper configuration path, or {@code null} when script directory is
+   *     unavailable
+   */
   public static Path guessWrapperConfPathForCryptadScript(Path cryptadPath) {
     Path scriptDir = cryptadPath.getParent();
     if (scriptDir == null) {
@@ -162,7 +237,14 @@ public final class LauncherUtils {
     }
   }
 
-  /** Scan script lines for the explicit wrapper.conf assignment. */
+  /**
+   * Scans script lines for explicit wrapper configuration references.
+   *
+   * <p>Only the first 200 lines are inspected to limit work on large scripts.
+   *
+   * @param lines script file lines to inspect
+   * @return a normalized wrapper configuration path when discovered, otherwise {@code null}
+   */
   public static Path scanWrapperConfPath(List<String> lines) {
     int max = Math.min(lines.size(), 200);
     for (int i = 0; i < max; i++) {
@@ -179,17 +261,39 @@ public final class LauncherUtils {
     return null;
   }
 
-  /** Resolve cryptad wrapper path using env override, classpath jar, then cwd fallbacks. */
+  /**
+   * Resolves cryptad launcher script path using the default working directory and process
+   * environment.
+   *
+   * @return resolved script path according to configured fallback order
+   */
   public static Path resolveCryptadPath() {
     return resolveCryptadPath(Paths.get(System.getProperty("user.dir")));
   }
 
-  /** Resolve cryptad wrapper path using env override, classpath jar, then cwd fallbacks. */
+  /**
+   * Resolves cryptad launcher script path using an explicit working directory.
+   *
+   * <p>Resolution order checks environment override, runtime jar vicinity, and working-directory
+   * fallbacks.
+   *
+   * @param cwd working directory used for relative fallback candidates
+   * @return resolved script path according to configured fallback order
+   */
   public static Path resolveCryptadPath(Path cwd) {
     return resolveCryptadPathWithEnv(cwd, System.getenv());
   }
 
-  /** Testing helper that allows injecting custom environment variables. */
+  /**
+   * Resolves cryptad launcher script path with injected environment values.
+   *
+   * <p>This overload is used by tests and deterministic callers that should not rely on ambient
+   * process environment.
+   *
+   * @param cwd working directory used for relative fallback candidates
+   * @param env environment variables used during path resolution
+   * @return resolved script path according to configured fallback order
+   */
   public static Path resolveCryptadPathWithEnv(Path cwd, Map<String, String> env) {
     Path fromEnv = resolveCryptadPathFromEnv(cwd, env);
     if (fromEnv != null) {
@@ -209,7 +313,14 @@ public final class LauncherUtils {
     return cwd.resolve(isWindows ? CRYPTAD_SCRIPT_WINDOWS : CRYPTAD_SCRIPT);
   }
 
-  /** Locate the running cryptad jar by protection domain or class path scan. */
+  /**
+   * Locates the currently running cryptad jar path.
+   *
+   * <p>The lookup first inspects the protection-domain code source, then falls back to scanning
+   * current Java classpath entries.
+   *
+   * @return a normalized jar path when found, otherwise {@code null}
+   */
   public static Path findCurrentCryptadJarPath() {
     try {
       var location = LauncherUtils.class.getProtectionDomain().getCodeSource();
@@ -229,7 +340,12 @@ public final class LauncherUtils {
     return findCryptadJarInClassPath(System.getProperty("java.class.path", ""));
   }
 
-  /** Find a cryptad*.jar entry in a Java classpath string. */
+  /**
+   * Finds a cryptad jar entry inside a Java classpath string.
+   *
+   * @param classPath classpath string to scan using platform path separators
+   * @return a normalized matching jar path when present, otherwise {@code null}
+   */
   public static Path findCryptadJarInClassPath(String classPath) {
     if (classPath == null || classPath.isBlank()) {
       return null;
@@ -336,7 +452,15 @@ public final class LauncherUtils {
     return name.startsWith(CRYPTAD_SCRIPT) && name.endsWith(".jar");
   }
 
-  /** Build the process command line for launching the daemon wrapper script. */
+  /**
+   * Builds the command line used to launch the daemon wrapper script.
+   *
+   * <p>On non-Windows platforms the method prefers invoking through {@code script} when available,
+   * which improves output flushing behavior for wrapper-driven logs.
+   *
+   * @param cryptadPath resolved cryptad wrapper script path
+   * @return immutable command token list suitable for {@link ProcessBuilder}
+   */
   public static List<String> buildCryptadCommand(Path cryptadPath) {
     AppEnv env = new AppEnv();
     if (!env.isWindows()) {
@@ -352,7 +476,12 @@ public final class LauncherUtils {
     return List.of(cryptadPath.toString());
   }
 
-  /** Minimal POSIX-safe shell quoting for a single argument. */
+  /**
+   * Applies minimal POSIX-safe single-argument shell quoting.
+   *
+   * @param s raw argument string
+   * @return quoted argument string suitable for single-token shell embedding
+   */
   public static String shellQuote(String s) {
     if (s.isEmpty()) {
       return "''";
@@ -360,7 +489,12 @@ public final class LauncherUtils {
     return "'" + s.replace("'", "'\"'\"'") + "'";
   }
 
-  /** Find a command on PATH and return the resolved executable path. */
+  /**
+   * Finds an executable command on the current process {@code PATH}.
+   *
+   * @param cmd executable command name to search
+   * @return resolved executable path string when found, otherwise {@code null}
+   */
   public static String findOnPath(String cmd) {
     String path = System.getenv("PATH");
     if (path == null) {
@@ -379,7 +513,14 @@ public final class LauncherUtils {
     return null;
   }
 
-  /** Load an application icon image from classpath resources or docs fallback. */
+  /**
+   * Loads launcher icon image resources for the current platform.
+   *
+   * <p>The loader checks platform-priority classpath resources first and falls back to a docs image
+   * file when packaged resources are unavailable.
+   *
+   * @return decoded icon image, or {@code null} when no readable image source is available
+   */
   public static Image loadAppIconImage() {
     ClassLoader cl = Thread.currentThread().getContextClassLoader();
     AppEnv env = new AppEnv();

@@ -34,8 +34,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Package-based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
- * self-updating the running JAR.
+ * Package-oriented core updater that tracks update metadata and package download state.
+ *
+ * <p>This updater consumes core-update information editions published under the core info USK path
+ * (for example, {@code .../info/N}) and chooses the most suitable package artifact for the current
+ * platform and package-manager environment. Instead of replacing the running JAR in-place, it
+ * downloads OS-native installer artifacts, exposes progress and failure status to the UI, and
+ * renders action forms for download, install, and store-open flows. Selection logic accounts for
+ * architecture, sandbox constraints, and available managers while retaining fallback behavior when
+ * exact matches are unavailable.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Parsing core info descriptors and selecting preferred package variants.
+ *   <li>Managing asynchronous package fetch lifecycle and error state.
+ *   <li>Rendering updater properties, forms, and links for the web UI.
+ * </ul>
  */
 public class CoreUpdater extends NodeUpdater {
   private static final String LOG_TAG = "[CoreUpdater]";
@@ -56,6 +71,11 @@ public class CoreUpdater extends NodeUpdater {
   private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
   private final AtomicReference<AppEnv.EnvDetection> env = new AtomicReference<>();
 
+  /**
+   * Creates a core updater bound to the shared node updater manager context.
+   *
+   * @param params immutable parameter bundle provided by updater manager bootstrap
+   */
   public CoreUpdater(NodeUpdaterParams params) {
     super(params);
   }
@@ -137,11 +157,21 @@ public class CoreUpdater extends NodeUpdater {
     // Nothing to persist from info JSON beyond the in-memory state.
   }
 
+  /**
+   * Returns the short changelog CHK from the latest parsed core info descriptor.
+   *
+   * @return short changelog CHK string, or {@code null} when unavailable
+   */
   public String getShortChangelogCHK() {
     CoreInfo info = latestInfo.get();
     return info != null ? info.changelogChk() : null;
   }
 
+  /**
+   * Returns the full changelog CHK from the latest parsed core info descriptor.
+   *
+   * @return full changelog CHK string, or {@code null} when unavailable
+   */
   public String getFullChangelogCHK() {
     CoreInfo info = latestInfo.get();
     return info != null ? info.fullChangelogChk() : null;
@@ -351,7 +381,11 @@ public class CoreUpdater extends NodeUpdater {
     tryStartDownload();
   }
 
-  /** Returns the completed download file on success or null. */
+  /**
+   * Returns the completed package file for the currently selected artifact.
+   *
+   * @return the downloaded package file when fetch completed successfully, otherwise {@code null}
+   */
   public File getDownloadedFile() {
     PackageFetcher f = fetcherMatchesSelection();
     if (f != null && f.isSuccess()) {
@@ -360,7 +394,11 @@ public class CoreUpdater extends NodeUpdater {
     return null;
   }
 
-  /** Renders the updater status section into the supplied Alerts HTML node. */
+  /**
+   * Renders updater status, links, and action controls into the supplied alert node.
+   *
+   * @param alertNode parent HTML node that receives updater status content and forms
+   */
   public void renderProperties(HTMLNode alertNode) {
     CoreInfo info = latestInfo.get();
     if (info == null) {

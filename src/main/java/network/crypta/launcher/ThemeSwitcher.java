@@ -19,14 +19,36 @@ import network.crypta.fs.AppEnv;
 import static network.crypta.launcher.LauncherLog.logDebug;
 import static network.crypta.launcher.LauncherLog.logWarn;
 
-/** Simple FlatLaf theme switcher with OS theme listener support. */
+/**
+ * Applies and maintains FlatLaf theme selection based on the current operating-system appearance.
+ *
+ * <p>This class bridges OS theme detection with Swing look-and-feel updates for the launcher UI. It
+ * performs initial one-time setup, selects a platform-appropriate FlatLaf variant, and registers a
+ * listener so theme changes propagate while the application is running. Updates are marshaled onto
+ * the Swing event dispatch thread to keep the UI state consistent with Swing threading rules. The
+ * implementation also includes platform nuances, such as macOS appearance hints and Flatpak-aware
+ * native decoration toggles.
+ *
+ * <p>Key behaviors:
+ *
+ * <ul>
+ *   <li>Uses portal-aware theme detection when available, with fallback detector behavior.
+ *   <li>Prefers synchronous initial LAF application to avoid startup flicker.
+ *   <li>Supports clean listener shutdown to prevent stale callback retention.
+ * </ul>
+ */
 public final class ThemeSwitcher {
   private static OsThemeDetector detector;
   private static Consumer<Boolean> listener;
 
   private ThemeSwitcher() {}
 
-  /** Install a theme matching the current OS preference and register for changes. */
+  /**
+   * Installs launcher look-and-feel based on the current OS theme and registers change tracking.
+   *
+   * <p>The initial theme is applied immediately, then an OS theme listener is attached, so the
+   * following dark/light transitions update the active look-and-feel.
+   */
   public static synchronized void install() {
     try {
       System.setProperty("apple.awt.application.appearance", "system");
@@ -52,7 +74,11 @@ public final class ThemeSwitcher {
     osThemeDetector.registerListener(newListener);
   }
 
-  /** Remove any registered detector listener. */
+  /**
+   * Unregisters the active OS theme listener and clears retained detector references.
+   *
+   * <p>This method is safe to call multiple times and is intended for orderly launcher shutdown.
+   */
   public static synchronized void shutdown() {
     if (detector != null && listener != null) {
       detector.removeListener(listener);

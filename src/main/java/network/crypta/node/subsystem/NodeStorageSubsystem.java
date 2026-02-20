@@ -229,6 +229,11 @@ public final class NodeStorageSubsystem {
 
   private volatile boolean storePreallocate;
 
+  /**
+   * Creates the storage subsystem facade for a running node instance.
+   *
+   * @param node owning node used for services, statistics, and lifecycle coordination
+   */
   public NodeStorageSubsystem(Node node) {
     this.node = node;
     this.getPubKey = new NodeGetPubkey(node);
@@ -245,6 +250,11 @@ public final class NodeStorageSubsystem {
 
     private final boolean clientCache;
 
+    /**
+     * Creates a migration task for either client cache stores or main datastore stores.
+     *
+     * @param clientCache {@code true} to migrate client-cache stores; {@code false} for main stores
+     */
     public MigrateOldStoreData(boolean clientCache) {
       this.clientCache = clientCache;
       if (clientCache) {
@@ -319,6 +329,12 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Creates a runnable that migrates data from previously active stores.
+   *
+   * @param clientCache {@code true} to migrate client cache stores, {@code false} for datastores
+   * @return runnable migration task bound to the current store references
+   */
   public Runnable createMigrateOldStoreData(boolean clientCache) {
     return new MigrateOldStoreData(clientCache);
   }
@@ -326,6 +342,7 @@ public final class NodeStorageSubsystem {
   /**
    * Closes and securely destroys an old salted‑hash store used during migration.
    *
+   * @param <T> storable block type handled by the store callback
    * @param old callback whose underlying store will be closed and destroyed when applicable.
    */
   public <T extends StorableBlock> void closeOldStore(StoreCallback<T> old) {
@@ -336,10 +353,20 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Registers the password-required alert with the node alert manager.
+   *
+   * <p>This alert remains active while encrypted stores or database components await a password.
+   */
   public void createPasswordUserAlert() {
     node.services().clientCore().getAlerts().register(masterPasswordUserAlert);
   }
 
+  /**
+   * Performs deferred database initialization after a decryption key becomes available.
+   *
+   * @param databaseKey database key used to unlock an encrypted database state
+   */
   public void lateSetupDatabase(DatabaseKey databaseKey) {
     if (node.services().clientCore().loadedDatabase()) return;
     LOG.info("Starting late database initialisation");
@@ -347,10 +374,16 @@ public final class NodeStorageSubsystem {
     if (!node.services().clientCore().lateInitDatabase(databaseKey)) failLateInitDatabase();
   }
 
+  /**
+   * Deletes and invalidates persisted master key material.
+   *
+   * @throws IOException if the underlying key file cannot be securely removed
+   */
   public void killMasterKeysFile() throws IOException {
     MasterKeys.killMasterKeys(masterKeysFile);
   }
 
+  /** Marks client cache state as password-gated and raises the password user alert. */
   public void setClientCacheAwaitingPassword() {
     createPasswordUserAlert();
     synchronized (node) {
@@ -458,24 +491,46 @@ public final class NodeStorageSubsystem {
         }
       };
 
+  /**
+   * Returns whether large store shrinks are forced immediately instead of deferred.
+   *
+   * @return {@code true} when immediate large shrinking is enabled
+   */
   public boolean isStoreForceBigShrinks() {
     synchronized (node) {
       return storeForceBigShrinks;
     }
   }
 
+  /**
+   * Sets whether large store shrinks are forced immediately.
+   *
+   * @param value {@code true} to force immediate large shrinks
+   */
   public void setStoreForceBigShrinks(boolean value) {
     synchronized (node) {
       storeForceBigShrinks = value;
     }
   }
 
+  /**
+   * Returns whether salted-hash slot filters are enabled for datastore stores.
+   *
+   * @return {@code true} when slot filters are enabled
+   */
   public boolean isStoreUseSlotFilters() {
     synchronized (node) {
       return storeUseSlotFilters;
     }
   }
 
+  /**
+   * Updates slot-filter configuration and signals that restart is required.
+   *
+   * @param value desired slot-filter enablement state
+   * @throws NodeNeedRestartException always thrown after an update because the live switch is
+   *     unsupported
+   */
   public void setStoreUseSlotFilters(boolean value) throws NodeNeedRestartException {
     synchronized (node) {
       storeUseSlotFilters = value;
@@ -483,16 +538,32 @@ public final class NodeStorageSubsystem {
     throw new NodeNeedRestartException("Need to restart to change storeUseSlotFilters");
   }
 
+  /**
+   * Initializes slot-filter configuration without triggering restart handling.
+   *
+   * @param value initial slot-filter enablement value
+   */
   public void initializeStoreUseSlotFilters(boolean value) {
     synchronized (node) {
       storeUseSlotFilters = value;
     }
   }
 
+  /**
+   * Returns configured slot-filter persistence time for salted-hash buffers.
+   *
+   * @return persistence time value in milliseconds, or {@code -1} for disabled persistence
+   */
   public int getStoreSaltHashSlotFilterPersistenceTime() {
     return storeSaltHashSlotFilterPersistenceTime;
   }
 
+  /**
+   * Sets slot-filter persistence time and applies it to persistent buffer defaults.
+   *
+   * @param value persistence time in milliseconds, or {@code -1} to disable periodic persistence
+   * @throws InvalidConfigValueException if the supplied value is less than {@code -1}
+   */
   public void setStoreSaltHashSlotFilterPersistenceTime(int value)
       throws InvalidConfigValueException {
     if (value >= -1) {
@@ -503,27 +574,57 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Initializes slot-filter persistence time at startup.
+   *
+   * @param value startup persistence time value to apply
+   */
   public void initializeStoreSaltHashSlotFilterPersistenceTime(int value) {
     ResizablePersistentIntBuffer.setPersistenceTime(value);
     storeSaltHashSlotFilterPersistenceTime = value;
   }
 
+  /**
+   * Returns whether salted-hash stores may resize during startup.
+   *
+   * @return {@code true} when startup resizing is enabled
+   */
   public boolean isStoreSaltHashResizeOnStart() {
     return storeSaltHashResizeOnStart;
   }
 
+  /**
+   * Sets whether salted-hash stores may resize during startup.
+   *
+   * @param value desired startup-resize behavior
+   */
   public void setStoreSaltHashResizeOnStart(boolean value) {
     storeSaltHashResizeOnStart = value;
   }
 
+  /**
+   * Initializes startup resize behavior for salted-hash stores.
+   *
+   * @param value initial startup-resize behavior
+   */
   public void initializeStoreSaltHashResizeOnStart(boolean value) {
     storeSaltHashResizeOnStart = value;
   }
 
+  /**
+   * Returns whether salted-hash stores should preallocate backing files.
+   *
+   * @return {@code true} when preallocation is enabled
+   */
   public boolean isStorePreallocate() {
     return storePreallocate;
   }
 
+  /**
+   * Sets preallocation behavior for currently active salted-hash stores.
+   *
+   * @param value desired preallocation setting
+   */
   public void setStorePreallocate(boolean value) {
     storePreallocate = value;
     if (Node.TYPE_SALT_HASH.equals(storeType)) {
@@ -554,10 +655,20 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns configured total datastore size in bytes.
+   *
+   * @return total datastore size in bytes
+   */
   public long getDatastoreSize() {
     return maxTotalDatastoreSize;
   }
 
+  /**
+   * Returns configured total key capacity across store and cache partitions.
+   *
+   * @return maximum total key count
+   */
   public long getMaxTotalKeys() {
     return maxTotalKeys;
   }
@@ -575,6 +686,12 @@ public final class NodeStorageSubsystem {
     return new AppDirs().resolve().dataDir();
   }
 
+  /**
+   * Initializes datastore sizing fields during startup configuration load.
+   *
+   * @param storeSize configured datastore size in bytes
+   * @throws NodeInitException if the size is invalid for the current store type
+   */
   public void initializeDatastoreSize(long storeSize) throws NodeInitException {
     maxTotalDatastoreSize = storeSize;
     if (maxTotalDatastoreSize < MIN_STORE_SIZE
@@ -588,6 +705,12 @@ public final class NodeStorageSubsystem {
     maxCacheKeys = maxTotalKeys - maxStoreKeys;
   }
 
+  /**
+   * Resizes persistent datastore and cache partitions.
+   *
+   * @param storeSize requested new total datastore size in bytes
+   * @throws InvalidConfigValueException if size is out of configured bounds
+   */
   public void resizeDatastore(long storeSize) throws InvalidConfigValueException {
     long maxDatastoreSize;
     if (storeSize < MIN_STORE_SIZE) {
@@ -629,10 +752,21 @@ public final class NodeStorageSubsystem {
     stats.avgClientCacheSSKLocation.changeMaxReports((int) maxCacheKeys);
   }
 
+  /**
+   * Returns configured total client-cache size in bytes.
+   *
+   * @return total client-cache size in bytes
+   */
   public long getClientCacheSize() {
     return maxTotalClientCacheSize;
   }
 
+  /**
+   * Initializes client-cache sizing fields during startup configuration load.
+   *
+   * @param storeSize configured client-cache size in bytes
+   * @throws NodeInitException if the configured size is below the minimum allowed size
+   */
   public void initializeClientCacheSize(long storeSize) throws NodeInitException {
     maxTotalClientCacheSize = storeSize;
     if (maxTotalClientCacheSize < MIN_CLIENT_CACHE_SIZE) {
@@ -642,6 +776,12 @@ public final class NodeStorageSubsystem {
     maxClientCacheKeys = maxTotalClientCacheSize / SIZE_PER_KEY;
   }
 
+  /**
+   * Resizes the client cache capacity.
+   *
+   * @param storeSize requested new client-cache size in bytes
+   * @throws InvalidConfigValueException if size is below the allowed minimum
+   */
   public void resizeClientCache(long storeSize) throws InvalidConfigValueException {
     if (storeSize < MIN_CLIENT_CACHE_SIZE)
       throw new InvalidConfigValueException(l10n("invalidStoreSize"));
@@ -661,10 +801,21 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns a configured slashdot-cache size in bytes.
+   *
+   * @return slashdot-cache size in bytes
+   */
   public long getSlashdotCacheSize() {
     return maxSlashdotCacheSize;
   }
 
+  /**
+   * Initializes slashdot-cache sizing fields during startup.
+   *
+   * @param storeSize configured slashdot-cache size in bytes
+   * @throws NodeInitException if the configured size is below the minimum allowed size
+   */
   public void initializeSlashdotCacheSize(long storeSize) throws NodeInitException {
     maxSlashdotCacheSize = storeSize;
     if (maxSlashdotCacheSize < MIN_SLASHDOT_CACHE_SIZE) {
@@ -674,6 +825,12 @@ public final class NodeStorageSubsystem {
     maxSlashdotCacheKeys = (int) Math.min(maxSlashdotCacheSize / SIZE_PER_KEY, Integer.MAX_VALUE);
   }
 
+  /**
+   * Resizes slashdot cache capacity for CHK, SSK, and pubkey stores.
+   *
+   * @param storeSize requested new slashdot-cache size in bytes
+   * @throws InvalidConfigValueException if size is below the allowed minimum
+   */
   public void resizeSlashdotCache(long storeSize) throws InvalidConfigValueException {
     if (storeSize < MIN_SLASHDOT_CACHE_SIZE)
       throw new InvalidConfigValueException(l10n("invalidStoreSize"));
@@ -693,50 +850,110 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns whether slashdot caches are considered during store/fetch flows.
+   *
+   * @return {@code true} when slashdot cache usage is enabled
+   */
   public boolean isUseSlashdotCache() {
     return useSlashdotCache;
   }
 
+  /**
+   * Sets whether slashdot caches are enabled.
+   *
+   * @param value desired slashdot-cache usage flag
+   */
   public void setUseSlashdotCache(boolean value) {
     useSlashdotCache = value;
   }
 
+  /**
+   * Returns whether locally obtained blocks may be promoted to datastore.
+   *
+   * @return {@code true} when local writes to datastore are allowed
+   */
   public boolean isWriteLocalToDatastore() {
     return writeLocalToDatastore;
   }
 
+  /**
+   * Sets whether locally obtained blocks may be promoted to datastore.
+   *
+   * @param value desired local-write-to-datastore behavior
+   */
   public void setWriteLocalToDatastore(boolean value) {
     writeLocalToDatastore = value;
   }
 
+  /**
+   * Returns the CHK datacache callback.
+   *
+   * @return CHK datacache callback
+   */
   public CHKStore getChkDatacache() {
     return chkDatacache;
   }
 
+  /**
+   * Returns the CHK datastore callback.
+   *
+   * @return CHK datastore callback
+   */
   public CHKStore getChkDatastore() {
     return chkDatastore;
   }
 
+  /**
+   * Returns the SSK datacache callback.
+   *
+   * @return SSK datacache callback
+   */
   public SSKStore getSskDatacache() {
     return sskDatacache;
   }
 
+  /**
+   * Returns the SSK datastore callback.
+   *
+   * @return SSK datastore callback
+   */
   public SSKStore getSskDatastore() {
     return sskDatastore;
   }
 
+  /**
+   * Returns the CHK slashdot cache callback.
+   *
+   * @return CHK slashdot cache callback
+   */
   public CHKStore getChkSlashdotCache() {
     return chkSlashdotcache;
   }
 
+  /**
+   * Returns the CHK client cache callback.
+   *
+   * @return CHK client cache callback
+   */
   public CHKStore getChkClientCache() {
     return chkClientcache;
   }
 
+  /**
+   * Returns the SSK slashdot cache callback.
+   *
+   * @return SSK slashdot cache callback
+   */
   public SSKStore getSskSlashdotCache() {
     return sskSlashdotcache;
   }
 
+  /**
+   * Returns the SSK client cache callback.
+   *
+   * @return SSK client cache callback
+   */
   public SSKStore getSskClientCache() {
     return sskClientcache;
   }
@@ -839,6 +1056,14 @@ public final class NodeStorageSubsystem {
         sskDatacache.keyCount());
   }
 
+  /**
+   * Stores a CHK block in cache paths only, without deep store promotion.
+   *
+   * @param block CHK block to store
+   * @param canWriteClientCache whether client cache writes are allowed
+   * @param canWriteDatastore whether caller policy permits datastore writes
+   * @param forULPR whether this writing originates from ULPR processing
+   */
   public void storeShallow(
       CHKBlock block, boolean canWriteClientCache, boolean canWriteDatastore, boolean forULPR) {
     store(block, false, canWriteClientCache, canWriteDatastore, forULPR);
@@ -966,6 +1191,17 @@ public final class NodeStorageSubsystem {
     store(block, false, canWriteClientCache, canWriteDatastore, fromULPR);
   }
 
+  /**
+   * Stores an SSK block to appropriate caches and optionally to persistent stores.
+   *
+   * @param block SSK block to store
+   * @param deep {@code true} to target main store; {@code false} for cache-first write
+   * @param overwrite whether existing colliding entries may be overwritten
+   * @param canWriteClientCache whether client cache writes are allowed
+   * @param canWriteDatastore whether caller policy permits datastore writes
+   * @param forULPR whether this writing originates from ULPR processing
+   * @throws KeyCollisionException if collision occurs and overwrite is not permitted
+   */
   public void store(
       SSKBlock block,
       boolean deep,
@@ -1475,10 +1711,21 @@ public final class NodeStorageSubsystem {
     return new ClientCHKBlock(block, clientCHK);
   }
 
+  /**
+   * Returns configured slashdot-cache entry lifetime.
+   *
+   * @return slashdot-cache lifetime in milliseconds
+   */
   public long getSlashdotCacheLifetime() {
     return chkSlashdotcacheStore.getLifetime();
   }
 
+  /**
+   * Sets slashdot-cache entry lifetime for all slashdot stores.
+   *
+   * @param value new lifetime value in milliseconds
+   * @throws InvalidConfigValueException if lifetime value is negative
+   */
   public void setSlashdotCacheLifetime(long value) throws InvalidConfigValueException {
     if (value < 0) throw new InvalidConfigValueException("Must be positive!");
     chkSlashdotcacheStore.setLifetime(value);
@@ -1486,6 +1733,11 @@ public final class NodeStorageSubsystem {
     sskSlashdotcacheStore.setLifetime(value);
   }
 
+  /**
+   * Initializes slashdot cache store instances with current capacity settings.
+   *
+   * @param slashdotCacheLifetime entry lifetime value in milliseconds
+   */
   public void initializeSlashdotCaches(long slashdotCacheLifetime) {
     chkSlashdotcache = new CHKStore();
     chkSlashdotcacheStore =
@@ -1517,67 +1769,143 @@ public final class NodeStorageSubsystem {
             node.services().clientCore().getTempBucketFactory());
   }
 
+  /**
+   * Returns whether client-cache initialization is blocked awaiting password entry.
+   *
+   * @return {@code true} when client cache awaits password input
+   */
   public boolean isClientCacheAwaitingPassword() {
     return clientCacheAwaitingPassword;
   }
 
+  /**
+   * Returns whether database initialization is blocked awaiting password entry.
+   *
+   * @return {@code true} when the database awaits password input
+   */
   public boolean isDatabaseAwaitingPassword() {
     return databaseAwaitingPassword;
   }
 
+  /** Clears password-waiting flags for both client cache and database initialization. */
   public void clearAwaitingPasswords() {
     clientCacheAwaitingPassword = false;
     databaseAwaitingPassword = false;
   }
 
+  /**
+   * Sets configured client-cache store type string without reinitializing stores.
+   *
+   * @param value client-cache type identifier
+   */
   public void setClientCacheType(String value) {
     clientCacheType = value;
   }
 
+  /**
+   * Sets the program-directory wrapper used as a datastore root.
+   *
+   * @param value program-directory wrapper containing datastore location
+   */
   public void setStoreDir(network.crypta.node.ProgramDirectory value) {
     storeDir = value;
   }
 
+  /**
+   * Returns program-directory wrapper representing datastore root.
+   *
+   * @return datastore program-directory wrapper
+   */
   public network.crypta.node.ProgramDirectory getStoreProgramDir() {
     return storeDir;
   }
 
+  /**
+   * Returns filesystem directory for datastore root.
+   *
+   * @return datastore root directory
+   */
   public File getStoreDir() {
     return storeDir.dir();
   }
 
+  /**
+   * Sets a filesystem path for the persisted master keys file.
+   *
+   * @param value master keys file path
+   */
   public void setMasterKeysFile(File value) {
     masterKeysFile = value;
   }
 
+  /**
+   * Returns the filesystem path of the persisted master keys file.
+   *
+   * @return master keys file path
+   */
   public File getMasterKeysFile() {
     return masterKeysFile;
   }
 
+  /**
+   * Sets in-memory master key bundle.
+   *
+   * @param value loaded master key bundle, or {@code null} when locked
+   */
   public void setKeys(MasterKeys value) {
     keys = value;
   }
 
+  /**
+   * Returns in-memory master key bundle.
+   *
+   * @return loaded master keys, or {@code null} when not currently available
+   */
   public MasterKeys getKeys() {
     return keys;
   }
 
+  /**
+   * Sets database encryption key reference.
+   *
+   * @param value database encryption key, or {@code null} when unavailable
+   */
   public void setDatabaseKey(DatabaseKey value) {
     databaseKey = value;
   }
 
+  /**
+   * Returns database encryption key reference.
+   *
+   * @return database encryption key, or {@code null} when unavailable
+   */
   public DatabaseKey getDatabaseKey() {
     return databaseKey;
   }
 
+  /**
+   * Returns previous pubkey datastore reference retained for migration.
+   *
+   * @return old pubkey datastore callback, or {@code null} when none is pending
+   */
   public PubkeyStore getOldPK() {
     return oldPK.get();
   }
 
+  /**
+   * Returns previous pubkey datacache reference retained for migration.
+   *
+   * @return old pubkey datacache callback, or {@code null} when none is pending
+   */
   public PubkeyStore getOldPKCache() {
     return oldPKCache.get();
   }
 
+  /**
+   * Returns previous pubkey client-cache reference retained for migration.
+   *
+   * @return old pubkey client-cache callback, or {@code null} when none is pending
+   */
   public PubkeyStore getOldPKClientCache() {
     return oldPKClientCache.get();
   }
@@ -1602,10 +1930,22 @@ public final class NodeStorageSubsystem {
     else return null;
   }
 
+  /**
+   * Returns configured maximum memory usage for caching-freenet-store wrapper.
+   *
+   * @return maximum cache wrapper size in bytes
+   */
   public long getCachingFreenetStoreMaxSize() {
     return cachingFreenetStoreMaxSize;
   }
 
+  /**
+   * Sets maximum memory usage for caching-freenet-store wrapper.
+   *
+   * @param value maximum cache wrapper size in bytes
+   * @throws InvalidConfigValueException if supplied size is negative
+   * @throws NodeNeedRestartException always thrown because live reconfiguration is unsupported
+   */
   public void setCachingFreenetStoreMaxSize(long value)
       throws InvalidConfigValueException, NodeNeedRestartException {
     if (value < 0) throw new InvalidConfigValueException(l10n("invalidMemoryCacheSize"));
@@ -1613,6 +1953,12 @@ public final class NodeStorageSubsystem {
     throw new NodeNeedRestartException("Caching Maximum Size cannot be changed on the fly");
   }
 
+  /**
+   * Initializes caching-freenet-store maximum size during startup.
+   *
+   * @param value maximum cache wrapper size in bytes
+   * @throws NodeInitException if supplied size is negative
+   */
   public void initializeCachingFreenetStoreMaxSize(long value) throws NodeInitException {
     cachingFreenetStoreMaxSize = value;
     if (cachingFreenetStoreMaxSize < 0)
@@ -1620,19 +1966,36 @@ public final class NodeStorageSubsystem {
           NodeInitException.EXIT_BAD_CONFIG, l10n("invalidMemoryCacheSize"));
   }
 
+  /**
+   * Returns a configured flush / eviction period for caching-freenet-store wrapper.
+   *
+   * @return caching period in milliseconds
+   */
   public long getCachingFreenetStorePeriod() {
     return cachingFreenetStorePeriod;
   }
 
+  /**
+   * Sets the caching-freenet-store period and signals that restart is required.
+   *
+   * @param value caching period in milliseconds
+   * @throws NodeNeedRestartException always thrown because live reconfiguration is unsupported
+   */
   public void setCachingFreenetStorePeriod(long value) throws NodeNeedRestartException {
     cachingFreenetStorePeriod = value;
     throw new NodeNeedRestartException("Caching Period cannot be changed on the fly");
   }
 
+  /**
+   * Initializes a caching-freenet-store period during startup.
+   *
+   * @param value caching period in milliseconds
+   */
   public void initializeCachingFreenetStorePeriod(long value) {
     cachingFreenetStorePeriod = value;
   }
 
+  /** Initializes caching-freenet-store tracker when size and period are both configured. */
   public void initializeCachingFreenetStoreTracker() {
     if (cachingFreenetStoreMaxSize > 0 && cachingFreenetStorePeriod > 0) {
       cachingFreenetStoreTracker =
@@ -1759,6 +2122,7 @@ public final class NodeStorageSubsystem {
     return NodeL10n.getBase().getString("Node.invalidMaxStoreSize", replacementValue);
   }
 
+  /** Initializes client cache stores backed by in-memory RAM stores. */
   public void initRAMClientCacheFS() {
     chkClientcache = new CHKStore();
     new RAMFreenetStore<>(chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys))
@@ -1771,6 +2135,7 @@ public final class NodeStorageSubsystem {
         .close();
   }
 
+  /** Initializes client cache stores using no-op backing stores. */
   public void initNoClientCacheFS() {
     chkClientcache = new CHKStore();
     new NullFreenetStore<>(chkClientcache).close();
@@ -1790,6 +2155,7 @@ public final class NodeStorageSubsystem {
     sskDatacache.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
   }
 
+  /** Initializes datastore and datacache stores backed by in-memory RAM stores. */
   public void initRAMFS() {
     chkDatastore = new CHKStore();
     new RAMFreenetStore<>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys)).close();
@@ -1806,6 +2172,13 @@ public final class NodeStorageSubsystem {
     new RAMFreenetStore<>(sskDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys)).close();
   }
 
+  /**
+   * Initializes persistent salted-hash datastore and datacache stores.
+   *
+   * @param dontResizeOnStart {@code true} to skip immediate resize passes on startup
+   * @param masterKey optional master key bytes used for store encryption, or {@code null}
+   * @throws NodeInitException if store construction or startup fails
+   */
   @SuppressWarnings("SameParameterValue")
   public void initSaltHashFS(boolean dontResizeOnStart, byte[] masterKey) throws NodeInitException {
     try {
@@ -1920,6 +2293,13 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Initializes persistent salted-hash client cache stores.
+   *
+   * @param dontResizeOnStart {@code true} to skip immediate resize passes on startup
+   * @param clientCacheMasterKey client-cache encryption key bytes
+   * @throws NodeInitException if store construction or startup fails
+   */
   public void initSaltHashClientCacheFS(boolean dontResizeOnStart, byte[] clientCacheMasterKey)
       throws NodeInitException {
 
@@ -2029,18 +2409,34 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns configured datastore backend type identifier.
+   *
+   * @return datastore backend type string
+   */
   public String getStoreType() {
     synchronized (node) {
       return storeType;
     }
   }
 
+  /**
+   * Sets datastore backend type identifier without rebuilding stores.
+   *
+   * @param value datastore backend type string
+   */
   public void setStoreType(String value) {
     synchronized (node) {
       storeType = value;
     }
   }
 
+  /**
+   * Creates and activates datastore implementation for the requested backend type.
+   *
+   * @param value requested datastore backend type
+   * @throws InvalidConfigValueException if the requested backend fails initialization
+   */
   public void makeStore(String value) throws InvalidConfigValueException {
     if (value.equals(Node.TYPE_SALT_HASH)) {
       try {
@@ -2057,12 +2453,23 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns configured client-cache backend type identifier.
+   *
+   * @return client-cache backend type string
+   */
   public String getClientCacheType() {
     synchronized (node) {
       return clientCacheType;
     }
   }
 
+  /**
+   * Switches client-cache backend type and reinitializes backing stores.
+   *
+   * @param value requested client-cache backend type
+   * @throws InvalidConfigValueException if the type is invalid or initialization cannot complete
+   */
   public void changeClientCacheType(String value) throws InvalidConfigValueException {
     synchronized (node) { // Serialize this part.
       switch (value) {
@@ -2103,6 +2510,11 @@ public final class NodeStorageSubsystem {
     }
   }
 
+  /**
+   * Returns pubkey cache/store helper used by storage operations.
+   *
+   * @return node pubkey helper instance
+   */
   public NodeGetPubkey getPubKey() {
     return getPubKey;
   }

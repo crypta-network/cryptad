@@ -9,8 +9,16 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 /**
  * Token-bucket throttle for outbound bandwidth limiting.
  *
- * <p>This minimal, thread-safe implementation replaces the legacy Java `TokenBucket` while
- * retaining only the behavior the node relies on.
+ * <p>This class implements a compact token-bucket rate limiter used to cap outbound bandwidth-like
+ * activity in terms of abstract tokens. Tokens increase over time according to a configured
+ * nanoseconds-per-token rate, and callers can inspect or consume available capacity via
+ * synchronized operations. The implementation intentionally preserves legacy behavior expected by
+ * the node, including runtime reconfiguration and support for non-blocking forced debits that may
+ * drive the balance negative temporarily.
+ *
+ * <p>All mutable states are guarded by the instance monitor, making reads and updates thread-safe
+ * for concurrent callers. Time is derived from wall-clock milliseconds converted to nanoseconds,
+ * and skew handling prevents runaway token grants when the clock moves backward.
  */
 public final class OutputThrottle {
   private final Logger log = LoggerFactory.getLogger(OutputThrottle.class);
@@ -22,9 +30,15 @@ public final class OutputThrottle {
   private long nanosPerTick;
 
   /**
+   * Creates a token-bucket throttle with explicit capacity, rate, and initial balance.
+   *
+   * <p>The initial token balance is clamped to the configured maximum if it exceeds bucket
+   * capacity.
+   *
    * @param maxTokens the maximum capacity of the bucket (tokens) must be > 0.
    * @param nanosPerTick nanoseconds per token (rate) must be > 0.
    * @param initialTokens initial token count; clamped to maxTokens if higher.
+   * @throws IllegalArgumentException if {@code maxTokens <= 0} or {@code nanosPerTick <= 0}
    */
   public OutputThrottle(long maxTokens, long nanosPerTick, long initialTokens) {
     if (nanosPerTick <= 0) {
@@ -49,6 +63,10 @@ public final class OutputThrottle {
    * Updates both the token accrual rate and the bucket capacity at runtime.
    *
    * <p>If the new nanosPerTick is smaller (faster rate), waiters are notified.
+   *
+   * @param nanosPerTick replacement nanoseconds-per-token rate; must be greater than zero
+   * @param newMaxTokens replacement maximum bucket capacity; must be greater than zero
+   * @throws IllegalArgumentException if either supplied value is not positive
    */
   public synchronized void changeNanosAndBucketSize(long nanosPerTick, long newMaxTokens) {
     if (nanosPerTick <= 0) {
@@ -81,13 +99,21 @@ public final class OutputThrottle {
     current -= tokens;
   }
 
-  /** Returns the current number of tokens after accruing due ticks. */
+  /**
+   * Returns the current token balance after accruing elapsed ticks.
+   *
+   * @return up-to-date token count, clipped to the configured maximum capacity
+   */
   public synchronized long getCount() {
     addTokens();
     return current;
   }
 
-  /** Returns the configured nanoseconds per token. */
+  /**
+   * Returns the configured token accrual rate.
+   *
+   * @return nanoseconds required to generate one token
+   */
   public synchronized long getNanosPerTick() {
     return nanosPerTick;
   }

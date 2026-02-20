@@ -4,10 +4,37 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 
-/** Service-aware directories based on systemd (Linux), launchd (macOS), and Windows Service. */
+/**
+ * Resolves directory layout for service-oriented Cryptad deployments.
+ *
+ * <p>This strategy targets operating-system service environments rather than interactive user
+ * sessions. It provides platform-specific base roots for Windows Service, launchd-style macOS
+ * deployments, and Linux/systemd installations, then allows service manager environment variables
+ * to override those defaults where supported. The class is intentionally conservative when creating
+ * directories: it avoids mutating non-native host filesystems during tests or cross-platform runs.
+ *
+ * <p>Resolution model:
+ *
+ * <ul>
+ *   <li>Compute service defaults per target operating system.
+ *   <li>Apply Linux service environment overrides when present.
+ *   <li>Create directories only when runtime host and target OS families match.
+ * </ul>
+ */
 public final class ServiceDirs extends BaseDirs {
   private static final String APP_DIR_NAME = "Cryptad";
 
+  /**
+   * Creates a service-directory resolver with fully injected environment inputs.
+   *
+   * <p>This constructor is intended for tests and startup paths that need explicit control over
+   * environment variables, system properties, CLI overrides, and platform detection behavior.
+   *
+   * @param env environment variables used for service-directory and override detection
+   * @param systemProperties JVM/system property snapshot used for fallback path resolution
+   * @param cliOverrides command-line overrides that take the highest precedence when non-null
+   * @param appEnv environment detector used for target-platform branching
+   */
   public ServiceDirs(
       Map<String, String> env,
       Map<String, String> systemProperties,
@@ -16,12 +43,24 @@ public final class ServiceDirs extends BaseDirs {
     super(env, systemProperties, cliOverrides, appEnv);
   }
 
-  /** Zero-arg constructor for Java callers. */
+  /**
+   * Creates a service-directory resolver from the current process environment and system
+   * properties.
+   *
+   * <p>This convenience constructor applies no explicit CLI overrides.
+   */
   public ServiceDirs() {
     this(System.getenv(), currentSystemProperties(), Map.of(), new AppEnv(System.getenv()));
   }
 
-  /** One-arg constructor (CLI overrides only) used by NodeStarter. */
+  /**
+   * Creates a service-directory resolver with explicit CLI overrides.
+   *
+   * <p>Environment variables and system properties are read from the current process. A {@code
+   * null} override map is treated as empty.
+   *
+   * @param cliOverrides CLI-provided directory overrides keyed by logical directory names
+   */
   public ServiceDirs(Map<String, String> cliOverrides) {
     this(
         System.getenv(),
@@ -30,7 +69,15 @@ public final class ServiceDirs extends BaseDirs {
         new AppEnv(System.getenv()));
   }
 
-  /** Backward-compat constructor used from Java tests: (env, appEnv). */
+  /**
+   * Creates a service-directory resolver with explicit environment and detector dependencies.
+   *
+   * <p>This compatibility constructor is used by Java tests that previously passed only environment
+   * values and an {@link AppEnv} instance. Missing arguments are replaced with safe defaults.
+   *
+   * @param env environment variables used for base path and override detection
+   * @param appEnv environment detector used for target-platform decisions
+   */
   public ServiceDirs(Map<String, String> env, AppEnv appEnv) {
     this(
         env != null ? env : Map.of(),
@@ -39,6 +86,7 @@ public final class ServiceDirs extends BaseDirs {
         appEnv != null ? appEnv : new AppEnv());
   }
 
+  /** {@inheritDoc} */
   @Override
   protected Resolved computeBase() {
     if (appEnv.isWindows()) {
@@ -78,6 +126,7 @@ public final class ServiceDirs extends BaseDirs {
         Paths.get("/var/log/cryptad"));
   }
 
+  /** {@inheritDoc} */
   @Override
   protected Overrides envOverrides() {
     if (!appEnv.isLinux()) {
@@ -91,6 +140,7 @@ public final class ServiceDirs extends BaseDirs {
         asPath(env.get("LOGS_DIRECTORY")));
   }
 
+  /** {@inheritDoc} */
   @Override
   protected boolean shouldEnsureDirectories() {
     if (Dirs.isUnitTestRuntime()) {

@@ -5,18 +5,40 @@ import java.nio.file.Paths;
 import java.util.Map;
 
 /**
- * Computes directory locations for user-session (non-service) mode.
+ * Resolves Cryptad directory locations for user-session (non-service) execution modes.
  *
- * <p>- Linux/XDG and macOS with XDG_* set: lowercase app dir name `cryptad`.
+ * <p>This implementation selects platform-appropriate defaults for configuration, data, cache,
+ * runtime, and logs paths while preserving expected naming conventions per operating system. It is
+ * intended for regular interactive launches, not long-running system service installations.
+ * Resolution starts from platform conventions, then applies environment-based overrides exposed by
+ * {@link BaseDirs}. In containerized Docker scenarios it also honors shared generic override
+ * variables so deployment tooling can provide paths without using Cryptad-specific names.
  *
- * <p>- macOS native (no XDG_*): `Cryptad` under Library conventions.
+ * <p>Platform behavior:
  *
- * <p>- Windows: `Cryptad` under `%APPDATA%`/`%LOCALAPPDATA%`.
+ * <ul>
+ *   <li>Linux/XDG and macOS with explicit XDG variables use lowercase app directory name {@code
+ *       cryptad}.
+ *   <li>Native macOS mode (without XDG variables) uses {@code Cryptad} under Library directories.
+ *   <li>Windows uses {@code Cryptad} beneath {@code %APPDATA%} and {@code %LOCALAPPDATA%} roots.
+ * </ul>
  */
 public final class AppDirs extends BaseDirs {
   private static final String APP_DIR_NAME = "Cryptad";
   private static final String APP_DIR_NAME_LOWER = "cryptad";
 
+  /**
+   * Creates an {@code AppDirs} resolver with explicit environment and runtime context.
+   *
+   * <p>Use this constructor when tests or bootstrap code must control all inputs that influence
+   * path resolution. The supplied maps and environment abstraction are passed to the base resolver
+   * logic, which handles override precedence and platform-specific defaults.
+   *
+   * @param env process-like environment variables used to compute platform and override paths
+   * @param systemProperties system property values used for home and runtime fallback resolution
+   * @param cliOverrides command-line directory overrides that take precedence where supported
+   * @param appEnv environment abstraction that reports platform and sandbox characteristics
+   */
   public AppDirs(
       Map<String, String> env,
       Map<String, String> systemProperties,
@@ -25,12 +47,25 @@ public final class AppDirs extends BaseDirs {
     super(env, systemProperties, cliOverrides, appEnv);
   }
 
-  /** Zero-arg constructor for Java callers. */
+  /**
+   * Creates an {@code AppDirs} resolver using the current process environment and properties.
+   *
+   * <p>This convenience constructor is suitable for standard production startup where no explicit
+   * command-line overrides are provided.
+   */
   public AppDirs() {
     this(System.getenv(), currentSystemProperties(), Map.of(), new AppEnv(System.getenv()));
   }
 
-  /** One-arg constructor (CLI overrides only) for Java callers. */
+  /**
+   * Creates an {@code AppDirs} resolver with explicit command-line overrides.
+   *
+   * <p>Environment variables and system properties are read from the current process, while the
+   * provided override map can replace selected directory outputs. A {@code null} argument is
+   * treated as an empty map for predictable behavior.
+   *
+   * @param cliOverrides map of directory override values keyed by supported override names
+   */
   public AppDirs(Map<String, String> cliOverrides) {
     this(
         System.getenv(),
@@ -39,6 +74,7 @@ public final class AppDirs extends BaseDirs {
         new AppEnv(System.getenv()));
   }
 
+  /** {@inheritDoc} */
   @Override
   protected Resolved computeBase() {
     boolean osxPrefersXdg =
@@ -91,6 +127,7 @@ public final class AppDirs extends BaseDirs {
     return Dirs.buildResolved(bases, appDirName, runtimeBase, logsBase);
   }
 
+  /** {@inheritDoc} */
   @Override
   protected Overrides envOverrides() {
     Overrides base =

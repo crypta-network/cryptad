@@ -298,6 +298,16 @@ public class NodeStarter implements WrapperListener {
   }
 
   // Experimental OSGi support.
+  /**
+   * Starts the daemon through the OSGi entry point.
+   *
+   * <p>This helper mirrors standard startup and stores a singleton reference used by {@link
+   * #stop_osgi(int)}. If a startup returns a non-null exit code, the wrapper receives that code
+   * when running under the native wrapper. Outside wrapper control, non-zero exit codes are treated
+   * as startup failure and converted to an exception after stopping.
+   *
+   * @param args command-line arguments forwarded to standard startup processing
+   */
   @SuppressWarnings({"unused", "java:S100"})
   public static void start_osgi(String[] args) {
     nodestarter_osgi = new NodeStarter();
@@ -317,6 +327,14 @@ public class NodeStarter implements WrapperListener {
    *-------------------------------------------------------------*/
 
   // Experimental OSGi support.
+  /**
+   * Stops the OSGi-managed daemon instance.
+   *
+   * <p>The currently registered OSGi starter instance is asked to shut down with the provided exit
+   * code and then cleared so later starting create a fresh instance.
+   *
+   * @param exitCode process exit code used for the shutdown sequence
+   */
   @SuppressWarnings({"unused", "java:S100"})
   public static void stop_osgi(int exitCode) {
     nodestarter_osgi.stop(exitCode);
@@ -733,6 +751,12 @@ public class NodeStarter implements WrapperListener {
     return exitCode;
   }
 
+  /**
+   * Requests a process restart through the Java Service Wrapper.
+   *
+   * <p>This delegates restart behavior to the wrapper runtime instead of reinitializing the node in
+   * place.
+   */
   public void restart() {
     WrapperManager.restart();
   }
@@ -762,8 +786,14 @@ public class NodeStarter implements WrapperListener {
   /**
    * Parameters for constructing a test node.
    *
-   * <p>All fields are optional unless otherwise noted. Defaults favor a lightweight, local-only
-   * configuration suitable for simulations.
+   * <p>This mutable parameter container captures optional startup knobs used by {@link
+   * #createTestNode(TestNodeParameters)}. The defaults favor lightweight local runs, while callers
+   * can selectively override networking, datastore, executor, and feature toggles to model specific
+   * scenarios. Values are consumed as plain configuration inputs; this type intentionally performs
+   * minimal validation so tests can probe boundary behavior.
+   *
+   * <p>Instances are typically configured in arrange/setup phases and then treated as immutable
+   * once node creation begins.
    */
   public static final class TestNodeParameters {
 
@@ -793,202 +823,457 @@ public class NodeStarter implements WrapperListener {
     private boolean enableFCP;
     private boolean enablePlugins;
 
+    /** Creates a parameter set with defaults suitable for local test-node initialization. */
+    public TestNodeParameters() {
+      // Intentionally empty: callers configure fields via setters before creating a test node.
+    }
+
+    /**
+     * Returns the darknet listen port used by the test node.
+     *
+     * @return configured darknet listen port value
+     */
     public int getPort() {
       return port;
     }
 
+    /**
+     * Sets the darknet listen port used by the test node.
+     *
+     * @param port the listen port value to apply to test-node configuration
+     */
     public void setPort(int port) {
       this.port = port;
     }
 
+    /**
+     * Returns the opennet listen port for test-node configuration.
+     *
+     * @return configured opennet listen port value
+     */
     public int getOpennetPort() {
       return opennetPort;
     }
 
+    /**
+     * Sets the opennet listen port for test-node configuration.
+     *
+     * @param opennetPort listen port value used for opennet mode
+     */
     public void setOpennetPort(int opennetPort) {
       this.opennetPort = opennetPort;
     }
 
+    /**
+     * Returns the base directory used for persistent test-node files.
+     *
+     * @return filesystem directory used as the node base path
+     */
     public File getBaseDirectory() {
       return baseDirectory;
     }
 
+    /**
+     * Sets the base directory used for persistent test-node files.
+     *
+     * @param baseDirectory filesystem directory to use as the node base path
+     */
     public void setBaseDirectory(File baseDirectory) {
       this.baseDirectory = baseDirectory;
     }
 
+    /**
+     * Returns whether probabilistic HTLs are disabled.
+     *
+     * @return {@code true} when probabilistic HTL behavior is disabled
+     */
     public boolean isDisableProbabilisticHTLs() {
       return disableProbabilisticHTLs;
     }
 
+    /**
+     * Enables or disables probabilistic HTLs in generated test configuration.
+     *
+     * @param v {@code true} to disable probabilistic HTLs, {@code false} to keep them enabled
+     */
     public void setDisableProbabilisticHTLs(boolean v) {
       this.disableProbabilisticHTLs = v;
     }
 
+    /**
+     * Returns the maximum HTL configured for test routing behavior.
+     *
+     * @return maximum HTL value applied to test-node configuration
+     */
     public short getMaxHTL() {
       return maxHTL;
     }
 
+    /**
+     * Sets the maximum HTL configured for test routing behavior.
+     *
+     * @param maxHTL maximum HTL value to apply
+     */
     public void setMaxHTL(short maxHTL) {
       this.maxHTL = maxHTL;
     }
 
+    /**
+     * Returns the configured drop-probability value.
+     *
+     * @return drop-probability setting used by test node setup
+     */
     public int getDropProb() {
       return dropProb;
     }
 
+    /**
+     * Sets the drop-probability value used by test node setup.
+     *
+     * @param dropProb drop-probability setting to apply
+     */
     public void setDropProb(int dropProb) {
       this.dropProb = dropProb;
     }
 
+    /**
+     * Returns the random source used by test-node subsystems.
+     *
+     * @return configured random source, or {@code null} to allow defaults
+     */
     public RandomSource getRandom() {
       return random;
     }
 
+    /**
+     * Sets the random source used by test-node subsystems.
+     *
+     * @param random random source instance, or {@code null} to use default behavior
+     */
     public void setRandom(RandomSource random) {
       this.random = random;
     }
 
+    /**
+     * Returns the executor used by the test node.
+     *
+     * @return configured executor, or {@code null} to use default executor creation
+     */
     public PriorityAwareExecutor getExecutor() {
       return executor;
     }
 
+    /**
+     * Sets the executor used by the test node.
+     *
+     * @param executor executor instance, or {@code null} to use default executor creation
+     */
     public void setExecutor(PriorityAwareExecutor executor) {
       this.executor = executor;
     }
 
+    /**
+     * Returns the thread limit passed to node loading configuration.
+     *
+     * @return configured thread-limit value
+     */
     public int getThreadLimit() {
       return threadLimit;
     }
 
+    /**
+     * Sets the thread limit passed to node loading configuration.
+     *
+     * @param threadLimit thread-limit value to apply
+     */
     public void setThreadLimit(int threadLimit) {
       this.threadLimit = threadLimit;
     }
 
+    /**
+     * Returns the datastore size setting used for the test node.
+     *
+     * @return configured datastore size value
+     */
     public long getStoreSize() {
       return storeSize;
     }
 
+    /**
+     * Sets the datastore size setting used for the test node.
+     *
+     * @param storeSize datastore size value to apply
+     */
     public void setStoreSize(long storeSize) {
       this.storeSize = storeSize;
     }
 
+    /**
+     * Returns whether the test node uses an in-memory store type.
+     *
+     * @return {@code true} when RAM store mode is enabled
+     */
     public boolean isRamStore() {
       return ramStore;
     }
 
+    /**
+     * Sets whether the test node uses an in-memory store type.
+     *
+     * @param ramStore {@code true} to enable RAM store mode
+     */
     public void setRamStore(boolean ramStore) {
       this.ramStore = ramStore;
     }
 
+    /**
+     * Returns whether datastore swapping is enabled.
+     *
+     * @return {@code true} when swapping is enabled
+     */
     public boolean isEnableSwapping() {
       return enableSwapping;
     }
 
+    /**
+     * Sets whether datastore swapping is enabled.
+     *
+     * @param enableSwapping {@code true} to enable swapping
+     */
     public void setEnableSwapping(boolean enableSwapping) {
       this.enableSwapping = enableSwapping;
     }
 
+    /**
+     * Returns whether ARK support is enabled.
+     *
+     * @return {@code true} when ARK support is enabled
+     */
     public boolean isEnableARKs() {
       return enableARKs;
     }
 
+    /**
+     * Sets whether ARK support is enabled.
+     *
+     * @param enableARKs {@code true} to enable ARK support
+     */
     public void setEnableARKs(boolean enableARKs) {
       this.enableARKs = enableARKs;
     }
 
+    /**
+     * Returns whether ULPR data propagation is enabled.
+     *
+     * @return {@code true} when ULPR behavior is enabled
+     */
     public boolean isEnableULPRs() {
       return enableULPRs;
     }
 
+    /**
+     * Sets whether ULPR data propagation is enabled.
+     *
+     * @param enableULPRs {@code true} to enable ULPR behavior
+     */
     public void setEnableULPRs(boolean enableULPRs) {
       this.enableULPRs = enableULPRs;
     }
 
+    /**
+     * Returns whether per-node failure tables are enabled.
+     *
+     * @return {@code true} when per-node failure tables are enabled
+     */
     public boolean isEnablePerNodeFailureTables() {
       return enablePerNodeFailureTables;
     }
 
+    /**
+     * Sets whether per-node failure tables are enabled.
+     *
+     * @param v {@code true} to enable per-node failure tables
+     */
     public void setEnablePerNodeFailureTables(boolean v) {
       this.enablePerNodeFailureTables = v;
     }
 
+    /**
+     * Returns whether swap queueing is enabled.
+     *
+     * @return {@code true} when swap queueing is enabled
+     */
     public boolean isEnableSwapQueueing() {
       return enableSwapQueueing;
     }
 
+    /**
+     * Sets whether swap queueing is enabled.
+     *
+     * @param enableSwapQueueing {@code true} to enable swap queueing
+     */
     public void setEnableSwapQueueing(boolean enableSwapQueueing) {
       this.enableSwapQueueing = enableSwapQueueing;
     }
 
+    /**
+     * Returns whether packet coalescing is enabled.
+     *
+     * @return {@code true} when packet coalescing is enabled
+     */
     public boolean isEnablePacketCoalescing() {
       return enablePacketCoalescing;
     }
 
+    /**
+     * Sets whether packet coalescing is enabled.
+     *
+     * @param enablePacketCoalescing {@code true} to enable packet coalescing
+     */
     public void setEnablePacketCoalescing(boolean enablePacketCoalescing) {
       this.enablePacketCoalescing = enablePacketCoalescing;
     }
 
+    /**
+     * Returns the output bandwidth limit value used for test configuration.
+     *
+     * @return configured output bandwidth limit value
+     */
     public int getOutputBandwidthLimit() {
       return outputBandwidthLimit;
     }
 
+    /**
+     * Sets the output bandwidth limit value used for test configuration.
+     *
+     * @param outputBandwidthLimit output bandwidth limit value to apply
+     */
     public void setOutputBandwidthLimit(int outputBandwidthLimit) {
       this.outputBandwidthLimit = outputBandwidthLimit;
     }
 
+    /**
+     * Returns whether FOAF-related peer-location behavior is enabled.
+     *
+     * @return {@code true} when FOAF behavior is enabled
+     */
     public boolean isEnableFOAF() {
       return enableFOAF;
     }
 
+    /**
+     * Sets whether FOAF-related peer-location behavior is enabled.
+     *
+     * @param enableFOAF {@code true} to enable FOAF behavior
+     */
     public void setEnableFOAF(boolean enableFOAF) {
       this.enableFOAF = enableFOAF;
     }
 
+    /**
+     * Returns whether opennet seednode bootstrapping is enabled.
+     *
+     * @return {@code true} when seednode connections are enabled
+     */
     public boolean isConnectToSeednodes() {
       return connectToSeednodes;
     }
 
+    /**
+     * Sets whether opennet seednode bootstrapping is enabled.
+     *
+     * @param connectToSeednodes {@code true} to enable seednode connections
+     */
     public void setConnectToSeednodes(boolean connectToSeednodes) {
       this.connectToSeednodes = connectToSeednodes;
     }
 
+    /**
+     * Returns whether long ping-time test thresholds are enabled.
+     *
+     * @return {@code true} when long ping-time thresholds are enabled
+     */
     public boolean isLongPingTimes() {
       return longPingTimes;
     }
 
+    /**
+     * Sets whether long ping-time test thresholds are enabled.
+     *
+     * @param longPingTimes {@code true} to enable long ping-time thresholds
+     */
     public void setLongPingTimes(boolean longPingTimes) {
       this.longPingTimes = longPingTimes;
     }
 
+    /**
+     * Returns whether slashdot cache behavior is enabled.
+     *
+     * @return {@code true} when slashdot cache behavior is enabled
+     */
     public boolean isUseSlashdotCache() {
       return useSlashdotCache;
     }
 
+    /**
+     * Sets whether slashdot cache behavior is enabled.
+     *
+     * @param useSlashdotCache {@code true} to enable slashdot cache behavior
+     */
     public void setUseSlashdotCache(boolean useSlashdotCache) {
       this.useSlashdotCache = useSlashdotCache;
     }
 
+    /**
+     * Returns the explicit IP address override value.
+     *
+     * @return configured IP address override, or {@code null} when unset
+     */
     public String getIpAddressOverride() {
       return ipAddressOverride;
     }
 
+    /**
+     * Sets the explicit IP address override value.
+     *
+     * @param ipAddressOverride IP address override string, or {@code null} to clear
+     */
     public void setIpAddressOverride(String ipAddressOverride) {
       this.ipAddressOverride = ipAddressOverride;
     }
 
+    /**
+     * Returns whether FCP support is enabled for the test node.
+     *
+     * @return {@code true} when FCP is enabled
+     */
     public boolean isEnableFCP() {
       return enableFCP;
     }
 
+    /**
+     * Sets whether FCP support is enabled for the test node.
+     *
+     * @param enableFCP {@code true} to enable FCP support
+     */
     public void setEnableFCP(boolean enableFCP) {
       this.enableFCP = enableFCP;
     }
 
+    /**
+     * Returns whether plugin loading is enabled for the test node.
+     *
+     * @return {@code true} when plugin loading is enabled
+     */
     public boolean isEnablePlugins() {
       return enablePlugins;
     }
 
+    /**
+     * Sets whether plugin loading is enabled for the test node.
+     *
+     * @param enablePlugins {@code true} to enable plugin loading
+     */
     @SuppressWarnings("unused")
     public void setEnablePlugins(boolean enablePlugins) {
       this.enablePlugins = enablePlugins;

@@ -15,16 +15,67 @@ import java.util.regex.Pattern;
 import network.crypta.fs.Resolved;
 import network.crypta.support.SimpleFieldSet;
 
+/**
+ * Loads, expands, and normalizes Cryptad configuration values with directory-aware defaults.
+ *
+ * <p>This utility centralizes the configuration file lifecycle for the launcher and node startup
+ * path. It can create a missing configuration file from an embedded template, parse values into a
+ * {@link SimpleFieldSet}, expand placeholders such as {@code ${configDir}} and {@code ${dataDir}},
+ * and materialize default directory settings when required keys are absent. Expansion applies
+ * deterministic anchoring and normalization, so relative suffixes are resolved under known base
+ * directories while protecting against directory traversal patterns.
+ *
+ * <p>Primary responsibilities:
+ *
+ * <ul>
+ *   <li>Provide stable default configuration values for installation, cache, run, download, and log
+ *       paths.
+ *   <li>Translate placeholder-driven and shorthand path expressions into concrete normalized paths.
+ *   <li>Create configured directory trees on a best-effort basis after expansion.
+ * </ul>
+ */
 public final class CryptadConfig {
   private static final Pattern TRAVERSAL_PATTERN = Pattern.compile("(^|/)\\.\\.(/|$)");
+  private static final String DATA_DIR_KEY = "dataDir";
+  private static final String CACHE_DIR_KEY = "cacheDir";
 
   private CryptadConfig() {}
 
+  /**
+   * Loads configuration from disk and expands placeholders using the current JVM system properties.
+   *
+   * <p>This convenience overload delegates to {@link #loadExpandingPlaceholders(Path, Resolved,
+   * Properties)} and uses {@link System#getProperties()} as the source for values such as {@code
+   * user.home} and {@code java.io.tmpdir}. Use this entry point when the runtime environment should
+   * define home and temporary directories. The returned field set contains expanded values and
+   * includes finalized defaults for required install and runtime keys.
+   *
+   * @param configFile path to the configuration file that should be loaded or created
+   * @param dirs resolved directory set that supplies base locations for placeholders
+   * @return expanded configuration values with final default keys applied
+   * @throws IOException if parent directory creation, file creation, read, or write operations fail
+   */
+  @SuppressWarnings("unused")
   public static SimpleFieldSet loadExpandingPlaceholders(Path configFile, Resolved dirs)
       throws IOException {
     return loadExpandingPlaceholders(configFile, dirs, System.getProperties());
   }
 
+  /**
+   * Loads configuration, expands placeholders, and ensures required directories exist.
+   *
+   * <p>If the target file does not exist, this method creates parent directories as needed and
+   * writes {@link #defaultTemplate()} using UTF-8. It then parses the file, expands placeholders
+   * and leading-token shorthand through {@link #expandAll(SimpleFieldSet, Resolved, Properties)},
+   * and finally attempts to create all configured directories. Directory creation is best-effort,
+   * but configuration file creation and parsing failures propagate to the caller.
+   *
+   * @param configFile path to the on-disk configuration file
+   * @param dirs resolved directory set that defines placeholder base paths
+   * @param systemProps property source used for home and temporary directory values
+   * @return expanded configuration values ready for downstream startup usage
+   * @throws IOException if file or parent directory creation, read, or initial write fails
+   */
   public static SimpleFieldSet loadExpandingPlaceholders(
       Path configFile, Resolved dirs, Properties systemProps) throws IOException {
     Path parent = configFile.getParent();
@@ -40,24 +91,59 @@ public final class CryptadConfig {
     return expanded;
   }
 
+  /**
+   * Expands all values in a field set using the current JVM system properties.
+   *
+   * <p>This overload delegates to {@link #expandAll(SimpleFieldSet, Resolved, Properties)} and
+   * supplies {@link System#getProperties()} for runtime-derived placeholders. It is useful when
+   * configuration expansion should follow the ambient process environment without test-specific
+   * overrides.
+   *
+   * @param input source configuration field set to copy and expand
+   * @param dirs resolved directory set that provides fixed base path placeholders
+   * @return a copied field set containing expanded values and defaulted required keys
+   */
+  @SuppressWarnings("unused")
   public static SimpleFieldSet expandAll(SimpleFieldSet input, Resolved dirs) {
     return expandAll(input, dirs, System.getProperties());
   }
 
+  /**
+   * Expands placeholders and shorthand directory tokens for every value in a field set.
+   *
+   * <p>This method builds a base placeholder map from resolved directories and selected system
+   * properties, then processes each key/value pair through {@link #expandValue(String, Map)}.
+   * Values that change are overwritten in the returned copy, leaving the original input untouched.
+   * After expansion, final fallback values are applied for required install and runtime keys so
+   * downstream components can assume the presence of essential paths.
+   *
+   * @param input source configuration field set that is copied before mutation
+   * @param dirs resolved directory set used to seed config, data, cache, run, and log placeholders
+   * @param systemProps property source that contributes home and temporary directory values
+   * @return expanded copy of {@code input} with deterministic fallback defaults applied
+   */
   public static SimpleFieldSet expandAll(
       SimpleFieldSet input, Resolved dirs, Properties systemProps) {
     String home = systemProps.getProperty("user.home");
     String tmp = systemProps.getProperty("java.io.tmpdir");
     Map<String, String> base =
         Map.of(
-            "configDir", dirs.configDir().toString(),
-            "dataDir", dirs.dataDir().toString(),
-            "stateDir", dirs.dataDir().toString(),
-            "cacheDir", dirs.cacheDir().toString(),
-            "runDir", dirs.runDir().toString(),
-            "logsDir", dirs.logsDir().toString(),
-            "home", home,
-            "tmp", tmp);
+            "configDir",
+            dirs.configDir().toString(),
+            DATA_DIR_KEY,
+            dirs.dataDir().toString(),
+            "stateDir",
+            dirs.dataDir().toString(),
+            CACHE_DIR_KEY,
+            dirs.cacheDir().toString(),
+            "runDir",
+            dirs.runDir().toString(),
+            "logsDir",
+            dirs.logsDir().toString(),
+            "home",
+            home,
+            "tmp",
+            tmp);
 
     SimpleFieldSet out = new SimpleFieldSet(input);
     Iterator<String> it = out.keyIterator();
@@ -77,23 +163,24 @@ public final class CryptadConfig {
   }
 
   private static void ensureFinalDefaults(SimpleFieldSet sfs, Map<String, String> base) {
-    String userDir = Path.of(base.get("dataDir"), "user").toString();
+    String userDir = Path.of(base.get(DATA_DIR_KEY), "user").toString();
     setIfMissing(sfs, "node.install.cfgDir", base.get("configDir"));
-    setIfMissing(sfs, "node.install.storeDir", base.get("dataDir"));
+    setIfMissing(sfs, "node.install.storeDir", base.get(DATA_DIR_KEY));
     setIfMissing(sfs, "node.install.userDir", userDir);
     setIfMissing(
         sfs,
         "node.install.pluginStoresDir",
-        Path.of(base.get("dataDir"), "plugin-data").toString());
-    setIfMissing(sfs, "node.install.pluginDir", Path.of(base.get("dataDir"), "plugins").toString());
-    setIfMissing(sfs, "node.install.tempDir", Path.of(base.get("cacheDir"), "tmp").toString());
+        Path.of(base.get(DATA_DIR_KEY), "plugin-data").toString());
+    setIfMissing(
+        sfs, "node.install.pluginDir", Path.of(base.get(DATA_DIR_KEY), "plugins").toString());
+    setIfMissing(sfs, "node.install.tempDir", Path.of(base.get(CACHE_DIR_KEY), "tmp").toString());
     setIfMissing(
         sfs,
         "node.install.persistentTempDir",
-        Path.of(base.get("cacheDir"), "persistent-temp").toString());
-    setIfMissing(sfs, "node.install.nodeDir", Path.of(base.get("dataDir"), "node").toString());
+        Path.of(base.get(CACHE_DIR_KEY), "persistent-temp").toString());
+    setIfMissing(sfs, "node.install.nodeDir", Path.of(base.get(DATA_DIR_KEY), "node").toString());
     setIfMissing(sfs, "node.install.runDir", base.get("runDir"));
-    setIfMissing(sfs, "node.downloadsDir", Path.of(base.get("dataDir"), "downloads").toString());
+    setIfMissing(sfs, "node.downloadsDir", Path.of(base.get(DATA_DIR_KEY), "downloads").toString());
     setIfMissing(sfs, "logger.dirname", base.get("logsDir"));
     setIfMissing(sfs, "node.masterKeyFile", Path.of(userDir, "master.keys").toString());
   }
@@ -105,15 +192,19 @@ public final class CryptadConfig {
   }
 
   /**
-   * Expands a single configuration value by:
+   * Expands and validates a single configuration value against known base directories.
    *
-   * <p>- Replacing placeholders like ${configDir}, ${dataDir}, etc.
+   * <p>The expansion pipeline applies placeholder replacement (for example {@code ${configDir}} and
+   * {@code ${dataDir}}), resolves leading-token shorthand such as {@code dataDir/plugins}, and
+   * normalizes anchored values beneath recognized base directories. When a normalized anchored
+   * value escapes its base, or when unanchored substituted content still includes traversal
+   * segments, expansion fails. Internal checked failures are rethrown via a sneaky-throw helper to
+   * preserve existing call-site behavior.
    *
-   * <p>- Expanding leading-token shorthand like dataDir/foo or dataDir\foo.
-   *
-   * <p>- Anchoring to known base directories and normalizing the path.
-   *
-   * <p>- Enforcing traversal protection for anchored bases.
+   * @param value raw configuration value that may contain placeholders or shorthand tokens
+   * @param base mapping from placeholder keys to concrete base directory paths
+   * @return expanded and normalized value after placeholder, shorthand, and traversal checks
+   * @throws RuntimeException if traversal validation fails during expansion
    */
   public static String expandValue(String value, Map<String, String> base) {
     try {
@@ -239,12 +330,21 @@ public final class CryptadConfig {
         if (!Files.exists(dir)) {
           Files.createDirectories(dir);
         }
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // Best effort.
       }
     }
   }
 
+  /**
+   * Returns the minimal default configuration template used for first-run file creation.
+   *
+   * <p>The template intentionally contains only baseline keys required for startup and updater
+   * behavior, leaving directory and path keys to be derived during expansion. A trailing newline is
+   * included so generated files follow standard text-file termination conventions.
+   *
+   * @return default UTF-8 configuration template text with a terminating newline
+   */
   public static String defaultTemplate() {
     return """
     # Cryptad config (auto-generated)
@@ -256,6 +356,18 @@ public final class CryptadConfig {
         + "\n";
   }
 
+  /**
+   * Copies an existing file to a destination path only when the destination is missing.
+   *
+   * <p>This helper preserves existing destination files and performs no action when {@code dst}
+   * already exists or {@code src} is absent. When a copy is needed, parent directories for the
+   * destination are created first. File attributes are preserved through {@link
+   * StandardCopyOption#COPY_ATTRIBUTES} to keep metadata aligned with the original file.
+   *
+   * @param src source path that is copied when it exists
+   * @param dst destination path that is created only when currently missing
+   * @throws IOException if creating destination parents or copying file contents fails
+   */
   public static void copyIfMissing(Path src, Path dst) throws IOException {
     if (!Files.exists(dst) && Files.exists(src)) {
       Path parent = dst.getParent();
@@ -267,7 +379,7 @@ public final class CryptadConfig {
   }
 
   private static RuntimeException sneakyThrow(Throwable t) {
-    CryptadConfig.<RuntimeException>throwAny(t);
+    CryptadConfig.throwAny(t);
     throw new IllegalStateException("Unreachable");
   }
 

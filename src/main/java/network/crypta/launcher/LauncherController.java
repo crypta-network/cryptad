@@ -16,9 +16,21 @@ import java.util.function.Consumer;
 import static network.crypta.launcher.LauncherLog.logDebug;
 
 /**
- * Lightweight Java launcher controller.
+ * Coordinates launcher process lifecycle and UI-facing state/log notifications.
  *
- * <p>Owns daemon process lifecycle and emits state/log updates to listeners used by the Swing UI.
+ * <p>This controller is the orchestration layer between the Swing launcher frame and the managed
+ * {@code cryptad} process. It handles start/stop/shutdown transitions, tails process output,
+ * extracts runtime metadata (such as detected browser port), and emits immutable state snapshots to
+ * registered listeners. Long-running and blocking work executes on a dedicated single-thread
+ * executor to keep UI interactions responsive while preserving operation ordering.
+ *
+ * <p>Notable behavior:
+ *
+ * <ul>
+ *   <li>Serializes process lifecycle operations through a single worker thread.
+ *   <li>Tracks shutdown intent to prevent restarts during the termination flow.
+ *   <li>Publishes both structured state updates and raw log lines for view rendering.
+ * </ul>
  */
 public class LauncherController {
   private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -30,29 +42,67 @@ public class LauncherController {
   private AppState state = new AppState();
   private volatile boolean shuttingDown;
 
+  /**
+   * Creates a controller rooted at the current working directory.
+   *
+   * <p>The working directory is resolved from {@code user.dir} and used to locate the launcher
+   * script and related files.
+   */
   public LauncherController() {
     this(Path.of(System.getProperty("user.dir")));
   }
 
+  /**
+   * Creates a controller that resolves launcher resources relative to the given directory.
+   *
+   * @param cwd working directory used to locate the {@code cryptad} executable and wrapper files
+   */
   public LauncherController(Path cwd) {
     this.cwd = Objects.requireNonNull(cwd);
   }
 
+  /**
+   * Returns the latest immutable launcher state snapshot.
+   *
+   * @return current application state representing process and shutdown flags
+   */
   public AppState getState() {
     return state;
   }
 
+  /**
+   * Registers a listener that receives emitted process log lines.
+   *
+   * <p>A {@code null} listener is ignored. Listeners are invoked synchronously on the emitting
+   * thread.
+   *
+   * @param listener log consumer that receives one line per callback
+   */
   public void addLogListener(Consumer<String> listener) {
     if (listener != null) {
       logListeners.add(listener);
     }
   }
 
+  /**
+   * Unregisters a previously added log listener.
+   *
+   * <p>If the listener is not present, this method has no effect.
+   *
+   * @param listener log consumer to remove from callback dispatch
+   */
   @SuppressWarnings("unused")
   public void removeLogListener(Consumer<String> listener) {
     logListeners.remove(listener);
   }
 
+  /**
+   * Registers a listener for state updates and immediately emits the current state.
+   *
+   * <p>A {@code null} listener is ignored.
+   *
+   * @param listener state consumer that receives current and future state snapshots
+   */
   public void addStateListener(Consumer<AppState> listener) {
     if (listener != null) {
       stateListeners.add(listener);
@@ -60,11 +110,25 @@ public class LauncherController {
     }
   }
 
+  /**
+   * Unregisters a previously added state listener.
+   *
+   * <p>If the listener is not present, this method has no effect.
+   *
+   * @param listener state consumer to remove from callback dispatch
+   */
   @SuppressWarnings("unused")
   public void removeStateListener(Consumer<AppState> listener) {
     stateListeners.remove(listener);
   }
 
+  /**
+   * Starts the managed {@code cryptad} process when not already running.
+   *
+   * <p>This method validates executable availability, updates launcher state, then schedules
+   * process start, and output monitoring on the controller executor. If startup fails, an error
+   * line is emitted and state is restored to non-running.
+   */
   public synchronized void start() {
     AppState currentState = state;
     if (shuttingDown) {
@@ -132,6 +196,11 @@ public class LauncherController {
         });
   }
 
+  /**
+   * Requests graceful process termination and escalates to forced termination when needed.
+   *
+   * <p>If no process is active, the state is normalized to non-running immediately.
+   */
   public synchronized void stop() {
     Process current = process;
     if (current == null) {
@@ -155,6 +224,12 @@ public class LauncherController {
         });
   }
 
+  /**
+   * Attempts to open the node web UI in the system browser using the known local port.
+   *
+   * <p>If no port is known or desktop browse integration is unavailable, the method returns without
+   * throwing and may emit warning log lines.
+   */
   public void launchBrowser() {
     Integer port = state.knownPort();
     if (port == null) {
@@ -181,6 +256,11 @@ public class LauncherController {
         });
   }
 
+  /**
+   * Initiates controller shutdown, process stop, and executor termination.
+   *
+   * <p>Subsequent start requests are ignored after shutdown begins.
+   */
   public synchronized void shutdown() {
     if (shuttingDown) {
       return;
@@ -191,6 +271,11 @@ public class LauncherController {
     io.shutdown();
   }
 
+  /**
+   * Initiates shutdown and waits for background executor termination.
+   *
+   * <p>The wait is bounded to ten seconds; timeout is logged at debug level.
+   */
   public void shutdownAndWait() {
     shutdown();
     try {

@@ -11,20 +11,44 @@ import org.slf4j.event.Level;
 /**
  * SLF4J logging bootstrap utilities used by tests and tooling.
  *
- * <p>Replaces the deprecated network.crypta.support.Logger facade.
+ * <p>This utility centralizes runtime log-level configuration for environments that use Logback as
+ * the SLF4J backend. Callers can set a root threshold, apply targeted logger overrides, and clear
+ * previously applied overrides when re-bootstraping logging. The API is intentionally static, so it
+ * can be invoked early during startup, from tests, or from integration tooling without requiring a
+ * dependency-injected logging component.
+ *
+ * <p>Overrides are tracked by logger name in process memory and are reset before new detail rules
+ * are applied, which keeps repeated bootstrap calls deterministic. If the active SLF4J
+ * implementation is not Logback, methods become no-ops instead of failing, allowing code paths that
+ * call this helper to remain backend-agnostic.
  */
 public final class Logging {
   private static final Set<String> APPLIED_LOGGER_NAMES = new HashSet<>();
 
   private Logging() {}
 
-  /** Sets the root logger level and applies optional per-package overrides. */
+  /**
+   * Configures baseline logging and optional per-logger overrides.
+   *
+   * <p>This method first applies the root level, then parses, and applies detail rules such as
+   * {@code "network.crypta:DEBUG,org.example:WARN"}.
+   *
+   * @param level baseline root logging level to apply
+   * @param details optional comma-separated override rules in {@code loggerName:LEVEL} form
+   */
   public static void bootstrap(Level level, String details) {
     setRootLevel(level);
     applyDetails(details);
   }
 
-  /** Sets the level for the named logger when running with Logback. */
+  /**
+   * Sets the effective level for a specific logger.
+   *
+   * <p>If Logback is not the active backend, this method returns without applying changes.
+   *
+   * @param loggerName fully qualified logger name to configure
+   * @param level level to apply to the specified logger
+   */
   public static void setLevel(String loggerName, Level level) {
     LoggerPair pair = resolveLogbackLogger(loggerName);
     if (pair == null) {
@@ -34,7 +58,13 @@ public final class Logging {
     pair.context.resetTurboFilterList();
   }
 
-  /** Sets the root logger level when running with Logback. */
+  /**
+   * Sets the root logger level.
+   *
+   * <p>If Logback is not the active backend, this method returns without applying changes.
+   *
+   * @param level root logging threshold to configure
+   */
   public static void setRootLevel(Level level) {
     LoggerPair pair = resolveLogbackLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     if (pair == null) {
@@ -44,7 +74,13 @@ public final class Logging {
     pair.context.resetTurboFilterList();
   }
 
-  /** Sets a named logger to OFF when using Logback. */
+  /**
+   * Disables a specific logger by setting its level to {@code OFF}.
+   *
+   * <p>If Logback is not the active backend, this method returns without applying changes.
+   *
+   * @param loggerName fully qualified logger name to disable
+   */
   public static void setOff(String loggerName) {
     LoggerPair pair = resolveLogbackLogger(loggerName);
     if (pair == null) {
