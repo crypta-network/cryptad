@@ -79,7 +79,7 @@ public final class ConfigMigrator {
         if (cfgFile.getParent() != null && !Files.exists(cfgFile.getParent())) {
           Files.createDirectories(cfgFile.getParent());
         }
-        Files.writeString(cfgFile, CryptadConfig.defaultTemplate());
+        Files.writeString(cfgFile, CryptadConfig.DEFAULT_TEMPLATE);
         LOG.info("Created default cryptad.ini at {}", cfgFile);
       }
     }

@@ -331,7 +331,9 @@ class LauncherUtilsTest {
     if (path == null) {
       return null;
     }
-    for (String dir : path.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+    var separatorPattern =
+        java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(File.pathSeparator));
+    for (String dir : separatorPattern.split(path, 0)) {
       try {
         Path candidate = Paths.get(dir).resolve("sh");
         if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {

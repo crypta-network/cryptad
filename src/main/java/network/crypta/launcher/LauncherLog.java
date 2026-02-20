@@ -3,6 +3,7 @@ package network.crypta.launcher;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -41,10 +42,12 @@ public final class LauncherLog {
     emit(Lvl.WARN, msg, t);
   }
 
+  @SuppressWarnings("unused")
   public static void logError(String msg) {
     emit(Lvl.ERROR, msg, null);
   }
 
+  @SuppressWarnings("unused")
   public static void logError(String msg, Throwable t) {
     emit(Lvl.ERROR, msg, t);
   }
@@ -68,9 +71,10 @@ public final class LauncherLog {
   }
 
   private static String tsNow() {
-    return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_TIME);
+    return LocalDateTime.now(ZoneId.systemDefault()).format(DateTimeFormatter.ISO_LOCAL_TIME);
   }
 
+  @SuppressWarnings("java:S106")
   private static void emit(Lvl level, String msg, Throwable t) {
     if (level == Lvl.DEBUG && !isDebugEnabled()) {
       return;
