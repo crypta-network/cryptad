@@ -323,7 +323,8 @@ public abstract class FCPMessage {
     };
   }
 
-  private static FCPMessage createConfigAndStatusMessages(String name, SimpleFieldSet fs) {
+  private static FCPMessage createConfigAndStatusMessages(String name, SimpleFieldSet fs)
+      throws MessageInvalidException {
     return switch (name) {
       case GenerateSSKMessage.NAME -> new GenerateSSKMessage(fs);
       case GetConfig.NAME -> new GetConfig(fs);

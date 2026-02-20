@@ -1,15 +1,20 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.sameInstance;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +35,7 @@ class FCPMessageTest {
 
   @Test
   void wrappingNullReturnsNull() {
+    //noinspection ConstantValue
     assertThat(FCPMessage.withListRequestIdentifier(null, LIST_REQUEST_IDENTIFIER), nullValue());
   }
 
@@ -77,5 +83,35 @@ class FCPMessageTest {
     OutputStream outputStream = mock(OutputStream.class);
     wrappedMessage.send(outputStream);
     verify(originalMessage).send(outputStream);
+  }
+
+  @Test
+  void create_whenUnsupportedFcpPluginMessageCarriesData_drainsPayload() throws Exception {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.put("DataLength", 4L);
+    fs.setEndMarker("Data");
+
+    FCPMessage message = FCPMessage.create("FCPPluginMessage", fs, null, null);
+    BaseDataCarryingMessage dataMessage = assertInstanceOf(BaseDataCarryingMessage.class, message);
+    BucketFactory bucketFactory = mock(BucketFactory.class);
+    FCPServer server = mock(FCPServer.class);
+
+    ByteArrayInputStream stream =
+        new ByteArrayInputStream(new byte[] {1, 2, 3, 4, (byte) 'N', (byte) 'e', (byte) 'x'});
+    dataMessage.readFrom(stream, bucketFactory, server);
+
+    assertEquals('N', stream.read());
+  }
+
+  @Test
+  void create_whenNonDataUnsupportedPluginMessageUsesDataFraming_throwsMessageInvalidException() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.put("DataLength", 1L);
+    fs.setEndMarker("Data");
+
+    assertThrows(
+        MessageInvalidException.class, () -> FCPMessage.create("GetPluginInfo", fs, null, null));
   }
 }
