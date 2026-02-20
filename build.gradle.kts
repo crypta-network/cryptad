@@ -30,6 +30,11 @@ dependencies {
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
   implementation(libs.jsystemThemeDetector)
+  constraints {
+    implementation("com.github.oshi:oshi-core:6.9.3") {
+      because("Use newer OSHI for modern macOS version handling in theme detection")
+    }
+  }
   // Flatpak/Portal detection via D-Bus
   implementation(libs.dbusCore)
   // CLI parsing and UX
@@ -102,6 +107,7 @@ tasks.register<JavaExec>("runLauncher") {
   javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
   mainClass.set("network.crypta.launcher.Launcher")
   classpath = sourceSets.main.get().runtimeClasspath
+  jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 // Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'
