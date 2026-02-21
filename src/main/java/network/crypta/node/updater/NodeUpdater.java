@@ -528,6 +528,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param raw the input stream positioned at the start of a ZIP/JAR archive; not closed here
    * @throws IOException if an I/O error occurs while reading from the stream
    */
+  @SuppressWarnings("java:S5042")
   private void parseManifestBounded(InputStream raw) throws IOException {
     InputStream bounded = new BoundedInputStream(raw, MAX_ZIP_SCAN_BYTES);
     try (ZipInputStream zis = new ZipInputStream(bounded)) {

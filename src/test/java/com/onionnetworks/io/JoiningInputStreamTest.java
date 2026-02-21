@@ -99,8 +99,10 @@ class JoiningInputStreamTest {
       int read = joiningInputStream.read(buffer, 0, buffer.length);
 
       assertEquals(2, read);
-      verify(first).read(buffer, 0, buffer.length);
-      verify(second).read(buffer, 0, buffer.length);
+      network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+          verify(first).read(buffer, 0, buffer.length));
+      network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+          verify(second).read(buffer, 0, buffer.length));
     }
   }
 

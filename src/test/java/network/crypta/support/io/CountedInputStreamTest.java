@@ -19,6 +19,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressWarnings("java:S5778")
 class CountedInputStreamTest {
 
   @Test
@@ -66,7 +67,8 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).read(same(buf));
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(in, times(1)).read(same(buf)));
   }
 
   @ParameterizedTest
@@ -83,7 +85,8 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).read(same(buf), eq(off), eq(len));
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(in, times(1)).read(same(buf), eq(off), eq(len)));
   }
 
   @ParameterizedTest
@@ -97,7 +100,7 @@ class CountedInputStreamTest {
       assertEquals(delegateReturn, ret);
       assertEquals(expectedInc, cis.count());
     }
-    verify(in, times(1)).skip(10L);
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(verify(in, times(1)).skip(10L));
   }
 
   @Test
@@ -106,7 +109,11 @@ class CountedInputStreamTest {
     when(in.read((byte[]) isNull())).thenThrow(new NullPointerException("buf"));
     try (CountedInputStream cis = new CountedInputStream(in)) {
       //noinspection DataFlowIssue
-      assertThrows(NullPointerException.class, () -> cis.read(null));
+      assertThrows(
+          NullPointerException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(cis.read(null));
+          });
       assertEquals(0L, cis.count());
     }
   }
@@ -118,7 +125,12 @@ class CountedInputStreamTest {
     when(in.read(same(buf), eq(-1), eq(2))).thenThrow(new IndexOutOfBoundsException("off < 0"));
     try (CountedInputStream cis = new CountedInputStream(in)) {
       int invalidOffset = Integer.parseInt("-1");
-      assertThrows(IndexOutOfBoundsException.class, () -> cis.read(buf, invalidOffset, 2));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                cis.read(buf, invalidOffset, 2));
+          });
       assertEquals(0L, cis.count());
     }
   }
@@ -132,7 +144,7 @@ class CountedInputStreamTest {
       assertEquals(2L, ret);
       assertEquals(2L, cis.count());
     }
-    verify(in, times(1)).skip(5L);
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(verify(in, times(1)).skip(5L));
   }
 
   @Test

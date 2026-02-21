@@ -220,7 +220,9 @@ class LauncherUtilsTest {
       @TempDir Path tempDir) throws Exception {
     String rel = "rel/bin/cryptad";
     Path target = tempDir.resolve(rel);
-    Files.createDirectories(target.getParent());
+    Path targetParent = target.getParent();
+    assertNotNull(targetParent);
+    Files.createDirectories(targetParent);
     Files.createFile(target);
 
     Path resolved = resolveCryptadPathWithEnv(tempDir, Map.of(CRYPTAD_PATH_ENV, rel));

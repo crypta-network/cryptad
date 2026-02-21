@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 class VectorialValuedPairTest {
 
   private static VectorialValuedPair constructPair(double x, double[] y) {
@@ -53,7 +53,11 @@ class VectorialValuedPairTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void constructor_whenNullArray_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> constructPair(2.0, null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(constructPair(2.0, null));
+        });
   }
 
   @Test

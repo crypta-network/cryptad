@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100") // Use method_whenCondition_expectOutcome naming
+@SuppressWarnings({"java:S100", "java:S5778"})
 class StringValidityCheckerTest {
 
   // ---------------------------
@@ -123,7 +123,11 @@ class StringValidityCheckerTest {
   @Test
   void isWindowsReservedFilename_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class, () -> StringValidityChecker.isWindowsReservedFilename(null));
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              StringValidityChecker.isWindowsReservedFilename(null));
+        });
   }
 
   // ---------------------------
@@ -156,7 +160,10 @@ class StringValidityCheckerTest {
   void containsNoIDNBlacklistCharacters_whenNull_expectNPE() {
     assertThrows(
         NullPointerException.class,
-        () -> StringValidityChecker.containsNoIDNBlacklistCharacters(null));
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              StringValidityChecker.containsNoIDNBlacklistCharacters(null));
+        });
   }
 
   // ---------------------------
@@ -183,7 +190,11 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoLinebreaks_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class, () -> StringValidityChecker.containsNoLinebreaks(null));
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              StringValidityChecker.containsNoLinebreaks(null));
+        });
   }
 
   // ---------------------------
@@ -211,7 +222,11 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoInvalidCharacters_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class, () -> StringValidityChecker.containsNoInvalidCharacters(null));
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              StringValidityChecker.containsNoInvalidCharacters(null));
+        });
   }
 
   // ---------------------------
@@ -238,7 +253,11 @@ class StringValidityCheckerTest {
   @SuppressWarnings("DataFlowIssue")
   void containsNoControlCharacters_whenNull_expectNPE() {
     assertThrows(
-        NullPointerException.class, () -> StringValidityChecker.containsNoControlCharacters(null));
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              StringValidityChecker.containsNoControlCharacters(null));
+        });
   }
 
   // ---------------------------

@@ -140,7 +140,8 @@ class FileUtilTest {
 
     // Act + Assert: should not throw and perform 3 skip calls
     assertDoesNotThrow(() -> FileUtil.skipFully(is, 10));
-    verify(is, times(3)).skip(anyLong());
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(is, times(3)).skip(anyLong()));
   }
 
   @Test
@@ -152,7 +153,8 @@ class FileUtilTest {
 
     // Act + Assert
     assertThrows(IOException.class, () -> FileUtil.skipFully(is, 5));
-    verify(is, atLeastOnce()).skip(anyLong());
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(is, atLeastOnce()).skip(anyLong()));
   }
 
   // ------------------------ readUTF() ------------------------------------------

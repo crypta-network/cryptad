@@ -19,7 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 class IntervalsListTest {
 
   @Test
@@ -124,8 +124,16 @@ class IntervalsListTest {
     IntervalsList list = new IntervalsList(0.0, 1.0);
 
     // Act + Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(-1));
-    assertThrows(IndexOutOfBoundsException.class, () -> list.getInterval(1));
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(list.getInterval(-1));
+        });
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(list.getInterval(1));
+        });
   }
 
   @ParameterizedTest

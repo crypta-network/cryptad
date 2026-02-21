@@ -18,6 +18,7 @@ import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100") // Enforce method_whenCondition_expectOutcome naming for tests.
@@ -143,7 +144,9 @@ class ConfigMigratorTest {
     Resolved dirs = resolved(tempDir.resolve("resolved"));
 
     Path cfgFile = dirs.configDir().resolve(ConfigMigrator.CONFIG_FILE);
-    Files.createDirectories(cfgFile.getParent());
+    Path cfgParent = cfgFile.getParent();
+    assertNotNull(cfgParent);
+    Files.createDirectories(cfgParent);
     Files.writeString(cfgFile, "logger.priority=NORMAL\nEnd\n");
 
     Path sourceDownloads = cwd.resolve("downloads");
@@ -172,7 +175,9 @@ class ConfigMigratorTest {
     Resolved dirs = resolved(tempDir.resolve("resolved"));
 
     Path cfgFile = dirs.configDir().resolve(ConfigMigrator.CONFIG_FILE);
-    Files.createDirectories(cfgFile.getParent());
+    Path cfgParent = cfgFile.getParent();
+    assertNotNull(cfgParent);
+    Files.createDirectories(cfgParent);
     Files.writeString(cfgFile, "logger.priority=NORMAL\nEnd\n");
 
     createLegacyDirectory(cwd.resolve("plugins"), "plugin.jar");

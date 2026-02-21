@@ -18,6 +18,7 @@ import org.bitpedia.collider.core.Ed2Handler;
  * @author infinity0
  * @author toad
  */
+@SuppressWarnings("java:S2257")
 public class Ed2MessageDigest extends MessageDigest {
 
   /**

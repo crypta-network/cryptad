@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Tests for {@link HTMLDecoder} covering named, numeric-decimal, numeric-hex entities, whitespace
  * handling, and compaction. Focuses on deterministic, comprehensive coverage of the public API.
  */
-@SuppressWarnings("java:S100") // Allow method names with underscores for readability
+@SuppressWarnings({"java:S100", "java:S5778"})
 class HTMLDecoderTest {
 
   // -------- decode(String) --------
@@ -123,7 +123,11 @@ class HTMLDecoderTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void compact_whenNull_throwsNullPointerException() {
-    assertThrows(NullPointerException.class, () -> HTMLDecoder.compact(null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(HTMLDecoder.compact(null));
+        });
   }
 
   @Test

@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 class BookmarkCategoryTest {
 
   private static final String CATEGORY_CHILD = "Child";
@@ -166,7 +166,11 @@ class BookmarkCategoryTest {
     BookmarkCategory root = new BookmarkCategory("Root");
 
     // Act / Assert
-    assertThrows(IndexOutOfBoundsException.class, () -> root.get(index));
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(root.get(index));
+        });
   }
 
   @Test

@@ -371,7 +371,8 @@ public final class LauncherUtils {
       if (!Files.isRegularFile(path)) {
         return null;
       }
-      String name = path.getFileName() != null ? path.getFileName().toString() : "";
+      Path fileName = path.getFileName();
+      String name = fileName != null ? fileName.toString() : "";
       return namePattern.matcher(name).matches() ? path.normalize() : null;
     } catch (Exception e) {
       logDebug("Error scanning classpath entry for cryptad jar: '" + raw + "'", e);
@@ -449,7 +450,8 @@ public final class LauncherUtils {
     if (!Files.isRegularFile(path)) {
       return false;
     }
-    String name = path.getFileName() != null ? path.getFileName().toString() : "";
+    Path fileName = path.getFileName();
+    String name = fileName != null ? fileName.toString() : "";
     return name.startsWith(CRYPTAD_SCRIPT) && name.endsWith(".jar");
   }
 

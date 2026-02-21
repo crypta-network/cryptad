@@ -75,7 +75,12 @@ class RAFInputStreamTest {
     RAFInputStream stream = new RAFInputStream(raf);
     stream.close();
 
-    assertThrows(EOFException.class, () -> stream.read(new byte[1], 0, 1));
+    assertThrows(
+        EOFException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              stream.read(new byte[1], 0, 1));
+        });
     verifyNoMoreInteractions(raf);
   }
 

@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SuppressWarnings("java:S100") // method_whenCondition_expectOutcome naming
+@SuppressWarnings({"java:S100", "java:S5778"})
 class ShortBufferTest {
 
   private static final String DATA_STRING =
@@ -163,8 +163,16 @@ class ShortBufferTest {
   void byteAt_whenNegativeOrAtLength_throws() {
     byte[] data = {9, 8, 7};
     ShortBuffer b = new ShortBuffer(data);
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(-1));
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(data.length));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(b.byteAt(-1));
+        });
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(b.byteAt(data.length));
+        });
   }
 
   // ---------- write/copy semantics ----------

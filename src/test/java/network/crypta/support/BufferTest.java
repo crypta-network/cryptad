@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  *
  * @author stuart martin &lt;wavey@freenetproject.org&gt;
  */
+@SuppressWarnings("java:S5778")
 class BufferTest {
 
   private static final String DATA_STRING_1 =
@@ -149,8 +150,16 @@ class BufferTest {
   @DisplayName("byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException")
   void byteAt_whenIndexOutOfBounds_expectArrayIndexOutOfBoundsException() {
     Buffer b = new Buffer(new byte[] {10, 20, 30});
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(3)); // == length
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> b.byteAt(-1));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(b.byteAt(3));
+        }); // == length
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(b.byteAt(-1));
+        });
   }
 
   @Test

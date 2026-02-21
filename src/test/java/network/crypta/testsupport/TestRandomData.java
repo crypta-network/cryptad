@@ -58,9 +58,10 @@ public final class TestRandomData {
     }
 
     if (length <= 0) {
-      try (OutputStream ignored =
+      try (OutputStream out =
           useUnbufferedStream ? bucket.getOutputStreamUnbuffered() : bucket.getOutputStream()) {
         // Open+close to preserve original helper semantics.
+        out.flush();
       }
       return;
     }
