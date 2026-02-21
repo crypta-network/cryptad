@@ -50,7 +50,7 @@ We ship Gradle tasks that build a desktop app image and (on macOS/Linux) native 
 
 ### Metadata and entrypoint
 - Name: `Crypta`, Vendor: `crypta.network`, App ID: `network.crypta.cryptad`
-- Main entry: `network.crypta.launcher.LauncherKt`
+- Main entry: `network.crypta.launcher.Launcher`
 - Versioning: jpackage requires numeric `--app-version`; we use the project version integer.
 
 ### Icons and resources
@@ -72,7 +72,7 @@ We ship Gradle tasks that build a desktop app image and (on macOS/Linux) native 
   - `build\jpackage\Crypta\app\cryptad-dist\lib\cryptad.jar`
   - `build\jpackage\Crypta\app\Crypta.cfg`
 - Verify `Crypta.cfg` includes:
-  - `app.mainclass=network.crypta.launcher.LauncherKt`
+  - `app.mainclass=network.crypta.launcher.Launcher`
   - one or more `app.classpath=$APPDIR/cryptad-dist/lib/*.jar` lines
 
 ## Linux installer behavior (DEB/RPM)
@@ -112,8 +112,8 @@ Requirements: `flatpak`, `org.freedesktop.Platform//24.08`, `org.freedesktop.Sdk
 
 Typical flow:
 ```bash
-./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle buildJar
-./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle distJlinkCryptad
+./gradlew buildJar
+./gradlew distJlinkCryptad
 cp -f "build/distributions/cryptad-jlink-v$(./gradlew -q printVersion).tar.gz" tools/flatpak/local/cryptad-jlink-v1.tar.gz
 rm -rf builddir repo .flatpak-builder
 flatpak run org.flatpak.Builder --force-clean --user --arch=$(flatpak --default-arch) \

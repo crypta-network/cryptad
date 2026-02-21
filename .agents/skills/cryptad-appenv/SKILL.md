@@ -35,22 +35,7 @@ Use `network.crypta.fs.AppEnv` instead.
 - Display-only strings:
   - `osNameRaw()`, `osVersionRaw()`
 
-## Usage examples
-### Kotlin
-```kotlin
-val env = AppEnv()
-if (env.isWindows()) {
-  // ...
-}
-
-val det = AppEnv().detectEnvironment()
-when (det.os) {
-  AppEnv.OsKind.LINUX -> { /* ... */ }
-  else -> { /* ... */ }
-}
-```
-
-### Java
+## Usage example (Java)
 ```java
 AppEnv env = new AppEnv();
 if (env.isServiceMode()) {

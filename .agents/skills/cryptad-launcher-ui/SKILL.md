@@ -17,8 +17,8 @@ Use this skill when working on:
 
 ## Swing launcher overview
 - Package: `network.crypta.launcher`
-- Entry point: top-level `fun main()`
-- UI: Java Swing (three rows — buttons, scrolling log, status bar), System LAF, 900×600.
+- Entry point: `Launcher.main()`
+- UI: Java Swing (buttons + scrolling log + status bar), System LAF.
 
 ## Starting Cryptad (wrapper script resolution order)
 The launcher starts the wrapper script using this resolution order (first match wins):
@@ -52,10 +52,8 @@ Global shortcuts via `KeyEventDispatcher`:
 - `s` start/stop; `q` quit
 
 ## Concurrency model
-- Uses `kotlinx-coroutines-swing` with:
-  - `Dispatchers.Main.immediate` for UI
-  - `Dispatchers.IO` for process I/O and file tailing
-- Dedicated `shutdownScope` for quit
+- UI updates run on the Swing EDT (`SwingUtilities.invokeLater` / `invokeAndWait`).
+- Process lifecycle, log streaming, and port/browser coordination run on `LauncherController`'s executor service.
 
 ## Unix PTY fallback
 If `script` exists, the launcher may wrap the process to reduce buffering.
@@ -88,8 +86,8 @@ If `script` exists, the launcher may wrap the process to reduce buffering.
 - Decide dark/light based on OS theme **before** any Swing components are created (EDT).
 - Flatpak:
   - OS theme detection reads the XDG Desktop Portal setting `org.freedesktop.appearance/color-scheme` via dbus-java.
-  - Portal detector: `src/main/kotlin/com/jthemedetecor/PortalThemeDetector.kt`
-  - Factory: `src/main/kotlin/network/crypta/launcher/FlatpakAwareOsThemeDetector.kt` prefers the portal and falls back to upstream detector when unavailable.
+  - Portal detector: `src/main/java/com/jthemedetecor/PortalThemeDetector.java`
+  - Factory: `src/main/java/network/crypta/launcher/FlatpakAwareOsThemeDetector.java` prefers the portal and falls back to upstream detector when unavailable.
 - Ordering matters:
   - Register the browser theme change listener (`matchMedia('(prefers-color-scheme: dark)')`) before creating UI controls.
 

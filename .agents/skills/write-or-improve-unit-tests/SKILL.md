@@ -1,8 +1,8 @@
 ---
 name: write-or-improve-unit-tests
 description: |
-  Write or improve deterministic, maintainable unit tests for a single class under test (Java/Kotlin),
-  using JUnit (project-configured; typically JUnit 6 per repo) and Mockito, without modifying production code.
+  Write or improve deterministic, maintainable unit tests for a single Java class under test, using
+  JUnit (project-configured; typically JUnit 6 per repo) and Mockito, without modifying production code.
 ---
 
 # Write or Improve Unit Tests for one class/file
@@ -22,18 +22,18 @@ or
 **Two lines**
 ```
 $write-or-improve-unit-tests
-Target: src/main/kotlin/com/acme/FooService.kt
+Target: src/main/java/com/acme/FooService.java
 ```
 
 Notes:
 - `Target:` may be a **path** or a **fully-qualified class name**.
-- Infer language from the target (`.java` -> Java, `.kt` -> Kotlin). If you only get an FQCN, locate the source file via repo search.
+- If you only get an FQCN, locate the source file via repo search.
 
 ---
 
 ## Test framework and mocking
 - **Test framework:** JUnit (use the version configured by the repo; target JUnit 6 APIs if present).
-- **Mocking:** Mockito (Kotlin: prefer `mockito-kotlin` helpers if already used in the repo).
+- **Mocking:** Mockito.
 
 ---
 
@@ -112,7 +112,6 @@ Do not run the full suite on every iteration.
 
 ### Language specifics
 - **Java:** Prefer `assertThrows` and explicit static imports from `org.junit.jupiter.api.Assertions` (or the repo’s configured JUnit assertion class).
-- **Kotlin:** Use Mockito + any existing repo helpers (`mockito-kotlin` if present). Use backtick test names only if the project already uses them; otherwise follow the naming rule above.
 
 ---
 

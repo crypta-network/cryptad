@@ -72,7 +72,7 @@ Notes:
 ### Current repo wiring
 - Version catalog pins SpotBugs at `6.4.8` and exposes a plugin alias in `gradle/libs.versions.toml`.
 - Build logic includes the plugin marker dependency in `build-logic/build.gradle.kts`.
-- The shared convention plugin applies `com.github.spotbugs` in `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`.
+- The shared convention plugin applies `com.github.spotbugs` in build logic.
 - Default behavior is non-blocking: `spotbugs { ignoreFailures = true }`.
 - All SpotBugs tasks are configured via `tasks.withType<SpotBugsTask>()` to emit XML reports at `build/reports/spotbugs/<taskName>.xml`.
 - Text reports are disabled (`reports.matching { it.name == "text" }`) so findings are read from XML files instead of large stdout dumps.
@@ -95,7 +95,7 @@ If strict verification blocks SpotBugs/plugin marker resolution:
 1) Set `org.gradle.dependency.verification=lenient`
 2) Run:
 ```bash
-./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin
+./gradlew --write-verification-metadata sha256,pgp :build-logic:classes
 ```
 3) Restore `org.gradle.dependency.verification=strict`
 4) Validate:
@@ -156,7 +156,7 @@ If strict verification blocks resolution:
 1) Set `org.gradle.dependency.verification=lenient`
 2) Run:
 ```bash
-./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin
+./gradlew --write-verification-metadata sha256,pgp :build-logic:classes
 ```
 3) Restore `org.gradle.dependency.verification=strict`
 4) Optionally `./gradlew --export-keys`
@@ -167,7 +167,7 @@ Gradle daemon heap was increased to reduce OOM during SonarLint indexing:
 
 ## Error Prone
 ### Key behaviors
-- Enabled via `net.ltgt.errorprone` in the Java/Kotlin convention plugin.
+- Enabled via `net.ltgt.errorprone` in the shared convention plugin.
 - Errors are downgraded to warnings by default (`options.errorprone.allErrorsAsWarnings = true`).
 
 ### Report task
@@ -182,14 +182,14 @@ Gradle daemon heap was increased to reduce OOM during SonarLint indexing:
 
 ### Enforcing errors
 - To fail the build on Error Prone errors, set `allErrorsAsWarnings` to `false` in:
-  - `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`
+  - the shared convention plugin under `build-logic/src/main/`
 
 ### Verification refresh on Error Prone bumps
 If strict verification blocks resolution:
 1) Set `org.gradle.dependency.verification=lenient`
 2) Run:
 ```bash
-./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin
+./gradlew --write-verification-metadata sha256,pgp :build-logic:classes
 ```
 3) Restore `org.gradle.dependency.verification=strict`
 4) Optionally `./gradlew --export-keys`
