@@ -1,12 +1,13 @@
 package network.crypta.node;
 
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 
-import static java.util.concurrent.TimeUnit.*;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Manages bandwidth configuration checks and user-facing upgrade suggestions.
@@ -22,8 +23,7 @@ import static java.util.concurrent.TimeUnit.*;
  * </ul>
  *
  * <p>Units: limits are expressed in bytes per second. Auto-detected rates from {@link
- * FredPluginBandwidthIndicator} are in bits per second and are converted to bytes per second
- * internally.
+ * BandwidthIndicator} are in bits per second and are converted to bytes per second internally.
  */
 public class BandwidthManager {
 
@@ -69,7 +69,7 @@ public class BandwidthManager {
               @Override
               public void run() {
                 try {
-                  FredPluginBandwidthIndicator bandwidthIndicator =
+                  BandwidthIndicator bandwidthIndicator =
                       node.network().ipDetector().getBandwidthIndicator();
                   if (!node.getConfig().get("node").getBoolean("connectionSpeedDetection")
                       || bandwidthIndicator == null) {
@@ -86,7 +86,7 @@ public class BandwidthManager {
                   int currentOutputBandwidth =
                       node.getConfig().get("node").getInt("outputBandwidthLimit");
 
-                  // Trigger only on a large step-up (≥3×) vs current and last offer.
+                  // Trigger only on a large step-up (≥3×) vs. current and last offer.
                   if ((detectedInputBandwidth > currentInputBandwidth * 3
                           && detectedInputBandwidth > lastOfferedInputBandwidth * 3)
                       || (detectedOutputBandwidth > currentOutputBandwidth * 3

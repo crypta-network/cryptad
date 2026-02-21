@@ -5,7 +5,6 @@ import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +14,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,10 +26,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class ChatForumsToadletTest {
 
-  private static final String FREETALK_PLUGIN_CLASS = "plugins.Freetalk.Freetalk";
-
   @Mock private HighLevelSimpleClient client;
-  @Mock private PluginManager pluginManager;
   @Mock private ToadletContext ctx;
   @Mock private PageMaker pageMaker;
   @Mock private UserAlertManager alertManager;
@@ -41,7 +36,7 @@ class ChatForumsToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new TestableChatForumsToadlet(client, pluginManager);
+    toadlet = new TestableChatForumsToadlet(client);
   }
 
   @Test
@@ -50,17 +45,13 @@ class ChatForumsToadletTest {
   }
 
   @Test
-  void isEnabled_whenFreetalkPluginLoaded_returnsFalse() {
-    when(pluginManager.isPluginLoaded(FREETALK_PLUGIN_CLASS)).thenReturn(true);
-
-    assertFalse(toadlet.isEnabled(ctx));
+  void isEnabled_whenCalled_returnsTrue() {
+    assertTrue(toadlet.isEnabled(ctx));
   }
 
   @Test
-  void isEnabled_whenFreetalkPluginNotLoaded_returnsTrue() {
-    when(pluginManager.isPluginLoaded(FREETALK_PLUGIN_CLASS)).thenReturn(false);
-
-    assertTrue(toadlet.isEnabled(ctx));
+  void isEnabled_whenContextIsNull_returnsTrue() {
+    assertTrue(toadlet.isEnabled(null));
   }
 
   @Test
@@ -135,8 +126,8 @@ class ChatForumsToadletTest {
     private String lastReasonPhrase;
     private String lastReplyBody;
 
-    TestableChatForumsToadlet(HighLevelSimpleClient client, PluginManager plugins) {
-      super(client, plugins);
+    TestableChatForumsToadlet(HighLevelSimpleClient client) {
+      super(client);
     }
 
     @Override

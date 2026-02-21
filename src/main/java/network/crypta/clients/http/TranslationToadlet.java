@@ -8,10 +8,6 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.l10n.PluginL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.pluginmanager.FredPluginBaseL10n;
-import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet.KeyIterator;
@@ -39,10 +35,10 @@ import network.crypta.support.io.BucketTools;
  *   <li>After changes, the user can download the override file for persistence.
  * </ul>
  *
- * The toadlet relies on {@link NodeClientCore} for node context and {@link HighLevelSimpleClient}
- * for application glue, but it keeps request-level parsing and HTML generation self-contained to
- * minimize coupling. Callers should treat it as a long-lived endpoint registered once during node
- * initialization and reused for multiple sessions.
+ * The toadlet relies on {@link HighLevelSimpleClient} for application glue, but it keeps
+ * request-level parsing and HTML generation self-contained to minimize coupling. Callers should
+ * treat it as a long-lived endpoint registered once during node initialization and reused for
+ * multiple sessions.
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  * @author Artefact2
@@ -50,7 +46,7 @@ import network.crypta.support.io.BucketTools;
 public class TranslationToadlet extends Toadlet {
   /**
    * Canonical path segment for the translation toadlet, used when registering routes and when
-   * emitting navigation links back to the translation UI. The trailing slash is intentional to
+   * emitting navigation, links back to the translation UI. The trailing slash is intentional to
    * align with other in-UI links that append query parameters directly without adding a separator.
    */
   public static final String TOADLET_URL = "/translation/";
@@ -82,19 +78,17 @@ public class TranslationToadlet extends Toadlet {
   private static final String L10N_CURRENT_TRANSLATION_LABEL = "currentTranslationLabel";
   private static final String PATTERN_LANG = "lang";
   private static final String L10N_CONTRIBUTING_WITH_LANG = "contributingToLabelWithLang";
-  private final NodeClientCore core;
   private BaseL10n base;
   private String translatingFor;
 
-  TranslationToadlet(HighLevelSimpleClient client, NodeClientCore core) {
+  TranslationToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.core = core;
     this.base = NodeL10n.getBase();
     this.translatingFor = "Node";
   }
 
   /**
-   * Handles incoming GET requests routed to the translation toadlet. Depending on the query string
+   * Handles incoming GET requests routed to the translation toadlet. Depending on the query string,
    * the method renders the translation list, shows an edit form for a specific key, serves the
    * override file download, or redirects back to the list. Requests are treated as idempotent
    * reads; state is only mutated when the caller follows up with a POST.
@@ -145,9 +139,9 @@ public class TranslationToadlet extends Toadlet {
   /**
    * Processes form submissions for translation edits. POST requests either store a new override,
    * delete one, or advance to the next untranslated key depending on the parameters. The method
-   * updates in-memory localization state and then redirects so that page refreshes do not repeat
-   * the mutation. Inputs are validated only to the extent necessary to locate keys; malformed
-   * bodies are rejected with status codes produced by the surrounding framework.
+   * updates the in-memory localization state and then redirects so that page refreshes do not
+   * repeat the mutation. Inputs are validated only to the extent necessary to locate keys;
+   * malformed bodies are rejected with status codes produced by the surrounding framework.
    *
    * @param uri original request URI whose path identifies the toadlet; query parameters are ignored
    *     for POST semantics beyond filter preservation.
@@ -155,8 +149,8 @@ public class TranslationToadlet extends Toadlet {
    *     {@code remove}, and navigation hints; must not be {@code null}.
    * @param ctx response context used for issuing redirects back to the translation list or edit
    *     page; must remain open until the redirect is written.
-   * @throws ToadletContextClosedException if the client disconnects before the redirect response is
-   *     fully sent.
+   * @throws ToadletContextClosedException if the client disconnects before, the redirect response
+   *     is fully sent.
    * @throws IOException if writing the redirect or reading form data fails due to I/O errors in the
    *     servlet container or transport stack.
    */
@@ -356,14 +350,6 @@ public class TranslationToadlet extends Toadlet {
         ctx.getPageMaker().getInfobox(null, translation("selectTranslation"), contentNode);
     ArrayList<String> elementsToTranslate = new ArrayList<>();
     elementsToTranslate.add("Node");
-    for (PluginInfoWrapper pluginInfo :
-        this.core.getNode().services().pluginManager().getPlugins()) {
-      if (!pluginInfo.isBaseL10nPlugin()) {
-        continue;
-      }
-
-      elementsToTranslate.add(pluginInfo.getPluginClassName());
-    }
 
     HTMLNode translatingForForm =
         ctx.addFormChild(translatingForBox, TOADLET_URL, "ChooseWhatToTranslate")
@@ -421,15 +407,6 @@ public class TranslationToadlet extends Toadlet {
 
   private void updateTranslationTarget(HTTPRequest request) {
     final String translateFor = request.getPartAsStringFailsafe(PARAM_TRANSLATING_FOR, 255);
-
-    for (PluginInfoWrapper pluginInfo :
-        this.core.getNode().services().pluginManager().getPlugins()) {
-      if (translateFor.equals(pluginInfo.getPluginClassName()) && pluginInfo.isBaseL10nPlugin()) {
-        FredPluginBaseL10n plugin = (FredPluginBaseL10n) pluginInfo.getPlugin();
-        this.translatingFor = translateFor;
-        this.base = new PluginL10n(plugin).getBase();
-      }
-    }
 
     if ("Node".equals(translateFor)) {
       this.translatingFor = "Node";

@@ -9,9 +9,9 @@
  * <p>The API centers around {@link network.crypta.clients.fcp.FCPServer}, which accepts incoming
  * sockets and hands them to {@link network.crypta.clients.fcp.FCPConnectionHandler}. Each request
  * or response is represented by a concrete {@link network.crypta.clients.fcp.FCPMessage} subtype;
- * the hierarchy distinguishes download/insert commands, plugin traffic, node stats, and connection
- * control. Persistent requests, bandwidth probes, and peer-management commands maintain explicit
- * identifiers so clients can survive reconnects without duplicating work.
+ * the hierarchy distinguishes download/insert commands, node stats, and connection control.
+ * Persistent requests, bandwidth probes, and peer-management commands maintain explicit identifiers
+ * so clients can survive reconnects without duplicating work.
  *
  * <p>Messages are designed for streaming and back-pressure: {@link
  * network.crypta.clients.fcp.FCPConnectionInputHandler} parses frames incrementally, while {@link
@@ -22,13 +22,10 @@
  *
  * <ul>
  *   <li>Supports transient and persistent download/insert lifecycles with explicit status updates.
- *   <li>Exposes node visibility for peers, bandwidth, datastore sizing, and plugin inventory.
- *   <li>Allows plugins to send and receive FCP payloads via {@link
- *       network.crypta.clients.fcp.FCPPluginConnection} without bypassing node policy checks.
+ *   <li>Exposes node visibility for peers, bandwidth, and datastore sizing.
  * </ul>
  *
  * @see network.crypta.clients.fcp.FCPServer
  * @see network.crypta.clients.fcp.FCPMessage
- * @see network.crypta.clients.fcp.FCPPluginConnection
  */
 package network.crypta.clients.fcp;

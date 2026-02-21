@@ -36,7 +36,6 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
 import network.crypta.support.PriorityAwareExecutor;
@@ -61,12 +60,12 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * services).
  *
  * <p>The {@code Node} class wires together the network stack (darknet/opennet crypto and sockets),
- * request/insert schedulers, datastores and caches (CHK/SSK/public key), the HTTP UI (FProxy),
- * plugins, and diagnostics. A typical lifecycle is: create a {@code Node} via {@link NodeStarter},
- * call {@link #start(boolean)} to initialize active components, interact with the node (e.g.,
- * enqueue requests/inserts), and finally call {@link #park()} to quiesce and shut down. Most
- * methods are designed for internal coordination and are not stable APIs for external callers;
- * public methods are documented for their observable effects.
+ * request/insert schedulers, datastores and caches (CHK/SSK/public key), the HTTP UI (FProxy), and
+ * diagnostics. A typical lifecycle is: create a {@code Node} via {@link NodeStarter}, call {@link
+ * #start(boolean)} to initialize active components, interact with the node (e.g., enqueue
+ * requests/inserts), and finally call {@link #park()} to quiesce and shut down. Most methods are
+ * designed for internal coordination and are not stable APIs for external callers; public methods
+ * are documented for their observable effects.
  *
  * <p>Invariants and state model:
  *
@@ -231,9 +230,6 @@ public final class Node implements TimeSkewDetectorCallback {
 
   /** Run-time state directory (bootID, PRNG seed, etc.) */
   final ProgramDirectory runDir;
-
-  /** Plugin directory */
-  final ProgramDirectory pluginDir;
 
   /** Directory to put extra peer data into */
   final File extraPeerDataDir;
@@ -576,7 +572,6 @@ public final class Node implements TimeSkewDetectorCallback {
     this.cfgDir = pd.cfgDir();
     this.nodeDir = pd.nodeDir();
     this.runDir = pd.runDir();
-    this.pluginDir = pd.pluginDir();
     sortOrder = configManager.configureLocalization(nodeConfig, cfgDir, sortOrder);
     this.config = config;
     initializeServicesAndRandom(config, r, weakRandom);
@@ -1077,29 +1072,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     persistConfigIfNeeded(config, shouldWriteConfig);
     writeNodeFile();
 
-    // Initialize the plugin manager
-    LOG.info("Initializing Plugin Manager");
-    services.setPluginManager(PluginManager.create(this, lastVersion));
-
-    SemiOrderedShutdownHook.get()
-        .addEarlyJob(
-            new NativeThread(
-                "Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
-              @Override
-              public void realRun() {
-                services
-                    .pluginManager()
-                    .stop(SECONDS.toMillis(30)); // Consider making it configurable.
-              }
-            });
-
     // Note:
     // Short timeouts and JVM timeouts with nothing more said than the above have been seen...
     // I don't know why... need a stack dump...
     // For now just give it an extra 2 minutes. If it doesn't start in that time,
     // it's likely (from reports so far) that a restart will fix it.
-    // And we have to get a build out because ALL plugins are now failing to load,
-    // including the essential (for most nodes) JSTUN and UPnP.
     WrapperManager.signalStarting((int) MINUTES.toMillis(2));
 
     FetchContext ctx = services.clientCore().makeClient((short) 0, true, false).getFetchContext();
@@ -2545,19 +2522,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Returns the plugin directory root.
-   *
-   * <p>The plugin directory contains installed plugin artifacts and their state. The returned path
-   * is resolved at startup. Plugin lifecycle management should go through the plugin manager, not
-   * by directly manipulating files under this directory.
-   *
-   * @return plugin directory path.
-   */
-  public File getPluginDir() {
-    return pluginDir.dir();
-  }
-
-  /**
    * ProgramDirectory handle for the node directory.
    *
    * <p>This returns the {@link ProgramDirectory} wrapper that exposes callbacks for config-driven
@@ -2616,18 +2580,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    */
   public ProgramDirectory storeDir() {
     return storage.getStoreProgramDir();
-  }
-
-  /**
-   * ProgramDirectory handle for the plugin directory.
-   *
-   * <p>This wrapper is used when a subsystem needs to react to configuration-driven directory
-   * changes. Most callers should use {@link #getPluginDir()}.
-   *
-   * @return program directory handle.
-   */
-  public ProgramDirectory pluginDir() {
-    return pluginDir;
   }
 
   /**
@@ -2982,9 +2934,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns the services subsystem responsible for client-facing services.
    *
-   * <p>This subsystem wires the HTTP interface, plugin manager, alerts, and related services. The
-   * instance is created during node construction and persists for the node lifetime. Callers should
-   * use the subsystem's public methods rather than manipulating internal state directly.
+   * <p>This subsystem wires the HTTP interface, updater, alerts, and related services. The instance
+   * is created during node construction and persists for the node lifetime. Callers should use the
+   * subsystem's public methods rather than manipulating internal state directly.
    *
    * @return services subsystem instance.
    */

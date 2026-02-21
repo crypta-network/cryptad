@@ -5,8 +5,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
-import java.util.HashMap;
-import java.util.Map;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -34,8 +32,6 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.RevocationKeyFoundUserAlert;
 import network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert;
-import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
-import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
@@ -51,20 +47,18 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
- * Supervises auto‑update components for the node: core application updates and plugin updates.
+ * Supervises auto‑update components for the node.
  *
  * <p>This manager wires the package‑based core updater ({@link CoreUpdater}) and maintains
  * compatibility glue for historical Update‑Over‑Mandatory (UoM) behavior. Today core updates are
  * delivered as OS/arch‑specific packages (deb/rpm/dmg/exe/flatpak/snap). Serving or fetching the
  * main JAR via UoM is intentionally disabled; only revocation handling and announcements remain.
- * Plugin updates continue to use the existing JAR flow and are orchestrated by {@link
- * PluginJarUpdater} instances owned by this manager.
  *
  * <p>Lifecycle and responsibilities:
  *
  * <ul>
  *   <li>Build and hold configuration options under the {@code node.updater} subconfig.
- *   <li>Start/stop the {@link CoreUpdater} and per‑plugin updaters when enabled/disabled.
+ *   <li>Start/stop the {@link CoreUpdater} when enabled/disabled.
  *   <li>Track and react to revocation state via {@link RevocationChecker}, surfacing alerts.
  *   <li>Render the core update status into the Alerts panel and broadcast UoM announcements.
  * </ul>
@@ -144,8 +138,6 @@ public final class NodeUpdateManager {
   // Legacy MainJarUpdater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
   private CoreUpdater coreUpdater;
-
-  private Map<String, PluginJarUpdater> pluginUpdaters;
 
   private final boolean wasEnabledOnStartup;
 
@@ -576,7 +568,7 @@ public final class NodeUpdateManager {
   }
 
   /**
-   * Returns whether the auto‑update system is enabled for the core and plugins.
+   * Returns whether the auto‑update system is enabled for the core updater.
    *
    * @return {@code true} when a {@link CoreUpdater} instance is currently wired and active
    */
@@ -591,7 +583,6 @@ public final class NodeUpdateManager {
    */
   void enable(boolean enable) {
     // Note: wrapper gating removed in favor of CoreUpdater
-    Map<String, PluginJarUpdater> oldPluginUpdaters = null;
     CoreUpdater stoppedCoreUpdater = null;
     CoreUpdater startedCoreUpdater = null;
     // We need to run the revocation checker even if the auto-update is
@@ -611,14 +602,11 @@ public final class NodeUpdateManager {
         coreUpdater.preKill();
         stoppedCoreUpdater = coreUpdater;
         coreUpdater = null;
-        oldPluginUpdaters = pluginUpdaters;
-        pluginUpdaters = null;
         disabledNotBlown = false;
       } else {
-        // Start CoreUpdater and plugin updaters
+        // Start CoreUpdater
         startCoreUpdater();
         startedCoreUpdater = coreUpdater;
-        pluginUpdaters = new HashMap<>();
         // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons
         armed = true;
       }
@@ -627,7 +615,6 @@ public final class NodeUpdateManager {
       // When we reach here with enable=false, coreUpdater was non-null above,
       // so stoppedCoreUpdater is guaranteed to be non-null.
       stoppedCoreUpdater.kill();
-      stopPluginUpdaters(oldPluginUpdaters);
     } else {
       if (startedCoreUpdater != null) {
         boolean stillCurrent;
@@ -640,111 +627,6 @@ public final class NodeUpdateManager {
           LOG.debug("Skipping stale CoreUpdater start after concurrent state change");
         }
       }
-      startPluginUpdaters();
-    }
-  }
-
-  private void startPluginUpdaters() {
-    for (OfficialPluginDescription plugin : node.services().pluginManager().getOfficialPlugins()) {
-      startPluginUpdater(plugin.name);
-    }
-  }
-
-  /**
-   * Starts the update fetcher for a specific official plugin by name.
-   *
-   * <p>The name matches the plugin's identifier without the {@code .jar} suffix (for example,
-   * {@code "Library"}). Non‑official plugins are ignored.
-   *
-   * @param plugName the plugin identifier used for loading/configuration, without {@code .jar}
-   */
-  public void startPluginUpdater(String plugName) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Starting plugin updater for {}", plugName);
-    }
-    OfficialPluginDescription plugin = node.services().pluginManager().getOfficialPlugin(plugName);
-    if (plugin != null) {
-      startPluginUpdater(plugin);
-    } else
-    // Most likely not an official plugin
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("No such plugin {} in startPluginUpdater()", plugName);
-    }
-  }
-
-  void startPluginUpdater(OfficialPluginDescription plugin) {
-    String name = plugin.name;
-    // @see https://emu.freenetproject.org/pipermail/devl/2015-November/038581.html
-    long minVer = (plugin.essential ? plugin.minimumVersion : plugin.recommendedVersion);
-    // But it might already be past that ...
-    PluginInfoWrapper info = node.services().pluginManager().findPluginByIdentifier(name);
-    if (info == null && !node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad(name)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Plugin not loaded");
-      }
-      return;
-    }
-    if (info != null) {
-      minVer = Math.max(minVer, info.getPluginLongVersion());
-    }
-    FreenetURI uri = getURI().setDocName(name).setSuggestedEdition(minVer);
-    NodeUpdaterParams params =
-        new NodeUpdaterParams(
-            this,
-            uri,
-            (int) minVer,
-            -1,
-            (plugin.essential ? (int) minVer : Integer.MAX_VALUE),
-            name + "-");
-    PluginJarUpdater updater =
-        new PluginJarUpdater(params, name, node.services().pluginManager(), false);
-    synchronized (this) {
-      if (pluginUpdaters == null) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Plugin updates disabled; skip start");
-        }
-        return; // Not enabled
-      }
-      if (pluginUpdaters.containsKey(name)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Already in updaters list");
-        }
-        return; // Already started
-      }
-      pluginUpdaters.put(name, updater);
-    }
-    updater.start();
-    LOG.info("Started plugin update fetcher for {}", name);
-  }
-
-  /**
-   * Stops and removes the update fetcher for the given official plugin, if present.
-   *
-   * @param plugName the plugin identifier used for loading/configuration, without {@code .jar}
-   */
-  public void stopPluginUpdater(String plugName) {
-    OfficialPluginDescription plugin = node.services().pluginManager().getOfficialPlugin(plugName);
-    if (plugin == null) {
-      return; // Not an official plugin
-    }
-    PluginJarUpdater updater;
-    synchronized (this) {
-      if (pluginUpdaters == null) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Plugin updates disabled; skip stop");
-        }
-        return; // Not enabled
-      }
-      updater = pluginUpdaters.remove(plugName);
-    }
-    if (updater != null) {
-      updater.kill();
-    }
-  }
-
-  private void stopPluginUpdaters(Map<String, PluginJarUpdater> oldPluginUpdaters) {
-    for (PluginJarUpdater u : oldPluginUpdaters.values()) {
-      u.kill();
     }
   }
 
@@ -856,18 +738,15 @@ public final class NodeUpdateManager {
   }
 
   /**
-   * Sets the update USK used for core and plugin update metadata.
+   * Sets the update USK used for core update metadata.
    *
    * <p>The provided {@link FreenetURI} must be a USK without meta-strings. The suggested edition is
-   * normalized to the current build. Changing the URI restarts plugin updaters and notifies the
-   * core updater.
+   * normalized to the current build. Changing the URI notifies the core updater.
    *
    * @param uri the new USK; must be a valid USK without meta-strings (non‑null)
    */
   public synchronized void setURI(FreenetURI uri) {
-    // Note: plugins
     NodeUpdater updater;
-    Map<String, PluginJarUpdater> oldPluginUpdaters;
     synchronized (this) {
       if (updateURI.equals(uri)) {
         return;
@@ -875,15 +754,11 @@ public final class NodeUpdateManager {
       updateURI = uri;
       updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
       updater = coreUpdater;
-      oldPluginUpdaters = pluginUpdaters;
-      pluginUpdaters = new HashMap<>();
       if (updater == null) {
         return;
       }
     }
     updater.onChangeURI(uri);
-    stopPluginUpdaters(oldPluginUpdaters);
-    startPluginUpdaters();
   }
 
   /**
@@ -1039,7 +914,6 @@ public final class NodeUpdateManager {
    */
   public void noRevocationFound() {
     deployUpdate(); // May have been waiting for the revocation.
-    deployPluginUpdates();
     // If we're still here, we didn't update.
     broadcastUOMAnnounces();
     node.network()
@@ -1047,26 +921,6 @@ public final class NodeUpdateManager {
         .queueTimedJob(
             () -> getRevocationChecker().start(false),
             node.bootstrap().random().nextInt((int) DAYS.toMillis(1)));
-  }
-
-  private void deployPluginUpdates() {
-    PluginJarUpdater[] updaters = null;
-    synchronized (this) {
-      if (this.pluginUpdaters != null) {
-        updaters = pluginUpdaters.values().toArray(new PluginJarUpdater[0]);
-      }
-    }
-    boolean restartRevocationFetcher = false;
-    if (updaters != null) {
-      for (PluginJarUpdater u : updaters) {
-        if (u.onNoRevocation()) {
-          restartRevocationFetcher = true;
-        }
-      }
-    }
-    if (restartRevocationFetcher) {
-      getRevocationChecker().start(true, true);
-    }
   }
 
   /** Arms the user‑visible alert for update readiness. */
@@ -1331,24 +1185,6 @@ public final class NodeUpdateManager {
    */
   public void disconnected(PeerNode pn) {
     getUpdateOverMandatory().disconnected(pn);
-  }
-
-  /**
-   * Arms a plugin updater to deploy as soon as revocation checks permit.
-   *
-   * @param fn plugin identifier matching the updater map key
-   */
-  public void deployPluginWhenReady(String fn) {
-    PluginJarUpdater updater;
-    synchronized (this) {
-      if (hasBeenBlown) {
-        LOG.error("Not deploying update for {} because revocation key has been blown!", fn);
-        return;
-      }
-      updater = pluginUpdaters.get(fn);
-    }
-    boolean wasRunning = getRevocationChecker().start(true, true);
-    updater.arm(wasRunning);
   }
 
   /**

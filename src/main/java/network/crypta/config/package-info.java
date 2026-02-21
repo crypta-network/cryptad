@@ -1,13 +1,13 @@
 /**
- * Configuration framework for Crypta's node and plugin settings.
+ * Configuration framework for Crypta node settings.
  *
  * <p>The framework organizes settings under a root {@link network.crypta.config.Config}, which owns
  * multiple {@link network.crypta.config.SubConfig} sections identified by a prefix (for example,
- * {@code node.} or {@code plugins.}). Each section registers typed {@link
- * network.crypta.config.Option} instances backed by a {@link network.crypta.config.ConfigCallback}.
- * Specialized callbacks live under {@code network.crypta.support.api} (e.g., {@link
- * network.crypta.support.api.StringCallback}) and may be accompanied by helper contracts such as
- * {@link network.crypta.config.EnumerableOptionCallback} when a finite set of values is supported.
+ * {@code node.}). Each section registers typed {@link network.crypta.config.Option} instances
+ * backed by a {@link network.crypta.config.ConfigCallback}. Specialized callbacks live under {@code
+ * network.crypta.support.api} (e.g., {@link network.crypta.support.api.StringCallback}) and may be
+ * accompanied by helper contracts such as {@link network.crypta.config.EnumerableOptionCallback}
+ * when a finite set of values is supported.
  *
  * <p>Many options apply immediately at runtime. If a change is accepted but cannot take effect
  * until restart, implementations signal this with {@link

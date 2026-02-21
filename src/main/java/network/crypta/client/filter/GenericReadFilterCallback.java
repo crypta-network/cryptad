@@ -97,7 +97,6 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
   static final String FRAGMENT = "(?>" + PCHAR + "|/|\\?)*";
 
   //  fragment      = *( pchar / "/" / "?" )
-  static final String PLUGINS_PREFIX = "/plugins/";
   private static final Pattern anchorRegex;
 
   private static BaseL10n l10n = NodeL10n.getBase();
@@ -469,14 +468,8 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
         throw new CommentException(l10n("invalidFormURI"));
       }
       String path = uri.getPath();
-      if (path.startsWith(PLUGINS_PREFIX)) {
-        String after = path.substring(PLUGINS_PREFIX.length());
-        if (after.contains("../")) {
-          throw new CommentException(l10n("invalidFormURIAttemptToEscape"));
-        }
-        if (after.matches("[A-Za-z0-9.]+")) {
-          return uri.toASCIIString();
-        }
+      if (path != null && path.contains("../")) {
+        throw new CommentException(l10n("invalidFormURIAttemptToEscape"));
       }
     } catch (URISyntaxException e) {
       throw new CommentException(

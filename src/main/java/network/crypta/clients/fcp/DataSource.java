@@ -3,9 +3,9 @@ package network.crypta.clients.fcp;
 /**
  * Identifies how a client supplies payload bytes to Freenet Client Protocol (FCP) operations.
  *
- * <p>This enum allows filter, upload, and plugin messages to describe whether their data arrives
- * inline over the control connection or by referencing an on-disk file that the node can read at
- * leisure. Callers typically parse the value from the {@code DataSource} field of a {@code
+ * <p>This enum allows filter and upload messages to describe whether their data arrives inline over
+ * the control connection or by referencing an on-disk file that the node can read at leisure.
+ * Callers typically parse the value from the {@code DataSource} field of a {@code
  * network.crypta.support.SimpleFieldSet} and branch into streaming or file-backed staging logic.
  * Because the enum encodes an I/O contract rather than business data, it is immutable, thread-safe,
  * and can be cached freely across connection handlers.

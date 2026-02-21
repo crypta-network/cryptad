@@ -41,8 +41,8 @@ on:
   latency.
 - Safe observability: privacy‑preserving telemetry and reproducible benchmarking harnesses to inform tuning without
   leaking user data.
-- A better platform: Kotlin‑first codebase, a stable plugin SDK, typed configuration, and testable interfaces to make
-  extending the network straightforward.
+- A better platform: Kotlin‑first codebase, typed configuration, and testable interfaces to make extending the network
+  straightforward.
 
 This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
 data, and serves applications.
@@ -473,7 +473,6 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 - Core updates use a package‑based updater (“CoreUpdater”). It subscribes to an `info/<N>` JSON descriptor via the existing update USK, selects an OS/arch‑specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
 - Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
-- Plugin updates continue to be downloaded and deployed in‑app.
 - JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
 
@@ -484,7 +483,6 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
 - Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP (`network.crypta.clients.http`).
-- Plugins (`network.crypta.pluginmanager`): `PluginManager`, `FredPlugin*`, `OfficialPlugins`.
 - Config (`network.crypta.config`): type‑safe persisted configuration.
 - Support (`network.crypta.support`): logging, data structures, threading, helpers.
 

@@ -5,12 +5,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
+import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
-import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
@@ -287,7 +287,7 @@ class BandwidthRateTest {
     when(node.network()).thenReturn(network);
     when(network.ipDetector()).thenReturn(ipDetector);
 
-    FredPluginBandwidthIndicator indicator = mock(FredPluginBandwidthIndicator.class);
+    BandwidthIndicator indicator = mock(BandwidthIndicator.class);
     when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);
     when(indicator.getDownstreamMaxBitRate()).thenReturn(8_000_000);
     when(indicator.getUpstreamMaxBitRate()).thenReturn(1_000_000);

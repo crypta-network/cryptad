@@ -22,10 +22,10 @@ import network.crypta.support.api.HTTPRequest;
  * redirect logic that respects node directory restrictions and localization keys.
  *
  * <p>Use this type when an HTTP UI needs to prompt the operator for a local file or directory
- * (upload destinations, download targets, plugin storage, and similar flows). The instance keeps
- * the last successful directory so subsequent visits open nearby locations, and it renders only
- * readable, allowed entries. It assumes the surrounding toadlet infrastructure provides per-request
- * threading and authorization; the class itself is not synchronized and should not be shared across
+ * (upload destinations, download targets, and similar flows). The instance keeps the last
+ * successful directory, so later visits open nearby locations, and it renders only readable,
+ * allowed entries. It assumes the surrounding toadlet infrastructure provides per-request threading
+ * and authorization; the class itself is not synchronized and should not be shared across
  * concurrent mutation without external guarding.
  *
  * <ul>
@@ -82,7 +82,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * Returns the HTTP path that exposes this browser toadlet.
    *
    * <p>Subclasses usually map this to a user-facing URL segment so the toadlet can be reached via a
-   * form or hyperlink. The returned path must remain consistent across requests so persisted form
+   * form or hyperlink. The returned path must remain consistent across requests, so persisted form
    * posts continue to resolve correctly.
    *
    * @return absolute or context-relative path used by the surrounding HTTP server to dispatch
@@ -104,8 +104,8 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
   /**
    * Last directory from which an action was performed. If accessible, this value is reused as the
-   * starting point for subsequent requests to keep the navigation flow localized around the user's
-   * most recent activity. It is not persisted beyond the lifetime of the toadlet instance.
+   * starting point for later requests to keep the navigation flow localized around the user's most
+   * recent activity. It is not persisted beyond the lifetime of the toadlet instance.
    */
   private File lastSuccessful;
 
@@ -164,8 +164,8 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    *
    * @param set parameters or parts from the current HTTP request; may be empty but not {@code null}
    *     in typical flows.
-   * @return map of key/value pairs that should be serialized into hidden inputs for subsequent
-   *     requests so caller context is preserved.
+   * @return map of key/value pairs that should be serialized into hidden inputs for later requests
+   *     so caller context is preserved.
    */
   protected abstract Map<String, String> persistenceFields(Map<String, String> set);
 
@@ -198,11 +198,11 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
             && core.getAllowedUploadDirs()[0].toString().equals("all"))
         || core.getAllowedUploadDirs().length == 0) {
       /* If all directories are allowed, or none are, go for the home directory.
-       * If none are allowed, any directory will result in an error anyway.
+       * If none is allowed, any directory will result in an error anyway.
        */
       return System.getProperty("user.home");
     }
-    // If locations are explicitly specified take the first one.
+    // If locations are explicitly specified, take the first one.
     return core.getAllowedUploadDirs()[0].getAbsolutePath();
   }
 
@@ -221,11 +221,11 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
             && core.getAllowedDownloadDirs()[0].toString().equals("all"))
         || core.getAllowedDownloadDirs().length == 0) {
       /* If all directories are allowed, or none are, go for the default download directory.
-       * If none are allowed, any directory will result in an error anyway.
+       * If none is allowed, any directory will result in an error anyway.
        */
       return core.getDownloadsDir().getAbsolutePath();
     }
-    // If locations are explicitly specified take the first one.
+    // If locations are explicitly specified, take the first one.
     return core.getAllowedDownloadDirs()[0].getAbsolutePath();
   }
 
@@ -254,7 +254,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
   /**
    * Renders a button that selects the given file and posts it using {@link #SELECT_FILE}. Hidden
-   * persistence inputs are appended so subsequent handlers receive the preserved context.
+   * persistence inputs are appended so later handlers receive the preserved context.
    *
    * @param node parent HTML node where the controls are added; must be non-null.
    * @param absolutePath absolute file path to place into {@link #filenameField()}.
@@ -349,7 +349,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
   /**
    * Handles GET requests by reading query parameters, rendering the directory listing, or
    * redirecting immediately if a selection is present. The URI parameter is validated only for
-   * nullity; all navigation state comes from the request fields and persisted form data.
+   * nullity; all navigation states come from the request fields and persisted form data.
    *
    * @param uri request URI; must not be {@code null} but otherwise unused by this handler.
    * @param request HTTP request carrying query parameters such as {@code path} and {@link
@@ -381,7 +381,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * @param request HTTP request containing multipart parts such as {@code path} and {@link
    *     #filenameField()} with selection data.
    * @param ctx toadlet context that provides permission checks, localization, and HTML rendering.
-   * @throws ToadletContextClosedException if the context closes before the response is produced.
+   * @throws ToadletContextClosedException if the context closes before, the response is produced.
    * @throws IOException on filesystem access errors or response write failures.
    * @throws RedirectException when a valid selection is detected and the user must be redirected.
    */

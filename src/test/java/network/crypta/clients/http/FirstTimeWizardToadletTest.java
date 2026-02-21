@@ -147,7 +147,6 @@ class FirstTimeWizardToadletTest {
 
     toadlet.handleMethodPOST(new URI(FirstTimeWizardToadlet.TOADLET_URL), request, ctx);
 
-    verify(misc).setUPnP(true);
     verify(misc).setAutoUpdate(true);
     verify(securityNetwork).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
     verify(securityPhysical).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
@@ -165,7 +164,7 @@ class FirstTimeWizardToadletTest {
     when(request.getPartAsStringFailsafe("preset", 4)).thenReturn("");
     when(request.isPartSet(anyString())).thenReturn(false);
 
-    // Force current step handler to throw.
+    // Force the current step handler to throw.
     EnumMap<WIZARD_STEP, Step> steps = getSteps(toadlet);
     Step failingStep =
         new Step() {

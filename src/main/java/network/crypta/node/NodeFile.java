@@ -3,7 +3,7 @@ package network.crypta.node;
 import java.io.File;
 
 /**
- * Enumerates well-known files used by the node and the base directory where each resides.
+ * Lists well-known files used by the node and the base directory where each resides.
  *
  * <p>This enum centralizes the mapping between logical files (for example, the seed node list) and
  * their location relative to a {@link ProgramDirectory} for a specific {@link Node} instance.
@@ -112,18 +112,12 @@ public enum NodeFile {
         return node.runDir();
       }
     },
+
     /* Maps to Node.storeDir() (content store and indexes). */
     STORE() {
       @Override
       ProgramDirectory getDir(Node node) {
         return node.storeDir();
-      }
-    },
-    /* Maps to Node.pluginDir() (installed plugins). */
-    PLUGIN() {
-      @Override
-      ProgramDirectory getDir(Node node) {
-        return node.pluginDir();
       }
     };
 

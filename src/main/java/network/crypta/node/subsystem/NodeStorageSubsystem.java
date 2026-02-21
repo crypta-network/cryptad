@@ -72,29 +72,71 @@ import org.slf4j.LoggerFactory;
 
 import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
-/** Storage subsystem facade (datastores, caches, migration). */
+/**
+ * Coordinates node-local storage backends, cache tiers, and migration between store generations.
+ *
+ * <p>This subsystem centralizes initialization and runtime control for persistent datastores
+ * (CHK/SSK/pubkey), in-memory or persistent client caches, and slashdot/ULPR cache tiers. It also
+ * owns sizing calculations, backend-type switches, and delayed migration paths used when encrypted
+ * stores cannot be opened until credentials are supplied. Public methods expose configuration and
+ * fetch/store operations while delegating lower-level persistence details to store callback types.
+ *
+ * <p>The class is stateful and long-lived. Most mutable configuration is synchronized on the owning
+ * {@link Node} instance to keep transitions coherent with other subsystems. Callers should treat
+ * this API as a node-runtime service rather than as a stateless utility.
+ *
+ * <ul>
+ *   <li><b>Primary responsibility:</b> own local store/caches lifecycle and capacity policy.
+ *   <li><b>Secondary responsibility:</b> bridge password-gated startup with safe migration.
+ * </ul>
+ */
 public final class NodeStorageSubsystem {
   private static final Logger LOG = LoggerFactory.getLogger(NodeStorageSubsystem.class);
   private static final String SECURITYLEVELS_ENTER_PASSWORD_KEY = "SecurityLevels.enterPassword";
   private static final String STORE_KIND_PUBKEY = "PUBKEY";
   private static final long PURGE_INTERVAL = java.util.concurrent.TimeUnit.SECONDS.toMillis(60);
 
-  /** Absolute minimum store size in bytes accepted by configuration. */
+  /**
+   * Absolute minimum datastore size accepted by configuration, in bytes.
+   *
+   * <p>Values below this threshold are rejected for persistent backends to avoid pathological store
+   * sizing and unstable key-capacity partitioning.
+   */
   public static final long MIN_STORE_SIZE = 32L * 1024 * 1024;
 
-  /** Default datastore size (must be at least MIN_STORE_SIZE) */
+  /**
+   * Default total datastore size in bytes used when no explicit value is configured.
+   *
+   * <p>This baseline is guaranteed to satisfy {@link #MIN_STORE_SIZE}.
+   */
   public static final long DEFAULT_STORE_SIZE = 32L * 1024 * 1024;
 
-  /** Minimum client cache size */
+  /**
+   * Minimum client-cache size in bytes accepted by configuration.
+   *
+   * <p>A value of zero allows deployments that intentionally disable client-cache persistence.
+   */
   public static final long MIN_CLIENT_CACHE_SIZE = 0;
 
-  /** Default client cache size (must be at least MIN_CLIENT_CACHE_SIZE) */
+  /**
+   * Default client-cache size in bytes used when unspecified.
+   *
+   * <p>This value is selected to remain valid against {@link #MIN_CLIENT_CACHE_SIZE}.
+   */
   public static final long DEFAULT_CLIENT_CACHE_SIZE = 10L * 1024 * 1024;
 
-  /** Minimum slashdot cache size */
+  /**
+   * Minimum slashdot/ULPR cache size in bytes accepted by configuration.
+   *
+   * <p>A zero-size configuration is allowed when slashdot caches should be effectively disabled.
+   */
   public static final long MIN_SLASHDOT_CACHE_SIZE = 0;
 
-  /** Default slashdot cache size (must be at least MIN_SLASHDOT_CACHE_SIZE) */
+  /**
+   * Default slashdot/ULPR cache size in bytes used when unspecified.
+   *
+   * <p>This default remains valid against {@link #MIN_SLASHDOT_CACHE_SIZE}.
+   */
   public static final long DEFAULT_SLASHDOT_CACHE_SIZE = 10L * 1024 * 1024;
 
   /**
@@ -108,7 +150,12 @@ public final class NodeStorageSubsystem {
   public static final int DEFAULT_SALT_HASH_SLOT_FILTER_PERSISTENCE_TIME =
       ResizablePersistentIntBuffer.DEFAULT_PERSISTENCE_TIME;
 
-  /** Estimated total bytes per logical key across all stores (sizing heuristic). */
+  /**
+   * Estimated bytes consumed per logical key across primary data and metadata structures.
+   *
+   * <p>This heuristic drives key-count derivation from configured byte capacities. It is not a
+   * precise on-disk accounting number, but a stable planning estimate used for store partitioning.
+   */
   public static final int SIZE_PER_KEY =
       network.crypta.keys.CHKBlock.DATA_LENGTH
           + network.crypta.keys.CHKBlock.TOTAL_HEADERS_LENGTH
@@ -232,6 +279,9 @@ public final class NodeStorageSubsystem {
   /**
    * Creates the storage subsystem facade for a running node instance.
    *
+   * <p>The constructor captures the owning node reference and initializes the pubkey helper used by
+   * SSK store operations. Heavy store initialization is deferred to explicit init methods.
+   *
    * @param node owning node used for services, statistics, and lifecycle coordination
    */
   public NodeStorageSubsystem(Node node) {
@@ -332,6 +382,9 @@ public final class NodeStorageSubsystem {
   /**
    * Creates a runnable that migrates data from previously active stores.
    *
+   * <p>The returned runnable captures current old/new store references and can be executed on a
+   * background executor once replacement stores are ready.
+   *
    * @param clientCache {@code true} to migrate client cache stores, {@code false} for datastores
    * @return runnable migration task bound to the current store references
    */
@@ -341,6 +394,8 @@ public final class NodeStorageSubsystem {
 
   /**
    * Closes and securely destroys an old salted‑hash store used during migration.
+   *
+   * <p>If the callback is not backed by a salted-hash store, this method performs no action.
    *
    * @param <T> storable block type handled by the store callback
    * @param old callback whose underlying store will be closed and destroyed when applicable.
@@ -383,7 +438,12 @@ public final class NodeStorageSubsystem {
     MasterKeys.killMasterKeys(masterKeysFile);
   }
 
-  /** Marks client cache state as password-gated and raises the password user alert. */
+  /**
+   * Marks client-cache initialization as blocked on password entry and shows the password alert.
+   *
+   * <p>This flag is checked by setup paths that need encrypted client-cache material before they
+   * can switch from temporary fallback stores.
+   */
   public void setClientCacheAwaitingPassword() {
     createPasswordUserAlert();
     synchronized (node) {
@@ -391,7 +451,12 @@ public final class NodeStorageSubsystem {
     }
   }
 
-  /** Called when the client layer needs the decryption password. */
+  /**
+   * Marks database initialization as blocked on password entry.
+   *
+   * <p>Unlike {@link #setClientCacheAwaitingPassword()}, this method only sets state and does not
+   * register an additional alert because the same password prompt flow is shared.
+   */
   public void setDatabaseAwaitingPassword() {
     synchronized (node) {
       databaseAwaitingPassword = true;
@@ -961,6 +1026,9 @@ public final class NodeStorageSubsystem {
   /**
    * Returns all statistics info for the data store stats table.
    *
+   * <p>The map always contains entries for CHK, SSK, and pubkey stores across STORE, CACHE,
+   * SLASHDOT, and CLIENT instances, in deterministic insertion order suitable for UI rendering.
+   *
    * @return map that has an entry for each data store instance type and corresponding stats
    */
   public java.util.Map<DataStoreInstanceType, DataStoreStats> getDataStoreStats() {
@@ -1026,7 +1094,12 @@ public final class NodeStorageSubsystem {
 
   private long timeLastDumpedHits;
 
-  /** Logs aggregate hit/miss statistics for stores and caches for debugging. */
+  /**
+   * Logs aggregate hit/miss counters for core store tiers.
+   *
+   * <p>Logging is rate-limited to once every five seconds to reduce log noise under high request
+   * volumes.
+   */
   public void dumpStoreHits() {
     long now = System.currentTimeMillis();
     if (now - timeLastDumpedHits > 5000) {
@@ -1787,7 +1860,12 @@ public final class NodeStorageSubsystem {
     return databaseAwaitingPassword;
   }
 
-  /** Clears password-waiting flags for both client cache and database initialization. */
+  /**
+   * Clears password-waiting flags for both client-cache and database initialization paths.
+   *
+   * <p>Callers typically invoke this after successfully applying credentials or resetting setup
+   * state.
+   */
   public void clearAwaitingPasswords() {
     clientCacheAwaitingPassword = false;
     databaseAwaitingPassword = false;
@@ -1911,26 +1989,6 @@ public final class NodeStorageSubsystem {
   }
 
   /**
-   * Returns the per-plugin encryption key derived from the node's database key.
-   *
-   * <p>When the node's master database key is not available (for example, database encryption is
-   * disabled or a password has not been provided), this method returns {@code null}. Callers must
-   * handle a {@code null} return value and avoid constructing encryption primitives in that case.
-   * When present, the returned array contains a 32-byte key derived for the given {@code
-   * storeIdentifier} and must be treated as secret.
-   *
-   * @param storeIdentifier plugin store identifier; must not be {@code null} when a key is
-   *     available.
-   * @return a 32-byte derived key, or {@code null} if no database key is available.
-   */
-  @SuppressWarnings("java:S1168")
-  public byte[] getPluginStoreKey(String storeIdentifier) {
-    DatabaseKey key = databaseKey;
-    if (key != null) return key.getPluginStoreKey(storeIdentifier);
-    else return null;
-  }
-
-  /**
    * Returns configured maximum memory usage for caching-freenet-store wrapper.
    *
    * @return maximum cache wrapper size in bytes
@@ -1995,7 +2053,12 @@ public final class NodeStorageSubsystem {
     cachingFreenetStorePeriod = value;
   }
 
-  /** Initializes caching-freenet-store tracker when size and period are both configured. */
+  /**
+   * Initializes the caching-store tracker when both size and period settings are positive.
+   *
+   * <p>When either value is zero or negative, no tracker is created and salted-hash stores operate
+   * without the wrapper cache layer.
+   */
   public void initializeCachingFreenetStoreTracker() {
     if (cachingFreenetStoreMaxSize > 0 && cachingFreenetStorePeriod > 0) {
       cachingFreenetStoreTracker =
@@ -2122,7 +2185,12 @@ public final class NodeStorageSubsystem {
     return NodeL10n.getBase().getString("Node.invalidMaxStoreSize", replacementValue);
   }
 
-  /** Initializes client cache stores backed by in-memory RAM stores. */
+  /**
+   * Initializes client-cache callbacks with in-memory RAM store backends.
+   *
+   * <p>This mode is used for transient caching or as a fallback while encrypted client caches are
+   * unavailable.
+   */
   public void initRAMClientCacheFS() {
     chkClientcache = new CHKStore();
     new RAMFreenetStore<>(chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys))
@@ -2135,7 +2203,11 @@ public final class NodeStorageSubsystem {
         .close();
   }
 
-  /** Initializes client cache stores using no-op backing stores. */
+  /**
+   * Initializes client-cache callbacks with no-op backends that retain no data.
+   *
+   * <p>Use this mode when client-cache storage should be disabled while preserving callback wiring.
+   */
   public void initNoClientCacheFS() {
     chkClientcache = new CHKStore();
     new NullFreenetStore<>(chkClientcache).close();
@@ -2155,7 +2227,12 @@ public final class NodeStorageSubsystem {
     sskDatacache.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
   }
 
-  /** Initializes datastore and datacache stores backed by in-memory RAM stores. */
+  /**
+   * Initializes main datastore and datacache callbacks with in-memory RAM backends.
+   *
+   * <p>This backend is primarily used for non-persistent operation and as a temporary layer during
+   * delayed salted-hash initialization.
+   */
   public void initRAMFS() {
     chkDatastore = new CHKStore();
     new RAMFreenetStore<>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys)).close();

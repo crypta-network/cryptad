@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
 import network.crypta.clients.http.wizardsteps.DatastoreSize;
@@ -18,7 +19,6 @@ import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
-import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalValueException;
 import network.crypta.support.api.HTTPRequest;
@@ -416,7 +416,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
         // Detected limits reasonable; add half of both as a recommended option.
         downloadLimitDetected = Long.toString(detected.downBytes / 2 / KIB);
         uploadLimitDetected = Long.toString(detected.upBytes / 2 / KIB);
-      } catch (PluginNotFoundException | IllegalValueException e) {
+      } catch (BandwidthDetectionUnavailableException | IllegalValueException e) {
         LOG.info(e.getMessage(), e);
       }
     }

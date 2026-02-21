@@ -20,9 +20,9 @@ import org.slf4j.LoggerFactory;
  * A configuration subsection owned by a {@link Config}.
  *
  * <p>Each {@code SubConfig} groups a set of typed {@link Option} values under a prefix (e.g.,
- * {@code node.} or {@code plugins.}). Options are registered once and may later be read, written,
- * exported, or removed. Access to the internal map is synchronized on {@code this} to make
- * registration and queries safe when called from multiple threads.
+ * {@code node.}). Options are registered once and may later be read, written, exported, or removed.
+ * Access to the internal map is synchronized on {@code this} to make registration and queries safe
+ * when called from multiple threads.
  *
  * <p>Instances are identity-based for equality; two different objects are never equal even if they
  * have the same prefix. Ordering is lexicographic by prefix via {@link #compareTo(SubConfig)}.
@@ -299,7 +299,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (IntOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o == null ? -1 : o.getValue();
   }
 
@@ -317,7 +317,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (LongOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o == null ? -1L : o.getValue();
   }
 
@@ -334,7 +334,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (BooleanOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o != null && o.getValue();
   }
 
@@ -351,7 +351,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (StringOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o == null ? "" : o.getValue().trim();
   }
 
@@ -368,7 +368,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (StringArrOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o == null ? new String[] {} : o.getValue();
   }
 
@@ -386,7 +386,7 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       o = (ShortOption) map.get(optionName);
     }
-    // Fallback for ignored options to keep historical behavior for plugins.
+    // Fallback for ignored options to keep historical behavior for legacy callers.
     return o == null ? -1 : o.getValue();
   }
 
@@ -680,7 +680,7 @@ public class SubConfig implements Comparable<SubConfig> {
     /**
      * Sentinel option used for names that should be accepted but never read, written, or exported.
      *
-     * <p>Prevents log noise when legacy or plugin configs reference removed settings.
+     * <p>Prevents log noise when legacy configs reference removed settings.
      */
     public IgnoredOption(String optionName) {
       super(

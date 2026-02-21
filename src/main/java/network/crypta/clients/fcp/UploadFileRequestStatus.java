@@ -11,7 +11,7 @@ import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
  * filename if one was provided by the submitting client. Instances are created by the request cache
  * to mirror the lifecycle of {@code ClientPut} operations and remain mutable while the upload runs.
  * Consumer code typically reads these objects via the status cache to drive web UIs, command-line
- * monitors, or plugin notifications without keeping strong references to the live request.
+ * monitors, or automated notifications without keeping strong references to the live request.
  *
  * <p>The class is intentionally lightweight and thread-safe for concurrent readers: the mutable
  * compression state is guarded by {@link #updateCompressionStatus(ClientPut.COMPRESS_STATE)}, while
@@ -20,7 +20,7 @@ import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
  * a restart or when a worker thread commits the final URI.
  *
  * <ul>
- *   <li>Tracks MIME type and human-friendly filename hints so download dialogs can present sane
+ *   <li>Tracks MIME type and human-friendly filename hints, so download dialogs can present sane
  *       defaults.
  *   <li>Spans the entire compression pipeline by reflecting whether the request waits, compresses,
  *       or already streams encrypted blocks.
@@ -76,8 +76,8 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
    * <p>The size originates from the {@code ClientPut} metadata and therefore reflects the entire
    * payload, including any directories that were flattened prior to compression. The value does not
    * change after construction because the upload scheduler treats the request as immutable once
-   * block enumeration finishes. Callers should treat the number as advisory for progress bars and
-   * be aware that certain streaming uploads may not know their final size upfront.
+   * block enumeration finishes. Callers should treat the number as an advisory for progress bars
+   * and be aware that certain streaming uploads may not know their final size upfront.
    *
    * @return positive byte count representing the payload, or {@code 0} when no estimate was
    *     available at scheduling time.
@@ -88,13 +88,13 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
   }
 
   /**
-   * Exposes the MIME type hint that accompanied the upload request.
+   * Exposes the MIME type hint that came with the upload request.
    *
    * <p>The MIME value helps downstream components choose appropriate content handlers and inform
    * GUI clients whether a file likely contains text, images, or opaque binary data. The type is not
    * revalidated; it simply mirrors the user-supplied value (or the detector result) captured in the
-   * {@code ClientPut}. Implementations retain the raw string so callers may apply their own parsing
-   * or subtype matching logic.
+   * {@code ClientPut}. Implementations retain the raw string, so callers may apply their own
+   * parsing or subtype matching logic.
    *
    * @return textual MIME identifier such as {@code "text/plain"}, or {@code null} when the client
    *     submitted no type information.
@@ -170,7 +170,7 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
    * Creates an immutable snapshot of this status suitable for hand-off to external callers.
    *
    * <p>The returned instance duplicates every scalar and reference visible to clients, including
-   * compression state, so it remains stable even if the originating request continues to mutate
+   * the compression state, so it remains stable even if the originating request continues to mutate
    * while the snapshot is in use. This is the preferred way to expose status data over APIs because
    * it upholds the copy-on-read contract assumed by {@link RequestStatusCache}.
    *

@@ -41,8 +41,6 @@ public final class ConfigMigrator {
    */
   public static final String CONFIG_FILE = "cryptad.ini";
 
-  private static final String PLUGINS_DIR = "plugins";
-
   private ConfigMigrator() {}
 
   /**
@@ -89,8 +87,6 @@ public final class ConfigMigrator {
     }
 
     moveIfPresent(cwd.resolve("datastore"), dirs.dataDir().resolve("datastore"));
-    moveIfPresent(cwd.resolve(PLUGINS_DIR), dirs.dataDir().resolve(PLUGINS_DIR));
-    moveIfPresent(cwd.resolve("plugin-data"), dirs.dataDir().resolve(PLUGINS_DIR));
     moveIfPresent(cwd.resolve("temp"), dirs.cacheDir().resolve("tmp"));
     moveIfPresent(cwd.resolve("persistent-temp"), dirs.cacheDir().resolve("persistent-temp"));
     moveIfPresent(cwd.resolve("downloads"), dirs.dataDir().resolve("downloads"));
@@ -133,8 +129,6 @@ public final class ConfigMigrator {
       rewrite(sfs, "node.install.userDir", ".", "${configDir}");
       rewrite(sfs, "node.install.nodeDir", ".", "${dataDir}/node");
       rewrite(sfs, "node.install.storeDir", "./datastore", "${dataDir}/datastore");
-      rewrite(sfs, "node.install.pluginDir", "./plugins", "${dataDir}/plugins");
-      rewrite(sfs, "node.install.pluginStoresDir", "plugin-data", "${dataDir}/plugins");
       rewrite(sfs, "node.install.tempDir", "./temp", "${cacheDir}/tmp");
       rewrite(
           sfs,

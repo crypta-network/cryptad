@@ -5,7 +5,6 @@ import java.lang.reflect.Field;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.keys.CHKBlock;
-import network.crypta.node.DatabaseKey;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
@@ -27,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -173,21 +171,6 @@ class NodeStorageSubsystemTest {
   }
 
   @Test
-  void getPluginStoreKey_whenDatabaseKeyMissing_returnsNull() {
-    assertNull(subsystem.getPluginStoreKey("plugin-id"));
-  }
-
-  @Test
-  void getPluginStoreKey_whenDatabaseKeyPresent_returnsDerivedKey() {
-    DatabaseKey key = org.mockito.Mockito.mock(DatabaseKey.class);
-    byte[] expected = new byte[] {1, 2, 3};
-    when(key.getPluginStoreKey("plugin-id")).thenReturn(expected);
-    subsystem.setDatabaseKey(key);
-
-    assertSame(expected, subsystem.getPluginStoreKey("plugin-id"));
-  }
-
-  @Test
   void setStoreDir_whenProvided_exposesProgramDirectoryAndDirFile() {
     ProgramDirectory programDirectory = org.mockito.Mockito.mock(ProgramDirectory.class);
     File dir = new File("/tmp/store");
@@ -247,16 +230,16 @@ class NodeStorageSubsystemTest {
     when(wrapperStore.getUnderlyingStore()).thenReturn(saltedHashStore);
     chkDatastore.setStore(wrapperStore);
 
-    setPrivateField(subsystem, "chkDatastore", chkDatastore);
+    setChkDatastore(subsystem, chkDatastore);
 
     subsystem.setStorePreallocate(true);
 
     verify(saltedHashStore).setPreallocate(true);
   }
 
-  private static void setPrivateField(Object target, String fieldName, Object value)
+  private static void setChkDatastore(NodeStorageSubsystem target, CHKStore value)
       throws ReflectiveOperationException {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = target.getClass().getDeclaredField("chkDatastore");
     field.setAccessible(true);
     field.set(target, value);
   }

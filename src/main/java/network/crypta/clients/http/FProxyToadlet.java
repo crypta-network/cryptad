@@ -44,7 +44,6 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
-import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -135,7 +134,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   private static final String GO_BACK_TO_PREV_KEY = "goBackToPrev";
   private static final String TOADLET_HOMEPAGE_KEY = "Toadlet.homepage";
   private static final String ABORT_TO_HOMEPAGE_KEY = "abortToHomepage";
-  private static final String OPEN_WITH_KEY_EXPLORER_KEY = L10N_PREFIX + "openWithKeyExplorer";
   static final String CATEGORY_BROWSING = L10N_PREFIX + "categoryBrowsing";
   static final String CATEGORY_QUEUE = L10N_PREFIX + "categoryQueue";
   static final String CATEGORY_FRIENDS = L10N_PREFIX + "categoryFriends";
@@ -1540,101 +1538,13 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       HTMLNode infoboxContent = infobox.addChild("div", CLASS_ATTRIBUTE, INFOBOX_CONTENT_CLASS);
 
       HTMLNode optionList = infoboxContent.addChild("ul");
-      appendPluginOptions(optionList, e);
       if (filterException != null) {
         addFilterRecoveryOptions(optionList, mime, e);
       }
       addRetryAndAbortOptions(optionList, e);
     }
 
-    private void appendPluginOptions(HTMLNode optionList, FetchException e) {
-      PluginInfoWrapper keyUtil;
-      if (!(e.mode == FetchExceptionMode.NOT_IN_ARCHIVE
-          || e.mode == FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS)) {
-        return;
-      }
-      if ((keyUtil =
-              core.getNode()
-                  .services()
-                  .pluginManager()
-                  .getPluginInfoByClassName("plugins.KeyUtils.KeyUtilsPlugin"))
-          != null) {
-        appendKeyUtilsOptions(optionList, keyUtil);
-        return;
-      }
-      if ((keyUtil =
-              core.getNode()
-                  .services()
-                  .pluginManager()
-                  .getPluginInfoByClassName("plugins.KeyExplorer.KeyExplorer"))
-          != null) {
-        appendKeyExplorerOptions(optionList, keyUtil);
-      }
-    }
-
-    private void appendKeyUtilsOptions(HTMLNode optionList, PluginInfoWrapper keyUtil) {
-      HTMLNode option = optionList.addChild("li");
-      if (keyUtil.getPluginLongVersion() < 5010)
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                OPEN_WITH_KEY_EXPLORER_KEY,
-                new String[] {"link"},
-                new HTMLNode[] {HTMLNode.link("/KeyUtils/?automf=true&key=" + key.toString())});
-      else {
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                OPEN_WITH_KEY_EXPLORER_KEY,
-                new String[] {"link"},
-                new HTMLNode[] {HTMLNode.link("/KeyUtils/?key=" + key.toString())});
-        option = optionList.addChild("li");
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                "FProxyToadlet.openWithSiteExplorer",
-                new String[] {"link"},
-                new HTMLNode[] {HTMLNode.link("/KeyUtils/Site?key=" + key.toString())});
-      }
-    }
-
-    private void appendKeyExplorerOptions(HTMLNode optionList, PluginInfoWrapper keyUtil) {
-      HTMLNode option = optionList.addChild("li");
-      if (keyUtil.getPluginLongVersion() > 4999)
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                OPEN_WITH_KEY_EXPLORER_KEY,
-                new String[] {"link"},
-                new HTMLNode[] {HTMLNode.link("/KeyExplorer/?automf=true&key=" + key.toString())});
-      else
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                OPEN_WITH_KEY_EXPLORER_KEY,
-                new String[] {"link"},
-                new HTMLNode[] {
-                  HTMLNode.link("/plugins/plugins.KeyExplorer.KeyExplorer/?key=" + key.toString())
-                });
-    }
-
     private void addFilterRecoveryOptions(HTMLNode optionList, String mime, FetchException e) {
-      if (mime.equals("application/x-freenet-index")
-          && core.getNode()
-              .services()
-              .pluginManager()
-              .isPluginLoaded("plugins.ThawIndexBrowser.ThawIndexBrowser")) {
-        HTMLNode option = optionList.addChild("li");
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                option,
-                "FProxyToadlet.openAsThawIndex",
-                new String[] {"link"},
-                new HTMLNode[] {
-                  HTMLNode.link(
-                      "/plugins/plugins.ThawIndexBrowser.ThawIndexBrowser/?key=" + key.toString())
-                });
-      }
       HTMLNode option = optionList.addChild("li");
       try {
         MediaType textMediaType = new MediaType("text/plain");

@@ -8,9 +8,9 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>FCP clients send {@code ExpectedMIME} immediately after initiating a high-level request to
  * inform the node about the preferred {@code Metadata.ContentType}. The node forwards this hint to
- * downstream components so HTTP translations, plugins, or persistence layers can pick suitable
- * serializers. Instances of this class are lightweight value objects; callers typically create one
- * per request, transmit it over the {@link FCPConnectionHandler}, and then discard it.
+ * downstream components so HTTP translations or persistence layers can pick suitable serializers.
+ * Instances of this class are lightweight value objects; callers typically create one per request,
+ * transmit it over the {@link FCPConnectionHandler}, and then discard it.
  *
  * <p>The identifier and MIME type are stored as provided without validation because FCP acts as a
  * thin transport. Callers must therefore ensure the identifier uniquely scopes the outstanding

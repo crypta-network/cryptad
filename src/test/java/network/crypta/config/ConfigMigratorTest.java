@@ -42,7 +42,6 @@ class ConfigMigratorTest {
     Files.writeString(cwdConfig, legacyConfigTemplate());
 
     createLegacyDirectory(cwd.resolve("datastore"), "store.bin");
-    createLegacyDirectory(cwd.resolve("plugins"), "plugin.jar");
     createLegacyDirectory(cwd.resolve("temp"), "tmp.bin");
     createLegacyDirectory(cwd.resolve("persistent-temp"), "ptmp.bin");
     createLegacyDirectory(cwd.resolve("downloads"), "download.bin");
@@ -58,21 +57,18 @@ class ConfigMigratorTest {
     SimpleFieldSet rewritten = readSimpleFieldSet(cfgFile);
     assertEquals("${configDir}", rewritten.get("node.install.cfgDir"));
     assertEquals("${dataDir}/datastore", rewritten.get("node.install.storeDir"));
-    assertEquals("${dataDir}/plugins", rewritten.get("node.install.pluginDir"));
     assertEquals("${cacheDir}/tmp", rewritten.get("node.install.tempDir"));
     assertEquals("${cacheDir}/persistent-temp", rewritten.get("node.install.persistentTempDir"));
     assertEquals("${dataDir}/downloads", rewritten.get("node.downloadsDir"));
     assertEquals("${logsDir}", rewritten.get("logger.dirname"));
 
     assertFalse(Files.exists(cwd.resolve("datastore")));
-    assertFalse(Files.exists(cwd.resolve("plugins")));
     assertFalse(Files.exists(cwd.resolve("temp")));
     assertFalse(Files.exists(cwd.resolve("persistent-temp")));
     assertFalse(Files.exists(cwd.resolve("downloads")));
     assertFalse(Files.exists(cwd.resolve("logs")));
 
     assertTrue(Files.exists(dirs.dataDir().resolve("datastore").resolve("store.bin")));
-    assertTrue(Files.exists(dirs.dataDir().resolve("plugins").resolve("plugin.jar")));
     assertTrue(Files.exists(dirs.cacheDir().resolve("tmp").resolve("tmp.bin")));
     assertTrue(Files.exists(dirs.cacheDir().resolve("persistent-temp").resolve("ptmp.bin")));
     assertTrue(Files.exists(dirs.dataDir().resolve("downloads").resolve("download.bin")));
@@ -97,7 +93,7 @@ class ConfigMigratorTest {
                 "\n",
                 List.of(
                     "node.install.cfgDir=.",
-                    "node.install.pluginDir=./plugins",
+                    "node.install.storeDir=./datastore",
                     "logger.priority=DEBUG",
                     "End"))
             + "\n");
@@ -111,7 +107,7 @@ class ConfigMigratorTest {
 
     SimpleFieldSet rewritten = readSimpleFieldSet(cfgFile);
     assertEquals("${configDir}", rewritten.get("node.install.cfgDir"));
-    assertEquals("${dataDir}/plugins", rewritten.get("node.install.pluginDir"));
+    assertEquals("${dataDir}/datastore", rewritten.get("node.install.storeDir"));
     assertEquals("DEBUG", rewritten.get("logger.priority"));
   }
 
@@ -165,7 +161,8 @@ class ConfigMigratorTest {
   }
 
   @Test
-  void migrateIfNeeded_whenPluginsMovedFirst_expectPluginDataLeftInPlace() throws Exception {
+  void migrateIfNeeded_whenLegacyPluginDirectoriesPresent_expectDirectoriesLeftInPlace()
+      throws Exception {
     // Arrange
     Path cwd = tempDir.resolve("cwd");
     Path executableDir = tempDir.resolve("exe");
@@ -185,8 +182,9 @@ class ConfigMigratorTest {
     runWithCwd(cwd, () -> ConfigMigrator.migrateIfNeeded(dirs, executableDir));
 
     // Assert
-    assertTrue(Files.exists(dirs.dataDir().resolve("plugins").resolve("plugin.jar")));
+    assertTrue(Files.exists(cwd.resolve("plugins").resolve("plugin.jar")));
     assertTrue(Files.exists(cwd.resolve("plugin-data").resolve("plugin-store.bin")));
+    assertFalse(Files.exists(dirs.dataDir().resolve("plugins").resolve("plugin.jar")));
   }
 
   private static Resolved resolved(Path root) {
@@ -204,8 +202,6 @@ class ConfigMigratorTest {
             List.of(
                 "node.install.cfgDir=.",
                 "node.install.storeDir=./datastore",
-                "node.install.pluginDir=./plugins",
-                "node.install.pluginStoresDir=plugin-data",
                 "node.install.tempDir=./temp",
                 "node.install.persistentTempDir=./persistent-temp",
                 "node.downloadsDir=./downloads",

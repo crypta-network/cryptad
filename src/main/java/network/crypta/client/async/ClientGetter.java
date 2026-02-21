@@ -59,9 +59,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This class coordinates fetching a URI, following redirects, and retrieving multi‑part
  * splitfiles. It behaves similarly to the fetch logic exposed via FCP and is used internally by the
- * server, the HTTP proxy, and plugins. The request progresses through a sequence of {@link
- * ClientGetState} implementations (for example {@code SingleFileFetcher} and {@code
- * SplitFileFetcher}) and the current state is held in {@link #currentState}.
+ * server and the HTTP proxy. The request progresses through a sequence of {@link ClientGetState}
+ * implementations (for example {@code SingleFileFetcher} and {@code SplitFileFetcher}) and the
+ * current state is held in {@link #currentState}.
  *
  * <p>Typical usage is:
  *

@@ -11,19 +11,17 @@ import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.ProgramDirectory;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.StringCallback;
 
 /**
  * Registers node configuration keys and supplies callback implementations for core options.
  *
- * <p>This class wires the {@link SubConfig} entries that the node exposes to users and plugins, and
- * it owns small callback classes that translate configuration changes into live node actions.
- * Typical call sites create one instance per {@link Node} and invoke the configuration setup during
- * startup, before subsystems begin serving requests. The callbacks intentionally keep the logic
- * close to the node so that validation, side effects, and alert updates are performed in a
- * consistent order.
+ * <p>This class wires the {@link SubConfig} entries that the node exposes to users, and it owns
+ * small callback classes that translate configuration changes into live node actions. Typical call
+ * sites create one instance per {@link Node} and invoke the configuration setup during startup,
+ * before subsystems begin serving requests. The callbacks intentionally keep the logic close to the
+ * node so that validation, side effects, and alert updates are performed in a consistent order.
  *
  * <p>Thread safety is constrained to the callback methods themselves. Several callbacks synchronize
  * on their instance to coordinate with the {@link Node} state they mutate. Callers should treat
@@ -64,8 +62,8 @@ public final class NodeConfigManager {
    * <p>The method registers the {@code l10n} option in the provided configuration and wires it to a
    * callback that applies language changes. It then attempts to create a {@link NodeL10n} instance
    * using the configured language, falling back to the option default and then to the hardcoded
-   * base default when resources are missing. The returned sort order should be used by the caller
-   * for subsequent registrations to preserve deterministic configuration ordering.
+   * base default when resources are missing. The caller should use the returned sort order for
+   * later registrations to preserve deterministic configuration ordering.
    *
    * @param nodeConfig the node configuration object that receives the localization option
    * @param cfgDir the program directory used to locate localization resources on disk
@@ -124,7 +122,7 @@ public final class NodeConfigManager {
      * reflects the node's current internal value and should be treated as a snapshot rather than a
      * live view.
      *
-     * @return the current node name after alert state has been updated accordingly
+     * @return the current node name after the alert state has been updated accordingly
      */
     @Override
     public String get() {
@@ -147,8 +145,8 @@ public final class NodeConfigManager {
      *
      * <p>If the provided value matches the existing name, the method is a no-op. Names longer than
      * 128 characters are rejected with a configuration error. An empty string is normalized to a
-     * sentinel value so the node always has a non-empty internal name. After updating the node, the
-     * method broadcasts the new name and invokes {@link #get()} to refresh alert status.
+     * sentinel value, so the node always has a non-empty internal name. After updating the node,
+     * the method broadcasts the new name and invokes {@link #get()} to refresh alert status.
      *
      * @param val the proposed node name, where empty strings are normalized and length is limited
      * @throws InvalidConfigValueException when the proposed name exceeds the allowed length
@@ -186,7 +184,7 @@ public final class NodeConfigManager {
      * during configuration registration and then let the configuration system invoke its methods.
      */
     public StoreTypeCallback() {
-      // Intentionally empty: configuration system instantiates and calls the methods directly.
+      // Intentionally empty: the configuration system instantiates and calls the methods directly.
     }
 
     /**
@@ -344,7 +342,6 @@ public final class NodeConfigManager {
       } catch (MissingResourceException e) {
         throw new InvalidConfigValueException(e.getLocalizedMessage());
       }
-      PluginManager.setLanguage(NodeL10n.getBase().getSelectedLanguage());
     }
 
     @Override

@@ -32,7 +32,6 @@ import network.crypta.node.PrioRunnable;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -69,7 +68,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * <ul>
  *   <li>Responsibilities: bind sockets, dispatch toadlets, surface configuration, and relay alerts.
  *   <li>Notable behaviors: preserves startup toadlet until replaced; honors gateway/public mode;
- *       mirrors theme changes to plugins; emits panic button state based on physical threat level.
+ *       emits panic button state based on physical threat level.
  * </ul>
  *
  * @see Toadlet
@@ -292,9 +291,6 @@ public final class SimpleToadletServer
         throw new InvalidConfigValueException(l10n("illegalCSSName"));
       cssTheme = THEME.themeFromName(cssName);
       pageMaker.setTheme(cssTheme);
-      NodeClientCore coreRef = SimpleToadletServer.this.core;
-      if (coreRef.getNode().services().pluginManager() != null)
-        coreRef.getNode().services().pluginManager().setFProxyTheme(cssTheme);
       fetchKeyBoxAboveBookmarks = cssTheme.fetchKeyBoxAboveBookmarks;
     }
 
@@ -508,7 +504,7 @@ public final class SimpleToadletServer
    *     later replace it via {@link #setBucketFactory(BucketFactory)}.
    * @param executor executor that runs HTTP worker threads with priority awareness; ownership stays
    *     with the caller.
-   * @param node parent {@link Node} providing global services such as logging and plugin access.
+   * @param node parent {@link Node} providing global services such as logging and runtime state.
    * @throws InvalidConfigValueException if any configuration entry is invalid or fails validation
    *     during registration.
    */
@@ -1313,25 +1309,23 @@ public final class SimpleToadletServer
           registration.name(),
           registration.title(),
           registration.fullOnly(),
-          registration.callback(),
-          registration.l10n());
+          registration.callback());
     }
   }
 
   /**
-   * Registers a navigation category contributed by a plugin.
+   * Registers a navigation category.
    *
-   * <p>The category is added to the page maker so plugin pages appear in the navigation menu with
-   * translated titles where available. Callers should supply stable identifiers; no synchronization
-   * beyond the internal {@link PageMaker} handling is required.
+   * <p>The category is added to the page maker so related pages appear in the navigation menu.
+   * Callers should supply stable identifiers; no synchronization beyond the internal {@link
+   * PageMaker} handling is required.
    *
-   * @param link navigation link target, typically a path prefix owned by the plugin.
+   * @param link navigation link target, typically a path prefix owned by the feature.
    * @param name short category name shown in menus; should be unique within its level.
    * @param title descriptive title used for tooltips or extended labels; may be {@code null}.
-   * @param plugin localization helper that translates the title/name for the current locale.
    */
-  public void registerMenu(String link, String name, String title, FredPluginL10n plugin) {
-    pageMaker.addNavigationCategory(link, name, title, plugin);
+  public void registerMenu(String link, String name, String title) {
+    pageMaker.addNavigationCategory(link, name, title);
   }
 
   @Override

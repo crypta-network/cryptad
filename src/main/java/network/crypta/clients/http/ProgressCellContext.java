@@ -9,7 +9,7 @@ import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
  * such as whether the queue is in advanced mode, whether the request has started, the current
  * compression state, and whether the request represents an upload. Combined with a {@link
  * network.crypta.client.events.SplitfileProgressCounts} snapshot, this provides all information
- * needed to render progress cells consistently across queue and plugin UIs.
+ * needed to render progress cells consistently across queue and admin UIs.
  *
  * @param advancedMode {@code true} to render detailed block counts
  * @param started {@code true} once the transfer has started

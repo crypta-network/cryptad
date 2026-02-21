@@ -25,8 +25,8 @@ import org.slf4j.LoggerFactory;
  * client commands to the appropriate request primitives while asynchronously streaming responses
  * back to the peer.
  *
- * <p>Each handler instance encapsulates socket ownership, request registries, DDA authorizations,
- * and plugin bridge state so that transient failures stay isolated to the originating client. It
+ * <p>Each handler instance encapsulates socket ownership, request registries, and DDA
+ * authorizations so that transient failures stay isolated to the originating client. It
  * collaborates with {@link FCPConnectionInputHandler} and {@link FCPConnectionOutputHandler} to
  * parse framed commands, validate identifiers, and dispatch I/O without blocking the acceptor
  * threads. Callers typically create the handler through {@link FCPServer} once a socket has been
@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Receives FCP messages, validates them, and instantiates {@link ClientRequest}s.
  *   <li>Persists or replays pending work via job runners when clients reconnect.
- *   <li>Tracks plugin bridge usage, DDA permissions, and subscription bookkeeping.
+ *   <li>Tracks DDA permissions and subscription bookkeeping.
  * </ul>
  *
  * @see FCPConnectionInputHandler
@@ -72,12 +72,6 @@ public class FCPConnectionHandler implements Closeable {
   private final AtomicReference<PersistentRequestClient> foreverClient = new AtomicReference<>();
   final HashMap<String, ClientRequest> requestsByIdentifier;
 
-  private final PluginConnectionRegistry pluginConnectionRegistry = new PluginConnectionRegistry();
-
-  PluginConnectionRegistry pluginConnectionRegistry() {
-    return pluginConnectionRegistry;
-  }
-
   @SuppressWarnings("ClassCanBeRecord")
   private static final class CloseSnapshot {
     final ClientRequest[] requests;
@@ -106,8 +100,8 @@ public class FCPConnectionHandler implements Closeable {
 
   /**
    * Deterministic UUID derived from the same random bytes as {@link #connectionIdentifier}, giving
-   * modern code a stable, strongly typed identifier for metrics, plugin bridges, and logs while
-   * keeping interop with legacy peers.
+   * modern code a stable, strongly typed identifier for metrics and logs while keeping interop with
+   * legacy peers.
    */
   protected final UUID connectionIdentifierUUID;
 
@@ -438,7 +432,7 @@ public class FCPConnectionHandler implements Closeable {
    *
    * <p>The value may be {@code null} until the handshake completes, so callers should defensively
    * handle that case when logging or composing error messages. Once set, the name remains stable
-   * for the connection and is used when looking up persistent request queues or plugin bridges.
+   * for the connection and is used when looking up persistent request queues.
    *
    * @return Current client name or {@code null} if the connection has not announced one.
    */

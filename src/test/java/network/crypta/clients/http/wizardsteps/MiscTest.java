@@ -17,12 +17,7 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,17 +30,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -66,14 +58,10 @@ class MiscTest {
   private static final String ATTR_VALUE = "value";
 
   private static final String PARAM_AUTODEPLOY = "autodeploy";
-  private static final String PARAM_UPNP = "upnp";
-
   private static final String ID_AUTODEPLOY_TRUE = "autodeployTrue";
   private static final String ID_AUTODEPLOY_FALSE = "autodeployFalse";
 
   private static final String CHECKED_ON = "on";
-
-  private static final String UPNP_PLUGIN_CLASS = "plugins.UPnP.UPnP";
 
   @TempDir Path tempDir;
 
@@ -83,10 +71,9 @@ class MiscTest {
   }
 
   @Test
-  void getStep_whenCalled_buildsAutoUpdateAndPluginFormInputs() {
-    NodeClientCore core = mock(NodeClientCore.class);
+  void getStep_whenCalled_buildsAutoUpdateFormInputs() {
     Config config = mock(Config.class);
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -118,7 +105,7 @@ class MiscTest {
     ArgumentCaptor<Boolean> infoboxUniqueCaptor = ArgumentCaptor.forClass(Boolean.class);
     ArgumentCaptor<String> infoboxHeaderCaptor = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> infoboxTitleCaptor = ArgumentCaptor.forClass(String.class);
-    verify(helper, times(2))
+    verify(helper, times(1))
         .getInfobox(
             infoboxCategoryCaptor.capture(),
             infoboxHeaderCaptor.capture(),
@@ -132,9 +119,8 @@ class MiscTest {
             && infoboxHeaderCaptor.getAllValues().stream().allMatch(Objects::nonNull)
             && infoboxTitleCaptor.getAllValues().stream().allMatch(Objects::isNull));
 
-    assertEquals(2, infoboxes.size());
+    assertEquals(1, infoboxes.size());
     HTMLNode autoUpdateBox = infoboxes.getFirst();
-    HTMLNode pluginsBox = infoboxes.get(1);
 
     List<HTMLNode> autodeployRadios =
         findNodes(
@@ -159,29 +145,21 @@ class MiscTest {
             .collect(Collectors.toSet());
     assertTrue(autoUpdateLabelFors.containsAll(Set.of(ID_AUTODEPLOY_TRUE, ID_AUTODEPLOY_FALSE)));
 
-    String expectedBack = NodeL10n.getBase().getString("Toadlet.back");
-    String expectedNext = NodeL10n.getBase().getString("Toadlet.next");
-
     List<HTMLNode> upnpCheckboxes =
         findNodes(
-            pluginsBox,
+            autoUpdateBox,
             node ->
                 TAG_INPUT.equals(node.getName())
                     && "checkbox".equals(node.getAttribute(ATTR_TYPE))
-                    && PARAM_UPNP.equals(node.getAttribute(ATTR_NAME)));
-    assertEquals(1, upnpCheckboxes.size());
-    HTMLNode upnpCheckbox = upnpCheckboxes.getFirst();
-    assertEquals(CHECKED_ON, upnpCheckbox.getAttribute(ATTR_CHECKED));
-    Set<String> pluginsLabelFors =
-        findNodes(pluginsBox, node -> TAG_LABEL.equals(node.getName())).stream()
-            .map(node -> node.getAttribute(ATTR_FOR))
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-    assertTrue(pluginsLabelFors.contains("upnpTrue"));
+                    && "upnp".equals(node.getAttribute(ATTR_NAME)));
+    assertTrue(upnpCheckboxes.isEmpty());
+
+    String expectedBack = NodeL10n.getBase().getString("Toadlet.back");
+    String expectedNext = NodeL10n.getBase().getString("Toadlet.next");
 
     Map<String, String> submitValuesByName =
         findNodes(
-                pluginsBox,
+                autoUpdateBox,
                 node ->
                     TAG_INPUT.equals(node.getName())
                         && "submit".equals(node.getAttribute(ATTR_TYPE)))
@@ -199,32 +177,27 @@ class MiscTest {
   @CsvSource({"true,true", "TRUE,true", "false,false", "'',false", "notABool,false"})
   void postStep_whenAutodeployValueProvided_parsesBooleanAndReturnsOpenNet(
       String autodeployValue, boolean expectedEnabled) {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Misc misc = spy(new Misc(core, config));
+    Misc misc = spy(new Misc(config));
 
     doNothing().when(misc).setAutoUpdate(anyBoolean());
-    doNothing().when(misc).setUPnP(anyBoolean());
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.getPartAsStringFailsafe(PARAM_AUTODEPLOY, 10)).thenReturn(autodeployValue);
-    when(request.isPartSet(PARAM_UPNP)).thenReturn(false);
 
     String nextStep = misc.postStep(request);
 
     verify(misc, times(1)).setAutoUpdate(expectedEnabled);
-    verify(misc, times(1)).setUPnP(false);
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.OPENNET.name(), nextStep);
   }
 
   @Test
   void setAutoUpdate_whenConfigWriteSucceeds_setsAutoupdateOption() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
     SubConfig updaterConfig = mock(SubConfig.class);
     when(config.get("node.updater")).thenReturn(updaterConfig);
 
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     misc.setAutoUpdate(true);
 
@@ -233,108 +206,22 @@ class MiscTest {
 
   @Test
   void setAutoUpdate_whenConfigThrowsConfigException_doesNotPropagate() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
     SubConfig updaterConfig = mock(SubConfig.class);
     when(config.get("node.updater")).thenReturn(updaterConfig);
     doThrow(new InvalidConfigValueException("invalid")).when(updaterConfig).set("autoupdate", true);
 
-    Misc misc = new Misc(core, config);
+    Misc misc = new Misc(config);
 
     assertDoesNotThrow(() -> misc.setAutoUpdate(true));
   }
 
   @Test
-  void setUPnP_whenAlreadyInRequestedState_doesNotScheduleExecutor() {
-    NodeClientCore core = mock(NodeClientCore.class);
+  void setUPnP_whenCalled_isNoOp() {
     Config config = mock(Config.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    PluginManager pluginManager = mock(PluginManager.class);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    Misc misc = new Misc(config);
 
-    when(core.getNode()).thenReturn(node);
-    when(node.services()).thenReturn(services);
-    when(node.network()).thenReturn(network);
-    when(services.pluginManager()).thenReturn(pluginManager);
-    when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(true);
-
-    Misc misc = new Misc(core, config);
-
-    misc.setUPnP(true);
-
-    verify(network, never()).executor();
-    verify(pluginManager, never()).startPluginOfficial(anyString(), anyBoolean());
-    verify(pluginManager, never()).killPluginByClass(anyString(), anyLong());
-  }
-
-  @Test
-  void setUPnP_whenEnableAndPluginNotLoaded_schedulesStartPluginOfficial() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    Config config = mock(Config.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    PluginManager pluginManager = mock(PluginManager.class);
-    PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-
-    when(core.getNode()).thenReturn(node);
-    when(node.services()).thenReturn(services);
-    when(node.network()).thenReturn(network);
-    when(services.pluginManager()).thenReturn(pluginManager);
-    when(network.executor()).thenReturn(executor);
-    doNothing().when(executor).execute(any(Runnable.class));
-    when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(false);
-
-    Misc misc = new Misc(core, config);
-
-    ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-    misc.setUPnP(true);
-
-    verify(executor, times(1)).execute(runnableCaptor.capture());
-    Runnable job = runnableCaptor.getValue();
-    assertNotNull(job);
-
-    job.run();
-
-    verify(pluginManager, times(1)).startPluginOfficial("UPnP", true);
-    verify(pluginManager, never()).killPluginByClass(anyString(), anyLong());
-  }
-
-  @Test
-  void setUPnP_whenDisableAndPluginLoaded_schedulesKillPluginByClass() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    Config config = mock(Config.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    PluginManager pluginManager = mock(PluginManager.class);
-    PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-
-    when(core.getNode()).thenReturn(node);
-    when(node.services()).thenReturn(services);
-    when(node.network()).thenReturn(network);
-    when(services.pluginManager()).thenReturn(pluginManager);
-    when(network.executor()).thenReturn(executor);
-    doNothing().when(executor).execute(any(Runnable.class));
-    when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(true);
-
-    Misc misc = new Misc(core, config);
-
-    ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-    misc.setUPnP(false);
-
-    verify(executor, times(1)).execute(runnableCaptor.capture());
-    Runnable job = runnableCaptor.getValue();
-    assertNotNull(job);
-
-    job.run();
-
-    verify(pluginManager, times(1)).killPluginByClass(UPNP_PLUGIN_CLASS, 5000L);
-    verify(pluginManager, never()).startPluginOfficial(anyString(), anyBoolean());
+    assertDoesNotThrow(misc::setUPnP);
   }
 
   private static List<HTMLNode> findNodes(HTMLNode root, Predicate<HTMLNode> predicate) {

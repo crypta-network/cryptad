@@ -110,7 +110,7 @@ public final class NodeBootstrap {
    * Resolves and registers the node's program directories with configuration defaults.
    *
    * <p>This method selects default paths based on whether the runtime is in service mode, then
-   * registers the standard directory options (user, config, node data, run, and plugin) via {@link
+   * registers the standard directory options (user, config, node data, and run) via {@link
    * Node#setupProgramDir(SubConfig, String, String, String, String)}. It returns a {@link
    * NodeProgramDirs} record containing the resolved {@link ProgramDirectory} instances. The call
    * performs filesystem setup through {@code ProgramDirectory.move}, so it may throw {@link
@@ -122,7 +122,7 @@ public final class NodeBootstrap {
    *
    * @param installConfig configuration section that stores directory paths and defaults; must not
    *     be {@code null} and must be writable during bootstrap.
-   * @return resolved program directories for user, config, node data, run, and plugin locations.
+   * @return resolved program directories for user, config, node data, and run locations.
    * @throws NodeInitException if a directory cannot be created, moved, or registered as required.
    */
   public NodeProgramDirs setupProgramDirectories(SubConfig installConfig) throws NodeInitException {
@@ -164,15 +164,7 @@ public final class NodeBootstrap {
     ProgramDirectory runDirLocal =
         node.setupProgramDir(
             installConfig, "runDir", defaultRunDir.toString(), "Node.runDir", "Node.runDirLong");
-    ProgramDirectory pluginDirLocal =
-        node.setupProgramDir(
-            installConfig,
-            "pluginDir",
-            defaultDataDir.resolve("plugins").toString(),
-            "Node.pluginDir",
-            "Node.pluginDirLong");
-    return new NodeProgramDirs(
-        userDirLocal, cfgDirLocal, nodeDirLocal, runDirLocal, pluginDirLocal);
+    return new NodeProgramDirs(userDirLocal, cfgDirLocal, nodeDirLocal, runDirLocal);
   }
 
   /**
@@ -345,21 +337,19 @@ public final class NodeBootstrap {
    * Bundles the resolved program directory instances created during bootstrap.
    *
    * <p>This record groups the standard directory set required by the node: user configuration,
-   * configuration files, node data, runtime files, and plugins. It is an immutable value type
-   * returned by {@link #setupProgramDirectories(SubConfig)} and is safe to share across threads.
+   * configuration files, node data, and runtime files. It is an immutable value type returned by
+   * {@link #setupProgramDirectories(SubConfig)} and is safe to share across threads.
    *
    * @param userDir directory holding per-user configuration and state.
    * @param cfgDir directory where configuration files are stored and loaded.
    * @param nodeDir directory containing node data files and persisted state.
    * @param runDir directory for runtime-only files such as sockets or locks.
-   * @param pluginDir directory containing plugin jars and plugin state.
    */
   public record NodeProgramDirs(
       ProgramDirectory userDir,
       ProgramDirectory cfgDir,
       ProgramDirectory nodeDir,
-      ProgramDirectory runDir,
-      ProgramDirectory pluginDir) {}
+      ProgramDirectory runDir) {}
 
   private static final class EntropyGatheringTask implements Runnable {
     private static final int EXTEND_BY = 60 * 60 * 1000;

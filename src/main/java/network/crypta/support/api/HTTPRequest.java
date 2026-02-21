@@ -16,7 +16,7 @@ import javax.naming.SizeLimitExceededException;
  * String} or empty array) over {@code null}. Callers should explicitly check return values and use
  * the "throwing" variants where they need strict failure signaling.
  *
- * <p>Resource management: implementations may spool multipart parts to disk. Call {@link
+ * <p>Resource management: implementations may spool multipart parts to the disk. Call {@link
  * #freeParts()} when finished to release any associated resources; after freeing, part accessors
  * may throw {@link IllegalStateException}.
  *
@@ -28,7 +28,7 @@ public interface HTTPRequest {
   /**
    * Returns the request path.
    *
-   * <p>The segment identifying the toadlet/plugin is already removed from this path.
+   * <p>The segment identifying the dispatched toadlet is already removed from this path.
    *
    * @return the normalized path component of the request URI
    */
@@ -116,7 +116,7 @@ public interface HTTPRequest {
   /**
    * Returns all values of a parameter.
    *
-   * <p>The returned array is never {@code null}. If the parameter is absent the array is empty.
+   * <p>The returned array is never {@code null}. If the parameter is absent, the array is empty.
    *
    * @param name the parameter name
    * @return all values, which may include empty strings

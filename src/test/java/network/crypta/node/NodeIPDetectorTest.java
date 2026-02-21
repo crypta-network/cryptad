@@ -5,6 +5,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import network.crypta.compat.DetectedIP;
+import network.crypta.compat.ExternalIpDetector;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -15,8 +17,6 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.InvalidAddressOverrideUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.pluginmanager.DetectedIP;
-import network.crypta.pluginmanager.FredPluginIPDetector;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -190,7 +190,7 @@ class NodeIPDetectorTest {
     assertTrue(det.isDetecting()); // PM isn't yet signaled
 
     // Signal plugin manager completion
-    det.hasDetectedPM();
+    det.markExternalDetectionsComplete();
     assertFalse(det.isDetecting());
   }
 
@@ -302,8 +302,8 @@ class NodeIPDetectorTest {
     verify(alerts).register(any(UserAlert.class));
 
     // Register a detector plugin; the method should now unregister the alert
-    FredPluginIPDetector plugin = mock(FredPluginIPDetector.class);
-    det.registerIPDetectorPlugin(plugin);
+    ExternalIpDetector plugin = mock(ExternalIpDetector.class);
+    det.registerExternalIpDetector(plugin);
     det.setMaybeSymmetric();
     verify(alerts).unregister(any(UserAlert.class));
   }

@@ -196,11 +196,11 @@ class GenericReadFilterCallbackTest {
     // absolute form action -> rejected
     assertThrows(CommentException.class, () -> cb.processForm("GET", "http://example.com/"));
 
-    // plugin action accepted
-    assertEquals("/plugins/My.Plugin", cb.processForm("GET", "/plugins/My.Plugin"));
+    // non-library internal form action removed
+    assertNull(cb.processForm("GET", "/apps/My.App"));
 
     // traversal attempt rejected
-    assertThrows(CommentException.class, () -> cb.processForm("GET", "/plugins/../evil"));
+    assertThrows(CommentException.class, () -> cb.processForm("GET", "/apps/../evil"));
   }
 
   @Test

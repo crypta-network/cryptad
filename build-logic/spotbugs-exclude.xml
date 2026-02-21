@@ -944,10 +944,6 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.clients.http.PproxyToadlet"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     <Class name="network.crypta.clients.http.QueueToadlet"/>
   </Match>
   <Match>
@@ -1148,15 +1144,15 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.IPDetectorPluginManager$DetectorRunner"/>
+    <Class name="network.crypta.node.IPDetectorManager$DetectorRunner"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.IPDetectorPluginManager$MyUserAlert"/>
+    <Class name="network.crypta.node.IPDetectorManager$MyUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.IPDetectorPluginManager$PortForwardAlert"/>
+    <Class name="network.crypta.node.IPDetectorManager$PortForwardAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
@@ -1461,26 +1457,6 @@
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     <Class name="network.crypta.node.useralerts.UserAlertManager"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.pluginmanager.OfficialPlugins$OfficialPluginDefinition"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.pluginmanager.PluginInfoWrapper"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.pluginmanager.PluginManager"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.pluginmanager.PluginRespirator"/>
-  </Match>
-  <Match>
-    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.pluginmanager.PluginStores"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

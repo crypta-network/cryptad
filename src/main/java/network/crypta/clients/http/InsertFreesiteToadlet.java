@@ -11,7 +11,7 @@ import network.crypta.support.api.HTTPRequest;
  * Renders the informational page that guides users through inserting a freesite into Crypta via the
  * browser interface. The toadlet builds a static set of localized instructions, curated links to
  * helper tools (jSite, FlogHelper, Thingamablog), and direct pointers to on-network tutorials that
- * explain freesite publishing. It does not perform any network I/O itself; instead it acts purely
+ * explain freesite publishing. It does not perform any network I/O itself; instead, it acts purely
  * as a documentation surface so users can choose the workflow that fits their experience level.
  *
  * <p>Usage pattern:
@@ -26,7 +26,7 @@ import network.crypta.support.api.HTTPRequest;
  *
  * <p>Thread-safety: instances are stateless and rely on the provided context for per-request data,
  * so they are safe to use concurrently when the container hands each request its own context. The
- * localization and link content is fixed at compile time, which avoids runtime variability and
+ * localization and link content are fixed at compile time, which avoids runtime variability and
  * keeps the rendered HTML deterministic for testing.
  */
 public class InsertFreesiteToadlet extends Toadlet {
@@ -44,7 +44,7 @@ public class InsertFreesiteToadlet extends Toadlet {
   /**
    * Handle {@code GET /insertsite/} by emitting a localized help page that explains how to publish
    * a freesite. The method assembles a {@link PageNode}, injects the current alert summary, builds
-   * an infobox with helper links (plugins page, jSite downloads, on-network tutorials, and
+   * an infobox with helper links (FlogHelper, jSite downloads, on-network tutorials, and
    * Thingamablog), and returns a 200 OK HTML response via {@link #writeHTMLReply(ToadletContext,
    * int, String, String)}. No request parameters are inspected and no state is modified.
    *
@@ -72,12 +72,7 @@ public class InsertFreesiteToadlet extends Toadlet {
 
     contentBox.addChild("p", l10n("content1"));
 
-    NodeL10n.getBase()
-        .addL10nSubstitution(
-            contentBox.addChild("p"),
-            "InsertFreesiteToadlet.contentFlogHelper",
-            new String[] {"plugins"},
-            new HTMLNode[] {HTMLNode.link(PproxyToadlet.PLUGINS_PATH)});
+    contentBox.addChild("p", l10n("contentFlogHelper"));
 
     NodeL10n.getBase()
         .addL10nSubstitution(

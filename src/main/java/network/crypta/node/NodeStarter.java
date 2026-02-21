@@ -230,9 +230,7 @@ public class NodeStarter implements WrapperListener {
     configFS.put("fcp.enabled", params.isEnableFCP());
     configFS.put("fcp.port", 9481);
     configFS.put("fcp.ssl", false);
-    configFS.put("pluginmanager.enabled", params.isEnablePlugins());
     configFS.put("console.enabled", false);
-    configFS.putSingle("pluginmanager.loadplugin", "");
     configFS.put("node.updater.enabled", false);
     configFS.putSingle("node.install.tempDir", new File(portDir, "temp").toString());
     configFS.putSingle("node.install.storeDir", new File(portDir, "store").toString());
@@ -821,7 +819,6 @@ public class NodeStarter implements WrapperListener {
     private boolean useSlashdotCache;
     private String ipAddressOverride;
     private boolean enableFCP;
-    private boolean enablePlugins;
 
     /** Creates a parameter set with defaults suitable for local test-node initialization. */
     public TestNodeParameters() {
@@ -1258,25 +1255,6 @@ public class NodeStarter implements WrapperListener {
      */
     public void setEnableFCP(boolean enableFCP) {
       this.enableFCP = enableFCP;
-    }
-
-    /**
-     * Returns whether plugin loading is enabled for the test node.
-     *
-     * @return {@code true} when plugin loading is enabled
-     */
-    public boolean isEnablePlugins() {
-      return enablePlugins;
-    }
-
-    /**
-     * Sets whether plugin loading is enabled for the test node.
-     *
-     * @param enablePlugins {@code true} to enable plugin loading
-     */
-    @SuppressWarnings("unused")
-    public void setEnablePlugins(boolean enablePlugins) {
-      this.enablePlugins = enablePlugins;
     }
   }
 

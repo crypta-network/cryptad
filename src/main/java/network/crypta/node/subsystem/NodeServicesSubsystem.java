@@ -42,7 +42,7 @@ import network.crypta.support.io.ArrayBucketFactory;
  *
  * <ul>
  *   <li>Starting and exposing the FProxy web interface.
- *   <li>Wiring updater, diagnostics, and plugin manager instances.
+ *   <li>Wiring updater and diagnostics instances.
  *   <li>Managing user alerts and persisted visibility flags.
  * </ul>
  *
@@ -56,7 +56,6 @@ public final class NodeServicesSubsystem {
   private network.crypta.node.NodeClientCore clientCore;
   private network.crypta.node.updater.NodeUpdateManager nodeUpdater;
   private network.crypta.node.diagnostics.DefaultNodeDiagnostics nodeDiagnostics;
-  private network.crypta.pluginmanager.PluginManager pluginManager;
   private network.crypta.node.SecurityLevels securityLevels;
   private MeaningfulNodeNameUserAlert nodeNameUserAlert;
   private volatile boolean showFriendsVisibilityAlert;
@@ -147,7 +146,7 @@ public final class NodeServicesSubsystem {
   }
 
   /**
-   * Assigns the node updater used for core and plugin update coordination.
+   * Assigns the node updater used for core update coordination.
    *
    * <p>This setter stores the updater reference without initiating any background work. It is
    * commonly called from {@link #initUpdater(PersistentConfig)} once configuration is available,
@@ -231,32 +230,6 @@ public final class NodeServicesSubsystem {
     Ticker ticker = network.ticker();
     this.nodeDiagnostics =
         new network.crypta.node.diagnostics.DefaultNodeDiagnostics(network.stats(), ticker);
-  }
-
-  /**
-   * Stores the plugin manager used for plugin lifecycle coordination.
-   *
-   * <p>The stored reference is used by other subsystems to query or interact with plugins. This
-   * method does not start or stop any plugins; it only wires the instance into this subsystem. Use
-   * this setter after the plugin manager has been constructed and configured by the node.
-   *
-   * @param pluginManager plugin manager to store; may be {@code null} to clear it.
-   */
-  public void setPluginManager(network.crypta.pluginmanager.PluginManager pluginManager) {
-    this.pluginManager = pluginManager;
-  }
-
-  /**
-   * Returns the configured plugin manager instance.
-   *
-   * <p>The reference is {@code null} until {@link #setPluginManager} is called. Callers should not
-   * manage the lifecycle of the returned manager directly, as it is owned by the node. Callers
-   * should handle {@code null} during early startup.
-   *
-   * @return the current plugin manager, or {@code null} if not set.
-   */
-  public network.crypta.pluginmanager.PluginManager pluginManager() {
-    return pluginManager;
   }
 
   /**

@@ -1,8 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.l10n.BaseL10n;
-import network.crypta.pluginmanager.FredPluginConfigurable;
-import network.crypta.support.HTMLNode;
 import network.crypta.support.api.StringCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -165,23 +163,5 @@ class StringOptionTest {
     assertFalse(opt.isDefault());
     opt.setDefault();
     assertTrue(opt.isDefault());
-  }
-
-  @Test
-  void getShortAndLongDescNode_withPlugin_expectPluginStrings() {
-    Config cfg = new Config();
-    SubConfig sc = cfg.createSubConfig("test");
-    StringCallback cb = Mockito.mock(StringCallback.class);
-    StringOption opt = newOption(sc, cb);
-
-    FredPluginConfigurable plugin = Mockito.mock(FredPluginConfigurable.class);
-    Mockito.when(plugin.getString(SHORT_KEY)).thenReturn("SHORT from plugin");
-    Mockito.when(plugin.getString(LONG_KEY)).thenReturn("LONG from plugin");
-
-    HTMLNode shortNode = opt.getShortDescNode(plugin);
-    HTMLNode longNode = opt.getLongDescNode(plugin);
-
-    assertEquals("SHORT from plugin", shortNode.generate());
-    assertEquals("LONG from plugin", longNode.generate());
   }
 }
