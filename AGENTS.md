@@ -17,8 +17,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, SpotBugs, Gradle dependency verification (verification-metadata), SonarLint, Error Prone, JaCoCo coverage, and SonarCloud uploads.
 - **$cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
 - **$cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
-- **$cryptad-git-workflow** — Follow repository etiquette: branch naming, GitFlow merges, conventional commits, PR rules, and strict git identity policy.
-- **$cryptad-git-workflow-reference** — Reference guide for Cryptad branching/release rules (`main`/`develop`, supporting branch types, version tags, merge rules, and checklists).
+- **$cryptad-git-workflow** — Canonical guide for branch/release policy: GitFlow naming, integer build version/tags, merge rules, PR policy, and strict git identity safeguards.
 - **$cryptad-start-work-branch** — Start `feature/*` or `bugfix/*` work from `develop` with naming, Conventional Commits, and PR policy.
 - **$cryptad-release-workflow** — Run release branch flow: cut/stabilize `release/<build-number>`, set integer build version, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
@@ -49,7 +48,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
-- **Branch workflow questions:** For branch model/merge/tag/version policy questions, load `$cryptad-git-workflow-reference`.
+- **Branch workflow questions:** For branch model/merge/tag/version policy questions, load `$cryptad-git-workflow`.
 - **Starting feature/bugfix work:** Before creating a new `feature/*` or `bugfix/*` branch, load `$cryptad-start-work-branch`.
 - **Release operations:** For `release/<build-number>` branch creation/stabilization, version bumping, tagging, and merge-back flow, load `$cryptad-release-workflow`.
 - **Hotfix operations:** For urgent production fixes via `hotfix/<build-number>`, including tags and back-merges, load `$cryptad-hotfix-workflow`.
