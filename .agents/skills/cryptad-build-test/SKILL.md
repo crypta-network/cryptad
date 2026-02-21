@@ -5,7 +5,7 @@ compatibility: opencode
 metadata:
   area: build
   domain: cryptad
-  lang: java-kotlin
+  lang: java
 ---
 
 ## When to use
@@ -13,7 +13,7 @@ Use this skill when you need to:
 - Build the node JAR, run tests, or compile the project.
 - Run a single test class/method during debugging.
 - Validate that your local build can be deployed to a running node.
-- Diagnose Gradle/Java toolchain issues (Java 25+, Kotlin 2.3+).
+- Diagnose Gradle/Java toolchain issues (Java 25+).
 
 ## Guardrails (must follow)
 - Always use the Gradle wrapper: `./gradlew …`
@@ -49,7 +49,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Pass daemon CLI args:
   - `./gradlew run --args="--help"`
   - `./gradlew run --args="--version"`
-- Run Swing launcher entrypoint (`LauncherKt`):
+- Run Swing launcher entrypoint (`Launcher`):
   - `./gradlew runLauncher`
 
 ## Run your build (manual deployment)
@@ -60,12 +60,10 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 
 ## Environment expectations
 - Java: 25 or higher
-- Kotlin: 2.3.0 or higher (matches `gradle/libs.versions.toml`)
-- The `ki` shell is installed in the environment.
 
 ## JUnit 6 notes (when touching tests)
 - Tests run on the JUnit Platform (`useJUnitPlatform()` in build logic).
-- Prefer JUnit Jupiter + Kotlin test utilities; do not add JUnit 4/Vintage unless explicitly requested for migration-only work.
+- Prefer JUnit Jupiter APIs; do not add JUnit 4/Vintage unless explicitly requested for migration-only work.
 - JUnit 6 introduces `org.jspecify:jspecify` (nullability annotations). If strict dependency verification blocks resolution, follow the project’s dependency-verification refresh procedure (see the build tooling skill).
 
 ## Test helpers (test sources only)

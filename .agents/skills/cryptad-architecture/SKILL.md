@@ -81,6 +81,6 @@ Use this skill when you need to:
 
 ## Versioning system
 - A single integer build number is set in `build.gradle.kts` (`version = "<int>"`).
-- Version tokens are replaced into `network/crypta/node/Version.kt` during build (`@build_number@`, `@git_rev@`).
+- Version tokens are replaced into `network/crypta/node/Version.java` during build (`@build_number@`, `@git_rev@`).
 - Version strings support both Cryptad and Fred formats; compatibility enforces protocol match and minimum builds.
 - Freenet interop uses historical identifiers (e.g., `"Fred,0.7"`) for wire compatibility where applicable.

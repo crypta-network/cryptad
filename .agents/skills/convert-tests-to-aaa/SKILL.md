@@ -18,7 +18,7 @@ Use either format:
 **Two lines**
 ```
 $convert-tests-to-aaa
-Target file: src/test/kotlin/com/acme/FooServiceTest.kt
+Target file: src/test/java/com/acme/FooServiceTest.java
 ```
 
 Treat the file path as **relative to the repository root**, unless the user clearly indicates otherwise.

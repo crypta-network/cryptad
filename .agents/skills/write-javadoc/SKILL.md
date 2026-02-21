@@ -1,11 +1,11 @@
 ---
 name: write-javadoc
 description: |
-  For a single file, fix doclint-clean Javadoc (Java) or KDoc (Kotlin) issues and enrich
-  public/protected API docs with substantive long-form documentation, without changing code behavior.
+  For a single file, fix doclint-clean Javadoc (Java) issues and enrich public/protected API docs
+  with substantive long-form documentation, without changing code behavior.
 ---
 
-# Doclint-clean Javadoc/KDoc for one file (long-form for large files)
+# Doclint-clean Javadoc for one file (long-form for large files)
 
 ## How to invoke (provide the “input” in your message)
 Skills don’t take positional/structured parameters. When you invoke this skill, include the target file path.
@@ -18,7 +18,7 @@ Use either format:
 **Two lines**
 ```
 $write-javadoc
-Target file: src/main/kotlin/com/acme/FooService.kt
+Target file: src/main/java/com/acme/FooService.java
 ```
 
 Treat the file path as **relative to the repository root**, unless the user clearly indicates otherwise.
@@ -35,7 +35,6 @@ For the target file:
 
 ## File type & scope
 - If the target ends with **`.java`**: apply **Javadoc** rules and run **doclint** (loop below).
-- If the target ends with **`.kt`**: apply **KDoc** rules; **do not** run doclint.
 - Otherwise: return unchanged.
 
 ### Allowed edits
@@ -142,7 +141,6 @@ Expand docs per **Length & Depth Controls** and **Prioritization** below (still 
   - Concurrency/thread-safety and mutability (if applicable).
 - Bullets: add a short list when helpful (e.g., Responsibilities, Notable behaviors).
   - Java: valid HTML lists.
-  - Kotlin: Markdown lists.
 - See also: `@see` or inline `{@link ...}` for closely related symbols that resolve.
 
 ### Methods / constructors (public & protected)
@@ -188,14 +186,7 @@ When the file has many public/protected members (e.g., > 30):
 
 ---
 
-## KDoc rules (Kotlin)
-- Markdown allowed; backticks for code.
-- Tags: `@param`, `@return`, `@throws`, `@receiver`, `@constructor`, `@property`, and type params via `@param T`.
-- Same scope constraints as Java; no doclint.
-
----
-
-## Inline comments (both languages)
+## Inline comments
 - Prefer short `//` comments for non-obvious intent (invariants, edge cases, concurrency), <= 2 short lines, placed above the code.
 - Use `/* … */` for slightly longer local notes (not doc blocks).
 - Remove stale or self-evident comments; fix grammar and outdated names.
@@ -212,7 +203,7 @@ When the file has many public/protected members (e.g., > 30):
 
 ## Preservation & promotion
 - Preserve license headers, annotations, and any valid existing docs; improve wording/formatting where helpful.
-- Promote meaningful `//` explanations of public/protected behavior to proper Javadoc/KDoc when appropriate (without moving/duplicating placeholder markers).
+- Promote meaningful `//` explanations of public/protected behavior to proper Javadoc when appropriate (without moving/duplicating placeholder markers).
 - Keep private/internal docs concise.
 
 ---
