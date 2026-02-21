@@ -68,12 +68,18 @@ Set/confirm the base branch:
 Example bash snippet (adjust if you set `BASE_BRANCH` some other way):
 
 ```bash
-# If the user explicitly asked for a base branch, set it here; otherwise leave default.
-BASE_BRANCH="${BASE_BRANCH:-develop}"
+# If the user explicitly asked for a base branch, set BASE_BRANCH before this block.
+# This flag preserves whether BASE_BRANCH came from user input or the default.
+USER_SPECIFIED_BASE="${USER_SPECIFIED_BASE:-false}"
+if [ -z "${BASE_BRANCH:-}" ]; then
+  BASE_BRANCH="develop"
+else
+  USER_SPECIFIED_BASE=true
+fi
 
 # Ensure the remote base exists (fallback to main only if develop is missing and not user-specified).
 if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
-  if [ "$BASE_BRANCH" = "develop" ]; then
+  if [ "$BASE_BRANCH" = "develop" ] && [ "$USER_SPECIFIED_BASE" = "false" ]; then
     BASE_BRANCH="main"
   fi
 fi
