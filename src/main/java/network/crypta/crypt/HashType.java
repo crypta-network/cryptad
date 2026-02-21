@@ -87,6 +87,7 @@ public enum HashType {
   }
 
   /** MessageDigest adapter that delegates to the streaming TigerTree implementation. */
+  @SuppressWarnings("java:S2257")
   private static final class TigerTreeMessageDigest extends MessageDigest {
     private final TigerTree delegate;
 

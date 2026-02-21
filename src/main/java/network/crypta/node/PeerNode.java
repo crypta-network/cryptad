@@ -213,7 +213,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private final OutgoingPacketMangler outgoingMangler;
 
   /** Advertised addresses. CopyOnWriteArrayList supports lock-free iteration by readers. */
-  CopyOnWriteArrayList<Peer> nominalPeer;
+  @SuppressWarnings("java:S3077")
+  volatile CopyOnWriteArrayList<Peer> nominalPeer;
 
   /** The PeerNode's report of our IP address */
   private Peer remoteDetectedPeer;

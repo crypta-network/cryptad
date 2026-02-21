@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Covers: happy-path encoding, preservation of allowed characters, multibyte UTF-8, anchors,
  * already-encoded sequences, zero-padding, null handling, and URI construction success/error paths.
  */
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 class URIPreEncoderTest {
 
   private static final String ALL_CHARS = new String(UTFUtil.allCharacters());
@@ -89,7 +89,11 @@ class URIPreEncoderTest {
   @Test
   @SuppressWarnings("DataFlowIssue")
   void encode_whenNull_expectNullPointerException() {
-    assertThrows(NullPointerException.class, () -> URIPreEncoder.encode(null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(URIPreEncoder.encode(null));
+        });
   }
 
   @Test

@@ -17,7 +17,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 @DisplayName("NullInputStream")
-@SuppressWarnings("java:S100") // test naming style: method_whenCondition_expectOutcome
+@SuppressWarnings({"java:S100", "java:S5778"})
 class NullInputStreamTest {
 
   @Test
@@ -100,7 +100,11 @@ class NullInputStreamTest {
   void readWithOffset_whenInvalidArgs_expectIndexOutOfBounds(byte[] buf, int off, int len)
       throws Exception {
     try (InputStream in = new NullInputStream()) {
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(buf, off, len));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(in.read(buf, off, len));
+          });
     }
   }
 
@@ -108,7 +112,11 @@ class NullInputStreamTest {
   @Test
   void readWithNullArray_whenCalled_expectNullPointerException() {
     try (InputStream in = new NullInputStream()) {
-      assertThrows(NullPointerException.class, () -> in.read(null, 0, 1));
+      assertThrows(
+          NullPointerException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(in.read(null, 0, 1));
+          });
     } catch (IOException e) {
       fail(e);
     }

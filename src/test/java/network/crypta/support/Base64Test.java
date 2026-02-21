@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
  * Tests for {@link Base64}. AAA style, deterministic, parameterized where useful. Includes Mockito
  * for simple I/O and time mocking without changing production code.
  */
+@SuppressWarnings("java:S5778")
 class Base64Test {
 
   private static final String ILLEGAL_CHAR_MSG = "illegal Base64 character";
@@ -277,14 +278,22 @@ class Base64Test {
   @DisplayName("encode_whenNullBytes_expectNullPointerException")
   void encodeWhenNullBytesExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> Base64.encode(null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Base64.encode(null));
+        });
   }
 
   @Test
   @DisplayName("encodeUTF8_whenNull_expectNullPointerException")
   void encodeUtf8WhenNullExpectNullPointerException() {
     // Arrange & Act & Assert
-    assertThrows(NullPointerException.class, () -> Base64.encodeUTF8(null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Base64.encodeUTF8(null));
+        });
   }
 
   @Test
@@ -343,7 +352,8 @@ class Base64Test {
     // Assert
     assertArrayEquals(data, readAll);
     assertArrayEquals(data, decoded);
-    verify(is, atLeastOnce()).read(any(byte[].class));
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(is, atLeastOnce()).read(any(byte[].class)));
   }
 
   @Test

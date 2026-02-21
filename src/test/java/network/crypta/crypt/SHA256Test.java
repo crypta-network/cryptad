@@ -85,7 +85,8 @@ class SHA256Test {
     // Assert
     assertArrayEquals(expectedEmpty, md.digest());
     Mockito.verify(is, Mockito.times(1)).close();
-    Mockito.verify(is, Mockito.atLeastOnce()).read(ArgumentMatchers.any(byte[].class));
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        Mockito.verify(is, Mockito.atLeastOnce()).read(ArgumentMatchers.any(byte[].class)));
   }
 
   @Test

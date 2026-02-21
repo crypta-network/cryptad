@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * operations. Tests use deterministic byte patterns from fixed seeds to avoid flakiness. All tests
  * run single-threaded; concurrency validation is out of scope.
  */
+@SuppressWarnings("java:S5778")
 class ByteArrayRandomAccessBufferTest {
   private static final String READ_ONLY_MESSAGE = "Read-only";
   private static final String UNREACHABLE_MESSAGE = "unreachable";
@@ -83,7 +84,12 @@ class ByteArrayRandomAccessBufferTest {
   @SuppressWarnings("resource")
   void constructor_withNegativeSize_expectNegativeArraySizeException() {
     // Arrange + Act + Assert
-    assertThrows(NegativeArraySizeException.class, () -> new ByteArrayRandomAccessBuffer(-1));
+    assertThrows(
+        NegativeArraySizeException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              new ByteArrayRandomAccessBuffer(-1));
+        });
   }
 
   /**

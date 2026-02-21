@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100") // test method naming uses when/expect style
+@SuppressWarnings({"java:S100", "java:S5778"})
 @ExtendWith(MockitoExtension.class)
 class HashTest {
   private static final byte[] HELLO_WORLD = "hello world".getBytes(StandardCharsets.UTF_8);
@@ -256,7 +256,11 @@ class HashTest {
   void verify_whenFirstNull_expectNpe_andSecondNull_expectFalse() {
     HashResult some =
         new HashResult(HashType.SHA256, new Hash(HashType.SHA256).genHash(HELLO_WORLD));
-    assertThrows(NullPointerException.class, () -> Hash.verify(null, some));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Hash.verify(null, some));
+        });
     // Use an environment-dependent path so static analysis does not flag a constant null,
     // while keeping the outcome deterministically false in both branches.
     HashResult other =

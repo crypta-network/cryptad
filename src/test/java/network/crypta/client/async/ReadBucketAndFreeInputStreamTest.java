@@ -20,7 +20,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 @ExtendWith(MockitoExtension.class)
 class ReadBucketAndFreeInputStreamTest {
 
@@ -104,8 +104,18 @@ class ReadBucketAndFreeInputStreamTest {
       byte[] buf = new byte[2];
       int negativeOff = invalidNegativeOffset();
       int tooLargeLen = invalidLength(buf);
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, negativeOff, 1));
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, 0, tooLargeLen));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                is.read(buf, negativeOff, 1));
+          });
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                is.read(buf, 0, tooLargeLen));
+          });
     }
   }
 
@@ -117,7 +127,11 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       //noinspection DataFlowIssue
-      assertThrows(NullPointerException.class, () -> is.read(null));
+      assertThrows(
+          NullPointerException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(null));
+          });
     }
   }
 
@@ -180,7 +194,12 @@ class ReadBucketAndFreeInputStreamTest {
     try (InputStream is = ReadBucketAndFreeInputStream.create(bucket)) {
       // Act + Assert
       byte[] buf = new byte[2];
-      IOException ex = assertThrows(IOException.class, () -> is.read(buf));
+      IOException ex =
+          assertThrows(
+              IOException.class,
+              () -> {
+                network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(buf));
+              });
       assertEquals("read-fail", ex.getMessage());
     }
   }

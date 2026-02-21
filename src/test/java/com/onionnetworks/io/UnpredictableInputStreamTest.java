@@ -104,7 +104,11 @@ class UnpredictableInputStreamTest {
       setRandom(stream, new SequenceRandom(0));
       stream.close();
 
-      assertThrows(IOException.class, () -> stream.skip(1));
+      assertThrows(
+          IOException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(stream.skip(1));
+          });
     }
   }
 

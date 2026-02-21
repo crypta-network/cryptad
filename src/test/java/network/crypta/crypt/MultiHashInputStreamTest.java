@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SuppressWarnings("java:S100") // Allow method names like method_whenCondition_expectOutcome
+@SuppressWarnings({"java:S100", "java:S5778"})
 class MultiHashInputStreamTest {
   private static final byte[] MESSAGE = "Hello, World!".getBytes(StandardCharsets.UTF_8);
   private static final String MESSAGE_MD5 = "65a8e27d8879283831b664bd8b7f0ad4";
@@ -81,7 +81,11 @@ class MultiHashInputStreamTest {
     ByteArrayInputStream input = new ByteArrayInputStream(MESSAGE);
     MultiHashInputStream hash = newHasher(input, HashType.MD5.bitmask);
 
-    assertThrows(NullPointerException.class, () -> hash.read(null, 0, 1));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(hash.read(null, 0, 1));
+        });
   }
 
   @Test
@@ -91,9 +95,22 @@ class MultiHashInputStreamTest {
 
     byte[] buf = new byte[4];
     int invalidOffset = Integer.parseInt("-1");
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, invalidOffset, 1));
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 0, -1));
-    assertThrows(IndexOutOfBoundsException.class, () -> hash.read(buf, 3, 2));
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              hash.read(buf, invalidOffset, 1));
+        });
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(hash.read(buf, 0, -1));
+        });
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(hash.read(buf, 3, 2));
+        });
   }
 
   @Test

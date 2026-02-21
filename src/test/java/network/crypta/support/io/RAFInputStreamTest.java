@@ -22,6 +22,7 @@ import static org.mockito.Mockito.*;
  * <p>Tests follow AAA style, use deterministic data, and cover null, empty, boundary, and error
  * paths. External I/O is mocked using Mockito.
  */
+@SuppressWarnings("java:S5778")
 class RAFInputStreamTest {
 
   @SuppressWarnings("java:S1172")
@@ -203,7 +204,11 @@ class RAFInputStreamTest {
     RandomAccessBuffer raf = stubRaf(patternBytes(4));
     try (RAFInputStream is = new RAFInputStream(raf, 0, 4)) {
       // Act & Assert
-      assertThrows(NullPointerException.class, () -> is.read(null));
+      assertThrows(
+          NullPointerException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(null));
+          });
     }
   }
 
@@ -217,8 +222,16 @@ class RAFInputStreamTest {
       byte[] buf = new byte[8];
 
       // Act & Assert
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, -1, 1));
-      assertThrows(IndexOutOfBoundsException.class, () -> is.read(buf, 0, 9));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(buf, -1, 1));
+          });
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(buf, 0, 9));
+          });
     }
   }
 
@@ -244,7 +257,11 @@ class RAFInputStreamTest {
     RandomAccessBuffer raf = stubRaf(content);
     try (RAFInputStream is = new RAFInputStream(raf, -1, 2)) {
       // Act & Assert
-      assertThrows(IllegalArgumentException.class, () -> is.read(new byte[1]));
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(is.read(new byte[1]));
+          });
     }
   }
 

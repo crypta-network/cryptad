@@ -74,8 +74,9 @@ public final class ConfigMigrator {
         CryptadConfig.copyIfMissing(exeCfg, cfgFile);
         LOG.info("Migrated cryptad.ini from executable dir to {}", cfgFile);
       } else {
-        if (cfgFile.getParent() != null && !Files.exists(cfgFile.getParent())) {
-          Files.createDirectories(cfgFile.getParent());
+        Path cfgParent = cfgFile.getParent();
+        if (cfgParent != null && !Files.exists(cfgParent)) {
+          Files.createDirectories(cfgParent);
         }
         Files.writeString(cfgFile, CryptadConfig.DEFAULT_TEMPLATE);
         LOG.info("Created default cryptad.ini at {}", cfgFile);

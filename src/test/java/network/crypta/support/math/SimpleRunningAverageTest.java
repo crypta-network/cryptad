@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@SuppressWarnings("java:S5778")
 class SimpleRunningAverageTest {
   private static final double EPS = 1e-9;
 
@@ -208,7 +209,11 @@ class SimpleRunningAverageTest {
     assertEquals(0L, avg.countReports());
 
     // Act & Assert: operations that access storage fail
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.valueIfReported(1.0));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(avg.valueIfReported(1.0));
+        });
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1.0));
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> avg.report(1L));
   }

@@ -35,7 +35,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings({"java:S100", "java:S2245"})
+@SuppressWarnings({"java:S100", "java:S2245", "java:S5778"})
 class PaddedEphemerallyEncryptedBucketTest {
 
   private static int invalidNegativeOffset() {
@@ -222,8 +222,18 @@ class PaddedEphemerallyEncryptedBucketTest {
       // Invalid bounds
       int invalidOffset = invalidNegativeOffset();
       int invalidLength = outOfBoundsLength(buf);
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, invalidOffset, 1));
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> is.read(buf, 0, invalidLength));
+      assertThrows(
+          ArrayIndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                is.read(buf, invalidOffset, 1));
+          });
+      assertThrows(
+          ArrayIndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                is.read(buf, 0, invalidLength));
+          });
 
       // Read rest
       byte[] rest = is.readAllBytes();

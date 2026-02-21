@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 class PointCostPairTest {
 
   private static PointCostPair constructPointCostPair(double[] point, double cost) {
@@ -52,7 +52,12 @@ class PointCostPairTest {
   void constructor_whenPointIsNull_throwsNullPointerException() {
     // Arrange
     // Act / Assert
-    assertThrows(NullPointerException.class, () -> constructPointCostPair(null, 1.0));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              constructPointCostPair(null, 1.0));
+        });
   }
 
   @Test

@@ -155,8 +155,53 @@
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.WrapperConfUtilsTest"/>
+    <Method name="upsertAndParseRoundTrip"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsTest"/>
+    <Method name="computeSnapRuntime_whenUidAndInstanceProvidedAndParentWritable_expectCandidate"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsTest"/>
+    <Method name="computeSnapRuntime_whenUidMissingAndRuntimeDirMatches_expectUidExtractedFromRuntimeDir"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsTest"/>
+    <Method name="computeSnapRuntime_whenUidMissingAndRuntimeDirDoesNotMatch_expectUidDefaultsToZero"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsTest"/>
+    <Method name="computeStandardXdgRuntime_whenFlatpakWithoutRuntimeDir_expectRunUserFromSystemProperties"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsTest"/>
+    <Method name="computeStandardXdgRuntime_whenRuntimeDirMissingAndParentWritable_expectRunUserPath"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.ServiceDirsTest"/>
+    <Method name="resolve_whenLinuxNoSystemdOverrides_expectDefaultLinuxServicePaths"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.ServiceDirsTest"/>
+    <Method name="resolve_whenMacService_expectLibraryServicePaths"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
     <Class name="network.crypta.node.NodeCliTest"/>
     <Method name="config_file_flag_overrides_positional"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.node.NodeCliTest"/>
+    <Method name="explicitConfigFile_whenPositionalProvided_expectPositionalValue"/>
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>

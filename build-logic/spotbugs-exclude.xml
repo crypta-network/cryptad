@@ -60,6 +60,16 @@
   </Match>
 
   <!--
+    InvokeEvent intentionally stores a transient runnable callback as runtime dispatch state.
+    Callback instances are not expected to survive serialization/deserialization boundaries.
+  -->
+  <Match>
+    <Bug pattern="SE_TRANSIENT_FIELD_NOT_RESTORED"/>
+    <Class name="com.onionnetworks.util.InvokeEvent"/>
+    <Field name="r"/>
+  </Match>
+
+  <!--
     These accessors intentionally expose process-wide singleton services. Defensive copying is not
     possible for SecureRandom/BaseL10n and would break call sites that rely on shared state.
   -->
@@ -109,6 +119,11 @@
     <Bug pattern="DM_EXIT"/>
     <Class name="~network\.crypta\.launcher\.CryptaLauncher\$quitApp\$.*"/>
     <Method name="invokeSuspend"/>
+  </Match>
+  <Match>
+    <Bug pattern="DM_EXIT"/>
+    <Class name="network.crypta.launcher.Launcher$CryptaLauncher"/>
+    <Method name="quitApp"/>
   </Match>
 
   <!--
@@ -501,10 +516,20 @@
     <Class name="network.crypta.fs.DirsKt"/>
     <Method name="computeStandardXdgRuntime"/>
   </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.Dirs"/>
+    <Method name="computeStandardXdgRuntime"/>
+  </Match>
 
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
     <Class name="network.crypta.fs.DirsKt"/>
+    <Method name="computeSnapRuntime"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.Dirs"/>
     <Method name="computeSnapRuntime"/>
   </Match>
 
@@ -512,6 +537,12 @@
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
     <Class name="network.crypta.fs.ServiceDirs"/>
     <Method name="computeBase"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherController"/>
+    <Method name="launchBrowserFallback"/>
   </Match>
 
   <Match>

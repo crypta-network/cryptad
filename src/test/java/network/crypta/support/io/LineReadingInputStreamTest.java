@@ -183,7 +183,8 @@ class LineReadingInputStreamTest {
 
     try (LineReadingInputStream in = new LineReadingInputStream(mocked)) {
       assertThrows(EOFException.class, () -> in.readLine(MAX_LENGTH, BUFFER_SIZE, true));
-      verify(mocked, atLeastOnce()).read(any(byte[].class), anyInt(), anyInt());
+      network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+          verify(mocked, atLeastOnce()).read(any(byte[].class), anyInt(), anyInt()));
       verify(mocked, never()).read();
     }
   }

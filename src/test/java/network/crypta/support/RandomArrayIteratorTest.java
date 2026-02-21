@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100") // Test method naming: method_whenCondition_expectOutcome
+@SuppressWarnings({"java:S100", "java:S5778"})
 class RandomArrayIteratorTest {
   private static final int NUM_ELEMENTS = 100;
 
@@ -38,7 +38,12 @@ class RandomArrayIteratorTest {
   @Test
   @DisplayName("constructor_whenArrayNull_expectNullPointerException")
   void constructor_whenArrayNull_expectNullPointerException() {
-    assertThrows(NullPointerException.class, () -> new RandomArrayIterator<>(null));
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+              new RandomArrayIterator<>(null));
+        });
   }
 
   @Test

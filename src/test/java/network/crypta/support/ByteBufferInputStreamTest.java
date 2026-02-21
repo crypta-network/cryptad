@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@SuppressWarnings("java:S5778")
 class ByteBufferInputStreamTest {
 
   @Test
@@ -88,9 +89,22 @@ class ByteBufferInputStreamTest {
     try (ByteBufferInputStream in = new ByteBufferInputStream(new byte[] {1, 2, 3})) {
       byte[] dst = new byte[2];
       int invalidOffset = Integer.parseInt("-1");
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, invalidOffset, 1));
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, 0, -1));
-      assertThrows(IndexOutOfBoundsException.class, () -> in.read(dst, 1, 2));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                in.read(dst, invalidOffset, 1));
+          });
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(in.read(dst, 0, -1));
+          });
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(in.read(dst, 1, 2));
+          });
     }
   }
 

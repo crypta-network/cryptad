@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "java:S5778"})
 @ExtendWith(MockitoExtension.class)
 class LzmaBenchTest {
   private java.io.PrintStream originalOut;
@@ -110,7 +110,12 @@ class LzmaBenchTest {
   @Test
   void myInputStream_readWithInvalidRange_throwsIndexOutOfBounds() throws Exception {
     try (LzmaBench.MyInputStream stream = new LzmaBench.MyInputStream(new byte[2], 2)) {
-      assertThrows(IndexOutOfBoundsException.class, () -> stream.read(new byte[1], 1, 1));
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                stream.read(new byte[1], 1, 1));
+          });
     }
   }
 

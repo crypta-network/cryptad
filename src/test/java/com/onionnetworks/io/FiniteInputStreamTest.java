@@ -72,7 +72,12 @@ class FiniteInputStreamTest {
       int read = stream.read(buffer, 0, buffer.length);
       assertEquals(2, read);
 
-      assertThrows(EOFException.class, () -> stream.read(new byte[1], 0, 1));
+      assertThrows(
+          EOFException.class,
+          () -> {
+            network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+                stream.read(new byte[1], 0, 1));
+          });
     }
   }
 

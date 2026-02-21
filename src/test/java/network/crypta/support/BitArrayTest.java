@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>These tests cover construction, serialization/deserialization, boundary conditions, and the
  * search helpers.
  */
+@SuppressWarnings("java:S5778")
 class BitArrayTest {
 
   private static final int SAMPLE_SIZE = 10;
@@ -94,7 +95,11 @@ class BitArrayTest {
 
     // Act & Assert
     assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.setBit(-1, true));
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.bitAt(-1));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(arr.bitAt(-1));
+        });
   }
 
   @Test
