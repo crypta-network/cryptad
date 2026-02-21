@@ -65,7 +65,8 @@ Set/confirm the base branch:
 - If the user specified a base branch, set `BASE_BRANCH` to it.
 - Validate it exists on `origin`.
 
-Resolve and validate base selection with the bundled script `scripts/resolve_base_branch.sh`:
+Resolve and validate base selection with the bundled script `scripts/resolve_base_branch.sh`
+(or `<path-to-skill>/scripts/resolve_base_branch.sh` if running from another directory):
 
 ```bash
 if [ -n "${BASE_BRANCH:-}" ]; then
