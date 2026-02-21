@@ -54,12 +54,16 @@ class LocalDownloadDirectoryToadletTest {
 
   private static Stream<Arguments> startingDirScenarios() {
     return Stream.of(
-        Arguments.of(new File[] {new File("all")}, new File("/downloads"), "/downloads"),
-        Arguments.of(new File[] {}, new File("/downloads"), "/downloads"),
+        Arguments.of(
+            new File[] {new File("all")},
+            new File("/downloads"),
+            new File("/downloads").getAbsolutePath()),
+        Arguments.of(
+            new File[] {}, new File("/downloads"), new File("/downloads").getAbsolutePath()),
         Arguments.of(
             new File[] {new File("/allowed/path"), new File("/other")},
             new File("/downloads"),
-            "/allowed/path"));
+            new File("/allowed/path").getAbsolutePath()));
   }
 
   @Test

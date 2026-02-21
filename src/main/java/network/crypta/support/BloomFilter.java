@@ -3,9 +3,12 @@ package network.crypta.support;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.Random;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -48,6 +51,12 @@ public abstract class BloomFilter implements AutoCloseable {
 
   /** Read/write lock guarding read and update operations. */
   protected ReadWriteLock lock = new ReentrantReadWriteLock();
+
+  /** Arena owning a mapped segment for deterministic unmapping on close. */
+  protected Arena mappedArena;
+
+  /** Mapped segment backing {@link #filter} when file-backed mapping is used. */
+  protected MemorySegment mappedSegment;
 
   // Cleaner action for safety net resource cleanup
   private final Cleaner.Cleanable cleanable;
@@ -177,6 +186,33 @@ public abstract class BloomFilter implements AutoCloseable {
 
     // Register cleaner for safety net (will be cleaned up when close() is called properly)
     this.cleanable = cleaner.register(this, new FilterCleanup(this));
+  }
+
+  /**
+   * Maps a channel region using an explicit arena so unmapping is deterministic on {@link
+   * #close()}.
+   *
+   * <p>Implementations that create file-backed filters should use this helper instead of the legacy
+   * three-argument {@link FileChannel#map(FileChannel.MapMode, long, long)} call.
+   *
+   * @param channel source file channel
+   * @param size region size in bytes
+   * @return byte buffer view over the mapped segment
+   * @throws IOException if mapping fails
+   */
+  protected final ByteBuffer mapReadWrite(FileChannel channel, long size) throws IOException {
+    Arena arena = Arena.ofShared();
+    try {
+      mappedArena = arena;
+      mappedSegment = channel.map(FileChannel.MapMode.READ_WRITE, 0, size, mappedArena);
+      mappedSegment.load();
+      return mappedSegment.asByteBuffer();
+    } catch (IOException | RuntimeException e) {
+      mappedSegment = null;
+      mappedArena = null;
+      arena.close();
+      throw e;
+    }
   }
 
   // -- Core
@@ -409,6 +445,10 @@ public abstract class BloomFilter implements AutoCloseable {
    * <p>No effect for heap buffers.
    */
   public void force() {
+    if (mappedSegment != null) {
+      mappedSegment.force();
+      return;
+    }
     if (filter instanceof MappedByteBuffer buffer) {
       buffer.force();
     }
@@ -427,6 +467,11 @@ public abstract class BloomFilter implements AutoCloseable {
     }
     filter = null;
     forkedFilter = null;
+    mappedSegment = null;
+    if (mappedArena != null) {
+      mappedArena.close();
+      mappedArena = null;
+    }
 
     // Clean up the cleaner since we've properly closed resources
     if (cleanable != null) {

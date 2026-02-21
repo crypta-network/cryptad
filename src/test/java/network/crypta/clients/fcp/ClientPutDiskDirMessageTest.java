@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -94,7 +95,7 @@ class ClientPutDiskDirMessageTest {
     Path file = Files.writeString(tempDir.resolve("index.html"), "<html>");
     Path nestedDir = Files.createDirectory(tempDir.resolve("assets"));
     Path nestedFile = Files.writeString(nestedDir.resolve("style.css"), "body");
-    Files.writeString(tempDir.resolve(".secret"), "hidden");
+    Path hiddenFile = createHiddenFile(tempDir);
 
     ClientPutDiskDirMessage message = newMessage(tempDir);
 
@@ -105,7 +106,7 @@ class ClientPutDiskDirMessageTest {
     verify(handler).startClientPutDir(eq(message), bucketsCaptor.capture(), eq(true));
     HashMap<String, Object> buckets = bucketsCaptor.getValue();
 
-    assertFalse(buckets.containsKey(".secret"));
+    assertFalse(buckets.containsKey(hiddenFile.getFileName().toString()));
 
     ManifestElement rootElement = (ManifestElement) buckets.get("index.html");
     assertEquals("index.html", rootElement.fullName);
@@ -222,5 +223,19 @@ class ClientPutDiskDirMessageTest {
       fs.put("includeHiddenFiles", true);
     }
     return new ClientPutDiskDirMessage(fs);
+  }
+
+  private static Path createHiddenFile(Path directory) throws IOException {
+    Path hiddenFile;
+    if (Files.getFileStore(directory).supportsFileAttributeView("dos")) {
+      hiddenFile = directory.resolve("hidden-file.txt");
+      Files.writeString(hiddenFile, "hidden");
+      Files.setAttribute(hiddenFile, "dos:hidden", true);
+    } else {
+      hiddenFile = directory.resolve(".secret");
+      Files.writeString(hiddenFile, "hidden");
+    }
+    Assumptions.assumeTrue(hiddenFile.toFile().isHidden(), "Unable to create hidden file");
+    return hiddenFile;
   }
 }
