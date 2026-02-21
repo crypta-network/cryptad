@@ -65,28 +65,16 @@ Set/confirm the base branch:
 - If the user specified a base branch, set `BASE_BRANCH` to it.
 - Validate it exists on `origin`.
 
-Example bash snippet (adjust if you set `BASE_BRANCH` some other way):
+Resolve and validate base selection with the bundled script `scripts/resolve_base_branch.sh`:
 
 ```bash
-# If the user explicitly asked for a base branch, set BASE_BRANCH before this block.
-# This flag preserves whether BASE_BRANCH came from user input or the default.
-USER_SPECIFIED_BASE="${USER_SPECIFIED_BASE:-false}"
-if [ -z "${BASE_BRANCH:-}" ]; then
-  BASE_BRANCH="develop"
+if [ -n "${BASE_BRANCH:-}" ]; then
+  # user explicitly requested a base branch
+  BASE_BRANCH="$(bash scripts/resolve_base_branch.sh "$BASE_BRANCH")"
 else
-  USER_SPECIFIED_BASE=true
+  # default behavior: develop, with fallback to main only if origin/develop is missing
+  BASE_BRANCH="$(bash scripts/resolve_base_branch.sh)"
 fi
-
-# Ensure the remote base exists (fallback to main only if develop is missing and not user-specified).
-if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
-  if [ "$BASE_BRANCH" = "develop" ] && [ "$USER_SPECIFIED_BASE" = "false" ]; then
-    BASE_BRANCH="main"
-  fi
-fi
-
-git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH" || {
-  echo "Base branch origin/$BASE_BRANCH not found"; exit 1;
-}
 echo "Using base branch: $BASE_BRANCH"
 ```
 
