@@ -89,6 +89,33 @@ Fallback (`javac`):
 javac -proc:none -Xdoclint:all -Werror -d /tmp/doclint-out "<target>" 2>&1 | tee "/tmp/doclint-<file>.out"
 ```
 
+Common failure modes and concrete fixes:
+
+1) `javadoc` reports:
+`error: No public or protected classes found to document.`
+
+This happens when the target type is package-private/private. Re-run with `-private`:
+```sh
+javadoc -quiet -private -Xdoclint:all \
+  -classpath "build/classes/java/main:build/resources/main" \
+  -sourcepath . \
+  -d /tmp/doclint-out "<target>" 2>&1 | tee "/tmp/doclint-<file>.out"
+```
+
+2) `javadoc` still fails with missing third-party symbols after `./gradlew -q classes` (for example
+`org.slf4j.Logger`):
+
+Locate the missing dependency JAR in Gradle cache and append it to `-classpath`, then re-run:
+```sh
+MISSING_JAR="$(find ~/.gradle/caches/modules-2/files-2.1 -type f -path '*org.slf4j/slf4j-api/*/*.jar' | head -n 1)"
+javadoc -quiet -Xdoclint:all \
+  -classpath "build/classes/java/main:build/resources/main:${MISSING_JAR}" \
+  -sourcepath . \
+  -d /tmp/doclint-out "<target>" 2>&1 | tee "/tmp/doclint-<file>.out"
+```
+
+If a different package is missing, change the `find ... -path` filter to match that package/module.
+
 ### 2) Map warnings
 Map each warning to exact members:
 - types, ctors, methods, fields, enum constants, type params, package info.
