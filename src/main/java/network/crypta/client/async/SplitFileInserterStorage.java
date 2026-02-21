@@ -52,6 +52,7 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.RAFInputStream;
 import network.crypta.support.io.ResumeFailedException;
@@ -1128,7 +1129,14 @@ public final class SplitFileInserterStorage {
       LockableRandomAccessBuffer passed, LockableRandomAccessBuffer restored)
       throws StorageFormatException {
     if (passed == null) return restored;
-    if (!passed.equals(restored))
+    if (passed == restored) return passed;
+    boolean same;
+    try {
+      same = passed.equals(restored);
+    } finally {
+      IOUtils.closeQuietly(restored);
+    }
+    if (!same)
       throw new StorageFormatException(
           "Original data restored from different filename! Expected "
               + passed

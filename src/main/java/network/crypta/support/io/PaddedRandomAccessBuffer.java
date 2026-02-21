@@ -197,9 +197,17 @@ public final class PaddedRandomAccessBuffer implements LockableRandomAccessBuffe
       throws ResumeFailedException, IOException, StorageFormatException {
     realSize = dis.readLong();
     if (realSize < 0) throw new StorageFormatException("Negative length");
-    raf = BucketTools.restoreRAFFrom(dis, fg, persistentFileTracker, masterSecret);
-    if (realSize > raf.size())
-      throw new ResumeFailedException("Padded file is smaller than expected length");
+    LockableRandomAccessBuffer restored =
+        BucketTools.restoreRAFFrom(dis, fg, persistentFileTracker, masterSecret);
+    boolean success = false;
+    try {
+      if (realSize > restored.size())
+        throw new ResumeFailedException("Padded file is smaller than expected length");
+      raf = restored;
+      success = true;
+    } finally {
+      if (!success) IOUtils.closeQuietly(restored);
+    }
   }
 
   /**

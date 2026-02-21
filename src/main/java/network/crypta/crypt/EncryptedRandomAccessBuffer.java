@@ -22,6 +22,7 @@ import network.crypta.support.Fields;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
@@ -578,11 +579,17 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     if (type == null) throw new StorageFormatException("Unknown EncryptedRandomAccessBufferType");
     LockableRandomAccessBuffer underlying =
         BucketTools.restoreRAFFrom(dis, fg, persistentFileTracker, masterKey);
+    boolean success = false;
     try {
-      return new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
+      EncryptedRandomAccessBuffer restored =
+          new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
+      success = true;
+      return restored;
     } catch (GeneralSecurityException e) {
       throw new ResumeFailedException(
           new GeneralSecurityException("Crypto error resuming EncryptedRandomAccessBuffer", e));
+    } finally {
+      if (!success) IOUtils.closeQuietly(underlying);
     }
   }
 
