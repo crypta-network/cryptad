@@ -17,7 +17,10 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, SpotBugs, Gradle dependency verification (verification-metadata), SonarLint, Error Prone, JaCoCo coverage, and SonarCloud uploads.
 - **$cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
 - **$cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
-- **$cryptad-git-workflow** — Follow repository etiquette: branch naming, GitFlow merges, conventional commits, PR rules, and strict git identity policy.
+- **$cryptad-git-workflow** — Canonical guide for branch/release policy: GitFlow naming, integer build version/tags, merge rules, PR policy, and strict git identity safeguards.
+- **$cryptad-start-work-branch** — Start `feature/*` or `bugfix/*` work from `develop` with naming, Conventional Commits, and PR policy.
+- **$cryptad-release-workflow** — Run release branch flow: cut/stabilize `release/<build-number>`, set integer build version, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
+- **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
 - **$cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
@@ -26,7 +29,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 
 ### Skill-first workflow
 
-1. Identify the task domain(s) (build/test, tooling, packaging, updater, platform detection, crypto formats, UI, etc.).
+1. Identify the task domain(s) (build/test, tooling, packaging, updater, platform detection, crypto formats, UI, git branching/release/hotfix workflows, etc.).
 2. Load the matching skill(s) via `skill(...)`.
 3. If relevant files are not already known, load `$codebase-retrieval` first, then inspect code, and run targeted searches (don’t guess).
 4. Make the smallest safe change.
@@ -45,6 +48,10 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
+- **Branch workflow questions:** For branch model/merge/tag/version policy questions, load `$cryptad-git-workflow`.
+- **Starting feature/bugfix work:** Before creating a new `feature/*` or `bugfix/*` branch, load `$cryptad-start-work-branch`.
+- **Release operations:** For `release/<build-number>` branch creation/stabilization, version bumping, tagging, and merge-back flow, load `$cryptad-release-workflow`.
+- **Hotfix operations:** For urgent production fixes via `hotfix/<build-number>`, including tags and back-merges, load `$cryptad-hotfix-workflow`.
 - **Web research:** For the latest/current external information or multi-source fact checks, load `$web-search`.
 
 ## Quick commands (high-level)
