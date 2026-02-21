@@ -1,3 +1,6 @@
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.jar.JarOutputStream as JJarOutputStream
 import java.util.jar.Manifest as JManifest
@@ -263,6 +266,42 @@ fun cleanExistingImage(outDir: File, os: String) {
   if (existing.exists()) existing.deleteRecursively()
 }
 
+/**
+ * Relocates a macOS app bundle while preserving executable bits, symlinks, and metadata.
+ *
+ * Copying with Kotlin/JVM file helpers can flatten bundle details needed by launchd.
+ */
+fun relocateMacAppBundle(stagedApp: File, targetApp: File) {
+  if (!stagedApp.isDirectory) {
+    throw GradleException("Staged app bundle not found: ${stagedApp.absolutePath}")
+  }
+  targetApp.parentFile.mkdirs()
+  if (targetApp.exists()) targetApp.deleteRecursively()
+
+  try {
+    Files.move(
+      stagedApp.toPath(),
+      targetApp.toPath(),
+      StandardCopyOption.REPLACE_EXISTING,
+      StandardCopyOption.ATOMIC_MOVE,
+    )
+    return
+  } catch (_: AtomicMoveNotSupportedException) {
+    // Fall back to metadata-preserving copy when atomic move is unavailable.
+  } catch (_: Exception) {
+    // Fall back for cross-device moves (e.g., tmp on another volume).
+  }
+
+  val ditto = File("/usr/bin/ditto")
+  if (ditto.canExecute()) {
+    execAndLog(listOf(ditto.absolutePath, stagedApp.absolutePath, targetApp.absolutePath))
+    stagedApp.deleteRecursively()
+    return
+  }
+
+  throw GradleException("Unable to relocate macOS app bundle: ${stagedApp.absolutePath}")
+}
+
 /** Creates a minimal bootstrap jar under the provided input dir and returns its file. */
 fun createBootstrapJar(inputDir: File): File {
   if (inputDir.exists()) inputDir.deleteRecursively()
@@ -365,9 +404,8 @@ val jpackageImageCryptad by
           val staged = destDir.resolve("$appName.app")
           if (staged.isDirectory) {
             val target = outDir.resolve("$appName.app")
-            if (target.exists()) target.deleteRecursively()
             logger.lifecycle("Relocating app image from staging -> {}", target.absolutePath)
-            staged.copyRecursively(target, overwrite = true)
+            relocateMacAppBundle(staged, target)
             // Best-effort: remove any staging attributes after copy
             clearXattrsQuiet(target, 5)
             destDir.deleteRecursively()
@@ -418,8 +456,7 @@ val jpackageImageCryptad by
 
               // If we fixed the staged app, relocate it now to the final output dir.
               if (appDir == stagedApp) {
-                if (finalApp.exists()) finalApp.deleteRecursively()
-                stagedApp.copyRecursively(finalApp, overwrite = true)
+                relocateMacAppBundle(stagedApp, finalApp)
                 // Remove any staged attrs again just in case
                 clearXattrsQuiet(finalApp, 5)
                 // Clean up staging directory
