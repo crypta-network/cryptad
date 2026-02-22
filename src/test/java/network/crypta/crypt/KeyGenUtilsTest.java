@@ -2,6 +2,7 @@ package network.crypta.crypt;
 
 import java.security.*;
 
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
@@ -146,6 +147,42 @@ class KeyGenUtilsTest {
     // Arrange
     // Act + Assert
     assertThrows(NullPointerException.class, () -> KeyGenUtils.genKeyPair(null));
+  }
+
+  @Test
+  void getJavaVersion_whenVersionHasNoSeparator_expectAllDigitsParsed() throws Exception {
+    // Arrange
+    String previousVersion = System.getProperty("java.version");
+
+    try {
+      System.setProperty("java.version", "21");
+
+      // Act
+      int parsedVersion = invokeGetJavaVersion();
+
+      // Assert
+      assertEquals(21, parsedVersion);
+    } finally {
+      restoreProperty("java.version", previousVersion);
+    }
+  }
+
+  @Test
+  void getJavaVersion_whenVersionHasDot_expectMajorParsed() throws Exception {
+    // Arrange
+    String previousVersion = System.getProperty("java.version");
+
+    try {
+      System.setProperty("java.version", "25.0.1");
+
+      // Act
+      int parsedVersion = invokeGetJavaVersion();
+
+      // Assert
+      assertEquals(25, parsedVersion);
+    } finally {
+      restoreProperty("java.version", previousVersion);
+    }
   }
 
   @Test
@@ -776,5 +813,19 @@ class KeyGenUtilsTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> KeyGenUtils.getKeyPair(KeyPairType.ECP256, truePublicKeys[0], invalidPrv));
+  }
+
+  private static int invokeGetJavaVersion() throws ReflectiveOperationException {
+    Method method = KeyGenUtils.class.getDeclaredMethod("getJavaVersion");
+    method.setAccessible(true);
+    return (int) method.invoke(null);
+  }
+
+  private static void restoreProperty(String key, String previousValue) {
+    if (previousValue == null) {
+      System.clearProperty(key);
+    } else {
+      System.setProperty(key, previousValue);
+    }
   }
 }
