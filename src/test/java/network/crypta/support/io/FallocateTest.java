@@ -143,6 +143,10 @@ class FallocateTest {
       throws IOException {
     // Arrange
     FileChannel channel = mock(FileChannel.class);
+    if (Platform.isWindows()) {
+      // Avoid a tight zero-progress loop when using a mock channel on the Windows legacy path.
+      when(channel.write(any(ByteBuffer.class), anyLong())).thenReturn(1);
+    }
     long finalSize = 10L;
     long offset = 10L; // zero remaining
     Fallocate f = Fallocate.forChannel(channel, finalSize).fromOffset(offset);

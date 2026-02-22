@@ -79,6 +79,25 @@ class SplitFileFetcherTest {
     }
   }
 
+  @SuppressWarnings("java:S3011")
+  private static void cleanupFetcherTempFile(SplitFileFetcher fetcher, File tmp) {
+    try {
+      Field rafField = SplitFileFetcher.class.getDeclaredField("raf");
+      rafField.setAccessible(true);
+      Object raw = rafField.get(fetcher);
+      if (raw instanceof LockableRandomAccessBuffer raf) {
+        raf.close();
+        raf.free();
+      }
+      rafField.set(fetcher, null);
+    } catch (Exception ignored) {
+      // Best-effort cleanup to avoid leaking mapped files on Windows.
+    }
+    if (!tmp.delete() && tmp.exists()) {
+      tmp.deleteOnExit();
+    }
+  }
+
   private static byte[] resumeRecordForTruncation(File file, long size, long token)
       throws IOException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -131,7 +150,7 @@ class SplitFileFetcherTest {
     long token = 987654321L;
     SplitFileFetcher f = newResumedFetcherWithTruncation(tmp, tmp.length(), token);
     assertEquals(token, f.getToken());
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -148,7 +167,7 @@ class SplitFileFetcherTest {
     f.onFetchedBlock();
 
     verify(parent).completedBlock(false, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -168,7 +187,7 @@ class SplitFileFetcherTest {
     f.onFetchedBlock();
 
     verify(parent).completedBlock(true, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -187,7 +206,7 @@ class SplitFileFetcherTest {
     f.onFetchedBlock();
 
     verify(parent).completedBlock(false, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -207,7 +226,7 @@ class SplitFileFetcherTest {
     f.onFetchedBlock();
 
     verify(parent).completedBlock(false, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -222,7 +241,7 @@ class SplitFileFetcherTest {
     f.onFailedBlock();
 
     verify(parent).failedBlock(clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -240,7 +259,7 @@ class SplitFileFetcherTest {
 
     verify(parent).onFailure(captor.capture(), eq(f), eq(clientContext));
     assertEquals(FetchExceptionMode.CANCELLED, captor.getValue().getMode());
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -267,7 +286,7 @@ class SplitFileFetcherTest {
     // Scheduler invocation to remove pending keys (null keyListener on a mock storage is fine)
     verify(scheduler)
         .removePendingKeys((KeyListener) org.mockito.ArgumentMatchers.isNull(), eq(true));
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -293,7 +312,7 @@ class SplitFileFetcherTest {
     verify(parent).blockSetFinalized(clientContext);
     verify(parent).onExpectedMIME(meta, clientContext);
     verify(parent).onExpectedSize(123L, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -310,7 +329,7 @@ class SplitFileFetcherTest {
     verify(parent).addMustSucceedBlocks(4);
     verify(parent).addBlocks(7);
     verify(parent).notifyClients(clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -340,7 +359,7 @@ class SplitFileFetcherTest {
             false,
             true,
             clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -355,7 +374,7 @@ class SplitFileFetcherTest {
     ClientCHKBlock block = mock(ClientCHKBlock.class);
     f.maybeAddToBinaryBlob(block);
     verify(parent).addKeyToBinaryBlob(block, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -367,7 +386,7 @@ class SplitFileFetcherTest {
     SplitFileFetcher f = newResumedFetcherWithTruncation(tmp, tmp.length(), 12L);
     setField(f, "getter", sendableGetter);
     assertEquals(sendableGetter, f.getSendableGet());
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -385,7 +404,7 @@ class SplitFileFetcherTest {
 
     verify(sendableGetter).clearWakeupTime(clientContext);
     verify(sendableGetter).reduceWakeupTime(123L, clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -402,7 +421,7 @@ class SplitFileFetcherTest {
     setField(f, "context", clientContext);
     f.cancel(clientContext);
     assertTrue(f.hasFinished());
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -444,7 +463,7 @@ class SplitFileFetcherTest {
     assertEquals(tmp.getAbsolutePath(), path);
     assertEquals(tmp.length(), size);
     assertEquals(token, tok);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -479,7 +498,7 @@ class SplitFileFetcherTest {
     assertEquals(5, f.getPriorityClass());
     f.toNetwork();
     verify(parent).toNetwork(clientContext);
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 
   @Test
@@ -505,6 +524,6 @@ class SplitFileFetcherTest {
     }
     SplitFileFetcher f = newResumedFetcherWithTruncation(tmp, tmp.length(), 16L);
     assertTrue(f.localRequestOnly());
-    assertTrue(tmp.delete() || !tmp.exists());
+    cleanupFetcherTempFile(f, tmp);
   }
 }

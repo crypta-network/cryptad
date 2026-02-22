@@ -514,21 +514,24 @@ class PeerPersistence {
         w.write(sb);
         w.flush();
         fos.getFD().sync();
+      } catch (FileNotFoundException e2) {
+        LOG.error("Cannot write peers to disk: cannot create {} (error={})", f, e2, e2);
+        safeDeleteIfExists(f);
+        return;
+      } catch (IOException e) {
+        LOG.error("I/O error writing peers file: {}", e, e);
+        safeDeleteIfExists(f);
+        // don't overwrite the old file!
+        return;
+      }
 
+      try {
         if (rotateBackups) {
           rotateBackupFiles(filename, maxBackups, f);
         } else {
           FileUtil.moveTo(f, getBackupFilename(filename, 0));
         }
-      } catch (FileNotFoundException e2) {
-        LOG.error("Cannot write peers to disk: cannot create {} (error={})", f, e2, e2);
-        safeDeleteIfExists(f);
-      } catch (IOException e) {
-        LOG.error("I/O error writing peers file: {}", e, e);
-        safeDeleteIfExists(f);
-        // don't overwrite the old file!
       } finally {
-        // Try-with-resources handles the stream cleanup
         safeDeleteIfExists(f);
       }
     }

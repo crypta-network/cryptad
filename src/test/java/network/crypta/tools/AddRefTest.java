@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import network.crypta.fs.AppEnv;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.LineReadingInputStream;
 import org.junit.jupiter.api.Test;
@@ -98,7 +99,7 @@ class AddRefTest {
       throws IOException, InterruptedException {
     ProcessResult result = runAddRef();
 
-    assertEquals(255, result.exitCode());
+    assertEquals(expectedInvalidArgumentExitCode(), result.exitCode());
     assertTrue(result.stderr().contains(USAGE_MESSAGE));
   }
 
@@ -107,7 +108,7 @@ class AddRefTest {
       throws IOException, InterruptedException {
     ProcessResult result = runAddRef(tempDir.toString());
 
-    assertEquals(255, result.exitCode());
+    assertEquals(expectedInvalidArgumentExitCode(), result.exitCode());
     assertTrue(result.stderr().contains(USAGE_MESSAGE));
   }
 
@@ -116,8 +117,13 @@ class AddRefTest {
       throws IOException, InterruptedException {
     ProcessResult result = runAddRef(tempDir.resolve("missing.ref").toString());
 
-    assertEquals(255, result.exitCode());
+    assertEquals(expectedInvalidArgumentExitCode(), result.exitCode());
     assertTrue(result.stderr().contains(USAGE_MESSAGE));
+  }
+
+  private static int expectedInvalidArgumentExitCode() {
+    // System.exit(-1) appears as -1 on Windows and 255 on POSIX-like systems.
+    return new AppEnv().isWindows() ? -1 : 255;
   }
 
   private static ProcessResult runAddRef(String... args) throws IOException, InterruptedException {

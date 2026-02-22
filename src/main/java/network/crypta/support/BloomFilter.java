@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.ref.Cleaner;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.Random;
@@ -36,6 +38,7 @@ import network.crypta.support.math.MersenneTwister;
  */
 public abstract class BloomFilter implements AutoCloseable {
   private static final Cleaner cleaner = Cleaner.create();
+  private static final UnsafeCleaner UNSAFE_CLEANER = UnsafeCleaner.load();
 
   /** Backing buffer for the filter’s bytes (bits or counters), owned by subclasses. */
   protected ByteBuffer filter;
@@ -422,8 +425,10 @@ public abstract class BloomFilter implements AutoCloseable {
    */
   @Override
   public void close() {
-    if (filter != null) {
-      force();
+    ByteBuffer current = filter;
+    if (current != null) {
+      forceBuffer(current);
+      UNSAFE_CLEANER.clean(current);
     }
     filter = null;
     forkedFilter = null;
@@ -481,7 +486,9 @@ public abstract class BloomFilter implements AutoCloseable {
     lock.readLock().lock();
     try {
       int capacity = filter.capacity();
-      System.arraycopy(filter.array(), filter.arrayOffset(), buf, offset, capacity);
+      ByteBuffer snapshot = filter.duplicate();
+      snapshot.position(0);
+      snapshot.get(buf, offset, capacity);
       return capacity;
     } finally {
       lock.readLock().unlock();
@@ -495,6 +502,56 @@ public abstract class BloomFilter implements AutoCloseable {
    * @throws IOException if the write fails
    */
   public void writeTo(OutputStream cos) throws IOException {
-    cos.write(filter.array(), filter.arrayOffset(), filter.capacity());
+    ByteBuffer snapshot = filter.duplicate();
+    snapshot.position(0);
+    byte[] chunk = new byte[Math.min(8192, snapshot.remaining())];
+    while (snapshot.hasRemaining()) {
+      int n = Math.min(chunk.length, snapshot.remaining());
+      snapshot.get(chunk, 0, n);
+      cos.write(chunk, 0, n);
+    }
+  }
+
+  private static void forceBuffer(ByteBuffer buffer) {
+    if (buffer instanceof MappedByteBuffer mapped) {
+      mapped.force();
+    }
+  }
+
+  private static final class UnsafeCleaner {
+    private final Object unsafe;
+    private final Method invokeCleanerMethod;
+
+    private UnsafeCleaner(Object unsafe, Method invokeCleanerMethod) {
+      this.unsafe = unsafe;
+      this.invokeCleanerMethod = invokeCleanerMethod;
+    }
+
+    static UnsafeCleaner load() {
+      try {
+        Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+        Field theUnsafe = unsafeClass.getDeclaredField("theUnsafe");
+        theUnsafe.setAccessible(true);
+        Object unsafe = theUnsafe.get(null);
+        Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+        return new UnsafeCleaner(unsafe, invokeCleaner);
+      } catch (ReflectiveOperationException | RuntimeException _) {
+        return new UnsafeCleaner(null, null);
+      }
+    }
+
+    void clean(ByteBuffer buffer) {
+      if (!(buffer instanceof MappedByteBuffer)) {
+        return;
+      }
+      if (unsafe == null || invokeCleanerMethod == null) {
+        return;
+      }
+      try {
+        invokeCleanerMethod.invoke(unsafe, buffer);
+      } catch (ReflectiveOperationException | RuntimeException _) {
+        // Best-effort; dropping strong references still allows eventual unmapping via GC.
+      }
+    }
   }
 }

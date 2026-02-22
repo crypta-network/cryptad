@@ -176,7 +176,10 @@ public class LauncherController {
 
   private void startProcessAndWatch() {
     Path cryptadPath = LauncherUtils.resolveCryptadPath(cwd);
-    if (!Files.isRegularFile(cryptadPath) || !Files.isExecutable(cryptadPath)) {
+    AppEnv env = new AppEnv();
+    boolean launchable =
+        Files.isRegularFile(cryptadPath) && (env.isWindows() || Files.isExecutable(cryptadPath));
+    if (!launchable) {
       emitLog(ts() + " ERROR: Cannot find executable 'cryptad' at " + cryptadPath);
       return;
     }
@@ -247,6 +250,7 @@ public class LauncherController {
     }
     emitLog(ts() + " cryptad exited with code " + exitCode);
     clearTrackedProcess(started);
+    interruptTailThread();
     updateState(s -> s.withRunning(false));
   }
 
@@ -292,6 +296,11 @@ public class LauncherController {
       }
       if (current.isAlive()) {
         current.destroyForcibly();
+      }
+      if (!current.isAlive()) {
+        clearTrackedProcess(current);
+        interruptTailThread();
+        updateState(s -> s.withRunning(false));
       }
     } catch (Exception e) {
       emitLog(ts() + " ERROR: Failed to stop process: " + e.getMessage());
@@ -799,6 +808,7 @@ public class LauncherController {
     if (current != null && current.isAlive()) {
       stopManagedProcess(current);
     }
+    interruptTailThread();
   }
 
   private void tryEnableConsoleFlush(Path cryptadPath) {

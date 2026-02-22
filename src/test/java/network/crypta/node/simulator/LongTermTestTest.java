@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import network.crypta.fs.AppEnv;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -91,7 +92,10 @@ class LongTermTestTest {
     // Arrange
     Path statusDirectory = Files.createDirectory(tempDir.resolve("statusDir"));
     Path logFile = tempDir.resolve("exit-harness.log");
-    int expectedProcessExitCode = LongTermTest.EXIT_THREW_SOMETHING & 0xFF;
+    int expectedProcessExitCode =
+        new AppEnv().isWindows()
+            ? LongTermTest.EXIT_THREW_SOMETHING
+            : LongTermTest.EXIT_THREW_SOMETHING & 0xFF;
 
     ProcessBuilder processBuilder =
         new ProcessBuilder(

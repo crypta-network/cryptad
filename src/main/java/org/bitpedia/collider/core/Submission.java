@@ -473,8 +473,7 @@ public class Submission {
    * @return filename segment without parent directories; identical input when no separator exists.
    */
   public static String extractName(String fileName) {
-
-    int sepPos = fileName.lastIndexOf(File.separatorChar);
+    int sepPos = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
     if (-1 != sepPos) {
       fileName = fileName.substring(sepPos + 1);
     }

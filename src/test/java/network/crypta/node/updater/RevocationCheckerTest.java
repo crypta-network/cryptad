@@ -242,13 +242,22 @@ class RevocationCheckerTest {
     // Act
     RandomAccessBucket bucket = checker.getBlobBucket();
     RandomAccessBuffer buffer = checker.getBlobBuffer();
-
-    // Assert
-    assertNotNull(bucket);
-    assertNotNull(buffer);
-    byte[] data = new byte[(int) buffer.size()];
-    buffer.pread(0, data, 0, data.length);
-    assertEquals("DISK", new String(data, StandardCharsets.UTF_8));
+    try {
+      // Assert
+      assertNotNull(bucket);
+      assertNotNull(buffer);
+      byte[] data = new byte[(int) buffer.size()];
+      buffer.pread(0, data, 0, data.length);
+      assertEquals("DISK", new String(data, StandardCharsets.UTF_8));
+    } finally {
+      if (buffer != null) {
+        buffer.close();
+        buffer.free();
+      }
+      if (bucket != null) {
+        bucket.close();
+      }
+    }
   }
 
   @Test
@@ -306,19 +315,29 @@ class RevocationCheckerTest {
 
     // In-memory bucket returned when blown
     RandomAccessBucket rb = checker.getBlobBucket();
-    assertNotNull(rb);
-    try (FileBucket onDisk = new FileBucket(blobFile, true, false, false, false)) {
-      assertEquals(onDisk.size(), rb.size());
-    }
-
-    // Buffer access returns the same bytes
     RandomAccessBuffer buf = checker.getBlobBuffer();
-    assertNotNull(buf);
-    byte[] roundtrip = new byte[(int) buf.size()];
-    buf.pread(0, roundtrip, 0, roundtrip.length);
-    assertEquals(
-        new String(blobBytes, StandardCharsets.UTF_8),
-        new String(roundtrip, StandardCharsets.UTF_8));
+    try {
+      assertNotNull(rb);
+      try (FileBucket onDisk = new FileBucket(blobFile, true, false, false, false)) {
+        assertEquals(onDisk.size(), rb.size());
+      }
+
+      // Buffer access returns the same bytes
+      assertNotNull(buf);
+      byte[] roundtrip = new byte[(int) buf.size()];
+      buf.pread(0, roundtrip, 0, roundtrip.length);
+      assertEquals(
+          new String(blobBytes, StandardCharsets.UTF_8),
+          new String(roundtrip, StandardCharsets.UTF_8));
+    } finally {
+      if (buf != null) {
+        buf.close();
+        buf.free();
+      }
+      if (rb != null) {
+        rb.close();
+      }
+    }
   }
 
   @Test
