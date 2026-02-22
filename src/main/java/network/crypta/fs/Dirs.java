@@ -92,11 +92,20 @@ public final class Dirs {
         throw new UncheckedIOException("Failed to create directory: " + path, e);
       }
     }
+    Set<PosixFilePermission> set;
     try {
-      if (Files.getFileStore(path).supportsFileAttributeView("posix")) {
-        Set<PosixFilePermission> set = PosixFilePermissions.fromString(perms);
-        Files.setPosixFilePermissions(path, set);
-      }
+      set = PosixFilePermissions.fromString(perms);
+    } catch (IllegalArgumentException e) {
+      LOG.warn("Failed to set POSIX permissions '{}' on {}: {}", perms, path, e.getMessage(), e);
+      return;
+    }
+    try {
+      Files.setPosixFilePermissions(path, set);
+    } catch (UnsupportedOperationException _) {
+      LOG.debug(
+          "Skipping POSIX permissions '{}' on {} because POSIX attributes are unsupported",
+          perms,
+          path);
     } catch (Exception e) {
       LOG.warn("Failed to set POSIX permissions '{}' on {}: {}", perms, path, e.getMessage(), e);
     }
