@@ -1,5 +1,5 @@
 plugins {
-  // Apply Gradle 9 convention plugins from included build
+  // Apply Gradle 9 convention plugins from the included build
   id("cryptad.java-kotlin-conventions")
   id("cryptad.spotless")
   id("cryptad.versioning")
@@ -44,7 +44,7 @@ dependencies {
   // Compile-time access to Logback classes for runtime reconfiguration
   compileOnly(libs.logbackClassic)
   // Java source annotations used across the codebase
-  compileOnly("org.jetbrains:annotations:23.0.0")
+  compileOnly(libs.jetbrainsAnnotations)
 
   // runtimeOnly
   runtimeOnly(libs.dbusTransportNativeUnix)
@@ -63,7 +63,7 @@ dependencies {
   testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
-  testCompileOnly("org.jetbrains:annotations:23.0.0")
+  testCompileOnly(libs.jetbrainsAnnotations)
 
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
@@ -79,7 +79,7 @@ tasks.register("printVersion") {
 
 // The default from build-logic (512m) is too small for the full test suite on Windows and can
 // trigger OOM in long-running integration tests.
-tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach { maxHeapSize = "2g" }
+tasks.withType<Test>().configureEach { maxHeapSize = "2g" }
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the launcher main class directly.
