@@ -88,8 +88,6 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   private static final String UNEXPECTED_ERROR_MESSAGE = "Should not happen, please report! {}";
 
-  private boolean isPasswordAlreadySet;
-
   FirstTimeWizardNewToadlet(HighLevelSimpleClient client, NodeClientCore core, Config config) {
     super(client);
     this.core = core;
@@ -123,12 +121,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return;
     }
 
-    // if the threat level is high, the password must already be set: user is running the wizard
-    // again?
-    isPasswordAlreadySet =
-        core.getNode().services().securityLevels().getPhysicalThreatLevel()
-            == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH;
-    showForm(ctx, new FormModel().toModel());
+    showForm(ctx, new FormModel(isPasswordAlreadySet()).toModel());
   }
 
   /**
@@ -158,11 +151,12 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return;
     }
 
-    FormModel formModel = new FormModel(request);
+    FormModel formModel = new FormModel(request, isPasswordAlreadySet());
 
     if (formModel.isValid()) {
       formModel.save();
       super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.ROOT_PATH);
+      return;
     }
 
     // form model not valid
@@ -205,7 +199,19 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     return NodeL10n.getBase().getString(L10N_PREFIX + key, value);
   }
 
+  /**
+   * Returns whether physical security policy currently indicates an already-configured password.
+   *
+   * <p>In the wizard flow, HIGH physical threat implies the user has already completed password
+   * setup and should not be prompted to set it again.
+   */
+  private boolean isPasswordAlreadySet() {
+    return core.getNode().services().securityLevels().getPhysicalThreatLevel()
+        == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH;
+  }
+
   private final class FormModel {
+    private final boolean passwordAlreadySet;
 
     private String knowSomeone = "";
 
@@ -234,7 +240,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     private final Map<String, String> errors = new HashMap<>();
 
-    FormModel() {
+    FormModel(boolean passwordAlreadySet) {
+      this.passwordAlreadySet = passwordAlreadySet;
       float storage = 100;
       Option<Long> sizeOption =
           network.crypta.config.Config.longOption(config.get("node"), "storeSize");
@@ -267,7 +274,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       }
     }
 
-    FormModel(HTTPRequest request) {
+    FormModel(HTTPRequest request, boolean passwordAlreadySet) {
+      this.passwordAlreadySet = passwordAlreadySet;
       knowSomeone = request.getPartAsStringFailsafe("knowSomeone", 20);
       connectToStrangers = request.getPartAsStringFailsafe("connectToStrangers", 20);
       haveMonthlyLimit = request.getPartAsStringFailsafe("haveMonthlyLimit", 20);
@@ -432,10 +440,10 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       model.put("minBandwidthMonthlyLimit", "%.2f".formatted(BandwidthLimit.MIN_MONTHLY_LIMIT));
       model.put("storageLimit", storageLimit);
       model.put("minStorageLimit", minStorageLimit);
-      if (!isPasswordAlreadySet) {
+      if (!passwordAlreadySet) {
         model.put("setPassword", !setPassword.isEmpty() ? CHECKED_VALUE : "");
       }
-      model.put("isPasswordAlreadySet", isPasswordAlreadySet);
+      model.put("isPasswordAlreadySet", passwordAlreadySet);
 
       if (downloadLimitDetected == null || uploadLimitDetected == null) {
         detectBandwidthLimit();
@@ -495,21 +503,23 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
       DatastoreSize.setDatastoreSize(storageLimit + "GiB", config);
 
-      if (!isPasswordAlreadySet) {
+      if (!passwordAlreadySet) {
         try {
+          String newPassword;
           if (setPassword.isEmpty()) { // no password protection requested
             core.getNode()
                 .services()
                 .securityLevels()
                 .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
-            core.getNode().storage().setMasterPassword("", true);
+            newPassword = "";
           } else {
             core.getNode()
                 .services()
                 .securityLevels()
                 .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
-            core.getNode().storage().setMasterPassword(password, true);
+            newPassword = password;
           }
+          core.getNode().storage().changeMasterPassword("", newPassword, true);
         } catch (Node.AlreadySetPasswordException
             | MasterKeysWrongPasswordException
             | MasterKeysFileSizeException
