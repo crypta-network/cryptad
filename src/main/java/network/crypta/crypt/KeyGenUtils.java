@@ -69,12 +69,14 @@ public final class KeyGenUtils {
     // 9-ea
     // 9
     // 9.0.1
+    // 21
     int dotPos = version.indexOf('.');
     int dashPos = version.indexOf('-');
-    int end = 1;
-    if (dotPos > -1) {
+    int end = version.length();
+    if (dotPos > -1 && dotPos < end) {
       end = dotPos;
-    } else if (dashPos > -1) {
+    }
+    if (dashPos > -1 && dashPos < end) {
       end = dashPos;
     }
     return Integer.parseInt(version.substring(0, end));

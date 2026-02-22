@@ -7,6 +7,8 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Locale;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
@@ -14,6 +16,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
@@ -25,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
@@ -305,6 +310,32 @@ class PaddedRandomAccessBufferTest {
                     mock(PersistentFileTracker.class),
                     mock(MasterSecret.class)));
       }
+    }
+
+    @Test
+    void constructor_whenRealSizeGreaterThanInner_onWindows_releasesFileHandle(
+        @TempDir Path tempDir) throws Exception {
+      assumeTrue(System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"));
+
+      // Arrange
+      File tmp = tempDir.resolve("underlying.dat").toFile();
+      try (FileOutputStream fos = new FileOutputStream(tmp)) {
+        fos.write(new byte[10]);
+      }
+
+      // Act + Assert
+      try (DataInputStream din = buildPaddedRafStream(12L, tmp)) {
+        assertThrows(
+            ResumeFailedException.class,
+            () ->
+                new PaddedRandomAccessBuffer(
+                    din,
+                    mock(FilenameGenerator.class),
+                    mock(PersistentFileTracker.class),
+                    mock(MasterSecret.class)));
+      }
+
+      assertTrue(tmp.delete(), "Expected failed restore to leave no open file handle");
     }
 
     @Test

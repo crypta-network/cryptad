@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import network.crypta.fs.AppEnv;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -206,7 +207,11 @@ class YarrowTest {
     Yarrow y = new Yarrow(new File("/dev/urandom"), "SHA1", "Rijndael", true, false, false);
 
     // Assert
-    assertNull(y.seedfile);
+    if (new AppEnv().isWindows()) {
+      assertNotNull(y.seedfile);
+    } else {
+      assertNull(y.seedfile);
+    }
   }
 
   @Test

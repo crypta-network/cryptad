@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -94,7 +95,14 @@ class ClientPutDiskDirMessageTest {
     Path file = Files.writeString(tempDir.resolve("index.html"), "<html>");
     Path nestedDir = Files.createDirectory(tempDir.resolve("assets"));
     Path nestedFile = Files.writeString(nestedDir.resolve("style.css"), "body");
-    Files.writeString(tempDir.resolve(".secret"), "hidden");
+    Path hiddenFile = Files.writeString(tempDir.resolve(".secret"), "hidden");
+    if (!hiddenFile.toFile().isHidden()) {
+      try {
+        Files.setAttribute(hiddenFile, "dos:hidden", true);
+      } catch (UnsupportedOperationException | IOException _) {
+        // Platform does not expose DOS hidden attribute; fall back to runtime hidden semantics.
+      }
+    }
 
     ClientPutDiskDirMessage message = newMessage(tempDir);
 
@@ -105,7 +113,12 @@ class ClientPutDiskDirMessageTest {
     verify(handler).startClientPutDir(eq(message), bucketsCaptor.capture(), eq(true));
     HashMap<String, Object> buckets = bucketsCaptor.getValue();
 
-    assertFalse(buckets.containsKey(".secret"));
+    String hiddenFileName = hiddenFile.getFileName().toString();
+    if (hiddenFile.toFile().isHidden()) {
+      assertFalse(buckets.containsKey(hiddenFileName));
+    } else {
+      assertTrue(buckets.containsKey(hiddenFileName));
+    }
 
     ManifestElement rootElement = (ManifestElement) buckets.get("index.html");
     assertEquals("index.html", rootElement.fullName);

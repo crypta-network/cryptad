@@ -77,6 +77,10 @@ tasks.register("printVersion") {
   doLast { println(project.version.toString()) }
 }
 
+// The default from build-logic (512m) is too small for the full test suite on Windows and can
+// trigger OOM in long-running integration tests.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach { maxHeapSize = "2g" }
+
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the launcher main class directly.
 // Align with the actual launcher entrypoint in Launcher.java

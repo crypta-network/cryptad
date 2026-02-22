@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import network.crypta.fs.AppEnv;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -152,7 +153,10 @@ class BootstrapPushPullTestTest {
   }
 
   private static void assertExitNoSeednodes(ProcessResult result) {
-    int expectedOsExitCode = Math.floorMod(BootstrapPushPullTest.EXIT_NO_SEEDNODES, 256);
+    int expectedOsExitCode =
+        new AppEnv().isWindows()
+            ? BootstrapPushPullTest.EXIT_NO_SEEDNODES
+            : Math.floorMod(BootstrapPushPullTest.EXIT_NO_SEEDNODES, 256);
     assertEquals(
         expectedOsExitCode,
         result.exitCode,

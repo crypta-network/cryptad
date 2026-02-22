@@ -9,6 +9,7 @@ import ch.qos.logback.core.read.ListAppender;
 import ch.qos.logback.core.rolling.RollingFileAppender;
 import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
 import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -22,7 +23,6 @@ import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.slf4j.Logger;
@@ -189,7 +189,9 @@ class LoggingConfigHandlerTest {
   }
 
   @Test
-  void dirname_whenChanged_updatesAppenderTargets(@TempDir File tmp) throws Exception {
+  void dirname_whenChanged_updatesAppenderTargets() throws Exception {
+    File tmp = Files.createTempDirectory("logging-config-handler-").toFile();
+    tmp.deleteOnExit();
     PersistentConfig cfg = new PersistentConfig(new SimpleFieldSet(true));
     SubConfig logging = cfg.createSubConfig("logger");
     new LoggingConfigHandler(logging);

@@ -152,17 +152,28 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
      */
     MyInputStream() throws IOException {
       try {
-        this.f = new RandomAccessFile(file, "r");
-        f.seek(startAt);
-        if (f.length() < (startAt + length))
-          throw new ReadOnlyFileSliceBucketException(
-              "File truncated? Length "
-                  + f.length()
-                  + " but start at "
-                  + startAt
-                  + " for "
-                  + length
-                  + " bytes");
+        RandomAccessFile raf = new RandomAccessFile(file, "r");
+        try {
+          raf.seek(startAt);
+          long fileLength = raf.length();
+          if (fileLength < (startAt + length))
+            throw new ReadOnlyFileSliceBucketException(
+                "File truncated? Length "
+                    + fileLength
+                    + " but start at "
+                    + startAt
+                    + " for "
+                    + length
+                    + " bytes");
+          this.f = raf;
+        } catch (IOException e) {
+          try {
+            raf.close();
+          } catch (IOException closeFailure) {
+            e.addSuppressed(closeFailure);
+          }
+          throw e;
+        }
         ptr = 0;
       } catch (FileNotFoundException e) {
         throw new ReadOnlyFileSliceBucketException(e);

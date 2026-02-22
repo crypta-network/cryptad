@@ -283,8 +283,9 @@ class FileUtilTest {
   }
 
   @Test
-  @DisplayName("moveTo_whenIOExceptionOnAtomic_expectFalse")
-  void moveTo_whenIOExceptionOnAtomic_expectFalse(@TempDir Path tmp) throws Exception {
+  @DisplayName("moveTo_whenIOExceptionOnAtomic_expectFallbackReplaceSucceeds")
+  void moveTo_whenIOExceptionOnAtomic_expectFallbackReplaceSucceeds(@TempDir Path tmp)
+      throws Exception {
     // Arrange
     Path src = tmp.resolve("from3.bin");
     Path dst = tmp.resolve("to3.bin");
@@ -299,7 +300,7 @@ class FileUtilTest {
       boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
 
       // Assert
-      assertFalse(ok);
+      assertTrue(ok);
     }
   }
 

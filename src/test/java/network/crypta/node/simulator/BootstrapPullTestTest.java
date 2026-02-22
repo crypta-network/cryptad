@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
@@ -145,8 +146,8 @@ class BootstrapPullTestTest {
   }
 
   private static int expectedOsExitCode(int javaExitCode) {
-    // POSIX process exit codes are 8-bit; System.exit(>255) wraps.
-    return javaExitCode & 0xFF;
+    // POSIX process exit codes are 8-bit; Windows preserves the full 32-bit exit status.
+    return new AppEnv().isWindows() ? javaExitCode : javaExitCode & 0xFF;
   }
 
   private static synchronized void setTestSize(int testSize) {

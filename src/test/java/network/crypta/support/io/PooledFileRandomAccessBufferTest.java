@@ -345,25 +345,28 @@ class PooledFileRandomAccessBufferTest {
     File f = new File(tempDir, "round.bin");
     byte[] content = new byte[3];
     Files.write(f.toPath(), content);
-    PooledFileRandomAccessBuffer orig =
+    try (PooledFileRandomAccessBuffer orig =
         new PooledFileRandomAccessBuffer(
-            f, false, -1, -1L, true, new PooledFileRandomAccessBuffer.FDTracker(4));
+            f, false, -1, -1L, true, new PooledFileRandomAccessBuffer.FDTracker(4))) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      try (DataOutputStream dos = new DataOutputStream(baos)) {
+        orig.storeTo(dos);
+      }
 
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    try (DataOutputStream dos = new DataOutputStream(baos)) {
-      orig.storeTo(dos);
+      // Act: read back; the reader expects the MAGIC to have been consumed already.
+      try (DataInputStream dis =
+          new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+        assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
+        try (PooledFileRandomAccessBuffer copy =
+            new PooledFileRandomAccessBuffer(
+                dis, mock(FilenameGenerator.class), mock(PersistentFileTracker.class))) {
+
+          // Assert
+          assertEquals(orig.size(), copy.size());
+          assertEquals(orig, copy);
+        }
+      }
     }
-
-    // Act: read back; the reader expects the MAGIC to have been consumed already
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
-    assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
-    PooledFileRandomAccessBuffer copy =
-        new PooledFileRandomAccessBuffer(
-            dis, mock(FilenameGenerator.class), mock(PersistentFileTracker.class));
-
-    // Assert
-    assertEquals(orig.size(), copy.size());
-    assertEquals(orig, copy);
   }
 
   @Test
@@ -382,14 +385,16 @@ class PooledFileRandomAccessBufferTest {
     when(fg.getFilename(tempId)).thenReturn(moved);
 
     // Act
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
-    assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt()); // consume magic
-    PooledFileRandomAccessBuffer p = new PooledFileRandomAccessBuffer(dis, fg, tracker);
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt()); // consume magic
+      try (PooledFileRandomAccessBuffer p = new PooledFileRandomAccessBuffer(dis, fg, tracker)) {
 
-    // Assert
-    verify(tracker, times(1)).register(moved);
-    assertNotNull(p.file);
-    assertEquals(moved.getCanonicalPath(), p.file.getCanonicalPath());
+        // Assert
+        verify(tracker, times(1)).register(moved);
+        assertNotNull(p.file);
+        assertEquals(moved.getCanonicalPath(), p.file.getCanonicalPath());
+      }
+    }
   }
 
   private static @NotNull ByteArrayOutputStream getByteArrayOutputStream(File original, long tempId)
@@ -435,11 +440,12 @@ class PooledFileRandomAccessBufferTest {
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     // Act + Assert
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
-    assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
-    assertThrows(
-        ResumeFailedException.class,
-        () -> new PooledFileRandomAccessBuffer(dis, fg, mock(PersistentFileTracker.class)));
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
+      assertThrows(
+          ResumeFailedException.class,
+          () -> new PooledFileRandomAccessBuffer(dis, fg, mock(PersistentFileTracker.class)));
+    }
   }
 
   @Test

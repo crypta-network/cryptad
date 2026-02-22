@@ -25,6 +25,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.io.PooledFileRandomAccessBuffer;
 import network.crypta.support.io.ResumeFailedException;
@@ -791,40 +792,48 @@ public final class SplitFileFetcher
   public SplitFileFetcher(ClientGetter getter, DataInputStream dis, ClientContext context)
       throws StorageFormatException, ResumeFailedException, IOException {
     LOG.info("Resuming splitfile download for {}", this);
-    boolean completeViaTruncation = dis.readBoolean();
-    if (completeViaTruncation) {
-      fileCompleteViaTruncation = new File(dis.readUTF());
-      if (!fileCompleteViaTruncation.exists())
-        throw new ResumeFailedException(
-            "Storage file does not exist: " + fileCompleteViaTruncation);
-      callbackCompleteViaTruncation = getter;
-      long rafSize = dis.readLong();
-      if (fileCompleteViaTruncation.length() != rafSize)
-        throw new ResumeFailedException("Storage file is not of the correct length");
-      // Note: Could verify against finalLength to finish immediately if it matches.
-      this.raf =
-          new PooledFileRandomAccessBuffer(fileCompleteViaTruncation, false, rafSize, -1, true);
-    } else {
-      this.raf =
-          BucketTools.restoreRAFFrom(
-              dis,
-              context.persistentFG,
-              context.getPersistentFileTracker(),
-              context.getPersistentMasterSecret());
-      fileCompleteViaTruncation = null;
-      callbackCompleteViaTruncation = null;
+    LockableRandomAccessBuffer restored = null;
+    boolean success = false;
+    try {
+      boolean completeViaTruncation = dis.readBoolean();
+      if (completeViaTruncation) {
+        fileCompleteViaTruncation = new File(dis.readUTF());
+        if (!fileCompleteViaTruncation.exists())
+          throw new ResumeFailedException(
+              "Storage file does not exist: " + fileCompleteViaTruncation);
+        callbackCompleteViaTruncation = getter;
+        long rafSize = dis.readLong();
+        if (fileCompleteViaTruncation.length() != rafSize)
+          throw new ResumeFailedException("Storage file is not of the correct length");
+        // Note: Could verify against finalLength to finish immediately if it matches.
+        restored =
+            new PooledFileRandomAccessBuffer(fileCompleteViaTruncation, false, rafSize, -1, true);
+      } else {
+        restored =
+            BucketTools.restoreRAFFrom(
+                dis,
+                context.persistentFG,
+                context.getPersistentFileTracker(),
+                context.getPersistentMasterSecret());
+        fileCompleteViaTruncation = null;
+        callbackCompleteViaTruncation = null;
+      }
+      this.raf = restored;
+      this.parent = getter;
+      this.cb = getter;
+      this.persistent = true;
+      this.realTimeFlag = parent.realTimeFlag();
+      this.requestKey = null;
+      token = dis.readLong();
+      this.blockFetchContext = getter.ctx;
+      this.wantBinaryBlob = getter.collectingBinaryBlob();
+      // onResume() will do the rest.
+      LOG.info("Resumed splitfile download for {}", this);
+      lastNotifiedStoreFetch = System.currentTimeMillis();
+      success = true;
+    } finally {
+      if (!success) IOUtils.closeQuietly(restored);
     }
-    this.parent = getter;
-    this.cb = getter;
-    this.persistent = true;
-    this.realTimeFlag = parent.realTimeFlag();
-    this.requestKey = null;
-    token = dis.readLong();
-    this.blockFetchContext = getter.ctx;
-    this.wantBinaryBlob = getter.collectingBinaryBlob();
-    // onResume() will do the rest.
-    LOG.info("Resumed splitfile download for {}", this);
-    lastNotifiedStoreFetch = System.currentTimeMillis();
   }
 
   /**

@@ -420,7 +420,7 @@ public final class LauncherUtils {
     candidates.add(jarDir.resolve("../bin/" + CRYPTAD_SCRIPT).normalize());
 
     for (Path candidate : candidates) {
-      if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+      if (isLaunchScriptCandidate(candidate, isWindows)) {
         return candidate;
       }
     }
@@ -439,11 +439,22 @@ public final class LauncherUtils {
     candidates.add(cwd.resolve(CRYPTAD_SCRIPT));
 
     for (Path candidate : candidates) {
-      if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+      if (isLaunchScriptCandidate(candidate, isWindows)) {
         return candidate;
       }
     }
     return null;
+  }
+
+  private static boolean isLaunchScriptCandidate(Path candidate, boolean isWindows) {
+    if (!Files.isRegularFile(candidate)) {
+      return false;
+    }
+    // Windows launch scripts are often .bat files where executable bit checks are unreliable.
+    if (isWindows) {
+      return true;
+    }
+    return Files.isExecutable(candidate);
   }
 
   private static boolean isCryptadJarFile(Path path) {

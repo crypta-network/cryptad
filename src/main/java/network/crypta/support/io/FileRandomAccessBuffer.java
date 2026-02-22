@@ -280,7 +280,8 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
    * Re-opens the underlying file after persistence resuming.
    *
    * <p>This method validates that the target file still exists and matches the expected length,
-   * then re-opens it in the recorded mode.
+   * then re-opens it in the recorded mode. If a stale handle is still present, it is closed before
+   * replacing it so callers can safely call {@link #free()} after resume on all platforms.
    *
    * @param context client context provided by the caller (not used here but part of the contract)
    * @throws ResumeFailedException if the file is missing or the length differs
@@ -289,11 +290,26 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
   public void onResume(ClientContext context) throws ResumeFailedException {
     if (!file.exists()) throw new ResumeFailedException("File does not exist any more");
     if (file.length() != length) throw new ResumeFailedException("File is wrong length");
+    RandomAccessFile reopened;
     try {
-      if (raf == null) raf = new AtomicReference<>();
-      raf.set(new RandomAccessFile(file, readOnly ? "r" : "rw"));
+      reopened = new RandomAccessFile(file, readOnly ? "r" : "rw");
     } catch (FileNotFoundException _) {
       throw new ResumeFailedException("File does not exist any more");
+    }
+
+    RandomAccessFile previous;
+    synchronized (this) {
+      if (raf == null) raf = new AtomicReference<>();
+      previous = raf.getAndSet(reopened);
+      closed = false;
+    }
+
+    if (previous != null) {
+      try {
+        previous.close();
+      } catch (IOException e) {
+        LOG.warn("Could not close stale RandomAccessFile during resume for {}", file, e);
+      }
     }
   }
 

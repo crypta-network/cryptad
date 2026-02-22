@@ -510,11 +510,14 @@ public final class FileUtil {
     try {
       Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
       return true;
-    } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException _) {
-      // Fall back to a non-atomic move allowing replacement.
+    } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Atomic move unavailable for {} -> {}: {}", orig, dest, e.toString());
+      }
     } catch (IOException e) {
-      LOG.error("Atomic move failed for {} -> {}: {}", orig, dest, e, e);
-      return false;
+      // On Windows this frequently fails when replacing an existing file; retry with
+      // REPLACE_EXISTING before giving up.
+      LOG.warn("Atomic move failed for {} -> {}, retrying non-atomically: {}", orig, dest, e);
     }
     try {
       Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
