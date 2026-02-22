@@ -78,6 +78,11 @@ public final class BulkTransmitter {
    */
   final BitArray blocksNotSentButPresent;
 
+  /**
+   * Number of blocks observed by this transmitter (initial snapshot + {@link #blockReceived(int)}).
+   */
+  private int blocksReceivedByTransmitter;
+
   private boolean cancelled;
 
   /** Peer boot identifier observed when the transfer started; used to detect restarts. */
@@ -159,6 +164,7 @@ public final class BulkTransmitter {
     synchronized (this.prb) {
       // We can just clone it.
       blocksNotSentButPresent = prb.cloneBlocksReceived();
+      blocksReceivedByTransmitter = countSetBits(blocksNotSentButPresent);
       prb.add(this);
     }
     try {
@@ -250,6 +256,9 @@ public final class BulkTransmitter {
    * @param block The block number that has been received.
    */
   synchronized void blockReceived(int block) {
+    if (!blocksNotSentButPresent.bitAt(block)) {
+      blocksReceivedByTransmitter++;
+    }
     blocksNotSentButPresent.setBit(block, true);
     notifyAll();
   }
@@ -432,11 +441,26 @@ public final class BulkTransmitter {
   }
 
   private Outcome fastCompleteIfNoWait() {
-    if (noWait && prb.hasWholeFile()) {
-      completed();
-      return Outcome.SUCCEEDED;
+    if (!noWait) {
+      return null;
+    }
+    synchronized (this) {
+      // Complete in no-wait mode only after this transmitter has observed every block and there
+      // are no locally pending blocks left to queue.
+      if (blocksReceivedByTransmitter >= prb.blocks && blocksNotSentButPresent.firstOne() < 0) {
+        completed();
+        return Outcome.SUCCEEDED;
+      }
     }
     return null;
+  }
+
+  private static int countSetBits(BitArray bits) {
+    int count = 0;
+    for (int idx = bits.firstOne(); idx >= 0; idx = bits.firstOne(idx + 1)) {
+      count++;
+    }
+    return count;
   }
 
   /**
