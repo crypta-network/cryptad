@@ -132,17 +132,27 @@ public class BookmarkManager implements RequestClient {
     this.bookmarksFile = n.getNode().userDir().file("bookmarks.dat");
     this.backupBookmarksFile = n.getNode().userDir().file("bookmarks.dat.bak");
 
-    try {
-      // Read the backup file if necessary
-      if (!bookmarksFile.exists() || bookmarksFile.length() == 0) throw new IOException();
-      LOG.info("Attempting to read the bookmark file from {}", bookmarksFile);
-      SimpleFieldSet sfs = SimpleFieldSet.readFrom(bookmarksFile, false, true);
-      readBookmarks(MAIN_CATEGORY, sfs);
-    } catch (MalformedURLException _) {
-      // Bookmark file contains a malformed key; ignore and fall back to the backup/defaults.
-    } catch (IOException ioe) {
-      LOG.error("Error reading the bookmark file ({}):{}", bookmarksFile, ioe.getMessage(), ioe);
+    boolean loadedPrimary = false;
+    if (!bookmarksFile.exists() || bookmarksFile.length() == 0) {
+      LOG.info(
+          "Bookmark file {} is missing or empty; loading backup/default bookmarks", bookmarksFile);
+    } else {
+      try {
+        LOG.info("Attempting to read the bookmark file from {}", bookmarksFile);
+        SimpleFieldSet sfs = SimpleFieldSet.readFrom(bookmarksFile, false, true);
+        readBookmarks(MAIN_CATEGORY, sfs);
+        loadedPrimary = true;
+      } catch (MalformedURLException e) {
+        LOG.warn(
+            "Bookmark file {} contains malformed keys; falling back to backup/default bookmarks",
+            bookmarksFile,
+            e);
+      } catch (IOException ioe) {
+        LOG.error("Error reading the bookmark file ({}):{}", bookmarksFile, ioe.getMessage(), ioe);
+      }
+    }
 
+    if (!loadedPrimary) {
       try {
         if (backupBookmarksFile.exists()
             && backupBookmarksFile.canRead()

@@ -3,6 +3,7 @@ package network.crypta.node.subsystem;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.config.InvalidConfigValueException;
@@ -2169,9 +2170,22 @@ public final class NodeStorageSubsystem {
     }
     if (node.services().securityLevels().getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.MAXIMUM)
       LOG.error("Changing password while physical threat level is at MAXIMUM???");
+    SecureRandom secureRandom = node.bootstrap().secureRandom();
     if (masterKeysFile.exists()) {
-      keys.changePassword(masterKeysFile, newPassword, node.bootstrap().secureRandom());
-      setPasswordInner(keys, inFirstTimeWizard);
+      MasterKeys activeKeys = keys;
+      if (activeKeys == null) {
+        activeKeys = MasterKeys.read(masterKeysFile, secureRandom, oldPassword);
+        synchronized (node) {
+          if (keys == null) {
+            keys = activeKeys;
+            databaseKey = activeKeys.createDatabaseKey();
+          } else {
+            activeKeys = keys;
+          }
+        }
+      }
+      activeKeys.changePassword(masterKeysFile, newPassword, secureRandom);
+      setPasswordInner(activeKeys, inFirstTimeWizard);
     } else {
       setMasterPassword(newPassword, inFirstTimeWizard);
     }

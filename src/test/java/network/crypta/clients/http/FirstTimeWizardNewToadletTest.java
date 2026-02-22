@@ -232,7 +232,7 @@ class FirstTimeWizardNewToadletTest {
     verify(fproxySubConfig).set("hasCompletedWizard", true);
     verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
     verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
-    verify(storage).setMasterPassword("", true);
+    verify(storage).changeMasterPassword("", "", true);
     verify(core).storeConfig();
     verify(ctx)
         .sendReplyHeaders(
@@ -241,10 +241,8 @@ class FirstTimeWizardNewToadletTest {
             ArgumentMatchers.any(),
             eq("text/html; charset=UTF-8"),
             anyLong());
-    assertTrue(toadlet.htmlWritten);
-    @SuppressWarnings("unchecked")
-    Map<String, String> errors = (Map<String, String>) toadlet.lastModel.get("errors");
-    assertTrue(errors.isEmpty());
+    assertFalse(toadlet.htmlWritten);
+    assertNull(toadlet.lastModel);
   }
 
   @Test
