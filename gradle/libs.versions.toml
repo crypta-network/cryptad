@@ -24,6 +24,7 @@ spotbugs = "6.4.8"
 jacoco = "0.8.14"
 errorpronePlugin = "5.0.0"
 errorproneCore = "2.38.0"
+jetbrainsAnnotations = "23.0.0"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -53,6 +54,7 @@ junitJupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
 junitPlatformSuite = { group = "org.junit.platform", name = "junit-platform-suite", version.ref = "junitPlatform" }
 errorproneCore = { group = "com.google.errorprone", name = "error_prone_core", version.ref = "errorproneCore" }
+jetbrainsAnnotations = { group = "org.jetbrains", name = "annotations", version.ref = "jetbrainsAnnotations" }
 
 [plugins]
 #noinspection UnusedVersionCatalogEntry
