@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 
 plugins { java }
 
@@ -166,12 +167,11 @@ val createJreImage by
     val javaHomePath = launcher.map { it.metadata.installationPath.asFile.absolutePath }
     val jreDirProvider = layout.buildDirectory.dir("jre")
     val modulesFileProvider = layout.buildDirectory.dir("jlink").map { it.file("modules.list") }
+    val jlinkCompressionProvider = providers.gradleProperty("jlinkCompression")
     doLast {
+      val osName = System.getProperty("os.name").lowercase()
       val javaHome = File(javaHomePath.get())
-      val jlink =
-        javaHome.resolve(
-          "bin/jlink${if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""}"
-        )
+      val jlink = javaHome.resolve("bin/jlink${if (osName.contains("win")) ".exe" else ""}")
       val jmods = javaHome.resolve("jmods")
 
       val jreDir = jreDirProvider.get().asFile
@@ -179,15 +179,13 @@ val createJreImage by
 
       val modulesFile = modulesFileProvider.get().asFile
       val modulesArg = if (modulesFile.isFile) modulesFile.readText().trim() else "java.base"
+      val jlinkCompression =
+        jlinkCompressionProvider.orNull?.trim().takeUnless { it.isNullOrBlank() } ?: "zip-6"
 
       val args =
-        mutableListOf(
-          jlink.absolutePath,
-          "-v",
-          "--strip-debug",
-          // Use non-deprecated compression syntax (replaces numeric level 2)
-          "--compress",
-          "zip-6",
+        mutableListOf(jlink.absolutePath, "-v", "--strip-debug", "--compress", jlinkCompression)
+      args.addAll(
+        listOf(
           "--no-header-files",
           "--no-man-pages",
           "--module-path",
@@ -197,10 +195,41 @@ val createJreImage by
           "--output",
           jreDir.absolutePath,
         )
+      )
 
       println("Executing jlink: ${args.joinToString(" ")}")
-      val process = ProcessBuilder(args).inheritIO().start()
-      val exit = process.waitFor()
+      val process = ProcessBuilder(args).redirectErrorStream(true).start()
+      val outputPump =
+        Thread {
+            process.inputStream.bufferedReader().useLines { lines ->
+              lines.forEach { line -> logger.lifecycle(line) }
+            }
+          }
+          .apply {
+            name = "jlink-output-pump"
+            isDaemon = true
+            start()
+          }
+
+      val completed = process.waitFor(10, TimeUnit.MINUTES)
+      outputPump.join(2_000)
+      if (!completed) {
+        val jreReady =
+          (jreDir.resolve("release").isFile &&
+            jreDir.resolve("lib/modules").isFile &&
+            (jreDir.resolve("bin/java.exe").isFile || jreDir.resolve("bin/java").isFile))
+        if (jreReady) {
+          logger.warn(
+            "jlink did not exit, but the runtime image is complete. Terminating lingering jlink process."
+          )
+          process.destroyForcibly()
+          return@doLast
+        }
+        process.destroyForcibly()
+        throw GradleException("jlink timed out after 10 minutes")
+      }
+
+      val exit = process.exitValue()
       if (exit != 0) {
         throw GradleException("jlink failed with exit code $exit")
       }
