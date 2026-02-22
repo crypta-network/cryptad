@@ -1328,7 +1328,7 @@ class CSSParserTest {
         """
         H1:before {
             content: "Chapter " counter(chapter) ". ";
-            counter-increment: chapter; \s
+            counter-increment: chapter; \040
         }\
         """);
     propertyTests.put(
