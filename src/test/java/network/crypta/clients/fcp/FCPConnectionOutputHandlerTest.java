@@ -18,10 +18,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -81,6 +83,27 @@ class FCPConnectionOutputHandlerTest {
     when(handler.getSocket()).thenReturn(socket);
     when(socket.getOutputStream()).thenReturn(outputStream);
     when(handler.isClosed()).thenReturn(true);
+
+    outputHandler.run();
+
+    verify(outputStream, atLeastOnce()).flush();
+    verify(outputStream).close();
+    verify(handler).close();
+    verify(handler).closedOutput();
+    assertTrue(outputHandler.closedOutputQueue);
+  }
+
+  @Test
+  void run_whenCheckingClosedState_doesNotHoldQueueMonitor() throws IOException {
+    when(handler.getSocket()).thenReturn(socket);
+    when(socket.getOutputStream()).thenReturn(outputStream);
+    doAnswer(
+            invocation -> {
+              assertFalse(Thread.holdsLock(outputHandler.outQueue));
+              return true;
+            })
+        .when(handler)
+        .isClosed();
 
     outputHandler.run();
 
