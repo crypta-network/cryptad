@@ -90,7 +90,7 @@ class SplitFileFetcherTest {
         raf.free();
       }
       rafField.set(fetcher, null);
-    } catch (Exception ignored) {
+    } catch (Exception _) {
       // Best-effort cleanup to avoid leaking mapped files on Windows.
     }
     if (!tmp.delete() && tmp.exists()) {
@@ -123,7 +123,7 @@ class SplitFileFetcherTest {
   @Test
   void constructor_resumeWithTruncation_missingFile_throwsResumeFailedException() {
     DataInputStream dis; // assigned below
-    // Build a proper stream that points to a missing path so resume fails deterministically.
+    // Build a proper stream that points to a missing path, so resume fails deterministically.
     File nonExistent = new File("/nonexistent-xyz-should-not-exist" + System.nanoTime());
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
     try (DataOutputStream dos = new DataOutputStream(bos)) {
@@ -200,7 +200,7 @@ class SplitFileFetcherTest {
     setField(f, "context", clientContext);
     setField(f, "getter", sendableGetter);
     when(sendableGetter.hasQueued()).thenReturn(false);
-    // Set counter to threshold so branch triggers
+    // Set counter to the threshold so branch triggers
     setField(f, "storeFetchCounter", SplitFileFetcher.STORE_NOTIFY_BLOCKS);
 
     f.onFetchedBlock();
@@ -435,7 +435,7 @@ class SplitFileFetcherTest {
     boolean ret = f.writeTrivialProgress(dos);
 
     assertFalse(ret);
-    // First byte should be boolean false
+    // The first byte should be boolean false
     byte[] data = bos.toByteArray();
     assertEquals(0, data[0]);
   }
@@ -479,7 +479,7 @@ class SplitFileFetcherTest {
 
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(bos);
-    // Also need a token write at the end; default token is 0 from the test ctor
+    // Also need a token writing at the end; the default token is 0 from the test ctor
     boolean ret = f.writeTrivialProgress(dos);
 
     assertTrue(ret);

@@ -219,32 +219,36 @@ final class PeerNodeTransport implements PeerTransport {
     long boundedUnqueueTimeout = Math.max(1L, unqueueWaitMillis);
     cb.waitForSend(boundedSendTimeout);
     if (!cb.done) {
-      SendWaitDiagnostics diagnostics = buildSendWaitDiagnostics(item);
-      LOG.warn(
-          "Waited too long for a blocking send for {} to {} (sendWaitAgeMs={} uid={} external={}"
-              + " uidAgeMs={})",
-          req,
-          peer.selfPeerNode(),
-          diagnostics.sendWaitAgeMs(),
-          diagnostics.uidForLog(),
-          diagnostics.externalIdentifierForLog(),
-          diagnostics.uidAgeMsForLog());
+      if (LOG.isWarnEnabled()) {
+        SendWaitDiagnostics diagnostics = buildSendWaitDiagnostics(item);
+        LOG.warn(
+            "Waited too long for a blocking send for {} to {} (sendWaitAgeMs={} uid={} external={}"
+                + " uidAgeMs={})",
+            req,
+            peer.selfPeerNode(),
+            diagnostics.sendWaitAgeMs(),
+            diagnostics.uidForLog(),
+            diagnostics.externalIdentifierForLog(),
+            diagnostics.uidAgeMsForLog());
+      }
       peer.localRejectedOverload("SendSyncTimeout", realTime);
       // Try to un-queue it, since it presumably won't be of any use now.
       if (!peer.getMessageQueue().removeMessage(item)) {
         cb.waitForSend(boundedUnqueueTimeout);
         if (!cb.done) {
-          SendWaitDiagnostics secondDiagnostics = buildSendWaitDiagnostics(item);
-          LOG.error(
-              "Waited too long for blocking send and then could not un-queue for {} to {}"
-                  + " (sendWaitAgeMs={} uid={} external={} uidAgeMs={})",
-              req,
-              peer.selfPeerNode(),
-              secondDiagnostics.sendWaitAgeMs(),
-              secondDiagnostics.uidForLog(),
-              secondDiagnostics.externalIdentifierForLog(),
-              secondDiagnostics.uidAgeMsForLog(),
-              new Exception(STR_ERROR));
+          if (LOG.isErrorEnabled()) {
+            SendWaitDiagnostics secondDiagnostics = buildSendWaitDiagnostics(item);
+            LOG.error(
+                "Waited too long for blocking send and then could not un-queue for {} to {}"
+                    + " (sendWaitAgeMs={} uid={} external={} uidAgeMs={})",
+                req,
+                peer.selfPeerNode(),
+                secondDiagnostics.sendWaitAgeMs(),
+                secondDiagnostics.uidForLog(),
+                secondDiagnostics.externalIdentifierForLog(),
+                secondDiagnostics.uidAgeMsForLog(),
+                new Exception(STR_ERROR));
+          }
           // Can't cancel yet, can't send it, something seriously wrong.
           // Treat as fatal timeout as probably their fault.
           // Note: We have already waited more than the no-messages timeout; do not wait again.

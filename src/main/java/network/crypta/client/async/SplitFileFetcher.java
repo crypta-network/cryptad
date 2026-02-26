@@ -74,6 +74,27 @@ public final class SplitFileFetcher
   private record TruncationConfig(FileGetCompletionCallback callback, File tempFile) {}
 
   /**
+   * Ensures a restored RAF is closed if constructor resume fails before ownership is transferred to
+   * this fetcher instance.
+   */
+  private static final class ResumeRafCloseGuard implements AutoCloseable {
+    private LockableRandomAccessBuffer raf;
+
+    void track(LockableRandomAccessBuffer raf) {
+      this.raf = raf;
+    }
+
+    void release() {
+      raf = null;
+    }
+
+    @Override
+    public void close() {
+      IOUtils.closeQuietly(raf);
+    }
+  }
+
+  /**
    * Stores the progress of the download, including the actual data, in a separate file. Created in
    * onResume() or in the constructor, so must be volatile.
    */
@@ -792,9 +813,8 @@ public final class SplitFileFetcher
   public SplitFileFetcher(ClientGetter getter, DataInputStream dis, ClientContext context)
       throws StorageFormatException, ResumeFailedException, IOException {
     LOG.info("Resuming splitfile download for {}", this);
-    LockableRandomAccessBuffer restored = null;
-    boolean success = false;
-    try {
+    LockableRandomAccessBuffer restored;
+    try (ResumeRafCloseGuard closeGuard = new ResumeRafCloseGuard()) {
       boolean completeViaTruncation = dis.readBoolean();
       if (completeViaTruncation) {
         fileCompleteViaTruncation = new File(dis.readUTF());
@@ -808,6 +828,7 @@ public final class SplitFileFetcher
         // Note: Could verify against finalLength to finish immediately if it matches.
         restored =
             new PooledFileRandomAccessBuffer(fileCompleteViaTruncation, false, rafSize, -1, true);
+        closeGuard.track(restored);
       } else {
         restored =
             BucketTools.restoreRAFFrom(
@@ -817,6 +838,7 @@ public final class SplitFileFetcher
                 context.getPersistentMasterSecret());
         fileCompleteViaTruncation = null;
         callbackCompleteViaTruncation = null;
+        closeGuard.track(restored);
       }
       this.raf = restored;
       this.parent = getter;
@@ -830,9 +852,7 @@ public final class SplitFileFetcher
       // onResume() will do the rest.
       LOG.info("Resumed splitfile download for {}", this);
       lastNotifiedStoreFetch = System.currentTimeMillis();
-      success = true;
-    } finally {
-      if (!success) IOUtils.closeQuietly(restored);
+      closeGuard.release();
     }
   }
 

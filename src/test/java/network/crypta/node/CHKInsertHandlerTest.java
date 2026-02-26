@@ -1,5 +1,8 @@
 package network.crypta.node;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
@@ -21,11 +24,13 @@ import org.mockito.quality.Strictness;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -63,6 +68,35 @@ class CHKInsertHandlerTest {
     InsertHandlerContext context =
         new InsertHandlerContext(node, source, uid, startTime, tag, options, realTime);
     return new CHKInsertHandler(key, htl, context);
+  }
+
+  private static void setPrivateField(Object target, String fieldName, Object value)
+      throws Exception {
+    Field field = CHKInsertHandler.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static void invokeWaitOnSender(CHKInsertHandler target) throws Exception {
+    Method method = CHKInsertHandler.class.getDeclaredMethod("waitOnSender");
+    method.setAccessible(true);
+    method.invoke(target);
+  }
+
+  private static void invokePrivateMethod(Object target, String methodName, int arg)
+      throws Exception {
+    Method method = CHKInsertHandler.class.getDeclaredMethod(methodName, int.class);
+    method.setAccessible(true);
+    method.invoke(target, arg);
+  }
+
+  private static void clearInterruptForTest() {
+    boolean wasInterrupted = Thread.interrupted();
+    if (wasInterrupted) {
+      assertFalse(
+          Thread.currentThread().isInterrupted(),
+          "interrupt flag should be clear after test cleanup");
+    }
   }
 
   @BeforeEach
@@ -201,6 +235,161 @@ class CHKInsertHandlerTest {
     assertEquals(reason, echoed.getShort(DMT.DATA_INSERT_REJECTED_REASON));
 
     verify(tag, times(1)).unlockHandler();
+  }
+
+  @Test
+  @DisplayName(
+      "waitOnSender_whenInterruptedForReceiveFailure_expectNoInterruptLeakIntoCompletionSend")
+  void waitOnSender_whenInterruptedForReceiveFailure_expectNoInterruptLeakIntoCompletionSend()
+      throws Exception {
+    // Arrange
+    long uid = 8080L;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    CHKInsertSender downstreamSender = org.mockito.Mockito.mock(CHKInsertSender.class);
+    AtomicBoolean waitLoopEntered = new AtomicBoolean();
+    when(downstreamSender.getStatus())
+        .thenAnswer(
+            _ -> {
+              waitLoopEntered.set(true);
+              return CHKInsertSender.NOT_FINISHED;
+            });
+    when(downstreamSender.completed()).thenReturn(true);
+    when(downstreamSender.anyTransfersFailed()).thenReturn(false);
+    setPrivateField(handler, "sender", downstreamSender);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "waitOnSender interrupt leaked into completion sendSync");
+              Message completion = invocation.getArgument(0);
+              assertEquals(DMT.FNPInsertTransfersCompleted, completion.getSpec());
+              assertEquals(uid, completion.getLong(DMT.UID));
+              assertFalse(completion.getBoolean(DMT.ANY_TIMED_OUT));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
+
+    // Act
+    try {
+      Thread.currentThread().interrupt();
+      invokeWaitOnSender(handler);
+      assertTrue(waitLoopEntered.get(), "waitOnSender should observe sender status");
+      invokePrivateMethod(handler, "finish", CHKInsertSender.RECEIVE_FAILED);
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1))
+        .sendSync(
+            any(Message.class),
+            eq(handler),
+            eq(false),
+            eq(SECONDS.toMillis(15)),
+            eq(SECONDS.toMillis(2)));
+  }
+
+  @Test
+  @DisplayName("handleFatalOverload_whenInterrupted_expectSyncSendWithoutInterruptLeak")
+  void handleFatalOverload_whenInterrupted_expectSyncSendWithoutInterruptLeak() throws Exception {
+    // Arrange
+    long uid = 8081L;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "interrupt leaked into fatal-overload sendSync");
+              Message sent = invocation.getArgument(0);
+              assertEquals(DMT.FNPRejectedOverload, sent.getSpec());
+              assertEquals(uid, sent.getLong(DMT.UID));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+
+    // Act
+    try {
+      Thread.currentThread().interrupt();
+      invokePrivateMethod(handler, "handleFatalOverload", CHKInsertSender.INTERNAL_ERROR);
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
+  }
+
+  @Test
+  @DisplayName("handleRouteNotFound_whenInterrupted_expectSyncSendWithoutInterruptLeak")
+  void handleRouteNotFound_whenInterrupted_expectSyncSendWithoutInterruptLeak() throws Exception {
+    // Arrange
+    long uid = 8082L;
+    short expectedHtl = 7;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    CHKInsertSender downstreamSender = org.mockito.Mockito.mock(CHKInsertSender.class);
+    when(downstreamSender.getHTL()).thenReturn(expectedHtl);
+    setPrivateField(handler, "sender", downstreamSender);
+    // Prevent finish() from issuing an additional completion sending; this isolates the
+    // route-not-found synchronous sending path.
+    setPrivateField(handler, "sentCompletion", true);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "interrupt leaked into route-not-found sendSync");
+              Message sent = invocation.getArgument(0);
+              assertEquals(DMT.FNPRouteNotFound, sent.getSpec());
+              assertEquals(uid, sent.getLong(DMT.UID));
+              assertEquals(expectedHtl, sent.getShort(DMT.HTL));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+
+    // Act
+    try {
+      Thread.currentThread().interrupt();
+      invokePrivateMethod(handler, "handleRouteNotFound", CHKInsertSender.ROUTE_REALLY_NOT_FOUND);
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
   }
 
   @Test

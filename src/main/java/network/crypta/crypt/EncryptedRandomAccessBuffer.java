@@ -579,17 +579,30 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     if (type == null) throw new StorageFormatException("Unknown EncryptedRandomAccessBufferType");
     LockableRandomAccessBuffer underlying =
         BucketTools.restoreRAFFrom(dis, fg, persistentFileTracker, masterKey);
-    boolean success = false;
-    try {
+    class UnderlyingCloseGuard implements AutoCloseable {
+      private LockableRandomAccessBuffer buffer;
+
+      private UnderlyingCloseGuard(LockableRandomAccessBuffer buffer) {
+        this.buffer = buffer;
+      }
+
+      private void release() {
+        buffer = null;
+      }
+
+      @Override
+      public void close() {
+        IOUtils.closeQuietly(buffer);
+      }
+    }
+    try (UnderlyingCloseGuard closeGuard = new UnderlyingCloseGuard(underlying)) {
       EncryptedRandomAccessBuffer restored =
           new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
-      success = true;
+      closeGuard.release();
       return restored;
     } catch (GeneralSecurityException e) {
       throw new ResumeFailedException(
           new GeneralSecurityException("Crypto error resuming EncryptedRandomAccessBuffer", e));
-    } finally {
-      if (!success) IOUtils.closeQuietly(underlying);
     }
   }
 
