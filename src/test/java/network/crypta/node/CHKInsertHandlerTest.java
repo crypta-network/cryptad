@@ -2,7 +2,6 @@ package network.crypta.node;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
@@ -77,8 +76,8 @@ class CHKInsertHandlerTest {
     field.set(target, value);
   }
 
-  private static void invokeWaitOnSender(CHKInsertHandler target) throws Exception {
-    Method method = CHKInsertHandler.class.getDeclaredMethod("waitOnSender");
+  private static void invokeProcessSenderStatuses(CHKInsertHandler target) throws Exception {
+    Method method = CHKInsertHandler.class.getDeclaredMethod("processSenderStatuses");
     method.setAccessible(true);
     method.invoke(target);
   }
@@ -239,8 +238,8 @@ class CHKInsertHandlerTest {
 
   @Test
   @DisplayName(
-      "waitOnSender_whenInterruptedForReceiveFailure_expectNoInterruptLeakIntoCompletionSend")
-  void waitOnSender_whenInterruptedForReceiveFailure_expectNoInterruptLeakIntoCompletionSend()
+      "processSenderStatuses_whenInterrupted_expectTerminalFinalizationAndInterruptRestored")
+  void processSenderStatuses_whenInterrupted_expectTerminalFinalizationAndInterruptRestored()
       throws Exception {
     // Arrange
     long uid = 8080L;
@@ -256,49 +255,53 @@ class CHKInsertHandlerTest {
             /* realTime= */ false);
 
     CHKInsertSender downstreamSender = org.mockito.Mockito.mock(CHKInsertSender.class);
-    AtomicBoolean waitLoopEntered = new AtomicBoolean();
+    final boolean[] firstStatusCheck = {true};
     when(downstreamSender.getStatus())
         .thenAnswer(
             _ -> {
-              waitLoopEntered.set(true);
-              return CHKInsertSender.NOT_FINISHED;
+              if (firstStatusCheck[0]) {
+                firstStatusCheck[0] = false;
+                // Simulate a non-receive-failure interrupt arriving while status polling is active.
+                Thread.currentThread().interrupt();
+                return CHKInsertSender.NOT_FINISHED;
+              }
+              return CHKInsertSender.INTERNAL_ERROR;
             });
+    when(downstreamSender.receivedRejectedOverload()).thenReturn(false);
     when(downstreamSender.completed()).thenReturn(true);
     when(downstreamSender.anyTransfersFailed()).thenReturn(false);
     setPrivateField(handler, "sender", downstreamSender);
+    // Isolate terminal status handling; this test verifies finalization reaches terminal reply
+    // sending instead of returning early from processSenderStatuses().
+    setPrivateField(handler, "sentCompletion", true);
 
     doAnswer(
             invocation -> {
               assertFalse(
                   Thread.currentThread().isInterrupted(),
-                  "waitOnSender interrupt leaked into completion sendSync");
-              Message completion = invocation.getArgument(0);
-              assertEquals(DMT.FNPInsertTransfersCompleted, completion.getSpec());
-              assertEquals(uid, completion.getLong(DMT.UID));
-              assertFalse(completion.getBoolean(DMT.ANY_TIMED_OUT));
+                  "interrupt leaked into terminal sendSync");
+              Message terminal = invocation.getArgument(0);
+              assertEquals(DMT.FNPRejectedOverload, terminal.getSpec());
+              assertEquals(uid, terminal.getLong(DMT.UID));
               return null;
             })
         .when(transport)
-        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
 
     // Act
     try {
+      // Pre-set an interrupt to simulate stale executor thread state.
       Thread.currentThread().interrupt();
-      invokeWaitOnSender(handler);
-      assertTrue(waitLoopEntered.get(), "waitOnSender should observe sender status");
-      invokePrivateMethod(handler, "finish", CHKInsertSender.RECEIVE_FAILED);
+      invokeProcessSenderStatuses(handler);
+      assertTrue(
+          Thread.currentThread().isInterrupted(),
+          "interrupt should be restored after terminal status handling");
     } finally {
       clearInterruptForTest();
     }
 
     // Assert
-    verify(transport, times(1))
-        .sendSync(
-            any(Message.class),
-            eq(handler),
-            eq(false),
-            eq(SECONDS.toMillis(15)),
-            eq(SECONDS.toMillis(2)));
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
   }
 
   @Test
