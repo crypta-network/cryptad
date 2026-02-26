@@ -5,6 +5,9 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serial;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import network.crypta.client.FetchContext;
@@ -21,6 +24,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.USK;
 import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,10 +37,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -133,38 +140,7 @@ class USKInserterTest {
 
   @BeforeEach
   void setup() {
-    // Minimal ClientContext: only fields touched by these tests are used.
-    // Many collaborators are irrelevant here and can be passed as null or simple stubs.
-    context =
-        new ClientContext(
-            1L,
-            new ClientContextRuntime(
-                Mockito.mock(ClientLayerPersister.class),
-                new InlineExecutor(),
-                null,
-                null,
-                new DummyRandomSource(),
-                new SecureRandom(),
-                null),
-            new ClientContextStorageFactories(null, null, null, null, null, null, null),
-            new ClientContextRafFactories(null, null),
-            new ClientContextServices(
-                new ClientContextResources(null, null), uskManager, null, null, null, null),
-            new ClientContextDefaults(
-                // Default persistent contexts used only when building fetchers internally; not
-                // exercised in these tests.
-                new FetchContext(
-                    FetchContextOptions.builder()
-                        .limits(0, 0, 0)
-                        .archiveLimits(1, 0, 0, true)
-                        .retryLimits(0, 0, 0)
-                        .splitfileLimits(false, 0, 0)
-                        .behavior(false, false, false)
-                        .clientOptions(new SimpleEventProducer(), false, false)
-                        .filterOverrides(null, null, null)
-                        .build()),
-                newInsertContext(),
-                null));
+    context = newContext(null);
   }
 
   // Helpers in tests create per-test SSKs to build consistent public/insertable USK URIs.
@@ -253,6 +229,40 @@ class USKInserterTest {
     };
   }
 
+  private ClientContext newContext(Ticker ticker) {
+    // Minimal ClientContext: only fields touched by these tests are used.
+    // Many collaborators are irrelevant here and can be passed as null or simple stubs.
+    return new ClientContext(
+        1L,
+        new ClientContextRuntime(
+            Mockito.mock(ClientLayerPersister.class),
+            new InlineExecutor(),
+            null,
+            ticker,
+            new DummyRandomSource(),
+            new SecureRandom(),
+            null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), uskManager, null, null, null, null),
+        new ClientContextDefaults(
+            // Default persistent contexts used only when building fetchers internally; not
+            // exercised in these tests.
+            new FetchContext(
+                FetchContextOptions.builder()
+                    .limits(0, 0, 0)
+                    .archiveLimits(1, 0, 0, true)
+                    .retryLimits(0, 0, 0)
+                    .splitfileLimits(false, 0, 0)
+                    .behavior(false, false, false)
+                    .clientOptions(new SimpleEventProducer(), false, false)
+                    .filterOverrides(null, null, null)
+                    .build()),
+            newInsertContext(),
+            null));
+  }
+
   private USKInserter newInserter(
       Bucket data,
       short compressionCodec,
@@ -277,6 +287,71 @@ class USKInserterTest {
             null),
         new BlockInsertParams(parent, insertCtx, cb, 123, "token", cfg.addToParent, context),
         new BlockInsertOptions(cfg.persistent, cfg.realTimeFlag, cfg.freeData, 0));
+  }
+
+  private static Object newDateHintTerminalCallback(
+      USKInserter inserter, long phaseId, long edition) throws Exception {
+    Class<?> callbackClass =
+        Class.forName(USKInserter.class.getName() + "$DateHintTerminalCallback");
+    Constructor<?> ctor =
+        callbackClass.getDeclaredConstructor(USKInserter.class, long.class, long.class, int.class);
+    ctor.setAccessible(true);
+    return ctor.newInstance(inserter, phaseId, edition, 0);
+  }
+
+  private static Object newDateHintPhase(long phaseId, Object callback) throws Exception {
+    Class<?> callbackClass =
+        Class.forName(USKInserter.class.getName() + "$DateHintTerminalCallback");
+    Class<?> phaseClass = Class.forName(USKInserter.class.getName() + "$DateHintPhase");
+    Constructor<?> ctor = phaseClass.getDeclaredConstructor(long.class, int.class, callbackClass);
+    ctor.setAccessible(true);
+    return ctor.newInstance(phaseId, 0, callback);
+  }
+
+  private static void setDateHintCallbackGroup(Object callback, MultiPutCompletionCallback group)
+      throws Exception {
+    Field f = callback.getClass().getDeclaredField("group");
+    f.setAccessible(true);
+    f.set(callback, group);
+  }
+
+  private static void setDateHintLastProgressAtMillis(Object phase, long value) throws Exception {
+    Field f = phase.getClass().getDeclaredField("lastProgressAtMillis");
+    f.setAccessible(true);
+    f.setLong(phase, value);
+  }
+
+  private static boolean isDateHintWatchdogCancelIssued(Object phase) throws Exception {
+    Field f = phase.getClass().getDeclaredField("watchdogCancelIssued");
+    f.setAccessible(true);
+    return f.getBoolean(phase);
+  }
+
+  private static void setDateHintWatchdogCancelIssued(Object phase) throws Exception {
+    Field f = phase.getClass().getDeclaredField("watchdogCancelIssued");
+    f.setAccessible(true);
+    f.setBoolean(phase, true);
+  }
+
+  private static void setActiveDateHintPhase(USKInserter inserter, Object phase) throws Exception {
+    Field activeField = USKInserter.class.getDeclaredField("activeDateHintPhase");
+    activeField.setAccessible(true);
+    activeField.set(inserter, phase);
+  }
+
+  private static void setDateHintTerminalAwaitingPhaseRestore(
+      PutCompletionCallback callback, boolean inProgress) throws Exception {
+    Field restoreField = callback.getClass().getDeclaredField("awaitingPhaseRestore");
+    restoreField.setAccessible(true);
+    restoreField.setBoolean(callback, inProgress);
+  }
+
+  private static void runDateHintWatchdog(USKInserter inserter, ClientContext context, long phaseId)
+      throws Exception {
+    Method watchdog =
+        USKInserter.class.getDeclaredMethod("runDateHintWatchdog", ClientContext.class, long.class);
+    watchdog.setAccessible(true);
+    watchdog.invoke(inserter, context, phaseId);
   }
 
   @Test
@@ -517,6 +592,286 @@ class USKInserterTest {
   }
 
   @Test
+  void runDateHintWatchdog_whenPhaseStalled_cancelsActiveDateHintGroup() throws Exception {
+    // Arrange
+    byte[] bytes = "stalled-datehint".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-stall";
+    long edition = 5L;
+    long phaseId = 91L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    MultiPutCompletionCallback group = Mockito.mock(MultiPutCompletionCallback.class);
+    Object callback = newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintCallbackGroup(callback, group);
+    Object phase = newDateHintPhase(phaseId, callback);
+    setDateHintLastProgressAtMillis(phase, 0L);
+    setActiveDateHintPhase(inserter, phase);
+
+    // Act
+    runDateHintWatchdog(inserter, context, phaseId);
+
+    // Assert
+    verify(group, times(1)).cancel(context);
+    assertTrue(isDateHintWatchdogCancelIssued(phase));
+  }
+
+  @Test
+  void runDateHintWatchdog_whenRecentProgress_reschedulesWithoutCancelling() throws Exception {
+    // Arrange
+    Ticker ticker = Mockito.mock(Ticker.class);
+    ClientContext contextWithTicker = newContext(ticker);
+    byte[] bytes = "recent-datehint".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-reschedule";
+    long edition = 9L;
+    long phaseId = 92L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    MultiPutCompletionCallback group = Mockito.mock(MultiPutCompletionCallback.class);
+    Object callback = newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintCallbackGroup(callback, group);
+    Object phase = newDateHintPhase(phaseId, callback);
+    setDateHintLastProgressAtMillis(phase, System.currentTimeMillis());
+    setActiveDateHintPhase(inserter, phase);
+
+    // Act
+    runDateHintWatchdog(inserter, contextWithTicker, phaseId);
+
+    // Assert
+    verify(group, never()).cancel(any(ClientContext.class));
+    verify(ticker, times(1))
+        .queueTimedJob(any(Runnable.class), Mockito.longThat(delay -> delay > 0L));
+    assertFalse(isDateHintWatchdogCancelIssued(phase));
+  }
+
+  @Test
+  void dateHintTerminalCallback_onSuccess_forwardsTransitionedStateToParentCallback()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-success".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-success-site";
+    long edition = 4L;
+    long phaseId = 301L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    Object phase = newDateHintPhase(phaseId, terminalCallback);
+    setActiveDateHintPhase(inserter, phase);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+
+    // Act
+    terminalCallback.onSuccess(transitionedState, context);
+
+    // Assert
+    ArgumentCaptor<ClientPutState> stateCaptor = ArgumentCaptor.forClass(ClientPutState.class);
+    verify(cb, times(1)).onSuccess(stateCaptor.capture(), any(ClientContext.class));
+    assertSame(transitionedState, stateCaptor.getValue());
+  }
+
+  @Test
+  void dateHintTerminalCallback_onFailure_forwardsTransitionedStateToParentCallback()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-failure".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-failure-site";
+    long edition = 6L;
+    long phaseId = 302L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    Object phase = newDateHintPhase(phaseId, terminalCallback);
+    setActiveDateHintPhase(inserter, phase);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+    InsertException failure = new InsertException(InsertExceptionMode.INTERNAL_ERROR);
+
+    // Act
+    terminalCallback.onFailure(failure, transitionedState, context);
+
+    // Assert
+    ArgumentCaptor<ClientPutState> stateCaptor = ArgumentCaptor.forClass(ClientPutState.class);
+    verify(cb, times(1)).onFailure(any(InsertException.class), stateCaptor.capture(), any());
+    assertSame(transitionedState, stateCaptor.getValue());
+  }
+
+  @Test
+  void dateHintTerminalCallback_onSuccess_whenPhaseMissingDuringResumeRestore_forwardsSuccess()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-resume-race".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-resume-race-site";
+    long edition = 7L;
+    long phaseId = 401L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, true, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintTerminalAwaitingPhaseRestore(terminalCallback, true);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+
+    // Act
+    terminalCallback.onSuccess(transitionedState, context);
+
+    // Assert
+    verify(cb, times(1)).onSuccess(Mockito.eq(transitionedState), any(ClientContext.class));
+  }
+
+  @Test
+  void dateHintTerminalCallback_onSuccess_whenPhaseMissingOutsideResumeRestore_ignoresEvent()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-missing-phase".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-missing-phase-site";
+    long edition = 8L;
+    long phaseId = 402L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, true, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintTerminalAwaitingPhaseRestore(terminalCallback, false);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+
+    // Act
+    terminalCallback.onSuccess(transitionedState, context);
+
+    // Assert
+    verify(cb, never()).onSuccess(any(ClientPutState.class), any(ClientContext.class));
+  }
+
+  @Test
+  void dateHintTerminalCallback_onFailure_whenParentCancelled_doesNotRetryDatehintPhase()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-cancel-guard".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-cancel-guard-site";
+    long edition = 9L;
+    long phaseId = 403L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+    when(parent.isCancelled()).thenReturn(true);
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    Object phase = newDateHintPhase(phaseId, terminalCallback);
+    setDateHintWatchdogCancelIssued(phase);
+    setActiveDateHintPhase(inserter, phase);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+    InsertException cancelled = new InsertException(InsertExceptionMode.CANCELLED);
+
+    // Act
+    terminalCallback.onFailure(cancelled, transitionedState, context);
+
+    // Assert
+    verify(cb, times(1))
+        .onFailure(Mockito.eq(cancelled), Mockito.eq(transitionedState), any(ClientContext.class));
+    verify(cb, never()).onTransition(any(ClientPutState.class), any(ClientPutState.class), any());
+  }
+
+  @Test
   void onFailure_afterCancelAndDataReleased_doesNotThrow() throws Exception {
     byte[] bytes = "late-cancel".getBytes(StandardCharsets.UTF_8);
     Bucket data = Mockito.spy(makeBucket(bytes));
@@ -693,6 +1048,4 @@ class USKInserterTest {
     verify(cb, times(1)).onFailure(Mockito.eq(ex2), any(), any());
     verify(data2, times(1)).free();
   }
-
-  // Reflection helpers are intentionally omitted; tests use public APIs to prime state.
 }
