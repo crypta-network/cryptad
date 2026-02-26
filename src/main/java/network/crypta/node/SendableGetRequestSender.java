@@ -120,7 +120,8 @@ public class SendableGetRequestSender implements SendableRequestSender {
                   req.onFailure(e, context);
                 }
               },
-              options);
+              options,
+              req.getExternalRequestIdentifier());
     } catch (RuntimeException | Error t) {
       // Convert unexpected throwables into a failure callback to keep the scheduler healthy.
       LOG.error("Unhandled throwable in send: {}", t, t);

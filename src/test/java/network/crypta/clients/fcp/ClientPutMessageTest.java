@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -203,6 +204,37 @@ class ClientPutMessageTest {
     ClientPutMessage message = newDiskMessage(file);
 
     assertEquals(-1L, message.dataLength());
+    message.freeData();
+  }
+
+  @Test
+  void constructor_diskBareChkWithoutExplicitTarget_doesNotInferTargetFilename() throws Exception {
+    Path file = Files.createTempFile(tempDir, "changelog-short", ".md");
+    Files.writeString(file, "payload");
+
+    ClientPutMessage message = newDiskMessage(file);
+
+    assertEquals(ClientPutBase.UploadFrom.DISK, message.uploadFromType);
+    assertEquals(file.toFile(), message.origFilename);
+    assertEquals(-1L, message.dataLength());
+    assertNull(message.targetFilename);
+    message.freeData();
+  }
+
+  @Test
+  void constructor_diskSskWithoutExplicitTarget_infersFilenameForDocName() throws Exception {
+    Path file = Files.createTempFile(tempDir, "client-put", ".txt");
+    Files.writeString(file, "payload");
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle("Identifier", "put-ssk-disk");
+    fs.putSingle("URI", "SSK@");
+    fs.put("Verbosity", 0);
+    fs.putSingle("UploadFrom", "disk");
+    fs.putSingle("Filename", file.toString());
+
+    ClientPutMessage message = new ClientPutMessage(fs);
+
+    assertEquals(file.getFileName().toString(), message.targetFilename);
     message.freeData();
   }
 

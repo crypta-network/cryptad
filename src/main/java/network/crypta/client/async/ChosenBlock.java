@@ -243,6 +243,18 @@ public abstract class ChosenBlock {
    */
   public abstract short getPriority();
 
+  /**
+   * Returns an optional external identifier used for diagnostics correlation.
+   *
+   * <p>The default implementation returns {@code null}. Implementations that can map a chosen block
+   * to a client-visible request identifier should override this method.
+   *
+   * @return external identifier string, or {@code null} if unavailable
+   */
+  public String getExternalRequestIdentifier() {
+    return null;
+  }
+
   private boolean sendIsBlocking;
 
   /**

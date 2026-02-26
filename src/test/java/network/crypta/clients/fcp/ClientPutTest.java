@@ -196,6 +196,17 @@ class ClientPutTest {
   }
 
   @Test
+  void innerResume_whenPutterPresent_reappliesDiagnosticIdentifier() throws Exception {
+    ClientPutter putter = mock(ClientPutter.class);
+    setField(ClientPut.class, clientPut, "putter", putter);
+    ClientContext context = mock(ClientContext.class);
+
+    clientPut.innerResume(context);
+
+    verify(putter).setExternalRequestIdentifier("fcp:test-id");
+  }
+
+  @Test
   void innerResume_whenBucketThrows_propagatesException() throws Exception {
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     setField(ClientPut.class, clientPut, "data", bucket);

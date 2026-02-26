@@ -473,6 +473,32 @@ public abstract class ClientRequest implements Serializable {
   }
 
   /**
+   * Builds the diagnostics correlation identifier for this request.
+   *
+   * <p>The identifier is prefixed to make it explicit that the value originates from FCP.
+   *
+   * @return prefixed identifier string, or {@code null} when no identifier is available
+   */
+  protected final String diagnosticIdentifier() {
+    if (identifier == null) {
+      return null;
+    }
+    return "fcp:" + identifier;
+  }
+
+  /**
+   * Assigns this request's diagnostics identifier to a low-level requester.
+   *
+   * @param requester requester that should carry the diagnostics identifier
+   */
+  protected final void applyDiagnosticIdentifier(ClientRequester requester) {
+    if (requester == null) {
+      return;
+    }
+    requester.setExternalRequestIdentifier(diagnosticIdentifier());
+  }
+
+  /**
    * Returns the underlying {@link ClientRequester} that performs the actual network work.
    *
    * <p>Subclasses typically create a concrete requester in {@link #start(ClientContext)} and return

@@ -379,7 +379,8 @@ class SplitFileInserterSenderTest {
             true,
             Node.PREFER_INSERT_DEFAULT,
             Node.IGNORE_LOW_BACKOFF_DEFAULT,
-            false);
+            false,
+            null);
     verify(segment, times(1)).onInsertedBlock(blockNo, clientKey);
   }
 

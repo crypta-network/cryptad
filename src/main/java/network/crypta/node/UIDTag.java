@@ -109,6 +109,9 @@ public abstract class UIDTag {
 
   final long uid;
 
+  /** Optional external request identifier used for diagnostics correlation (for example FCP id). */
+  private volatile String externalRequestIdentifier;
+
   /**
    * Tracks whether the inbound handler has completed and unlocked.
    *
@@ -157,6 +160,39 @@ public abstract class UIDTag {
 
   long age() {
     return System.currentTimeMillis() - createdTime;
+  }
+
+  /**
+   * Associates an external diagnostics identifier with this in-flight UID.
+   *
+   * <p>This is best-effort metadata and does not affect routing decisions.
+   *
+   * @param externalRequestIdentifier optional external identifier (for example {@code fcp:<id>})
+   */
+  public final void setExternalRequestIdentifier(String externalRequestIdentifier) {
+    String normalized = normalizeExternalRequestIdentifier(externalRequestIdentifier);
+    if (normalized == null || normalized.equals(this.externalRequestIdentifier)) {
+      return;
+    }
+    this.externalRequestIdentifier = normalized;
+    UIDTraceLogger.log("externalIdentifier", this, () -> "value=" + normalized);
+  }
+
+  /**
+   * Returns the external diagnostics identifier associated with this UID.
+   *
+   * @return external identifier, or {@code null} if none has been assigned
+   */
+  public final String getExternalRequestIdentifier() {
+    return externalRequestIdentifier;
+  }
+
+  private static String normalizeExternalRequestIdentifier(String externalRequestIdentifier) {
+    if (externalRequestIdentifier == null) {
+      return null;
+    }
+    String normalized = externalRequestIdentifier.trim();
+    return normalized.isEmpty() ? null : normalized;
   }
 
   /**
@@ -689,6 +725,9 @@ public abstract class UIDTag {
       sb.append(" (fetch offered keys from ").append(fetchingOfferedKeyFrom.size()).append(")");
     if (sourceRestarted) sb.append(" (source restarted)");
     if (timedOutButContinued) sb.append(" (timed out but continued)");
+    if (externalRequestIdentifier != null) {
+      sb.append(" (external=").append(externalRequestIdentifier).append(")");
+    }
     return sb.toString();
   }
 
@@ -746,7 +785,7 @@ public abstract class UIDTag {
 
   private boolean timedOutButContinued;
   private long timeoutContinueAt;
-  private boolean hardTimeoutPeersTriggered;
+  private boolean hardTimeoutPeersLogged;
   private boolean hardTimeoutWithoutPeersTriggered;
 
   /**
@@ -776,7 +815,11 @@ public abstract class UIDTag {
       }
       return;
     }
-    logAndForcePeerTimeout(context.continueAge(), context.routingPeers(), context.offeredPeers());
+    logAndForcePeerTimeout(
+        context.continueAge(),
+        context.routingPeers(),
+        context.offeredPeers(),
+        context.firstPeerForce());
   }
 
   private HardTimeoutContext resolveHardTimeoutContext(long now) {
@@ -794,18 +837,20 @@ public abstract class UIDTag {
     List<PeerNode> routingPeers = List.of(routingPeersArray);
     List<PeerNode> offeredPeers = List.of(offeredPeersArray);
     boolean handleWithoutPeers = routingPeers.isEmpty() && offeredPeers.isEmpty();
+    boolean firstPeerForce = false;
     if (!handleWithoutPeers) {
-      if (!markHardTimeoutPeersTriggered()) return null;
+      firstPeerForce = markPeerHardTimeoutSeen();
     } else if (!shouldHandleHardTimeoutWithoutPeers()) {
       return null;
     }
-    return new HardTimeoutContext(continueAge, routingPeers, offeredPeers, handleWithoutPeers);
+    return new HardTimeoutContext(
+        continueAge, routingPeers, offeredPeers, handleWithoutPeers, firstPeerForce);
   }
 
-  private boolean markHardTimeoutPeersTriggered() {
+  private boolean markPeerHardTimeoutSeen() {
     synchronized (this) {
-      if (hardTimeoutPeersTriggered) return false;
-      hardTimeoutPeersTriggered = true;
+      if (hardTimeoutPeersLogged) return false;
+      hardTimeoutPeersLogged = true;
       return true;
     }
   }
@@ -823,7 +868,10 @@ public abstract class UIDTag {
   }
 
   private void logAndForcePeerTimeout(
-      long continueAge, List<PeerNode> routingPeers, List<PeerNode> offeredPeers) {
+      long continueAge,
+      List<PeerNode> routingPeers,
+      List<PeerNode> offeredPeers,
+      boolean firstPeerForce) {
     String routingSummary = formatPeers(routingPeers);
     String offeredSummary = formatPeers(offeredPeers);
     String elapsed = TimeUtil.formatTime(continueAge);
@@ -831,17 +879,36 @@ public abstract class UIDTag {
         "timeoutHard",
         this,
         () -> "elapsed=" + elapsed + " routing=" + routingSummary + " offered=" + offeredSummary);
-    LOG.warn(
-        "Hard timeout after {} for {}. Forcing fatal timeout: routing={} offered={}",
-        elapsed,
-        this,
-        routingSummary,
-        offeredSummary);
+    if (firstPeerForce) {
+      LOG.warn(
+          "Hard timeout after {} for {}. Forcing fatal timeout: routing={} offered={}",
+          elapsed,
+          this,
+          routingSummary,
+          offeredSummary);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Hard-timeout retry after {} for {}. Re-forcing fatal timeout: routing={} offered={}",
+          elapsed,
+          this,
+          routingSummary,
+          offeredSummary);
+    }
     for (PeerNode peer : routingPeers) {
-      peer.fatalTimeout(this, false);
+      forceFatalTimeout(peer, false);
     }
     for (PeerNode peer : offeredPeers) {
-      peer.fatalTimeout(this, true);
+      forceFatalTimeout(peer, true);
+    }
+  }
+
+  @SuppressWarnings("java:S1181")
+  private void forceFatalTimeout(PeerNode peer, boolean offeredKey) {
+    try {
+      peer.fatalTimeout(this, offeredKey);
+    } catch (Throwable t) {
+      LOG.error(
+          "Failed forcing fatal timeout on {} for {} offeredKey={}", peer, this, offeredKey, t);
     }
   }
 
@@ -894,7 +961,8 @@ public abstract class UIDTag {
       long continueAge,
       List<PeerNode> routingPeers,
       List<PeerNode> offeredPeers,
-      boolean handleWithoutPeers) {}
+      boolean handleWithoutPeers,
+      boolean firstPeerForce) {}
 
   private static String formatPeers(List<PeerNode> peers) {
     if (peers.isEmpty()) return "none";

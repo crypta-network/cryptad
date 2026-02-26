@@ -19,10 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
@@ -87,7 +89,9 @@ class CHKInsertHandlerTest {
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
     // Peer interactions: allow sending without throwing
-    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    doNothing()
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(_ -> null);
 
@@ -107,7 +111,13 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: 1) First, an FNPAccepted is sent synchronously
-    verify(transport, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
+    verify(transport, times(1))
+        .sendSync(
+            messageCaptor.capture(),
+            eq(handler),
+            eq(false),
+            eq(SECONDS.toMillis(15)),
+            eq(SECONDS.toMillis(2)));
     Message accepted = messageCaptor.getValue();
     assertEquals(DMT.FNPAccepted, accepted.getSpec(), "Expected FNPAccepted as first send");
     assertEquals(uid, accepted.getLong(DMT.UID));
@@ -155,7 +165,9 @@ class CHKInsertHandlerTest {
 
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(rejected);
 
-    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    doNothing()
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(_ -> null);
 
@@ -174,7 +186,13 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: first, FNPAccepted; then echo FNPDataInsertRejected with the same reason
-    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(true));
+    verify(transport, times(1))
+        .sendSync(
+            any(Message.class),
+            eq(handler),
+            eq(true),
+            eq(SECONDS.toMillis(15)),
+            eq(SECONDS.toMillis(2)));
 
     verify(transport, times(1)).sendAsync(messageCaptor.capture(), any(), eq(handler));
     Message echoed = messageCaptor.getValue();

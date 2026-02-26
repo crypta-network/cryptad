@@ -82,6 +82,51 @@ class ClientPutMimeResolverTest {
     assertEquals(ProtocolErrorMessage.BAD_MIME_TYPE, error.protocolCode);
   }
 
+  @Test
+  void resolve_whenDiskBareChkWithoutTargetFilename_stripsExplicitMime() throws Exception {
+    File file = createFile("disk-upload.txt");
+    ClientPutMessage message = buildDiskMessage(file, "text/plain", null);
+
+    String mime = ClientPutMimeResolver.resolve(message, file, null, false, "id", false);
+
+    assertNull(mime);
+  }
+
+  @Test
+  void resolve_whenDiskBareChkWithoutTargetFilenameAndBadMime_throwsMessageInvalid()
+      throws Exception {
+    File file = createFile("disk-upload.dat");
+    ClientPutMessage message = buildDiskMessage(file, "not a mime", null);
+
+    MessageInvalidException error =
+        assertThrows(
+            MessageInvalidException.class,
+            () -> ClientPutMimeResolver.resolve(message, file, null, false, "id", false));
+
+    assertEquals(ProtocolErrorMessage.BAD_MIME_TYPE, error.protocolCode);
+  }
+
+  @Test
+  void resolve_whenDiskBareChkWithoutTargetFilename_suppressesGuessedMime() throws Exception {
+    File file = createFile("disk-upload.html");
+    ClientPutMessage message = buildDiskMessage(file, null, null);
+
+    String mime = ClientPutMimeResolver.resolve(message, file, null, false, "id", false);
+
+    assertNull(mime);
+  }
+
+  @Test
+  void resolve_whenDiskBareChkWithTargetFilename_keepsMime() throws Exception {
+    File file = createFile("disk-upload.txt");
+    ClientPutMessage message = buildDiskMessage(file, "text/plain", "keep-mime.txt");
+
+    String mime =
+        ClientPutMimeResolver.resolve(message, file, message.targetFilename, false, "id", false);
+
+    assertEquals("text/plain", mime);
+  }
+
   private File createFile(String name) throws Exception {
     File file = tempDir.resolve(name).toFile();
     assertTrue(file.createNewFile());
@@ -101,6 +146,22 @@ class ClientPutMimeResolverTest {
     }
     if (contentType != null) {
       fields.putSingle("Metadata.ContentType", contentType);
+    }
+    return new ClientPutMessage(fields);
+  }
+
+  private ClientPutMessage buildDiskMessage(File file, String contentType, String targetFilename)
+      throws MessageInvalidException {
+    SimpleFieldSet fields = new SimpleFieldSet(true);
+    fields.putSingle("Identifier", "disk-request");
+    fields.putSingle("URI", "CHK@");
+    fields.putSingle("UploadFrom", "disk");
+    fields.putSingle("Filename", file.getAbsolutePath());
+    if (contentType != null) {
+      fields.putSingle("Metadata.ContentType", contentType);
+    }
+    if (targetFilename != null) {
+      fields.putSingle("TargetFilename", targetFilename);
     }
     return new ClientPutMessage(fields);
   }

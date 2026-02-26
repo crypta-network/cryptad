@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -95,7 +96,8 @@ class SimpleSendableInsertTest {
             Node.FORK_ON_CACHEABLE_DEFAULT,
             Node.PREFER_INSERT_DEFAULT,
             Node.IGNORE_LOW_BACKOFF_DEFAULT,
-            false);
+            false,
+            null);
 
     // Build a token and chosen block
     SendableRequestItemKey tokenKey = new SendableRequestItemKey() {};
@@ -139,7 +141,8 @@ class SimpleSendableInsertTest {
             Node.FORK_ON_CACHEABLE_DEFAULT,
             Node.PREFER_INSERT_DEFAULT,
             Node.IGNORE_LOW_BACKOFF_DEFAULT,
-            false);
+            false,
+            null);
     verify(insert, times(1)).onSuccess(token, null, clientContext);
     verify(requestScheduler, times(1)).removeRunningInsert(insert, tokenKey);
     assertTrue(insert.isCancelled());
@@ -166,7 +169,8 @@ class SimpleSendableInsertTest {
             eq(Node.FORK_ON_CACHEABLE_DEFAULT),
             eq(Node.PREFER_INSERT_DEFAULT),
             eq(Node.IGNORE_LOW_BACKOFF_DEFAULT),
-            eq(false));
+            eq(false),
+            isNull());
 
     SendableRequestItemKey tokenKey = new SendableRequestItemKey() {};
     SendableRequestItem token =
