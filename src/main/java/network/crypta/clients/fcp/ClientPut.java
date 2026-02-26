@@ -191,6 +191,7 @@ public final class ClientPut extends ClientPutBase {
             options.overrideSplitfileCryptoKey(),
             -1);
     putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
+    applyDiagnosticIdentifier(putter);
   }
 
   /**
@@ -291,6 +292,7 @@ public final class ClientPut extends ClientPutBase {
             message.overrideSplitfileCryptoKey,
             message.metadataThreshold);
     putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
+    applyDiagnosticIdentifier(putter);
   }
 
   /**
@@ -839,6 +841,7 @@ public final class ClientPut extends ClientPutBase {
    */
   @Override
   public void innerResume(ClientContext context) throws ResumeFailedException {
+    applyDiagnosticIdentifier(putter);
     if (data != null) data.onResume(context);
   }
 

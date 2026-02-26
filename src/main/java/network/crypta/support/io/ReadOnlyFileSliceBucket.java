@@ -136,6 +136,16 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
     // Intentional no-op.
   }
 
+  private static IOException closeOnInputStreamInitFailure(
+      RandomAccessFile randomAccessFile, IOException failure) {
+    try {
+      randomAccessFile.close();
+    } catch (IOException closeFailure) {
+      failure.addSuppressed(closeFailure);
+    }
+    return failure;
+  }
+
   private final class MyInputStream extends InputStream {
 
     private final RandomAccessFile f;
@@ -151,33 +161,29 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
      * @throws IOException on other I/O errors.
      */
     MyInputStream() throws IOException {
+      RandomAccessFile randomAccessFile;
       try {
-        RandomAccessFile raf = new RandomAccessFile(file, "r");
-        try {
-          raf.seek(startAt);
-          long fileLength = raf.length();
-          if (fileLength < (startAt + length))
-            throw new ReadOnlyFileSliceBucketException(
-                "File truncated? Length "
-                    + fileLength
-                    + " but start at "
-                    + startAt
-                    + " for "
-                    + length
-                    + " bytes");
-          this.f = raf;
-        } catch (IOException e) {
-          try {
-            raf.close();
-          } catch (IOException closeFailure) {
-            e.addSuppressed(closeFailure);
-          }
-          throw e;
-        }
-        ptr = 0;
+        randomAccessFile = new RandomAccessFile(file, "r");
       } catch (FileNotFoundException e) {
         throw new ReadOnlyFileSliceBucketException(e);
       }
+      try {
+        randomAccessFile.seek(startAt);
+        long fileLength = randomAccessFile.length();
+        if (fileLength < (startAt + length))
+          throw new ReadOnlyFileSliceBucketException(
+              "File truncated? Length "
+                  + fileLength
+                  + " but start at "
+                  + startAt
+                  + " for "
+                  + length
+                  + " bytes");
+      } catch (IOException e) {
+        throw closeOnInputStreamInitFailure(randomAccessFile, e);
+      }
+      this.f = randomAccessFile;
+      ptr = 0;
     }
 
     /** Read a single byte from the slice or {@code -1} at end of slice. */

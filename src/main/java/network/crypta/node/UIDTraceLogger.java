@@ -21,8 +21,10 @@ final class UIDTraceLogger {
     } else {
       details = " " + details;
     }
+    String externalIdentifier = tag.getExternalRequestIdentifier();
     LOG.info(
-        "event={} uid={} tag={} local={} originLocal={} rt={} ssk={} insert={} offer={}{}",
+        "event={} uid={} tag={} local={} originLocal={} rt={} ssk={} insert={} offer={}"
+            + " external={}{}",
         event,
         tag.uid,
         tag.getClass().getSimpleName(),
@@ -32,6 +34,7 @@ final class UIDTraceLogger {
         tag.isSSK(),
         tag.isInsert(),
         tag.isOfferReply(),
+        externalIdentifier == null ? "n/a" : externalIdentifier,
         details);
   }
 }

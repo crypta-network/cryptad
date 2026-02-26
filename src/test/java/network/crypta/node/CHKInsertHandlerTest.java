@@ -1,5 +1,7 @@
 package network.crypta.node;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
@@ -19,11 +21,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -63,6 +69,35 @@ class CHKInsertHandlerTest {
     return new CHKInsertHandler(key, htl, context);
   }
 
+  private static void setPrivateField(Object target, String fieldName, Object value)
+      throws Exception {
+    Field field = CHKInsertHandler.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static void invokeProcessSenderStatuses(CHKInsertHandler target) throws Exception {
+    Method method = CHKInsertHandler.class.getDeclaredMethod("processSenderStatuses");
+    method.setAccessible(true);
+    method.invoke(target);
+  }
+
+  private static void invokePrivateMethod(Object target, String methodName, int arg)
+      throws Exception {
+    Method method = CHKInsertHandler.class.getDeclaredMethod(methodName, int.class);
+    method.setAccessible(true);
+    method.invoke(target, arg);
+  }
+
+  private static void clearInterruptForTest() {
+    boolean wasInterrupted = Thread.interrupted();
+    if (wasInterrupted) {
+      assertFalse(
+          Thread.currentThread().isInterrupted(),
+          "interrupt flag should be clear after test cleanup");
+    }
+  }
+
   @BeforeEach
   void setUp() {
     when(node.network().usm()).thenReturn(usm);
@@ -87,7 +122,9 @@ class CHKInsertHandlerTest {
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
     // Peer interactions: allow sending without throwing
-    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    doNothing()
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(_ -> null);
 
@@ -107,7 +144,13 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: 1) First, an FNPAccepted is sent synchronously
-    verify(transport, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
+    verify(transport, times(1))
+        .sendSync(
+            messageCaptor.capture(),
+            eq(handler),
+            eq(false),
+            eq(SECONDS.toMillis(15)),
+            eq(SECONDS.toMillis(2)));
     Message accepted = messageCaptor.getValue();
     assertEquals(DMT.FNPAccepted, accepted.getSpec(), "Expected FNPAccepted as first send");
     assertEquals(uid, accepted.getLong(DMT.UID));
@@ -155,7 +198,9 @@ class CHKInsertHandlerTest {
 
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(rejected);
 
-    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    doNothing()
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean(), anyLong(), anyLong());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(_ -> null);
 
@@ -174,7 +219,13 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: first, FNPAccepted; then echo FNPDataInsertRejected with the same reason
-    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(true));
+    verify(transport, times(1))
+        .sendSync(
+            any(Message.class),
+            eq(handler),
+            eq(true),
+            eq(SECONDS.toMillis(15)),
+            eq(SECONDS.toMillis(2)));
 
     verify(transport, times(1)).sendAsync(messageCaptor.capture(), any(), eq(handler));
     Message echoed = messageCaptor.getValue();
@@ -183,6 +234,165 @@ class CHKInsertHandlerTest {
     assertEquals(reason, echoed.getShort(DMT.DATA_INSERT_REJECTED_REASON));
 
     verify(tag, times(1)).unlockHandler();
+  }
+
+  @Test
+  @DisplayName(
+      "processSenderStatuses_whenInterrupted_expectTerminalFinalizationAndInterruptRestored")
+  void processSenderStatuses_whenInterrupted_expectTerminalFinalizationAndInterruptRestored()
+      throws Exception {
+    // Arrange
+    long uid = 8080L;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    CHKInsertSender downstreamSender = org.mockito.Mockito.mock(CHKInsertSender.class);
+    final boolean[] firstStatusCheck = {true};
+    when(downstreamSender.getStatus())
+        .thenAnswer(
+            _ -> {
+              if (firstStatusCheck[0]) {
+                firstStatusCheck[0] = false;
+                // Simulate a non-receive-failure interrupt arriving while status polling is active.
+                Thread.currentThread().interrupt();
+                return CHKInsertSender.NOT_FINISHED;
+              }
+              return CHKInsertSender.INTERNAL_ERROR;
+            });
+    when(downstreamSender.receivedRejectedOverload()).thenReturn(false);
+    when(downstreamSender.completed()).thenReturn(true);
+    when(downstreamSender.anyTransfersFailed()).thenReturn(false);
+    setPrivateField(handler, "sender", downstreamSender);
+    // Isolate terminal status handling; this test verifies finalization reaches terminal reply
+    // sending instead of returning early from processSenderStatuses().
+    setPrivateField(handler, "sentCompletion", true);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "interrupt leaked into terminal sendSync");
+              Message terminal = invocation.getArgument(0);
+              assertEquals(DMT.FNPRejectedOverload, terminal.getSpec());
+              assertEquals(uid, terminal.getLong(DMT.UID));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+
+    // Act
+    try {
+      // Pre-set an interrupt to simulate stale executor thread state.
+      Thread.currentThread().interrupt();
+      invokeProcessSenderStatuses(handler);
+      assertTrue(
+          Thread.currentThread().isInterrupted(),
+          "interrupt should be restored after terminal status handling");
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
+  }
+
+  @Test
+  @DisplayName("handleFatalOverload_whenInterrupted_expectSyncSendWithoutInterruptLeak")
+  void handleFatalOverload_whenInterrupted_expectSyncSendWithoutInterruptLeak() throws Exception {
+    // Arrange
+    long uid = 8081L;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "interrupt leaked into fatal-overload sendSync");
+              Message sent = invocation.getArgument(0);
+              assertEquals(DMT.FNPRejectedOverload, sent.getSpec());
+              assertEquals(uid, sent.getLong(DMT.UID));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+
+    // Act
+    try {
+      Thread.currentThread().interrupt();
+      invokePrivateMethod(handler, "handleFatalOverload", CHKInsertSender.INTERNAL_ERROR);
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
+  }
+
+  @Test
+  @DisplayName("handleRouteNotFound_whenInterrupted_expectSyncSendWithoutInterruptLeak")
+  void handleRouteNotFound_whenInterrupted_expectSyncSendWithoutInterruptLeak() throws Exception {
+    // Arrange
+    long uid = 8082L;
+    short expectedHtl = 7;
+    CHKInsertHandler handler =
+        newHandler(
+            node,
+            source,
+            tag,
+            nodeCHK,
+            (short) 5,
+            uid,
+            /* startTime= */ beyondHandshakeWindow(),
+            /* realTime= */ false);
+
+    CHKInsertSender downstreamSender = org.mockito.Mockito.mock(CHKInsertSender.class);
+    when(downstreamSender.getHTL()).thenReturn(expectedHtl);
+    setPrivateField(handler, "sender", downstreamSender);
+    // Prevent finish() from issuing an additional completion sending; this isolates the
+    // route-not-found synchronous sending path.
+    setPrivateField(handler, "sentCompletion", true);
+
+    doAnswer(
+            invocation -> {
+              assertFalse(
+                  Thread.currentThread().isInterrupted(),
+                  "interrupt leaked into route-not-found sendSync");
+              Message sent = invocation.getArgument(0);
+              assertEquals(DMT.FNPRouteNotFound, sent.getSpec());
+              assertEquals(uid, sent.getLong(DMT.UID));
+              assertEquals(expectedHtl, sent.getShort(DMT.HTL));
+              return null;
+            })
+        .when(transport)
+        .sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+
+    // Act
+    try {
+      Thread.currentThread().interrupt();
+      invokePrivateMethod(handler, "handleRouteNotFound", CHKInsertSender.ROUTE_REALLY_NOT_FOUND);
+    } finally {
+      clearInterruptForTest();
+    }
+
+    // Assert
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(false));
   }
 
   @Test

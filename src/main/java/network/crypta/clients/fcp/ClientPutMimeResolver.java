@@ -3,6 +3,7 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.async.BinaryBlob;
+import network.crypta.keys.FreenetURI;
 
 /**
  * Resolves and validates MIME types for {@link ClientPut} requests.
@@ -88,6 +89,24 @@ final class ClientPutMimeResolver {
           identifier,
           global);
     }
+    if (shouldSuppressMimeForDiskBareChk(message, targetFilename)) {
+      // Disk uploads for bare CHK@ without an explicit TargetFilename should follow direct-mode
+      // semantics and avoid forcing a two-block metadata wrapper solely for MIME information.
+      mimeType = null;
+    }
     return mimeType;
+  }
+
+  private static boolean shouldSuppressMimeForDiskBareChk(
+      ClientPutMessage message, String targetFilename) {
+    return message.uploadFromType == ClientPutBase.UploadFrom.DISK
+        && targetFilename == null
+        && isBareChkInsertUri(message.uri);
+  }
+
+  private static boolean isBareChkInsertUri(FreenetURI uri) {
+    return uri.getRoutingKey() == null
+        && uri.getDocName() == null
+        && "CHK".equals(uri.getKeyType());
   }
 }

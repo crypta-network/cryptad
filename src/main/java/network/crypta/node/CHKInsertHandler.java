@@ -67,6 +67,24 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   static final long DATA_INSERT_TIMEOUT = SECONDS.toMillis(10);
 
+  /**
+   * Bound synchronous waiting for the initial {@code FNPAccepted} send so handler threads do not
+   * stay blocked on overloaded peers for the full transport default timeout.
+   */
+  private static final long ACCEPTED_SEND_TIMEOUT_MILLIS = SECONDS.toMillis(15);
+
+  /** Additional wait after an un-queue failure when sending {@code FNPAccepted}. */
+  private static final long ACCEPTED_UNQUEUE_WAIT_MILLIS = SECONDS.toMillis(2);
+
+  /**
+   * Bound synchronous waiting for {@code FNPInsertTransfersCompleted} so byte accounting remains
+   * accurate without blocking handlers for the full transport default timeout.
+   */
+  private static final long COMPLETION_SEND_TIMEOUT_MILLIS = SECONDS.toMillis(15);
+
+  /** Additional wait after an un-queue failure when sending completion to the source peer. */
+  private static final long COMPLETION_UNQUEUE_WAIT_MILLIS = SECONDS.toMillis(2);
+
   final Node node;
   final long uid;
   final PeerNode source;
@@ -165,10 +183,18 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private boolean sendAccepted() {
     // Consider inserting rate limiting here if the acceptance path requires backpressure.
     Message accepted = DMT.createFNPAccepted(uid);
+    clearInternalWakeupInterruptBeforeSyncSend("accepted");
     try {
-      // Synchronous send here ensures the next message filter does not spuriously time out; we
-      // either block here, or inside the filter, but we prefer to fail early on sending.
-      source.transport().sendSync(accepted, this, realTimeFlag);
+      // Preserve send ordering with a bounded wait to avoid pinning handler threads for long
+      // transport-level timeouts.
+      source
+          .transport()
+          .sendSync(
+              accepted,
+              this,
+              realTimeFlag,
+              ACCEPTED_SEND_TIMEOUT_MILLIS,
+              ACCEPTED_UNQUEUE_WAIT_MILLIS);
       return true;
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source while sending FNPAccepted");
@@ -246,19 +272,38 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   private void processSenderStatuses() {
     boolean receivedRejectedOverload = false;
-    while (true) {
-      waitOnSender();
-      if (receiveFailed()) {
-        finish(CHKInsertSender.RECEIVE_FAILED);
-        return;
+    // Clear and remember any pre-existing interrupt (e.g., stale executor/cancellation state) so
+    // it cannot leak into synchronous sending; restore on exit.
+    boolean interrupted = Thread.interrupted();
+    try {
+      while (true) {
+        try {
+          waitOnSender();
+        } catch (InterruptedException _) {
+          if (receiveFailed()) {
+            finish(CHKInsertSender.RECEIVE_FAILED);
+            return;
+          }
+          // Preserve external interruption only after terminal handling so it does not leak into
+          // synchronous sending and cause false transport timeouts.
+          interrupted = true;
+        }
+        if (receiveFailed()) {
+          finish(CHKInsertSender.RECEIVE_FAILED);
+          return;
+        }
+
+        receivedRejectedOverload = forwardNonTerminalOverloadIfNeeded(receivedRejectedOverload);
+
+        int status = sender.getStatus();
+        if (status != CHKInsertSender.NOT_FINISHED) {
+          handleTerminalStatus(status);
+          return;
+        }
       }
-
-      receivedRejectedOverload = forwardNonTerminalOverloadIfNeeded(receivedRejectedOverload);
-
-      int status = sender.getStatus();
-      if (status != CHKInsertSender.NOT_FINISHED) {
-        handleTerminalStatus(status);
-        return;
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
       }
     }
   }
@@ -277,19 +322,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     return alreadyForwarded;
   }
 
-  private void waitOnSender() {
+  private void waitOnSender() throws InterruptedException {
     final CHKInsertSender s = sender;
     synchronized (s) {
-      try {
-        long deadline = System.currentTimeMillis() + 5000L;
-        long remaining = deadline - System.currentTimeMillis();
-        while (s.getStatus() == CHKInsertSender.NOT_FINISHED && remaining > 0L) {
-          s.wait(remaining);
-          remaining = deadline - System.currentTimeMillis();
-        }
-      } catch (InterruptedException _) {
-        // Restore interrupt status; likely set by receive failing.
-        Thread.currentThread().interrupt();
+      long deadline = System.currentTimeMillis() + 5000L;
+      long remaining = deadline - System.currentTimeMillis();
+      while (s.getStatus() == CHKInsertSender.NOT_FINISHED && remaining > 0L) {
+        s.wait(remaining);
+        remaining = deadline - System.currentTimeMillis();
       }
     }
   }
@@ -317,6 +357,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
    */
   private void handleFatalOverload(int status) {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
+    clearInternalWakeupInterruptBeforeSyncSend("fatal overload");
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
@@ -334,6 +375,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   /** Sends a route-not-found response including the final HTL, then finalizes the insert. */
   private void handleRouteNotFound(int status) {
     Message msg = DMT.createFNPRouteNotFound(uid, sender.getHTL());
+    clearInternalWakeupInterruptBeforeSyncSend("route-not-found");
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
@@ -356,6 +398,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   /** Sends a success reply upstream and finalizes the insert. */
   private void handleSuccess(int status) {
     Message msg = DMT.createFNPInsertReply(uid);
+    clearInternalWakeupInterruptBeforeSyncSend("success");
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
@@ -376,6 +419,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private void handleUnknownStatus() {
     LOG.error("Unknown status code: {}", sender.getStatusString());
     Message msg = DMT.createFNPRejectedOverload(uid, true);
+    clearInternalWakeupInterruptBeforeSyncSend("unknown-status overload");
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
@@ -556,8 +600,18 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
         try {
           wait(SECONDS.toMillis(100));
         } catch (InterruptedException _) {
-          // Restore interrupted status
+          // Interrupts are used to wake this loop when receive-failure completion runs.
           Thread.currentThread().interrupt();
+          if (receiveCompleted) {
+            break;
+          }
+          // Clear before retrying the timed wait so we do not spin on immediate rethrow.
+          boolean interruptStatusCleared = Thread.interrupted();
+          if (!interruptStatusCleared && LOG.isTraceEnabled()) {
+            LOG.trace(
+                "Interrupt status was already clear before retrying waitForReceiveToComplete on {}",
+                uid);
+          }
         }
       }
     }
@@ -598,41 +652,64 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   private boolean waitUntilSenderCompletedWithin(long deadlineMillis) {
     final CHKInsertSender s = sender;
-    while (true) {
-      synchronized (s) {
-        if (s.completed()) return false;
-        try {
-          long remaining = deadlineMillis - System.currentTimeMillis();
-          int t = (int) Math.clamp(remaining, 0L, Integer.MAX_VALUE);
-          if (t > 0) s.wait(t);
-          else return true; // took too long
-        } catch (InterruptedException _) {
-          // Restore interrupted status and loop
-          Thread.currentThread().interrupt();
+    boolean interrupted = false;
+    try {
+      while (true) {
+        synchronized (s) {
+          if (s.completed()) return false;
+          try {
+            long remaining = deadlineMillis - System.currentTimeMillis();
+            int t = (int) Math.clamp(remaining, 0L, Integer.MAX_VALUE);
+            if (t > 0) s.wait(t);
+            else return true; // took too long
+          } catch (InterruptedException _) {
+            // Interrupts here are used as wake-ups; consume and continue checking sender state.
+            interrupted = true;
+          }
         }
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
       }
     }
   }
 
   private void waitUntilSenderCompletedNoTimeout() {
     final CHKInsertSender s = sender;
-    while (true) {
-      synchronized (s) {
-        if (s.completed()) return;
-        try {
-          s.wait(SECONDS.toMillis(10));
-        } catch (InterruptedException _) {
-          // Restore interrupted status and loop
-          Thread.currentThread().interrupt();
+    boolean interrupted = false;
+    try {
+      while (true) {
+        synchronized (s) {
+          if (s.completed()) return;
+          try {
+            s.wait(SECONDS.toMillis(10));
+          } catch (InterruptedException _) {
+            // Interrupts here are used as wake-ups; consume and continue checking sender state.
+            interrupted = true;
+          }
         }
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
       }
     }
   }
 
   private void sendCompletion(Message m) {
+    clearInternalWakeupInterruptBeforeSyncSend("completion");
     try {
-      // We do need to sendSync here so we have accurate byte counter totals.
-      source.transport().sendSync(m, this, realTimeFlag);
+      // Keep completion synchronous so handler/sender byte totals include this message before we
+      // report aggregate insert costs.
+      source
+          .transport()
+          .sendSync(
+              m,
+              this,
+              realTimeFlag,
+              COMPLETION_SEND_TIMEOUT_MILLIS,
+              COMPLETION_UNQUEUE_WAIT_MILLIS);
       if (LOG.isDebugEnabled()) LOG.debug("Sent completion: {}" + FOR_STRING + "{}", m, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected: {}" + FOR_STRING + "{}", source, this);
@@ -640,6 +717,16 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Send timeout for completion message: {} to {}", m, source);
       // May need to commit anyway...
+    }
+  }
+
+  private void clearInternalWakeupInterruptBeforeSyncSend(String messageType) {
+    // Internal receive-failure wake-ups, stale pooled-thread interrupt flags, or preserved
+    // cancellation interrupts can otherwise leak into synchronous send wait logic and produce false
+    // timeout handling.
+    boolean interruptStatusCleared = Thread.interrupted();
+    if (interruptStatusCleared && LOG.isTraceEnabled()) {
+      LOG.trace("Cleared interrupt status before sending {} for {}", messageType, uid);
     }
   }
 

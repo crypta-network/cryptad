@@ -54,6 +54,19 @@ final class PeerNodeTransport implements PeerTransport {
   /** Separator used in log messages to keep peer identifiers readable. */
   private static final String STR_FOR = " for ";
 
+  /**
+   * Default upper bound for synchronous send waits before attempting un-queue.
+   *
+   * <p>Kept at one minute to preserve historical behavior for callers that do not provide explicit
+   * timeout bounds.
+   */
+  private static final long SEND_SYNC_WAIT_MILLIS_DEFAULT = MINUTES.toMillis(1);
+
+  /**
+   * Default extra wait after un-queue failure in {@link #sendSync(Message, ByteCounter, boolean)}.
+   */
+  private static final long SEND_SYNC_UNQUEUE_WAIT_MILLIS_DEFAULT = SECONDS.toMillis(10);
+
   /** Owning peer for this transport; provides queues, stats, and crypto context. */
   private final PeerNode peer;
 
@@ -188,21 +201,54 @@ final class PeerNodeTransport implements PeerTransport {
   @Override
   public void sendSync(Message req, ByteCounter ctr, boolean realTime)
       throws NotConnectedException, SyncSendWaitedTooLongException {
+    sendSync(
+        req, ctr, realTime, SEND_SYNC_WAIT_MILLIS_DEFAULT, SEND_SYNC_UNQUEUE_WAIT_MILLIS_DEFAULT);
+  }
+
+  @Override
+  public void sendSync(
+      Message req,
+      ByteCounter ctr,
+      boolean realTime,
+      long sendTimeoutMillis,
+      long unqueueWaitMillis)
+      throws NotConnectedException, SyncSendWaitedTooLongException {
     SyncMessageCallback cb = new SyncMessageCallback();
     MessageItem item = sendAsync(req, cb, ctr);
-    cb.waitForSend(MINUTES.toMillis(1));
+    long boundedSendTimeout = Math.max(1L, sendTimeoutMillis);
+    long boundedUnqueueTimeout = Math.max(1L, unqueueWaitMillis);
+    cb.waitForSend(boundedSendTimeout);
     if (!cb.done) {
-      LOG.warn("Waited too long for a blocking send for {} to {}", req, peer.selfPeerNode());
+      if (LOG.isWarnEnabled()) {
+        SendWaitDiagnostics diagnostics = buildSendWaitDiagnostics(item);
+        LOG.warn(
+            "Waited too long for a blocking send for {} to {} (sendWaitAgeMs={} uid={} external={}"
+                + " uidAgeMs={})",
+            req,
+            peer.selfPeerNode(),
+            diagnostics.sendWaitAgeMs(),
+            diagnostics.uidForLog(),
+            diagnostics.externalIdentifierForLog(),
+            diagnostics.uidAgeMsForLog());
+      }
       peer.localRejectedOverload("SendSyncTimeout", realTime);
       // Try to un-queue it, since it presumably won't be of any use now.
       if (!peer.getMessageQueue().removeMessage(item)) {
-        cb.waitForSend(SECONDS.toMillis(10));
+        cb.waitForSend(boundedUnqueueTimeout);
         if (!cb.done) {
-          LOG.error(
-              "Waited too long for blocking send and then could not un-queue for {} to {}",
-              req,
-              peer.selfPeerNode(),
-              new Exception(STR_ERROR));
+          if (LOG.isErrorEnabled()) {
+            SendWaitDiagnostics secondDiagnostics = buildSendWaitDiagnostics(item);
+            LOG.error(
+                "Waited too long for blocking send and then could not un-queue for {} to {}"
+                    + " (sendWaitAgeMs={} uid={} external={} uidAgeMs={})",
+                req,
+                peer.selfPeerNode(),
+                secondDiagnostics.sendWaitAgeMs(),
+                secondDiagnostics.uidForLog(),
+                secondDiagnostics.externalIdentifierForLog(),
+                secondDiagnostics.uidAgeMsForLog(),
+                new Exception(STR_ERROR));
+          }
           // Can't cancel yet, can't send it, something seriously wrong.
           // Treat as fatal timeout as probably their fault.
           // Note: We have already waited more than the no-messages timeout; do not wait again.
@@ -213,6 +259,34 @@ final class PeerNodeTransport implements PeerTransport {
         }
       }
       throw new SyncSendWaitedTooLongException();
+    }
+  }
+
+  private SendWaitDiagnostics buildSendWaitDiagnostics(MessageItem item) {
+    long sendWaitAgeMs = Math.max(0L, System.currentTimeMillis() - item.submitted);
+    long uid = item.getID();
+    if (uid < 0) {
+      return new SendWaitDiagnostics(sendWaitAgeMs, null, null, null);
+    }
+    UIDTag tag = peer.node.routing().tracker().findTagByUid(uid);
+    String externalIdentifier = tag == null ? null : tag.getExternalRequestIdentifier();
+    Long uidAgeMs = tag == null ? null : tag.age();
+    return new SendWaitDiagnostics(sendWaitAgeMs, uid, externalIdentifier, uidAgeMs);
+  }
+
+  private record SendWaitDiagnostics(
+      long sendWaitAgeMs, Long uid, String externalIdentifier, Long uidAgeMs) {
+
+    String uidForLog() {
+      return uid == null ? "unknown" : Long.toString(uid);
+    }
+
+    String externalIdentifierForLog() {
+      return externalIdentifier == null ? "n/a" : externalIdentifier;
+    }
+
+    String uidAgeMsForLog() {
+      return uidAgeMs == null ? "n/a" : Long.toString(uidAgeMs);
     }
   }
 

@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -163,7 +164,7 @@ class SendableGetRequestSenderTest {
               return null;
             })
         .when(transfers)
-        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options), isNull());
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);
@@ -196,7 +197,7 @@ class SendableGetRequestSenderTest {
               return null;
             })
         .when(transfers)
-        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options), isNull());
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);
@@ -273,7 +274,7 @@ class SendableGetRequestSenderTest {
         NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, false, false);
     doThrow(new RuntimeException("asyncGet blew up"))
         .when(transfers)
-        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options), isNull());
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);

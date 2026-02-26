@@ -269,7 +269,8 @@ public final class SimpleSendableInsert extends SendableInsert {
                   Node.FORK_ON_CACHEABLE_DEFAULT,
                   Node.PREFER_INSERT_DEFAULT,
                   Node.IGNORE_LOW_BACKOFF_DEFAULT,
-                  false);
+                  false,
+                  req.getExternalRequestIdentifier());
           succeeded = true;
         } catch (LowLevelPutException e) {
           onFailure(e, req.token, context);

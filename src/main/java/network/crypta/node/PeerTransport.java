@@ -80,6 +80,32 @@ public interface PeerTransport {
       throws NotConnectedException, SyncSendWaitedTooLongException;
 
   /**
+   * Sends a message synchronously using explicit timeout bounds.
+   *
+   * <p>Implementations may override this to provide tuned timeouts for specific call sites while
+   * preserving the same synchronous semantics as {@link #sendSync(Message, ByteCounter, boolean)}.
+   * The default implementation delegates to the legacy method and ignores the timeout parameters to
+   * keep backward compatibility for transports that do not need custom bounds.
+   *
+   * @param req message to send; must be a fully populated, encodable instance
+   * @param ctr byte counter used for bandwidth accounting; may be {@code null}
+   * @param realTime {@code true} to request real-time scheduling; {@code false} otherwise
+   * @param sendTimeoutMillis primary wait before trying to un-queue a blocked send
+   * @param unqueueWaitMillis additional wait after un-queue failure before giving up
+   * @throws NotConnectedException if the peer disconnects before the send completes
+   * @throws SyncSendWaitedTooLongException if the acknowledgement does not arrive in time
+   */
+  default void sendSync(
+      Message req,
+      ByteCounter ctr,
+      boolean realTime,
+      long sendTimeoutMillis,
+      long unqueueWaitMillis)
+      throws NotConnectedException, SyncSendWaitedTooLongException {
+    sendSync(req, ctr, realTime);
+  }
+
+  /**
    * Sends a low-level ping and waits for a corresponding pong.
    *
    * <p>The call transmits a transport-level ping message and blocks until a reply is received or

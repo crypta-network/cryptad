@@ -419,6 +419,13 @@ public final class CHKInsertSender extends BaseSender
 
   // Constants
   static final long ACCEPTED_TIMEOUT = SECONDS.toMillis(10);
+
+  /** Bound waiting for initial {@code FNPDataInsert} queueing so routing can fail over quickly. */
+  static final long DATA_INSERT_SEND_TIMEOUT_MILLIS = SECONDS.toMillis(15);
+
+  /** Additional wait after un-queue failure for {@code FNPDataInsert}. */
+  static final long DATA_INSERT_UNQUEUE_WAIT_MILLIS = SECONDS.toMillis(2);
+
   static final long TRANSFER_COMPLETION_ACK_TIMEOUT_REALTIME = MINUTES.toMillis(1);
   static final long TRANSFER_COMPLETION_ACK_TIMEOUT_BULK = MINUTES.toMillis(5);
 
@@ -1502,7 +1509,13 @@ public final class CHKInsertSender extends BaseSender
 
     if (LOG.isDebugEnabled()) LOG.debug("Sending DataInsert");
     try {
-      next.transport().sendSync(dataInsert, this, realTimeFlag);
+      next.transport()
+          .sendSync(
+              dataInsert,
+              this,
+              realTimeFlag,
+              DATA_INSERT_SEND_TIMEOUT_MILLIS,
+              DATA_INSERT_UNQUEUE_WAIT_MILLIS);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Not connected sending DataInsert: {}" + FOR + "{}", next, uid);

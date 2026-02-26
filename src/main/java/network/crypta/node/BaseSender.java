@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Base class for request and insert senders.
@@ -71,6 +72,13 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   long uid;
   static final long SEARCH_TIMEOUT_BULK = MINUTES.toMillis(10);
   static final long SEARCH_TIMEOUT_REALTIME = MINUTES.toMillis(1);
+
+  /** Keep legacy-route request sends short so blocked peer queues fail fast and reroute. */
+  static final long ROUTE_SEND_TIMEOUT_MILLIS = SECONDS.toMillis(15);
+
+  /** Extra wait after un-queue failure for route-request sends. */
+  static final long ROUTE_SEND_UNQUEUE_WAIT_MILLIS = SECONDS.toMillis(2);
+
   final int incomingSearchTimeout;
 
   BaseSender(Key key, boolean realTimeFlag, PeerNode source, Node node, short htl, long uid) {
@@ -298,7 +306,9 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       //   waiting in the peer’s sending queue.
       // - sendAsync would increase ACCEPTED_TIMEOUT risk and leave many hanging requests, further
       //   overloading peers. Hence, we do NOT use sendAsync here.
-      next.transport().sendSync(req, this, realTimeFlag);
+      next.transport()
+          .sendSync(
+              req, this, realTimeFlag, ROUTE_SEND_TIMEOUT_MILLIS, ROUTE_SEND_UNQUEUE_WAIT_MILLIS);
       PeerNodeRoutingReporter.reportRoutedTo(
           node,
           next,
@@ -682,7 +692,11 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       return false;
     }
     try {
-      state.next.transport().sendSync(req, this, realTimeFlag);
+      state
+          .next
+          .transport()
+          .sendSync(
+              req, this, realTimeFlag, ROUTE_SEND_TIMEOUT_MILLIS, ROUTE_SEND_UNQUEUE_WAIT_MILLIS);
       PeerNodeRoutingReporter.reportRoutedTo(
           node,
           state.next,

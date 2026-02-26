@@ -144,7 +144,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
 
     fileHash = fs.get(ClientPutBase.FILE_HASH);
 
-    UploadConfig uploadConfig = parseUploadSource(fs, identifier, global, filenameHint);
+    UploadConfig uploadConfig = parseUploadSource(fs, identifier, global, filenameHint, uri);
     payloadLength = uploadConfig.length();
     uploadFromType = uploadConfig.type();
     origFilename = uploadConfig.originalFile();
@@ -299,7 +299,11 @@ public final class ClientPutMessage extends DataCarryingMessage {
   }
 
   private UploadConfig parseUploadSource(
-      SimpleFieldSet fs, String identifier, boolean global, String filenameHint)
+      SimpleFieldSet fs,
+      String identifier,
+      boolean global,
+      String filenameHint,
+      FreenetURI parsedUri)
       throws MessageInvalidException {
     String uploadFrom = fs.get(FIELD_UPLOAD_FROM);
     if (uploadFrom == null || uploadFrom.equalsIgnoreCase("direct")) {
@@ -316,7 +320,10 @@ public final class ClientPutMessage extends DataCarryingMessage {
         throw new MessageInvalidException(
             ProtocolErrorMessage.FILE_NOT_FOUND, null, identifier, global);
       bucket = new FileBucket(f, true, false, false, false);
-      String resolvedName = filenameHint != null ? filenameHint : f.getName();
+      String resolvedName = filenameHint;
+      if (resolvedName == null && shouldInferDiskFilenameHint(parsedUri)) {
+        resolvedName = f.getName();
+      }
       return new UploadConfig(f.length(), UploadFrom.DISK, f, null, resolvedName);
     }
     if (uploadFrom.equalsIgnoreCase("redirect")) {
@@ -403,6 +410,15 @@ public final class ClientPutMessage extends DataCarryingMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
     }
+  }
+
+  private static boolean shouldInferDiskFilenameHint(FreenetURI uri) {
+    // For bare CHK inserts we do not infer a target filename from the local disk path.
+    // Preserving a null filename keeps semantics aligned with direct payload uploads and avoids
+    // forcing a metadata wrapper when the client did not explicitly request one.
+    return !(uri.getRoutingKey() == null
+        && uri.getDocName() == null
+        && "CHK".equals(uri.getKeyType()));
   }
 
   private record UriParseResult(FreenetURI uri, String filenameHint) {}

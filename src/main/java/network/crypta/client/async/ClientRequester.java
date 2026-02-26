@@ -90,6 +90,14 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected transient RequestClient client;
 
   /**
+   * Optional external identifier used to correlate scheduler activity with client-visible requests.
+   *
+   * <p>Typical values include an FCP request identifier prefix such as {@code fcp:...}. The value
+   * is intentionally transient so persistence format remains unchanged.
+   */
+  private transient volatile String externalRequestIdentifier;
+
+  /**
    * Returns the current scheduling priority class for this request.
    *
    * <p>The priority class influences how the request competes for network resources compared to
@@ -569,6 +577,35 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    */
   public RequestClient getClient() {
     return client;
+  }
+
+  /**
+   * Assigns an external correlation identifier for diagnostics.
+   *
+   * <p>This does not affect routing or scheduling; it only enriches logs when low-level stalls are
+   * reported.
+   *
+   * @param externalRequestIdentifier external identifier string, or {@code null} to clear
+   */
+  public final void setExternalRequestIdentifier(String externalRequestIdentifier) {
+    this.externalRequestIdentifier = normalizeExternalRequestIdentifier(externalRequestIdentifier);
+  }
+
+  /**
+   * Returns the optional external correlation identifier used for diagnostics.
+   *
+   * @return external identifier, or {@code null} if none has been assigned
+   */
+  public final String getExternalRequestIdentifier() {
+    return externalRequestIdentifier;
+  }
+
+  private static String normalizeExternalRequestIdentifier(String externalRequestIdentifier) {
+    if (externalRequestIdentifier == null) {
+      return null;
+    }
+    String normalized = externalRequestIdentifier.trim();
+    return normalized.isEmpty() ? null : normalized;
   }
 
   /**

@@ -758,7 +758,8 @@ public final class SingleBlockInserter extends SendableInsert
               req.forkOnCacheable,
               Node.PREFER_INSERT_DEFAULT,
               Node.IGNORE_LOW_BACKOFF_DEFAULT,
-              req.realTimeFlag);
+              req.realTimeFlag,
+              req.getExternalRequestIdentifier());
   }
 
   private boolean handleCollision(
