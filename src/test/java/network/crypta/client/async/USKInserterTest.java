@@ -339,6 +339,12 @@ class USKInserterTest {
     activeField.set(inserter, phase);
   }
 
+  private static Object getActiveDateHintPhase(USKInserter inserter) throws Exception {
+    Field activeField = USKInserter.class.getDeclaredField("activeDateHintPhase");
+    activeField.setAccessible(true);
+    return activeField.get(inserter);
+  }
+
   private static void setDateHintTerminalAwaitingPhaseRestore(
       PutCompletionCallback callback, boolean inProgress) throws Exception {
     Field restoreField = callback.getClass().getDeclaredField("awaitingPhaseRestore");
@@ -671,6 +677,50 @@ class USKInserterTest {
     verify(ticker, times(1))
         .queueTimedJob(any(Runnable.class), Mockito.longThat(delay -> delay > 0L));
     assertFalse(isDateHintWatchdogCancelIssued(phase));
+  }
+
+  @Test
+  void dateHintTerminalCallback_onResume_restoresWatchdogCancelMarker() throws Exception {
+    // Arrange
+    byte[] bytes = "watchdog-restore-marker".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-restore";
+    long edition = 11L;
+    long phaseId = 93L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, true, false));
+
+    MultiPutCompletionCallback group = Mockito.mock(MultiPutCompletionCallback.class);
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintCallbackGroup(terminalCallback, group);
+    Object phase = newDateHintPhase(phaseId, terminalCallback);
+    setDateHintLastProgressAtMillis(phase, 0L);
+    setActiveDateHintPhase(inserter, phase);
+
+    // Trigger watchdog cancellation marker, then simulate restart by dropping transient phase
+    // state.
+    runDateHintWatchdog(inserter, context, phaseId);
+    setActiveDateHintPhase(inserter, null);
+
+    // Act
+    terminalCallback.onResume(context);
+
+    // Assert
+    Object restoredPhase = getActiveDateHintPhase(inserter);
+    assertTrue(isDateHintWatchdogCancelIssued(restoredPhase));
   }
 
   @Test

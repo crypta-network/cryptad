@@ -188,6 +188,7 @@ public final class USKInserter
     private final long edition;
     private final int retryCount;
     private MultiPutCompletionCallback group;
+    private volatile boolean watchdogCancelIssued;
     private transient volatile boolean awaitingPhaseRestore;
     private transient volatile boolean completedBeforePhaseRestore;
 
@@ -195,6 +196,7 @@ public final class USKInserter
       this.phaseId = phaseId;
       this.edition = edition;
       this.retryCount = retryCount;
+      this.watchdogCancelIssued = false;
       this.awaitingPhaseRestore = false;
     }
 
@@ -235,9 +237,12 @@ public final class USKInserter
       synchronized (USKInserter.this) {
         DateHintPhase current = activeDateHintPhase;
         if (current == null || current.phaseId != phaseId) {
-          activeDateHintPhase = new DateHintPhase(phaseId, retryCount, this);
+          DateHintPhase restored = new DateHintPhase(phaseId, retryCount, this);
+          restored.watchdogCancelIssued = watchdogCancelIssued;
+          activeDateHintPhase = restored;
           nextDateHintPhaseId = Math.max(nextDateHintPhaseId, phaseId + 1);
         } else {
+          current.watchdogCancelIssued |= watchdogCancelIssued;
           current.lastProgressAtMillis = System.currentTimeMillis();
         }
       }
@@ -256,9 +261,10 @@ public final class USKInserter
           completedBeforePhaseRestore = true;
         } else {
           if (phase.phaseId != phaseId) return;
+          boolean watchdogCancelled = phase.watchdogCancelIssued || watchdogCancelIssued;
           retryOnStallCancel =
               failure != null
-                  && phase.watchdogCancelIssued
+                  && watchdogCancelled
                   && failure.getMode() == InsertExceptionMode.CANCELLED
                   && retryCount < MAX_DATEHINT_STALL_RETRIES
                   && !isParentRequestCancelled();
@@ -584,6 +590,7 @@ public final class USKInserter
         rescheduleDelay = DATEHINT_STALL_TIMEOUT_MILLIS - stalledFor;
       } else if (!phase.watchdogCancelIssued) {
         phase.watchdogCancelIssued = true;
+        phase.terminalCallback.watchdogCancelIssued = true;
         callbackToCancel = phase.terminalCallback;
         retryCount = phase.retryCount;
       }
