@@ -1044,6 +1044,33 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     return total;
   }
 
+  /**
+   * Returns the absolute wakeup timestamp for a specific priority class, if that priority is
+   * currently in cooldown.
+   *
+   * <p>The value is suitable for comparing against {@link System#currentTimeMillis()}. Returns
+   * {@code 0} when the priority is currently runnable or when no finite cooldown is known.
+   *
+   * @param priorityClass scheduler priority class to inspect
+   * @param context client context used by the cooldown tracker
+   * @param now current wall-clock time in milliseconds
+   * @return absolute wakeup timestamp, or {@code 0} when no finite cooldown is active
+   */
+  synchronized long getPriorityCooldownUntil(short priorityClass, ClientContext context, long now) {
+    if (priorityClass < 0 || priorityClass >= priorities.length) {
+      return 0L;
+    }
+    RequestClientRGANode tracker = priorities[priorityClass];
+    if (tracker == null) {
+      return 0L;
+    }
+    long wakeup = tracker.getWakeupTime(context, now);
+    if (wakeup == Long.MAX_VALUE || wakeup <= now) {
+      return 0L;
+    }
+    return wakeup;
+  }
+
   private long printAndCountPriority(int index, RequestClientRGANode prio, ClientContext context) {
     if (prio == null || prio.isEmpty()) {
       LOG.info("{}{} : empty", PRIORITY, index);
