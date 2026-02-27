@@ -1036,6 +1036,46 @@ class USKInserterTest {
   }
 
   @Test
+  void dateHintTerminalCallback_onFailure_whenWatchdogCancelledBeforePhaseRestore_treatsAsSuccess()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-resume-watchdog-cancel".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-resume-watchdog-cancel-site";
+    long edition = 7L;
+    long phaseId = 405L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, true, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition, 1);
+    setDateHintTerminalAwaitingPhaseRestore(terminalCallback, true);
+    setDateHintTerminalWatchdogCancelIssued(terminalCallback);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+    InsertException cancelled = new InsertException(InsertExceptionMode.CANCELLED);
+
+    // Act
+    terminalCallback.onFailure(cancelled, transitionedState, context);
+
+    // Assert
+    verify(cb, times(1)).onSuccess(Mockito.eq(transitionedState), any(ClientContext.class));
+    verify(cb, never()).onFailure(any(InsertException.class), any(ClientPutState.class), any());
+  }
+
+  @Test
   void dateHintTerminalCallback_onSuccess_whenPhaseMissingOutsideResumeRestore_ignoresEvent()
       throws Exception {
     // Arrange

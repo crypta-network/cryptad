@@ -324,7 +324,7 @@ public final class USKInserter
       synchronized (USKInserter.this) {
         DateHintPhase phase = activeDateHintPhase;
         if (phase == null) {
-          return decideDateHintCompletionWithoutActivePhase();
+          return decideDateHintCompletionWithoutActivePhase(failure);
         }
         if (phase.phaseId != phaseId) {
           return new DateHintPhaseFinishDecision(true, false, false);
@@ -333,13 +333,21 @@ public final class USKInserter
       }
     }
 
-    private DateHintPhaseFinishDecision decideDateHintCompletionWithoutActivePhase() {
+    private DateHintPhaseFinishDecision decideDateHintCompletionWithoutActivePhase(
+        InsertException failure) {
       // Resume-order race: MultiPut resumes children before callback.onResume() rebuilds phase.
       if (!awaitingPhaseRestore || completedBeforePhaseRestore) {
         return new DateHintPhaseFinishDecision(true, false, false);
       }
       completedBeforePhaseRestore = true;
-      return new DateHintPhaseFinishDecision(false, false, false);
+      boolean parentCancelled = isParentRequestCancelled();
+      boolean watchdogCancelFailure = isWatchdogCancelFailure(failure, watchdogCancelIssued);
+      boolean retryOnStallCancel =
+          watchdogCancelFailure && retryCount < MAX_DATEHINT_STALL_RETRIES && !parentCancelled;
+      boolean treatWatchdogCancelAsBestEffortSuccess =
+          watchdogCancelFailure && !retryOnStallCancel && !parentCancelled;
+      return new DateHintPhaseFinishDecision(
+          false, retryOnStallCancel, treatWatchdogCancelAsBestEffortSuccess);
     }
 
     private DateHintPhaseFinishDecision decideDateHintCompletionWithActivePhase(
