@@ -129,6 +129,21 @@ public final class USKInserter
   /** Maximum time to wait for USK datehint child inserts to make progress before retrying. */
   private static final long DATEHINT_STALL_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(15);
 
+  /**
+   * Extra grace added when the SSK insert scheduler reports an explicit cooldown for this priority
+   * class.
+   */
+  private static final long DATEHINT_SCHEDULER_COOLDOWN_GRACE_MILLIS = TimeUnit.SECONDS.toMillis(5);
+
+  /**
+   * Time to wait after issuing a watchdog cancel before force-completing a stuck datehint phase.
+   *
+   * <p>This guards cases where child states never deliver terminal callbacks after cancel and the
+   * phase would otherwise remain pending indefinitely.
+   */
+  private static final long DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS =
+      TimeUnit.MINUTES.toMillis(1);
+
   /** Retry stalled USK datehint phase at most this many times before surfacing failure. */
   private static final int MAX_DATEHINT_STALL_RETRIES = 1;
 
@@ -147,6 +162,13 @@ public final class USKInserter
   /** Optional override for the crypto key material; {@code null} to auto-generate. */
   final byte[] forceCryptoKey;
 
+  /**
+   * Last known non-null external request identifier for diagnostics correlation.
+   *
+   * <p>Persisted so datehint child inserts can restore correlation metadata after restart.
+   */
+  private String externalRequestIdentifierSnapshot;
+
   /** Active datehint insert phase; null when not currently inserting datehints. */
   private transient DateHintPhase activeDateHintPhase;
 
@@ -163,16 +185,41 @@ public final class USKInserter
     final long phaseId;
     final int retryCount;
     final DateHintTerminalCallback terminalCallback;
+    final ClientPutState completionState;
     long lastProgressAtMillis;
     boolean watchdogCancelIssued;
+    long watchdogCancelIssuedAtMillis;
 
-    DateHintPhase(long phaseId, int retryCount, DateHintTerminalCallback terminalCallback) {
+    DateHintPhase(
+        long phaseId,
+        int retryCount,
+        DateHintTerminalCallback terminalCallback,
+        ClientPutState completionState) {
       this.phaseId = phaseId;
       this.retryCount = retryCount;
       this.terminalCallback = terminalCallback;
+      this.completionState = completionState;
       this.lastProgressAtMillis = System.currentTimeMillis();
       this.watchdogCancelIssued = false;
+      this.watchdogCancelIssuedAtMillis = 0L;
     }
+  }
+
+  private record DateHintPhaseFinishDecision(
+      boolean ignoreEvent,
+      boolean retryOnStallCancel,
+      boolean treatWatchdogCancelAsBestEffortSuccess) {}
+
+  private static final class DateHintWatchdogState {
+    DateHintTerminalCallback callbackToCancel;
+    DateHintTerminalCallback callbackToForceComplete;
+    ClientPutState forceCompletionState;
+    long rescheduleDelay = -1L;
+    long stalledFor;
+    long cancelAge;
+    int retryCount;
+    boolean evaluateSchedulerCooldown;
+    long schedulerCooldownDelay;
   }
 
   /**
@@ -233,45 +280,114 @@ public final class USKInserter
       }
     }
 
+    private long resumedPhaseWatchdogDelayMillis(DateHintPhase phase) {
+      if (!phase.watchdogCancelIssued) {
+        return DATEHINT_STALL_TIMEOUT_MILLIS;
+      }
+      long now = System.currentTimeMillis();
+      if (phase.watchdogCancelIssuedAtMillis <= 0L) {
+        phase.watchdogCancelIssuedAtMillis = now;
+      }
+      long cancelAge = now - phase.watchdogCancelIssuedAtMillis;
+      if (cancelAge >= DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS) {
+        return 1L;
+      }
+      return DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS - cancelAge;
+    }
+
     private void onDateHintPhaseResumed(ClientContext context) {
+      long watchdogDelayMillis;
       synchronized (USKInserter.this) {
         DateHintPhase current = activeDateHintPhase;
         if (current == null || current.phaseId != phaseId) {
-          DateHintPhase restored = new DateHintPhase(phaseId, retryCount, this);
+          ClientPutState resumedState = (group != null) ? group : USKInserter.this;
+          DateHintPhase restored = new DateHintPhase(phaseId, retryCount, this, resumedState);
           restored.watchdogCancelIssued = watchdogCancelIssued;
+          restored.watchdogCancelIssuedAtMillis =
+              watchdogCancelIssued ? System.currentTimeMillis() : 0L;
           activeDateHintPhase = restored;
           nextDateHintPhaseId = Math.max(nextDateHintPhaseId, phaseId + 1);
+          watchdogDelayMillis = resumedPhaseWatchdogDelayMillis(restored);
         } else {
           current.watchdogCancelIssued |= watchdogCancelIssued;
+          if (current.watchdogCancelIssued && current.watchdogCancelIssuedAtMillis <= 0L) {
+            current.watchdogCancelIssuedAtMillis = System.currentTimeMillis();
+          }
           current.lastProgressAtMillis = System.currentTimeMillis();
+          watchdogDelayMillis = resumedPhaseWatchdogDelayMillis(current);
         }
       }
-      scheduleDateHintWatchdog(context, phaseId, DATEHINT_STALL_TIMEOUT_MILLIS);
+      scheduleDateHintWatchdog(context, phaseId, watchdogDelayMillis);
+    }
+
+    private DateHintPhaseFinishDecision decideDateHintPhaseCompletion(InsertException failure) {
+      synchronized (USKInserter.this) {
+        DateHintPhase phase = activeDateHintPhase;
+        if (phase == null) {
+          return decideDateHintCompletionWithoutActivePhase();
+        }
+        if (phase.phaseId != phaseId) {
+          return new DateHintPhaseFinishDecision(true, false, false);
+        }
+        return decideDateHintCompletionWithActivePhase(phase, failure);
+      }
+    }
+
+    private DateHintPhaseFinishDecision decideDateHintCompletionWithoutActivePhase() {
+      // Resume-order race: MultiPut resumes children before callback.onResume() rebuilds phase.
+      if (!awaitingPhaseRestore || completedBeforePhaseRestore) {
+        return new DateHintPhaseFinishDecision(true, false, false);
+      }
+      completedBeforePhaseRestore = true;
+      return new DateHintPhaseFinishDecision(false, false, false);
+    }
+
+    private DateHintPhaseFinishDecision decideDateHintCompletionWithActivePhase(
+        DateHintPhase phase, InsertException failure) {
+      boolean watchdogCancelled = phase.watchdogCancelIssued || watchdogCancelIssued;
+      boolean parentCancelled = isParentRequestCancelled();
+      boolean watchdogCancelFailure = isWatchdogCancelFailure(failure, watchdogCancelled);
+      boolean retryOnStallCancel =
+          watchdogCancelFailure && retryCount < MAX_DATEHINT_STALL_RETRIES && !parentCancelled;
+      boolean treatWatchdogCancelAsBestEffortSuccess =
+          watchdogCancelFailure && !retryOnStallCancel && !parentCancelled;
+      activeDateHintPhase = null;
+      return new DateHintPhaseFinishDecision(
+          false, retryOnStallCancel, treatWatchdogCancelAsBestEffortSuccess);
+    }
+
+    private static boolean isWatchdogCancelFailure(
+        InsertException failure, boolean watchdogCancelled) {
+      return failure != null
+          && watchdogCancelled
+          && failure.getMode() == InsertExceptionMode.CANCELLED;
+    }
+
+    private void forwardDateHintCompletion(
+        ClientPutState completedState,
+        InsertException failure,
+        boolean treatWatchdogCancelAsBestEffortSuccess,
+        ClientContext context) {
+      boolean shouldForwardFailure = failure != null && !treatWatchdogCancelAsBestEffortSuccess;
+      PutCompletionCallback callback =
+          getCompletionCallbackOrNull(shouldForwardFailure ? "onFailure" : "onSuccess");
+      if (callback == null) {
+        return;
+      }
+      if (shouldForwardFailure) {
+        callback.onFailure(failure, completedState, context);
+      } else {
+        callback.onSuccess(completedState, context);
+      }
     }
 
     private void onDateHintPhaseFinished(
         ClientPutState completedState, InsertException failure, ClientContext context) {
-      boolean retryOnStallCancel;
-      synchronized (USKInserter.this) {
-        DateHintPhase phase = activeDateHintPhase;
-        if (phase == null) {
-          // Resume-order race: MultiPut resumes children before callback.onResume() rebuilds phase.
-          if (!awaitingPhaseRestore || completedBeforePhaseRestore) return;
-          retryOnStallCancel = false;
-          completedBeforePhaseRestore = true;
-        } else {
-          if (phase.phaseId != phaseId) return;
-          boolean watchdogCancelled = phase.watchdogCancelIssued || watchdogCancelIssued;
-          retryOnStallCancel =
-              failure != null
-                  && watchdogCancelled
-                  && failure.getMode() == InsertExceptionMode.CANCELLED
-                  && retryCount < MAX_DATEHINT_STALL_RETRIES
-                  && !isParentRequestCancelled();
-          activeDateHintPhase = null;
-        }
+      DateHintPhaseFinishDecision decision = decideDateHintPhaseCompletion(failure);
+      if (decision.ignoreEvent) {
+        return;
       }
-      if (retryOnStallCancel) {
+      if (decision.retryOnStallCancel) {
         LOG.warn(
             "Retrying USK datehint insert phase for {} edition {} after watchdog cancel (attempt {}"
                 + " of {})",
@@ -282,11 +398,16 @@ public final class USKInserter
         startDateHintInsertPhase(context, edition, retryCount + 1, completedState);
         return;
       }
-      PutCompletionCallback callback =
-          getCompletionCallbackOrNull(failure != null ? "onFailure" : "onSuccess");
-      if (callback == null) return;
-      if (failure != null) callback.onFailure(failure, completedState, context);
-      else callback.onSuccess(completedState, context);
+      if (decision.treatWatchdogCancelAsBestEffortSuccess) {
+        LOG.warn(
+            "USK datehint insert phase for {} edition {} remained cancelled after {} retry attempt"
+                + "(s); continuing as success without datehint completion",
+            USKInserter.this,
+            edition,
+            MAX_DATEHINT_STALL_RETRIES);
+      }
+      forwardDateHintCompletion(
+          completedState, failure, decision.treatWatchdogCancelAsBestEffortSuccess, context);
     }
 
     @Override
@@ -299,6 +420,11 @@ public final class USKInserter
     public void onFailure(InsertException e, ClientPutState state, ClientContext context) {
       markDateHintProgress(phaseId);
       onDateHintPhaseFinished(state, e, context);
+    }
+
+    void forceCompletionAfterWatchdogTimeout(ClientContext context, ClientPutState completedState) {
+      ClientPutState state = (completedState != null) ? completedState : USKInserter.this;
+      onDateHintPhaseFinished(state, new InsertException(InsertExceptionMode.CANCELLED), context);
     }
 
     @Override
@@ -492,6 +618,7 @@ public final class USKInserter
 
   private void startDateHintInsertPhase(
       ClientContext context, long edition, int retryCount, ClientPutState transitionFrom) {
+    reapplyExternalRequestIdentifierIfNeeded();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Inserted to edition {} - inserting USK date hints (retry {} of {})...",
@@ -505,7 +632,7 @@ public final class USKInserter
     MultiPutCompletionCallback m =
         new MultiPutCompletionCallback(terminalCallback, parent, tokenObject, persistent, true);
     terminalCallback.bindGroup(m);
-    activateDateHintPhase(new DateHintPhase(phaseId, retryCount, terminalCallback));
+    activateDateHintPhase(new DateHintPhase(phaseId, retryCount, terminalCallback, m));
 
     byte[] hintData = hint.getData(edition).getBytes(StandardCharsets.UTF_8);
     FreenetURI[] hintURIs = hint.getInsertURIs(privUSK);
@@ -570,44 +697,163 @@ public final class USKInserter
     }
   }
 
+  private void reapplyExternalRequestIdentifierIfNeeded() {
+    BaseClientPutter parentPutter = parent;
+    if (parentPutter == null) {
+      return;
+    }
+    String current = parentPutter.getExternalRequestIdentifier();
+    if (current != null) {
+      externalRequestIdentifierSnapshot = current;
+      return;
+    }
+    if (externalRequestIdentifierSnapshot != null) {
+      parentPutter.setExternalRequestIdentifier(externalRequestIdentifierSnapshot);
+    }
+  }
+
+  private long dateHintSchedulerCooldownDelayMillis(ClientContext context, long now) {
+    BaseClientPutter parentPutter = parent;
+    if (parentPutter == null) {
+      return 0L;
+    }
+    ClientRequestScheduler scheduler = context.getSskInsertScheduler(realTimeFlag);
+    if (scheduler == null) {
+      return 0L;
+    }
+    long wakeupTime = scheduler.getPriorityCooldownUntil(parentPutter.getPriorityClass(), now);
+    if (wakeupTime <= now) {
+      return 0L;
+    }
+    return wakeupTime - now;
+  }
+
   private void scheduleDateHintWatchdog(ClientContext context, long phaseId, long delayMillis) {
     if (context.ticker == null) return;
     long boundedDelay = Math.max(1L, delayMillis);
     context.ticker.queueTimedJob(() -> runDateHintWatchdog(context, phaseId), boundedDelay);
   }
 
-  private void runDateHintWatchdog(ClientContext context, long phaseId) {
-    DateHintTerminalCallback callbackToCancel = null;
-    long rescheduleDelay = -1L;
-    long stalledFor;
-    int retryCount = 0;
+  private DateHintWatchdogState snapshotDateHintWatchdogState(long phaseId) {
+    DateHintWatchdogState state = new DateHintWatchdogState();
     synchronized (this) {
       DateHintPhase phase = activeDateHintPhase;
-      if (phase == null || phase.phaseId != phaseId) return;
-      long now = System.currentTimeMillis();
-      stalledFor = now - phase.lastProgressAtMillis;
-      if (stalledFor < DATEHINT_STALL_TIMEOUT_MILLIS) {
-        rescheduleDelay = DATEHINT_STALL_TIMEOUT_MILLIS - stalledFor;
-      } else if (!phase.watchdogCancelIssued) {
-        phase.watchdogCancelIssued = true;
-        phase.terminalCallback.watchdogCancelIssued = true;
-        callbackToCancel = phase.terminalCallback;
-        retryCount = phase.retryCount;
+      if (phase == null || phase.phaseId != phaseId) {
+        return null;
       }
+      long now = System.currentTimeMillis();
+      state.stalledFor = now - phase.lastProgressAtMillis;
+      if (state.stalledFor < DATEHINT_STALL_TIMEOUT_MILLIS) {
+        state.rescheduleDelay = DATEHINT_STALL_TIMEOUT_MILLIS - state.stalledFor;
+        return state;
+      }
+      if (phase.watchdogCancelIssued) {
+        if (phase.watchdogCancelIssuedAtMillis <= 0L) {
+          phase.watchdogCancelIssuedAtMillis = now;
+        }
+        state.cancelAge = now - phase.watchdogCancelIssuedAtMillis;
+        if (state.cancelAge < DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS) {
+          state.rescheduleDelay = DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS - state.cancelAge;
+        } else {
+          state.callbackToForceComplete = phase.terminalCallback;
+          state.forceCompletionState = phase.completionState;
+        }
+        return state;
+      }
+      state.evaluateSchedulerCooldown = true;
+      state.retryCount = phase.retryCount;
+      return state;
     }
-    if (rescheduleDelay > 0L) {
-      scheduleDateHintWatchdog(context, phaseId, rescheduleDelay);
+  }
+
+  private DateHintWatchdogState evaluateDateHintSchedulerCooldown(
+      ClientContext context, long phaseId, DateHintWatchdogState state) {
+    state.schedulerCooldownDelay =
+        dateHintSchedulerCooldownDelayMillis(context, System.currentTimeMillis());
+    if (state.schedulerCooldownDelay > 0L) {
+      state.rescheduleDelay =
+          state.schedulerCooldownDelay + DATEHINT_SCHEDULER_COOLDOWN_GRACE_MILLIS;
+      return state;
+    }
+    synchronized (this) {
+      DateHintPhase phase = activeDateHintPhase;
+      if (phase == null || phase.phaseId != phaseId || phase.watchdogCancelIssued) {
+        return null;
+      }
+      phase.watchdogCancelIssued = true;
+      phase.watchdogCancelIssuedAtMillis = System.currentTimeMillis();
+      phase.terminalCallback.watchdogCancelIssued = true;
+      state.callbackToCancel = phase.terminalCallback;
+      state.retryCount = phase.retryCount;
+      return state;
+    }
+  }
+
+  private boolean rescheduleDateHintWatchdogIfNeeded(
+      ClientContext context, long phaseId, DateHintWatchdogState state) {
+    if (state.rescheduleDelay <= 0L) {
+      return false;
+    }
+    if (state.evaluateSchedulerCooldown
+        && state.schedulerCooldownDelay > 0L
+        && LOG.isInfoEnabled()) {
+      LOG.info(
+          "Deferring USK datehint watchdog cancel for {} phase {} due to scheduler cooldown {}"
+              + " ms at priority {}",
+          this,
+          phaseId,
+          state.schedulerCooldownDelay,
+          (parent == null) ? -1 : parent.getPriorityClass());
+    }
+    scheduleDateHintWatchdog(context, phaseId, state.rescheduleDelay);
+    return true;
+  }
+
+  private boolean forceCompleteDateHintWatchdogIfNeeded(
+      ClientContext context, long phaseId, DateHintWatchdogState state) {
+    if (state.callbackToForceComplete == null) {
+      return false;
+    }
+    LOG.warn(
+        "USK datehint insert phase {} did not deliver terminal callback {} ms after watchdog"
+            + " cancel on {} - forcing completion",
+        phaseId,
+        state.cancelAge,
+        this);
+    state.callbackToForceComplete.forceCompletionAfterWatchdogTimeout(
+        context, state.forceCompletionState);
+    return true;
+  }
+
+  private void runDateHintWatchdog(ClientContext context, long phaseId) {
+    DateHintWatchdogState state = snapshotDateHintWatchdogState(phaseId);
+    if (state == null) {
       return;
     }
-    if (callbackToCancel == null) return;
+    if (state.evaluateSchedulerCooldown) {
+      state = evaluateDateHintSchedulerCooldown(context, phaseId, state);
+      if (state == null) {
+        return;
+      }
+    }
+    if (rescheduleDateHintWatchdogIfNeeded(context, phaseId, state)) {
+      return;
+    }
+    if (forceCompleteDateHintWatchdogIfNeeded(context, phaseId, state)) {
+      return;
+    }
+    if (state.callbackToCancel == null) {
+      return;
+    }
     LOG.warn(
         "USK datehint insert phase {} stalled for {} ms on {} (retry {} of {}) - cancelling phase",
         phaseId,
-        stalledFor,
+        state.stalledFor,
         this,
-        retryCount,
+        state.retryCount,
         MAX_DATEHINT_STALL_RETRIES);
-    callbackToCancel.cancelGroup(context);
+    state.callbackToCancel.cancelGroup(context);
+    scheduleDateHintWatchdog(context, phaseId, DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS);
   }
 
   private void scheduleInsert(ClientContext context) {
@@ -776,6 +1022,8 @@ public final class USKInserter
     this.cryptoAlgorithm = payload.cryptoAlgorithm();
     this.forceCryptoKey = payload.cryptoKey();
     this.realTimeFlag = options.realTimeFlag();
+    this.externalRequestIdentifierSnapshot = null;
+    reapplyExternalRequestIdentifierIfNeeded();
   }
 
   /**
@@ -806,6 +1054,7 @@ public final class USKInserter
     this.cryptoAlgorithm = 0;
     this.forceCryptoKey = null;
     this.realTimeFlag = false;
+    this.externalRequestIdentifierSnapshot = null;
   }
 
   /**
@@ -1026,6 +1275,7 @@ public final class USKInserter
       localFetcher = fetcher;
       localSbi = sbi;
     }
+    reapplyExternalRequestIdentifierIfNeeded();
     if (localData != null) localData.onResume(context);
     if (cb != null && cb != parent) cb.onResume(context);
     if (localFetcher != null) localFetcher.onResume(context);

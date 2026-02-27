@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.concurrent.TimeUnit;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
@@ -38,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -291,21 +293,34 @@ class USKInserterTest {
 
   private static Object newDateHintTerminalCallback(
       USKInserter inserter, long phaseId, long edition) throws Exception {
+    return newDateHintTerminalCallback(inserter, phaseId, edition, 0);
+  }
+
+  private static Object newDateHintTerminalCallback(
+      USKInserter inserter, long phaseId, long edition, int retryCount) throws Exception {
     Class<?> callbackClass =
         Class.forName(USKInserter.class.getName() + "$DateHintTerminalCallback");
     Constructor<?> ctor =
         callbackClass.getDeclaredConstructor(USKInserter.class, long.class, long.class, int.class);
     ctor.setAccessible(true);
-    return ctor.newInstance(inserter, phaseId, edition, 0);
+    return ctor.newInstance(inserter, phaseId, edition, retryCount);
   }
 
   private static Object newDateHintPhase(long phaseId, Object callback) throws Exception {
+    return newDateHintPhase(phaseId, 0, callback, Mockito.mock(ClientPutState.class));
+  }
+
+  private static Object newDateHintPhase(
+      long phaseId, int retryCount, Object callback, ClientPutState completionState)
+      throws Exception {
     Class<?> callbackClass =
         Class.forName(USKInserter.class.getName() + "$DateHintTerminalCallback");
     Class<?> phaseClass = Class.forName(USKInserter.class.getName() + "$DateHintPhase");
-    Constructor<?> ctor = phaseClass.getDeclaredConstructor(long.class, int.class, callbackClass);
+    Constructor<?> ctor =
+        phaseClass.getDeclaredConstructor(
+            long.class, int.class, callbackClass, ClientPutState.class);
     ctor.setAccessible(true);
-    return ctor.newInstance(phaseId, 0, callback);
+    return ctor.newInstance(phaseId, retryCount, callback, completionState);
   }
 
   private static void setDateHintCallbackGroup(Object callback, MultiPutCompletionCallback group)
@@ -333,6 +348,19 @@ class USKInserterTest {
     f.setBoolean(phase, true);
   }
 
+  private static void setDateHintWatchdogCancelIssuedAtMillis(Object phase, long value)
+      throws Exception {
+    Field f = phase.getClass().getDeclaredField("watchdogCancelIssuedAtMillis");
+    f.setAccessible(true);
+    f.setLong(phase, value);
+  }
+
+  private static long getDateHintCancelCompletionTimeoutMillis() throws Exception {
+    Field f = USKInserter.class.getDeclaredField("DATEHINT_CANCEL_COMPLETION_TIMEOUT_MILLIS");
+    f.setAccessible(true);
+    return f.getLong(null);
+  }
+
   private static void setActiveDateHintPhase(USKInserter inserter, Object phase) throws Exception {
     Field activeField = USKInserter.class.getDeclaredField("activeDateHintPhase");
     activeField.setAccessible(true);
@@ -350,6 +378,19 @@ class USKInserterTest {
     Field restoreField = callback.getClass().getDeclaredField("awaitingPhaseRestore");
     restoreField.setAccessible(true);
     restoreField.setBoolean(callback, inProgress);
+  }
+
+  private static void setDateHintTerminalWatchdogCancelIssued(
+      PutCompletionCallback callback, boolean value) throws Exception {
+    Field f = callback.getClass().getDeclaredField("watchdogCancelIssued");
+    f.setAccessible(true);
+    f.setBoolean(callback, value);
+  }
+
+  private static long getDateHintStallTimeoutMillis() throws Exception {
+    Field f = USKInserter.class.getDeclaredField("DATEHINT_STALL_TIMEOUT_MILLIS");
+    f.setAccessible(true);
+    return f.getLong(null);
   }
 
   private static void runDateHintWatchdog(USKInserter inserter, ClientContext context, long phaseId)
@@ -680,6 +721,111 @@ class USKInserterTest {
   }
 
   @Test
+  void runDateHintWatchdog_whenSchedulerCooldownActive_reschedulesWithoutCancelling()
+      throws Exception {
+    // Arrange
+    Ticker ticker = Mockito.mock(Ticker.class);
+    ClientContext contextWithTicker = Mockito.spy(newContext(ticker));
+    ClientRequestScheduler scheduler = Mockito.mock(ClientRequestScheduler.class);
+    when(contextWithTicker.getSskInsertScheduler(false)).thenReturn(scheduler);
+    when(parent.getPriorityClass()).thenReturn((short) 2);
+    when(scheduler.getPriorityCooldownUntil(Mockito.eq((short) 2), Mockito.anyLong()))
+        .thenAnswer(
+            invocation -> ((Long) invocation.getArgument(1)) + TimeUnit.MINUTES.toMillis(20));
+
+    byte[] bytes = "scheduler-cooldown-datehint".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-scheduler-cooldown";
+    long edition = 10L;
+    long phaseId = 94L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    MultiPutCompletionCallback group = Mockito.mock(MultiPutCompletionCallback.class);
+    Object callback = newDateHintTerminalCallback(inserter, phaseId, edition);
+    setDateHintCallbackGroup(callback, group);
+    Object phase = newDateHintPhase(phaseId, callback);
+    setDateHintLastProgressAtMillis(phase, 0L);
+    setActiveDateHintPhase(inserter, phase);
+
+    // Act
+    runDateHintWatchdog(inserter, contextWithTicker, phaseId);
+
+    // Assert
+    verify(group, never()).cancel(any(ClientContext.class));
+    verify(scheduler, times(1)).getPriorityCooldownUntil(Mockito.eq((short) 2), Mockito.anyLong());
+    verify(ticker, times(1))
+        .queueTimedJob(
+            any(Runnable.class), Mockito.longThat(delay -> delay >= TimeUnit.MINUTES.toMillis(20)));
+    assertFalse(isDateHintWatchdogCancelIssued(phase));
+  }
+
+  @Test
+  void runDateHintWatchdog_whenCancelDoesNotComplete_forceCompletesPhaseAsBestEffortSuccess()
+      throws Exception {
+    // Arrange
+    Ticker ticker = Mockito.mock(Ticker.class);
+    ClientContext contextWithTicker = newContext(ticker);
+    byte[] bytes = "watchdog-force-complete".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-force-complete-site";
+    long edition = 12L;
+    long phaseId = 95L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+
+    MultiPutCompletionCallback group = Mockito.mock(MultiPutCompletionCallback.class);
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition, 1);
+    setDateHintCallbackGroup(terminalCallback, group);
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+    Object phase = newDateHintPhase(phaseId, 1, terminalCallback, transitionedState);
+    setDateHintLastProgressAtMillis(phase, 0L);
+    setActiveDateHintPhase(inserter, phase);
+
+    // Act: the first watchdog pass cancels, the second pass force-completes after grace timeout.
+    runDateHintWatchdog(inserter, contextWithTicker, phaseId);
+    long timeoutMillis = getDateHintCancelCompletionTimeoutMillis();
+    setDateHintWatchdogCancelIssuedAtMillis(
+        phase, System.currentTimeMillis() - timeoutMillis - TimeUnit.SECONDS.toMillis(1));
+    runDateHintWatchdog(inserter, contextWithTicker, phaseId);
+
+    // Assert
+    verify(group, times(1)).cancel(contextWithTicker);
+    verify(ticker, times(1)).queueTimedJob(any(Runnable.class), Mockito.eq(timeoutMillis));
+    ArgumentCaptor<ClientPutState> stateCaptor = ArgumentCaptor.forClass(ClientPutState.class);
+    verify(cb, times(1)).onSuccess(stateCaptor.capture(), any(ClientContext.class));
+    assertSame(transitionedState, stateCaptor.getValue());
+    verify(cb, never()).onFailure(any(InsertException.class), any(ClientPutState.class), any());
+    assertNull(getActiveDateHintPhase(inserter));
+  }
+
+  @Test
   void dateHintTerminalCallback_onResume_restoresWatchdogCancelMarker() throws Exception {
     // Arrange
     byte[] bytes = "watchdog-restore-marker".getBytes(StandardCharsets.UTF_8);
@@ -710,7 +856,8 @@ class USKInserterTest {
     setDateHintLastProgressAtMillis(phase, 0L);
     setActiveDateHintPhase(inserter, phase);
 
-    // Trigger watchdog cancellation marker, then simulate restart by dropping transient phase
+    // Trigger the watchdog cancellation marker, then simulate restart by dropping the transient
+    // phase
     // state.
     runDateHintWatchdog(inserter, context, phaseId);
     setActiveDateHintPhase(inserter, null);
@@ -721,6 +868,53 @@ class USKInserterTest {
     // Assert
     Object restoredPhase = getActiveDateHintPhase(inserter);
     assertTrue(isDateHintWatchdogCancelIssued(restoredPhase));
+  }
+
+  @Test
+  void dateHintTerminalCallback_onResume_whenWatchdogCancelled_usesCancelTimeoutWatchdog()
+      throws Exception {
+    // Arrange
+    Ticker ticker = Mockito.mock(Ticker.class);
+    ClientContext contextWithTicker = newContext(ticker);
+    byte[] bytes = "watchdog-resume-cancel-timeout".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "watchdog-resume-cancel-timeout";
+    long edition = 12L;
+    long phaseId = 96L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, true, false));
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition, 1);
+    setDateHintTerminalWatchdogCancelIssued(terminalCallback, true);
+
+    // Simulate restored callback where transient phase must be rebuilt on resume.
+    setActiveDateHintPhase(inserter, null);
+
+    // Act
+    terminalCallback.onResume(contextWithTicker);
+
+    // Assert
+    long cancelTimeoutMillis = getDateHintCancelCompletionTimeoutMillis();
+    long stallTimeoutMillis = getDateHintStallTimeoutMillis();
+    verify(ticker, times(1))
+        .queueTimedJob(
+            any(Runnable.class),
+            Mockito.longThat(delay -> delay > 0L && delay <= cancelTimeoutMillis));
+    verify(ticker, never())
+        .queueTimedJob(any(Runnable.class), Mockito.longThat(delay -> delay >= stallTimeoutMillis));
   }
 
   @Test
