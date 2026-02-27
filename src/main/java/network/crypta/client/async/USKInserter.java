@@ -388,6 +388,14 @@ public final class USKInserter
         return;
       }
       if (decision.retryOnStallCancel) {
+        if (isParentRequestCancelled()) {
+          LOG.warn(
+              "Skipping USK datehint retry for {} edition {} because parent request was cancelled"
+                  + " before retry scheduling",
+              USKInserter.this,
+              edition);
+          return;
+        }
         LOG.warn(
             "Retrying USK datehint insert phase for {} edition {} after watchdog cancel (attempt {}"
                 + " of {})",

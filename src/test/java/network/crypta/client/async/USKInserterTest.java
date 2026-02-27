@@ -380,11 +380,11 @@ class USKInserterTest {
     restoreField.setBoolean(callback, inProgress);
   }
 
-  private static void setDateHintTerminalWatchdogCancelIssued(
-      PutCompletionCallback callback, boolean value) throws Exception {
+  private static void setDateHintTerminalWatchdogCancelIssued(PutCompletionCallback callback)
+      throws Exception {
     Field f = callback.getClass().getDeclaredField("watchdogCancelIssued");
     f.setAccessible(true);
-    f.setBoolean(callback, value);
+    f.setBoolean(callback, true);
   }
 
   private static long getDateHintStallTimeoutMillis() throws Exception {
@@ -898,9 +898,9 @@ class USKInserterTest {
 
     PutCompletionCallback terminalCallback =
         (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition, 1);
-    setDateHintTerminalWatchdogCancelIssued(terminalCallback, true);
+    setDateHintTerminalWatchdogCancelIssued(terminalCallback);
 
-    // Simulate restored callback where transient phase must be rebuilt on resume.
+    // Simulate a restored callback where the transient phase must be rebuilt on resume.
     setActiveDateHintPhase(inserter, null);
 
     // Act
@@ -1113,6 +1113,50 @@ class USKInserterTest {
     verify(cb, times(1))
         .onFailure(Mockito.eq(cancelled), Mockito.eq(transitionedState), any(ClientContext.class));
     verify(cb, never()).onTransition(any(ClientPutState.class), any(ClientPutState.class), any());
+  }
+
+  @Test
+  void dateHintTerminalCallback_onFailure_whenParentCancelsBeforeRetryStart_skipsRetry()
+      throws Exception {
+    // Arrange
+    byte[] bytes = "datehint-cancel-race".getBytes(StandardCharsets.UTF_8);
+    Bucket data = makeBucket(bytes);
+    String site = "datehint-cancel-race-site";
+    long edition = 10L;
+    long phaseId = 404L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, false, false, false));
+    when(parent.isCancelled()).thenReturn(false, true);
+
+    PutCompletionCallback terminalCallback =
+        (PutCompletionCallback) newDateHintTerminalCallback(inserter, phaseId, edition);
+    Object phase = newDateHintPhase(phaseId, terminalCallback);
+    setDateHintWatchdogCancelIssued(phase);
+    setActiveDateHintPhase(inserter, phase);
+
+    ClientPutState transitionedState = Mockito.mock(ClientPutState.class);
+    InsertException cancelled = new InsertException(InsertExceptionMode.CANCELLED);
+
+    // Act
+    terminalCallback.onFailure(cancelled, transitionedState, context);
+
+    // Assert
+    verify(cb, never()).onTransition(any(ClientPutState.class), any(ClientPutState.class), any());
+    verify(cb, never()).onSuccess(any(ClientPutState.class), any(ClientContext.class));
+    verify(cb, never()).onFailure(any(InsertException.class), any(ClientPutState.class), any());
+    assertNull(getActiveDateHintPhase(inserter));
   }
 
   @Test
