@@ -4,7 +4,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import network.crypta.client.FetchContext;
@@ -16,6 +15,7 @@ import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.io.NonClosingOutputStream;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -493,16 +493,5 @@ class ClientGetPersistenceCodecTest {
     Field field = ClientRequest.class.getDeclaredField(fieldName);
     field.setAccessible(true);
     return field.getBoolean(target);
-  }
-
-  private static final class NonClosingOutputStream extends FilterOutputStream {
-    private NonClosingOutputStream(DataOutputStream out) {
-      super(out);
-    }
-
-    @Override
-    public void close() throws IOException {
-      flush();
-    }
   }
 }

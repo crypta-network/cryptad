@@ -33,11 +33,11 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.DelayedFree;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.NonClosingOutputStream;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.PrependLengthOutputStream;
 import network.crypta.support.io.StorageFormatException;
 import network.crypta.support.io.TempBucketFactory;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -790,12 +790,8 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       }
       bandwidthStatsPutter.updateData(node);
       oos.writeObject(bandwidthStatsPutter);
-      if (buckets == null) {
-        oos.writeInt(0);
-      } else {
-        oos.writeInt(buckets.length);
-        for (DelayedFree bucket : buckets) writeChecksummedObject(oos, bucket, null);
-      }
+      oos.writeInt(buckets.length);
+      for (DelayedFree bucket : buckets) writeChecksummedObject(oos, bucket, null);
       LOG.info("Saved {} requests to {}", requests.length, writeToFilename);
       persistentTempFactory.finishDelayedFree(buckets);
       return true;
@@ -851,27 +847,6 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       if (oos != null) oos.abort();
     } finally {
       if (oos != null) oos.close();
-    }
-  }
-
-  /**
-   * OutputStream wrapper that prevents closing the underlying stream when the outer resource is
-   * closed. Used to preserve abort-before-close semantics while leveraging try-with-resources.
-   */
-  private static class NonClosingOutputStream extends java.io.FilterOutputStream {
-    NonClosingOutputStream(OutputStream out) {
-      super(out);
-    }
-
-    @Override
-    public void close() throws IOException {
-      // Do not close the underlying stream; only flush to propagate buffered bytes.
-      out.flush();
-    }
-
-    @Override
-    public void write(byte @NotNull [] b, int off, int len) throws IOException {
-      out.write(b, off, len);
     }
   }
 

@@ -5,9 +5,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.zip.CRC32;
 import network.crypta.support.Fields;
+import network.crypta.support.io.ArrayBucketFactory;
+import network.crypta.support.io.PrependLengthOutputStream;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -172,6 +175,34 @@ class CRCChecksumCheckerTest {
   }
 
   @Test
+  void checksumWriterWithLengthNoClose_whenClosed_canWriteAndReadBackConsecutiveRecords()
+      throws Exception {
+    byte[] firstPayload = new byte[] {1, 2, 3};
+    byte[] secondPayload = new byte[] {9, 8, 7, 6};
+    ByteArrayOutputStream sink = new ByteArrayOutputStream();
+
+    try (PrependLengthOutputStream os =
+        checker.checksumWriterWithLengthNoClose(sink, new ArrayBucketFactory())) {
+      os.write(firstPayload);
+    }
+    try (PrependLengthOutputStream os =
+        checker.checksumWriterWithLengthNoClose(sink, new ArrayBucketFactory())) {
+      os.write(secondPayload);
+    }
+
+    byte[] encoded = sink.toByteArray();
+    DataInputStream source = new DataInputStream(new ByteArrayInputStream(encoded));
+    try (InputStream first =
+            checker.checksumReaderWithLength(source, new ArrayBucketFactory(), encoded.length);
+        InputStream second =
+            checker.checksumReaderWithLength(source, new ArrayBucketFactory(), encoded.length)) {
+      assertArrayEquals(firstPayload, first.readAllBytes());
+      assertArrayEquals(secondPayload, second.readAllBytes());
+    }
+    assertEquals(-1, source.read());
+  }
+
+  @Test
   void readAndChecksum_whenValid_fillsBuffer() throws Exception {
     byte[] payload = new byte[] {9, 8, 7, 6, 5};
     CRC32 crc = new CRC32();
@@ -233,7 +264,7 @@ class CRCChecksumCheckerTest {
     crc.update(empty, 0, 0);
 
     byte[] source =
-        Fields.intToBytes((int) crc.getValue()); // payload length 0 → only checksum present
+        Fields.intToBytes((int) crc.getValue()); // payload length 0 → only checksum presents
     byte[] buf = new byte[0];
     checker.readAndChecksum(new DataInputStream(new ByteArrayInputStream(source)), buf, 0, 0);
     assertEquals(0, buf.length);

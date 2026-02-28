@@ -2,8 +2,6 @@ package network.crypta.support.compress;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FilterInputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,7 +12,8 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.CountedOutputStream;
-import org.jetbrains.annotations.NotNull;
+import network.crypta.support.io.NonClosingInputStream;
+import network.crypta.support.io.NonClosingOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +77,7 @@ public class GzipCompressor extends AbstractCompressor {
    * amountOfDataToCheckCompressionRatio} bytes have been read, the achieved reduction is below
    * {@code minimumCompressionPercentage}, a {@link CompressionRatioException} is thrown.
    *
-   * <p>Neither stream is closed by this method.
+   * <p>This method closes neither stream.
    *
    * @param is input to compress.
    * @param os destination for compressed bytes.
@@ -147,7 +146,7 @@ public class GzipCompressor extends AbstractCompressor {
    *   <li>Otherwise, it throws {@link CompressionOutputSizeException} without an estimate.
    * </ul>
    *
-   * <p>Neither stream is closed by this method.
+   * <p>This method closes neither stream.
    *
    * @param is compressed source.
    * @param os destination for decompressed bytes.
@@ -204,8 +203,7 @@ public class GzipCompressor extends AbstractCompressor {
    * @param j number of bytes to read from {@code dbuf}.
    * @param output destination buffer for uncompressed bytes; the method writes from index 0.
    * @return number of bytes written into {@code output}.
-   * @throws CompressionOutputSizeException if the decompressed data would not fit into {@code
-   *     output}.
+   * @throws CompressionOutputSizeException if the decompressed data do not fit into {@code output}.
    */
   @Override
   public int decompress(byte[] dbuf, int i, int j, byte[] output)
@@ -258,37 +256,6 @@ public class GzipCompressor extends AbstractCompressor {
       throw new CompressionOutputSizeException(written);
     }
     throw new CompressionOutputSizeException();
-  }
-
-  /** OutputStream wrapper whose {@link #close()} does not close the underlying stream. */
-  private static class NonClosingOutputStream extends FilterOutputStream {
-    NonClosingOutputStream(OutputStream out) {
-      super(out);
-    }
-
-    @Override
-    public void close() throws IOException {
-      flush();
-      // do not close the underlying stream
-    }
-
-    @Override
-    public void write(byte @NotNull [] b, int off, int len) throws IOException {
-      out.write(b, off, len);
-    }
-  }
-
-  /** InputStream wrapper whose {@link #close()} is a no-op to keep the underlying stream open. */
-  @SuppressWarnings("java:S4929")
-  private static class NonClosingInputStream extends FilterInputStream {
-    NonClosingInputStream(InputStream in) {
-      super(in);
-    }
-
-    @Override
-    public void close() {
-      // no-op: leave the underlying stream open
-    }
   }
 
   /** Dedicated error used to signal unexpected IOExceptions from in-memory streams. */
