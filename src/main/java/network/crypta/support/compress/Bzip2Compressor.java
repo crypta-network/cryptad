@@ -2,7 +2,6 @@ package network.crypta.support.compress;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -11,6 +10,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.HeaderStreams;
+import network.crypta.support.io.NonClosingInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream;
 import org.slf4j.Logger;
@@ -269,17 +269,5 @@ public class Bzip2Compressor extends AbstractCompressor {
     byte[] buf = baos.toByteArray();
     System.arraycopy(buf, 0, output, 0, bytes);
     return bytes;
-  }
-
-  @SuppressWarnings("java:S4929")
-  private static class NonClosingInputStream extends FilterInputStream {
-    NonClosingInputStream(InputStream in) {
-      super(in);
-    }
-
-    @Override
-    public void close() {
-      // Keep ownership of the caller-provided stream with the caller.
-    }
   }
 }
