@@ -68,6 +68,8 @@ class NodeUpdateManagerTest {
 
   private NodeUpdateManager manager;
   private Config config;
+  private static final String DEFAULT_FETCHED_SCOPE =
+      "USK@" + NodeUpdateManager.UPDATE_URI + "/info/0";
 
   @BeforeEach
   void setUp() throws Exception {
@@ -316,6 +318,10 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(customUri, custom.getURI().toString(false, false));
     assertEquals(customUri, persistedConfig.get("node.updater").getString("URI"));
+
+    // The core updater should subscribe to the configured custom docname channel.
+    custom.startCoreUpdater();
+    assertEquals("custom-update-doc", custom.getCoreUpdater().getUpdateKey().getDocName());
   }
 
   @Test
@@ -375,8 +381,31 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(-1, persistedConfig.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
     assertEquals(
-        NodeUpdateManager.UPDATE_URI,
+        DEFAULT_FETCHED_SCOPE,
         persistedConfig.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void constructor_whenLegacyBareHintAndCustomUpdateScope_expectEditionResetAndSeedAtCurrent()
+      throws Exception {
+    // Arrange
+    int seededEdition = Version.currentBuildNumber() + 12;
+    String customDoc = "custom-update-doc";
+    PersistentConfig persistedConfig =
+        createLegacyBareHintPersistedConfigForCustomScope(seededEdition, customDoc);
+
+    // Act
+    NodeUpdateManager migrated = new NodeUpdateManager(node, persistedConfig);
+    migrated.startCoreUpdater();
+
+    // Assert
+    assertEquals(-1, persistedConfig.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        "USK@" + NodeUpdateManager.UPDATE_URI + "/" + customDoc + "/0",
+        persistedConfig.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+    assertEquals(
+        Version.currentBuildNumber(),
+        migrated.getCoreUpdater().getUpdateKey().getSuggestedEdition());
   }
 
   @Test
@@ -395,7 +424,34 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
     assertEquals(
-        alternateKey, config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+        "USK@" + alternateKey + "/info/0",
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void setURI_whenDocNameChangesOnSameKey_expectPersistedFetchedEditionReset() throws Exception {
+    // Arrange
+    int knownEdition = Version.currentBuildNumber() + 5;
+    manager.recordSuccessfulCoreInfoFetch(
+        manager.getCoreInfoURI().setSuggestedEdition(knownEdition), knownEdition);
+    String customDoc = "custom-info";
+    FreenetURI changedDocUri =
+        new FreenetURI(
+            "USK@"
+                + NodeUpdateManager.UPDATE_URI
+                + "/"
+                + customDoc
+                + "/"
+                + Version.currentBuildNumber());
+
+    // Act
+    manager.setURI(changedDocUri);
+
+    // Assert
+    assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        "USK@" + NodeUpdateManager.UPDATE_URI + "/" + customDoc + "/0",
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
   }
 
   @Test
@@ -410,7 +466,24 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(knownEdition, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
     assertEquals(
-        NodeUpdateManager.UPDATE_URI,
+        DEFAULT_FETCHED_SCOPE,
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void recordSuccessfulCoreInfoFetch_whenMatchingSskForUsk_expectPersistedHintUpdated() {
+    // Arrange
+    int knownEdition = Version.currentBuildNumber() + 6;
+    FreenetURI fetchedSskUri =
+        manager.getCoreInfoURI().setSuggestedEdition(knownEdition).sskForUSK();
+
+    // Act
+    manager.recordSuccessfulCoreInfoFetch(fetchedSskUri, knownEdition);
+
+    // Assert
+    assertEquals(knownEdition, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        DEFAULT_FETCHED_SCOPE,
         config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
   }
 
@@ -428,7 +501,35 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
     assertEquals(
-        NodeUpdateManager.UPDATE_URI,
+        DEFAULT_FETCHED_SCOPE,
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void recordSuccessfulCoreInfoFetch_whenSameKeyDifferentDoc_expectPersistedHintUnchanged()
+      throws Exception {
+    // Arrange
+    String customDoc = "custom-info";
+    FreenetURI changedDocUri =
+        new FreenetURI(
+            "USK@"
+                + NodeUpdateManager.UPDATE_URI
+                + "/"
+                + customDoc
+                + "/"
+                + Version.currentBuildNumber());
+    manager.setURI(changedDocUri);
+    int fetchedEdition = Version.currentBuildNumber() + 4;
+    FreenetURI staleDocUri =
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/info/" + fetchedEdition);
+
+    // Act
+    manager.recordSuccessfulCoreInfoFetch(staleDocUri, fetchedEdition);
+
+    // Assert
+    assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        "USK@" + NodeUpdateManager.UPDATE_URI + "/" + customDoc + "/0",
         config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
   }
 
@@ -495,5 +596,20 @@ class NodeUpdateManagerTest {
     verifyNoInteractions(peer);
   }
 
-  // --- helpers (none) ---
+  private static PersistentConfig createLegacyBareHintPersistedConfigForCustomScope(
+      int seededEdition, String customDoc) {
+    String customUri =
+        "USK@"
+            + NodeUpdateManager.UPDATE_URI
+            + "/"
+            + customDoc
+            + "/"
+            + Version.currentBuildNumber();
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.putSingle("node.updater.URI", customUri);
+    persisted.put("node.updater.lastKnownGoodFetchedEdition", seededEdition);
+    persisted.putSingle(
+        "node.updater.lastKnownGoodFetchedEditionKey", NodeUpdateManager.UPDATE_URI);
+    return new PersistentConfig(persisted);
+  }
 }

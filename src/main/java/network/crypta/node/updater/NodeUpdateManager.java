@@ -296,9 +296,9 @@ public final class NodeUpdateManager {
             "NodeUpdateManager.lastKnownGoodFetchedEditionKeyLong"),
         new LastKnownGoodFetchedEditionKeyCallback());
     lastKnownGoodFetchedEditionKey =
-        sanitizePublicKeyMaterial(
+        sanitizeFetchedEditionScope(
             updaterConfig.getString(LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION));
-    alignLastKnownGoodFetchedEditionToCurrentUpdateKey();
+    alignLastKnownGoodFetchedEditionToCurrentUpdateScope();
 
     // Deprecated UI option: updateSeednodes (no longer shown on the Auto-update page).
     // Keep internal default as false; accept but ignore legacy config values.
@@ -789,14 +789,14 @@ public final class NodeUpdateManager {
       if (updateURI.equals(uri)) {
         return;
       }
-      String oldPublicKey = extractPublicKeyMaterial(updateURI);
+      String oldUpdateScope = normalizeFetchedEditionScope(updateURI);
       updateURI = uri;
       updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
-      String newPublicKey = extractPublicKeyMaterial(updateURI);
-      if (!newPublicKey.equals(oldPublicKey)) {
-        resetLastKnownGoodFetchedEditionLocked(newPublicKey);
+      String newUpdateScope = normalizeFetchedEditionScope(updateURI);
+      if (!newUpdateScope.equals(oldUpdateScope)) {
+        resetLastKnownGoodFetchedEditionLocked(newUpdateScope);
       }
-      subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newPublicKey);
+      subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
       updater = coreUpdater;
       if (updater == null) {
         return;
@@ -808,36 +808,37 @@ public final class NodeUpdateManager {
   /**
    * Records a successfully fetched core-info edition for startup seeding.
    *
-   * <p>The hint is key-scoped: editions fetched from a stale or different key are ignored.
+   * <p>The hint is scoped to the normalized update URI: editions fetched from a stale or different
+   * update scope are ignored.
    */
   void recordSuccessfulCoreInfoFetch(FreenetURI fetchedUri, int fetchedEdition) {
     if (fetchedEdition < 0 || fetchedUri == null) {
       return;
     }
     synchronized (this) {
-      String fetchedPublicKey = extractPublicKeyMaterial(fetchedUri);
-      String currentPublicKey = extractPublicKeyMaterial(updateURI);
-      if (!currentPublicKey.equals(fetchedPublicKey)) {
+      String fetchedScope = normalizeFetchedEditionScope(fetchedUri);
+      String currentScope = normalizeFetchedEditionScope(updateURI);
+      if (!currentScope.equals(fetchedScope)) {
         if (LOG.isDebugEnabled()) {
           LOG.debug(
-              "Ignoring fetched edition {} for stale key {}; current key {}",
+              "Ignoring fetched edition {} for stale scope {}; current scope {}",
               fetchedEdition,
-              fetchedPublicKey,
-              currentPublicKey);
+              fetchedScope,
+              currentScope);
         }
         return;
       }
-      if (!currentPublicKey.equals(lastKnownGoodFetchedEditionKey)) {
-        lastKnownGoodFetchedEditionKey = currentPublicKey;
+      if (!currentScope.equals(lastKnownGoodFetchedEditionKey)) {
+        lastKnownGoodFetchedEditionKey = currentScope;
         lastKnownGoodFetchedEdition = -1;
       }
       if (fetchedEdition > lastKnownGoodFetchedEdition) {
         lastKnownGoodFetchedEdition = fetchedEdition;
         if (LOG.isDebugEnabled()) {
           LOG.debug(
-              "Recorded last known good fetched edition {} for key {}",
+              "Recorded last known good fetched edition {} for scope {}",
               lastKnownGoodFetchedEdition,
-              currentPublicKey);
+              currentScope);
         }
       }
     }
@@ -1185,7 +1186,8 @@ public final class NodeUpdateManager {
 
     @Override
     public void set(String val) {
-      lastKnownGoodFetchedEditionKey = sanitizePublicKeyMaterial(val);
+      lastKnownGoodFetchedEditionKey = sanitizeFetchedEditionScope(val);
+      alignLastKnownGoodFetchedEditionToCurrentUpdateScope();
     }
   }
 
@@ -1394,40 +1396,97 @@ public final class NodeUpdateManager {
     return Math.max(-1, edition);
   }
 
-  private static String sanitizePublicKeyMaterial(String value) {
+  private static String sanitizeFetchedEditionScope(String value) {
     String trimmed = trimConfigValue(value);
     if (trimmed == null || trimmed.isEmpty()) {
       return "";
     }
-    return isBarePublicKey(trimmed) ? trimmed : "";
+    if (isBarePublicKey(trimmed)) {
+      return trimmed;
+    }
+    try {
+      FreenetURI parsed = new FreenetURI(trimmed);
+      if (!parsed.isUSK() || parsed.hasMetaStrings()) {
+        return "";
+      }
+      return normalizeFetchedEditionScope(parsed);
+    } catch (MalformedURLException _) {
+      return "";
+    }
   }
 
-  private synchronized void alignLastKnownGoodFetchedEditionToCurrentUpdateKey() {
-    String currentUpdatePublicKey = extractPublicKeyMaterial(updateURI);
-    if (!currentUpdatePublicKey.equals(lastKnownGoodFetchedEditionKey)) {
+  private synchronized void alignLastKnownGoodFetchedEditionToCurrentUpdateScope() {
+    String currentUpdateScope = normalizeFetchedEditionScope(updateURI);
+    if (alignLegacyBareFetchedEditionScope(currentUpdateScope)) {
+      return;
+    }
+    if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
       if (LOG.isDebugEnabled()) {
         LOG.debug(
-            "Resetting persisted fetched edition {} due to key mismatch: persisted={}, current={}",
+            "Resetting persisted fetched edition {} due to scope mismatch: persisted={},"
+                + " current={}",
             lastKnownGoodFetchedEdition,
             lastKnownGoodFetchedEditionKey,
-            currentUpdatePublicKey);
+            currentUpdateScope);
       }
-      resetLastKnownGoodFetchedEditionLocked(currentUpdatePublicKey);
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
       return;
     }
     lastKnownGoodFetchedEdition = sanitizeFetchedEdition(lastKnownGoodFetchedEdition);
   }
 
-  private int computeCoreUpdaterSubscribeEditionSeedLocked(String currentUpdatePublicKey) {
-    if (!currentUpdatePublicKey.equals(lastKnownGoodFetchedEditionKey)) {
+  private boolean alignLegacyBareFetchedEditionScope(String currentUpdateScope) {
+    if (!isBarePublicKey(lastKnownGoodFetchedEditionKey)) {
+      return false;
+    }
+    if (!extractPublicKeyMaterial(updateURI).equals(lastKnownGoodFetchedEditionKey)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Resetting persisted fetched edition {} due to legacy key mismatch: persisted={},"
+                + " current={}",
+            lastKnownGoodFetchedEdition,
+            lastKnownGoodFetchedEditionKey,
+            currentUpdateScope);
+      }
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
+      return true;
+    }
+    String legacyInfoScope =
+        normalizeFetchedEditionScope(updateURI.setDocName(UPDATE_URI_DOC_NAME));
+    if (!legacyInfoScope.equals(currentUpdateScope)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Resetting persisted fetched edition {} while migrating legacy key {} to custom"
+                + " scope {}",
+            lastKnownGoodFetchedEdition,
+            lastKnownGoodFetchedEditionKey,
+            currentUpdateScope);
+      }
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
+      return true;
+    }
+    lastKnownGoodFetchedEditionKey = currentUpdateScope;
+    return false;
+  }
+
+  private int computeCoreUpdaterSubscribeEditionSeedLocked(String currentUpdateScope) {
+    if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
       return Version.currentBuildNumber();
     }
     return Math.max(Version.currentBuildNumber(), lastKnownGoodFetchedEdition);
   }
 
-  private void resetLastKnownGoodFetchedEditionLocked(String currentUpdatePublicKey) {
+  private void resetLastKnownGoodFetchedEditionLocked(String currentUpdateScope) {
     lastKnownGoodFetchedEdition = -1;
-    lastKnownGoodFetchedEditionKey = currentUpdatePublicKey;
+    lastKnownGoodFetchedEditionKey = currentUpdateScope;
+  }
+
+  private static String normalizeFetchedEditionScope(FreenetURI uri) {
+    FreenetURI normalized = uri;
+    if (normalized.isSSK() && normalized.isSSKForUSK()) {
+      normalized = normalized.uskForSSK();
+    }
+    return normalized.setSuggestedEdition(0).toString(false, false);
   }
 
   private static boolean isBarePublicKey(String value) {
@@ -1586,11 +1645,11 @@ public final class NodeUpdateManager {
   public synchronized void startCoreUpdater() {
     if (coreUpdater != null) return;
     int subscribeEditionSeed =
-        computeCoreUpdaterSubscribeEditionSeedLocked(extractPublicKeyMaterial(updateURI));
+        computeCoreUpdaterSubscribeEditionSeedLocked(normalizeFetchedEditionScope(updateURI));
     NodeUpdaterParams params =
         new NodeUpdaterParams(
             this,
-            getCoreInfoURI(),
+            getURI(),
             Version.currentBuildNumber(),
             -1,
             Integer.MAX_VALUE,
