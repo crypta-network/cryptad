@@ -235,6 +235,23 @@ class NodeUpdateManagerTest {
   }
 
   @Test
+  void updateUriCallback_get_whenCustomDocName_expectFullUriPreserved() throws Exception {
+    // Arrange
+    NodeUpdateManager.UpdateURICallback updateCallback = manager.new UpdateURICallback();
+    String customUri =
+        "USK@"
+            + NodeUpdateManager.UPDATE_URI
+            + "/custom-update-doc/"
+            + Version.currentBuildNumber();
+
+    // Act
+    manager.setURI(new FreenetURI(customUri));
+
+    // Assert
+    assertEquals(customUri, updateCallback.get());
+  }
+
+  @Test
   void constructor_whenLegacyFullUrisPersisted_expectAcceptedAndCanonicalizedToBareKeys()
       throws Exception {
     // Arrange
@@ -278,6 +295,27 @@ class NodeUpdateManagerTest {
     // Assert
     assertEquals(customUri, custom.getRevocationURI().toString(false, false));
     assertEquals(customUri, persistedConfig.get("node.updater").getString("revocationURI"));
+  }
+
+  @Test
+  void constructor_whenCustomUpdateUriPersisted_expectCustomValuePreserved() throws Exception {
+    // Arrange
+    String customUri =
+        "USK@"
+            + NodeUpdateManager.UPDATE_URI
+            + "/custom-update-doc/"
+            + Version.currentBuildNumber();
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.putSingle("node.updater.URI", customUri);
+    persisted.putSingle("node.updater.revocationURI", NodeUpdateManager.REVOCATION_URI);
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
+
+    // Act
+    NodeUpdateManager custom = new NodeUpdateManager(node, persistedConfig);
+
+    // Assert
+    assertEquals(customUri, custom.getURI().toString(false, false));
+    assertEquals(customUri, persistedConfig.get("node.updater").getString("URI"));
   }
 
   @Test

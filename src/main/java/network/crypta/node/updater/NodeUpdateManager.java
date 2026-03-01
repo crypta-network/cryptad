@@ -1193,7 +1193,7 @@ public final class NodeUpdateManager {
 
     @Override
     public String get() {
-      return extractPublicKeyMaterial(getURI());
+      return toConfigUpdateUriValue(getURI());
     }
 
     @Override
@@ -1307,6 +1307,16 @@ public final class NodeUpdateManager {
 
   private static String expandRevocationUriFromPublicKey(String keyMaterial) {
     return REVOCATION_URI_PREFIX + keyMaterial + URI_PATH_SEPARATOR + REVOCATION_URI_DOC_NAME;
+  }
+
+  private static String toConfigUpdateUriValue(FreenetURI uri) {
+    if (uri.isUSK()
+        && !uri.hasMetaStrings()
+        && (UPDATE_URI_DOC_NAME.equals(uri.getDocName())
+            || LEGACY_UPDATE_URI_DOC_NAME.equals(uri.getDocName()))) {
+      return extractPublicKeyMaterial(uri);
+    }
+    return uri.toString(false, false);
   }
 
   private static String toConfigRevocationUriValue(FreenetURI uri) {
