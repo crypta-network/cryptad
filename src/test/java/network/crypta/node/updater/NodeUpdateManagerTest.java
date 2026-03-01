@@ -10,6 +10,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.Config;
+import network.crypta.config.PersistentConfig;
 import network.crypta.io.comm.Message;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -24,6 +25,7 @@ import network.crypta.node.Version;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
+import network.crypta.support.SimpleFieldSet;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,7 @@ class NodeUpdateManagerTest {
   @Mock NodeStats nodeStats;
 
   private NodeUpdateManager manager;
+  private Config config;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -101,7 +104,8 @@ class NodeUpdateManagerTest {
     ClientContext clientContext = Mockito.mock(ClientContext.class);
     when(nodeCore.getClientContext()).thenReturn(clientContext);
 
-    manager = new NodeUpdateManager(node, new Config());
+    config = new Config();
+    manager = new NodeUpdateManager(node, config);
   }
 
   private static @NotNull FetchContext getFetchContext() {
@@ -173,6 +177,188 @@ class NodeUpdateManagerTest {
     assertEquals(
         newUri.setSuggestedEdition(Version.currentBuildNumber()).toString(false, false),
         manager.getURI().toString(false, false));
+  }
+
+  @Test
+  void updateUriCallback_whenGivenPublicKeyOnly_expectExpandedToUskInfoUri() throws Exception {
+    // Arrange
+    NodeUpdateManager.UpdateURICallback callback = manager.new UpdateURICallback();
+
+    // Act
+    callback.set(NodeUpdateManager.UPDATE_URI);
+
+    // Assert
+    String expected =
+        "USK@" + NodeUpdateManager.UPDATE_URI + "/info/" + Version.currentBuildNumber();
+    assertEquals(expected, manager.getURI().toString(false, false));
+  }
+
+  @Test
+  void revocationUriCallback_whenGivenPublicKeyOnly_expectExpandedToSskRevokedUri()
+      throws Exception {
+    // Arrange
+    NodeUpdateManager.UpdateRevocationURICallback callback =
+        manager.new UpdateRevocationURICallback();
+
+    // Act
+    callback.set(NodeUpdateManager.REVOCATION_URI);
+
+    // Assert
+    String expected = "SSK@" + NodeUpdateManager.REVOCATION_URI + "/revoked";
+    assertEquals(expected, manager.getRevocationURI().toString(false, false));
+  }
+
+  @Test
+  void uriCallbacks_get_expectPublicKeyOnly() {
+    // Arrange
+    NodeUpdateManager.UpdateURICallback updateCallback = manager.new UpdateURICallback();
+    NodeUpdateManager.UpdateRevocationURICallback revocationCallback =
+        manager.new UpdateRevocationURICallback();
+
+    // Act + Assert
+    assertEquals(NodeUpdateManager.UPDATE_URI, updateCallback.get());
+    assertEquals(NodeUpdateManager.REVOCATION_URI, revocationCallback.get());
+  }
+
+  @Test
+  void constructor_whenLegacyFullUrisPersisted_expectAcceptedAndCanonicalizedToBareKeys()
+      throws Exception {
+    // Arrange
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.putSingle("node.updater.URI", "USK@" + NodeUpdateManager.UPDATE_URI + "/jar/1481");
+    persisted.putSingle(
+        "node.updater.revocationURI", "SSK@" + NodeUpdateManager.REVOCATION_URI + "/revoked");
+    PersistentConfig config = new PersistentConfig(persisted);
+
+    // Act
+    NodeUpdateManager migrated = new NodeUpdateManager(node, config);
+
+    // Assert: updater URI uses current build and default info docname
+    String expectedUpdate =
+        "USK@" + NodeUpdateManager.UPDATE_URI + "/info/" + Version.currentBuildNumber();
+    assertEquals(expectedUpdate, migrated.getURI().toString(false, false));
+    assertEquals(
+        "SSK@" + NodeUpdateManager.REVOCATION_URI + "/revoked",
+        migrated.getRevocationURI().toString(false, false));
+
+    // Assert: persisted option values are canonical bare keys after migration
+    assertEquals(NodeUpdateManager.UPDATE_URI, config.get("node.updater").getString("URI"));
+    assertEquals(
+        NodeUpdateManager.REVOCATION_URI, config.get("node.updater").getString("revocationURI"));
+  }
+
+  @Test
+  void
+      startCoreUpdater_whenMatchingPersistedEditionHigherThanCurrent_expectSubscribeSeedFromEdition()
+          throws Exception {
+    // Arrange
+    int seededEdition = Version.currentBuildNumber() + 7;
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.put("node.updater.lastKnownGoodFetchedEdition", seededEdition);
+    persisted.putSingle(
+        "node.updater.lastKnownGoodFetchedEditionKey", NodeUpdateManager.UPDATE_URI);
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
+    NodeUpdateManager seeded = new NodeUpdateManager(node, persistedConfig);
+
+    // Act
+    seeded.startCoreUpdater();
+
+    // Assert
+    assertEquals(seededEdition, seeded.getCoreUpdater().getUpdateKey().getSuggestedEdition());
+  }
+
+  @Test
+  void startCoreUpdater_whenMatchingPersistedEditionLowerThanCurrent_expectSubscribeSeedAtCurrent()
+      throws Exception {
+    // Arrange
+    int seededEdition = Version.currentBuildNumber() - 7;
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.put("node.updater.lastKnownGoodFetchedEdition", seededEdition);
+    persisted.putSingle(
+        "node.updater.lastKnownGoodFetchedEditionKey", NodeUpdateManager.UPDATE_URI);
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
+    NodeUpdateManager seeded = new NodeUpdateManager(node, persistedConfig);
+
+    // Act
+    seeded.startCoreUpdater();
+
+    // Assert
+    assertEquals(
+        Version.currentBuildNumber(), seeded.getCoreUpdater().getUpdateKey().getSuggestedEdition());
+  }
+
+  @Test
+  void constructor_whenPersistedEditionKeyMismatched_expectEditionResetAndKeyCanonicalized()
+      throws Exception {
+    // Arrange
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.put("node.updater.lastKnownGoodFetchedEdition", Version.currentBuildNumber() + 12);
+    persisted.putSingle(
+        "node.updater.lastKnownGoodFetchedEditionKey",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,AQACAAE");
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
+
+    // Act
+    new NodeUpdateManager(node, persistedConfig);
+
+    // Assert
+    assertEquals(-1, persistedConfig.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        NodeUpdateManager.UPDATE_URI,
+        persistedConfig.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void setURI_whenPublicKeyChanges_expectPersistedFetchedEditionReset() throws Exception {
+    // Arrange
+    int knownEdition = Version.currentBuildNumber() + 5;
+    manager.recordSuccessfulCoreInfoFetch(
+        manager.getCoreInfoURI().setSuggestedEdition(knownEdition), knownEdition);
+    String alternateKey = "v" + NodeUpdateManager.UPDATE_URI.substring(1);
+    FreenetURI changedKeyUri =
+        new FreenetURI("USK@" + alternateKey + "/info/" + Version.currentBuildNumber());
+
+    // Act
+    manager.setURI(changedKeyUri);
+
+    // Assert
+    assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        alternateKey, config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void recordSuccessfulCoreInfoFetch_whenMatchingKey_expectPersistedHintUpdated() {
+    // Arrange
+    int knownEdition = Version.currentBuildNumber() + 4;
+
+    // Act
+    manager.recordSuccessfulCoreInfoFetch(
+        manager.getCoreInfoURI().setSuggestedEdition(knownEdition), knownEdition);
+
+    // Assert
+    assertEquals(knownEdition, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        NodeUpdateManager.UPDATE_URI,
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void recordSuccessfulCoreInfoFetch_whenDifferentKey_expectPersistedHintUnchanged()
+      throws Exception {
+    // Arrange
+    String alternateKey = "v" + NodeUpdateManager.UPDATE_URI.substring(1);
+    FreenetURI changedKeyUri =
+        new FreenetURI("USK@" + alternateKey + "/info/" + Version.currentBuildNumber());
+
+    // Act
+    manager.recordSuccessfulCoreInfoFetch(changedKeyUri, Version.currentBuildNumber() + 4);
+
+    // Assert
+    assertEquals(-1, config.get("node.updater").getInt("lastKnownGoodFetchedEdition"));
+    assertEquals(
+        NodeUpdateManager.UPDATE_URI,
+        config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
   }
 
   @Test
