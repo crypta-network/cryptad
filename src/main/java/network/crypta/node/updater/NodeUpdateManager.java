@@ -1233,7 +1233,7 @@ public final class NodeUpdateManager {
 
     @Override
     public String get() {
-      return extractPublicKeyMaterial(getRevocationURI());
+      return toConfigRevocationUriValue(getRevocationURI());
     }
 
     @Override
@@ -1316,6 +1316,13 @@ public final class NodeUpdateManager {
 
   private static String expandRevocationUriFromPublicKey(String keyMaterial) {
     return REVOCATION_URI_PREFIX + keyMaterial + URI_PATH_SEPARATOR + REVOCATION_URI_DOC_NAME;
+  }
+
+  private static String toConfigRevocationUriValue(FreenetURI uri) {
+    if (uri.isSSK() && !uri.hasMetaStrings() && REVOCATION_URI_DOC_NAME.equals(uri.getDocName())) {
+      return extractPublicKeyMaterial(uri);
+    }
+    return uri.toString(false, false);
   }
 
   private void migrateLegacyUpdateUriValueIfNeeded(SubConfig updaterConfig, String configuredValue)
