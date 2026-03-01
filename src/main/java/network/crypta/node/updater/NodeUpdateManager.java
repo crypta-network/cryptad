@@ -95,6 +95,7 @@ public final class NodeUpdateManager {
       "lastKnownGoodFetchedEdition";
   private static final String LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION =
       "lastKnownGoodFetchedEditionKey";
+  private static final String REVOCATION_URI_OPTION = "revocationURI";
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -260,7 +261,7 @@ public final class NodeUpdateManager {
     }
 
     updaterConfig.register(
-        "revocationURI",
+        REVOCATION_URI_OPTION,
         REVOCATION_URI,
         new Option.Meta(
             4,
@@ -270,7 +271,7 @@ public final class NodeUpdateManager {
             "NodeUpdateManager.revocationURILong"),
         new UpdateRevocationURICallback());
 
-    String configuredRevocationUriValue = updaterConfig.getString("revocationURI");
+    String configuredRevocationUriValue = updaterConfig.getString(REVOCATION_URI_OPTION);
     try {
       revocationURI = parseConfiguredRevocationURI(configuredRevocationUriValue);
     } catch (MalformedURLException e) {
@@ -1330,7 +1331,7 @@ public final class NodeUpdateManager {
       SubConfig updaterConfig, String configuredValue) throws InvalidConfigValueException {
     migrateLegacyOptionValueIfNeeded(
         updaterConfig,
-        "revocationURI",
+        REVOCATION_URI_OPTION,
         configuredValue,
         NodeUpdateManager::extractLegacyRevocationPublicKeyMaterial);
   }
@@ -1364,6 +1365,9 @@ public final class NodeUpdateManager {
 
   private static String extractPublicKeyMaterial(FreenetURI uri) {
     String fullUri = uri.toString(false, false);
+    if (fullUri == null || fullUri.isEmpty()) {
+      return "";
+    }
     int typeSeparator = fullUri.indexOf(URI_TYPE_SEPARATOR);
     if (typeSeparator < 0) {
       return fullUri;

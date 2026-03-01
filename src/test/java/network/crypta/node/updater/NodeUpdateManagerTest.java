@@ -228,12 +228,12 @@ class NodeUpdateManagerTest {
     persisted.putSingle("node.updater.URI", "USK@" + NodeUpdateManager.UPDATE_URI + "/jar/1481");
     persisted.putSingle(
         "node.updater.revocationURI", "SSK@" + NodeUpdateManager.REVOCATION_URI + "/revoked");
-    PersistentConfig config = new PersistentConfig(persisted);
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
 
     // Act
-    NodeUpdateManager migrated = new NodeUpdateManager(node, config);
+    NodeUpdateManager migrated = new NodeUpdateManager(node, persistedConfig);
 
-    // Assert: updater URI uses current build and default info docname
+    // Assert: updater URI uses the current build and default info docname
     String expectedUpdate =
         "USK@" + NodeUpdateManager.UPDATE_URI + "/info/" + Version.currentBuildNumber();
     assertEquals(expectedUpdate, migrated.getURI().toString(false, false));
@@ -242,9 +242,11 @@ class NodeUpdateManagerTest {
         migrated.getRevocationURI().toString(false, false));
 
     // Assert: persisted option values are canonical bare keys after migration
-    assertEquals(NodeUpdateManager.UPDATE_URI, config.get("node.updater").getString("URI"));
     assertEquals(
-        NodeUpdateManager.REVOCATION_URI, config.get("node.updater").getString("revocationURI"));
+        NodeUpdateManager.UPDATE_URI, persistedConfig.get("node.updater").getString("URI"));
+    assertEquals(
+        NodeUpdateManager.REVOCATION_URI,
+        persistedConfig.get("node.updater").getString("revocationURI"));
   }
 
   @Test
