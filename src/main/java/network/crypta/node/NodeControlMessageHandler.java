@@ -8,7 +8,6 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
-import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.support.Fields;
 import network.crypta.support.ShortBuffer;
 import org.slf4j.Logger;
@@ -49,7 +48,7 @@ final class NodeControlMessageHandler {
   private static final Logger LOG = LoggerFactory.getLogger(NodeControlMessageHandler.class);
 
   /**
-   * Owning node used to access network, messaging, and updater subsystems.
+   * The owning node used to access network, messaging, and updater subsystems.
    *
    * <p>This reference is stable for the lifetime of the handler and is not expected to be {@code
    * null}. It provides the necessary entry points for side effects triggered by control messages.
@@ -144,7 +143,7 @@ final class NodeControlMessageHandler {
   }
 
   /**
-   * Handles darknet visibility messages, if the source supports them.
+   * Handles darknet visibility messages if the source supports them.
    *
    * @param m message carrying visibility payload; must not be null
    * @param source peer that sent the message; must not be null
@@ -228,23 +227,6 @@ final class NodeControlMessageHandler {
           .nodeUpdater()
           .getUpdateOverMandatory()
           .handleSendingRevocation(m, source);
-    }
-    if (Objects.equals(spec, DMT.CryptadUOMRequestMainJar)
-        && NodeUpdateManager.SUPPORTS_JAR_UOM
-        && source.isRealConnection()) {
-      node.services().nodeUpdater().getUpdateOverMandatory().handleRequestJar(m, source);
-      return true;
-    }
-    if (Objects.equals(spec, DMT.CryptadUOMSendingMainJar)
-        && NodeUpdateManager.SUPPORTS_JAR_UOM
-        && source.isRealConnection()) {
-      return node.services().nodeUpdater().getUpdateOverMandatory().handleSendingMain(m, source);
-    }
-    if (Objects.equals(spec, DMT.CryptadUOMFetchDependency)
-        && NodeUpdateManager.SUPPORTS_JAR_UOM
-        && source.isRealConnection()) {
-      node.services().nodeUpdater().getUpdateOverMandatory().handleFetchDependency(m, source);
-      return true;
     }
     return false;
   }
@@ -359,13 +341,14 @@ final class NodeControlMessageHandler {
   /**
    * Performs the actual disconnect workflow and processes parting metadata.
    *
-   * @param m original disconnect message containing flags and node-to-node data; must not be null
+   * @param m the original disconnect message containing flags and node-to-node data; must not be
+   *     null
    * @param source peer being disconnected; must not be null
    */
   private void finishDisconnect(final Message m, final PeerNode source) {
     source.disconnected(true, true);
-    // If true, remove from active routing table, likely to be down for a while.
-    // Otherwise, just dump all current connection state and keep trying to connect.
+    // If true, remove from the active routing table, likely to be down for a while.
+    // Otherwise, just dump all current connection states and keep trying to connect.
     boolean remove = m.getBoolean(DMT.REMOVE);
     if (remove) {
       node.network().peers().messenger().disconnectAndRemove(source, false, false, false);
@@ -376,7 +359,7 @@ final class NodeControlMessageHandler {
             peerNode.getName());
     }
     // If true, purge all references to this node. Otherwise, we can keep the node
-    // around in secondary tables etc. in order to more easily reconnect later.
+    // around in secondary tables etc. to more easily reconnect later.
     // (Mostly used on opennet)
     boolean purge = m.getBoolean(DMT.PURGE);
     if (purge) {

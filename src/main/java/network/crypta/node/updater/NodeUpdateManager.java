@@ -121,9 +121,6 @@ public final class NodeUpdateManager {
   /** Maximum on‑disk blob length in bytes for a persisted revocation document. */
   public static final long MAX_REVOCATION_KEY_BLOB_LENGTH = 128L * 1024L;
 
-  /** Maximum allowed size in bytes for the historical main JAR (legacy paths only). */
-  public static final long MAX_MAIN_JAR_LENGTH = 48L * 1024L * 1024L; // 48MiB
-
   /** Maximum allowed size in bytes for the IPv4‐to‐country database. */
   public static final long MAX_IP_TO_COUNTRY_LENGTH = 24L * 1024L * 1024L;
 
@@ -133,14 +130,8 @@ public final class NodeUpdateManager {
   /** Remaining time for a legacy final-check timer. */
   public static final long TIME_REMAINING_ON_CHECK = 0L;
 
-  /** Legacy timestamp for when normal main-jar fetching started. */
-  static final long STARTED_FETCHING_NEXT_MAIN_JAR_TIMESTAMP = 0L;
-
   /** Whether dependency checks are currently considered broken. */
   public static final boolean BROKEN_DEPENDENCIES = false;
-
-  /** Whether legacy main-jar Update-over-Mandatory flows are enabled. */
-  public static final boolean SUPPORTS_JAR_UOM = false;
 
   // Installer/seednodes length caps removed with deprecated auto-fetch paths
 
@@ -1539,21 +1530,6 @@ public final class NodeUpdateManager {
       cu = coreUpdater;
     }
     if (cu != null) cu.renderProperties(alertNode);
-  }
-
-  /** Callback invoked when beginning a legacy UoM fetch; no‑op in package‑based mode. */
-  public void onStartFetchingUOM() {
-    /* no-op */
-  }
-
-  /**
-   * Returns the legacy blob file for the current version.
-   *
-   * @return always {@code null}; serving the core JAR via UoM is disabled
-   */
-  public synchronized File getCurrentVersionBlobFile() {
-    // Serving the main.jar over UOM is disabled in package-based updater.
-    return null;
   }
 
   // getMainUpdater() removed; jar updates are disabled.
