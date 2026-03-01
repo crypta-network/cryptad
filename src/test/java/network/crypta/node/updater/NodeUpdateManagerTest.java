@@ -341,7 +341,7 @@ class NodeUpdateManagerTest {
     seeded.startCoreUpdater();
 
     // Assert
-    assertEquals(seededEdition, seeded.getCoreUpdater().getUpdateKey().getSuggestedEdition());
+    assertEquals(seededEdition - 1, seeded.getCoreUpdater().getUpdateKey().getSuggestedEdition());
   }
 
   @Test
@@ -349,6 +349,26 @@ class NodeUpdateManagerTest {
       throws Exception {
     // Arrange
     int seededEdition = Version.currentBuildNumber() - 7;
+    SimpleFieldSet persisted = new SimpleFieldSet(true);
+    persisted.put("node.updater.lastKnownGoodFetchedEdition", seededEdition);
+    persisted.putSingle(
+        "node.updater.lastKnownGoodFetchedEditionKey", NodeUpdateManager.UPDATE_URI);
+    PersistentConfig persistedConfig = new PersistentConfig(persisted);
+    NodeUpdateManager seeded = new NodeUpdateManager(node, persistedConfig);
+
+    // Act
+    seeded.startCoreUpdater();
+
+    // Assert
+    assertEquals(
+        Version.currentBuildNumber(), seeded.getCoreUpdater().getUpdateKey().getSuggestedEdition());
+  }
+
+  @Test
+  void startCoreUpdater_whenMatchingPersistedEditionOneAboveCurrent_expectSubscribeSeedAtCurrent()
+      throws Exception {
+    // Arrange
+    int seededEdition = Version.currentBuildNumber() + 1;
     SimpleFieldSet persisted = new SimpleFieldSet(true);
     persisted.put("node.updater.lastKnownGoodFetchedEdition", seededEdition);
     persisted.putSingle(

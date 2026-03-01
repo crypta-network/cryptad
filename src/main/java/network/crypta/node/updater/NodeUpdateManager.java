@@ -1473,7 +1473,11 @@ public final class NodeUpdateManager {
     if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
       return Version.currentBuildNumber();
     }
-    return Math.max(Version.currentBuildNumber(), lastKnownGoodFetchedEdition);
+    int highestKnownEdition = sanitizeFetchedEdition(lastKnownGoodFetchedEdition);
+    if (highestKnownEdition > Version.currentBuildNumber()) {
+      return highestKnownEdition - 1;
+    }
+    return Version.currentBuildNumber();
   }
 
   private void resetLastKnownGoodFetchedEditionLocked(String currentUpdateScope) {
