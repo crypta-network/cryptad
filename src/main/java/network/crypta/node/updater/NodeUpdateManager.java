@@ -35,6 +35,7 @@ import network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
@@ -83,6 +84,18 @@ public final class NodeUpdateManager {
   // L10n parameter keys and repeated URL query parts
   private static final String L10N_PARAM_ERROR = "error";
   private static final String QUERY_TEXT_PLAIN = "?type=text/plain";
+  private static final String URI_TYPE_SEPARATOR = "@";
+  private static final String URI_PATH_SEPARATOR = "/";
+  private static final String UPDATE_URI_PREFIX = "USK@";
+  private static final String UPDATE_URI_DOC_NAME = "info";
+  private static final String LEGACY_UPDATE_URI_DOC_NAME = "jar";
+  private static final String REVOCATION_URI_PREFIX = "SSK@";
+  private static final String REVOCATION_URI_DOC_NAME = "revoked";
+  private static final String LAST_KNOWN_GOOD_FETCHED_EDITION_OPTION =
+      "lastKnownGoodFetchedEdition";
+  private static final String LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION =
+      "lastKnownGoodFetchedEditionKey";
+  private static final String REVOCATION_URI_OPTION = "revocationURI";
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -90,14 +103,13 @@ public final class NodeUpdateManager {
    */
   public static final int TRANSITION_VERSION = 1481;
 
-  /** The URI for post-TRANSITION_VERSION builds' freenet.jar. */
+  /** Public key material for post-TRANSITION_VERSION update URIs. */
   public static final String UPDATE_URI =
-      "USK@uQnFwn0aEFSAZihnSDduEHUd3GUmGg68ATn5R95MKJo,mcNiZqosfZ1F~PkZY8v1TuDKsY6noda-hGRXvu7uUFc,AQACAAE/jar/"
-          + Version.currentBuildNumber();
+      "uQnFwn0aEFSAZihnSDduEHUd3GUmGg68ATn5R95MKJo,mcNiZqosfZ1F~PkZY8v1TuDKsY6noda-hGRXvu7uUFc,AQACAAE";
 
-  /** Default USK/SSK pointing to revocation content that disables auto‑update. */
+  /** Public key material used to derive the revocation key URI. */
   public static final String REVOCATION_URI =
-      "SSK@TAnVLWtrGguuIi3fXkf8OmT5Pmy2Hduai18FUCP0uAU,tMg8t4kLktzmz~uFC6jk~-CUNv1mQ-C573sjLeg0alU,AQACAAE/revoked";
+      "TAnVLWtrGguuIi3fXkf8OmT5Pmy2Hduai18FUCP0uAU,tMg8t4kLktzmz~uFC6jk~-CUNv1mQ-C573sjLeg0alU,AQACAAE";
 
   // These are necessary to prevent DoS.
   /** Maximum allowed decoded byte length of a revocation document. */
@@ -109,9 +121,6 @@ public final class NodeUpdateManager {
   /** Maximum on‑disk blob length in bytes for a persisted revocation document. */
   public static final long MAX_REVOCATION_KEY_BLOB_LENGTH = 128L * 1024L;
 
-  /** Maximum allowed size in bytes for the historical main JAR (legacy paths only). */
-  public static final long MAX_MAIN_JAR_LENGTH = 48L * 1024L * 1024L; // 48MiB
-
   /** Maximum allowed size in bytes for the IPv4‐to‐country database. */
   public static final long MAX_IP_TO_COUNTRY_LENGTH = 24L * 1024L * 1024L;
 
@@ -121,19 +130,15 @@ public final class NodeUpdateManager {
   /** Remaining time for a legacy final-check timer. */
   public static final long TIME_REMAINING_ON_CHECK = 0L;
 
-  /** Legacy timestamp for when normal main-jar fetching started. */
-  static final long STARTED_FETCHING_NEXT_MAIN_JAR_TIMESTAMP = 0L;
-
   /** Whether dependency checks are currently considered broken. */
   public static final boolean BROKEN_DEPENDENCIES = false;
-
-  /** Whether legacy main-jar Update-over-Mandatory flows are enabled. */
-  public static final boolean SUPPORTS_JAR_UOM = false;
 
   // Installer/seednodes length caps removed with deprecated auto-fetch paths
 
   private FreenetURI updateURI;
   private FreenetURI revocationURI;
+  private volatile int lastKnownGoodFetchedEdition;
+  private volatile String lastKnownGoodFetchedEditionKey;
 
   // Legacy MainJarUpdater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
@@ -230,14 +235,15 @@ public final class NodeUpdateManager {
             3, true, true, "NodeUpdateManager.updateURI", "NodeUpdateManager.updateURILong"),
         new UpdateURICallback());
 
+    String configuredUpdateUriValue = updaterConfig.getString("URI");
     try {
-      updateURI = new FreenetURI(updaterConfig.getString("URI"));
+      updateURI = parseConfiguredUpdateURI(configuredUpdateUriValue);
     } catch (MalformedURLException e) {
       throw new InvalidConfigValueException(
           l10n("invalidUpdateURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
     }
+    migrateLegacyUpdateUriValueIfNeeded(updaterConfig, configuredUpdateUriValue);
 
-    updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
     if (updateURI.hasMetaStrings()) {
       throw new InvalidConfigValueException(l10n("updateURIMustHaveNoMetaStrings"));
     }
@@ -246,7 +252,7 @@ public final class NodeUpdateManager {
     }
 
     updaterConfig.register(
-        "revocationURI",
+        REVOCATION_URI_OPTION,
         REVOCATION_URI,
         new Option.Meta(
             4,
@@ -256,12 +262,43 @@ public final class NodeUpdateManager {
             "NodeUpdateManager.revocationURILong"),
         new UpdateRevocationURICallback());
 
+    String configuredRevocationUriValue = updaterConfig.getString(REVOCATION_URI_OPTION);
     try {
-      revocationURI = new FreenetURI(updaterConfig.getString("revocationURI"));
+      revocationURI = parseConfiguredRevocationURI(configuredRevocationUriValue);
     } catch (MalformedURLException e) {
       throw new InvalidConfigValueException(
           l10n("invalidRevocationURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
     }
+    migrateLegacyRevocationUriValueIfNeeded(updaterConfig, configuredRevocationUriValue);
+
+    updaterConfig.register(
+        LAST_KNOWN_GOOD_FETCHED_EDITION_OPTION,
+        -1,
+        new Option.Meta(
+            5,
+            true,
+            false,
+            "NodeUpdateManager.lastKnownGoodFetchedEdition",
+            "NodeUpdateManager.lastKnownGoodFetchedEditionLong"),
+        new LastKnownGoodFetchedEditionCallback(),
+        false);
+    lastKnownGoodFetchedEdition =
+        sanitizeFetchedEdition(updaterConfig.getInt(LAST_KNOWN_GOOD_FETCHED_EDITION_OPTION));
+
+    updaterConfig.register(
+        LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION,
+        UPDATE_URI,
+        new Option.Meta(
+            6,
+            true,
+            false,
+            "NodeUpdateManager.lastKnownGoodFetchedEditionKey",
+            "NodeUpdateManager.lastKnownGoodFetchedEditionKeyLong"),
+        new LastKnownGoodFetchedEditionKeyCallback());
+    lastKnownGoodFetchedEditionKey =
+        sanitizeFetchedEditionScope(
+            updaterConfig.getString(LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION));
+    alignLastKnownGoodFetchedEditionToCurrentUpdateScope();
 
     // Deprecated UI option: updateSeednodes (no longer shown on the Auto-update page).
     // Keep internal default as false; accept but ignore legacy config values.
@@ -747,18 +784,64 @@ public final class NodeUpdateManager {
    */
   public synchronized void setURI(FreenetURI uri) {
     NodeUpdater updater;
+    int subscribeEditionSeed;
     synchronized (this) {
       if (updateURI.equals(uri)) {
         return;
       }
+      String oldUpdateScope = normalizeFetchedEditionScope(updateURI);
       updateURI = uri;
       updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
+      String newUpdateScope = normalizeFetchedEditionScope(updateURI);
+      if (!newUpdateScope.equals(oldUpdateScope)) {
+        resetLastKnownGoodFetchedEditionLocked(newUpdateScope);
+      }
+      subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
       updater = coreUpdater;
       if (updater == null) {
         return;
       }
     }
-    updater.onChangeURI(uri);
+    updater.onChangeURI(uri, subscribeEditionSeed);
+  }
+
+  /**
+   * Records a successfully fetched core-info edition for startup seeding.
+   *
+   * <p>The hint is scoped to the normalized update URI: editions fetched from a stale or different
+   * update scope are ignored.
+   */
+  void recordSuccessfulCoreInfoFetch(FreenetURI fetchedUri, int fetchedEdition) {
+    if (fetchedEdition < 0 || fetchedUri == null) {
+      return;
+    }
+    synchronized (this) {
+      String fetchedScope = normalizeFetchedEditionScope(fetchedUri);
+      String currentScope = normalizeFetchedEditionScope(updateURI);
+      if (!currentScope.equals(fetchedScope)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
+              "Ignoring fetched edition {} for stale scope {}; current scope {}",
+              fetchedEdition,
+              fetchedScope,
+              currentScope);
+        }
+        return;
+      }
+      if (!currentScope.equals(lastKnownGoodFetchedEditionKey)) {
+        lastKnownGoodFetchedEditionKey = currentScope;
+        lastKnownGoodFetchedEdition = -1;
+      }
+      if (fetchedEdition > lastKnownGoodFetchedEdition) {
+        lastKnownGoodFetchedEdition = fetchedEdition;
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
+              "Recorded last known good fetched edition {} for scope {}",
+              lastKnownGoodFetchedEdition,
+              currentScope);
+        }
+      }
+    }
   }
 
   /**
@@ -1081,18 +1164,45 @@ public final class NodeUpdateManager {
     }
   }
 
+  class LastKnownGoodFetchedEditionCallback extends IntCallback {
+
+    @Override
+    public Integer get() {
+      return lastKnownGoodFetchedEdition;
+    }
+
+    @Override
+    public void set(Integer val) {
+      lastKnownGoodFetchedEdition = sanitizeFetchedEdition(val);
+    }
+  }
+
+  class LastKnownGoodFetchedEditionKeyCallback extends StringCallback {
+
+    @Override
+    public String get() {
+      return lastKnownGoodFetchedEditionKey;
+    }
+
+    @Override
+    public void set(String val) {
+      lastKnownGoodFetchedEditionKey = sanitizeFetchedEditionScope(val);
+      alignLastKnownGoodFetchedEditionToCurrentUpdateScope();
+    }
+  }
+
   class UpdateURICallback extends StringCallback {
 
     @Override
     public String get() {
-      return getURI().toString(false, false);
+      return toConfigUpdateUriValue(getURI());
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       FreenetURI uri;
       try {
-        uri = new FreenetURI(val);
+        uri = parseConfiguredUpdateURI(val);
       } catch (MalformedURLException e) {
         throw new InvalidConfigValueException(
             l10n("invalidUpdateURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
@@ -1116,20 +1226,287 @@ public final class NodeUpdateManager {
 
     @Override
     public String get() {
-      return getRevocationURI().toString(false, false);
+      return toConfigRevocationUriValue(getRevocationURI());
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       FreenetURI uri;
       try {
-        uri = new FreenetURI(val);
+        uri = parseConfiguredRevocationURI(val);
       } catch (MalformedURLException e) {
         throw new InvalidConfigValueException(
             l10n("invalidRevocationURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
       }
       setRevocationURI(uri);
     }
+  }
+
+  private static FreenetURI parseConfiguredUpdateURI(String configuredValue)
+      throws MalformedURLException {
+    String normalizedLegacyKey = extractLegacyUpdatePublicKeyMaterial(configuredValue);
+    if (normalizedLegacyKey != null) {
+      FreenetURI parsed = new FreenetURI(expandUpdateUriFromPublicKey(normalizedLegacyKey));
+      return parsed.setSuggestedEdition(Version.currentBuildNumber());
+    }
+
+    FreenetURI parsed = new FreenetURI(trimConfigValue(configuredValue));
+    return parsed.setSuggestedEdition(Version.currentBuildNumber());
+  }
+
+  private static FreenetURI parseConfiguredRevocationURI(String configuredValue)
+      throws MalformedURLException {
+    String normalizedLegacyKey = extractLegacyRevocationPublicKeyMaterial(configuredValue);
+    if (normalizedLegacyKey != null) {
+      return new FreenetURI(expandRevocationUriFromPublicKey(normalizedLegacyKey));
+    }
+    return new FreenetURI(trimConfigValue(configuredValue));
+  }
+
+  private static String extractLegacyUpdatePublicKeyMaterial(String configuredValue)
+      throws MalformedURLException {
+    String trimmed = trimConfigValue(configuredValue);
+    if (isBarePublicKey(trimmed)) {
+      return trimmed;
+    }
+
+    FreenetURI parsed = new FreenetURI(trimmed);
+    if (!parsed.isUSK() || parsed.hasMetaStrings()) {
+      return null;
+    }
+    String docName = parsed.getDocName();
+    if (!UPDATE_URI_DOC_NAME.equals(docName) && !LEGACY_UPDATE_URI_DOC_NAME.equals(docName)) {
+      return null;
+    }
+    return extractPublicKeyMaterial(parsed);
+  }
+
+  private static String extractLegacyRevocationPublicKeyMaterial(String configuredValue)
+      throws MalformedURLException {
+    String trimmed = trimConfigValue(configuredValue);
+    if (isBarePublicKey(trimmed)) {
+      return trimmed;
+    }
+
+    FreenetURI parsed = new FreenetURI(trimmed);
+    if (!parsed.isSSK() || parsed.hasMetaStrings()) {
+      return null;
+    }
+    if (!REVOCATION_URI_DOC_NAME.equals(parsed.getDocName())) {
+      return null;
+    }
+    return extractPublicKeyMaterial(parsed);
+  }
+
+  private static String expandUpdateUriFromPublicKey(String keyMaterial) {
+    return UPDATE_URI_PREFIX
+        + keyMaterial
+        + URI_PATH_SEPARATOR
+        + UPDATE_URI_DOC_NAME
+        + URI_PATH_SEPARATOR
+        + Version.currentBuildNumber();
+  }
+
+  private static String expandRevocationUriFromPublicKey(String keyMaterial) {
+    return REVOCATION_URI_PREFIX + keyMaterial + URI_PATH_SEPARATOR + REVOCATION_URI_DOC_NAME;
+  }
+
+  private static String toConfigUpdateUriValue(FreenetURI uri) {
+    if (uri.isUSK()
+        && !uri.hasMetaStrings()
+        && (UPDATE_URI_DOC_NAME.equals(uri.getDocName())
+            || LEGACY_UPDATE_URI_DOC_NAME.equals(uri.getDocName()))) {
+      return extractPublicKeyMaterial(uri);
+    }
+    return uri.toString(false, false);
+  }
+
+  private static String toConfigRevocationUriValue(FreenetURI uri) {
+    if (uri.isSSK() && !uri.hasMetaStrings() && REVOCATION_URI_DOC_NAME.equals(uri.getDocName())) {
+      return extractPublicKeyMaterial(uri);
+    }
+    return uri.toString(false, false);
+  }
+
+  private void migrateLegacyUpdateUriValueIfNeeded(SubConfig updaterConfig, String configuredValue)
+      throws InvalidConfigValueException {
+    migrateLegacyOptionValueIfNeeded(
+        updaterConfig,
+        "URI",
+        configuredValue,
+        NodeUpdateManager::extractLegacyUpdatePublicKeyMaterial);
+  }
+
+  private void migrateLegacyRevocationUriValueIfNeeded(
+      SubConfig updaterConfig, String configuredValue) throws InvalidConfigValueException {
+    migrateLegacyOptionValueIfNeeded(
+        updaterConfig,
+        REVOCATION_URI_OPTION,
+        configuredValue,
+        NodeUpdateManager::extractLegacyRevocationPublicKeyMaterial);
+  }
+
+  private static void migrateLegacyOptionValueIfNeeded(
+      SubConfig updaterConfig,
+      String optionName,
+      String configuredValue,
+      LegacyKeyExtractor extractor)
+      throws InvalidConfigValueException {
+    if (isBarePublicKey(trimConfigValue(configuredValue))) {
+      return;
+    }
+
+    String extracted;
+    try {
+      extracted = extractor.extract(configuredValue);
+    } catch (MalformedURLException e) {
+      throw new InvalidConfigValueException(e.getLocalizedMessage());
+    }
+    if (extracted == null) {
+      return;
+    }
+
+    Option<?> option = updaterConfig.getOption(optionName);
+    if (option == null) {
+      return;
+    }
+    option.setInitialValue(extracted);
+  }
+
+  private static String extractPublicKeyMaterial(FreenetURI uri) {
+    String fullUri = uri.toString(false, false);
+    if (fullUri == null || fullUri.isEmpty()) {
+      return "";
+    }
+    int typeSeparator = fullUri.indexOf(URI_TYPE_SEPARATOR);
+    if (typeSeparator < 0) {
+      return fullUri;
+    }
+    int pathSeparator = fullUri.indexOf(URI_PATH_SEPARATOR, typeSeparator + 1);
+    if (pathSeparator < 0) {
+      return fullUri.substring(typeSeparator + 1);
+    }
+    return fullUri.substring(typeSeparator + 1, pathSeparator);
+  }
+
+  private static int sanitizeFetchedEdition(Integer edition) {
+    if (edition == null) {
+      return -1;
+    }
+    return Math.max(-1, edition);
+  }
+
+  private static String sanitizeFetchedEditionScope(String value) {
+    String trimmed = trimConfigValue(value);
+    if (trimmed == null || trimmed.isEmpty()) {
+      return "";
+    }
+    if (isBarePublicKey(trimmed)) {
+      return trimmed;
+    }
+    try {
+      FreenetURI parsed = new FreenetURI(trimmed);
+      if (!parsed.isUSK() || parsed.hasMetaStrings()) {
+        return "";
+      }
+      return normalizeFetchedEditionScope(parsed);
+    } catch (MalformedURLException _) {
+      return "";
+    }
+  }
+
+  private synchronized void alignLastKnownGoodFetchedEditionToCurrentUpdateScope() {
+    String currentUpdateScope = normalizeFetchedEditionScope(updateURI);
+    if (alignLegacyBareFetchedEditionScope(currentUpdateScope)) {
+      return;
+    }
+    if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Resetting persisted fetched edition {} due to scope mismatch: persisted={},"
+                + " current={}",
+            lastKnownGoodFetchedEdition,
+            lastKnownGoodFetchedEditionKey,
+            currentUpdateScope);
+      }
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
+      return;
+    }
+    lastKnownGoodFetchedEdition = sanitizeFetchedEdition(lastKnownGoodFetchedEdition);
+  }
+
+  private boolean alignLegacyBareFetchedEditionScope(String currentUpdateScope) {
+    if (!isBarePublicKey(lastKnownGoodFetchedEditionKey)) {
+      return false;
+    }
+    if (!extractPublicKeyMaterial(updateURI).equals(lastKnownGoodFetchedEditionKey)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Resetting persisted fetched edition {} due to legacy key mismatch: persisted={},"
+                + " current={}",
+            lastKnownGoodFetchedEdition,
+            lastKnownGoodFetchedEditionKey,
+            currentUpdateScope);
+      }
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
+      return true;
+    }
+    String legacyInfoScope =
+        normalizeFetchedEditionScope(updateURI.setDocName(UPDATE_URI_DOC_NAME));
+    if (!legacyInfoScope.equals(currentUpdateScope)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Resetting persisted fetched edition {} while migrating legacy key {} to custom"
+                + " scope {}",
+            lastKnownGoodFetchedEdition,
+            lastKnownGoodFetchedEditionKey,
+            currentUpdateScope);
+      }
+      resetLastKnownGoodFetchedEditionLocked(currentUpdateScope);
+      return true;
+    }
+    lastKnownGoodFetchedEditionKey = currentUpdateScope;
+    return false;
+  }
+
+  private int computeCoreUpdaterSubscribeEditionSeedLocked(String currentUpdateScope) {
+    if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
+      return Version.currentBuildNumber();
+    }
+    int highestKnownEdition = sanitizeFetchedEdition(lastKnownGoodFetchedEdition);
+    if (highestKnownEdition > Version.currentBuildNumber()) {
+      return highestKnownEdition - 1;
+    }
+    return Version.currentBuildNumber();
+  }
+
+  private void resetLastKnownGoodFetchedEditionLocked(String currentUpdateScope) {
+    lastKnownGoodFetchedEdition = -1;
+    lastKnownGoodFetchedEditionKey = currentUpdateScope;
+  }
+
+  private static String normalizeFetchedEditionScope(FreenetURI uri) {
+    FreenetURI normalized = uri;
+    if (normalized.isSSK() && normalized.isSSKForUSK()) {
+      normalized = normalized.uskForSSK();
+    }
+    return normalized.setSuggestedEdition(0).toString(false, false);
+  }
+
+  private static boolean isBarePublicKey(String value) {
+    if (value == null || value.isEmpty()) {
+      return false;
+    }
+    return !value.contains(URI_TYPE_SEPARATOR) && !value.contains(URI_PATH_SEPARATOR);
+  }
+
+  private static String trimConfigValue(String value) {
+    return value == null ? null : value.trim();
+  }
+
+  @FunctionalInterface
+  private interface LegacyKeyExtractor {
+    String extract(String configuredValue) throws MalformedURLException;
   }
 
   /**
@@ -1228,21 +1605,6 @@ public final class NodeUpdateManager {
     if (cu != null) cu.renderProperties(alertNode);
   }
 
-  /** Callback invoked when beginning a legacy UoM fetch; no‑op in package‑based mode. */
-  public void onStartFetchingUOM() {
-    /* no-op */
-  }
-
-  /**
-   * Returns the legacy blob file for the current version.
-   *
-   * @return always {@code null}; serving the core JAR via UoM is disabled
-   */
-  public synchronized File getCurrentVersionBlobFile() {
-    // Serving the main.jar over UOM is disabled in package-based updater.
-    return null;
-  }
-
   // getMainUpdater() removed; jar updates are disabled.
 
   /**
@@ -1286,14 +1648,17 @@ public final class NodeUpdateManager {
   /** Create and wire the package‑based {@link CoreUpdater} if not already present. */
   public synchronized void startCoreUpdater() {
     if (coreUpdater != null) return;
+    int subscribeEditionSeed =
+        computeCoreUpdaterSubscribeEditionSeedLocked(normalizeFetchedEditionScope(updateURI));
     NodeUpdaterParams params =
         new NodeUpdaterParams(
             this,
-            getCoreInfoURI(),
+            getURI(),
             Version.currentBuildNumber(),
             -1,
             Integer.MAX_VALUE,
-            "core-info-");
+            "core-info-",
+            subscribeEditionSeed);
     coreUpdater = new CoreUpdater(params);
   }
 

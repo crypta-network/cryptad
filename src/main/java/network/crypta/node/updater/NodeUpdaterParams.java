@@ -28,6 +28,7 @@ import network.crypta.keys.FreenetURI;
  * @param min minimum acceptable deployment build number for this node.
  * @param max maximum acceptable deployment build number for this node.
  * @param blobFilenamePrefix prefix for update blob filenames stored on disk.
+ * @param subscribeEditionSeed initial USK edition used when subscribing for update discovery.
  * @see NodeUpdateManager
  * @see NodeUpdater
  */
@@ -37,4 +38,5 @@ public record NodeUpdaterParams(
     int current,
     int min,
     int max,
-    String blobFilenamePrefix) {}
+    String blobFilenamePrefix,
+    int subscribeEditionSeed) {}

@@ -63,7 +63,7 @@ class UpdateOverMandatoryManagerTest {
     when(clientCore.getAlerts()).thenReturn(alertManager);
     when(node.network().ticker()).thenReturn(ticker);
     // Do nothing when jobs are queued in tests to keep determinism
-    doAnswer(invocation -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
+    doAnswer(_ -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
     // Random used for message UIDs (RandomSource is required by Node API)
     network.crypta.crypt.RandomSource rs =
         new network.crypta.crypt.RandomSource() {
@@ -148,8 +148,8 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.isBlown()).thenReturn(false);
     when(updateManager.getRevocationURI()).thenReturn(new FreenetURI("KSK@revoked"));
 
-    // Do nothing on send; callback is not used for the success-path assertion here
-    doAnswer(invocation -> null)
+    // Do nothing on sending; callback is not used for the success-path assertion here
+    doAnswer(_ -> null)
         .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
@@ -160,7 +160,7 @@ class UpdateOverMandatoryManagerTest {
     assertTrue(handled);
     verify(updateManager, times(1)).peerClaimsKeyBlown();
 
-    // An alert is registered exactly once for the first matching announce
+    // An alert is registered exactly once for the first matching announcement
     ArgumentCaptor<network.crypta.node.useralerts.UserAlert> alertCaptor =
         ArgumentCaptor.forClass(network.crypta.node.useralerts.UserAlert.class);
     verify(alertManager, times(1)).register(alertCaptor.capture());
@@ -232,7 +232,7 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.isBlown()).thenReturn(false);
     when(updateManager.getRevocationURI()).thenReturn(new FreenetURI("KSK@revoked"));
 
-    // Simulate immediate NotConnected on send
+    // Simulate immediate NotConnected on sending
     doThrow(new NotConnectedException())
         .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
@@ -275,7 +275,7 @@ class UpdateOverMandatoryManagerTest {
     when(connected.userToString()).thenReturn("connected");
     when(connected.getSimpleVersion()).thenReturn(10);
     when(connected.isConnected()).thenReturn(true);
-    doAnswer(inv -> null)
+    doAnswer(_ -> null)
         .when(connectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
@@ -285,7 +285,7 @@ class UpdateOverMandatoryManagerTest {
     when(disconnected.userToString()).thenReturn("disconnected");
     when(disconnected.getSimpleVersion()).thenReturn(11);
     when(disconnected.isConnected()).thenReturn(false);
-    doAnswer(inv -> null)
+    doAnswer(_ -> null)
         .when(disconnectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
@@ -318,19 +318,14 @@ class UpdateOverMandatoryManagerTest {
   }
 
   @Test
-  void flags_and_fetching_state_expectDefaultsWhenJarUomDisabled()
-      throws MalformedURLException, NotConnectedException {
+  void flags_and_fetching_state_expectDefaultsWhenJarUomDisabled() throws NotConnectedException {
     // Arrange defaults
     assertFalse(uom.persistent());
     assertFalse(uom.realTimeFlag());
     assertFalse(uom.isFetchingMain());
 
-    // Prepare a main-jar offer scenario. In package-based mode this should be ignored.
+    // Prepare an announcement without revocation; only dependency peer tracking may run.
     when(updateManager.isBlown()).thenReturn(false);
-    when(node.isOutdated()).thenReturn(true); // intentionally spelled as in production code
-    when(updateManager.newMainJarVersion()).thenReturn(0);
-    when(updateManager.getMainVersion()).thenReturn(0);
-    when(updateManager.getURI()).thenReturn(new FreenetURI("KSK@main"));
 
     Message m = org.mockito.Mockito.mock(Message.class);
     when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@main");
@@ -348,11 +343,7 @@ class UpdateOverMandatoryManagerTest {
     PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.isSeed()).thenReturn(false);
-    // sendUOMRequest will set offered version on the peer and then read it; return the offered
-    // value
-    when(peer.getMainJarOfferedVersion()).thenReturn(5);
-    doAnswer(invocation -> null)
+    doAnswer(_ -> null)
         .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
@@ -361,6 +352,5 @@ class UpdateOverMandatoryManagerTest {
 
     // Assert transitions
     assertFalse(uom.isFetchingMain(), "main-jar UOM must stay disabled");
-    assertFalse(uom.fetchingUOM(), "fetchingUOM must stay false when jar UOM is disabled");
   }
 }
