@@ -305,6 +305,95 @@ class FileUtilTest {
   }
 
   @Test
+  @DisplayName("moveTo_whenFallbackFailsTransiently_thenRetriesAndSucceeds")
+  void moveTo_whenFallbackFailsTransiently_thenRetriesAndSucceeds(@TempDir Path tmp)
+      throws Exception {
+    // Arrange
+    Path src = tmp.resolve("from-retry.bin");
+    Path dst = tmp.resolve("to-retry.bin");
+    Files.write(src, List.of("retry"));
+
+    try (MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.ATOMIC_MOVE)))
+          .thenThrow(new java.nio.file.AtomicMoveNotSupportedException("a", "b", "nope"));
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.REPLACE_EXISTING)))
+          .thenThrow(new IOException("locked-1"))
+          .thenThrow(new IOException("locked-2"))
+          .then(_ -> dst);
+
+      // Act
+      boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
+
+      // Assert
+      assertTrue(ok);
+      files.verify(() -> Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING), times(3));
+    }
+  }
+
+  @Test
+  @DisplayName("moveTo_whenFallbackFailsAllRetries_expectFalse")
+  void moveTo_whenFallbackFailsAllRetries_expectFalse(@TempDir Path tmp) throws Exception {
+    // Arrange
+    Path src = tmp.resolve("from-fail.bin");
+    Path dst = tmp.resolve("to-fail.bin");
+    Files.write(src, List.of("fail"));
+
+    try (MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.ATOMIC_MOVE)))
+          .thenThrow(new java.nio.file.AtomicMoveNotSupportedException("a", "b", "nope"));
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.REPLACE_EXISTING)))
+          .thenThrow(new IOException("locked-1"))
+          .thenThrow(new IOException("locked-2"))
+          .thenThrow(new IOException("locked-3"))
+          .thenThrow(new IOException("locked-4"))
+          .thenThrow(new IOException("locked-5"));
+
+      // Act
+      boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
+
+      // Assert
+      assertFalse(ok);
+      files.verify(() -> Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING), times(5));
+    }
+  }
+
+  @Test
+  @DisplayName("moveTo_whenInterruptedDuringRetryBackoff_expectFalseAndInterruptPreserved")
+  void moveTo_whenInterruptedDuringRetryBackoff_expectFalseAndInterruptPreserved(@TempDir Path tmp)
+      throws Exception {
+    // Arrange
+    Path src = tmp.resolve("from-interrupt.bin");
+    Path dst = tmp.resolve("to-interrupt.bin");
+    Files.write(src, List.of("interrupt"));
+
+    try (MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.ATOMIC_MOVE)))
+          .thenThrow(new java.nio.file.AtomicMoveNotSupportedException("a", "b", "nope"));
+      files
+          .when(() -> Files.move(eq(src), eq(dst), eq(StandardCopyOption.REPLACE_EXISTING)))
+          .thenThrow(new IOException("locked"));
+
+      Thread.currentThread().interrupt();
+      try {
+        // Act
+        boolean ok = FileUtil.moveTo(src.toFile(), dst.toFile());
+
+        // Assert
+        assertFalse(ok);
+        assertTrue(Thread.currentThread().isInterrupted());
+        files.verify(() -> Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING), times(1));
+      } finally {
+        network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Thread.interrupted());
+      }
+    }
+  }
+
+  @Test
   @DisplayName("moveTo_overwriteFalseAndDestExists_expectFalse")
   void moveTo_overwriteFalseAndDestExists_expectFalse(@TempDir Path tmp) throws Exception {
     // Arrange

@@ -112,6 +112,7 @@ public class OpennetManager {
   private final Announcer announcer;
 
   private final SeedAnnounceTracker seedTracker = new SeedAnnounceTracker();
+  private final Object writeFileSync = new Object();
 
   /* The routing table is split into "buckets" by distance, each of which has a separate LRU
    * list. For now there are only 2 buckets; the PETS paper suggested many buckets, but this
@@ -516,16 +517,17 @@ public class OpennetManager {
   /**
    * Persist current opennet crypto state to disk.
    *
-   * <p>The state is written to {@code opennet-<port>} using a temporary backup file. Failures are
-   * intentionally swallowed to preserve runtime behavior, so callers should treat persistence as
-   * best-effort. This method does not synchronize on the manager; invoke it from safe contexts that
-   * do not race with crypto replacement or concurrent file writes.
+   * <p>The state is written to {@code opennet-<port>} using a temporary backup file, then moved
+   * into place once the writer is closed. Failures are logged and the method returns without
+   * throwing, so callers should treat persistence as best-effort.
    */
   public void writeFile() {
-    File nodeFile = node.nodeDir().file(OPENNET_FILE_PREFIX + crypto.getPortNumber());
-    File backupNodeFile =
-        node.nodeDir().file(OPENNET_FILE_PREFIX + crypto.getPortNumber() + ".bak");
-    writeFile(nodeFile, backupNodeFile);
+    synchronized (writeFileSync) {
+      File nodeFile = node.nodeDir().file(OPENNET_FILE_PREFIX + crypto.getPortNumber());
+      File backupNodeFile =
+          node.nodeDir().file(OPENNET_FILE_PREFIX + crypto.getPortNumber() + ".bak");
+      writeFile(nodeFile, backupNodeFile);
+    }
   }
 
   private void writeFile(File orig, File backup) {
@@ -543,10 +545,13 @@ public class OpennetManager {
         OutputStreamWriter osr = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
         BufferedWriter bw = new BufferedWriter(osr)) {
       fs.writeTo(bw);
-      bw.flush(); // Ensure data is written before moving the file
-      FileUtil.moveTo(backup, orig);
-    } catch (IOException _) {
-      // Resources are automatically closed by try-with-resources
+      bw.flush();
+    } catch (IOException e) {
+      LOG.error("Failed writing opennet backup {}: {}", backup, e, e);
+      return;
+    }
+    if (!FileUtil.moveTo(backup, orig)) {
+      LOG.error("Failed to replace opennet file {} with backup {}", orig, backup);
     }
   }
 
