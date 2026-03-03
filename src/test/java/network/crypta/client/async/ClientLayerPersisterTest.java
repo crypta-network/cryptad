@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.OutputStream;
+import java.io.StreamCorruptedException;
 import network.crypta.clients.fcp.ClientRequest;
+import network.crypta.crypt.AEADVerificationFailedException;
 import network.crypta.io.comm.IOStatisticCollector;
 import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
@@ -74,7 +76,7 @@ class ClientLayerPersisterTest {
 
     // Temp buckets used by checksum writers/readers
     try {
-      when(tempBucketFactory.makeBucket(anyLong())).thenAnswer(inv -> new InMemoryBucket());
+      when(tempBucketFactory.makeBucket(anyLong())).thenAnswer(_ -> new InMemoryBucket());
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -105,12 +107,12 @@ class ClientLayerPersisterTest {
         null, // encryptionKey
         requestStarters);
 
-    // Wait for async checkpoint to complete
+    // Wait for the async checkpoint to complete
     persister.waitForNotWriting();
 
     assertEquals(base, persister.getWriteFilename());
     assertTrue(base.exists(), "main persistence file should exist after first save");
-    // A backup may or may not be present depending on timing; only require main file.
+    // A backup may or may not be present depending on timing; only require the main file.
 
     // Header sanity: MAGIC then VERSION
     try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(base))) {
@@ -145,7 +147,8 @@ class ClientLayerPersisterTest {
     // Either a backup exists (expected when rotating), or the main file was rewritten
     // in place with a newer timestamp.
     boolean rotated = backupFile.exists();
-    boolean rewritten = mainFile.lastModified() >= 0; // trivially true; rely on rotate in practice
+    boolean rewritten =
+        mainFile.lastModified() >= 0; // trivially true; rely on rotating in practice
     assertTrue(rotated || rewritten, "backup created or file rewritten");
   }
 
@@ -192,11 +195,36 @@ class ClientLayerPersisterTest {
                 requestStarters));
   }
 
+  @Test
+  void isExpectedUnreadableVariantFailure_whenEncryptedAndAuthFails_expectTrue() {
+    AEADVerificationFailedException failure = new AEADVerificationFailedException();
+
+    assertTrue(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, true));
+    assertFalse(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, false));
+  }
+
+  @Test
+  void isExpectedUnreadableVariantFailure_whenSuppressedStreamCorruption_expectTrue() {
+    IOException failure = new IOException("outer");
+    failure.addSuppressed(new StreamCorruptedException("invalid stream header: 00000000"));
+
+    assertTrue(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, true));
+    assertTrue(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, false));
+  }
+
+  @Test
+  void isExpectedUnreadableVariantFailure_whenUnrelatedError_expectFalse() {
+    IOException failure = new IOException("boom");
+
+    assertFalse(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, true));
+    assertFalse(ClientLayerPersister.isExpectedUnreadableVariantFailure(failure, false));
+  }
+
   // ---------- helpers ----------
 
   private static void touch(File f) throws IOException {
     try (OutputStream os = new FileOutputStream(f)) {
-      // Opening the stream is sufficient to create/truncate the file; flush to satisfy
+      // Opening the stream is enough to create/truncate the file; flush to satisfy
       // static analysis so the try block isn’t empty.
       os.flush();
     }
@@ -236,6 +264,7 @@ class ClientLayerPersisterTest {
   }
 
   /** Ticker that runs tasks immediately on the provided executor. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class InlineTicker implements Ticker {
     private final PriorityAwareExecutor exec;
 

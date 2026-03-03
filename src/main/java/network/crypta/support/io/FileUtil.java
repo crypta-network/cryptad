@@ -50,6 +50,10 @@ public final class FileUtil {
    */
   public static final int BUFFER_SIZE = 32 * 1024;
 
+  private static final int REPLACE_MOVE_MAX_ATTEMPTS = 5;
+  private static final long REPLACE_MOVE_BASE_BACKOFF_MILLIS = 50;
+  private static final long REPLACE_MOVE_MAX_BACKOFF_MILLIS = 400;
+
   private static final Random SEED_GENERATOR =
       MersenneTwister.createSynchronized(NodeStarter.getGlobalSecureRandom().generateSeed(32));
 
@@ -507,6 +511,13 @@ public final class FileUtil {
   public static boolean moveTo(File orig, File dest) {
     Path source = orig.toPath();
     Path target = dest.toPath();
+    if (tryAtomicMove(source, target, orig, dest)) {
+      return true;
+    }
+    return moveWithReplaceRetries(source, target, orig, dest);
+  }
+
+  private static boolean tryAtomicMove(Path source, Path target, File orig, File dest) {
     try {
       Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
       return true;
@@ -517,15 +528,84 @@ public final class FileUtil {
     } catch (IOException e) {
       // On Windows this frequently fails when replacing an existing file; retry with
       // REPLACE_EXISTING before giving up.
-      LOG.warn("Atomic move failed for {} -> {}, retrying non-atomically: {}", orig, dest, e);
+      if (LOG.isWarnEnabled()) {
+        String atomicFailure = e.toString();
+        LOG.warn(
+            "Atomic move failed for {} -> {}, retrying non-atomically: {}",
+            orig,
+            dest,
+            atomicFailure);
+      }
     }
+    return false;
+  }
+
+  private static boolean moveWithReplaceRetries(Path source, Path target, File orig, File dest) {
+    IOException lastFailure = null;
+    for (int attempt = 1; attempt <= REPLACE_MOVE_MAX_ATTEMPTS; attempt++) {
+      try {
+        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        return true;
+      } catch (IOException e) {
+        lastFailure = e;
+        if (attempt == 1) {
+          LOG.warn(
+              "Replace-existing move failed for {} -> {} (attempt {}/{}), retrying: {}",
+              orig,
+              dest,
+              attempt,
+              REPLACE_MOVE_MAX_ATTEMPTS,
+              e.toString());
+        } else if (attempt < REPLACE_MOVE_MAX_ATTEMPTS && LOG.isDebugEnabled()) {
+          LOG.debug(
+              "Replace-existing move retry failed for {} -> {} (attempt {}/{}): {}",
+              orig,
+              dest,
+              attempt,
+              REPLACE_MOVE_MAX_ATTEMPTS,
+              e.toString());
+        }
+        if (attempt == REPLACE_MOVE_MAX_ATTEMPTS) break;
+        if (!sleepBeforeReplaceMoveRetry(orig, dest, attempt)) {
+          return false;
+        }
+      }
+    }
+    LOG.error(
+        "Replace-existing move failed for {} -> {} after {} attempts: {}",
+        orig,
+        dest,
+        REPLACE_MOVE_MAX_ATTEMPTS,
+        lastFailure,
+        lastFailure);
+    return false;
+  }
+
+  private static boolean sleepBeforeReplaceMoveRetry(File orig, File dest, int attempt) {
+    long backoffMillis = retryBackoffMillis(attempt);
     try {
-      Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+      Thread.sleep(backoffMillis);
       return true;
-    } catch (IOException e) {
-      LOG.error("Replace-existing move failed for {} -> {}: {}", orig, dest, e, e);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      LOG.error(
+          "Interrupted while retrying replace-existing move for {} -> {} (attempt {}/{}).",
+          orig,
+          dest,
+          attempt,
+          REPLACE_MOVE_MAX_ATTEMPTS,
+          interrupted);
       return false;
     }
+  }
+
+  private static long retryBackoffMillis(int failedAttempt) {
+    long backoff = REPLACE_MOVE_BASE_BACKOFF_MILLIS;
+    int shifts = failedAttempt - 1;
+    if (shifts > 0) {
+      backoff <<= Math.min(shifts, 30);
+    }
+    return Math.min(backoff, REPLACE_MOVE_MAX_BACKOFF_MILLIS);
   }
 
   /**

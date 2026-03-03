@@ -465,9 +465,12 @@ public final class Node implements TimeSkewDetectorCallback {
 
     try (FileOutputStream fos = new FileOutputStream(backup)) {
       fs.writeTo(fos);
-      FileUtil.moveTo(backup, orig);
     } catch (IOException ioe) {
       LOG.error("IOE :{}", ioe.getMessage(), ioe);
+      return;
+    }
+    if (!FileUtil.moveTo(backup, orig)) {
+      LOG.error("Failed to replace node file {} with backup {}", orig, backup);
     }
   }
 
