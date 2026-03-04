@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -26,6 +27,7 @@ import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
+import network.crypta.node.Version;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
@@ -66,6 +68,7 @@ public class CoreUpdater extends NodeUpdater {
   private final AppEnv appEnv = new AppEnv();
 
   private final AtomicReference<CoreInfo> latestInfo = new AtomicReference<>();
+  private final AtomicReference<Integer> latestVersionBuild = new AtomicReference<>();
   private volatile String selectedKey; // "<arch>.<ext>"
   private final AtomicReference<PackageSpec> selectedSpec = new AtomicReference<>();
   private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
@@ -110,10 +113,24 @@ public class CoreUpdater extends NodeUpdater {
   protected void maybeParseManifest(FetchResult result, int build) {
     CoreInfo info = parseInfo(result);
     latestInfo.set(info);
+    Integer parsedBuild = parseStrictIntegerVersion(info.version());
+    latestVersionBuild.set(parsedBuild);
     AppEnv.EnvDetection detected = appEnv.detectEnvironment();
     env.set(detected);
     selectArtifact(info, detected);
+    logParsedDescriptor(info, detected, parsedBuild);
 
+    PackageSpec selected = selectedSpec.get();
+    if (manager.isAutoUpdateAllowed()
+        && selected != null
+        && selected.chk() != null
+        && !hasUsableFetcher()) {
+      tryStartDownload();
+    }
+  }
+
+  private void logParsedDescriptor(
+      CoreInfo info, AppEnv.EnvDetection detected, Integer parsedBuild) {
     try {
       String versionLabel = info.version() != null ? info.version() : "?";
       String managers = String.join(",", detected.getAvailableManagers());
@@ -139,16 +156,14 @@ public class CoreUpdater extends NodeUpdater {
                 + ", full="
                 + (info.fullChangelogChk() != null ? info.fullChangelogChk() : "-"));
       }
+      if (parsedBuild == null) {
+        log.warn(
+            "{} Ignoring core-info version '{}' for release gating: expected an integer build",
+            LOG_TAG,
+            versionLabel);
+      }
     } catch (Exception _) {
       // best effort logging
-    }
-
-    PackageSpec selected = selectedSpec.get();
-    if (manager.isAutoUpdateAllowed()
-        && selected != null
-        && selected.chk() != null
-        && !hasUsableFetcher()) {
-      tryStartDownload();
     }
   }
 
@@ -177,6 +192,44 @@ public class CoreUpdater extends NodeUpdater {
     return info != null ? info.fullChangelogChk() : null;
   }
 
+  /**
+   * Returns the version label advertised by the latest parsed core info descriptor.
+   *
+   * @return descriptor version label, or {@code null} when unavailable
+   */
+  public String getAdvertisedVersionLabel() {
+    CoreInfo info = latestInfo.get();
+    return info != null ? info.version() : null;
+  }
+
+  @Override
+  public synchronized boolean canUpdateNow() {
+    Integer parsedBuild = latestVersionBuild.get();
+    return parsedBuild != null && parsedBuild > Version.currentBuildNumber();
+  }
+
+  @Override
+  public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
+    resetDescriptorStateForUriChange();
+    super.onChangeURI(newUri, subscribeEditionSeed);
+  }
+
+  private void resetDescriptorStateForUriChange() {
+    cancelPackageFetchForUriChange();
+    latestInfo.set(null);
+    latestVersionBuild.set(null);
+    selectedKey = null;
+    selectedSpec.set(null);
+    env.set(null);
+  }
+
+  private void cancelPackageFetchForUriChange() {
+    PackageFetcher previous = fetcher.getAndSet(null);
+    if (previous != null) {
+      previous.cancelForUriChange();
+    }
+  }
+
   private CoreInfo parseInfo(FetchResult result) {
     try (Bucket bucket = result.asBucket();
         InputStream input = bucket.getInputStream();
@@ -196,6 +249,26 @@ public class CoreUpdater extends NodeUpdater {
       sb.append(buf, 0, n);
     }
     return sb.toString();
+  }
+
+  static Integer parseStrictIntegerVersion(String versionLabel) {
+    if (versionLabel == null) {
+      return null;
+    }
+    String trimmed = versionLabel.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    for (int i = 0; i < trimmed.length(); i++) {
+      if (!Character.isDigit(trimmed.charAt(i))) {
+        return null;
+      }
+    }
+    try {
+      return Integer.parseInt(trimmed);
+    } catch (NumberFormatException _) {
+      return null;
+    }
   }
 
   private void selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
@@ -662,6 +735,8 @@ public class CoreUpdater extends NodeUpdater {
     private final File outFile;
     private final FreenetURI chk;
     private final String chkString;
+    private volatile FetchContext fetchContext;
+    private volatile ClientGetter clientGetter;
 
     private volatile int lastPct = -1;
     private volatile int lastDone = -1;
@@ -690,6 +765,8 @@ public class CoreUpdater extends NodeUpdater {
       var createdGetter =
           new ClientGetter(
               this, chk, ctx, RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, fb, null, null);
+      fetchContext = ctx;
+      clientGetter = createdGetter;
       ctx.getEventProducer().addEventListener(this);
       try {
         manager.getNode().services().clientCore().getClientContext().start(createdGetter);
@@ -698,7 +775,7 @@ public class CoreUpdater extends NodeUpdater {
       } catch (FetchException e) {
         markStartFailure(
             e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), safeIsFatal(e));
-        ctx.getEventProducer().removeEventListener(this);
+        detachProgressListener();
         CoreUpdater.this.logError(
             "Failed to start package download: "
                 + (errorMsg != null ? errorMsg : e.getClass().getSimpleName()),
@@ -706,11 +783,28 @@ public class CoreUpdater extends NodeUpdater {
       } catch (Exception e) {
         markStartFailure(
             e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), false);
-        ctx.getEventProducer().removeEventListener(this);
+        detachProgressListener();
         CoreUpdater.this.logError(
             "Error starting package download: "
                 + (errorMsg != null ? errorMsg : e.getClass().getSimpleName()),
             e);
+      }
+    }
+
+    void cancelForUriChange() {
+      ClientGetter getter = clientGetter;
+      if (getter == null || getter.isFinished()) {
+        detachProgressListener();
+        return;
+      }
+      try {
+        getter.cancel(manager.getNode().services().clientCore().getClientContext());
+        CoreUpdater.this.logInfo("Cancelled in-flight package download after update URI change");
+      } catch (Exception e) {
+        CoreUpdater.this.logError(
+            "Error while cancelling in-flight package download after URI change", e);
+      } finally {
+        detachProgressListener();
       }
     }
 
@@ -755,6 +849,8 @@ public class CoreUpdater extends NodeUpdater {
 
     @Override
     public void onSuccess(FetchResult result, ClientGetter state) {
+      detachProgressListener();
+      clientGetter = null;
       complete = true;
       successFile = outFile;
       failed = false;
@@ -765,6 +861,8 @@ public class CoreUpdater extends NodeUpdater {
 
     @Override
     public void onFailure(FetchException e) {
+      detachProgressListener();
+      clientGetter = null;
       complete = true;
       successFile = null;
       failed = true;
@@ -840,12 +938,26 @@ public class CoreUpdater extends NodeUpdater {
       }
     }
 
+    private void detachProgressListener() {
+      FetchContext localContext = fetchContext;
+      fetchContext = null;
+      if (localContext == null) {
+        return;
+      }
+      try {
+        localContext.getEventProducer().removeEventListener(this);
+      } catch (Exception _) {
+        // Best-effort listener cleanup.
+      }
+    }
+
     private void markStartFailure(String message, boolean fatalFlag) {
       complete = true;
       successFile = null;
       failed = true;
       fatal = fatalFlag;
       errorMsg = message != null ? message : "Failed to start download";
+      clientGetter = null;
     }
   }
 }

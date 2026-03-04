@@ -140,7 +140,7 @@ public final class NodeUpdateManager {
   private volatile int lastKnownGoodFetchedEdition;
   private volatile String lastKnownGoodFetchedEditionKey;
 
-  // Legacy MainJarUpdater removed; core package updater is used instead.
+  // Legacy jar updater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
   private CoreUpdater coreUpdater;
 
@@ -557,14 +557,14 @@ public final class NodeUpdateManager {
     }
     int fetchedVersion = (blobSize <= 0) ? -1 : Version.currentBuildNumber();
     return new DMT.UOMAnnouncementBuilder()
-        .mainKey(localUpdateURI.toString())
+        .corePackageKey(localUpdateURI.toString())
         .revocationKey(localRevocationURI.toString())
         .haveRevocation(getRevocationChecker().hasBlown())
-        .mainJarVersion(fetchedVersion)
+        .corePackageVersion(fetchedVersion)
         .timeLastTriedRevocationFetch(getRevocationChecker().lastSucceededDelta())
         .revocationDNFCount(getRevocationChecker().getRevocationDNFCounter())
         .revocationKeyLength(getRevocationChecker().getBlobSize())
-        .mainJarLength(blobSize)
+        .corePackageLength(blobSize)
         .pingTime((int) node.network().stats().getNodeAveragePingTime())
         .bwlimitDelayTime((int) node.network().stats().getBwlimitDelayTime())
         .build();
@@ -1048,7 +1048,7 @@ public final class NodeUpdateManager {
    *
    * @return {@code true} when a newer version has been fetched and is ready
    */
-  public synchronized boolean hasNewMainJar() {
+  public synchronized boolean hasNewCorePackage() {
     CoreUpdater cu = coreUpdater;
     return cu != null && cu.canUpdateNow();
   }
@@ -1058,9 +1058,26 @@ public final class NodeUpdateManager {
    *
    * @return the fetched version number, or {@code -1} when none is available
    */
-  public synchronized int newMainJarVersion() {
+  public synchronized int newCorePackageVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.getFetchedVersion() : -1;
+  }
+
+  /**
+   * Returns the advertised core version label from the latest parsed descriptor.
+   *
+   * @return descriptor version label, or a fetched-version fallback when unavailable
+   */
+  public synchronized String newCorePackageVersionLabel() {
+    CoreUpdater cu = coreUpdater;
+    if (cu == null) {
+      return Integer.toString(-1);
+    }
+    String label = cu.getAdvertisedVersionLabel();
+    if (label != null && !label.isBlank()) {
+      return label;
+    }
+    return Integer.toString(cu.getFetchedVersion());
   }
 
   /**
@@ -1068,7 +1085,7 @@ public final class NodeUpdateManager {
    *
    * @return {@code true} when a download is in progress
    */
-  public synchronized boolean fetchingNewMainJar() {
+  public synchronized boolean fetchingNewCorePackage() {
     CoreUpdater cu = coreUpdater;
     return (cu != null && cu.isFetching());
   }
@@ -1078,7 +1095,7 @@ public final class NodeUpdateManager {
    *
    * @return the in‑flight version number, or {@code -1} when idle
    */
-  public synchronized int fetchingNewMainJarVersion() {
+  public synchronized int fetchingNewCorePackageVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.fetchingVersion() : -1;
   }
@@ -1116,7 +1133,7 @@ public final class NodeUpdateManager {
    * @return {@code true} when an update would be possible after revocation verification
    */
   public boolean canUpdateNow() {
-    return hasNewMainJar();
+    return hasNewCorePackage();
   }
 
   /**

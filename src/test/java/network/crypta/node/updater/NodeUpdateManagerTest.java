@@ -2,15 +2,21 @@ package network.crypta.node.updater;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
+import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.USKManager;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
+import network.crypta.fs.AppEnv;
 import network.crypta.io.comm.Message;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -26,6 +32,7 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.io.ArrayBucket;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +68,7 @@ class NodeUpdateManagerTest {
   Node node;
 
   @Mock NodeClientCore nodeCore;
+  @Mock ClientContext clientContext;
   @Mock UserAlertManager alerts;
   @Mock PeerManager peerManager;
   @Mock PeerMessenger peerMessenger;
@@ -70,6 +78,9 @@ class NodeUpdateManagerTest {
   private Config config;
   private static final String DEFAULT_FETCHED_SCOPE =
       "USK@" + NodeUpdateManager.UPDATE_URI + "/info/0";
+  private static final String VALID_TEST_CHK =
+      "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
+          + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml";
 
   @BeforeEach
   void setUp() throws Exception {
@@ -96,6 +107,11 @@ class NodeUpdateManagerTest {
 
     // NodeFile lookups for installers use runDir()
     when(node.runDir()).thenReturn(runProgramDir);
+    File nodeDir = tempDir.resolve("node").toFile();
+    assertTrue(nodeDir.mkdirs() || nodeDir.exists());
+    ProgramDirectory nodeProgramDir = new ProgramDirectory();
+    nodeProgramDir.move(nodeDir.getAbsolutePath());
+    when(node.nodeDir()).thenReturn(nodeProgramDir);
 
     // Minimal fetch context for RevocationChecker construction
     HighLevelSimpleClient hlsc = Mockito.mock(HighLevelSimpleClient.class);
@@ -103,7 +119,6 @@ class NodeUpdateManagerTest {
     when(nodeCore.makeClient(Mockito.anyShort(), Mockito.anyBoolean(), Mockito.anyBoolean()))
         .thenReturn(hlsc);
     when(hlsc.getFetchContext()).thenReturn(fctx);
-    ClientContext clientContext = Mockito.mock(ClientContext.class);
     when(nodeCore.getClientContext()).thenReturn(clientContext);
 
     config = new Config();
@@ -472,6 +487,78 @@ class NodeUpdateManagerTest {
     assertEquals(
         "USK@" + NodeUpdateManager.UPDATE_URI + "/" + customDoc + "/0",
         config.get("node.updater").getString("lastKnownGoodFetchedEditionKey"));
+  }
+
+  @Test
+  void setURI_whenScopeChanges_expectHasNewCorePackageReset() {
+    // Arrange
+    USKManager uskManager = Mockito.mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.startCoreUpdater();
+    CoreUpdater updater = manager.getCoreUpdater();
+    assertNotNull(updater);
+    String descriptorJson =
+        """
+          {
+            "version": "%d",
+            "packages": {}
+          }
+        """
+            .formatted(Version.currentBuildNumber() + 5);
+    FetchResult descriptor =
+        FetchResult.create(
+            new ClientMetadata("application/json"),
+            new ArrayBucket(descriptorJson.getBytes(StandardCharsets.UTF_8)));
+
+    // Act + Assert precondition: descriptor marks a new version available.
+    updater.maybeParseManifest(descriptor, Version.currentBuildNumber() + 5);
+    assertTrue(manager.hasNewCorePackage());
+
+    // Act: switch to a different update scope (docname/channel).
+    manager.setURI(manager.getURI().setDocName("alternate-info"));
+
+    // Assert: stale descriptor state from previous scope must not leak.
+    assertFalse(manager.hasNewCorePackage());
+  }
+
+  @Test
+  void setURI_whenPackageDownloadInProgress_expectActiveDownloadCancelled() throws Exception {
+    // Arrange
+    USKManager uskManager = Mockito.mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.startCoreUpdater();
+    CoreUpdater updater = manager.getCoreUpdater();
+    assertNotNull(updater);
+
+    String arch = new AppEnv().detectEnvironment().getArch();
+    String descriptorJson =
+        """
+          {
+            "version": "%d",
+            "packages": {
+              "%s.deb": { "chk": "%s" }
+            }
+          }
+        """
+            .formatted(Version.currentBuildNumber() + 9, arch, VALID_TEST_CHK);
+    FetchResult descriptor =
+        FetchResult.create(
+            new ClientMetadata("application/json"),
+            new ArrayBucket(descriptorJson.getBytes(StandardCharsets.UTF_8)));
+
+    updater.maybeParseManifest(descriptor, Version.currentBuildNumber() + 9);
+    updater.startDownloadFromUI();
+
+    ArgumentCaptor<ClientGetter> getterCaptor = ArgumentCaptor.forClass(ClientGetter.class);
+    verify(clientContext, times(1)).start(getterCaptor.capture());
+    ClientGetter inFlightGetter = getterCaptor.getValue();
+    assertFalse(inFlightGetter.isCancelled());
+
+    // Act
+    manager.setURI(manager.getURI().setDocName("alternate-info"));
+
+    // Assert
+    assertTrue(inFlightGetter.isCancelled());
   }
 
   @Test

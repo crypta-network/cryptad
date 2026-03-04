@@ -43,4 +43,21 @@ class CoreUpdaterTest {
     assertNotNull(info.packages().get("amd64.exe"));
     assertNull(info.releasePageUrl());
   }
+
+  @Test
+  void parseStrictIntegerVersion_whenInteger_expectParsedBuild() {
+    assertEquals(1501, CoreUpdater.parseStrictIntegerVersion("1501"));
+    assertEquals(1501, CoreUpdater.parseStrictIntegerVersion("001501"));
+    assertEquals(1501, CoreUpdater.parseStrictIntegerVersion(" 1501 "));
+  }
+
+  @Test
+  void parseStrictIntegerVersion_whenInvalid_expectNull() {
+    assertNull(CoreUpdater.parseStrictIntegerVersion(null));
+    assertNull(CoreUpdater.parseStrictIntegerVersion(""));
+    assertNull(CoreUpdater.parseStrictIntegerVersion("  "));
+    assertNull(CoreUpdater.parseStrictIntegerVersion("1.2.3+build123"));
+    assertNull(CoreUpdater.parseStrictIntegerVersion("1501beta"));
+    assertNull(CoreUpdater.parseStrictIntegerVersion("999999999999999999999"));
+  }
 }

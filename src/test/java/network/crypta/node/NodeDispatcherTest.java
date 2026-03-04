@@ -99,7 +99,7 @@ class NodeDispatcherTest {
           @Override
           public void close() {
             // Test stub: RandomSource has no background collectors or OS handles here.
-            // Intentionally a no-op to satisfy static analysis of empty methods.
+            // Intentionally, a no-op to satisfy static analysis of empty methods.
           }
         };
     when(node.getRandom()).thenReturn(rnd);
@@ -341,7 +341,7 @@ class NodeDispatcherTest {
     routedPing = withSource(routedPing, src);
 
     dispatcher.handleRouted(routedPing, src);
-    // Expect immediate pong to the source with same uid/counter
+    // Expect immediate pong to the source with the same uid / counter
     verify(transport).sendAsync(msgCaptor.capture(), eq(null), eq(stats.routedMessageCtr));
     Message sent = msgCaptor.getValue();
     assertEquals(DMT.FNPRoutedPong, sent.getSpec());
@@ -400,14 +400,14 @@ class NodeDispatcherTest {
     PeerNode src = peerMock();
     Message ann =
         new DMT.UOMAnnouncementBuilder()
-            .mainKey("K")
+            .corePackageKey("K")
             .revocationKey("R")
             .haveRevocation(true)
-            .mainJarVersion(1)
+            .corePackageVersion(1)
             .timeLastTriedRevocationFetch(0)
             .revocationDNFCount(0)
             .revocationKeyLength(1)
-            .mainJarLength(1)
+            .corePackageLength(1)
             .pingTime(10)
             .bwlimitDelayTime(0)
             .build();

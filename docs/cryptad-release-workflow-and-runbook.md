@@ -1,6 +1,6 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated September 16, 2025 to cover the CoreUpdater package-based distribution flow.
+> Updated September 16, 2025, to cover the CoreUpdater package-based distribution flow.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -31,6 +31,7 @@
   }
   ```
   - Keys follow `<arch>.<ext>` naming. Supported extensions include `deb`, `rpm`, `tar.gz`, `dmg`, `exe`, `msi`, `flatpak`, `snap`, `pkg`, `zip`.
+  - `version` must be a base-10 integer string (for example `"1501"`). Noninteger values are treated as invalid for release gating and will not be advertised as updates.
   - `store_url` enables the "Open in Store" action when a direct download is not provided (Flatpak/Snap).
   - `changelog_chk` and `fullchangelog_chk` should point to CHK inserts containing Markdown or plaintext.
 - **Optional extras**: continue to publish seed node lists, installer references, or IP databases separately (outside `info/`). Link to them from release notes if needed.
@@ -38,7 +39,7 @@
 ## Pre-Release Checklist
 - **Versioning**: bump the integer `version` in `build.gradle.kts`. Ensure `Version.currentBuildNumber()` reflects the new build after `./gradlew build`.
 - **Release notes**: prepare short (user-facing) and full (developer) changelog text files for CHK publishing.
-- **Package matrix**: decide which OS/arch artifacts to ship this cycle. Minimum recommendation is macOS (DMG), Windows (EXE), Linux desktop/server (DEB + RPM), and Flatpak if maintained.
+- **Package matrix**: decide which OS/arch artifacts to ship this cycle. The minimum recommendation is macOS (DMG), Windows (EXE), Linux desktop/server (DEB + RPM), and Flatpak if maintained.
 - **Environment validation**: run smoke tests on each target OS using `build/jpackage/Crypta`, `build/distributions/`, or the staged Flatpak bundle. Ensure the installers launch and locate `cryptad-dist/` correctly.
 - **Dependency review**: verify updater metadata and package checksums are consistent with produced artifacts.
 
@@ -122,14 +123,14 @@
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.
-- Announce the release with links to installers, release notes, and any manual install guidance.
+- Announce the release with links to installers, release notes, and any manual installation guidance.
 - Monitor:
   - Node logs for `[CoreUpdater] progress` and `Download Completed` entries.
   - Support channels for installer/store issues.
   - Plugin releases remain on their existing USKs; coordinate scheduling if releasing simultaneously.
 
 ## Emergency Procedures
-- **Hotfix**: bump build number, rebuild, generate new descriptor, and publish to `info/<BUILD_N+1>`. Nodes will surface the newer package immediately.
+- **Hotfix**: bump build number, rebuild, generate new descriptor, and publish to `info/<BUILD_N+1>`. Nodes will surface in the newer package immediately.
 - **Revoke updater**: insert a clear message into `REVOKE_SSK`; `NodeUpdateManager` disables auto-downloads and shows the text in Alerts.
 - **Pull a bad release**: publish a replacement descriptor at the same edition with `packages` emptied or pointing to a warning changelog. Communicate manual cleanup steps because cached files under `updates/core/` are retained.
 
@@ -155,7 +156,7 @@ export BUILD_N=<INT_BUILD_NUMBER>
 export STAGING_USK="USK@<staging-update-key>/info/"
 export PROD_USK="USK@<prod-update-key>/info/"
 export REVOKE_SSK="SSK@<revocation-key>/revoked"
-export VERSION_STRING="$BUILD_N"               # or semantic tag if desired
+export VERSION_STRING="$BUILD_N"               # must stay an integer string; used for update gating
 export RELEASE_PAGE="https://crypta.network/releases/$BUILD_N"
 ```
 
@@ -164,7 +165,7 @@ export RELEASE_PAGE="https://crypta.network/releases/$BUILD_N"
 ./gradlew clean build
 ls -lh build/distributions/
 ```
-Confirm presence of:
+Confirm the presence of:
 - `cryptad-v${BUILD_N}.deb`, `cryptad-v${BUILD_N}.rpm`
 - `Crypta-${BUILD_N}.dmg`
 - `Crypta-${BUILD_N}.exe` (or `.msi`)
@@ -217,7 +218,7 @@ Retain the descriptor and package CHKs in the release record.
 ### 7) Post-release Checklist
 - Update the public release page and announcement channels.
 - Monitor `[CoreUpdater] progress` logs across canary nodes.
-- Prepare fallback plan (revocation message, follow-up descriptor) in case regressions surface.
+- Prepare a fallback plan (revocation message, follow-up descriptor) in case regressions surface.
 
 ### 8) Emergency Actions
 ```bash

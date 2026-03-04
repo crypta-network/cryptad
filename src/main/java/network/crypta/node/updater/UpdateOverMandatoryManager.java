@@ -124,7 +124,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private final HashSet<PeerNode> nodesSayKeyRevokedTransferring;
 
   /** Peers seen in UoM announcements and considered for dependency fetch attempts. */
-  private final HashSet<PeerNode> allNodesOfferedMainJar;
+  private final HashSet<PeerNode> allNodesOfferedCorePackage;
 
   // 2 for reliability, no more as gets very slow/wasteful
   static final int MAX_NODES_SENDING_JAR = 2;
@@ -163,7 +163,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     nodesSayKeyRevoked = new HashSet<>();
     nodesSayKeyRevokedFailedTransfer = new HashSet<>();
     nodesSayKeyRevokedTransferring = new HashSet<>();
-    allNodesOfferedMainJar = new HashSet<>();
+    allNodesOfferedCorePackage = new HashSet<>();
     dependencyFetchers = new HashMap<>();
   }
 
@@ -221,7 +221,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       tellFetchers(source);
 
       synchronized (this) {
-        allNodesOfferedMainJar.add(source);
+        allNodesOfferedCorePackage.add(source);
       }
       startSomeDependencyFetchers();
     }
@@ -1221,15 +1221,15 @@ public class UpdateOverMandatoryManager implements RequestClient {
     }
   }
 
-  // Removed an unused method maybeInsertMainJar: insertion is coordinated via updater flows.
+  // Removed an unused method maybeInsertCorePackage: insertion is coordinated via updater flows.
 
   /**
    * Deletes obsolete persistent temporary files related to UoM transfers.
    *
    * <p>The method scans the persistent temp directory for known UoM patterns (revocation and
-   * main‑jar blobs and their temporary variants). It removes files that are clearly safe to delete,
-   * including old build‑number‑scoped files below the minimum acceptable build. Errors are logged
-   * but otherwise ignored.
+   * core-package blobs and their temporary variants). It removes files that are clearly safe to
+   * delete, including old build‑number‑scoped files below the minimum acceptable build. Errors are
+   * logged but otherwise ignored.
    */
   protected void removeOldTempFiles() {
     File oldTempFilesPeerDir =
@@ -1307,7 +1307,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       nodesSayKeyRevoked.remove(pn);
       nodesSayKeyRevokedFailedTransfer.remove(pn);
       nodesSayKeyRevokedTransferring.remove(pn);
-      allNodesOfferedMainJar.remove(pn);
+      allNodesOfferedCorePackage.remove(pn);
     }
     maybeNotRevoked();
   }
@@ -1475,7 +1475,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       while (true) {
         HashSet<PeerNode> uomPeers;
         synchronized (UpdateOverMandatoryManager.this) {
-          uomPeers = new HashSet<>(allNodesOfferedMainJar);
+          uomPeers = new HashSet<>(allNodesOfferedCorePackage);
         }
         PeerNode chosen = chooseRandomPeer(uomPeers);
         if (chosen != null) return chosen;
