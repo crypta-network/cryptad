@@ -124,6 +124,7 @@ public class CoreUpdater extends NodeUpdater {
     if (manager.isAutoUpdateAllowed()
         && selected != null
         && selected.chk() != null
+        && isNewerThanCurrentBuild(parsedBuild)
         && !hasUsableFetcher()) {
       tryStartDownload();
     }
@@ -204,8 +205,7 @@ public class CoreUpdater extends NodeUpdater {
 
   @Override
   public synchronized boolean canUpdateNow() {
-    Integer parsedBuild = latestVersionBuild.get();
-    return parsedBuild != null && parsedBuild > Version.currentBuildNumber();
+    return isNewerThanCurrentBuild(latestVersionBuild.get());
   }
 
   @Override
@@ -269,6 +269,10 @@ public class CoreUpdater extends NodeUpdater {
     } catch (NumberFormatException _) {
       return null;
     }
+  }
+
+  private static boolean isNewerThanCurrentBuild(Integer parsedBuild) {
+    return parsedBuild != null && parsedBuild > Version.currentBuildNumber();
   }
 
   private void selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
@@ -735,8 +739,8 @@ public class CoreUpdater extends NodeUpdater {
     private final File outFile;
     private final FreenetURI chk;
     private final String chkString;
-    private volatile FetchContext fetchContext;
-    private volatile ClientGetter clientGetter;
+    private final AtomicReference<FetchContext> fetchContext = new AtomicReference<>();
+    private final AtomicReference<ClientGetter> clientGetter = new AtomicReference<>();
 
     private volatile int lastPct = -1;
     private volatile int lastDone = -1;
@@ -765,8 +769,8 @@ public class CoreUpdater extends NodeUpdater {
       var createdGetter =
           new ClientGetter(
               this, chk, ctx, RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, fb, null, null);
-      fetchContext = ctx;
-      clientGetter = createdGetter;
+      fetchContext.set(ctx);
+      clientGetter.set(createdGetter);
       ctx.getEventProducer().addEventListener(this);
       try {
         manager.getNode().services().clientCore().getClientContext().start(createdGetter);
@@ -792,7 +796,7 @@ public class CoreUpdater extends NodeUpdater {
     }
 
     void cancelForUriChange() {
-      ClientGetter getter = clientGetter;
+      ClientGetter getter = clientGetter.get();
       if (getter == null || getter.isFinished()) {
         detachProgressListener();
         return;
@@ -850,7 +854,7 @@ public class CoreUpdater extends NodeUpdater {
     @Override
     public void onSuccess(FetchResult result, ClientGetter state) {
       detachProgressListener();
-      clientGetter = null;
+      clientGetter.set(null);
       complete = true;
       successFile = outFile;
       failed = false;
@@ -862,7 +866,7 @@ public class CoreUpdater extends NodeUpdater {
     @Override
     public void onFailure(FetchException e) {
       detachProgressListener();
-      clientGetter = null;
+      clientGetter.set(null);
       complete = true;
       successFile = null;
       failed = true;
@@ -939,8 +943,7 @@ public class CoreUpdater extends NodeUpdater {
     }
 
     private void detachProgressListener() {
-      FetchContext localContext = fetchContext;
-      fetchContext = null;
+      FetchContext localContext = fetchContext.getAndSet(null);
       if (localContext == null) {
         return;
       }
@@ -957,7 +960,7 @@ public class CoreUpdater extends NodeUpdater {
       failed = true;
       fatal = fatalFlag;
       errorMsg = message != null ? message : "Failed to start download";
-      clientGetter = null;
+      clientGetter.set(null);
     }
   }
 }

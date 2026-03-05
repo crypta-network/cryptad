@@ -562,6 +562,69 @@ class NodeUpdateManagerTest {
   }
 
   @Test
+  void maybeParseManifest_whenAutoUpdateEnabledAndVersionNotInteger_expectNoAutoDownload()
+      throws Exception {
+    // Arrange
+    manager.startCoreUpdater();
+    manager.setAutoUpdateAllowed(true);
+    CoreUpdater updater = manager.getCoreUpdater();
+    assertNotNull(updater);
+    String arch = new AppEnv().detectEnvironment().getArch();
+    String descriptorJson =
+        """
+          {
+            "version": "1.2.3+build123",
+            "packages": {
+              "%s.deb": { "chk": "%s" }
+            }
+          }
+        """
+            .formatted(arch, VALID_TEST_CHK);
+    FetchResult descriptor =
+        FetchResult.create(
+            new ClientMetadata("application/json"),
+            new ArrayBucket(descriptorJson.getBytes(StandardCharsets.UTF_8)));
+
+    // Act
+    updater.maybeParseManifest(descriptor, Version.currentBuildNumber() + 9);
+
+    // Assert
+    assertFalse(manager.hasNewCorePackage());
+    verify(clientContext, times(0)).start(any(ClientGetter.class));
+  }
+
+  @Test
+  void maybeParseManifest_whenAutoUpdateEnabledAndVersionNewer_expectAutoDownloadStarted()
+      throws Exception {
+    // Arrange
+    manager.startCoreUpdater();
+    manager.setAutoUpdateAllowed(true);
+    CoreUpdater updater = manager.getCoreUpdater();
+    assertNotNull(updater);
+    String arch = new AppEnv().detectEnvironment().getArch();
+    String descriptorJson =
+        """
+          {
+            "version": "%d",
+            "packages": {
+              "%s.deb": { "chk": "%s" }
+            }
+          }
+        """
+            .formatted(Version.currentBuildNumber() + 9, arch, VALID_TEST_CHK);
+    FetchResult descriptor =
+        FetchResult.create(
+            new ClientMetadata("application/json"),
+            new ArrayBucket(descriptorJson.getBytes(StandardCharsets.UTF_8)));
+
+    // Act
+    updater.maybeParseManifest(descriptor, Version.currentBuildNumber() + 9);
+
+    // Assert
+    verify(clientContext, times(1)).start(any(ClientGetter.class));
+  }
+
+  @Test
   void recordSuccessfulCoreInfoFetch_whenMatchingKey_expectPersistedHintUpdated() {
     // Arrange
     int knownEdition = Version.currentBuildNumber() + 4;
