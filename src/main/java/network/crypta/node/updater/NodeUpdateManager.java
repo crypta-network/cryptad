@@ -1048,8 +1048,8 @@ public final class NodeUpdateManager {
    *
    * @return {@code true} when a newer version has been fetched and is ready
    */
-  public synchronized boolean hasNewCorePackage() {
-    CoreUpdater cu = coreUpdater;
+  public boolean hasNewCorePackage() {
+    CoreUpdater cu = getCoreUpdaterSnapshot();
     return cu != null && cu.canUpdateNow();
   }
 
@@ -1058,8 +1058,8 @@ public final class NodeUpdateManager {
    *
    * @return the fetched version number, or {@code -1} when none is available
    */
-  public synchronized int newCorePackageVersion() {
-    CoreUpdater cu = coreUpdater;
+  public int newCorePackageVersion() {
+    CoreUpdater cu = getCoreUpdaterSnapshot();
     return (cu != null) ? cu.getFetchedVersion() : -1;
   }
 
@@ -1068,8 +1068,8 @@ public final class NodeUpdateManager {
    *
    * @return descriptor version label, or a fetched-version fallback when unavailable
    */
-  public synchronized String newCorePackageVersionLabel() {
-    CoreUpdater cu = coreUpdater;
+  public String newCorePackageVersionLabel() {
+    CoreUpdater cu = getCoreUpdaterSnapshot();
     if (cu == null) {
       return Integer.toString(-1);
     }
@@ -1085,8 +1085,8 @@ public final class NodeUpdateManager {
    *
    * @return {@code true} when a download is in progress
    */
-  public synchronized boolean fetchingNewCorePackage() {
-    CoreUpdater cu = coreUpdater;
+  public boolean fetchingNewCorePackage() {
+    CoreUpdater cu = getCoreUpdaterSnapshot();
     return (cu != null && cu.isFetching());
   }
 
@@ -1095,9 +1095,13 @@ public final class NodeUpdateManager {
    *
    * @return the in‑flight version number, or {@code -1} when idle
    */
-  public synchronized int fetchingNewCorePackageVersion() {
-    CoreUpdater cu = coreUpdater;
+  public int fetchingNewCorePackageVersion() {
+    CoreUpdater cu = getCoreUpdaterSnapshot();
     return (cu != null) ? cu.fetchingVersion() : -1;
+  }
+
+  private synchronized CoreUpdater getCoreUpdaterSnapshot() {
+    return coreUpdater;
   }
 
   /**

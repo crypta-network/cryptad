@@ -2,9 +2,15 @@ package network.crypta.node.updater;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
@@ -139,6 +145,12 @@ class NodeUpdateManagerTest {
             .build());
   }
 
+  private void setCoreUpdater(CoreUpdater updater) throws Exception {
+    Field coreUpdaterField = NodeUpdateManager.class.getDeclaredField("coreUpdater");
+    coreUpdaterField.setAccessible(true);
+    coreUpdaterField.set(manager, updater);
+  }
+
   @Test
   void isEnabled_initiallyFalse_thenStartCoreUpdater_true() {
     // Arrange + Act
@@ -151,6 +163,38 @@ class NodeUpdateManagerTest {
     // Assert
     assertTrue(manager.isEnabled());
     assertNotNull(manager.getCoreUpdater());
+  }
+
+  @Test
+  void hasNewCorePackage_whenUpdaterCallBlocks_expectManagerMonitorReleased() throws Exception {
+    // Arrange
+    CoreUpdater coreUpdater = Mockito.mock(CoreUpdater.class);
+    CountDownLatch enteredUpdater = new CountDownLatch(1);
+    CountDownLatch releaseUpdater = new CountDownLatch(1);
+    when(coreUpdater.canUpdateNow())
+        .thenAnswer(
+            _ -> {
+              enteredUpdater.countDown();
+              assertTrue(releaseUpdater.await(5, TimeUnit.SECONDS));
+              return true;
+            });
+    setCoreUpdater(coreUpdater);
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      // Act
+      Future<Boolean> hasNewCorePackage = executor.submit(manager::hasNewCorePackage);
+      assertTrue(enteredUpdater.await(5, TimeUnit.SECONDS));
+      Future<Boolean> autoUpdateAllowed = executor.submit(manager::isAutoUpdateAllowed);
+
+      // Assert
+      assertFalse(autoUpdateAllowed.get(1, TimeUnit.SECONDS));
+      releaseUpdater.countDown();
+      assertTrue(hasNewCorePackage.get(5, TimeUnit.SECONDS));
+    } finally {
+      releaseUpdater.countDown();
+      executor.shutdownNow();
+    }
   }
 
   // CHK preference path requires CoreUpdater state; fallback is exercised below.
