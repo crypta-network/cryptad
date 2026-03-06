@@ -43,12 +43,12 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   private final NodeUpdateManager updater;
 
   /**
-   * Creates an alert bound to the given updater.
+   * Creates an alert bound to the given-updater.
    *
    * <p>The updater supplies all state used to compose user-facing strings, determine whether the
    * alert is currently valid, and compute its priority. The constructor does not perform I/O and
    * does not capture mutable snapshots; instead, methods query the updater each time they are
-   * called so the alert reflects the most recent progress.
+   * called, so the alert reflects the most recent progress.
    *
    * @param updater the {@link NodeUpdateManager} providing update status, progress, and actions;
    *     must be non-null and remain valid for the lifetime of this alert instance
@@ -94,12 +94,12 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   /**
    * Builds a detailed, human-readable message describing the update state.
    *
-   * <p>The returned string can include a minimal HTML {@code <form>} snippet with a submit button
+   * <p>The returned string can include a minimal HTML {@code <form>} snippet with a Submit button
    * when an immediate action is available (for example, “Update Now” or “Update ASAP”). Callers
    * that cannot render HTML should prefer {@link #getShortText()} or sanitize the markup before
    * display.
    *
-   * @return a localized message describing current update status, optionally including a simple
+   * @return a localized message describing the current update status, optionally including a simple
    *     HTML form with an action button
    */
   @Override
@@ -148,7 +148,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
    * Produces a structured HTML representation of this alert.
    *
    * <p>The returned {@link network.crypta.support.HTMLNode} contains the detailed message text and
-   * may also include a small HTML {@code <form>} with a submit button when an action is available.
+   * may also include a small HTML {@code <form>} with a Submit button when an action is available.
    * It appends links to changelogs and renders progress indicators when present.
    *
    * @return an {@code HTMLNode} tree suitable for rendering within the web UI
@@ -181,10 +181,10 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
     alertNode.addChild("br");
 
     int version;
-    if (updater.hasNewMainJar()) {
-      version = updater.newMainJarVersion();
-    } else if (updater.fetchingNewMainJar()) {
-      version = updater.fetchingNewMainJarVersion();
+    if (updater.hasNewCorePackage()) {
+      version = updater.newCorePackageVersion();
+    } else if (updater.fetchingNewCorePackage()) {
+      version = updater.fetchingNewCorePackageVersion();
     } else {
       LOG.debug("Showing version available notification but not fetching or fetched.");
       // Fallback
@@ -240,16 +240,15 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
 
     if (NodeUpdateManager.BROKEN_DEPENDENCIES) {
       sb.append(' ')
-          .append(
-              l10n("brokenDependencies", "version", Integer.toString(updater.newMainJarVersion())));
+          .append(l10n("brokenDependencies", "version", updater.newCorePackageVersionLabel()));
     }
 
     return new UpdateThingy(sb.toString(), formText);
   }
 
   private String appendCanUpdateNowText(StringBuilder sb) {
-    if (updater.hasNewMainJar()) {
-      sb.append(l10n("downloadedNewJar", "version", Integer.toString(updater.newMainJarVersion())))
+    if (updater.hasNewCorePackage()) {
+      sb.append(l10n("downloadedNewJar", "version", updater.newCorePackageVersionLabel()))
           .append(' ');
     }
     if (updater.canUpdateImmediately()) {
@@ -264,12 +263,12 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   private String appendNotReadyText(StringBuilder sb) {
     if (updater.fetchingFromUOM()) {
       sb.append(l10n("fetchingUOM", "updateScript", getUpdateScriptName()));
-    } else if (updater.fetchingNewMainJar()) {
+    } else if (updater.fetchingNewCorePackage()) {
       sb.append(
           l10n(
               "fetchingNewNode",
               "versionNumber",
-              Long.toString(updater.fetchingNewMainJarVersion())));
+              Long.toString(updater.fetchingNewCorePackageVersion())));
     }
     sb.append(' ').append(l10n("updateASAPQuestion"));
     return l10n("updateASAPButton");
@@ -321,7 +320,9 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   public boolean isValid() {
     return updater.isEnabled()
         && !updater.isBlown()
-        && (updater.fetchingNewMainJar() || updater.hasNewMainJar() || updater.fetchingFromUOM());
+        && (updater.fetchingNewCorePackage()
+            || updater.hasNewCorePackage()
+            || updater.fetchingFromUOM());
   }
 
   /**

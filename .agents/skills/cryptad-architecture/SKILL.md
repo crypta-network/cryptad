@@ -71,7 +71,13 @@ Use this skill when you need to:
 - `NodeUpdateManager` coordinates updates.
 - Core updates use the package-based `CoreUpdater` (see the CoreUpdater skill for details).
 - Plugin updates remain managed by `PluginJarUpdater`.
-- JAR Update-over-Mandatory (UOM) is disabled for core; jar UOM paths are gated/no-ops.
+- Core updater state is exposed through CorePackage APIs in `NodeUpdateManager`:
+  - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
+  - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
+- Release gating comes from `core-info.json` `version` (strict integer parse) rather than semantic
+  version strings; invalid/non-integer values are ignored for update availability.
+- JAR Update-over-Mandatory (UOM) payload transfer is disabled for core; revocation/dependency
+  signaling remains and legacy UOM wire names are retained for compatibility.
 - Config keys such as `node.updater.enabled` and `node.updater.autoupdate` remain.
 
 ## Security model (high level)
@@ -84,3 +90,6 @@ Use this skill when you need to:
 - Version tokens are replaced into `network/crypta/node/Version.java` during build (`@build_number@`, `@git_rev@`).
 - Version strings support both Cryptad and Fred formats; compatibility enforces protocol match and minimum builds.
 - Freenet interop uses historical identifiers (e.g., `"Fred,0.7"`) for wire compatibility where applicable.
+- Core update descriptors (`core-info.json`) must publish `version` as an integer string; this value
+  is compared against `Version.currentBuildNumber()` to determine whether a core package update is
+  available.

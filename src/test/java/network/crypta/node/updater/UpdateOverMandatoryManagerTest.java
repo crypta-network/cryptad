@@ -132,12 +132,12 @@ class UpdateOverMandatoryManagerTest {
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
     // Unused here but read; provide safe defaults
-    when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@unused");
-    when(m.getInt(DMT.MAIN_JAR_VERSION)).thenReturn(0);
+    when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@unused");
+    when(m.getInt(DMT.CORE_PACKAGE_VERSION)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED)).thenReturn(0L);
     when(m.getInt(DMT.REVOCATION_KEY_DNF_COUNT)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_FILE_LENGTH)).thenReturn(1L);
-    when(m.getLong(DMT.MAIN_JAR_FILE_LENGTH)).thenReturn(0L);
+    when(m.getLong(DMT.CORE_PACKAGE_FILE_LENGTH)).thenReturn(0L);
     when(m.getInt(DMT.PING_TIME)).thenReturn(0);
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
@@ -185,12 +185,12 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.isBlown()).thenReturn(false);
 
     // Unused fields but read during logging
-    when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@unused");
-    when(m.getInt(DMT.MAIN_JAR_VERSION)).thenReturn(0);
+    when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@unused");
+    when(m.getInt(DMT.CORE_PACKAGE_VERSION)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED)).thenReturn(0L);
     when(m.getInt(DMT.REVOCATION_KEY_DNF_COUNT)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_FILE_LENGTH)).thenReturn(0L);
-    when(m.getLong(DMT.MAIN_JAR_FILE_LENGTH)).thenReturn(0L);
+    when(m.getLong(DMT.CORE_PACKAGE_FILE_LENGTH)).thenReturn(0L);
     when(m.getInt(DMT.PING_TIME)).thenReturn(0);
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
@@ -218,12 +218,12 @@ class UpdateOverMandatoryManagerTest {
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
     // Logging related fields
-    when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@unused");
-    when(m.getInt(DMT.MAIN_JAR_VERSION)).thenReturn(0);
+    when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@unused");
+    when(m.getInt(DMT.CORE_PACKAGE_VERSION)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED)).thenReturn(0L);
     when(m.getInt(DMT.REVOCATION_KEY_DNF_COUNT)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_FILE_LENGTH)).thenReturn(1L);
-    when(m.getLong(DMT.MAIN_JAR_FILE_LENGTH)).thenReturn(0L);
+    when(m.getLong(DMT.CORE_PACKAGE_FILE_LENGTH)).thenReturn(0L);
     when(m.getInt(DMT.PING_TIME)).thenReturn(0);
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
@@ -257,12 +257,12 @@ class UpdateOverMandatoryManagerTest {
     Message m = org.mockito.Mockito.mock(Message.class);
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
-    when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@unused");
-    when(m.getInt(DMT.MAIN_JAR_VERSION)).thenReturn(0);
+    when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@unused");
+    when(m.getInt(DMT.CORE_PACKAGE_VERSION)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED)).thenReturn(0L);
     when(m.getInt(DMT.REVOCATION_KEY_DNF_COUNT)).thenReturn(0);
     when(m.getLong(DMT.REVOCATION_KEY_FILE_LENGTH)).thenReturn(1L);
-    when(m.getLong(DMT.MAIN_JAR_FILE_LENGTH)).thenReturn(0L);
+    when(m.getLong(DMT.CORE_PACKAGE_FILE_LENGTH)).thenReturn(0L);
     when(m.getInt(DMT.PING_TIME)).thenReturn(0);
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
@@ -328,9 +328,10 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.isBlown()).thenReturn(false);
 
     Message m = org.mockito.Mockito.mock(Message.class);
-    when(m.getString(DMT.MAIN_JAR_KEY)).thenReturn("KSK@main");
-    when(m.getInt(DMT.MAIN_JAR_VERSION)).thenReturn(5); // > current build number (likely 0 in dev)
-    when(m.getLong(DMT.MAIN_JAR_FILE_LENGTH)).thenReturn(1024L);
+    when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@main");
+    when(m.getInt(DMT.CORE_PACKAGE_VERSION))
+        .thenReturn(5); // > current build number (likely 0 in dev)
+    when(m.getLong(DMT.CORE_PACKAGE_FILE_LENGTH)).thenReturn(1024L);
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(false);
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED)).thenReturn(0L);

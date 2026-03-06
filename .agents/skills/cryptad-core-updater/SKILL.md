@@ -18,18 +18,30 @@ Use this skill when working on:
 - Core package-based updates replace self-updating of `cryptad.jar`.
 - The updater:
   - Fetches `info/<N>` JSON from the existing update USK.
+  - Treats `CoreInfo.version` as the release gate: it must be a base-10 integer string and be
+    greater than `Version.currentBuildNumber()` for update availability.
   - Selects an OS/arch-specific installer (deb/rpm/dmg/exe/flatpak/snap).
   - Downloads to `nodeDir/updates/core/<version>/`.
 - Plugin updates remain unchanged.
 
 ## System wiring changes
-- `MainJarUpdater` was removed.
+- Legacy core jar updater was removed.
 - `NodeUpdateManager` now coordinates:
   - `CoreUpdater` for core packages
   - `PluginJarUpdater` for plugins
-- JAR Update-over-Mandatory is disabled:
-  - `supportsJarUOM()` returns false
-  - Legacy jar UOM paths are gated/no-ops.
+- Core updater state surfaces through CorePackage-named APIs:
+  - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
+  - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
+- JAR Update-over-Mandatory for core payload transfer is disabled; legacy jar UOM paths remain
+  gated/no-ops while revocation/dependency signaling is still active.
+
+## Versioning and discovery details
+- Discovery still follows USK editions (`info/<N>`) and keeps startup subscribe seeding logic from
+  persisted fetched editions.
+- Release gating and user-facing version labels come from descriptor `version`:
+  - strict integer parse only
+  - missing/non-integer/overflow => do not advertise update available
+- Changelog link resolution still uses edition/build-based URIs when CHK links are absent.
 
 ## Endpoint and UI
 - HTTP endpoint: `/core-update/`
@@ -53,8 +65,14 @@ Use this skill when working on:
 
 ## Descriptor format and integrity
 - JSON includes:
-  - `version`
+  - `version` (required integer string for release gating)
   - `packages` keyed by `<arch>.<ext>`
   - optional `changelog_chk` / `fullchangelog_chk`
 - CHK integrity covers content.
 - Any historical `sha256` fields in descriptors are ignored.
+
+## UOM compatibility note
+- Code identifiers have been renamed to Core/CorePackage terminology.
+- UOM wire compatibility keeps legacy field/type strings where required:
+  - field payload names such as `"mainJarKey"`, `"mainJarVersion"`, `"mainJarFileLength"`
+  - message type strings `"CryptadUOMRequestMainJar"` / `"CryptadUOMSendingMainJar"`

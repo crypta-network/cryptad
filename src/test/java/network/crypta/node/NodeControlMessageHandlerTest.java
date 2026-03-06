@@ -206,8 +206,8 @@ class NodeControlMessageHandlerTest {
   }
 
   @Test
-  void handle_whenUomRequestMainJarUnsupported_returnsFalse() {
-    when(message.getSpec()).thenReturn(DMT.CryptadUOMRequestMainJar);
+  void handle_whenUomRequestCorePackageUnsupported_returnsFalse() {
+    when(message.getSpec()).thenReturn(DMT.CryptadUOMRequestCorePackage);
     when(peerNode.isRealConnection()).thenReturn(true);
 
     boolean handled = handler.handle(message, peerNode);
@@ -217,8 +217,8 @@ class NodeControlMessageHandlerTest {
   }
 
   @Test
-  void handle_whenUomSendingMainJar_returnsFalse() {
-    when(message.getSpec()).thenReturn(DMT.CryptadUOMSendingMainJar);
+  void handle_whenUomSendingCorePackage_returnsFalse() {
+    when(message.getSpec()).thenReturn(DMT.CryptadUOMSendingCorePackage);
     when(peerNode.isRealConnection()).thenReturn(true);
 
     boolean handled = handler.handle(message, peerNode);
