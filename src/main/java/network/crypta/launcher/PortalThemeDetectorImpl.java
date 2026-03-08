@@ -189,14 +189,23 @@ public class PortalThemeDetectorImpl implements Closeable {
   }
 
   private static PortalClient openPortalClient() {
+    return openPortalClient(() -> DBusConnectionBuilder.forSessionBus().build());
+  }
+
+  static PortalClient openPortalClient(ConnectionFactory connectionFactory) {
+    DBusConnection connection = null;
     try {
-      DBusConnection connection = DBusConnectionBuilder.forSessionBus().build();
+      connection = connectionFactory.open();
       PortalSettings settings =
           connection.getRemoteObject(DESKTOP_PORTAL, DESKTOP_PATH, PortalSettings.class);
       return createValidatedPortalClient(
           settings, createSignalRegistrar(connection, settings), connection);
     } catch (DBusException e) {
+      closeConnectionOnSetupFailure(connection, e);
       throw new IllegalStateException("Failed to open XDG portal theme detector", e);
+    } catch (RuntimeException e) {
+      closeConnectionOnSetupFailure(connection, e);
+      throw e;
     }
   }
 
@@ -313,6 +322,17 @@ public class PortalThemeDetectorImpl implements Closeable {
     return "/" + String.join("/", "org", "freedesktop", "portal", "desktop");
   }
 
+  private static void closeConnectionOnSetupFailure(Closeable connectionCloser, Exception failure) {
+    if (connectionCloser == null) {
+      return;
+    }
+    try {
+      connectionCloser.close();
+    } catch (IOException | RuntimeException closeFailure) {
+      failure.addSuppressed(closeFailure);
+    }
+  }
+
   private void syncFallbackListenerRegistration() {
     boolean fallbackNeeded = portalPreference.get() == PortalPreference.UNSPECIFIED;
     if (fallbackNeeded) {
@@ -345,6 +365,11 @@ public class PortalThemeDetectorImpl implements Closeable {
   interface SignalRegistrar {
     AutoCloseable register(Consumer<PortalSettings.SettingChanged> signalHandler)
         throws DBusException;
+  }
+
+  @FunctionalInterface
+  interface ConnectionFactory {
+    DBusConnection open() throws DBusException;
   }
 
   private record PortalClient(

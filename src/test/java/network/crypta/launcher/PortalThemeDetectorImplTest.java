@@ -20,6 +20,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -274,6 +275,20 @@ class PortalThemeDetectorImplTest {
     assertTrue(detector.isDark());
     verify(connectionCloser, never()).close();
     verify(fallbackDetector, never()).registerListener(any());
+  }
+
+  @Test
+  void openPortalClient_whenSettingsLookupFails_expectConnectionClosed() throws Exception {
+    DBusConnection connection = mock(DBusConnection.class);
+    doThrow(new DBusException("portal settings unavailable"))
+        .when(connection)
+        .getRemoteObject("org.freedesktop.portal.Desktop", DESKTOP_PATH, PortalSettings.class);
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> PortalThemeDetectorImpl.openPortalClient(() -> connection));
+
+    verify(connection).close();
   }
 
   @Test
