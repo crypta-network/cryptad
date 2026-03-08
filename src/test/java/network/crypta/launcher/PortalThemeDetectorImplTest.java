@@ -292,6 +292,27 @@ class PortalThemeDetectorImplTest {
   }
 
   @Test
+  void constructor_whenFallbackDetectorCreationFails_expectConnectionClosed() throws Exception {
+    DBusConnection connection = mock(DBusConnection.class);
+    PortalSettings settings = mock(PortalSettings.class);
+    doReturn(settings)
+        .when(connection)
+        .getRemoteObject("org.freedesktop.portal.Desktop", DESKTOP_PATH, PortalSettings.class);
+    doReturn(new Variant<Object>(new UInt32(1))).when(settings).readOne(APPEARANCE, COLOR_SCHEME);
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            new PortalThemeDetectorImpl(
+                () -> connection,
+                () -> {
+                  throw new IllegalStateException("fallback detector unavailable");
+                }));
+
+    verify(connection).close();
+  }
+
+  @Test
   void close_whenConnectionCloserPresent_expectCloseDelegated() throws Exception {
     PortalSettings settings = mock(PortalSettings.class);
     OsThemeDetector fallbackDetector = mock(OsThemeDetector.class);

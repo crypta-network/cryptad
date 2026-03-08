@@ -72,13 +72,20 @@ public class PortalThemeDetectorImpl implements Closeable {
    * <p>The constructor opens the session bus, resolves the portal settings object, and captures an
    * initial portal preference so later calls can decide whether fallback theme detection is needed.
    * Use this constructor in normal launcher code when no test doubles or alternate connection
-   * plumbing are required. Construction does not register long-lived listeners; portal and fallback
-   * subscriptions remain lazy until {@link #registerListener(Consumer)} is called.
+   * plumbing are required. If fallback detector creation fails after the portal connection opens,
+   * the constructor closes the partially initialized portal client before rethrowing. Construction
+   * does not register long-lived listeners; portal and fallback subscriptions remain lazy until
+   * {@link #registerListener(Consumer)} is called.
    *
    * @throws IllegalStateException if the session bus or portal settings object cannot be opened
    */
   public PortalThemeDetectorImpl() {
-    this(openPortalClient(), OsThemeDetector.getDetector());
+    this(() -> DBusConnectionBuilder.forSessionBus().build(), OsThemeDetector::getDetector);
+  }
+
+  PortalThemeDetectorImpl(
+      ConnectionFactory connectionFactory, FallbackDetectorFactory fallbackDetectorFactory) {
+    this(openPortalClientWithFallback(connectionFactory, fallbackDetectorFactory));
   }
 
   private PortalThemeDetectorImpl(PortalClient portalClient, OsThemeDetector fallbackDetector) {
@@ -87,6 +94,10 @@ public class PortalThemeDetectorImpl implements Closeable {
     this.connectionCloser = Objects.requireNonNull(portalClient.connectionCloser());
     this.fallbackDetector = Objects.requireNonNull(fallbackDetector);
     this.portalPreference.set(Objects.requireNonNull(portalClient.initialPreference()));
+  }
+
+  private PortalThemeDetectorImpl(DefaultDetectors defaultDetectors) {
+    this(defaultDetectors.portalClient(), defaultDetectors.fallbackDetector());
   }
 
   PortalThemeDetectorImpl(
@@ -188,8 +199,16 @@ public class PortalThemeDetectorImpl implements Closeable {
     }
   }
 
-  private static PortalClient openPortalClient() {
-    return openPortalClient(() -> DBusConnectionBuilder.forSessionBus().build());
+  private static DefaultDetectors openPortalClientWithFallback(
+      ConnectionFactory connectionFactory, FallbackDetectorFactory fallbackDetectorFactory) {
+    PortalClient portalClient = openPortalClient(connectionFactory);
+    try {
+      return new DefaultDetectors(
+          portalClient, Objects.requireNonNull(fallbackDetectorFactory.create()));
+    } catch (RuntimeException | Error e) {
+      closeConnectionOnFailure(portalClient.connectionCloser(), e);
+      throw e;
+    }
   }
 
   static PortalClient openPortalClient(ConnectionFactory connectionFactory) {
@@ -201,10 +220,10 @@ public class PortalThemeDetectorImpl implements Closeable {
       return createValidatedPortalClient(
           settings, createSignalRegistrar(connection, settings), connection);
     } catch (DBusException e) {
-      closeConnectionOnSetupFailure(connection, e);
+      closeConnectionOnFailure(connection, e);
       throw new IllegalStateException("Failed to open XDG portal theme detector", e);
     } catch (RuntimeException e) {
-      closeConnectionOnSetupFailure(connection, e);
+      closeConnectionOnFailure(connection, e);
       throw e;
     }
   }
@@ -322,7 +341,7 @@ public class PortalThemeDetectorImpl implements Closeable {
     return "/" + String.join("/", "org", "freedesktop", "portal", "desktop");
   }
 
-  private static void closeConnectionOnSetupFailure(Closeable connectionCloser, Exception failure) {
+  private static void closeConnectionOnFailure(Closeable connectionCloser, Throwable failure) {
     if (connectionCloser == null) {
       return;
     }
@@ -371,6 +390,13 @@ public class PortalThemeDetectorImpl implements Closeable {
   interface ConnectionFactory {
     DBusConnection open() throws DBusException;
   }
+
+  @FunctionalInterface
+  interface FallbackDetectorFactory {
+    OsThemeDetector create();
+  }
+
+  private record DefaultDetectors(PortalClient portalClient, OsThemeDetector fallbackDetector) {}
 
   private record PortalClient(
       PortalSettings settings,
