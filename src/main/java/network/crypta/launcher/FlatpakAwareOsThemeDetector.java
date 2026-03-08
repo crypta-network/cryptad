@@ -26,31 +26,42 @@ public final class FlatpakAwareOsThemeDetector {
   /**
    * Returns a theme detector, preferring a portal-backed implementation when available.
    *
-   * <p>The method attempts to create a Linux portal detector first. When that attempt returns
-   * {@code null}, it delegates to {@link OsThemeDetector#getDetector()} to preserve default
-   * behavior. This keeps theme detection resilient across both sandboxed and non-sandboxed
-   * runtimes.
+   * <p>The method attempts to create a Linux portal detector first. When that construction fails,
+   * it delegates to {@link OsThemeDetector#getDetector()} to preserve default behavior. This keeps
+   * theme detection resilient across both sandboxed and non-sandboxed runtimes.
    *
    * @return portal-backed detector when successfully created, otherwise the upstream fallback
    */
   public static OsThemeDetector getDetector() {
-    OsThemeDetector portal = tryCreatePortalDetector();
-    if (portal != null) {
-      return portal;
-    }
-    return OsThemeDetector.getDetector();
+    return getDetector(
+        new AppEnv(), OsThemeDetector::getDetector, com.jthemedetecor.PortalThemeDetector::new);
   }
 
-  private static OsThemeDetector tryCreatePortalDetector() {
-    if (!new AppEnv().isLinux()) {
-      return null;
+  static OsThemeDetector getDetector(
+      AppEnv appEnv, DetectorFactory fallbackFactory, DetectorFactory portalFactory) {
+    if (!appEnv.isLinux()) {
+      return createFallbackDetector(fallbackFactory);
     }
     try {
-      return new com.jthemedetecor.PortalThemeDetector();
-    } catch (Exception t) {
+      return portalFactory.create();
+    } catch (Exception e) {
       LauncherLog.logDebug(
-          "XDG portal theme detector unavailable; falling back to upstream detector", t);
-      return null;
+          "XDG portal theme detector unavailable; falling back to upstream detector", e);
+      return createFallbackDetector(fallbackFactory);
     }
+  }
+
+  private static OsThemeDetector createFallbackDetector(DetectorFactory fallbackFactory) {
+    try {
+      return fallbackFactory.create();
+    } catch (Exception e) {
+      throw new IllegalStateException("Failed to create fallback OS theme detector", e);
+    }
+  }
+
+  @FunctionalInterface
+  @SuppressWarnings("java:S112")
+  interface DetectorFactory {
+    OsThemeDetector create() throws Exception;
   }
 }
