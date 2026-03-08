@@ -19,6 +19,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -112,6 +113,49 @@ class PortalThemeDetectorImplTest {
     assertTrue(detector.isDark());
     verify(settings, times(2)).read(APPEARANCE, COLOR_SCHEME);
     verifyNoInteractions(fallbackDetector);
+  }
+
+  @Test
+  void isDark_whenPortalReadFailsAfterExplicitPreference_expectFallbackListenerActivated() {
+    PortalSettings settings = mock(PortalSettings.class);
+    OsThemeDetector fallbackDetector = mock(OsThemeDetector.class);
+    doReturn(new Variant<Object>(new UInt32(1)))
+        .doThrow(new DBusExecutionException("ReadOne unavailable"))
+        .doReturn(new Variant<Object>(new UInt32(2)))
+        .when(settings)
+        .readOne(APPEARANCE, COLOR_SCHEME);
+    doThrow(new IllegalStateException("portal settings unavailable"))
+        .when(settings)
+        .read(APPEARANCE, COLOR_SCHEME);
+    doReturn(true).when(fallbackDetector).isDark();
+
+    AtomicReference<Consumer<Boolean>> fallbackListener = new AtomicReference<>();
+    Consumer<Boolean> activeListener = mock(Consumer.class);
+    doAnswer(
+            invocation -> {
+              fallbackListener.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(fallbackDetector)
+        .registerListener(any());
+
+    PortalThemeDetectorImpl detector =
+        new PortalThemeDetectorImpl(
+            settings,
+            ignored -> mock(AutoCloseable.class),
+            mock(Closeable.class),
+            fallbackDetector);
+
+    detector.registerListener(activeListener);
+
+    assertTrue(detector.isDark());
+    assertNotNull(fallbackListener.get());
+
+    fallbackListener.get().accept(false);
+    verify(activeListener).accept(false);
+
+    assertFalse(detector.isDark());
+    verify(fallbackDetector).removeListener(fallbackListener.get());
   }
 
   @Test

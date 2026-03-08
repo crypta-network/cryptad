@@ -125,9 +125,11 @@ public class PortalThemeDetectorImpl implements Closeable {
     try {
       PortalPreference preference = resolvePortalPreference(readColorScheme(settings));
       portalPreference.set(preference);
+      syncFallbackListenerRegistration();
       return resolveDarkTheme(preference);
     } catch (RuntimeException _) {
       portalPreference.set(PortalPreference.UNSPECIFIED);
+      syncFallbackListenerRegistration();
       return safeFallbackIsDark();
     }
   }
@@ -349,7 +351,8 @@ public class PortalThemeDetectorImpl implements Closeable {
   }
 
   private void syncFallbackListenerRegistration() {
-    boolean fallbackNeeded = portalPreference.get() == PortalPreference.UNSPECIFIED;
+    boolean fallbackNeeded =
+        !listeners.isEmpty() && portalPreference.get() == PortalPreference.UNSPECIFIED;
     if (fallbackNeeded) {
       if (fallbackRegistered.compareAndSet(false, true)) {
         fallbackDetector.registerListener(fallbackThemeListener);
