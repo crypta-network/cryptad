@@ -230,8 +230,12 @@ public class PortalThemeDetectorImpl implements Closeable {
     Objects.requireNonNull(connection);
     Objects.requireNonNull(settings);
     return signalHandler ->
+        // dbus-java requires a unique sender name for sender-scoped subscriptions, but the portal
+        // is discovered through the stable well-known name org.freedesktop.portal.Desktop.
+        // Restricting the handler to the imported settings object path keeps the subscription
+        // precise without depending on a transient unique-name lookup.
         connection.addSigHandler(
-            PortalSettings.SettingChanged.class, DESKTOP_PORTAL, settings, signalHandler::accept);
+            PortalSettings.SettingChanged.class, settings, signalHandler::accept);
   }
 
   private static PortalClient createValidatedPortalClient(

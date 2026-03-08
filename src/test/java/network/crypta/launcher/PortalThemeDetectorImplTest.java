@@ -397,7 +397,6 @@ class PortalThemeDetectorImplTest {
         .when(connection)
         .addSigHandler(
             org.mockito.ArgumentMatchers.eq(PortalSettings.SettingChanged.class),
-            org.mockito.ArgumentMatchers.eq("org.freedesktop.portal.Desktop"),
             org.mockito.ArgumentMatchers.same(settings),
             any());
 
@@ -410,7 +409,6 @@ class PortalThemeDetectorImplTest {
     verify(connection)
         .addSigHandler(
             org.mockito.ArgumentMatchers.eq(PortalSettings.SettingChanged.class),
-            org.mockito.ArgumentMatchers.eq("org.freedesktop.portal.Desktop"),
             org.mockito.ArgumentMatchers.same(settings),
             any());
   }
