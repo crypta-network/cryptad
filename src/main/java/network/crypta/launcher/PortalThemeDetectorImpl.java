@@ -201,13 +201,9 @@ public class PortalThemeDetectorImpl implements Closeable {
 
   private static DefaultDetectors openPortalClientWithFallback(
       ConnectionFactory connectionFactory, FallbackDetectorFactory fallbackDetectorFactory) {
-    PortalClient portalClient = openPortalClient(connectionFactory);
-    try {
-      return new DefaultDetectors(
-          portalClient, Objects.requireNonNull(fallbackDetectorFactory.create()));
-    } catch (RuntimeException | Error e) {
-      closeConnectionOnFailure(portalClient.connectionCloser(), e);
-      throw e;
+    try (PortalClientHandle portalClient =
+        new PortalClientHandle(openPortalClient(connectionFactory))) {
+      return portalClient.release(fallbackDetectorFactory.create());
     }
   }
 
@@ -397,6 +393,33 @@ public class PortalThemeDetectorImpl implements Closeable {
   }
 
   private record DefaultDetectors(PortalClient portalClient, OsThemeDetector fallbackDetector) {}
+
+  private static final class PortalClientHandle implements AutoCloseable {
+    private final PortalClient portalClient;
+    private boolean released;
+
+    private PortalClientHandle(PortalClient portalClient) {
+      this.portalClient = Objects.requireNonNull(portalClient);
+    }
+
+    private DefaultDetectors release(OsThemeDetector fallbackDetector) {
+      DefaultDetectors defaultDetectors =
+          new DefaultDetectors(portalClient, Objects.requireNonNull(fallbackDetector));
+      released = true;
+      return defaultDetectors;
+    }
+
+    @Override
+    public void close() {
+      if (!released) {
+        try {
+          portalClient.connectionCloser().close();
+        } catch (IOException | RuntimeException e) {
+          logDebug("Failed to close portal theme detector during initialization", e);
+        }
+      }
+    }
+  }
 
   private record PortalClient(
       PortalSettings settings,
