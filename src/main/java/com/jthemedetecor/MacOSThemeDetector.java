@@ -30,31 +30,52 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Determines the dark/light theme on a MacOS System through the <i>Apple Foundation framework</i>.
+ * macOS detector backed by Foundation notifications and user-default lookups.
+ *
+ * <p>This implementation queries {@code NSUserDefaults} for the {@code AppleInterfaceStyle} key and
+ * treats values containing {@code dark} as a dark-mode preference. Unlike the Linux
+ * implementations, it does not launch external processes. Instead, it registers an Objective-C
+ * observer through JFA and JNA, so macOS posts theme changes back into Java code.
+ *
+ * <p>Registered listeners are stored in a concurrent set, while callback dispatch runs through a
+ * dedicated single-thread executor. That keeps notification delivery off the native callback thread
+ * and preserves a stable ordering model for listener invocation without changing the public
+ * detector contract.
  *
  * @author Daniel Gyorffy
  */
 class MacOSThemeDetector extends OsThemeDetector {
 
+  /** Native callback contract invoked when macOS announces an interface theme change. */
   @FunctionalInterface
   private interface ThemeChangedCallback extends Callback {
+    /** Handles a native theme-change notification from the Objective-C runtime. */
     void callback();
   }
 
+  /** Logger used for observer registration and native query failures. */
   private static final Logger logger = LoggerFactory.getLogger(MacOSThemeDetector.class);
 
+  /** Registered Java listeners that should receive dark-mode transition events. */
   private final Set<Consumer<Boolean>> listeners = new ConcurrentHashSet<>();
+
+  /**
+   * Executor that serializes listener callbacks away from the native Foundation callback thread.
+   */
   private final ExecutorService callbackExecutor =
       Executors.newSingleThreadExecutor(DetectorThread::new);
 
+  /** Native callback instance bridged into Java listener notification code. */
   private final ThemeChangedCallback themeChangedCallback =
       () -> callbackExecutor.execute(() -> notifyListeners(isDark()));
 
+  /** Creates the detector and registers the native observer needed for future callbacks. */
   MacOSThemeDetector() {
     ensureCallbackMethodReference(themeChangedCallback::callback);
     initObserver();
   }
 
+  /** Registers an Objective-C observer for {@code AppleInterfaceThemeChangedNotification}. */
   private void initObserver() {
     final Foundation.NSAutoreleasePool pool = new Foundation.NSAutoreleasePool();
     try {
@@ -104,6 +125,12 @@ class MacOSThemeDetector extends OsThemeDetector {
     return false;
   }
 
+  /**
+   * Returns whether the supplied macOS theme value indicates dark mode.
+   *
+   * @param themeName raw theme value returned from {@code NSUserDefaults}
+   * @return {@code true} when the value contains a case-insensitive {@code dark} marker
+   */
   private boolean isDarkTheme(String themeName) {
     return themeName != null && themeName.toLowerCase(Locale.ROOT).contains("dark");
   }
@@ -118,15 +145,31 @@ class MacOSThemeDetector extends OsThemeDetector {
     listeners.remove(darkThemeListener);
   }
 
+  /**
+   * Delivers the detected dark-mode state to each registered listener.
+   *
+   * @param isDark state to publish to current listeners
+   */
   private void notifyListeners(boolean isDark) {
     listeners.forEach(listener -> listener.accept(isDark));
   }
 
+  /**
+   * Forces a direct Java-side reference to the callback method so static analysis can see it.
+   *
+   * @param callbackMethodReference method reference bound to the callback contract
+   */
   private static void ensureCallbackMethodReference(Runnable callbackMethodReference) {
     Objects.requireNonNull(callbackMethodReference);
   }
 
+  /** Dedicated thread type used by the single-thread callback executor. */
   private static final class DetectorThread extends Thread {
+    /**
+     * Creates a daemon thread for serialized macOS theme callback delivery.
+     *
+     * @param runnable callback work submitted by the executor
+     */
     DetectorThread(@NotNull Runnable runnable) {
       super(runnable);
       setName("MacOS Theme Detector Thread");

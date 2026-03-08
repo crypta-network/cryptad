@@ -31,23 +31,40 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Determines the dark/light theme by the windows registry values through JNA. Works on a Windows 10
- * system.
+ * Windows detector backed by registry reads and change notifications through JNA.
+ *
+ * <p>This implementation reads the user's theme preference from the {@code AppsUseLightTheme}
+ * registry value under the standard personalization key. A missing value or a non-zero value is
+ * treated as light mode, while a zero value indicates dark mode. This keeps the detector aligned
+ * with the Windows 10 and later personalization model used by desktop applications.
+ *
+ * <p>Listener registration starts a background thread that waits for registry-change events instead
+ * of polling. The detector stores listeners in a concurrent set and coordinates the watcher thread
+ * through an atomic reference, so registration and shutdown can happen safely from different
+ * threads.
  *
  * @author Daniel Gyorffy
  * @author airsquared
  */
 class WindowsThemeDetector extends OsThemeDetector {
 
+  /** Logger used for registry watcher failures and listener callback exceptions. */
   private static final Logger logger = LoggerFactory.getLogger(WindowsThemeDetector.class);
 
+  /** Registry key containing per-user theme personalization values. */
   private static final String REGISTRY_PATH =
       "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
+
+  /** Registry value that stores whether applications should use the light theme. */
   private static final String REGISTRY_VALUE = "AppsUseLightTheme";
 
+  /** Registered listeners awaiting Windows theme transition notifications. */
   private final Set<Consumer<Boolean>> listeners = new ConcurrentHashSet<>();
+
+  /** Holder for the currently active registry watcher thread, if one is running. */
   private final AtomicReference<DetectorThread> detectorThread = new AtomicReference<>();
 
+  /** Creates a detector that defers registry access until first use. */
   WindowsThemeDetector() {}
 
   @Override
@@ -85,13 +102,20 @@ class WindowsThemeDetector extends OsThemeDetector {
     }
   }
 
-  /** Thread implementation for detecting the theme changes. */
+  /** Background thread that waits for registry changes and publishes theme transitions. */
   private static final class DetectorThread extends Thread {
 
+    /** Owning detector used for theme queries and listener dispatch. */
     private final WindowsThemeDetector themeDetector;
 
+    /** Most recently published dark-mode value used to suppress duplicate callbacks. */
     private boolean lastValue;
 
+    /**
+     * Creates a watcher thread bound to the supplied detector instance.
+     *
+     * @param themeDetector detector owning the registry query and listener collection
+     */
     DetectorThread(WindowsThemeDetector themeDetector) {
       this.themeDetector = themeDetector;
       this.lastValue = themeDetector.isDark();

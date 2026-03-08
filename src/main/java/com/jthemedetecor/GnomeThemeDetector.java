@@ -32,27 +32,58 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Used for detecting the dark theme on a Linux (GNOME/GTK) system. Tested on Ubuntu.
+ * GNOME and GTK-specific detector backed by the {@code gsettings} command-line tools.
+ *
+ * <p>This implementation is selected by {@link OsThemeDetector} when the runtime reports a GNOME
+ * desktop environment. One-off theme reads execute {@code gsettings get} against the GNOME
+ * interface schema and treat either a dark GTK theme name or a dark color-scheme preference as a
+ * positive dark-mode signal. That approach keeps the detector compatible with older GTK setups as
+ * well as newer color-scheme-based desktops.
+ *
+ * <p>Listener registration starts a lightweight background thread that tails {@code gsettings
+ * monitor} output and notifies registered consumers only when the effective dark-mode state
+ * changes. Listener storage is concurrent, while thread lifecycle is coordinated through an atomic
+ * reference so callers can add and remove listeners safely from different threads.
  *
  * @author Daniel Gyorffy
  */
 class GnomeThemeDetector extends OsThemeDetector {
 
+  /** Logger used for theme-detection and monitor-process failures. */
   private static final Logger logger = LoggerFactory.getLogger(GnomeThemeDetector.class);
+
+  /** Base executable name used for GNOME settings queries and monitoring. */
   private static final String GSETTINGS_BINARY_NAME = "gsettings";
+
+  /** GNOME schema containing the appearance keys this detector reads and monitors. */
   private static final String GNOME_INTERFACE_SCHEMA = "org.gnome.desktop.interface";
+
+  /** Arguments passed to {@code gsettings} when starting a long-lived monitor process. */
   private static final List<String> MONITORING_ARGS = List.of("monitor", GNOME_INTERFACE_SCHEMA);
+
+  /** Splits monitored key/value lines into the changed key and its reported value. */
   private static final Pattern KEY_VALUE_SPLITTER = Pattern.compile("\\s+");
+
+  /** Query argument lists evaluated to determine whether GNOME currently uses a dark theme. */
   private static final List<List<String>> GET_ARGS =
       List.of(
           List.of("get", GNOME_INTERFACE_SCHEMA, "gtk-theme"),
           List.of("get", GNOME_INTERFACE_SCHEMA, "color-scheme"));
 
+  /** Registered listeners awaiting dark-mode transition callbacks. */
   private final Set<Consumer<Boolean>> listeners = new ConcurrentHashSet<>();
+
+  /** Pattern matching dark theme markers in GNOME-reported theme values. */
   private final Pattern darkThemeNamePattern =
       Pattern.compile(".*dark.*", Pattern.CASE_INSENSITIVE);
 
+  /** Holder for the currently active monitor thread, if any listeners are registered. */
   private final AtomicReference<DetectorThread> detectorThread = new AtomicReference<>();
+
+  /**
+   * Creates a detector that defers all external process work until it is queried or listened to.
+   */
+  GnomeThemeDetector() {}
 
   @Override
   public boolean isDark() {
@@ -74,14 +105,34 @@ class GnomeThemeDetector extends OsThemeDetector {
     return false;
   }
 
+  /**
+   * Returns whether a GNOME-reported theme value indicates dark mode.
+   *
+   * @param gtkTheme raw theme value returned by {@code gsettings}
+   * @return {@code true} when the value contains a case-insensitive dark marker
+   */
   private boolean isDarkTheme(String gtkTheme) {
     return darkThemeNamePattern.matcher(gtkTheme).matches();
   }
 
+  /**
+   * Starts a {@code gsettings} child process for the supplied argument list.
+   *
+   * @param commandArgs arguments appended after the resolved {@code gsettings} executable
+   * @return the started child process for reading GNOME settings output
+   * @throws IOException if the executable cannot be resolved or the process cannot be started
+   */
   private Process startGsettingsCommand(List<String> commandArgs) throws IOException {
     return new ProcessBuilder(buildGsettingsCommand(commandArgs)).start();
   }
 
+  /**
+   * Builds the full command line used for a {@code gsettings} invocation.
+   *
+   * @param commandArgs arguments appended after the resolved executable path
+   * @return a new command list suitable for {@link ProcessBuilder}
+   * @throws IOException if the {@code gsettings} executable cannot be resolved
+   */
   private List<String> buildGsettingsCommand(List<String> commandArgs) throws IOException {
     List<String> command = new ArrayList<>();
     command.add(resolveGsettingsExecutable());
@@ -89,6 +140,12 @@ class GnomeThemeDetector extends OsThemeDetector {
     return command;
   }
 
+  /**
+   * Resolves the executable used to run GNOME settings commands.
+   *
+   * @return the executable path or bare command name used for {@code gsettings}
+   * @throws IOException if a non-blank process search path is available but no executable is found
+   */
   private String resolveGsettingsExecutable() throws IOException {
     return ExecutableResolver.resolveFromPath(GSETTINGS_BINARY_NAME);
   }
@@ -121,14 +178,26 @@ class GnomeThemeDetector extends OsThemeDetector {
     }
   }
 
-  /** Thread implementation for detecting the actually changed theme. */
+  /**
+   * Background monitor that translates {@code gsettings monitor} output into listener callbacks.
+   */
   private static final class DetectorThread extends Thread {
 
+    /** Owning detector used for theme parsing and listener dispatch. */
     private final GnomeThemeDetector detector;
+
+    /** Pattern matching the monitored GNOME keys that affect effective dark-mode state. */
     private final Pattern outputPattern =
         Pattern.compile("(gtk-theme|color-scheme).*", Pattern.CASE_INSENSITIVE);
+
+    /** Most recently published dark-mode state used to suppress duplicate callbacks. */
     private boolean lastValue;
 
+    /**
+     * Creates a monitor thread bound to the supplied detector instance.
+     *
+     * @param detector detector owning the listener set and theme-parsing rules
+     */
     DetectorThread(@NotNull GnomeThemeDetector detector) {
       this.detector = detector;
       this.lastValue = detector.isDark();
@@ -148,6 +217,12 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
+    /**
+     * Reads monitor output until the thread is interrupted or the process ends.
+     *
+     * @param monitoringProcess running {@code gsettings monitor} process supplying change lines
+     * @throws IOException if reading monitor output fails
+     */
     private void monitorChanges(Process monitoringProcess) throws IOException {
       try (BufferedReader reader =
           new BufferedReader(
@@ -160,6 +235,11 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
+    /**
+     * Parses a monitor line and publishes a callback only when the effective theme state changes.
+     *
+     * @param readLine single line emitted by {@code gsettings monitor}
+     */
     private void processMonitoringLine(String readLine) {
       if (shouldIgnoreLine(readLine)) {
         return;
@@ -172,14 +252,31 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
+    /**
+     * Returns whether a monitor line can be ignored safely.
+     *
+     * @param readLine single line emitted by the monitoring process, possibly {@code null}
+     * @return {@code true} when the line is absent or unrelated to the tracked appearance keys
+     */
     private boolean shouldIgnoreLine(String readLine) {
       return readLine == null || !outputPattern.matcher(readLine).matches();
     }
 
+    /**
+     * Extracts the theme value portion from a GNOME monitor output line.
+     *
+     * @param readLine single line emitted by {@code gsettings monitor}
+     * @return the substring representing the changed key's value
+     */
     private String extractThemeValue(String readLine) {
       return KEY_VALUE_SPLITTER.split(readLine, 2)[1];
     }
 
+    /**
+     * Delivers a newly detected dark-mode state to every registered listener.
+     *
+     * @param currentDetection the dark-mode state that should be published to listeners
+     */
     private void notifyListeners(boolean currentDetection) {
       for (Consumer<Boolean> listener : detector.listeners) {
         try {
@@ -190,6 +287,11 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
+    /**
+     * Stops the monitor process when the thread is shutting down.
+     *
+     * @param monitoringProcess running process created for {@code gsettings monitor}
+     */
     private void destroyMonitoringProcess(Process monitoringProcess) {
       logger.debug("ThemeDetectorThread has been interrupted!");
       if (monitoringProcess.isAlive()) {

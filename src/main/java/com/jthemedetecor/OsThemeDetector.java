@@ -24,7 +24,19 @@ import org.slf4j.LoggerFactory;
 import oshi.annotation.concurrent.ThreadSafe;
 
 /**
- * For detecting the theme (dark/light) used by the Operating System.
+ * Abstract entry point for querying and monitoring the operating system theme.
+ *
+ * <p>The static factory methods in this type choose the most suitable detector for the current
+ * platform and cache that detector for repeated use. Callers normally get the singleton through
+ * {@link #getDetector()}, read the current state with {@link #isDark()}, and optionally subscribe
+ * to changes with {@link #registerListener(Consumer)}. Platform-specific implementations
+ * encapsulate the details of Windows registry watches, GNOME/KDE command execution, macOS
+ * callbacks, or the no-op fallback used on unsupported systems.
+ *
+ * <p>The shared detector instance is created lazily and published safely for concurrent access.
+ * Implementations are expected to remain thread-safe for theme reads and listener registration, but
+ * their internal trade-offs vary by platform. Unsupported systems still receive a stable detector
+ * object, so callers do not need separated null handling.
  *
  * @author Daniel Gyorffy
  */
@@ -36,6 +48,17 @@ public abstract class OsThemeDetector {
 
   OsThemeDetector() {}
 
+  /**
+   * Returns the lazily created detector instance for the current runtime environment.
+   *
+   * <p>The first call inspects the platform through {@link OsInfo}, constructs the best available
+   * detector implementation, and caches that result for the lifetime of the process. Later calls
+   * reuse the same instance, so listener registration and background monitoring remain coordinated.
+   * If detector construction fails, the original exception is allowed to propagate so higher-level
+   * launcher code can apply its own fallback policy.
+   *
+   * @return the shared detector chosen for the current operating system and desktop environment
+   */
   @NotNull
   @ThreadSafe
   public static OsThemeDetector getDetector() {
@@ -55,26 +78,55 @@ public abstract class OsThemeDetector {
   }
 
   /**
-   * Returns that the os using a dark or a light theme.
+   * Returns whether the operating system currently reports a dark theme.
    *
-   * @return {@code true} if the os uses dark theme; {@code false} otherwise.
+   * <p>Implementations may consult native APIs, desktop configuration tools, or cached state from a
+   * monitoring thread. The method is read-only from the caller's perspective and should be safe to
+   * invoke repeatedly, although the underlying cost depends on the platform-specific detector.
+   *
+   * @return {@code true} when the operating system prefers a dark theme; {@code false} otherwise
    */
   @ThreadSafe
   public abstract boolean isDark();
 
   /**
-   * Registers a {@link Consumer} that will listen to a theme-change.
+   * Registers a listener that receives future operating system theme changes.
    *
-   * @param darkThemeListener the {@link Consumer} that accepts a {@link Boolean} that represents
-   *     that the os using a dark theme or not
+   * <p>Implementations may start native watchers or background polling when the first listener is
+   * added. The supplied consumer is invoked with the newly detected dark-mode state after a change
+   * is observed. Listener registration is idempotent only if the concrete implementation's backing
+   * collection suppresses duplicates for the same consumer instance.
+   *
+   * @param darkThemeListener consumer notified with {@code true} for dark mode and {@code false}
+   *     for light mode after a detected theme transition
    */
   @ThreadSafe
   public abstract void registerListener(@NotNull Consumer<Boolean> darkThemeListener);
 
-  /** Removes the listener. */
+  /**
+   * Removes a previously registered listener.
+   *
+   * <p>Implementations may stop native watches or background threads once no listeners remain. A
+   * removal request for an unknown listener is treated as a no-op so callers can perform cleanup
+   * defensively during shutdown sequences.
+   *
+   * @param darkThemeListener listener instance to remove, or {@code null} when the implementation
+   *     tolerates null-safe cleanup requests
+   */
   @ThreadSafe
   public abstract void removeListener(@Nullable Consumer<Boolean> darkThemeListener);
 
+  /**
+   * Returns whether this runtime has a platform-specific detector implementation available.
+   *
+   * <p>This check is based on the same {@link OsInfo} predicates used by {@link #getDetector()},
+   * but it avoids constructing the detector instance. Callers can use it for UI hints or logging
+   * when they need to know whether dark-mode detection is expected to work natively on the current
+   * host.
+   *
+   * @return {@code true} when a dedicated detector exists for the current platform; {@code false}
+   *     when calls would fall back to the empty detector
+   */
   @ThreadSafe
   public static boolean isSupported() {
     return OsInfo.isWindows10OrLater()

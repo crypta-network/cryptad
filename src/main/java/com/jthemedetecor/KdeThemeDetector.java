@@ -33,8 +33,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Used for detecting the dark theme on a Linux KDE desktop environment. Tested on Ubuntu KDE Plasma
- * (kde-plasma-desktop).
+ * KDE and Plasma-specific detector backed by the {@code kreadconfig} helper tools.
+ *
+ * <p>This detector is chosen when the current Linux desktop environment identifies itself as KDE.
+ * It reads the active color-scheme name from {@code kdeglobals} and treats theme names containing a
+ * case-insensitive {@code dark} marker as dark-mode selections. The resolver prefers newer helper
+ * binaries first, but it still supports fallback helper names and bare command execution, so
+ * non-standard Linux installations continue to work.
+ *
+ * <p>When listeners are registered, the detector starts a background thread that periodically
+ * re-queries the configured theme and emits notifications only when the effective dark-mode state
+ * changes. Listener storage is concurrent, while the monitor-thread lifecycle is coordinated
+ * through an atomic reference to avoid duplicate polling threads during registration races.
  *
  * @author Thomas Sartre
  * @see GnomeThemeDetector
@@ -53,6 +63,11 @@ public class KdeThemeDetector extends OsThemeDetector {
       Pattern.compile(".*dark.*", Pattern.CASE_INSENSITIVE);
 
   private final AtomicReference<DetectorThread> detectorThread = new AtomicReference<>();
+
+  /** Creates a KDE theme detector that defers all external process work until first use. */
+  public KdeThemeDetector() {
+    // No eager setup is required here; the explicit constructor exists for doclint-clean API docs.
+  }
 
   @Override
   public boolean isDark() {
