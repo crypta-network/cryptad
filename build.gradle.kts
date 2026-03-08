@@ -29,12 +29,9 @@ dependencies {
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
-  implementation(libs.jsystemThemeDetector)
-  constraints {
-    implementation("com.github.oshi:oshi-core:6.9.3") {
-      because("Use newer OSHI for modern macOS version handling in theme detection")
-    }
-  }
+  implementation(libs.oshiCore)
+  implementation(libs.versionCompare)
+  implementation(libs.jfa) { exclude(group = "net.java.dev.jna", module = "jna") }
   // Flatpak/Portal detection via D-Bus
   implementation(libs.dbusCore)
   // CLI parsing and UX

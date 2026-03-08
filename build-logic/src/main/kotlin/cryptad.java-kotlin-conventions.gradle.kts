@@ -117,13 +117,6 @@ repositories {
       ignoreGradleMetadataRedirection()
     }
   }
-  maven("https://jitpack.io") {
-    metadataSources {
-      mavenPom()
-      artifact()
-      ignoreGradleMetadataRedirection()
-    }
-  }
 }
 
 sourceSets.named("main") {
