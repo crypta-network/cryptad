@@ -31,6 +31,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings({"java:S100", "unchecked"})
@@ -170,11 +171,14 @@ class ThemeSwitcherTest {
   }
 
   @Test
-  void install_whenLinux_thenEnablesClientDecorationsAndShutdownUnregistersListener() {
+  void install_whenLinux_thenEnablesClientDecorationsAndShutdownUnregistersListener()
+      throws Exception {
     String priorApple = System.getProperty(APPLE_APPEARANCE_KEY);
     String priorDefault = System.getProperty(SWING_DEFAULT_LAF_KEY);
 
-    OsThemeDetector detector = mock(OsThemeDetector.class);
+    OsThemeDetector detector =
+        mock(OsThemeDetector.class, withSettings().extraInterfaces(AutoCloseable.class));
+    AutoCloseable closeableDetector = (AutoCloseable) detector;
     when(detector.isDark()).thenReturn(false);
 
     try (MockedStatic<FlatpakAwareOsThemeDetector> detectorFactory =
@@ -227,6 +231,7 @@ class ThemeSwitcherTest {
       ThemeSwitcher.shutdown();
 
       verify(detector).removeListener(listener);
+      verify(closeableDetector).close();
       flatLafMock.verify(() -> FlatLaf.setup(any(LookAndFeel.class)));
     } finally {
       restoreProperty(APPLE_APPEARANCE_KEY, priorApple);

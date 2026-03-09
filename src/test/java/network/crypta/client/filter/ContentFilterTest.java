@@ -21,6 +21,8 @@ import network.crypta.support.TestProperty;
 import network.crypta.support.io.ArrayBucket;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,6 +54,8 @@ class ContentFilterTest {
   static {
     GenericReadFilterCallback.setBaseL10n(L10nTestUtils.createTestL10n(ENGLISH));
   }
+
+  private boolean originalEmbedM3uPlayer;
 
   private static final String HTML_OPEN = "<html>";
   private static final String HTML_CLOSE = "</html>";
@@ -96,6 +100,17 @@ class ContentFilterTest {
       }
       return output.toString();
     }
+  }
+
+  @BeforeEach
+  void setUp() {
+    originalEmbedM3uPlayer = HTMLFilter.isEmbedM3uPlayerEnabled();
+    HTMLFilter.setEmbedM3uPlayerEnabled(true);
+  }
+
+  @AfterEach
+  void tearDown() {
+    HTMLFilter.setEmbedM3uPlayerEnabled(originalEmbedM3uPlayer);
   }
 
   @Test

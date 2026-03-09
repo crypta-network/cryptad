@@ -82,6 +82,13 @@ public final class ThemeSwitcher {
   public static synchronized void shutdown() {
     if (detector != null && listener != null) {
       detector.removeListener(listener);
+      if (detector instanceof AutoCloseable closeable) {
+        try {
+          closeable.close();
+        } catch (Exception e) {
+          logDebug("Failed to close OS theme detector", e);
+        }
+      }
     }
     detector = null;
     listener = null;
