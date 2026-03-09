@@ -186,6 +186,12 @@ class GnomeThemeDetector extends OsThemeDetector {
     /** Owning detector used for theme parsing and listener dispatch. */
     private final GnomeThemeDetector detector;
 
+    /** Currently active monitor process so shutdown can unblock a pending read. */
+    private final AtomicReference<Process> monitoringProcess = new AtomicReference<>();
+
+    /** Reader currently blocked on monitor output if the monitor loop is running. */
+    private final AtomicReference<BufferedReader> monitoringReader = new AtomicReference<>();
+
     /** Pattern matching the monitored GNOME keys that affect effective dark-mode state. */
     private final Pattern outputPattern =
         Pattern.compile("(gtk-theme|color-scheme).*", Pattern.CASE_INSENSITIVE);
@@ -211,10 +217,21 @@ class GnomeThemeDetector extends OsThemeDetector {
       try {
         monitorChanges(detector.startGsettingsCommand(MONITORING_ARGS));
       } catch (IOException e) {
-        logger.error("Couldn't start monitoring process ", e);
+        if (isInterrupted()) {
+          logger.debug("Stopped GNOME theme monitor during shutdown", e);
+        } else {
+          logger.error("Couldn't start monitoring process ", e);
+        }
       } catch (ArrayIndexOutOfBoundsException e) {
         logger.error("Couldn't parse command line output", e);
       }
+    }
+
+    @Override
+    public void interrupt() {
+      closeMonitoringReader();
+      destroyMonitoringProcess(monitoringProcess.getAndSet(null));
+      super.interrupt();
     }
 
     /**
@@ -224,14 +241,19 @@ class GnomeThemeDetector extends OsThemeDetector {
      * @throws IOException if reading monitor output fails
      */
     private void monitorChanges(Process monitoringProcess) throws IOException {
+      this.monitoringProcess.set(monitoringProcess);
       try (BufferedReader reader =
           new BufferedReader(
               new InputStreamReader(
                   monitoringProcess.getInputStream(), Charset.defaultCharset()))) {
-        while (!this.isInterrupted()) {
-          processMonitoringLine(reader.readLine());
+        monitoringReader.set(reader);
+        String readLine;
+        while (!this.isInterrupted() && (readLine = reader.readLine()) != null) {
+          processMonitoringLine(readLine);
         }
-        destroyMonitoringProcess(monitoringProcess);
+      } finally {
+        monitoringReader.set(null);
+        destroyMonitoringProcess(this.monitoringProcess.getAndSet(null));
       }
     }
 
@@ -287,12 +309,29 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
+    /** Closes the monitor reader so a blocking {@code readLine()} call can exit during shutdown. */
+    private void closeMonitoringReader() {
+      BufferedReader reader = monitoringReader.getAndSet(null);
+      if (reader == null) {
+        return;
+      }
+      try {
+        reader.close();
+      } catch (IOException e) {
+        logger.debug("Failed to close GNOME theme monitor output", e);
+      }
+    }
+
     /**
      * Stops the monitor process when the thread is shutting down.
      *
-     * @param monitoringProcess running process created for {@code gsettings monitor}
+     * @param monitoringProcess running process created for {@code gsettings monitor}, or {@code
+     *     null} if shutdown raced with monitor startup
      */
     private void destroyMonitoringProcess(Process monitoringProcess) {
+      if (monitoringProcess == null) {
+        return;
+      }
       logger.debug("ThemeDetectorThread has been interrupted!");
       if (monitoringProcess.isAlive()) {
         monitoringProcess.destroy();

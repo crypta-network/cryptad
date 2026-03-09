@@ -6,15 +6,18 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -22,6 +25,7 @@ import org.mockito.MockedStatic;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockConstruction;
@@ -32,6 +36,7 @@ import static org.mockito.Mockito.when;
 class GnomeThemeDetectorTest {
   private static final String RESOLVED_GSETTINGS = "/mock/bin/gsettings";
   private static final String GNOME_SCHEMA = "org.gnome.desktop.interface";
+  private static final long THREAD_TIMEOUT_SECONDS = 5L;
 
   @Test
   void isDark_whenGtkThemeContainsDark_expectTrueAfterFirstQuery() {
@@ -203,6 +208,44 @@ class GnomeThemeDetectorTest {
     assertEquals(0, notificationCount.get());
   }
 
+  @Test
+  void monitorChanges_whenMonitorStreamEnds_expectThreadStopsAndProcessDestroyed()
+      throws Exception {
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+    Object detectorThread = newDetectorThread(detector);
+    FixedOutputProcess monitoringProcess = new FixedOutputProcess("");
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+
+    Thread monitoringThread = startMonitoringThread(detectorThread, monitoringProcess, failure);
+
+    awaitThreadExit(monitoringThread);
+
+    assertAll(
+        () -> assertNull(failure.get()),
+        () -> assertFalse(monitoringThread.isAlive()),
+        () -> assertFalse(monitoringProcess.isAlive()));
+  }
+
+  @Test
+  void interrupt_whenMonitorReadBlocks_expectThreadStopsAndProcessDestroyed() throws Exception {
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+    Object detectorThread = newDetectorThread(detector);
+    BlockingProcess monitoringProcess = new BlockingProcess();
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+
+    Thread monitoringThread = startMonitoringThread(detectorThread, monitoringProcess, failure);
+    monitoringProcess.awaitReadStarted();
+
+    ((Thread) detectorThread).interrupt();
+    awaitThreadExit(monitoringThread);
+
+    assertAll(
+        () -> assertNull(failure.get()),
+        () -> assertFalse(monitoringThread.isAlive()),
+        () -> assertTrue(monitoringProcess.wasDestroyed()),
+        () -> assertFalse(monitoringProcess.isAlive()));
+  }
+
   private static MockedConstruction<ProcessBuilder> mockProcessBuilders(
       List<? extends Process> processes, List<List<String>> constructedCommands) {
     AtomicInteger startIndex = new AtomicInteger();
@@ -225,6 +268,38 @@ class GnomeThemeDetectorTest {
         detectorThreadClass().getDeclaredConstructor(GnomeThemeDetector.class);
     constructor.setAccessible(true);
     return constructor.newInstance(detector);
+  }
+
+  private static Thread startMonitoringThread(
+      Object detectorThread, Process monitoringProcess, AtomicReference<Throwable> failure) {
+    Thread monitoringThread =
+        Thread.ofPlatform()
+            .name("gnome-detector-test")
+            .unstarted(
+                () -> {
+                  try {
+                    invokeMonitorChanges(detectorThread, monitoringProcess);
+                  } catch (Throwable t) {
+                    failure.set(t);
+                  }
+                });
+    monitoringThread.start();
+    return monitoringThread;
+  }
+
+  private static void invokeMonitorChanges(Object detectorThread, Process monitoringProcess)
+      throws Exception {
+    Method monitorChanges =
+        detectorThreadClass().getDeclaredMethod("monitorChanges", Process.class);
+    monitorChanges.setAccessible(true);
+    try {
+      monitorChanges.invoke(detectorThread, monitoringProcess);
+    } catch (InvocationTargetException e) {
+      if (((Thread) detectorThread).isInterrupted() && e.getCause() instanceof IOException) {
+        return;
+      }
+      throw e;
+    }
   }
 
   private static void invokeProcessMonitoringLine(Object detectorThread, String readLine)
@@ -251,6 +326,11 @@ class GnomeThemeDetectorTest {
     Field listenersField = GnomeThemeDetector.class.getDeclaredField("listeners");
     listenersField.setAccessible(true);
     ((java.util.Set<Consumer<Boolean>>) listenersField.get(detector)).add(listener);
+  }
+
+  private static void awaitThreadExit(Thread detectorThread) throws InterruptedException {
+    detectorThread.join(TimeUnit.SECONDS.toMillis(THREAD_TIMEOUT_SECONDS));
+    assertFalse(detectorThread.isAlive());
   }
 
   private static class FixedOutputProcess extends Process {
@@ -307,6 +387,102 @@ class GnomeThemeDetectorTest {
     @Override
     public boolean isAlive() {
       return alive.get();
+    }
+  }
+
+  private static final class BlockingProcess extends Process {
+    private final BlockingInputStream inputStream = new BlockingInputStream();
+    private final AtomicBoolean alive = new AtomicBoolean(true);
+    private final AtomicBoolean destroyed = new AtomicBoolean(false);
+
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return inputStream;
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public int waitFor() {
+      destroy();
+      return 0;
+    }
+
+    @Override
+    public boolean waitFor(long timeout, TimeUnit unit) {
+      destroy();
+      return true;
+    }
+
+    @Override
+    public int exitValue() {
+      return 0;
+    }
+
+    @Override
+    public void destroy() {
+      destroyed.set(true);
+      alive.set(false);
+      inputStream.close();
+    }
+
+    @Override
+    public Process destroyForcibly() {
+      destroy();
+      return this;
+    }
+
+    @Override
+    public boolean isAlive() {
+      return alive.get();
+    }
+
+    private void awaitReadStarted() throws InterruptedException {
+      assertTrue(inputStream.readStarted.await(THREAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+    }
+
+    private boolean wasDestroyed() {
+      return destroyed.get();
+    }
+  }
+
+  private static final class BlockingInputStream extends InputStream {
+    private final CountDownLatch readStarted = new CountDownLatch(1);
+    private final CountDownLatch closed = new CountDownLatch(1);
+
+    @Override
+    public int read() throws IOException {
+      readStarted.countDown();
+      try {
+        if (!closed.await(THREAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+          throw new IOException("Timed out while waiting for monitor shutdown");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IOException("Interrupted while waiting for monitor shutdown", e);
+      }
+      return -1;
+    }
+
+    @Override
+    public int read(byte @NonNull [] b, int off, int len) throws IOException {
+      if (len == 0) {
+        return 0;
+      }
+      return read();
+    }
+
+    @Override
+    public void close() {
+      closed.countDown();
     }
   }
 
