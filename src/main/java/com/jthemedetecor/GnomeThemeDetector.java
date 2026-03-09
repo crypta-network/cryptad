@@ -17,6 +17,7 @@ package com.jthemedetecor;
 import com.jthemedetecor.util.ConcurrentHashSet;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -58,17 +59,22 @@ class GnomeThemeDetector extends OsThemeDetector {
   /** GNOME schema containing the appearance keys this detector reads and monitors. */
   private static final String GNOME_INTERFACE_SCHEMA = "org.gnome.desktop.interface";
 
+  /** Settings key storing the active GTK theme name. */
+  private static final String GTK_THEME_KEY = "gtk-theme";
+
+  /** Settings key storing the GNOME dark-style preference. */
+  private static final String COLOR_SCHEME_KEY = "color-scheme";
+
   /** Arguments passed to {@code gsettings} when starting a long-lived monitor process. */
   private static final List<String> MONITORING_ARGS = List.of("monitor", GNOME_INTERFACE_SCHEMA);
 
-  /** Splits monitored key/value lines into the changed key and its reported value. */
-  private static final Pattern KEY_VALUE_SPLITTER = Pattern.compile("\\s+");
+  /** Arguments used to query the current GTK theme name. */
+  private static final List<String> GET_GTK_THEME_ARGS =
+      List.of("get", GNOME_INTERFACE_SCHEMA, GTK_THEME_KEY);
 
-  /** Query argument lists evaluated to determine whether GNOME currently uses a dark theme. */
-  private static final List<List<String>> GET_ARGS =
-      List.of(
-          List.of("get", GNOME_INTERFACE_SCHEMA, "gtk-theme"),
-          List.of("get", GNOME_INTERFACE_SCHEMA, "color-scheme"));
+  /** Arguments used to query the current GNOME color-scheme preference. */
+  private static final List<String> GET_COLOR_SCHEME_ARGS =
+      List.of("get", GNOME_INTERFACE_SCHEMA, COLOR_SCHEME_KEY);
 
   /** Registered listeners awaiting dark-mode transition callbacks. */
   private final Set<Consumer<Boolean>> listeners = new ConcurrentHashSet<>();
@@ -87,20 +93,28 @@ class GnomeThemeDetector extends OsThemeDetector {
 
   @Override
   public boolean isDark() {
+    return readThemeState().isDark();
+  }
+
+  ThemeState readThemeState() {
     try {
-      for (List<String> commandArgs : GET_ARGS) {
-        Process process = startGsettingsCommand(commandArgs);
-        try (BufferedReader reader =
-            new BufferedReader(
-                new InputStreamReader(process.getInputStream(), Charset.defaultCharset()))) {
-          String readLine = reader.readLine();
-          if (readLine != null && isDarkTheme(readLine)) {
-            return true;
-          }
-        }
-      }
+      return new ThemeState(
+          readDarkSetting(GET_GTK_THEME_ARGS), readDarkSetting(GET_COLOR_SCHEME_ARGS));
     } catch (IOException e) {
       logger.error("Couldn't detect Linux OS theme", e);
+      return ThemeState.LIGHT;
+    }
+  }
+
+  private boolean readDarkSetting(List<String> commandArgs) throws IOException {
+    Process process = startGsettingsCommand(commandArgs);
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(process.getInputStream(), Charset.defaultCharset()))) {
+      String readLine = reader.readLine();
+      if (readLine != null && isDarkTheme(readLine)) {
+        return true;
+      }
     }
     return false;
   }
@@ -189,12 +203,17 @@ class GnomeThemeDetector extends OsThemeDetector {
     /** Currently active monitor process so shutdown can unblock a pending read. */
     private final AtomicReference<Process> monitoringProcess = new AtomicReference<>();
 
-    /** Reader currently blocked on monitor output if the monitor loop is running. */
-    private final AtomicReference<BufferedReader> monitoringReader = new AtomicReference<>();
+    /** Monitor stdout stream currently blocked in a read operation if monitoring is active. */
+    private final AtomicReference<InputStream> monitoringInputStream = new AtomicReference<>();
 
     /** Pattern matching the monitored GNOME keys that affect effective dark-mode state. */
     private final Pattern outputPattern =
         Pattern.compile("(gtk-theme|color-scheme).*", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Cached key-by-key state used to resolve the effective appearance without extra subprocesses.
+     */
+    private ThemeState themeState;
 
     /** Most recently published dark-mode state used to suppress duplicate callbacks. */
     private boolean lastValue;
@@ -206,7 +225,8 @@ class GnomeThemeDetector extends OsThemeDetector {
      */
     DetectorThread(@NotNull GnomeThemeDetector detector) {
       this.detector = detector;
-      this.lastValue = detector.isDark();
+      this.themeState = detector.readThemeState();
+      this.lastValue = themeState.isDark();
       this.setName("GTK Theme Detector Thread");
       this.setDaemon(true);
       this.setPriority(Thread.NORM_PRIORITY - 1);
@@ -222,16 +242,14 @@ class GnomeThemeDetector extends OsThemeDetector {
         } else {
           logger.error("Couldn't start monitoring process ", e);
         }
-      } catch (ArrayIndexOutOfBoundsException e) {
-        logger.error("Couldn't parse command line output", e);
       }
     }
 
     @Override
     public void interrupt() {
-      closeMonitoringReader();
-      destroyMonitoringProcess(monitoringProcess.getAndSet(null));
       super.interrupt();
+      destroyMonitoringProcess(monitoringProcess.getAndSet(null));
+      closeMonitoringInputStream();
     }
 
     /**
@@ -242,17 +260,16 @@ class GnomeThemeDetector extends OsThemeDetector {
      */
     private void monitorChanges(Process monitoringProcess) throws IOException {
       this.monitoringProcess.set(monitoringProcess);
+      InputStream inputStream = monitoringProcess.getInputStream();
+      monitoringInputStream.set(inputStream);
       try (BufferedReader reader =
-          new BufferedReader(
-              new InputStreamReader(
-                  monitoringProcess.getInputStream(), Charset.defaultCharset()))) {
-        monitoringReader.set(reader);
+          new BufferedReader(new InputStreamReader(inputStream, Charset.defaultCharset()))) {
         String readLine;
         while (!this.isInterrupted() && (readLine = reader.readLine()) != null) {
           processMonitoringLine(readLine);
         }
       } finally {
-        monitoringReader.set(null);
+        monitoringInputStream.set(null);
         destroyMonitoringProcess(this.monitoringProcess.getAndSet(null));
       }
     }
@@ -266,7 +283,13 @@ class GnomeThemeDetector extends OsThemeDetector {
       if (shouldIgnoreLine(readLine)) {
         return;
       }
-      boolean currentDetection = detector.isDarkTheme(extractThemeValue(readLine));
+      ThemeChange themeChange = parseThemeChange(readLine);
+      if (themeChange == null) {
+        return;
+      }
+      themeState =
+          themeState.withUpdatedValue(themeChange.key(), detector.isDarkTheme(themeChange.value()));
+      boolean currentDetection = themeState.isDark();
       logger.debug("Theme changed detection, dark: {}", currentDetection);
       if (currentDetection != lastValue) {
         lastValue = currentDetection;
@@ -284,14 +307,14 @@ class GnomeThemeDetector extends OsThemeDetector {
       return readLine == null || !outputPattern.matcher(readLine).matches();
     }
 
-    /**
-     * Extracts the theme value portion from a GNOME monitor output line.
-     *
-     * @param readLine single line emitted by {@code gsettings monitor}
-     * @return the substring representing the changed key's value
-     */
-    private String extractThemeValue(String readLine) {
-      return KEY_VALUE_SPLITTER.split(readLine, 2)[1];
+    private ThemeChange parseThemeChange(String readLine) {
+      int separatorIndex = readLine.indexOf(':');
+      if (separatorIndex < 0) {
+        return null;
+      }
+      String key = readLine.substring(0, separatorIndex).trim();
+      String value = readLine.substring(separatorIndex + 1).trim();
+      return new ThemeChange(key, value);
     }
 
     /**
@@ -309,16 +332,15 @@ class GnomeThemeDetector extends OsThemeDetector {
       }
     }
 
-    /** Closes the monitor reader so a blocking {@code readLine()} call can exit during shutdown. */
-    private void closeMonitoringReader() {
-      BufferedReader reader = monitoringReader.getAndSet(null);
-      if (reader == null) {
+    private void closeMonitoringInputStream() {
+      InputStream inputStream = monitoringInputStream.getAndSet(null);
+      if (inputStream == null) {
         return;
       }
       try {
-        reader.close();
+        inputStream.close();
       } catch (IOException e) {
-        logger.debug("Failed to close GNOME theme monitor output", e);
+        logger.debug("Failed to close GNOME theme monitor stream", e);
       }
     }
 
@@ -337,6 +359,32 @@ class GnomeThemeDetector extends OsThemeDetector {
         monitoringProcess.destroy();
         logger.debug("Monitoring process has been destroyed!");
       }
+    }
+
+    private record ThemeChange(String key, String value) {}
+  }
+
+  static final class ThemeState {
+    static final ThemeState LIGHT = new ThemeState(false, false);
+
+    private final boolean darkGtkTheme;
+    private final boolean darkColorScheme;
+
+    ThemeState(boolean darkGtkTheme, boolean darkColorScheme) {
+      this.darkGtkTheme = darkGtkTheme;
+      this.darkColorScheme = darkColorScheme;
+    }
+
+    boolean isDark() {
+      return darkGtkTheme || darkColorScheme;
+    }
+
+    ThemeState withUpdatedValue(String key, boolean dark) {
+      return switch (key) {
+        case GTK_THEME_KEY -> new ThemeState(dark, darkColorScheme);
+        case COLOR_SCHEME_KEY -> new ThemeState(darkGtkTheme, dark);
+        default -> this;
+      };
     }
   }
 }

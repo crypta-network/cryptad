@@ -17,8 +17,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
@@ -47,7 +51,10 @@ class GnomeThemeDetectorTest {
             mockStatic(ExecutableResolver.class);
         MockedConstruction<ProcessBuilder> processBuilders =
             mockProcessBuilders(
-                List.of(new FixedOutputProcess("'Adwaita-dark'\n")), constructedCommands)) {
+                List.of(
+                    new FixedOutputProcess("'Adwaita-dark'\n"),
+                    new FixedOutputProcess("'prefer-dark'\n")),
+                constructedCommands)) {
       executableResolver
           .when(() -> ExecutableResolver.resolveFromPath("gsettings"))
           .thenReturn(RESOLVED_GSETTINGS);
@@ -56,11 +63,15 @@ class GnomeThemeDetectorTest {
 
       assertAll(
           () -> assertTrue(dark),
-          () -> assertEquals(1, processBuilders.constructed().size()),
+          () -> assertEquals(2, processBuilders.constructed().size()),
           () ->
               assertEquals(
                   List.of(RESOLVED_GSETTINGS, "get", GNOME_SCHEMA, "gtk-theme"),
-                  constructedCommands.getFirst()));
+                  constructedCommands.getFirst()),
+          () ->
+              assertEquals(
+                  List.of(RESOLVED_GSETTINGS, "get", GNOME_SCHEMA, "color-scheme"),
+                  constructedCommands.get(1)));
     }
   }
 
@@ -161,9 +172,17 @@ class GnomeThemeDetectorTest {
     assertThrows(NullPointerException.class, () -> detector.removeListener(null));
   }
 
-  @Test
-  void processMonitoringLine_whenThemeChanges_expectListenerNotified() throws Exception {
-    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+  @ParameterizedTest
+  @MethodSource("singleLineMonitoringCases")
+  void processMonitoringLine_whenSingleRelevantLineProcessed_expectExpectedNotification(
+      boolean initialDarkGtkTheme,
+      boolean initialDarkColorScheme,
+      String readLine,
+      int expectedNotificationCount,
+      Boolean expectedNotificationValue)
+      throws Exception {
+    TrackingGnomeThemeDetector detector =
+        new TrackingGnomeThemeDetector(initialDarkGtkTheme, initialDarkColorScheme);
     AtomicReference<Boolean> notifiedValue = new AtomicReference<>();
     AtomicInteger notificationCount = new AtomicInteger();
     Consumer<Boolean> listener =
@@ -175,29 +194,39 @@ class GnomeThemeDetectorTest {
 
     addListener(detector, listener);
 
-    invokeProcessMonitoringLine(detectorThread, "gtk-theme: 'Adwaita-dark'");
+    invokeProcessMonitoringLine(detectorThread, readLine);
 
     assertAll(
-        () -> assertEquals(Boolean.TRUE, notifiedValue.get()),
+        () -> assertEquals(expectedNotificationValue, notifiedValue.get()),
+        () -> assertEquals(expectedNotificationCount, notificationCount.get()));
+  }
+
+  @Test
+  void processMonitoringLine_whenFinalDarkPreferenceClears_expectLightNotification()
+      throws Exception {
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false, true);
+    AtomicReference<Boolean> notifiedValue = new AtomicReference<>();
+    AtomicInteger notificationCount = new AtomicInteger();
+    Object detectorThread = newDetectorThread(detector);
+
+    addListener(
+        detector,
+        dark -> {
+          notifiedValue.set(dark);
+          notificationCount.incrementAndGet();
+        });
+
+    invokeProcessMonitoringLine(detectorThread, "gtk-theme: 'Adwaita'");
+    invokeProcessMonitoringLine(detectorThread, "color-scheme: 'default'");
+
+    assertAll(
+        () -> assertEquals(Boolean.FALSE, notifiedValue.get()),
         () -> assertEquals(1, notificationCount.get()));
   }
 
   @Test
-  void processMonitoringLine_whenThemeDoesNotChange_expectNoNotification() throws Exception {
-    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(true);
-    AtomicInteger notificationCount = new AtomicInteger();
-    Object detectorThread = newDetectorThread(detector);
-
-    addListener(detector, ignored -> notificationCount.incrementAndGet());
-
-    invokeProcessMonitoringLine(detectorThread, "gtk-theme: 'Adwaita-dark'");
-
-    assertEquals(0, notificationCount.get());
-  }
-
-  @Test
   void processMonitoringLine_whenLineIsUnrelated_expectNoNotification() throws Exception {
-    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false, false);
     AtomicInteger notificationCount = new AtomicInteger();
     Object detectorThread = newDetectorThread(detector);
 
@@ -211,7 +240,7 @@ class GnomeThemeDetectorTest {
   @Test
   void monitorChanges_whenMonitorStreamEnds_expectThreadStopsAndProcessDestroyed()
       throws Exception {
-    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false, false);
     Object detectorThread = newDetectorThread(detector);
     FixedOutputProcess monitoringProcess = new FixedOutputProcess("");
     AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -228,7 +257,7 @@ class GnomeThemeDetectorTest {
 
   @Test
   void interrupt_whenMonitorReadBlocks_expectThreadStopsAndProcessDestroyed() throws Exception {
-    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false);
+    TrackingGnomeThemeDetector detector = new TrackingGnomeThemeDetector(false, false);
     Object detectorThread = newDetectorThread(detector);
     BlockingProcess monitoringProcess = new BlockingProcess();
     AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -261,6 +290,13 @@ class GnomeThemeDetectorTest {
   @SuppressWarnings("unchecked")
   private static List<String> extractCommand(MockedConstruction.Context context) {
     return List.copyOf((List<String>) context.arguments().getFirst());
+  }
+
+  private static Stream<Arguments> singleLineMonitoringCases() {
+    return Stream.of(
+        Arguments.of(false, false, "gtk-theme: 'Adwaita-dark'", 1, Boolean.TRUE),
+        Arguments.of(true, false, "gtk-theme: 'Adwaita-dark'", 0, null),
+        Arguments.of(false, true, "gtk-theme: 'Adwaita'", 0, null));
   }
 
   private static Object newDetectorThread(GnomeThemeDetector detector) throws Exception {
@@ -431,7 +467,6 @@ class GnomeThemeDetectorTest {
     public void destroy() {
       destroyed.set(true);
       alive.set(false);
-      inputStream.close();
     }
 
     @Override
@@ -487,15 +522,22 @@ class GnomeThemeDetectorTest {
   }
 
   private static final class TrackingGnomeThemeDetector extends GnomeThemeDetector {
-    private final boolean dark;
+    private final AtomicBoolean darkGtkTheme = new AtomicBoolean();
+    private final AtomicBoolean darkColorScheme = new AtomicBoolean();
 
-    TrackingGnomeThemeDetector(boolean dark) {
-      this.dark = dark;
+    TrackingGnomeThemeDetector(boolean darkGtkTheme, boolean darkColorScheme) {
+      this.darkGtkTheme.set(darkGtkTheme);
+      this.darkColorScheme.set(darkColorScheme);
+    }
+
+    @Override
+    ThemeState readThemeState() {
+      return new ThemeState(darkGtkTheme.get(), darkColorScheme.get());
     }
 
     @Override
     public boolean isDark() {
-      return dark;
+      throw new AssertionError("DetectorThread should use cached theme state during monitoring");
     }
   }
 }
