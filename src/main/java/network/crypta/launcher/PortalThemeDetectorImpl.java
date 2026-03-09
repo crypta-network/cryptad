@@ -5,7 +5,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
@@ -60,11 +59,12 @@ public class PortalThemeDetectorImpl implements Closeable {
   private final OsThemeDetector fallbackDetector;
   private final Consumer<Boolean> fallbackThemeListener = this::handleFallbackThemeChanged;
   private final CopyOnWriteArraySet<Consumer<Boolean>> listeners = new CopyOnWriteArraySet<>();
-  private final AtomicBoolean signalRegistered = new AtomicBoolean(false);
-  private final AtomicBoolean fallbackRegistered = new AtomicBoolean(false);
-  private final AtomicReference<AutoCloseable> signalRegistration = new AtomicReference<>();
+  private final Object internalListenerLock = new Object();
   private final AtomicReference<PortalPreference> portalPreference =
       new AtomicReference<>(PortalPreference.UNSPECIFIED);
+  private boolean signalRegistered;
+  private boolean fallbackRegistered;
+  private AutoCloseable signalRegistration;
 
   /**
    * Creates a detector backed by a live XDG desktop portal connection.
@@ -150,15 +150,10 @@ public class PortalThemeDetectorImpl implements Closeable {
    */
   public void registerListener(Consumer<Boolean> darkThemeListener) {
     listeners.add(Objects.requireNonNull(darkThemeListener));
-    if (signalRegistered.compareAndSet(false, true)) {
-      try {
-        signalRegistration.set(signalRegistrar.register(this::handleSettingChanged));
-      } catch (DBusException e) {
-        signalRegistered.set(false);
-        logDebug("Failed to register portal theme listener; live updates disabled", e);
-      }
+    synchronized (internalListenerLock) {
+      ensureSignalRegisteredLocked();
+      syncFallbackListenerRegistrationLocked();
     }
-    syncFallbackListenerRegistration();
   }
 
   /**
@@ -175,8 +170,10 @@ public class PortalThemeDetectorImpl implements Closeable {
     if (darkThemeListener != null) {
       listeners.remove(darkThemeListener);
     }
-    if (listeners.isEmpty()) {
-      unregisterInternalListeners();
+    synchronized (internalListenerLock) {
+      if (listeners.isEmpty()) {
+        unregisterInternalListenersLocked();
+      }
     }
   }
 
@@ -355,25 +352,55 @@ public class PortalThemeDetectorImpl implements Closeable {
   }
 
   private void syncFallbackListenerRegistration() {
+    synchronized (internalListenerLock) {
+      syncFallbackListenerRegistrationLocked();
+    }
+  }
+
+  private void ensureSignalRegisteredLocked() {
+    if (signalRegistered) {
+      return;
+    }
+    try {
+      signalRegistration = signalRegistrar.register(this::handleSettingChanged);
+      signalRegistered = true;
+    } catch (DBusException e) {
+      signalRegistration = null;
+      signalRegistered = false;
+      logDebug("Failed to register portal theme listener; live updates disabled", e);
+    }
+  }
+
+  private void syncFallbackListenerRegistrationLocked() {
     boolean fallbackNeeded =
         !listeners.isEmpty() && portalPreference.get() == PortalPreference.UNSPECIFIED;
     if (fallbackNeeded) {
-      if (fallbackRegistered.compareAndSet(false, true)) {
+      if (!fallbackRegistered) {
         fallbackDetector.registerListener(fallbackThemeListener);
+        fallbackRegistered = true;
       }
       return;
     }
-    if (fallbackRegistered.compareAndSet(true, false)) {
+    if (fallbackRegistered) {
       fallbackDetector.removeListener(fallbackThemeListener);
+      fallbackRegistered = false;
     }
   }
 
   private void unregisterInternalListeners() {
-    if (fallbackRegistered.compareAndSet(true, false)) {
-      fallbackDetector.removeListener(fallbackThemeListener);
+    synchronized (internalListenerLock) {
+      unregisterInternalListenersLocked();
     }
-    signalRegistered.set(false);
-    AutoCloseable registration = signalRegistration.getAndSet(null);
+  }
+
+  private void unregisterInternalListenersLocked() {
+    if (fallbackRegistered) {
+      fallbackDetector.removeListener(fallbackThemeListener);
+      fallbackRegistered = false;
+    }
+    signalRegistered = false;
+    AutoCloseable registration = signalRegistration;
+    signalRegistration = null;
     if (registration != null) {
       try {
         registration.close();

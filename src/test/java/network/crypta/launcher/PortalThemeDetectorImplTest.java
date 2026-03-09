@@ -4,6 +4,12 @@ import com.jthemedetecor.OsThemeDetector;
 import java.io.Closeable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -38,6 +44,7 @@ class PortalThemeDetectorImplTest {
   private static final String APPEARANCE = "org.freedesktop.appearance";
   private static final String COLOR_SCHEME = "color-scheme";
   private static final String DESKTOP_PATH = "/org/freedesktop/portal/desktop";
+  private static final long ASYNC_TIMEOUT_SECONDS = 5L;
 
   @ParameterizedTest
   @MethodSource("explicitColorSchemeValues")
@@ -236,6 +243,43 @@ class PortalThemeDetectorImplTest {
   }
 
   @Test
+  void registerListener_whenLastListenerRemovedDuringSignalRegistration_expectRegistrationClosed()
+      throws Exception {
+    PortalSettings settings = mock(PortalSettings.class);
+    OsThemeDetector fallbackDetector = mock(OsThemeDetector.class);
+    doReturn(new Variant<Object>(new UInt32(1))).when(settings).readOne(APPEARANCE, COLOR_SCHEME);
+
+    CountDownLatch registrationStarted = new CountDownLatch(1);
+    CountDownLatch allowRegistrationFinish = new CountDownLatch(1);
+    AutoCloseable signalRegistration = mock(AutoCloseable.class);
+    Consumer<Boolean> listener = mock(Consumer.class);
+
+    PortalThemeDetectorImpl detector =
+        new PortalThemeDetectorImpl(
+            settings,
+            _ -> {
+              registrationStarted.countDown();
+              awaitLatchUninterruptibly(allowRegistrationFinish);
+              return signalRegistration;
+            },
+            mock(Closeable.class),
+            fallbackDetector);
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<?> registerFuture = executor.submit(() -> detector.registerListener(listener));
+      awaitLatch(registrationStarted);
+      Future<?> removeFuture = executor.submit(() -> detector.removeListener(listener));
+
+      allowRegistrationFinish.countDown();
+      awaitFuture(registerFuture);
+      awaitFuture(removeFuture);
+    }
+
+    verify(signalRegistration).close();
+    verifyNoInteractions(fallbackDetector);
+  }
+
+  @Test
   void
       registerListener_whenFallbackDetectorChangesAndPortalHasNoPreference_expectListenersNotified() {
     PortalSettings settings = mock(PortalSettings.class);
@@ -266,6 +310,54 @@ class PortalThemeDetectorImplTest {
     fallbackListener.get().accept(true);
 
     verify(activeListener).accept(true);
+  }
+
+  @Test
+  void registerListener_whenLastListenerRemovedDuringFallbackRegistration_expectFallbackRemoved()
+      throws Exception {
+    PortalSettings settings = mock(PortalSettings.class);
+    doReturn(new Variant<Object>(0)).when(settings).readOne(APPEARANCE, COLOR_SCHEME);
+    OsThemeDetector fallbackDetector = mock(OsThemeDetector.class);
+    CountDownLatch registrationStarted = new CountDownLatch(1);
+    CountDownLatch allowRegistrationFinish = new CountDownLatch(1);
+    AtomicBoolean listenerRegistered = new AtomicBoolean(false);
+    Consumer<Boolean> listener = mock(Consumer.class);
+
+    doAnswer(
+            _ -> {
+              registrationStarted.countDown();
+              awaitLatchUninterruptibly(allowRegistrationFinish);
+              listenerRegistered.set(true);
+              return null;
+            })
+        .when(fallbackDetector)
+        .registerListener(any());
+    doAnswer(
+            _ -> {
+              listenerRegistered.set(false);
+              return null;
+            })
+        .when(fallbackDetector)
+        .removeListener(any());
+
+    PortalThemeDetectorImpl detector =
+        new PortalThemeDetectorImpl(
+            settings,
+            ignored -> mock(AutoCloseable.class),
+            mock(Closeable.class),
+            fallbackDetector);
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<?> registerFuture = executor.submit(() -> detector.registerListener(listener));
+      awaitLatch(registrationStarted);
+      Future<?> removeFuture = executor.submit(() -> detector.removeListener(listener));
+
+      allowRegistrationFinish.countDown();
+      awaitFuture(registerFuture);
+      awaitFuture(removeFuture);
+    }
+
+    assertFalse(listenerRegistered.get());
   }
 
   @Test
@@ -344,6 +436,7 @@ class PortalThemeDetectorImplTest {
         .getRemoteObject("org.freedesktop.portal.Desktop", DESKTOP_PATH, PortalSettings.class);
     doReturn(new Variant<Object>(new UInt32(1))).when(settings).readOne(APPEARANCE, COLOR_SCHEME);
 
+    //noinspection resource
     assertThrows(
         IllegalStateException.class,
         () ->
@@ -448,5 +541,22 @@ class PortalThemeDetectorImplTest {
         Arguments.of(new Variant<Object>("1"), true),
         Arguments.of(new Variant<Object>(new Variant<Object>("1")), true),
         Arguments.of(new Variant<Object>(new UInt32(2)), false));
+  }
+
+  private static void awaitFuture(Future<?> future) throws Exception {
+    future.get(ASYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+  }
+
+  private static void awaitLatch(CountDownLatch latch) throws InterruptedException {
+    assertTrue(latch.await(ASYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+  }
+
+  private static void awaitLatchUninterruptibly(CountDownLatch latch) {
+    try {
+      awaitLatch(latch);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(e);
+    }
   }
 }
