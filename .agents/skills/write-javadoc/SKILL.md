@@ -7,6 +7,14 @@ description: |
 
 # Doclint-clean Javadoc for one file (long-form for large files)
 
+## Repository-specific coordination
+
+When using this skill in Cryptad, also load `../cryptad-writing-guides/SKILL.md` and read
+`../cryptad-writing-guides/references/writing-guide.md` before editing documentation.
+
+Use the Cryptad writing guidance to keep Javadoc concrete, operator-aware, and aligned with
+repo terminology.
+
 ## How to invoke (provide the “input” in your message)
 Skills don’t take positional/structured parameters. When you invoke this skill, include the target file path.
 

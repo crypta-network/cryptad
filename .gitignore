@@ -53,8 +53,8 @@ out/jreleaser
 build-logic/build/
 build-logic/bin/
 tmp*
-/changelogfull.md
-/changelogfull.txt
+/changelog*.md
+/changelog*.txt
 
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
