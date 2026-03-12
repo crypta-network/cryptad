@@ -533,8 +533,10 @@ public final class SimpleToadletServer
     // installation.
 
     configItemOrder = registerConnectionOptions(fproxyConfig, configItemOrder);
-    allowedFullAccess = new AllowedHosts(fproxyConfig.getString("allowedHostsFullAccess"));
     configItemOrder = registerAccessOptions(fproxyConfig, configItemOrder);
+    // Read only after registration so persistent values are visible instead of missing-option
+    // fallback.
+    allowedFullAccess = new AllowedHosts(fproxyConfig.getString("allowedHostsFullAccess"));
 
     configItemOrder = registerFilterAndLimitOptions(fproxyConfig, configItemOrder);
 

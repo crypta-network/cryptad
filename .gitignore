@@ -53,6 +53,9 @@ out/jreleaser
 build-logic/build/
 build-logic/bin/
 tmp*
+/changelog*.md
+/changelog*.txt
+
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
 /.vscode

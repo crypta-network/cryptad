@@ -1,5 +1,5 @@
 plugins {
-  // Apply Gradle 9 convention plugins from included build
+  // Apply Gradle 9 convention plugins from the included build
   id("cryptad.java-kotlin-conventions")
   id("cryptad.spotless")
   id("cryptad.versioning")
@@ -29,12 +29,9 @@ dependencies {
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
-  implementation(libs.jsystemThemeDetector)
-  constraints {
-    implementation("com.github.oshi:oshi-core:6.9.3") {
-      because("Use newer OSHI for modern macOS version handling in theme detection")
-    }
-  }
+  implementation(libs.oshiCore)
+  implementation(libs.versionCompare)
+  implementation(libs.jfa) { exclude(group = "net.java.dev.jna", module = "jna") }
   // Flatpak/Portal detection via D-Bus
   implementation(libs.dbusCore)
   // CLI parsing and UX
@@ -44,7 +41,7 @@ dependencies {
   // Compile-time access to Logback classes for runtime reconfiguration
   compileOnly(libs.logbackClassic)
   // Java source annotations used across the codebase
-  compileOnly("org.jetbrains:annotations:23.0.0")
+  compileOnly(libs.jetbrainsAnnotations)
 
   // runtimeOnly
   runtimeOnly(libs.dbusTransportNativeUnix)
@@ -63,7 +60,7 @@ dependencies {
   testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
-  testCompileOnly("org.jetbrains:annotations:23.0.0")
+  testCompileOnly(libs.jetbrainsAnnotations)
 
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
@@ -76,6 +73,10 @@ tasks.register("printVersion") {
   description = "Prints the project version"
   doLast { println(project.version.toString()) }
 }
+
+// The default from build-logic (512m) is too small for the full test suite on Windows and can
+// trigger OOM in long-running integration tests.
+tasks.withType<Test>().configureEach { maxHeapSize = "2g" }
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the launcher main class directly.

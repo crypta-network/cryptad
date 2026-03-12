@@ -301,7 +301,7 @@ final class PeerNodeHandshakeLifecycle {
       peerNode.previousTracker = null;
       peerNode.currentTracker = null;
       result.messagesTellDisconnected = peerNode.grabQueuedMessageItems();
-      peerNode.offeredMainJarVersion = 0;
+      peerNode.offeredCorePackageVersion = 0;
       result.oldPacketFormat = runtime.packetFormat();
       runtime.clearPacketFormat();
     }

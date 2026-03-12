@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -281,5 +282,20 @@ class RequestTrackerTest {
 
     // Assert: cardinality matches alternative counter
     assertEquals(tracker.getTotalRunningUIDsAlt(), ids.size());
+  }
+
+  @Test
+  void findTagByUid_whenTagExists_expectTagReturned() {
+    RequestTag tag = new RequestTag(false, START.LOCAL, null, false, 8_001L, node);
+    assertTrue(tracker.lockUID(tag));
+
+    UIDTag found = tracker.findTagByUid(8_001L);
+
+    assertSame(tag, found);
+  }
+
+  @Test
+  void findTagByUid_whenMissing_expectNull() {
+    assertNull(tracker.findTagByUid(9_001L));
   }
 }

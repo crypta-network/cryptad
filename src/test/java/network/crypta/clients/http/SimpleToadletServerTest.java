@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.net.InetAddress;
 import java.net.URI;
 import network.crypta.config.Config;
+import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
@@ -10,6 +11,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucketFactory;
 import org.junit.jupiter.api.Test;
@@ -132,6 +134,42 @@ class SimpleToadletServerTest {
 
     assertTrue(server.isAllowedFullAccess(InetAddress.getLoopbackAddress()));
     assertFalse(server.isAllowedFullAccess(InetAddress.getByName("8.8.8.8")));
+  }
+
+  @Test
+  void allowedHostsFullAccess_whenLoadedFromPersistentConfig_expectConfiguredValueRetained()
+      throws Exception {
+    // Arrange
+    String configuredHost = "192.0.2.44";
+    SimpleFieldSet initial = new SimpleFieldSet(true);
+    initial.putSingle("fproxy.allowedHostsFullAccess", configuredHost);
+    PersistentConfig rootConfig = new PersistentConfig(initial);
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    BucketFactory bucketFactory = mock(BucketFactory.class);
+    PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
+
+    SimpleToadletServer server;
+    try (MockedStatic<NetworkInterface> netMock = mockStatic(NetworkInterface.class);
+        MockedStatic<SSLNetworkInterface> sslMock = mockStatic(SSLNetworkInterface.class)) {
+      NetworkInterface iface = mock(NetworkInterface.class);
+      netMock
+          .when(() -> NetworkInterface.create(anyInt(), any(), any(), any(), anyBoolean()))
+          .thenReturn(iface);
+      sslMock
+          .when(() -> SSLNetworkInterface.createSsl(anyInt(), any(), any(), any(), anyBoolean()))
+          .thenReturn(iface);
+      server = new SimpleToadletServer(config, bucketFactory, executor, node);
+    }
+
+    // Act
+    config.finishedInitialization();
+    String callbackValue = config.getString("allowedHostsFullAccess");
+
+    // Assert
+    assertEquals(configuredHost, callbackValue);
+    assertTrue(server.isAllowedFullAccess(InetAddress.getByName(configuredHost)));
+    assertFalse(server.isAllowedFullAccess(InetAddress.getLoopbackAddress()));
   }
 
   @SuppressWarnings({"resource", "MustBeClosedChecker"})

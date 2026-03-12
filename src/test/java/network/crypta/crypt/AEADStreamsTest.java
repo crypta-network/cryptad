@@ -9,7 +9,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import network.crypta.testsupport.NoCloseProxyOutputStream;
+import network.crypta.support.io.NonClosingOutputStream;
 import org.junit.jupiter.api.Test;
 
 import static network.crypta.testsupport.TestRandomData.fillBucketWithRandom;
@@ -167,7 +167,7 @@ class AEADStreamsTest {
     try (ArrayBucket output = new ArrayBucket()) {
       try (OutputStream os = output.getOutputStream()) {
         try (AEADOutputStream cos =
-            AEADOutputStream.innerCreateAES(new NoCloseProxyOutputStream(os), key, random)) {
+            AEADOutputStream.innerCreateAES(new NonClosingOutputStream(os), key, random)) {
           BucketTools.copyTo(input, cos, -1);
         }
         // Now write garbage.

@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel.MapMode;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -78,7 +77,7 @@ public final class BinaryBloomFilter extends BloomFilter {
     try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
         FileChannel channel = raf.getChannel()) {
       raf.setLength(length / 8);
-      filter = channel.map(MapMode.READ_WRITE, 0, length / 8).load();
+      filter = mapReadWriteBuffer(channel, length / 8L);
     }
   }
 

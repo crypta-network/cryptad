@@ -238,26 +238,28 @@ class NodeClientCoreTransfersTest {
   void realPut_whenChkBlock_expectDelegatesToRealPutChk() throws Exception {
     NodeClientCoreTransfers spy = spy(transfers);
     CHKBlock block = mock(CHKBlock.class);
-    doNothing().when(spy).realPutCHK(block, true, false, true, false, true);
+    doNothing().when(spy).realPutCHK(block, true, false, true, false, true, null);
 
     spy.realPut(block, true, false, true, false, true);
 
-    verify(spy).realPutCHK(block, true, false, true, false, true);
+    verify(spy).realPutCHK(block, true, false, true, false, true, null);
     verify(spy, never())
-        .realPutSSK(any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+        .realPutSSK(
+            any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
   }
 
   @Test
   void realPut_whenSskBlock_expectDelegatesToRealPutSsk() throws Exception {
     NodeClientCoreTransfers spy = spy(transfers);
     SSKBlock block = mock(SSKBlock.class);
-    doNothing().when(spy).realPutSSK(block, true, false, false, false, false);
+    doNothing().when(spy).realPutSSK(block, true, false, false, false, false, null);
 
     spy.realPut(block, true, false, false, false, false);
 
-    verify(spy).realPutSSK(block, true, false, false, false, false);
+    verify(spy).realPutSSK(block, true, false, false, false, false, null);
     verify(spy, never())
-        .realPutCHK(any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+        .realPutCHK(
+            any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
   }
 
   @Test

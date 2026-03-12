@@ -23,6 +23,9 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
+- **$cryptad-runtime-debugging** — Debug live or reproducible Cryptad JVM failures on Windows, macOS, and Linux using `jcmd`, `jdb`, thread dumps, and the default JDWP listener on `127.0.0.1:5005`.
+- **$cryptad-write-release-notes** — Draft or review GitHub release notes and changelog artifacts for Cryptad builds, including `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
+- **$cryptad-writing-guides** — Apply Cryptad prose conventions for README/docs content, release notes, migration notes, and other operator-facing writing.
 - **$cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
 - **$codebase-retrieval** — Use semantic codebase retrieval to identify 1–5 target files before significant reading or edits when the file scope is unclear.
 - **$web-search** — Use both Exa and Tavily for external/current web research, then cross-check sources before answering.
@@ -48,10 +51,13 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
+- **Runtime debugging:** For live deadlocks, hangs, blocked threads, stalled requests, or JDWP debugging with `jcmd` / `jdb`, load `$cryptad-runtime-debugging`.
 - **Branch workflow questions:** For branch model/merge/tag/version policy questions, load `$cryptad-git-workflow`.
 - **Starting feature/bugfix work:** Before creating a new `feature/*` or `bugfix/*` branch, load `$cryptad-start-work-branch`.
 - **Release operations:** For `release/<build-number>` branch creation/stabilization, version bumping, tagging, and merge-back flow, load `$cryptad-release-workflow`.
+- **Release notes/changelog:** For GitHub Releases or changelog artifact work, load `$cryptad-write-release-notes` and `$cryptad-writing-guides`.
 - **Hotfix operations:** For urgent production fixes via `hotfix/<build-number>`, including tags and back-merges, load `$cryptad-hotfix-workflow`.
+- **Prose/Javadoc writing:** For README/docs/release-note writing, and when using the generic `write-javadoc` skill in this repo, also load `$cryptad-writing-guides`.
 - **Web research:** For the latest/current external information or multi-source fact checks, load `$web-search`.
 
 ## Quick commands (high-level)

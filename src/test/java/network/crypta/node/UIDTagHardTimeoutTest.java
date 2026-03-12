@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -29,7 +30,7 @@ class UIDTagHardTimeoutTest {
   }
 
   @Test
-  void hardTimeout_whenTimedOutContinueAndHandlerUnlocked_triggersFatalTimeoutOnce() {
+  void hardTimeout_whenTimedOutContinueAndHandlerUnlocked_retriesFatalTimeoutOnLaterChecks() {
     TestUIDTag tag = new TestUIDTag(node, UID);
     PeerNode peer = mock(PeerNode.class);
 
@@ -43,7 +44,7 @@ class UIDTagHardTimeoutTest {
     verify(peer, times(1)).fatalTimeout(tag, false);
 
     tag.maybeLogStillPresent(now + RequestTracker.TIMEOUT, UID);
-    verify(peer, times(1)).fatalTimeout(tag, false);
+    verify(peer, times(2)).fatalTimeout(tag, false);
   }
 
   @Test
@@ -59,6 +60,26 @@ class UIDTagHardTimeoutTest {
     tag.maybeLogStillPresent(now, UID);
 
     verify(peer, never()).fatalTimeout(tag, false);
+  }
+
+  @Test
+  void hardTimeout_whenOnePeerThrows_stillForcesOtherPeers() {
+    TestUIDTag tag = new TestUIDTag(node, UID);
+    PeerNode failingPeer = mock(PeerNode.class);
+    PeerNode healthyPeer = mock(PeerNode.class);
+
+    tag.addRoutedTo(failingPeer, /* offeredKey= */ false);
+    tag.addRoutedTo(healthyPeer, /* offeredKey= */ false);
+    tag.timedOutToHandlerButContinued();
+    tag.unlockHandler();
+
+    doThrow(new RuntimeException("boom")).when(failingPeer).fatalTimeout(tag, false);
+
+    long now = System.currentTimeMillis() + RequestTracker.TIMEOUT + 1_000;
+    tag.maybeLogStillPresent(now, UID);
+
+    verify(failingPeer, times(1)).fatalTimeout(tag, false);
+    verify(healthyPeer, times(1)).fatalTimeout(tag, false);
   }
 
   private static final class TestUIDTag extends UIDTag {

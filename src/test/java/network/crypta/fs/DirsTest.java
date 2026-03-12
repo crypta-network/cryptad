@@ -1,11 +1,14 @@
 package network.crypta.fs;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
@@ -55,6 +58,48 @@ class DirsTest {
 
     // Act
     assertDoesNotThrow(() -> Dirs.ensureDir(target, "invalid"));
+
+    // Assert
+    assertTrue(Files.isDirectory(target));
+  }
+
+  @Test
+  void ensureDir_whenSettingPermissionsThrowsIOException_expectNoException() {
+    // Arrange
+    Path target = tempDir.resolve("io-permissions-error");
+
+    // Act
+    try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
+      files
+          .when(
+              () ->
+                  Files.setPosixFilePermissions(
+                      Mockito.eq(target), Mockito.<Set<PosixFilePermission>>any()))
+          .thenThrow(new IOException("Mount point not found"));
+
+      assertDoesNotThrow(() -> Dirs.ensureDir(target, Dirs.PERM_GROUP_RX));
+    }
+
+    // Assert
+    assertTrue(Files.isDirectory(target));
+  }
+
+  @Test
+  void ensureDir_whenPosixUnsupported_expectNoException() {
+    // Arrange
+    Path target = tempDir.resolve("unsupported-posix");
+
+    // Act
+    try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
+      files
+          .when(
+              () ->
+                  Files.setPosixFilePermissions(
+                      Mockito.eq(target), Mockito.<Set<PosixFilePermission>>any()))
+          .thenThrow(new UnsupportedOperationException("posix unsupported"));
+
+      assertDoesNotThrow(() -> Dirs.ensureDir(target, Dirs.PERM_GROUP_RX));
+    }
 
     // Assert
     assertTrue(Files.isDirectory(target));

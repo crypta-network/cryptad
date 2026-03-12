@@ -99,16 +99,17 @@ public class DMT {
   public static final String PEER_LOCATIONS = "peerLocations";
   public static final String PEER_UIDS = "peerUIDs";
   public static final String BEST_LOCATIONS_NOT_VISITED = "bestLocationsNotVisited";
-  public static final String MAIN_JAR_KEY = "mainJarKey";
+  public static final String CORE_PACKAGE_KEY = "mainJarKey";
   public static final String EXTRA_JAR_KEY = "extraJarKey";
   public static final String REVOCATION_KEY = "revocationKey";
   public static final String HAVE_REVOCATION_KEY = "haveRevocationKey";
-  public static final String MAIN_JAR_VERSION = "mainJarVersion";
+  // Wire field name intentionally preserved for protocol compatibility.
+  public static final String CORE_PACKAGE_VERSION = "mainJarVersion";
   public static final String EXTRA_JAR_VERSION = "extJarVersion";
   public static final String REVOCATION_KEY_TIME_LAST_TRIED = "revocationKeyTimeLastTried";
   public static final String REVOCATION_KEY_DNF_COUNT = "revocationKeyDNFCount";
   public static final String REVOCATION_KEY_FILE_LENGTH = "revocationKeyFileLength";
-  public static final String MAIN_JAR_FILE_LENGTH = "mainJarFileLength";
+  public static final String CORE_PACKAGE_FILE_LENGTH = "mainJarFileLength";
   public static final String EXTRA_JAR_FILE_LENGTH = "extraJarFileLength";
   public static final String PING_TIME = "pingTime";
   public static final String BWLIMIT_DELAY_TIME = "bwlimitDelayTime";
@@ -2365,36 +2366,36 @@ public class DMT {
       new MessageType("CryptadUOMAnnouncement", PRIORITY_LOW);
 
   static {
-    CryptadUOMAnnouncement.addField(MAIN_JAR_KEY, String.class);
+    CryptadUOMAnnouncement.addField(CORE_PACKAGE_KEY, String.class);
     CryptadUOMAnnouncement.addField(REVOCATION_KEY, String.class);
     CryptadUOMAnnouncement.addField(HAVE_REVOCATION_KEY, Boolean.class);
-    CryptadUOMAnnouncement.addField(MAIN_JAR_VERSION, Integer.class);
+    CryptadUOMAnnouncement.addField(CORE_PACKAGE_VERSION, Integer.class);
     // Last time (ms ago) we had 3 DNFs in a row on the revocation checker.
     CryptadUOMAnnouncement.addField(REVOCATION_KEY_TIME_LAST_TRIED, Long.class);
     // Number of DNFs so far this time.
     CryptadUOMAnnouncement.addField(REVOCATION_KEY_DNF_COUNT, Integer.class);
     // For convenience, may change
     CryptadUOMAnnouncement.addField(REVOCATION_KEY_FILE_LENGTH, Long.class);
-    CryptadUOMAnnouncement.addField(MAIN_JAR_FILE_LENGTH, Long.class);
+    CryptadUOMAnnouncement.addField(CORE_PACKAGE_FILE_LENGTH, Long.class);
     CryptadUOMAnnouncement.addField(PING_TIME, Integer.class);
     CryptadUOMAnnouncement.addField(BWLIMIT_DELAY_TIME, Integer.class);
   }
 
   /** Fluent builder for {@link #CryptadUOMAnnouncement} messages. */
   public static final class UOMAnnouncementBuilder {
-    private String mainKey;
+    private String corePackageKey;
     private String revocationKey;
     private boolean haveRevocation;
-    private int mainJarVersion;
+    private int corePackageVersion;
     private long timeLastTriedRevocationFetch;
     private int revocationDNFCount;
     private long revocationKeyLength;
-    private long mainJarLength;
+    private long corePackageLength;
     private int pingTime;
     private int bwlimitDelayTime;
 
-    public UOMAnnouncementBuilder mainKey(String v) {
-      this.mainKey = v;
+    public UOMAnnouncementBuilder corePackageKey(String v) {
+      this.corePackageKey = v;
       return this;
     }
 
@@ -2408,8 +2409,8 @@ public class DMT {
       return this;
     }
 
-    public UOMAnnouncementBuilder mainJarVersion(int v) {
-      this.mainJarVersion = v;
+    public UOMAnnouncementBuilder corePackageVersion(int v) {
+      this.corePackageVersion = v;
       return this;
     }
 
@@ -2428,8 +2429,8 @@ public class DMT {
       return this;
     }
 
-    public UOMAnnouncementBuilder mainJarLength(long v) {
-      this.mainJarLength = v;
+    public UOMAnnouncementBuilder corePackageLength(long v) {
+      this.corePackageLength = v;
       return this;
     }
 
@@ -2445,14 +2446,14 @@ public class DMT {
 
     public Message build() {
       Message msg = new Message(CryptadUOMAnnouncement);
-      msg.set(MAIN_JAR_KEY, mainKey);
+      msg.set(CORE_PACKAGE_KEY, corePackageKey);
       msg.set(REVOCATION_KEY, revocationKey);
       msg.set(HAVE_REVOCATION_KEY, haveRevocation);
-      msg.set(MAIN_JAR_VERSION, mainJarVersion);
+      msg.set(CORE_PACKAGE_VERSION, corePackageVersion);
       msg.set(REVOCATION_KEY_TIME_LAST_TRIED, timeLastTriedRevocationFetch);
       msg.set(REVOCATION_KEY_DNF_COUNT, revocationDNFCount);
       msg.set(REVOCATION_KEY_FILE_LENGTH, revocationKeyLength);
-      msg.set(MAIN_JAR_FILE_LENGTH, mainJarLength);
+      msg.set(CORE_PACKAGE_FILE_LENGTH, corePackageLength);
       msg.set(PING_TIME, pingTime);
       msg.set(BWLIMIT_DELAY_TIME, bwlimitDelayTime);
       return msg;
@@ -2480,22 +2481,22 @@ public class DMT {
   }
 
   // Used by new UOM.
-  /** Requests the main JAR referenced in the announcement. */
-  public static final MessageType CryptadUOMRequestMainJar =
+  /** Requests the core package referenced in the announcement. */
+  public static final MessageType CryptadUOMRequestCorePackage =
       new MessageType("CryptadUOMRequestMainJar", PRIORITY_LOW);
 
   static {
-    CryptadUOMRequestMainJar.addField(UID, Long.class);
+    CryptadUOMRequestCorePackage.addField(UID, Long.class);
   }
 
   /**
-   * Creates a {@code CryptadUOMRequestMainJar} using {@code uid} as the transfer identifier.
+   * Creates a {@code CryptadUOMRequestCorePackage} using {@code uid} as the transfer identifier.
    *
    * @param uid Transfer identifier.
    * @return Initialized message.
    */
-  public static Message createUOMRequestMainJar(long uid) {
-    Message msg = new Message(CryptadUOMRequestMainJar);
+  public static Message createUOMRequestCorePackage(long uid) {
+    Message msg = new Message(CryptadUOMRequestCorePackage);
     msg.set(UID, uid);
     return msg;
   }
@@ -2529,32 +2530,33 @@ public class DMT {
   }
 
   // Used by new UOM. We need to distinguish them in NodeDispatcher.
-  /** Announces that the main JAR will be sent, with length, key, and version. */
-  public static final MessageType CryptadUOMSendingMainJar =
+  /** Announces that the core package will be sent, with length, key, and version. */
+  public static final MessageType CryptadUOMSendingCorePackage =
       new MessageType("CryptadUOMSendingMainJar", PRIORITY_LOW);
 
   static {
-    CryptadUOMSendingMainJar.addField(UID, Long.class);
-    CryptadUOMSendingMainJar.addField(FILE_LENGTH, Long.class);
-    CryptadUOMSendingMainJar.addField(MAIN_JAR_KEY, String.class);
-    CryptadUOMSendingMainJar.addField(MAIN_JAR_VERSION, Integer.class);
+    CryptadUOMSendingCorePackage.addField(UID, Long.class);
+    CryptadUOMSendingCorePackage.addField(FILE_LENGTH, Long.class);
+    CryptadUOMSendingCorePackage.addField(CORE_PACKAGE_KEY, String.class);
+    CryptadUOMSendingCorePackage.addField(CORE_PACKAGE_VERSION, Integer.class);
   }
 
   /**
-   * Creates a {@code CryptadUOMSendingMainJar}.
+   * Creates a {@code CryptadUOMSendingCorePackage}.
    *
    * @param uid Transfer identifier.
    * @param length File length in bytes.
-   * @param key Key (URI string) for the main JAR.
+   * @param key Key (URI string) for the core package.
    * @param version Build version.
    * @return Initialized message.
    */
-  public static Message createUOMSendingMainJar(long uid, long length, String key, int version) {
-    Message msg = new Message(CryptadUOMSendingMainJar);
+  public static Message createUOMSendingCorePackage(
+      long uid, long length, String key, int version) {
+    Message msg = new Message(CryptadUOMSendingCorePackage);
     msg.set(UID, uid);
     msg.set(FILE_LENGTH, length);
-    msg.set(MAIN_JAR_KEY, key);
-    msg.set(MAIN_JAR_VERSION, version);
+    msg.set(CORE_PACKAGE_KEY, key);
+    msg.set(CORE_PACKAGE_VERSION, version);
     return msg;
   }
 

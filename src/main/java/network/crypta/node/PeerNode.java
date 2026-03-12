@@ -3773,7 +3773,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     synchronized (this) {
       uomCount = 0;
       lastSentUOM = -1;
-      sendingUOMMainJar = false;
+      sendingUOMCorePackage = false;
       sendingUOMLegacyExtJar = false;
     }
     internals.notifyOpennetOnConnect(node, selfPeerNode());
@@ -4609,17 +4609,18 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     return countSelectionsSinceConnected.get() / (double) timeSinceConnected;
   }
 
-  volatile int offeredMainJarVersion;
+  volatile int offeredCorePackageVersion;
 
   /**
    * Records the main JAR version most recently offered by this peer.
    *
    * <p>This is used by the update subsystem to track advertised core versions.
    *
-   * @param mainJarVersion offered the main JAR version number
+   * @param corePackageVersion offered the main JAR version number
    */
-  public void setMainJarOfferedVersion(int mainJarVersion) {
-    offeredMainJarVersion = mainJarVersion;
+  @SuppressWarnings("unused")
+  public void setCorePackageOfferedVersion(int corePackageVersion) {
+    offeredCorePackageVersion = corePackageVersion;
   }
 
   /**
@@ -4629,8 +4630,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * @return offered the main JAR version number
    */
-  public int getMainJarOfferedVersion() {
-    return offeredMainJarVersion;
+  @SuppressWarnings("unused")
+  public int getCorePackageOfferedVersion() {
+    return offeredCorePackageVersion;
   }
 
   /**
@@ -4962,7 +4964,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /** Whether we are sending the main jar to this peer */
-  protected boolean sendingUOMMainJar;
+  protected boolean sendingUOMCorePackage;
 
   /** Whether we are sending the ext jar (legacy) to this peer */
   protected boolean sendingUOMLegacyExtJar;
@@ -4985,13 +4987,14 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @param isExt whether the legacy external jar is being sent
    * @return {@code true} unless it was already sending; otherwise {@code false}
    */
+  @SuppressWarnings("unused")
   public synchronized boolean sendingUOMJar(boolean isExt) {
     if (isExt) {
       if (sendingUOMLegacyExtJar) return false;
       sendingUOMLegacyExtJar = true;
     } else {
-      if (sendingUOMMainJar) return false;
-      sendingUOMMainJar = true;
+      if (sendingUOMCorePackage) return false;
+      sendingUOMCorePackage = true;
     }
     return true;
   }
@@ -5004,9 +5007,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public synchronized void finishedSendingUOMJar(boolean isExt) {
     if (isExt) {
       sendingUOMLegacyExtJar = false;
-      if (!(sendingUOMMainJar || uomCount > 0)) lastSentUOM = System.currentTimeMillis();
+      if (!(sendingUOMCorePackage || uomCount > 0)) lastSentUOM = System.currentTimeMillis();
     } else {
-      sendingUOMMainJar = false;
+      sendingUOMCorePackage = false;
       if (!(sendingUOMLegacyExtJar || uomCount > 0)) lastSentUOM = System.currentTimeMillis();
     }
   }
@@ -5020,7 +5023,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return elapsed time in milliseconds since the last completed UOM transfer
    */
   protected synchronized long timeSinceSentUOM() {
-    if (sendingUOMMainJar || sendingUOMLegacyExtJar) return 0;
+    if (sendingUOMCorePackage || sendingUOMLegacyExtJar) return 0;
     if (uomCount > 0) return 0;
     if (lastSentUOM <= 0) return Long.MAX_VALUE;
     return System.currentTimeMillis() - lastSentUOM;
@@ -5031,6 +5034,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>This should be called when a UOM transfer begins.
    */
+  @SuppressWarnings("unused")
   public synchronized void incrementUOMSends() {
     uomCount++;
   }
@@ -5041,9 +5045,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * <p>When the count reaches zero and no UOM jar is being sent, the last-sent timestamp is
    * updated.
    */
+  @SuppressWarnings("unused")
   public synchronized void decrementUOMSends() {
     uomCount--;
-    if (uomCount == 0 && !sendingUOMMainJar && !sendingUOMLegacyExtJar)
+    if (uomCount == 0 && !sendingUOMCorePackage && !sendingUOMLegacyExtJar)
       lastSentUOM = System.currentTimeMillis();
   }
 

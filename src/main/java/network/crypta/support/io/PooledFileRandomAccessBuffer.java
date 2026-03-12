@@ -212,11 +212,8 @@ public final class PooledFileRandomAccessBuffer
       }
       this.length = currentLength;
       lock.unlock();
-    } catch (IOException e) {
-      synchronized (this) {
-        raf.close();
-        raf = null;
-      }
+    } catch (IOException | RuntimeException e) {
+      cleanupAfterConstructorFailure(lock, e);
       throw e;
     }
   }
@@ -241,12 +238,41 @@ public final class PooledFileRandomAccessBuffer
     try {
       raf.write(initialContents, offset, size);
       lock.unlock();
-    } catch (IOException e) {
-      synchronized (this) {
-        raf.close();
-        raf = null;
-      }
+    } catch (IOException | RuntimeException e) {
+      cleanupAfterConstructorFailure(lock, e);
       throw e;
+    }
+  }
+
+  /**
+   * Best-effort rollback for constructor failures.
+   *
+   * <p>When construction fails after acquiring a pool lock, the partially initialized instance can
+   * otherwise leak an open descriptor and lock state. This helper tries to unlock and close through
+   * the normal lifecycle; if that fails, it force-closes the underlying RAF state while preserving
+   * the original exception.
+   */
+  private void cleanupAfterConstructorFailure(RAFLock lock, Throwable failure) {
+    try {
+      lock.unlock();
+    } catch (RuntimeException unlockFailure) {
+      failure.addSuppressed(unlockFailure);
+    }
+
+    try {
+      close();
+      return;
+    } catch (RuntimeException closeFailure) {
+      failure.addSuppressed(closeFailure);
+    }
+
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
+      lockLevel = 0;
+      closed = true;
+      fds.closables.remove(this);
+      closeRAF();
+      monitor.notifyAll();
     }
   }
 

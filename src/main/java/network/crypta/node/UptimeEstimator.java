@@ -106,6 +106,10 @@ public class UptimeEstimator implements Runnable {
   }
 
   private void readData(File file, int base) {
+    if (!file.exists()) {
+      LOG.debug("Uptime history file not found at startup: {}", file);
+      return;
+    }
     try (FileInputStream fis = new FileInputStream(file);
         DataInputStream dis = new DataInputStream(fis)) {
       while (true) {
@@ -127,7 +131,9 @@ public class UptimeEstimator implements Runnable {
         }
       }
     } catch (EOFException _) {
-      // Reached end of file; no more samples to load.
+      // Reached the end of the file; no more samples to load.
+    } catch (FileNotFoundException _) {
+      LOG.debug("Uptime history file disappeared before it could be read: {}", file);
     } catch (IOException _) {
       LOG.error("Read old uptime file failed: {}; treating slots as offline", file);
     }

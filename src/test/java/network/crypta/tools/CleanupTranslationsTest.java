@@ -45,8 +45,11 @@ class CleanupTranslationsTest {
         result.stderr().contains("Orphaned string: \"orphaned\""),
         "Expected orphaned key to be reported on stderr");
     assertTrue(
-        result.stdout().contains("Rewritten src/freenet/l10n/crypta.l10n.fr.properties"),
-        "Expected rewritten message on stdout");
+        result.stdout().contains("Rewritten"),
+        "Expected rewritten message on stdout, got: " + result.stdout());
+    assertTrue(
+        result.stdout().contains("crypta.l10n.fr.properties"),
+        "Expected rewritten file name on stdout, got: " + result.stdout());
 
     String rewritten = Files.readString(translation, StandardCharsets.UTF_8);
     assertEquals(

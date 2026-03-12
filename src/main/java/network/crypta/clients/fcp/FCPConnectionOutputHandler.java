@@ -160,9 +160,11 @@ public class FCPConnectionOutputHandler implements Runnable {
   }
 
   private QueueAction nextQueueAction(boolean flushedSinceLastSend) throws InterruptedException {
-    synchronized (outQueue) {
-      while (true) {
-        boolean closed = handler.isClosed();
+    while (true) {
+      // Read the handler state before taking the queue monitor to keep lock ordering consistent
+      // with input-side code paths that already hold the handler lock and then inspect outQueue.
+      boolean closed = handler.isClosed();
+      synchronized (outQueue) {
         if (!outQueue.isEmpty()) {
           return QueueAction.message(outQueue.removeFirst());
         }

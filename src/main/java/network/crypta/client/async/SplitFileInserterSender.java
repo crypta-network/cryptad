@@ -259,7 +259,8 @@ public class SplitFileInserterSender extends SendableInsert {
                   request.forkOnCacheable,
                   Node.PREFER_INSERT_DEFAULT,
                   Node.IGNORE_LOW_BACKOFF_DEFAULT,
-                  request.realTimeFlag);
+                  request.realTimeFlag,
+                  request.getExternalRequestIdentifier());
         }
         request.onInsertSuccess(key, context);
       } catch (final LowLevelPutException e) {

@@ -243,6 +243,15 @@ public class ChosenBlockImpl extends ChosenBlock {
     return request.getPriorityClass();
   }
 
+  @Override
+  public String getExternalRequestIdentifier() {
+    ClientRequester clientRequester = request.getClientRequest();
+    if (clientRequester == null) {
+      return null;
+    }
+    return clientRequester.getExternalRequestIdentifier();
+  }
+
   /**
    * Obtains the sender capable of executing this block under the provided context. The returned
    * sender defines whether sending blocks and performs the actual network/storage interaction.

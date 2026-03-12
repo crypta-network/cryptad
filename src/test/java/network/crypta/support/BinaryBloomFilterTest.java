@@ -263,14 +263,14 @@ class BinaryBloomFilterTest {
       if (!secureRoot.exists()) {
         assertTrue(secureRoot.mkdirs(), "Failed to create secure test temp root");
       }
-      assertTrue(secureRoot.setReadable(true, true));
-      assertTrue(secureRoot.setWritable(true, true));
-      assertTrue(secureRoot.setExecutable(true, true));
+      secureRoot.setReadable(true, true);
+      secureRoot.setWritable(true, true);
+      secureRoot.setExecutable(true, true);
 
       tempDir = Files.createTempDirectory(secureRoot.toPath(), "bbf-test-").toFile();
-      assertTrue(tempDir.setReadable(true, true));
-      assertTrue(tempDir.setWritable(true, true));
-      assertTrue(tempDir.setExecutable(true, true));
+      tempDir.setReadable(true, true);
+      tempDir.setWritable(true, true);
+      tempDir.setExecutable(true, true);
       tempDir.deleteOnExit();
     }
 

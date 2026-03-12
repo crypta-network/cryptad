@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cryptad Runtime Debugging"
+  short_description: "Debug a live Cryptad node safely"
+  default_prompt: "Use $cryptad-runtime-debugging to inspect a running Cryptad JVM, capture thread dumps, and attach with jcmd or jdb."

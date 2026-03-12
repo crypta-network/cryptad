@@ -38,6 +38,8 @@ import static network.crypta.launcher.LauncherLog.logDebug;
  */
 public final class Launcher {
   private static final String APP_NAME = "Crypta Launcher";
+  private static final int DEFAULT_WINDOW_WIDTH = 900;
+  private static final int DEFAULT_WINDOW_HEIGHT = 600;
   private static final AtomicReference<CryptaLauncher> INSTANCE = new AtomicReference<>();
 
   private Launcher() {}
@@ -156,6 +158,7 @@ public final class Launcher {
       }
 
       pack();
+      setSize(new Dimension(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT));
       setLocationRelativeTo(null);
       WindowsMessageHooks.install(this, this::quitApp);
     }

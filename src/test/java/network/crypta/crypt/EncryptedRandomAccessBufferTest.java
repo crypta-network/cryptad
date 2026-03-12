@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.Locale;
 import java.util.Random;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
@@ -26,6 +27,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
+
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Unit tests for {@link EncryptedRandomAccessBuffer}.
@@ -425,6 +428,44 @@ class EncryptedRandomAccessBufferTest {
             ResumeFailedException.class, () -> BucketTools.restoreRAFFrom(dis, fg, pft, wrong));
       }
     }
+  }
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle")
+  void restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    assumeTrue(System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"));
+
+    // Arrange
+    File file = new File(tmpDir, "underlying-win-" + type.name() + ".dat");
+    int payload = 64;
+    MasterSecret secret = deterministicSecret();
+    byte[] persisted;
+    try (FileRandomAccessBuffer fab =
+            new FileRandomAccessBuffer(file, type.headerLen + payload, false);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, fab, secret, true)) {
+      raf.pwrite(0, new byte[payload], 0, payload);
+
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+      try (DataOutputStream dos = new DataOutputStream(bos)) {
+        raf.storeTo(dos);
+      }
+      persisted = bos.toByteArray();
+    }
+
+    FilenameGenerator fg = new FilenameGenerator(new Random(9123L), false, tmpDir, "t-win-");
+    PersistentFileTracker pft = new DummyTracker(tmpDir, fg);
+    MasterSecret wrong = new MasterSecret(new byte[64]);
+
+    // Act + Assert
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(persisted))) {
+      assertThrows(
+          ResumeFailedException.class, () -> BucketTools.restoreRAFFrom(dis, fg, pft, wrong));
+    }
+
+    assertTrue(file.delete(), "Expected failed restore to leave no open file handle");
   }
 
   // ---------------- Java serialization ----------------

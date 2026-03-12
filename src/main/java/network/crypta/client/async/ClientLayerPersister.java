@@ -13,12 +13,18 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.StreamCorruptedException;
 import java.nio.file.Files;
 import java.security.SecureRandom;
+import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.RequestIdentifier;
+import network.crypta.crypt.AEADVerificationFailedException;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
@@ -33,11 +39,11 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.DelayedFree;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.NonClosingOutputStream;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.PrependLengthOutputStream;
 import network.crypta.support.io.StorageFormatException;
 import network.crypta.support.io.TempBucketFactory;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,18 +187,44 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     File clientDatBakCrypt = new File(dir, baseName + EXT_BAK + EXT_CRYPT);
 
     if (clientDat.exists()) {
-      innerLoad(loaded, makeBucket(dir, baseName, false, null), noSerialize, requestStarters);
+      innerLoad(
+          loaded,
+          makeBucket(dir, baseName, false, null),
+          clientDat,
+          false,
+          false,
+          noSerialize,
+          requestStarters);
     }
     if (clientDatCrypt.exists() && loaded.needsMore()) {
       innerLoad(
-          loaded, makeBucket(dir, baseName, false, encryptionKey), noSerialize, requestStarters);
+          loaded,
+          makeBucket(dir, baseName, false, encryptionKey),
+          clientDatCrypt,
+          true,
+          false,
+          noSerialize,
+          requestStarters);
     }
     if (clientDatBak.exists()) {
-      innerLoad(loaded, makeBucket(dir, baseName, true, null), noSerialize, requestStarters);
+      innerLoad(
+          loaded,
+          makeBucket(dir, baseName, true, null),
+          clientDatBak,
+          false,
+          true,
+          noSerialize,
+          requestStarters);
     }
     if (clientDatBakCrypt.exists() && loaded.needsMore()) {
       innerLoad(
-          loaded, makeBucket(dir, baseName, true, encryptionKey), noSerialize, requestStarters);
+          loaded,
+          makeBucket(dir, baseName, true, encryptionKey),
+          clientDatBakCrypt,
+          true,
+          true,
+          noSerialize,
+          requestStarters);
     }
   }
 
@@ -526,38 +558,108 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   }
 
   private void innerLoad(
-      PartialLoad loaded, Bucket bucket, boolean noSerialize, RequestStarterGroup requestStarters) {
+      PartialLoad loaded,
+      Bucket bucket,
+      File variantFile,
+      boolean encryptedVariant,
+      boolean backupVariant,
+      boolean noSerialize,
+      RequestStarterGroup requestStarters) {
     long length = bucket.size();
     try (InputStream fis = bucket.getInputStream()) {
-      doLoadFromStream(
+      innerLoad(
           loaded,
           fis,
           length,
           !noSerialize && !loaded.doneSomething(),
           requestStarters,
-          noSerialize,
-          bucket);
-    } catch (IOException e) {
+          noSerialize);
+    } catch (Exception e) {
       // Mark this variant as failed so callers continue probing other backups/variants.
       loaded.setSomethingFailed();
-      LOG.warn("I/O error reading persistence bucket {}: {}", bucket, e.toString());
+      logVariantReadFailure(variantFile, encryptedVariant, backupVariant, e);
     }
   }
 
-  private void doLoadFromStream(
-      PartialLoad loaded,
-      InputStream fis,
-      long length,
-      boolean latest,
-      RequestStarterGroup requestStarters,
-      boolean noSerialize,
-      Bucket bucket) {
-    try {
-      innerLoad(loaded, fis, length, latest, requestStarters, noSerialize);
-    } catch (Exception t) {
-      LOG.error("Failed to deserialize persistent requests from {}: {}", bucket, t, t);
-      loaded.setSomethingFailed();
+  private void logVariantReadFailure(
+      File variantFile, boolean encryptedVariant, boolean backupVariant, Exception failure) {
+    String variantType = backupVariant ? "backup" : "primary";
+    String path = variantFile.getAbsolutePath();
+    if (isExpectedUnreadableVariantFailure(failure, encryptedVariant)) {
+      if (LOG.isWarnEnabled()) {
+        String unreadableReason = summarizeUnreadableVariantFailure(failure, encryptedVariant);
+        LOG.warn(
+            "Skipping unreadable {} persistence variant {} (encrypted={}): {}",
+            variantType,
+            path,
+            encryptedVariant,
+            unreadableReason);
+      }
+      return;
     }
+    if (failure instanceof IOException) {
+      if (LOG.isWarnEnabled()) {
+        String ioFailure = failure.toString();
+        LOG.warn(
+            "I/O error reading {} persistence variant {} (encrypted={}): {}",
+            variantType,
+            path,
+            encryptedVariant,
+            ioFailure);
+      }
+      return;
+    }
+    LOG.error(
+        "Failed to deserialize {} persistence variant {} (encrypted={}): {}",
+        variantType,
+        path,
+        encryptedVariant,
+        failure,
+        failure);
+  }
+
+  static boolean isExpectedUnreadableVariantFailure(Throwable failure, boolean encryptedVariant) {
+    if (failure == null) return false;
+    if (findThrowableInTree(failure, StreamCorruptedException.class) != null) {
+      return true;
+    }
+    return encryptedVariant
+        && findThrowableInTree(failure, AEADVerificationFailedException.class) != null;
+  }
+
+  private static String summarizeUnreadableVariantFailure(
+      Throwable failure, boolean encryptedVariant) {
+    Throwable streamCorrupted = findThrowableInTree(failure, StreamCorruptedException.class);
+    if (streamCorrupted != null) return streamCorrupted.toString();
+    if (encryptedVariant) {
+      Throwable authFailure = findThrowableInTree(failure, AEADVerificationFailedException.class);
+      if (authFailure != null) return authFailure.toString();
+    }
+    return failure.toString();
+  }
+
+  private static <T extends Throwable> T findThrowableInTree(
+      Throwable failure, Class<T> targetType) {
+    Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    ArrayDeque<Throwable> queue = new ArrayDeque<>();
+    queue.add(failure);
+    while (!queue.isEmpty()) {
+      Throwable current = queue.removeFirst();
+      if (!visited.add(current)) continue;
+      if (targetType.isInstance(current)) {
+        return targetType.cast(current);
+      }
+      Throwable cause = current.getCause();
+      if (cause != null) {
+        queue.addLast(cause);
+      }
+      for (Throwable suppressed : current.getSuppressed()) {
+        if (suppressed != null) {
+          queue.addLast(suppressed);
+        }
+      }
+    }
+    return null;
   }
 
   private void innerLoad(
@@ -790,12 +892,8 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       }
       bandwidthStatsPutter.updateData(node);
       oos.writeObject(bandwidthStatsPutter);
-      if (buckets == null) {
-        oos.writeInt(0);
-      } else {
-        oos.writeInt(buckets.length);
-        for (DelayedFree bucket : buckets) writeChecksummedObject(oos, bucket, null);
-      }
+      oos.writeInt(buckets.length);
+      for (DelayedFree bucket : buckets) writeChecksummedObject(oos, bucket, null);
       LOG.info("Saved {} requests to {}", requests.length, writeToFilename);
       persistentTempFactory.finishDelayedFree(buckets);
       return true;
@@ -851,27 +949,6 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       if (oos != null) oos.abort();
     } finally {
       if (oos != null) oos.close();
-    }
-  }
-
-  /**
-   * OutputStream wrapper that prevents closing the underlying stream when the outer resource is
-   * closed. Used to preserve abort-before-close semantics while leveraging try-with-resources.
-   */
-  private static class NonClosingOutputStream extends java.io.FilterOutputStream {
-    NonClosingOutputStream(OutputStream out) {
-      super(out);
-    }
-
-    @Override
-    public void close() throws IOException {
-      // Do not close the underlying stream; only flush to propagate buffered bytes.
-      out.flush();
-    }
-
-    @Override
-    public void write(byte @NotNull [] b, int off, int len) throws IOException {
-      out.write(b, off, len);
     }
   }
 

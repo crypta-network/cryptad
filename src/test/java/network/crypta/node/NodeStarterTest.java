@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.security.SecureRandom;
 import java.util.Properties;
 import network.crypta.config.PersistentConfig;
@@ -128,8 +129,9 @@ class NodeStarterTest {
   }
 
   @Test
-  void start_whenNodeStartupThrowsNodeInitException_andWrapperControlled_returnsExitCode(
-      @TempDir File tmpDir) throws ReflectiveOperationException {
+  void start_whenNodeStartupThrowsNodeInitException_andWrapperControlled_returnsExitCode()
+      throws ReflectiveOperationException, java.io.IOException {
+    File tmpDir = createStandaloneTempDir("node-starter-wrapper-");
     NodeStarter ns = newNodeStarterViaReflection();
     int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
     String[] args = startupArgs(tmpDir);
@@ -156,8 +158,9 @@ class NodeStarterTest {
   }
 
   @Test
-  void start_whenNodeStartupThrowsNodeInitException_andNotWrapper_returnsExitCode(
-      @TempDir File tmpDir) throws ReflectiveOperationException {
+  void start_whenNodeStartupThrowsNodeInitException_andNotWrapper_returnsExitCode()
+      throws ReflectiveOperationException, java.io.IOException {
+    File tmpDir = createStandaloneTempDir("node-starter-non-wrapper-");
     NodeStarter ns = newNodeStarterViaReflection();
     int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
     String[] args = startupArgs(tmpDir);
@@ -417,5 +420,11 @@ class NodeStarterTest {
     var ctor = NodeStarter.class.getDeclaredConstructor();
     ctor.setAccessible(true);
     return ctor.newInstance();
+  }
+
+  private static File createStandaloneTempDir(String prefix) throws java.io.IOException {
+    File dir = Files.createTempDirectory(prefix).toFile();
+    dir.deleteOnExit();
+    return dir;
   }
 }

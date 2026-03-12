@@ -28,7 +28,6 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
-import network.crypta.node.Version;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
@@ -139,7 +138,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     // Debug gating derives from LOG.isDebugEnabled() where needed
     this.manager = params.manager();
     this.node = manager.getNode();
-    this.uri = params.updateUri().setSuggestedEdition(((long) Version.currentBuildNumber()) + 1);
+    this.uri = params.updateUri().setSuggestedEdition(params.subscribeEditionSeed());
     this.ticker = node.network().ticker();
     this.core = node.services().clientCore();
     this.currentVersion = params.current();
@@ -163,12 +162,11 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   private void subscribe(Runnable onError) {
     try {
-      // because of UoM, this version is actually worth having as well
       FreenetURI localUri;
       synchronized (this) {
         localUri = this.uri;
       }
-      USK myUsk = USK.create(localUri.setSuggestedEdition(currentVersion));
+      USK myUsk = USK.create(localUri);
       core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
     } catch (MalformedURLException _) {
       LOG.error("The auto-update URI isn't valid and can't be used");
@@ -357,14 +355,15 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   public void onSuccess(FetchResult result, ClientGetter state) {
     File localTempBlobFile;
     int localFetchingVersion;
+    FreenetURI fetchedUri = state != null ? state.getURI() : null;
     synchronized (this) {
       localTempBlobFile = tempBlobFile;
       localFetchingVersion = fetchingVersion;
     }
-    onSuccess(result, localTempBlobFile, localFetchingVersion);
+    onSuccess(result, localTempBlobFile, localFetchingVersion, fetchedUri);
   }
 
-  void onSuccess(FetchResult result, File tempBlobFile, int fetchedVersion) {
+  void onSuccess(FetchResult result, File tempBlobFile, int fetchedVersion, FreenetURI fetchedUri) {
     // Debug gating derives from LOG.isDebugEnabled() where needed
     File blobFile;
     synchronized (this) {
@@ -393,6 +392,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       this.cg = null;
     }
     processSuccess(fetchedVersion, result, blobFile);
+    manager.recordSuccessfulCoreInfoFetch(
+        fetchedUri != null ? fetchedUri : getUpdateKey(), fetchedVersion);
   }
 
   private boolean shouldSkipAlreadyFetched(int fetchedVersion) {
@@ -755,8 +756,9 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * Called when the fetch URI has changed. The caller holds no major locks.
    *
    * @param newUri the new update key; its doc name is preserved when the argument omits one
+   * @param subscribeEditionSeed edition to use when subscribing to the new update key
    */
-  public void onChangeURI(FreenetURI newUri) {
+  public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
     String previousDocName;
     synchronized (this) {
       previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
@@ -767,7 +769,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
             ? newUri.setDocName(previousDocName)
             : newUri;
     synchronized (this) {
-      this.uri = nextUri.setSuggestedEdition(((long) Version.currentBuildNumber()) + 1);
+      this.uri = nextUri.setSuggestedEdition(subscribeEditionSeed);
       availableVersion = -1;
       realAvailableVersion = -1;
       fetchingVersion = -1;

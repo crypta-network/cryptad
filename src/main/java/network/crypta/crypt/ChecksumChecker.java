@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import network.crypta.client.async.ReadBucketAndFreeInputStream;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
+import network.crypta.support.io.NonClosingOutputStream;
 import network.crypta.support.io.PrependLengthOutputStream;
 
 /**
@@ -93,7 +94,8 @@ public abstract class ChecksumChecker {
    */
   public PrependLengthOutputStream checksumWriterWithLengthNoClose(
       final OutputStream dos, BucketFactory bf) throws IOException {
-    return PrependLengthOutputStream.create(checksumWriter(dos, 8), bf, 0, false);
+    return PrependLengthOutputStream.create(
+        checksumWriter(new NonClosingOutputStream(dos), 8), bf, 0, true);
   }
 
   /**
@@ -166,7 +168,7 @@ public abstract class ChecksumChecker {
 
   /**
    * Copies exactly {@code length} bytes from {@code is} to {@code os}, then reads and verifies the
-   * trailing checksum and does not forward it.
+   * trailing checksum, and does not forward it.
    *
    * @param is source stream positioned at the start of the payload
    * @param os destination stream that receives the payload only

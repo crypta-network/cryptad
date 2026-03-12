@@ -270,6 +270,7 @@ public final class ClientGet extends ClientRequest {
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
     getter = makeGetter(setup.core(), returnSetup.bucket());
+    applyDiagnosticIdentifier(getter);
     initHelpers();
   }
 
@@ -290,6 +291,7 @@ public final class ClientGet extends ClientRequest {
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
     getter = makeGetter(setup.core(), returnSetup.bucket());
+    applyDiagnosticIdentifier(getter);
     initHelpers();
   }
 
@@ -1183,6 +1185,7 @@ public final class ClientGet extends ClientRequest {
       restoredGetter = makeGetterForPersistence(makeBucket(false));
     }
     getter = restoredGetter;
+    applyDiagnosticIdentifier(getter);
     initHelpers();
   }
 

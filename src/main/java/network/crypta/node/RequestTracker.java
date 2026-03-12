@@ -736,6 +736,46 @@ public class RequestTracker {
     else return getRequestTracker(mode.isSSK(), mode.isLocal(), mode.realTimeFlag());
   }
 
+  /**
+   * Finds the currently tracked tag for the given UID across all request categories.
+   *
+   * <p>This lookup is intended for diagnostics paths and therefore favors clarity over micro
+   * optimizations.
+   *
+   * @param uid uid to search for
+   * @return matching in-flight tag, or {@code null} when no active tag owns the uid
+   */
+  public UIDTag findTagByUid(long uid) {
+    return findTagInMaps(
+        uid,
+        runningCHKGetUIDsRT,
+        runningSSKGetUIDsRT,
+        runningCHKGetUIDsBulk,
+        runningSSKGetUIDsBulk,
+        runningCHKPutUIDsRT,
+        runningSSKPutUIDsRT,
+        runningCHKPutUIDsBulk,
+        runningSSKPutUIDsBulk,
+        runningCHKOfferReplyUIDsRT,
+        runningSSKOfferReplyUIDsRT,
+        runningCHKOfferReplyUIDsBulk,
+        runningSSKOfferReplyUIDsBulk);
+  }
+
+  @SafeVarargs
+  private static UIDTag findTagInMaps(long uid, Map<Long, ? extends UIDTag>... maps) {
+    for (Map<Long, ? extends UIDTag> map : maps) {
+      UIDTag found;
+      synchronized (map) {
+        found = map.get(uid);
+      }
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
   private Map<Long, RequestTag> getRequestTracker(
       boolean ssk, boolean local, boolean realTimeFlag) {
     return realTimeFlag ? getRequestTrackerRT(ssk, local) : getRequestTrackerBulk(ssk, local);

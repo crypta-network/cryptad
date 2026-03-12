@@ -92,10 +92,28 @@ public final class NodeClientCoreTransfers {
       final Key key,
       final RequestCompletionListener listener,
       NodeRoutingSubsystem.RequestSenderOptions options) {
+    asyncGet(key, listener, options, null);
+  }
+
+  /**
+   * Schedules a non-blocking fetch and records an optional external diagnostics identifier.
+   *
+   * @param key key to fetch; typically a {@link Key} or {@link NodeSSK}.
+   * @param listener callback notified for success, failure, or local-store hits.
+   * @param options request flags controlling store access, cache usage, offered-key handling, and
+   *     real-time scheduling.
+   * @param externalRequestIdentifier optional external identifier used for diagnostics correlation
+   */
+  public void asyncGet(
+      final Key key,
+      final RequestCompletionListener listener,
+      NodeRoutingSubsystem.RequestSenderOptions options,
+      String externalRequestIdentifier) {
     final long uid = makeUID();
     final boolean isSSK = key instanceof NodeSSK;
     final RequestTag tag =
         new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, options.realTimeFlag(), uid, node);
+    tag.setExternalRequestIdentifier(externalRequestIdentifier);
     if (!node.routing()
         .tracker()
         .lockUID(
@@ -654,6 +672,38 @@ public final class NodeClientCoreTransfers {
       boolean ignoreLowBackoff,
       boolean realTimeFlag)
       throws LowLevelPutException {
+    realPut(
+        block,
+        canWriteClientCache,
+        forkOnCacheable,
+        preferInsert,
+        ignoreLowBackoff,
+        realTimeFlag,
+        null);
+  }
+
+  /**
+   * Synchronously inserts a CHK or SSK block into the network with optional diagnostics metadata.
+   *
+   * @param block block to insert; must be a {@link CHKBlock} or {@link SSKBlock}.
+   * @param canWriteClientCache whether the insert may update the client cache.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @param externalRequestIdentifier optional external identifier used for diagnostics correlation
+   * @throws LowLevelPutException when routing fails, overload occurs, or internal errors arise.
+   * @throws IllegalArgumentException if the block type is unsupported for insert.
+   */
+  public void realPut(
+      KeyBlock block,
+      boolean canWriteClientCache,
+      boolean forkOnCacheable,
+      boolean preferInsert,
+      boolean ignoreLowBackoff,
+      boolean realTimeFlag,
+      String externalRequestIdentifier)
+      throws LowLevelPutException {
     switch (block) {
       case CHKBlock kBlock1 ->
           realPutCHK(
@@ -662,7 +712,8 @@ public final class NodeClientCoreTransfers {
               forkOnCacheable,
               preferInsert,
               ignoreLowBackoff,
-              realTimeFlag);
+              realTimeFlag,
+              externalRequestIdentifier);
       case SSKBlock kBlock ->
           realPutSSK(
               kBlock,
@@ -670,7 +721,8 @@ public final class NodeClientCoreTransfers {
               forkOnCacheable,
               preferInsert,
               ignoreLowBackoff,
-              realTimeFlag);
+              realTimeFlag,
+              externalRequestIdentifier);
       default -> throw new IllegalArgumentException("Unknown put type " + block.getClass());
     }
   }
@@ -700,6 +752,38 @@ public final class NodeClientCoreTransfers {
       boolean ignoreLowBackoff,
       boolean realTimeFlag)
       throws LowLevelPutException {
+    realPutCHK(
+        block,
+        canWriteClientCache,
+        forkOnCacheable,
+        preferInsert,
+        ignoreLowBackoff,
+        realTimeFlag,
+        null);
+  }
+
+  /**
+   * Synchronously inserts a CHK block and applies local caching rules.
+   *
+   * @param block CHK block to insert and potentially store locally.
+   * @param canWriteClientCache whether the insert may update the client cache.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @param externalRequestIdentifier optional external identifier used for diagnostics correlation
+   * @throws LowLevelPutException when routing fails, overload is reported, or internal errors
+   *     arise.
+   */
+  public void realPutCHK(
+      CHKBlock block,
+      boolean canWriteClientCache,
+      boolean forkOnCacheable,
+      boolean preferInsert,
+      boolean ignoreLowBackoff,
+      boolean realTimeFlag,
+      String externalRequestIdentifier)
+      throws LowLevelPutException {
     byte[] data = block.getData();
     byte[] headers = block.getHeaders();
     NodeRoutingSubsystem.ChkInsertOptions options =
@@ -714,6 +798,7 @@ public final class NodeClientCoreTransfers {
     CHKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
+    tag.setExternalRequestIdentifier(externalRequestIdentifier);
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, false, true, false, realTimeFlag), tag)) {
@@ -886,9 +971,41 @@ public final class NodeClientCoreTransfers {
       boolean ignoreLowBackoff,
       boolean realTimeFlag)
       throws LowLevelPutException {
+    realPutSSK(
+        block,
+        canWriteClientCache,
+        forkOnCacheable,
+        preferInsert,
+        ignoreLowBackoff,
+        realTimeFlag,
+        null);
+  }
+
+  /**
+   * Synchronously inserts an SSK block and handles collision checks.
+   *
+   * @param block SSK block to insert and potentially store locally.
+   * @param canWriteClientCache whether the insert may update the client cache.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @param externalRequestIdentifier optional external identifier used for diagnostics correlation
+   * @throws LowLevelPutException on collision, routing failure, overload, or internal errors.
+   */
+  public void realPutSSK(
+      SSKBlock block,
+      boolean canWriteClientCache,
+      boolean forkOnCacheable,
+      boolean preferInsert,
+      boolean ignoreLowBackoff,
+      boolean realTimeFlag,
+      String externalRequestIdentifier)
+      throws LowLevelPutException {
     SSKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
+    tag.setExternalRequestIdentifier(externalRequestIdentifier);
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, true, true, false, realTimeFlag), tag)) {

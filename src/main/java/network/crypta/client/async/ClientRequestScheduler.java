@@ -597,6 +597,20 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   /**
+   * Returns the absolute wakeup timestamp for a given priority class when that class is currently
+   * in cooldown.
+   *
+   * <p>Returns {@code 0} when no finite cooldown is active for the specified priority class.
+   *
+   * @param priorityClass scheduler priority class to inspect
+   * @param now current wall-clock time in milliseconds
+   * @return absolute wakeup timestamp, or {@code 0} if the priority is currently runnable
+   */
+  public long getPriorityCooldownUntil(short priorityClass, long now) {
+    return selector.getPriorityCooldownUntil(priorityClass, clientContext, now);
+  }
+
+  /**
    * Returns a view of keys currently being fetched locally.
    *
    * @return an implementation of {@link KeysFetchingLocally} backed by the selector

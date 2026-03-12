@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel.MapMode;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -105,7 +104,7 @@ public final class CountingBloomFilter extends BloomFilter {
     try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
         FileChannel channel = raf.getChannel()) {
       raf.setLength(fileLength);
-      filter = channel.map(MapMode.READ_WRITE, 0, fileLength).load();
+      filter = mapReadWriteBuffer(channel, fileLength);
     }
   }
 

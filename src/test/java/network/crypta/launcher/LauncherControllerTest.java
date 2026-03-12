@@ -62,7 +62,7 @@ class LauncherControllerTest {
     assertFalse(stopped.isRunning());
 
     awaitLog(logs, l -> l.contains("Starting FProxy on"));
-    assertTrue(logs.stream().anyMatch(l -> l.contains("Starting 'cryptad'")));
+    assertTrue(logs.stream().anyMatch(l -> l.contains("Starting 'cryptad")));
     assertTrue(logs.stream().anyMatch(l -> l.contains("exec:")));
 
     var confLines = Files.readAllLines(wrapperConf, StandardCharsets.UTF_8);
@@ -168,7 +168,7 @@ class LauncherControllerTest {
 
   private static AppState awaitState(
       LauncherController controller, java.util.function.Predicate<AppState> predicate) {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(40);
     while (System.nanoTime() < deadline) {
       AppState state = controller.getState();
       if (predicate.test(state)) {

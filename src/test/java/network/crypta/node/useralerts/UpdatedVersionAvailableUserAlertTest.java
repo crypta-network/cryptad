@@ -48,7 +48,7 @@ class UpdatedVersionAvailableUserAlertTest {
 
   @BeforeEach
   void setUp() {
-    // Ensure localization base is initialized (default language/resources)
+    // Ensure the localization base is initialized (default language/resources)
     new NodeL10n();
     when(updater.getNode()).thenReturn(node);
   }
@@ -103,21 +103,20 @@ class UpdatedVersionAvailableUserAlertTest {
   }
 
   @Test
-  @DisplayName("text_whenCanUpdateNowImmediate_includesDownloadedAndImmediateButton")
-  void text_whenCanUpdateNowImmediate_includesDownloadedAndImmediateButton() {
+  @DisplayName("text_whenCanUpdateNowImmediate_includesDownloadedLabelAndImmediateButton")
+  void text_whenCanUpdateNowImmediate_includesDownloadedLabelAndImmediateButton() {
     when(updater.isArmed()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(true);
-    when(updater.hasNewMainJar()).thenReturn(true);
-    when(updater.newMainJarVersion()).thenReturn(1234);
+    when(updater.hasNewCorePackage()).thenReturn(true);
+    when(updater.newCorePackageVersion()).thenReturn(1234);
+    when(updater.newCorePackageVersionLabel()).thenReturn("1.2.3+build123");
     when(updater.canUpdateImmediately()).thenReturn(true);
     when(node.network().updateIsUrgent()).thenReturn(false);
 
     String downloaded =
         NodeL10n.getBase()
             .getString(
-                "UpdatedVersionAvailableUserAlert.downloadedNewJar",
-                "version",
-                Integer.toString(1234));
+                "UpdatedVersionAvailableUserAlert.downloadedNewJar", "version", "1.2.3+build123");
     String clickNow =
         NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.clickToUpdateNow");
     String button =
@@ -135,7 +134,7 @@ class UpdatedVersionAvailableUserAlertTest {
   void text_whenCanUpdateNowASAP_includesASAPPromptAndButton() {
     when(updater.isArmed()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(true);
-    when(updater.hasNewMainJar()).thenReturn(false);
+    when(updater.hasNewCorePackage()).thenReturn(false);
     when(updater.canUpdateImmediately()).thenReturn(false);
     when(node.network().updateIsUrgent()).thenReturn(false);
 
@@ -156,12 +155,12 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.isArmed()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(false);
     when(updater.fetchingFromUOM()).thenReturn(true);
-    when(updater.fetchingNewMainJar()).thenReturn(false);
+    when(updater.fetchingNewCorePackage()).thenReturn(false);
     when(node.network().updateIsUrgent()).thenReturn(false);
 
     Path nodeDir = Files.createTempDirectory("cryptad-node-test");
     try {
-      // Create update script at top-level so getUpdateScriptName returns the absolute path
+      // Create an update script at top-level so getUpdateScriptName returns the absolute path
       String scriptName = (File.separatorChar == '\\') ? "update.cmd" : "update.sh";
       Path script = nodeDir.resolve(scriptName);
       Files.writeString(script, "echo test");
@@ -181,7 +180,7 @@ class UpdatedVersionAvailableUserAlertTest {
       assertTrue(text.contains(fetching), "Should include fetching message with script path");
       assertTrue(text.contains(question), "Should ask the ASAP update question");
     } finally {
-      // Cleanup temp dir using try-with-resources to safely close the stream
+      // Clean up temp dir using try-with-resources to safely close the stream
       try (Stream<Path> walk = Files.walk(nodeDir)) {
         walk.sorted(Comparator.reverseOrder())
             .forEach(
@@ -208,8 +207,8 @@ class UpdatedVersionAvailableUserAlertTest {
     when(clientCore.getFormPassword()).thenReturn("secret-token");
 
     // Version selection path shouldn't matter for this check; take the fallback branch.
-    when(updater.hasNewMainJar()).thenReturn(false);
-    when(updater.fetchingNewMainJar()).thenReturn(false);
+    when(updater.hasNewCorePackage()).thenReturn(false);
+    when(updater.fetchingNewCorePackage()).thenReturn(false);
     when(updater.getMainVersion()).thenReturn(999);
 
     // Capture the version passed into addChangelogLinks
@@ -252,26 +251,27 @@ class UpdatedVersionAvailableUserAlertTest {
         .when(updater)
         .addChangelogLinks(ArgumentMatchers.anyLong(), any(HTMLNode.class));
 
-    // Case 1: hasNewMainJar -> use newMainJarVersion
+    // Case 1: hasNewCorePackage -> use newCorePackageVersion
     when(updater.isArmed()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(true);
     when(updater.canUpdateImmediately()).thenReturn(true);
-    when(updater.hasNewMainJar()).thenReturn(true);
-    when(updater.newMainJarVersion()).thenReturn(42);
+    when(updater.hasNewCorePackage()).thenReturn(true);
+    when(updater.newCorePackageVersion()).thenReturn(42);
+    when(updater.newCorePackageVersionLabel()).thenReturn("42");
     HTMLNode html1 = alert.getHTMLText();
     assertNotNull(html1);
     assertEquals(42L, capturedVersion.get());
 
-    // Case 2: not hasNew, fetchingNewMainJar -> use fetchingNewMainJarVersion
-    when(updater.hasNewMainJar()).thenReturn(false);
-    when(updater.fetchingNewMainJar()).thenReturn(true);
-    when(updater.fetchingNewMainJarVersion()).thenReturn(77);
+    // Case 2: not hasNew, fetchingNewCorePackage -> use fetchingNewCorePackageVersion
+    when(updater.hasNewCorePackage()).thenReturn(false);
+    when(updater.fetchingNewCorePackage()).thenReturn(true);
+    when(updater.fetchingNewCorePackageVersion()).thenReturn(77);
     HTMLNode html2 = alert.getHTMLText();
     assertNotNull(html2);
     assertEquals(77L, capturedVersion.get());
 
     // Case 3: neither -> fallback to getMainVersion
-    when(updater.fetchingNewMainJar()).thenReturn(false);
+    when(updater.fetchingNewCorePackage()).thenReturn(false);
     when(updater.getMainVersion()).thenReturn(99);
     HTMLNode html3 = alert.getHTMLText();
     assertNotNull(html3);
@@ -316,9 +316,9 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.isEnabled()).thenReturn(true);
     when(updater.isBlown()).thenReturn(false);
 
-    // One of (fetchingNewMainJar, hasNewMainJar, fetchingFromUOM) must be true
-    when(updater.fetchingNewMainJar()).thenReturn(false);
-    when(updater.hasNewMainJar()).thenReturn(true);
+    // One of (fetchingNewCorePackage, hasNewCorePackage, fetchingFromUOM) must be true
+    when(updater.fetchingNewCorePackage()).thenReturn(false);
+    when(updater.hasNewCorePackage()).thenReturn(true);
     when(updater.fetchingFromUOM()).thenReturn(false);
     assertTrue(alert.isValid());
 
@@ -333,8 +333,8 @@ class UpdatedVersionAvailableUserAlertTest {
 
     // None of the three flags -> invalid
     when(updater.isBlown()).thenReturn(false);
-    when(updater.hasNewMainJar()).thenReturn(false);
-    when(updater.fetchingNewMainJar()).thenReturn(false);
+    when(updater.hasNewCorePackage()).thenReturn(false);
+    when(updater.fetchingNewCorePackage()).thenReturn(false);
     when(updater.fetchingFromUOM()).thenReturn(false);
     assertFalse(alert.isValid());
   }

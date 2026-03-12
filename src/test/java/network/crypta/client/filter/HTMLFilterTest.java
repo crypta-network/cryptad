@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,12 +38,15 @@ import static org.mockito.Mockito.verify;
 class HTMLFilterTest {
 
   private HTMLFilter filter;
+  private boolean originalEmbedM3uPlayer;
 
   @Mock private FilterCallback callback;
 
   @BeforeEach
   void setUp() throws Exception {
     filter = new HTMLFilter();
+    originalEmbedM3uPlayer = HTMLFilter.isEmbedM3uPlayerEnabled();
+    HTMLFilter.setEmbedM3uPlayerEnabled(true);
 
     // Default: pass-through behavior for URIs and tags; do-nothing for others.
     // processURI(uri, overrideType, noRelative, inline) → return original uri
@@ -58,6 +62,11 @@ class HTMLFilterTest {
         .thenAnswer(inv -> inv.getArgument(0, String.class));
     lenient().when(callback.onBaseHref(anyString())).thenReturn(null);
     lenient().when(callback.processTag(any(ParsedTag.class))).thenReturn(null);
+  }
+
+  @AfterEach
+  void tearDown() {
+    HTMLFilter.setEmbedM3uPlayerEnabled(originalEmbedM3uPlayer);
   }
 
   @ParameterizedTest

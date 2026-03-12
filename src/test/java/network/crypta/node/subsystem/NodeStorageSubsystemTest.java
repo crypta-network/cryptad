@@ -2,13 +2,17 @@ package network.crypta.node.subsystem;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.security.SecureRandom;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.keys.CHKBlock;
+import network.crypta.node.DatabaseKey;
+import network.crypta.node.MasterKeys;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.ProgramDirectory;
+import network.crypta.node.SecurityLevels;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.store.CHKStore;
@@ -20,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -29,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -235,6 +241,43 @@ class NodeStorageSubsystemTest {
     subsystem.setStorePreallocate(true);
 
     verify(saltedHashStore).setPreallocate(true);
+  }
+
+  @Test
+  void changeMasterPassword_whenKeysUnavailableAndMasterKeysFileExists_loadsKeysAndChangesPassword()
+      throws Exception {
+    File masterKeysFile = File.createTempFile("master-keys", ".tmp");
+    masterKeysFile.deleteOnExit();
+    subsystem.setMasterKeysFile(masterKeysFile);
+
+    MasterKeys loadedKeys = org.mockito.Mockito.mock(MasterKeys.class);
+    DatabaseKey loadedDatabaseKey = org.mockito.Mockito.mock(DatabaseKey.class);
+    SecurityLevels securityLevels = org.mockito.Mockito.mock(SecurityLevels.class);
+    NodeBootstrap bootstrap = org.mockito.Mockito.mock(NodeBootstrap.class);
+    SecureRandom secureRandom = new SecureRandom();
+
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(services.clientCore()).thenReturn(clientCore);
+    when(securityLevels.getPhysicalThreatLevel())
+        .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.secureRandom()).thenReturn(secureRandom);
+    when(loadedKeys.createDatabaseKey()).thenReturn(loadedDatabaseKey);
+
+    try (MockedStatic<MasterKeys> masterKeysStatic = mockStatic(MasterKeys.class)) {
+      masterKeysStatic
+          .when(() -> MasterKeys.read(masterKeysFile, secureRandom, "old-password"))
+          .thenReturn(loadedKeys);
+
+      subsystem.changeMasterPassword("old-password", "new-password", true);
+
+      masterKeysStatic.verify(() -> MasterKeys.read(masterKeysFile, secureRandom, "old-password"));
+    }
+
+    verify(loadedKeys).changePassword(masterKeysFile, "new-password", secureRandom);
+    assertSame(loadedKeys, subsystem.getKeys());
+    assertSame(loadedDatabaseKey, subsystem.getDatabaseKey());
   }
 
   private static void setChkDatastore(NodeStorageSubsystem target, CHKStore value)
