@@ -1,28 +1,50 @@
 package network.crypta.store;
 
-/** Metadata returned from the datastore along with a block */
+/**
+ * Mutable metadata describing properties of a datastore block.
+ *
+ * <p>Instances accompany blocks read from the store and influence higher-level caching and
+ * advertising decisions. This type is a simple value holder and performs no validation or
+ * synchronization; callers are responsible for any required thread-safety when sharing instances
+ * across threads.
+ */
 public final class BlockMetadata {
 
   /**
-   * If true, the block is old, that is, it was added to the store prior to 1224, or it was added
-   * since but only because low physical seclevel caused everything to be cached. In other words, if
-   * this is true, we cannot be sure that the block *should* be cached, so others should only know
-   * about it if we are actually transmitting the data.
+   * Flag indicating that the block originates from legacy or opportunistic caching.
+   *
+   * <p>When {@code true}, the block was either persisted before build 1224 or cached because a low
+   * physical security level caused all traffic to be written to the datastore. In such cases we
+   * cannot assert that it should be cached or advertised to peers; other nodes should learn about
+   * it only when we actively transmit the data.
    */
   private boolean oldBlock;
 
+  /**
+   * Clear all metadata and restore default values.
+   *
+   * <p>Postcondition: {@link #isOldBlock()} returns {@code false}.
+   */
   public void reset() {
     oldBlock = false;
   }
 
   /**
-   * If true, the block should not be cached i.e. it was either added before 1224, or it was only
-   * cached because of writing everything to the datastore including local and nearby requests.
+   * Report whether the block should be treated as "old" and therefore not proactively cached or
+   * advertised.
+   *
+   * @return {@code true} if the block predates build 1224 or was cached only due to global
+   *     write-to-store settings (e.g., low physical security level); {@code false} otherwise.
    */
   public boolean isOldBlock() {
     return oldBlock;
   }
 
+  /**
+   * Mark the block as originating from legacy or opportunistic caching.
+   *
+   * <p>Postcondition: {@link #isOldBlock()} returns {@code true}.
+   */
   public void setOldBlock() {
     oldBlock = true;
   }

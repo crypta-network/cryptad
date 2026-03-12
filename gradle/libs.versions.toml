@@ -1,21 +1,32 @@
 [versions]
-kotlin = "2.2.10"
-coroutines = "1.10.2"
-bcprov = "2.73.7"
-jna = "5.17.0"
+bcprov = "2.73.10"
+jna = "5.18.1"
 commonsCompress = "1.28.0"
-pebble = "3.2.4"
+commonsLang = "3.20.0"
+pebble = "4.1.0"
 unbescape = "1.1.6.RELEASE"
 slf4j = "2.0.17"
-junit4 = "4.13.2"
-mockito = "5.18.0"
+logback = "1.5.25"
+mockito = "5.21.0"
 hamcrest = "3.0"
 objenesis = "3.4"
 picocli = "4.7.7"
-spotless = "7.2.1"
-flatlaf = "3.6.1"
-jsystemTheme = "ea2f8582ea"
-dbusJava = "5.1.0"
+spotless = "8.2.0"
+flatlaf = "3.7"
+oshi = "6.9.3"
+jfa = "1.2.0"
+versionCompare = "1.4.1"
+dbusJava = "5.2.0"
+junitJupiter = "6.0.2"
+junitPlatform = "6.0.2"
+sonarqube = "7.2.2.6593"
+remalSonarlint = "7.0.1"
+spotbugs = "6.4.8"
+#noinspection UnusedVersionCatalogEntry
+jacoco = "0.8.14"
+errorpronePlugin = "5.0.0"
+errorproneCore = "2.38.0"
+jetbrainsAnnotations = "23.0.0"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -23,20 +34,37 @@ bcpkix = { group = "org.bouncycastle", name = "bcpkix-lts8on", version.ref = "bc
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jnaPlatform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
 commonsCompress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+commonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang" }
 pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
 unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
-junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", version.ref = "mockito" }
+# Mockito inline mock-maker is published up to 5.2.0; keep explicit to available version
+mockitoInline = { group = "org.mockito", name = "mockito-inline", version = "5.2.0" }
 hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
 objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
 picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
-kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
-jsystemThemeDetector = { group = "com.github.Dansoftowner", name = "jSystemThemeDetector", version.ref = "jsystemTheme" }
+oshiCore = { group = "com.github.oshi", name = "oshi-core", version.ref = "oshi" }
+jfa = { group = "de.jangassen", name = "jfa", version.ref = "jfa" }
+versionCompare = { group = "io.github.g00fy2", name = "versioncompare", version.ref = "versionCompare" }
 dbusCore = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbusJava" }
 dbusTransportNativeUnix = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
+junitJupiterApi = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junitJupiter" }
+junitJupiterParams = { group = "org.junit.jupiter", name = "junit-jupiter-params", version.ref = "junitJupiter" }
+junitJupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junitJupiter" }
+junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
+junitPlatformSuite = { group = "org.junit.platform", name = "junit-platform-suite", version.ref = "junitPlatform" }
+errorproneCore = { group = "com.google.errorprone", name = "error_prone_core", version.ref = "errorproneCore" }
+jetbrainsAnnotations = { group = "org.jetbrains", name = "annotations", version.ref = "jetbrainsAnnotations" }
 
 [plugins]
-kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+#noinspection UnusedVersionCatalogEntry
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+#noinspection UnusedVersionCatalogEntry
+spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugs" }
+#noinspection UnusedVersionCatalogEntry
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
+errorprone = { id = "net.ltgt.errorprone", version.ref = "errorpronePlugin" }

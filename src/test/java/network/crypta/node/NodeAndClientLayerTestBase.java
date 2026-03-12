@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import java.net.MalformedURLException;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertBlock;
 import network.crypta.crypt.DummyRandomSource;
@@ -9,9 +8,8 @@ import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.RandomAccessBucket;
 
-public class NodeAndClientLayerTestBase {
+class NodeAndClientLayerTestBase {
 
-  static final int PORT = 2048;
   static final int FILE_SIZE = 1024 * 1024;
 
   static RequestClient rc =
@@ -28,8 +26,7 @@ public class NodeAndClientLayerTestBase {
         }
       };
 
-  protected InsertBlock generateBlock(DummyRandomSource random, boolean createUsk)
-      throws MalformedURLException {
+  protected InsertBlock generateBlock(DummyRandomSource random, boolean createUsk) {
     byte[] data = new byte[FILE_SIZE];
     random.nextBytes(data);
     RandomAccessBucket bucket = new SimpleReadOnlyArrayBucket(data);

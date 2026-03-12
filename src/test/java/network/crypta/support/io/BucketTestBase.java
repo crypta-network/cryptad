@@ -1,27 +1,28 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertEquals;
-
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.api.Bucket;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public abstract class BucketTestBase {
-  protected static byte[] DATA_LONG;
+  private static final String SIZE_EMPTY_MESSAGE = "Size-0";
+  private static final byte[] dataLong;
 
   static {
-    DATA_LONG = new byte[32768 + 1]; // 32K + 1
-    for (int i = 0; i < DATA_LONG.length; i++) {
-      DATA_LONG[i] = (byte) i;
+    dataLong = new byte[32768 + 1]; // 32K + 1
+    for (int i = 0; i < dataLong.length; i++) {
+      dataLong[i] = (byte) i;
     }
   }
 
-  protected byte[] DATA1 = new byte[] {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-  protected byte[] DATA2 =
+  protected byte[] data1 = new byte[] {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  protected byte[] data2 =
       new byte[] {
         0x70,
         (byte) 0x81,
@@ -36,88 +37,90 @@ public abstract class BucketTestBase {
   protected boolean canOverwrite = true;
 
   @Test
-  public void testReadEmpty() throws IOException {
+  void testReadEmpty() throws IOException {
     Bucket bucket = makeBucket(3);
     try {
-      assertEquals("Size-0", 0, bucket.size());
-      OutputStream os = bucket.getOutputStream();
-      os.close();
-
-      // Read byte[]
-      InputStream is = bucket.getInputStream();
-      byte[] data = new byte[10];
-      int read = is.read(data, 0, 10);
-      is.close();
-
-      assertEquals("Read-Empty", -1, read);
-    } finally {
-      freeBucket(bucket);
-    }
-  }
-
-  @Test
-  public void testReadExcess() throws IOException {
-    Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
-    try {
-      assertEquals("Size-0", 0, bucket.size());
-
-      // Write
-      OutputStream os = bucket.getOutputStream();
-      os.write(new byte[] {5});
-      os.close();
-
-      assertEquals("Read-Excess-Size", 1, bucket.size());
-
-      // Read byte[]
-      InputStream is = bucket.getInputStream();
-      byte[] data = new byte[10];
-      int read = is.read(data, 0, 10);
-      assertEquals("Read-Excess", 1, read);
-      assertEquals("Read-Excess-5", 5, data[0]);
-
-      read = is.read(data, 0, 10);
-      assertEquals("Read-Excess-EOF", -1, read);
-
-      is.close();
-    } finally {
-      freeBucket(bucket);
-    }
-  }
-
-  @Test
-  public void testReadWrite() throws IOException {
-    Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
-    try {
-      assertEquals("Size-0", 0, bucket.size());
-
-      // Write
-      OutputStream os = bucket.getOutputStream();
-      os.write(DATA1);
-      os.close();
-
-      assertEquals("Size-1", DATA1.length, bucket.size());
-
-      // Read byte[]
-      InputStream is = bucket.getInputStream();
-      byte[] data = new byte[DATA1.length];
-      int read = is.read(data, 0, DATA1.length);
-      is.close();
-
-      assertEquals("SimpleRead-1-SIZE", DATA1.length, read);
-      assertEquals("SimpleRead-1", new ByteArrayWrapper(DATA1), new ByteArrayWrapper(data));
-
-      // Read byte
-      is = bucket.getInputStream();
-      for (byte b : DATA1) {
-        assertEquals("SimpleRead-2", b, (byte) is.read());
+      assertEquals(0, bucket.size(), SIZE_EMPTY_MESSAGE);
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(new byte[0]);
       }
 
-      // EOF
-      assertEquals("SimpleRead-EOF0", -1, is.read(new byte[4]));
-      assertEquals("SimpleRead-EOF1", -1, is.read());
-      assertEquals("SimpleRead-EOF2", -1, is.read());
+      // Read byte[]
+      byte[] data = new byte[10];
+      int read;
+      try (InputStream is = bucket.getInputStream()) {
+        read = is.read(data, 0, 10);
+      }
 
-      is.close();
+      assertEquals(-1, read, "Read-Empty");
+    } finally {
+      freeBucket(bucket);
+    }
+  }
+
+  @Test
+  void testReadExcess() throws IOException {
+    Bucket bucket = makeBucket(Math.max(data1.length, data2.length));
+    try {
+      assertEquals(0, bucket.size(), SIZE_EMPTY_MESSAGE);
+
+      // Write
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(new byte[] {5});
+      }
+
+      assertEquals(1, bucket.size(), "Read-Excess-Size");
+
+      // Read byte[]
+      byte[] data = new byte[10];
+      int read;
+      try (InputStream is = bucket.getInputStream()) {
+        read = is.read(data, 0, 10);
+        assertEquals(1, read, "Read-Excess");
+        assertEquals(5, data[0], "Read-Excess-5");
+
+        read = is.read(data, 0, 10);
+        assertEquals(-1, read, "Read-Excess-EOF");
+      }
+    } finally {
+      freeBucket(bucket);
+    }
+  }
+
+  @Test
+  void testReadWrite() throws IOException {
+    Bucket bucket = makeBucket(Math.max(data1.length, data2.length));
+    try {
+      assertEquals(0, bucket.size(), SIZE_EMPTY_MESSAGE);
+
+      // Write
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(data1);
+      }
+
+      assertEquals(data1.length, bucket.size(), "Size-1");
+
+      // Read byte[]
+      byte[] data = new byte[data1.length];
+      int read;
+      try (InputStream is = bucket.getInputStream()) {
+        read = is.read(data, 0, data1.length);
+      }
+
+      assertEquals(data1.length, read, "SimpleRead-1-SIZE");
+      assertEquals(new ByteArrayWrapper(data1), new ByteArrayWrapper(data), "SimpleRead-1");
+
+      // Read byte
+      try (InputStream is = bucket.getInputStream()) {
+        for (byte b : data1) {
+          assertEquals(b, (byte) is.read(), "SimpleRead-2");
+        }
+
+        // EOF
+        assertEquals(-1, is.read(new byte[4]), "SimpleRead-EOF0");
+        assertEquals(-1, is.read(), "SimpleRead-EOF1");
+        assertEquals(-1, is.read(), "SimpleRead-EOF2");
+      }
     } finally {
       freeBucket(bucket);
     }
@@ -125,94 +128,94 @@ public abstract class BucketTestBase {
 
   // Write twice -- should overwrite, not append
   @Test
-  public void testReuse() throws IOException {
+  void testReuse() throws IOException {
     if (!canOverwrite) {
       return;
     }
 
-    Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
+    Bucket bucket = makeBucket(Math.max(data1.length, data2.length));
     try {
       // Write
-      OutputStream os = bucket.getOutputStream();
-      os.write(DATA1);
-      os.close();
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(data1);
+      }
 
       // Read byte[]
-      InputStream is = bucket.getInputStream();
-      byte[] data = new byte[DATA1.length];
-      int read = is.read(data, 0, DATA1.length);
-      is.close();
+      byte[] data = new byte[data1.length];
+      int read;
+      try (InputStream is = bucket.getInputStream()) {
+        read = is.read(data, 0, data1.length);
+      }
 
-      assertEquals("Read-1-SIZE", DATA1.length, read);
-      assertEquals("Read-1", new ByteArrayWrapper(DATA1), new ByteArrayWrapper(data));
+      assertEquals(data1.length, read, "Read-1-SIZE");
+      assertEquals(new ByteArrayWrapper(data1), new ByteArrayWrapper(data), "Read-1");
 
       // Write again
-      os = bucket.getOutputStream();
-      os.write(DATA2);
-      os.close();
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(data2);
+      }
 
       // Read byte[]
-      is = bucket.getInputStream();
-      data = new byte[DATA2.length];
-      read = is.read(data, 0, DATA2.length);
-      is.close();
+      data = new byte[data2.length];
+      try (InputStream is = bucket.getInputStream()) {
+        read = is.read(data, 0, data2.length);
+      }
 
-      assertEquals("Read-2-SIZE", DATA2.length, read);
-      assertEquals("Read-2", new ByteArrayWrapper(DATA2), new ByteArrayWrapper(data));
+      assertEquals(data2.length, read, "Read-2-SIZE");
+      assertEquals(new ByteArrayWrapper(data2), new ByteArrayWrapper(data), "Read-2");
     } finally {
       freeBucket(bucket);
     }
   }
 
   @Test
-  public void testNegative() throws IOException {
-    Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
+  void testNegative() throws IOException {
+    Bucket bucket = makeBucket(Math.max(data1.length, data2.length));
     try {
       // Write
-      OutputStream os = bucket.getOutputStream();
-      os.write(0);
-      os.write(-1);
-      os.write(-2);
-      os.write(123);
-      os.close();
+      try (OutputStream os = bucket.getOutputStream()) {
+        os.write(0);
+        os.write(-1);
+        os.write(-2);
+        os.write(123);
+      }
 
       // Read byte[]
-      InputStream is = bucket.getInputStream();
-      assertEquals("Write-0", 0xff & (byte) 0, is.read());
-      assertEquals("Write-1", 0xff & (byte) -1, is.read());
-      assertEquals("Write-2", 0xff & (byte) -2, is.read());
-      assertEquals("Write-123", 0xff & (byte) 123, is.read());
-      assertEquals("EOF", -1, is.read());
-      is.close();
+      try (InputStream is = bucket.getInputStream()) {
+        assertEquals(0, is.read(), "Write-0");
+        assertEquals(0xff & (byte) -1, is.read(), "Write-1");
+        assertEquals(0xff & (byte) -2, is.read(), "Write-2");
+        assertEquals(0xff & (byte) 123, is.read(), "Write-123");
+        assertEquals(-1, is.read(), "EOF");
+      }
     } finally {
       freeBucket(bucket);
     }
   }
 
   @Test
-  public void testLargeData() throws IOException {
+  void testLargeData() throws IOException {
 
-    Bucket bucket = makeBucket(DATA_LONG.length * 16L);
+    Bucket bucket = makeBucket(dataLong.length * 16L);
     try {
       // Write
-      OutputStream os = bucket.getOutputStream();
-      for (int i = 0; i < 16; i++) {
-        os.write(DATA_LONG);
+      try (OutputStream os = bucket.getOutputStream()) {
+        for (int i = 0; i < 16; i++) {
+          os.write(dataLong);
+        }
       }
-      os.close();
 
       // Read byte[]
-      DataInputStream is = new DataInputStream(bucket.getInputStream());
-      for (int i = 0; i < 16; i++) {
-        byte[] buf = new byte[DATA_LONG.length];
-        is.readFully(buf);
-        assertEquals("Read-Long", new ByteArrayWrapper(DATA_LONG), new ByteArrayWrapper(buf));
+      try (DataInputStream is = new DataInputStream(bucket.getInputStream())) {
+        for (int i = 0; i < 16; i++) {
+          byte[] buf = new byte[dataLong.length];
+          is.readFully(buf);
+          assertEquals(new ByteArrayWrapper(dataLong), new ByteArrayWrapper(buf), "Read-Long");
+        }
+
+        int read = is.read(new byte[1]);
+        assertEquals(-1, read, "Read-Long-Size");
       }
-
-      int read = is.read(new byte[1]);
-      assertEquals("Read-Long-Size", -1, read);
-
-      is.close();
     } finally {
       freeBucket(bucket);
     }

@@ -1,22 +1,45 @@
 package network.crypta.node;
 
 import java.util.Calendar;
-import java.util.Date;
 import java.util.TimeZone;
 import network.crypta.support.HTMLNode;
 
-/** Statistics tracking for performance analysis. */
+/**
+ * Collects per-hour and aggregate statistics for accepted remote requests.
+ *
+ * <p>This tracker maintains three rolling records: the current UTC hour, the previous UTC hour
+ * (finalized), and a cumulative total since the instance was created. On a UTC hour change, the
+ * current record is finalized, logged, and moved to {@code prevRecord}; a fresh current record is
+ * started.
+ *
+ * <p>All mutating operations are synchronized, so instances are safe for concurrent use from
+ * multiple threads.
+ *
+ * @see HourlyStatsRecord
+ */
 public class HourlyStats {
+  // Finalized snapshot for the previous UTC hour.
   private HourlyStatsRecord prevRecord;
+  // Mutable stats for the current UTC hour.
   private HourlyStatsRecord currentRecord;
+  // Cumulative stats since this tracker was created.
   private final HourlyStatsRecord totalRecord;
 
+  // UTC clocks used exclusively to detect hour boundaries (DST-safe).
   private final Calendar lastHourlyTime;
   private final Calendar currentTime;
 
   private final Node node;
 
-  /** Public constructor. */
+  /**
+   * Creates a new hourly statistics tracker tied to the provided node.
+   *
+   * <p>Timestamps are evaluated in UTC. The initial current record begins immediately and may
+   * represent a partial hour if construction occurs after the top of the hour.
+   *
+   * @param node the local node whose configuration (e.g., max HTL and location) is used by
+   *     underlying records
+   */
   public HourlyStats(Node node) {
     this.node = node;
     prevRecord = null;
@@ -27,21 +50,31 @@ public class HourlyStats {
   }
 
   /**
-   * Report an incoming accepted remote request.
+   * Records a single incoming, accepted remote request.
    *
-   * @param ssk Whether the request was an ssk
-   * @param success Whether the request succeeded
-   * @param local If the request succeeded, whether it succeeded locally
-   * @param htl The htl counter the request had when it arrived
-   * @param location The routing location of the request
+   * <p>If a UTC hour change is detected at call time, the current record is finalized and logged,
+   * then a new current record is started before the sample is recorded. The cumulative total is
+   * always updated.
+   *
+   * <p>Thread-safety: this method is synchronized.
+   *
+   * @param ssk whether the request targeted an SSK key
+   * @param success whether the request succeeded
+   * @param local when {@code success} is true, whether it was satisfied locally
+   * @param htl hop-to-live (HTL) value observed on arrival; values above the node's maximum are
+   *     clamped
+   * @param location routing location in the closed interval {@code [0, 1]}
+   * @throws IllegalArgumentException if {@code htl < 0} or {@code location} lies outside {@code [0,
+   *     1]}
    */
   public synchronized void remoteRequest(
       boolean ssk, boolean success, boolean local, int htl, double location) {
-    Date now = new Date();
-    currentTime.setTime(now);
+    long now = System.currentTimeMillis();
+    currentTime.setTimeInMillis(now);
     if (lastHourlyTime.get(Calendar.HOUR_OF_DAY) != currentTime.get(Calendar.HOUR_OF_DAY)) {
-      // new hour, cycle things.
-      lastHourlyTime.setTime(now);
+      // Hour boundary crossed (UTC): finalize and log the previous hour,
+      // then start a fresh current record.
+      lastHourlyTime.setTimeInMillis(now);
       prevRecord = currentRecord;
       currentRecord = new HourlyStatsRecord(node, true);
       prevRecord.markFinal();
@@ -52,6 +85,15 @@ public class HourlyStats {
     totalRecord.remoteRequest(ssk, success, local, htl, location);
   }
 
+  /**
+   * Appends an HTML table summarizing remote-request outcomes by HTL.
+   *
+   * <p>The table contains one row per HTL (descending) and a final total row. For CHK and SSK
+   * separately, it shows the success rate and the counts used to compute it. Values are derived
+   * from the cumulative record maintained by this tracker (not only the current hour).
+   *
+   * @param html parent node to which the table is appended; must not be null
+   */
   public void fillRemoteRequestHTLsBox(HTMLNode html) {
     totalRecord.fillRemoteRequestHTLsBox(html);
   }

@@ -1,70 +1,76 @@
 package network.crypta.support.math;
 
 import java.io.Serial;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Exponential decay "running average".
+ * Exponential-decay running average with a bootstrapping period.
  *
- * @author amphibian
- *     <p>For the first <tt>maxReports</tt> reports, this is equivalent to a simple running average.
- *     After that it is a decaying running average with a <tt>decayFactor</tt> of <tt>1 /
- *     maxReports</tt>. We accomplish this by having <tt>decayFactor = 1/(Math.min(#reports,
- *     maxReports))</tt>. We can therefore:
- *     <ul>
- *       <li>Specify <tt>maxReports</tt> more easily than an arbitrary decay factor.
- *       <li>We don't get big problems with influence of the initial value, which is usually not
- *           very reliable.
- *     </ul>
+ * <p>For the first {@code maxReports} valid observations, this behaves as a simple running average.
+ * After that, it becomes a decaying running average with decay factor {@code 1 / maxReports}.
+ * Formally, on each valid report {@code d} the factor used is {@code 1 / min(reports, maxReports)}
+ * where {@code reports} is the number of valid values already accepted. This makes it easy to
+ * reason about the decay and avoids excessive influence of the initial default value.
+ *
+ * <p>Invalid inputs (outside {@code [min, max]} or non-finite) are ignored and do not change the
+ * average or the report count.
+ *
+ * <p>Thread-safety: All public methods that read or mutate state are synchronized. Instances are
+ * {@link java.io.Serializable} and can be exported/imported via {@link SimpleFieldSet}.
  */
-public final class BootstrappingDecayingRunningAverage implements RunningAverage, Cloneable {
+public final class BootstrappingDecayingRunningAverage implements RunningAverage {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(BootstrappingDecayingRunningAverage.class);
+
   @Serial private static final long serialVersionUID = -1;
 
-  @Override
-  public BootstrappingDecayingRunningAverage clone() {
-    // Override clone() for locking; BDRAs are self-synchronized.
-    // Implement Cloneable to shut up findbugs.
-    return new BootstrappingDecayingRunningAverage(this);
-  }
-
+  /** Copying is provided via the copy constructor. */
   private final double min;
+
   private final double max;
   private double currentValue;
   private long reports;
   private int maxReports;
 
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
-
   /**
-   * Constructor
+   * Creates a new running average.
    *
-   * @param defaultValue default value
-   * @param min minimum value of input data
-   * @param max maximum value of input data
-   * @param maxReports number of reports before bootstrapping period ends and decay begins
-   * @param fs {@link SimpleFieldSet} parameter for this object. Will override other parameters.
+   * @param defaultValue initial value returned by {@link #currentValue()} before any valid report
+   * @param min minimum acceptable input (inclusive)
+   * @param max maximum acceptable input (inclusive)
+   * @param maxReports number of valid reports before decay stabilizes at {@code 1/maxReports}
+   * @param fs optional {@link SimpleFieldSet} to initialize from; when provided, {@code fs}
+   *     overrides {@code defaultValue} and {@code reports} if the stored values are valid. Expected
+   *     keys are: {@code CurrentValue} (double) and {@code Reports} (long).
+   * @throws IllegalArgumentException if {@code maxReports <= 0}
    */
   public BootstrappingDecayingRunningAverage(
       double defaultValue, double min, double max, int maxReports, SimpleFieldSet fs) {
-    this.min = min;
-    this.max = max;
+    this(RunningAverageBounds.of(defaultValue, min, max), maxReports, fs);
+  }
+
+  /**
+   * Creates a new running average.
+   *
+   * @param bounds default value and accepted range for observations
+   * @param maxReports number of valid reports before decay stabilizes at {@code 1/maxReports}
+   * @param fs optional {@link SimpleFieldSet} to initialize from; when provided, {@code fs}
+   *     overrides {@code defaultValue} and {@code reports} if the stored values are valid. Expected
+   *     keys are: {@code CurrentValue} (double) and {@code Reports} (long).
+   * @throws IllegalArgumentException if {@code maxReports <= 0}
+   */
+  public BootstrappingDecayingRunningAverage(
+      RunningAverageBounds bounds, int maxReports, SimpleFieldSet fs) {
+    this.min = bounds.min();
+    this.max = bounds.max();
     reports = 0;
-    currentValue = defaultValue;
+    currentValue = bounds.defaultValue();
     this.maxReports = maxReports;
-    assert (maxReports > 0);
+    if (maxReports <= 0) {
+      throw new IllegalArgumentException("maxReports must be > 0");
+    }
     if (fs != null) {
       double d = fs.getDouble("CurrentValue", currentValue);
       if (!(Double.isNaN(d) || Double.isInfinite(d) || d < min || d > max)) {
@@ -75,105 +81,101 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   }
 
   /**
-   * {@inheritDoc}
+   * Copy constructor.
    *
-   * @return
+   * <p>Takes an atomic, thread-safe snapshot of {@code a}'s state at construction time using an
+   * internal synchronized snapshot method. This guarantees the copied {@code currentValue}, {@code
+   * reports}, and {@code maxReports} come from a consistent moment in time. Subsequent
+   * modifications to either instance do not affect the other.
    */
+  public BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
+    this.min = a.min;
+    this.max = a.max;
+    StateSnapshot s = a.snapshot();
+    this.currentValue = s.currentValue();
+    this.reports = s.reports();
+    this.maxReports = s.maxReports();
+  }
+
+  /** Immutable snapshot of the mutable fields. */
+  private record StateSnapshot(double currentValue, long reports, int maxReports) {}
+
+  /**
+   * Returns a consistent snapshot of the mutable state.
+   *
+   * <p>Synchronized to ensure all fields are read under the same monitor hold.
+   */
+  private synchronized StateSnapshot snapshot() {
+    return new StateSnapshot(currentValue, reports, maxReports);
+  }
+
+  /** {@inheritDoc} */
   @Override
   public synchronized double currentValue() {
     return currentValue;
   }
 
   /**
-   * <strong>Not a public method.</strong> Changes the internally stored <code>currentValue</code>
-   * and return the old one.
+   * Internal helper: replace the stored {@code currentValue}.
    *
-   * <p>Used by {@link DecayingKeyspaceAverage} to normalize the stored averages. Calling this
-   * function may (purposefully) destroy the utility of the average being kept.
-   *
-   * @param d
-   * @return
-   * @see DecayingKeyspaceAverage
+   * <p>Used by {@link DecayingKeyspaceAverage} to normalize stored averages. Calling this method
+   * may intentionally invalidate the statistical meaning of the average.
    */
-  synchronized double setCurrentValue(double d) {
-    double old = currentValue;
+  synchronized void setCurrentValue(double d) {
     currentValue = d;
-    return old;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @param d
-   */
+  /** {@inheritDoc} */
   @Override
   public synchronized void report(double d) {
     // Check for invalid values and return early without updating
-    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (logDEBUG) {
-        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
-        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d))
-          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
-      }
+    if (isInvalid(d)) {
+      traceInvalid(d);
       return; // Don't update the average with invalid values
     }
     reports++;
-    double decayFactor = 1.0 / (Math.min(reports, maxReports));
+    double decayFactor = 1.0 / Math.min(reports, maxReports);
     currentValue = (d * decayFactor) + (currentValue * (1 - decayFactor));
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @param d
-   */
+  /** {@inheritDoc} */
   @Override
   public void report(long d) {
     report((double) d);
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @param d
-   */
+  /** {@inheritDoc} */
   @Override
   public synchronized double valueIfReported(double d) {
     // Return current value for invalid inputs
-    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (logDEBUG) {
-        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
-        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d))
-          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
-      }
+    if (isInvalid(d)) {
+      traceInvalid(d);
       return currentValue; // Return unchanged value for invalid inputs
     }
-    double decayFactor = 1.0 / (Math.min(reports + 1, maxReports));
+    double decayFactor = 1.0 / Math.min(reports + 1, maxReports);
     return (d * decayFactor) + (currentValue * (1 - decayFactor));
   }
 
+  private boolean isInvalid(double d) {
+    return d < min || d > max || Double.isInfinite(d) || Double.isNaN(d);
+  }
+
+  private void traceInvalid(double d) {
+    if (!LOG.isTraceEnabled()) return;
+    if (d < min) LOG.trace("Too low: {}", d);
+    else if (d > max) LOG.trace("Too high: {}", d);
+    else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
+    else if (Double.isNaN(d)) LOG.trace("NaN value");
+  }
+
   /**
-   * Change <code>maxReports</code>.
+   * Updates {@code maxReports} for future observations.
    *
-   * @param maxReports
+   * <p>Only affects later calls to {@link #report(double)}; it does not retroactively recompute the
+   * average.
    */
   public synchronized void changeMaxReports(int maxReports) {
     this.maxReports = maxReports;
-  }
-
-  /** Copy constructor. */
-  private BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
-    synchronized (a) {
-      this.currentValue = a.currentValue;
-      this.max = a.max;
-      this.maxReports = a.maxReports;
-      this.min = a.min;
-      this.reports = a.reports;
-    }
   }
 
   /** {@inheritDoc} */
@@ -183,10 +185,18 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   }
 
   /**
-   * Export this object as {@link SimpleFieldSet}.
+   * Exports this instance to a {@link SimpleFieldSet}.
    *
-   * @param shortLived See {@link SimpleFieldSet#SimpleFieldSet(boolean)}.
-   * @return
+   * <p>Fields written:
+   *
+   * <ul>
+   *   <li>{@code Type} — constant {@code "BootstrappingDecayingRunningAverage"}
+   *   <li>{@code CurrentValue} — current average (double)
+   *   <li>{@code Reports} — number of valid reports (long)
+   * </ul>
+   *
+   * @param shortLived see {@link SimpleFieldSet#SimpleFieldSet(boolean)}
+   * @return a new field set containing the serialized state
    */
   public synchronized SimpleFieldSet exportFieldSet(boolean shortLived) {
     SimpleFieldSet fs = new SimpleFieldSet(shortLived);

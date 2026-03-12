@@ -5,20 +5,33 @@ import java.security.MessageDigest;
 import network.crypta.support.HexUtil;
 
 /**
- * The Hash class will generate the hash value of a given set of bytes and also verify that a hash
- * matches a given set of bytes. The addBytes methods can be used to pass data into a buffer that
- * will be used to generate a hash. Once a hash is generated, the buffer is cleared or reset.
+ * Incremental hashing helper for multiple algorithms.
  *
- * @author unixninja92 Suggested HashType to use: SHA256
+ * <p>This class wraps a {@link MessageDigest} obtained from a {@link HashType} and provides a
+ * simple streaming API: add input with {@code addByte(..)} / {@code addBytes(..)}, then finalize
+ * the current state with {@link #genHash()} or one of its convenience variants. After generating a
+ * hash, the internal digest state is reset, so the instance is ready to accept new input.
+ *
+ * <p>Instances are not thread-safe. Use each {@code Hash} from a single thread or synchronize
+ * externally. Inputs must be non-{@code null}. Passing {@code null} will result in a runtime
+ * exception from the underlying digest implementation.
+ *
+ * <p>Provider quirks: some non-standard digests (e.g., {@link HashType#ED2K} and {@link
+ * HashType#TTH}) require special handling when resetting after {@link #genHash()}; this class
+ * compensates accordingly.
+ *
+ * <p>For general-purpose use, {@link HashType#SHA256} is a reasonable default.
+ *
+ * @author unixninja92
  */
 public final class Hash {
   private final HashType type;
   private MessageDigest digest;
 
   /**
-   * Creates an instance of Hash using the specified hashing algorithm.
+   * Creates a new hasher using the specified algorithm.
    *
-   * @param type The hashing algorithm to use.
+   * @param type the hashing algorithm to use; must not be {@code null}
    */
   public Hash(HashType type) {
     this.type = type;
@@ -26,30 +39,35 @@ public final class Hash {
   }
 
   /**
-   * Generates the hash of all the bytes in the buffer added with the addBytes methods. The buffer
-   * is then cleared after the hash has been generated.
+   * Finalizes and returns the hash of the bytes added since the last reset.
    *
-   * @return The generated hash of all the bytes added since last reset.
+   * <p>After computing the digest, this method resets the internal state so that subsequent calls
+   * start from a clean slate. For {@link HashType#ED2K} and {@link HashType#TTH}, the underlying
+   * providers do not implement reset reliably; the implementation recreates or resets the digest to
+   * ensure a clean state.
+   *
+   * @return a newly allocated array containing the hash bytes
    */
   public byte[] genHash() {
     byte[] result = digest.digest();
     if (type == HashType.ED2K) {
-      // ED2K does not reset after generating a digest. Work around this issue
+      // ED2K provider does not reset after digest(); explicitly reset.
       digest.reset();
     } else if (type == HashType.TTH) {
-      // TTH's .reset method is broken or isn't implemented. Work around this bug
+      // TTH provider's reset() is unreliable; recreate the digest.
       digest = type.get();
     }
     return result;
   }
 
   /**
-   * Generates the hash of only the specified bytes. The buffer is cleared before processing the
-   * input to ensure that no extra data is included. Once the hash has been generated, the buffer is
-   * cleared again.
+   * Computes the hash of the provided bytes only.
    *
-   * @param input The bytes to hash
-   * @return The generated hash of the data
+   * <p>This method resets the internal state before processing the provided input to ensure that no
+   * previous data is included, then finalizes and resets again via {@link #genHash()}.
+   *
+   * @param input the byte arrays to hash; each entry must be non-{@code null}
+   * @return the hash of {@code input}
    */
   public byte[] genHash(byte[]... input) {
     digest.reset();
@@ -58,22 +76,23 @@ public final class Hash {
   }
 
   /**
-   * Generates the HashResult of all the bytes in the buffer added with the addBytes methods. The
-   * buffer is then cleared after the hash has been generated.
+   * Finalizes and returns the current hash as a {@link HashResult}.
    *
-   * @return The generated hash as a HashResult of all the bytes added since last reset.
+   * <p>Equivalent to {@code new HashResult(type, genHash())}.
+   *
+   * @return the hash value paired with its {@link HashType}
    */
   public HashResult genHashResult() {
     return new HashResult(type, genHash());
   }
 
   /**
-   * Generates the hash as a HashResult string of only the specified bytes. The buffer is cleared
-   * before processing the input to ensure that no extra data is included. Once the hash has been
-   * generated, the buffer is cleared again.
+   * Computes the hash of the provided bytes only and returns it as a {@link HashResult}.
    *
-   * @param input The bytes to hash
-   * @return The generated hash as a HashResult of the data
+   * <p>Resets the internal state before and after processing the input.
+   *
+   * @param input the byte arrays to hash; each entry must be non-{@code null}
+   * @return the resulting {@link HashResult}
    */
   public HashResult genHashResult(byte[]... input) {
     digest.reset();
@@ -82,28 +101,27 @@ public final class Hash {
   }
 
   /**
-   * Generates the hash as a hex string of all the bytes in the buffer added with the addBytes
-   * methods. The buffer is then cleared after the hash has been generated.
+   * Finalizes and returns the current hash as a hexadecimal string.
    *
-   * @return The generated hash as a hex string of all the bytes added since last reset.
+   * @return a hexadecimal representation of the hash
    */
   public String genHexHash() {
     return HexUtil.bytesToHex(genHash());
   }
 
   /**
-   * Adds the specified byte to the buffer of bytes to be hashed.
+   * Adds a single byte to the current hash input.
    *
-   * @param input Byte to be added to hash
+   * @param input the byte to add
    */
   public void addByte(byte input) {
     digest.update(input);
   }
 
   /**
-   * Adds the specified byte arrays to the buffer of bytes to be hashed.
+   * Adds one or more byte arrays to the current hash input.
    *
-   * @param input The byte[]s to add
+   * @param input the arrays to add; each entry must be non-{@code null}
    */
   public void addBytes(byte[]... input) {
     for (byte[] b : input) {
@@ -112,59 +130,61 @@ public final class Hash {
   }
 
   /**
-   * Adds the remaining bytes from a ByteBuffer to the buffer of bytes to be hashed. The bytes read
-   * from the ByteBuffer will be from input.position() to input.remaining(). Upon return, the
-   * ByteBuffer's .position() will be equal to .remaining() and .remaining() will stay unchanged.
+   * Adds the remaining bytes from a {@link ByteBuffer} to the current hash input.
    *
-   * @param input The ByteBuffer to be hashed
+   * <p>Bytes are read from {@code input.position()} up to {@code input.limit()}. On return, the
+   * buffer's position is advanced to {@code limit} (i.e., all remaining bytes are consumed); the
+   * limit is unchanged.
+   *
+   * @param input the buffer whose remaining bytes are added
    */
   public void addBytes(ByteBuffer input) {
     digest.update(input);
   }
 
   /**
-   * Adds the specified portion of the byte[] passed in to the buffer of bytes to be hashed.
+   * Adds a slice of a byte array to the current hash input.
    *
-   * @param input The array containing bytes to be hashed
-   * @param offset Where the first byte to hash is
-   * @param len How many bytes after the offset to add to hash.
+   * @param input the source array
+   * @param offset the index of the first byte to add
+   * @param len the number of bytes to add starting at {@code offset}
    */
   public void addBytes(byte[] input, int offset, int len) {
     digest.update(input, offset, len);
   }
 
   /**
-   * Generates the hash of the byte arrays provided and checks to see if that hash is the same as
-   * the one passed in. The buffer is cleared before processing the input to ensure that no extra
-   * data is included. Once the hash has been generated, the buffer is cleared again.
+   * Verifies that the hash of the provided data matches the expected value.
    *
-   * @param hash The hash to be verified
-   * @param data The data to be hashed
-   * @return Returns true if the generated hash matches the passed in hash. Otherwise returns false.
+   * <p>The internal state is reset before hashing the provided input and reset again after
+   * finalization. Comparison uses {@link java.security.MessageDigest#isEqual(byte[], byte[])} to
+   * reduce timing side-channel leakage.
+   *
+   * @param hash the expected hash value
+   * @param data the data to hash
+   * @return {@code true} if the computed hash equals {@code hash}; otherwise {@code false}
    */
   public boolean verify(byte[] hash, byte[]... data) {
     return MessageDigest.isEqual(hash, genHash(data));
   }
 
   /**
-   * Checks to see if the HashResults passed in are equivalent. Does a simple byte compare and type
-   * compare.
+   * Compares two {@link HashResult} values for equality of type and contents.
    *
-   * @param hash1 The first hash to be compared
-   * @param hash2 The second hash to be compared
-   * @return Returns true if the hashes are the same. Otherwise returns false.
+   * @param hash1 the first value
+   * @param hash2 the second value
+   * @return {@code true} if both type and bytes are equal; otherwise {@code false}
    */
   public static boolean verify(HashResult hash1, HashResult hash2) {
     return hash1.equals(hash2);
   }
 
   /**
-   * Checks to see if the provided HashResult is equivalt to the HashResult generated from the given
-   * byte array.
+   * Verifies that the provided {@link HashResult} equals the hash of the given data.
    *
-   * @param hash The HashResult to verify
-   * @param input The data to check against the HashResult
-   * @return Returns true if HashResult matches the generated HashResult of the data.
+   * @param hash the expected value
+   * @param input the data to hash
+   * @return {@code true} if the computed value equals {@code hash}; otherwise {@code false}
    */
   public static boolean verify(HashResult hash, byte[]... input) {
     HashType type = hash.type;

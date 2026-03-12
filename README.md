@@ -9,8 +9,8 @@
   <a href="https://www.gnu.org/licenses/gpl-3.0">
     <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
   </a>
-  <img alt="Java 21+" src="https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk" />
-  <img alt="Kotlin 2.2+" src="https://img.shields.io/badge/Kotlin-2.2%2B-7F52FF?logo=kotlin" />
+  <img alt="Java 25+" src="https://img.shields.io/badge/Java-25%2B-007396?logo=openjdk" />
+  <img alt="Kotlin 2.3.0+" src="https://img.shields.io/badge/Kotlin-2.3.0%2B-7F52FF?logo=kotlin" />
   <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
 </p>
 
@@ -41,8 +41,8 @@ on:
   latency.
 - Safe observability: privacy‑preserving telemetry and reproducible benchmarking harnesses to inform tuning without
   leaking user data.
-- A better platform: Kotlin‑first codebase, a stable plugin SDK, typed configuration, and testable interfaces to make
-  extending the network straightforward.
+- A better platform: Kotlin‑first codebase, typed configuration, and testable interfaces to make extending the network
+  straightforward.
 
 This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
 data, and serves applications.
@@ -76,10 +76,10 @@ Choose one of the following options.
 
 ### A) Install via Packages (recommended)
 
-- Windows (.exe)
-  - Download the Crypta installer from the Releases page.
-  - Double‑click to install. If Windows SmartScreen blocks it, click “More info” → “Run anyway”.
-  - Launch “Crypta” from the Start Menu.
+- Windows
+  - This repository does not build Windows installers. Use the portable distribution or the
+    jpackage app image below. If a Windows installer is published on the project’s Releases page,
+    you can install it by double‑clicking; if SmartScreen warns, click “More info” → “Run anyway”.
 
 - macOS (.dmg)
   - Download the DMG from the Releases page and open it.
@@ -147,8 +147,8 @@ wrapper, you can build immediately.
 
 Prerequisites:
 
-- Java 21 or newer
-- Kotlin 2.2+ (tooling; the project includes Kotlin Gradle plugins)
+- Java 25 or newer
+- Kotlin 2.3.0+ (tooling; the project includes Kotlin Gradle plugins)
 - A POSIX shell or Windows terminal
 
 Build the node JAR (prints SHA‑256 of the output):
@@ -163,8 +163,9 @@ Clean build:
 ./gradlew clean buildJar
 ```
 
-The wrapper is configured to [verify the distribution checksum](gradle/wrapper/gradle-wrapper.properties) from
-`https://services.gradle.org`.
+The wrapper validates the distribution URL (`validateDistributionUrl=true` in
+`gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
+`distributionSha256Sum=<sha256>` for the chosen Gradle distribution.
 
 ## Testing
 
@@ -310,7 +311,7 @@ Outputs (macOS example)
 Details
 
 - App metadata: Name `Crypta`, Vendor `crypta.network`, App ID `network.crypta.cryptad`.
-- Main entry: `network.crypta.launcher.LauncherKt`.
+- Main entry: `network.crypta.launcher.Launcher`.
 - Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
 - Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
@@ -393,7 +394,7 @@ build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
 
 ```bash
 cd build/jpackage/Crypta.app/Contents
-./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
+./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.Launcher
 ```
 
 ## Launcher Details
@@ -426,12 +427,13 @@ cd build/jpackage/Crypta.app/Contents
 
 ## Dependencies
 
-- Runtime: Java 21+
-- Language/Tooling: Kotlin 2.2+, Gradle Wrapper (provided in this repo)
-- External libraries: managed via Gradle; for offline distribution and installer integration, see
-  `dependencies.properties`.
-- Dependency verification is enabled; update both the `dependencies` and `dependencyVerification` blocks in
-  `build.gradle.kts` when adding libraries.
+- Runtime: Java 25+
+- Language/Tooling: Kotlin 2.3.0+, Gradle Wrapper (provided in this repo)
+- External libraries are managed via Gradle.
+- Dependency verification is enabled. When adding or updating libraries:
+  - Declare versions in `gradle/libs.versions.toml` and add usages in `build.gradle.kts`.
+  - Update verification metadata so `gradle/verification-metadata.xml` and keyrings reflect the new
+    artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Launcher adds:
 - `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` for Swing + coroutine integration.
@@ -471,7 +473,6 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 - Core updates use a package‑based updater (“CoreUpdater”). It subscribes to an `info/<N>` JSON descriptor via the existing update USK, selects an OS/arch‑specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
 - Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
-- Plugin updates continue to be downloaded and deployed in‑app.
 - JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
 
@@ -482,13 +483,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
 - Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP (`network.crypta.clients.http`).
-- Plugins (`network.crypta.pluginmanager`): `PluginManager`, `FredPlugin*`, `OfficialPlugins`.
 - Config (`network.crypta.config`): type‑safe persisted configuration.
 - Support (`network.crypta.support`): logging, data structures, threading, helpers.
 
-You generally do not need to install libraries manually; Gradle resolves them. When preparing installer assets or
-offline bundles, ensure artifacts are listed in `dependencies.properties` and available through the project’s
-distribution process.
+You generally do not need to install libraries manually; Gradle resolves them.
 
 ## License
 

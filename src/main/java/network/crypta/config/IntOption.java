@@ -4,145 +4,131 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Fields;
 import network.crypta.support.api.IntCallback;
 
-/** Integer config variable */
+/**
+ * Integer-backed configuration option with optional unit/duration semantics.
+ *
+ * <p>This option stores an {@link Integer} and can interpret and format values according to a
+ * {@link Dimension}:
+ *
+ * <ul>
+ *   <li>{@link Dimension#NOT}: treat the value as a plain number.
+ *   <li>{@link Dimension#SIZE}: allow human-friendly size suffixes when parsing and prefer compact
+ *       IEC/SI forms when formatting (see {@link Fields#intToString(int, Dimension)}).
+ *   <li>{@link Dimension#DURATION}: parse durations (via {@code TimeUtil}) and format as a
+ *       human-readable time span.
+ * </ul>
+ *
+ * <p>Parsing is locale-agnostic and tolerant: when a dimension-aware parse fails, the code falls
+ * back to parsing a plain integer to preserve historical behavior and interoperability with
+ * existing configuration files.
+ */
 public class IntOption extends Option<Integer> {
   private final Dimension dimension;
 
+  /**
+   * Creates an integer option whose default value is provided as text.
+   *
+   * @param conf owning sub-configuration.
+   * @param optionName stable key used to persist and retrieve the option.
+   * @param defaultValueString textual default; interpreted using {@code dimension}.
+   * @param meta option metadata (sort order, expert flag, descriptions).
+   * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
+   * @param dimension interpretation of numeric text and preferred display format.
+   */
   public IntOption(
       SubConfig conf,
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
-    this(
-        conf,
-        optionName,
-        parseString(defaultValueString, dimension),
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        dimension);
+    this(conf, optionName, parseString(defaultValueString, dimension), meta, cb, dimension);
   }
 
   /**
-   * @deprecated Replaced by {@link #IntOption(SubConfig, String, String, int, boolean, boolean,
-   *     String, String, IntCallback, Dimension)}
+   * Creates an integer option with a typed default value.
+   *
+   * @param conf owning sub-configuration.
+   * @param optionName stable key used to persist and retrieve the option.
+   * @param defaultValue default value stored as an {@link Integer}.
+   * @param meta option metadata (sort order, expert flag, descriptions).
+   * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
+   * @param dimension interpretation of numeric text and preferred display format.
    */
-  @Deprecated
-  public IntOption(
-      SubConfig conf,
-      String optionName,
-      String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb,
-      boolean isSize) {
-    this(
-        conf,
-        optionName,
-        defaultValueString,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        isSize ? Dimension.SIZE : Dimension.NOT);
-  }
-
   public IntOption(
       SubConfig conf,
       String optionName,
       Integer defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
-    super(
-        conf,
-        optionName,
-        cb,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        Option.DataType.NUMBER);
+    super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.dimension = dimension;
   }
 
   /**
-   * @deprecated Replaced by {@link #IntOption(SubConfig, String, Integer, int, boolean, boolean,
-   *     String, String, IntCallback, Dimension)}
+   * Parses textual input into an {@link Integer} using the configured {@link Dimension}.
+   *
+   * <p>On failure, the method falls back to a plain integer parse (equivalent to {@link
+   * Dimension#NOT}). If parsing still fails, a localized error message is returned via {@link
+   * InvalidConfigValueException}.
+   *
+   * @param val input string from configuration.
+   * @return the parsed value.
+   * @throws InvalidConfigValueException if the string cannot be parsed.
    */
-  @Deprecated
-  public IntOption(
-      SubConfig conf,
-      String optionName,
-      Integer defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb,
-      boolean isSize) {
-    this(
-        conf,
-        optionName,
-        defaultValue,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        isSize ? Dimension.SIZE : Dimension.NOT);
-  }
-
   @Override
   protected Integer parseString(String val) throws InvalidConfigValueException {
     try {
       return parseString(val, dimension);
-    } catch (NumberFormatException e) {
-      throw new InvalidConfigValueException(l10n("parseError", "val", val));
+    } catch (NumberFormatException _) {
+      throw new InvalidConfigValueException(l10nParseError(val));
     }
   }
 
-  // can be two string representations: #toDisplayString(Integer) and #toString(Integer)
+  // Parse either a dimension-aware or a plain integer form. If the dimension-aware parse fails,
+  // fall back to {@code Dimension.NOT} to maintain compatibility with existing config files.
   private static Integer parseString(String val, Dimension dimension) throws NumberFormatException {
     try {
       return Fields.parseInt(val, dimension);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return Fields.parseInt(val, Dimension.NOT);
     }
   }
 
-  private String l10n(String key, String pattern, String value) {
-    return NodeL10n.getBase().getString("IntOption." + key, pattern, value);
+  private static final String PARSE_ERROR_KEY = "IntOption.parseError";
+  private static final String VAL_PATTERN = "val";
+
+  /** Returns a localized parse error string for display in UIs and logs. */
+  private String l10nParseError(String value) {
+    return NodeL10n.getBase().getString(PARSE_ERROR_KEY, VAL_PATTERN, value);
   }
 
+  /**
+   * Converts a value to user-facing text using the configured {@link Dimension}.
+   *
+   * <p>For example, durations are formatted as time spans and sizes may use compact unit suffixes
+   * when evenly divisible.
+   *
+   * @param val value to format; never {@code null}.
+   * @return formatted string for UI display.
+   */
   @Override
   protected String toDisplayString(Integer val) {
     return Fields.intToString(val, dimension);
   }
 
+  /**
+   * Converts a value to a stable, non-localized string suitable for persistence.
+   *
+   * <p>This representation always uses {@link Dimension#NOT} to avoid introducing unit suffixes or
+   * localized forms into configuration files.
+   *
+   * @param val value to encode; never {@code null}.
+   * @return plain numeric string.
+   */
   @Override
   protected String toString(Integer val) {
     return Fields.intToString(val, Dimension.NOT);

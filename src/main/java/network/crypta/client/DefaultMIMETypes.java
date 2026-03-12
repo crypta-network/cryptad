@@ -1,19 +1,67 @@
 package network.crypta.client;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Vector;
+import java.util.Locale;
 import java.util.regex.Pattern;
-import network.crypta.support.Logger;
 import network.crypta.support.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/** Holds the default MIME types. */
+/**
+ * Registry of well-known MIME (media) types and common file extensions.
+ *
+ * <p>This utility exposes a read‑only, process‑wide catalog that maps:
+ *
+ * <ul>
+ *   <li>a compact numeric identifier → canonical MIME type string,
+ *   <li>a MIME type string → its numeric identifier,
+ *   <li>a file extension → MIME type, and
+ *   <li>a MIME type → its primary and alternate file extensions.
+ * </ul>
+ *
+ * <p>The registry is populated once during class initialization and is not intended to be mutated
+ * at runtime by application code. All query methods are {@code static} and {@code synchronized} to
+ * ensure safe access from multiple threads without additional synchronization. The numeric mapping
+ * is a stable, serialization‑oriented identifier used elsewhere in the system; callers should not
+ * assume that numbers are contiguous or infer semantics from them.
+ *
+ * <p>Typical usage involves:
+ *
+ * <ul>
+ *   <li>guessing a MIME type from a filename via {@link #guessMIMEType(String, boolean)},
+ *   <li>validating that an extension matches a MIME type with {@link #isValidExt(String, String)},
+ *   <li>deriving the primary extension for a type via {@link #getExtension(String)}, and
+ *   <li>falling back to {@link #DEFAULT_MIME_TYPE} when a type cannot be determined.
+ * </ul>
+ *
+ * @see #guessMIMEType(String, boolean)
+ * @see #getExtension(String)
+ * @see #isValidExt(String, String)
+ * @see network.crypta.support.MediaType
+ */
 public class DefaultMIMETypes {
+  /** Logger emitting diagnostics about duplicate extension assignments during initialization. */
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultMIMETypes.class);
 
-  /** Default MIME type - what to set it to if we don't know any better */
+  /**
+   * Hidden constructor.
+   *
+   * <p>This type is a pure, static utility and must not be instantiated.
+   */
+  private DefaultMIMETypes() {}
+
+  /**
+   * Default MIME type used when no specific type can be determined.
+   *
+   * <p>This constant is returned by {@link #guessMIMEType(String, boolean)} and related helpers
+   * whenever the input is missing an extension or the extension is not recognized. It follows the
+   * conventional choice of {@code application/octet-stream} to represent arbitrary binary content.
+   */
   public static final String DEFAULT_MIME_TYPE = "application/octet-stream";
 
   /** MIME types: number -> name */
-  private static final Vector<String> mimeTypesByNumber = new Vector<>();
+  private static final ArrayList<String> mimeTypesByNumber = new ArrayList<>();
 
   /** MIME types: name -> number */
   private static final HashMap<String, Short> mimeTypesByName = new HashMap<>();
@@ -33,10 +81,16 @@ public class DefaultMIMETypes {
   /**
    * Add a MIME type, without any extensions.
    *
-   * @param number The number of the MIME type for compression. This *must not change* for a given
-   *     type, or the metadata format will be affected.
-   * @param type The actual MIME type string. Do not include ;charset= etc; these are parameters and
-   *     there is a separate mechanism for them.
+   * <p>This method is used internally during static initialization to populate the registry. The
+   * mapping between {@code number} and {@code type} is part of a serialized format and therefore
+   * must remain stable once assigned.
+   *
+   * @param number stable numeric identifier for {@code type}; must not be reused for a different
+   *     type as it affects on‑disk metadata and wire formats
+   * @param type canonical MIME type string (for example, {@code "application/pdf"}); do not include
+   *     parameters such as {@code ;charset=UTF-8}
+   * @throws IllegalArgumentException if {@code number} has already been assigned to a different
+   *     type in the current process
    */
   protected static synchronized void addMIMEType(short number, String type) {
     if (mimeTypesByNumber.size() > number) {
@@ -50,39 +104,34 @@ public class DefaultMIMETypes {
   }
 
   /**
-   * Add a MIME type.
+   * Add a MIME type with one or more associated file extensions.
    *
-   * @param number The number of the MIME type for compression. This *must not change* for a given
-   *     type, or the metadata format will be affected.
-   * @param type The actual MIME type string. Do not include ;charset= etc; these are parameters and
-   *     there is a separate mechanism for them.
-   * @param extensions An array of common extensions for files of this type. Must be unique for the
-   *     type.
+   * <p>Extensions are case‑insensitive and stored in lowercase. When only a single extension is
+   * provided, it automatically becomes the primary extension unless {@code outExtension} is
+   * explicitly specified. If an extension is already claimed by another MIME type, the conflict is
+   * logged and the previous assignment is retained.
+   *
+   * @param number stable numeric identifier for {@code type}; changing existing assignments breaks
+   *     metadata compatibility
+   * @param type canonical MIME type string (for example, {@code "image/png"}); parameters are not
+   *     allowed here
+   * @param extensions array of common extensions for {@code type}; entries should not include
+   *     leading dots and must be unique within the array
+   * @param outExtension primary extension to prefer when multiple {@code extensions} are supplied;
+   *     if {@code null} and the array contains exactly one entry, that entry becomes primary
    */
   protected static synchronized void addMIMEType(
       short number, String type, String[] extensions, String outExtension) {
     addMIMEType(number, type);
     if (extensions != null) {
       for (String ext : extensions) {
-        ext = ext.toLowerCase();
+        ext = ext.toLowerCase(Locale.ROOT);
         Short s = mimeTypesByExtension.get(ext);
         if (s != null) {
           // No big deal
-          Logger.normal(
-              DefaultMIMETypes.class,
-              "Extension "
-                  + ext
-                  + " assigned to "
-                  + byNumber(s)
-                  + " in preference to "
-                  + number
-                  + ':'
-                  + type);
+          logDuplicateExtension(ext, s, number, type);
         } else {
-          // If only one, make it primary
-          if ((outExtension == null) && (extensions.length == 1))
-            primaryExtensionByMimeNumber.put(number, ext);
-          mimeTypesByExtension.put(ext, number);
+          registerExtension(number, ext, outExtension, extensions);
         }
       }
       allExtensionsByMimeNumber.put(number, extensions);
@@ -91,32 +140,117 @@ public class DefaultMIMETypes {
   }
 
   /**
+   * Log that an extension was encountered more than once during registry initialization.
+   *
+   * @param ext the lowercase extension string that was declared multiple times
+   * @param existingNumber numeric identifier of the MIME type that already owns {@code ext}
+   * @param number numeric identifier of the MIME type that attempted to reuse {@code ext}
+   * @param type human‑readable MIME type string of the conflicting declaration
+   */
+  private static void logDuplicateExtension(
+      String ext, Short existingNumber, short number, String type) {
+    if (LOG.isInfoEnabled()) {
+      LOG.info(
+          "Extension {} assigned to {} in preference to {}:{}",
+          ext,
+          byNumber(existingNumber),
+          number,
+          type);
+    }
+  }
+
+  /**
+   * Register an extension for the given MIME type number.
+   *
+   * <p>When exactly one extension is associated and no explicit primary is provided, the extension
+   * is recorded as the primary extension for the type.
+   *
+   * @param number numeric identifier of the MIME type
+   * @param ext lowercase extension string to register (without leading dot)
+   * @param outExtension explicit primary extension or {@code null} to infer when eligible
+   * @param extensions the original extension array, used to determine whether a single value was
+   *     supplied
+   */
+  private static void registerExtension(
+      short number, String ext, String outExtension, String[] extensions) {
+    // If only one, make it primary
+    if ((outExtension == null) && (extensions.length == 1))
+      primaryExtensionByMimeNumber.put(number, ext);
+    mimeTypesByExtension.put(ext, number);
+  }
+
+  private static String[] splitExtensions(String extensions) {
+    int length = extensions.length();
+    if (length == 0) {
+      return new String[] {""};
+    }
+    ArrayList<String> parts = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i < length; i++) {
+      if (extensions.charAt(i) == ' ') {
+        parts.add(extensions.substring(start, i));
+        start = i + 1;
+      }
+    }
+    parts.add(extensions.substring(start));
+    int end = parts.size();
+    while (end > 1 && parts.get(end - 1).isEmpty()) {
+      end--;
+    }
+    return parts.subList(0, end).toArray(new String[0]);
+  }
+
+  /**
    * Add a MIME type, with extensions separated by spaces. This is more or less the format in
    * /etc/mime-types.
+   *
+   * @param number stable numeric identifier for {@code type}; do not repurpose existing values
+   * @param type canonical MIME type string (for example, {@code "text/html"})
+   * @param extensions space‑separated list of extensions without dots; the first token becomes the
+   *     primary extension
    */
   protected static synchronized void addMIMEType(short number, String type, String extensions) {
-    String[] split = extensions.split(" ");
+    String[] split = splitExtensions(extensions);
     addMIMEType(number, type, split, split[0]);
   }
 
   /**
    * Add a MIME type, with extensions separated by spaces. This is more or less the format in
    * /etc/mime-types.
+   *
+   * @param number stable numeric identifier for {@code type}
+   * @param type canonical MIME type string (for example, {@code "application/json"})
+   * @param extensions space‑separated list of extensions without dots
+   * @param outExtension explicit primary extension to prefer when multiple extensions are supplied
    */
   protected static synchronized void addMIMEType(
       short number, String type, String extensions, String outExtension) {
-    addMIMEType(number, type, extensions.split(" "), outExtension);
+    addMIMEType(number, type, splitExtensions(extensions), outExtension);
   }
 
-  /** Get a known MIME type by number. */
+  /**
+   * Return the MIME type string for a known numeric identifier.
+   *
+   * @param x numeric MIME type identifier; negative values and identifiers greater than the current
+   *     registry size are considered out of range
+   * @return the canonical MIME type string for {@code x}, or {@code null} if the number is invalid
+   *     or unassigned
+   */
   public static synchronized String byNumber(short x) {
     if ((x > mimeTypesByNumber.size()) || (x < 0)) return null;
     return mimeTypesByNumber.get(x);
   }
 
   /**
-   * Get the number of a MIME type, or -1 if it is not in the table of known MIME types, in which
-   * case it will have to be sent uncompressed.
+   * Return the numeric identifier of the given MIME type string.
+   *
+   * <p>The lookup is exact and case‑sensitive. If the type is not present in the registry, {@code
+   * -1} is returned to signal that the value is unknown and should be treated as uncompressed by
+   * callers that depend on compact identifiers.
+   *
+   * @param s canonical MIME type string to look up; must not include parameters such as {@code
+   *     ;charset=UTF-8}
+   * @return the stable numeric identifier for {@code s}, or {@code -1} if the type is not known
    */
   public static synchronized short byName(String s) {
     return mimeTypesByName.getOrDefault(s, (short) -1);
@@ -128,7 +262,7 @@ public class DefaultMIMETypes {
    * sed -n "s/^\([^ ]*\)$/addMIMEType\($y, \"\1\"\);/p;s/^\([^ (),]\+\) \(.*\)$/addMIMEType\($y, \"\1\", \"\2\"\);/p;"; y=$((y+1)); done)
    */
 
-  // FIXME should we support aliases?
+  // Note: aliases are not currently supported.
 
   static {
     addMIMEType((short) 0, "application/activemessage");
@@ -175,7 +309,7 @@ public class DefaultMIMETypes {
     addMIMEType((short) 41, "application/msword", "doc dot", "doc");
     addMIMEType((short) 42, "application/news-message-id");
     addMIMEType((short) 43, "application/news-transmission");
-    addMIMEType((short) 44, "application/octet-stream", "bin");
+    addMIMEType((short) 44, DEFAULT_MIME_TYPE, "bin");
     addMIMEType((short) 45, "application/ocsp-request");
     addMIMEType((short) 46, "application/ocsp-response");
     addMIMEType((short) 47, "application/oda", "oda");
@@ -762,25 +896,53 @@ public class DefaultMIMETypes {
   /**
    * Guess a MIME type from a filename.
    *
-   * @param noDefault If true, no default MIME type; return null if not recognized. Otherwise if we
-   *     don't recognize the extension we return DEFAULT_MIME_TYPE.
+   * <p>The guess uses the substring after the last dot of {@code arg} (case‑insensitive). When the
+   * extension is unknown, callers can choose between {@code null} and {@link #DEFAULT_MIME_TYPE}
+   * via {@code noDefault}.
+   *
+   * @param arg file name or path to inspect; only the final component is considered, and the method
+   *     does not perform any file I/O
+   * @param noDefault when {@code true}, return {@code null} for unknown or missing extensions;
+   *     otherwise return {@link #DEFAULT_MIME_TYPE}
+   * @return the best‑effort MIME type derived from the extension; may be {@code null} when {@code
+   *     noDefault} is {@code true}
    */
   public static synchronized String guessMIMEType(String arg, boolean noDefault) {
     int x = arg.lastIndexOf('.');
     if ((x == -1) || (x == arg.length() - 1)) return noDefault ? null : DEFAULT_MIME_TYPE;
-    String ext = arg.substring(x + 1).toLowerCase();
+    String ext = arg.substring(x + 1).toLowerCase(Locale.ROOT);
     Short mimeIndexOb = mimeTypesByExtension.get(ext);
     if (mimeIndexOb != null) {
       return mimeTypesByNumber.get(mimeIndexOb.intValue());
     } else return noDefault ? null : DEFAULT_MIME_TYPE;
   }
 
+  /**
+   * Return the preferred file extension for a MIME type.
+   *
+   * <p>The primary extension is the one that should be appended when generating filenames for the
+   * given {@code type}. The value is returned without a leading dot and in lowercase.
+   *
+   * @param type canonical MIME type string, for example {@code "image/jpeg"}
+   * @return the primary extension for {@code type} or {@code null} when the type is unknown
+   */
   public static synchronized String getExtension(String type) {
     short typeNumber = byName(type);
     if (typeNumber < 0) return null;
     return primaryExtensionByMimeNumber.get(typeNumber);
   }
 
+  /**
+   * Test whether an extension is valid for a MIME type.
+   *
+   * <p>The comparison is case‑insensitive and considers both the primary and any alternate
+   * extensions associated with {@code expectedMimeType}.
+   *
+   * @param expectedMimeType canonical MIME type to check against
+   * @param oldExt extension string without a leading dot; compared case‑insensitively
+   * @return {@code true} if {@code oldExt} is one of the known extensions for {@code
+   *     expectedMimeType}; otherwise {@code false}
+   */
   public static synchronized boolean isValidExt(String expectedMimeType, String oldExt) {
     short typeNumber = byName(expectedMimeType);
     if (typeNumber < 0) return false;
@@ -791,30 +953,87 @@ public class DefaultMIMETypes {
     return false;
   }
 
+  /**
+   * Test whether an extension is valid for a parsed {@link MediaType}.
+   *
+   * <p>This overload is a convenience wrapper around {@link #isValidExt(String, String)} that uses
+   * the {@linkplain MediaType#getPlainType() base type} of {@code parsedType}.
+   *
+   * @param parsedType parsed media type; only the {@code type/subtype} part is considered
+   * @param forceCompatibleExtension extension string without a leading dot to validate
+   * @return {@code true} if the extension is compatible with {@code parsedType}; otherwise {@code
+   *     false}
+   */
   public static boolean isValidExt(MediaType parsedType, String forceCompatibleExtension) {
     return isValidExt(parsedType.getPlainType(), forceCompatibleExtension);
   }
 
-  private static final String TOP_LEVEL = "(?>[a-zA-Z-]+)";
-  private static final String CHARS = "(?>[a-zA-Z0-9+_\\-\\.]+)";
-  private static final String PARAM = "(?>;\\s*" + CHARS + "=" + "((" + CHARS + ")|(\".*\")))";
+  /** Regular expression for the top‑level type token (for example, {@code text}). */
+  private static final String TOP_LEVEL = "[a-zA-Z-]++";
+
+  /** Regular expression for the subtype and parameter tokens allowed by this parser. */
+  private static final String CHARS = "[a-zA-Z0-9+_.-]++";
+
+  /** Regular expression fragment for a quoted parameter value. */
+  private static final String QUOTED = "\"[^\";]*+\"";
+
+  /** Regular expression fragment for a single parameter, including optional quoting. */
+  private static final String PARAM =
+      "(?>;\\s*+" + CHARS + "\\s*+=\\s*+(?:" + CHARS + "|" + QUOTED + ")\\s*+)";
+
+  /** Complete pattern for a MIME type with optional parameters; used for plausibility checks. */
   private static final Pattern MIME_TYPE =
-      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*" + PARAM + "*");
+      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*+" + PARAM + "*+\\s*+;?\\s*+");
 
+  /**
+   * Compatibility pattern for legacy Infocalypse repositories that encoded a numeric suffix as a
+   * pseudo‑parameter on {@code application/mercurial-bundle}.
+   */
   private static final Pattern INFOCALYPSE_DIRTY_HACK =
-      Pattern.compile("application/mercurial-bundle;[0-9]{1,6}");
+      Pattern.compile("application/mercurial-bundle;\\d{1,6}");
 
+  /**
+   * Return whether the input string looks like a plausible MIME type.
+   *
+   * <p>This performs a syntactic check using a regular expression that covers {@code type/subtype}
+   * with optional parameters. For historical compatibility, a narrow legacy form of {@code
+   * application/mercurial-bundle;<digits>} is also accepted.
+   *
+   * @param mimeType candidate MIME type string; {@code null} is not allowed
+   * @return {@code true} if the format is plausible; otherwise {@code false}
+   */
   public static boolean isPlausibleMIMEType(String mimeType) {
     if (MIME_TYPE.matcher(mimeType).matches()) return true;
-    // FIXME dirty hack for backwards compatibility with old Infocalypse repo's
+    // Legacy compatibility for old Infocalypse repositories.
     return INFOCALYPSE_DIRTY_HACK.matcher(mimeType).matches();
   }
 
+  /**
+   * Return a snapshot of all known MIME type strings in numeric order.
+   *
+   * <p>The returned array is a new instance and may be safely modified by the caller. Missing slots
+   * may contain {@code null} for numbers that are not currently assigned.
+   *
+   * @return array of MIME type strings ordered by their numeric identifier
+   */
   static String[] getMIMETypes() {
     return mimeTypesByNumber.toArray(new String[0]);
   }
 
-  /** Make sure the filename has the correct extension for the MIME type */
+  /**
+   * Ensure that a filename ends with a valid extension for the given MIME type.
+   *
+   * <p>If {@code s} lacks an extension or carries an incompatible one, the method appends {@code
+   * '.'} followed by the primary extension for {@code expectedMimeType}. When {@code
+   * expectedMimeType} is unknown, {@code .bin} is appended as a generic fallback. Existing valid
+   * extensions are preserved unchanged.
+   *
+   * @param s filename (without directories or with); only the substring after the last {@code '.'}
+   *     is treated as an extension
+   * @param expectedMimeType canonical MIME type string that determines the valid extension set; may
+   *     be {@code null}
+   * @return {@code s} with a guaranteed compatible extension appended when necessary
+   */
   public static String forceExtension(String s, String expectedMimeType) {
     int dotIdx = s.lastIndexOf('.');
     String ext = getExtension(expectedMimeType);

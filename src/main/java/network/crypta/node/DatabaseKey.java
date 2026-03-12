@@ -1,38 +1,61 @@
 package network.crypta.node;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Random;
+import java.util.Arrays;
 import network.crypta.crypt.AEADCryptBucket;
 import network.crypta.crypt.HMAC;
 import network.crypta.crypt.RandomSource;
 import network.crypta.support.api.Bucket;
-import org.bouncycastle.util.Arrays;
 
+/**
+ * Immutable wrapper around the node-local database secret.
+ *
+ * <p>Derives context-separated symmetric keys for persisted components using HMAC-SHA-256. The key
+ * bytes are kept private, defensively copied on construction, and never returned directly.
+ * Instances are thread-safe.
+ */
 public class DatabaseKey {
 
-  private static final byte[] PLUGIN = "PLUGIN".getBytes(StandardCharsets.UTF_8);
+  // KDF context label (ASCII) for domain separation between derived keys.
   private static final byte[] CLIENT_LAYER = "CLIENT".getBytes(StandardCharsets.UTF_8);
 
-  private final byte[] databaseKey;
+  // Backing key material. Not exposed and never mutated after construction.
+  private final byte[] key;
 
   /**
-   * @param key key material bytes
-   * @param unused randomness source object. Note: this parameter is not used in this object.
-   * @deprecated use other constructor {@link #DatabaseKey(byte[])}
+   * Constructs a new instance from raw key material.
+   *
+   * <p>The input array is defensively copied to prevent external mutation of the secret.
+   *
+   * @param key secret bytes; must not be {@code null}. Callers may clear the provided array after
+   *     this call.
    */
-  @Deprecated
-  DatabaseKey(byte[] key, Random unused) {
-    this(key);
-  }
-
   DatabaseKey(byte[] key) {
-    this.databaseKey = Arrays.copyOf(key, key.length);
+    this.key = Arrays.copyOf(key, key.length);
   }
 
+  /**
+   * Returns an AEAD-encrypted wrapper for client-layer persistence.
+   *
+   * <p>The returned bucket uses a key derived from this database secret with the {@code "CLIENT"}
+   * context label. The AEAD mode and nonce handling are defined by {@link AEADCryptBucket}; this
+   * method only supplies key material.
+   *
+   * @param underlying storage to wrap; must not be {@code null}.
+   * @return a bucket that encrypts/decrypts data for the client layer.
+   */
   public Bucket createEncryptedBucketForClientLayer(Bucket underlying) {
     return new AEADCryptBucket(underlying, getKeyForClientLayer());
   }
 
+  /**
+   * Generates a new database key using randomness from the provided source.
+   *
+   * <p>Reads 32 bytes from {@code random} and constructs a new immutable instance.
+   *
+   * @param random randomness provider; must not be {@code null}.
+   * @return a new instance backed by 32 random bytes.
+   */
   public static DatabaseKey createRandom(RandomSource random) {
     byte[] databaseKey = new byte[32];
     random.nextBytes(databaseKey);
@@ -40,59 +63,43 @@ public class DatabaseKey {
   }
 
   /**
-   * Key Derivation Function for plugin stores: Use the database key as an HMAC key to an HMAC of
-   * the key plus some constant plus the storeIdentifier.
+   * Derives the client-layer encryption key.
    *
-   * @param storeIdentifier The classname of the plugin, used as part of a filename.
-   * @return An encryption key, as byte[].
-   */
-  public byte[] getPluginStoreKey(String storeIdentifier) {
-    byte[] id = storeIdentifier.getBytes(StandardCharsets.UTF_8);
-    byte[] full = new byte[databaseKey.length + PLUGIN.length + id.length];
-    int x = 0;
-    System.arraycopy(databaseKey, 0, full, 0, databaseKey.length);
-    x += databaseKey.length;
-    System.arraycopy(PLUGIN, 0, full, x, PLUGIN.length);
-    x += PLUGIN.length;
-    System.arraycopy(id, 0, full, x, id.length);
-    return HMAC.macWithSHA256(databaseKey, full);
-  }
-
-  /**
-   * Key Derivation Function for client.dat: Use the database key as an HMAC key to an HMAC of the
-   * key plus some constant plus the storeIdentifier.
+   * <p>Formula: {@code HMAC-SHA-256(key, key || "CLIENT")}.
    *
-   * @return An encryption key, as byte[].
+   * @return a 32-byte key derived with HMAC-SHA-256.
    */
   public byte[] getKeyForClientLayer() {
-    byte[] full = new byte[databaseKey.length + CLIENT_LAYER.length];
+    byte[] full = new byte[key.length + CLIENT_LAYER.length];
     int x = 0;
-    System.arraycopy(databaseKey, 0, full, 0, databaseKey.length);
-    x += databaseKey.length;
+    System.arraycopy(key, 0, full, 0, key.length);
+    x += key.length;
     System.arraycopy(CLIENT_LAYER, 0, full, x, CLIENT_LAYER.length);
-    return HMAC.macWithSHA256(databaseKey, full);
+    return HMAC.macWithSHA256(key, full);
   }
 
+  /** Returns a hash code based on the key bytes. */
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    result = prime * result + java.util.Arrays.hashCode(databaseKey);
+    result = prime * result + Arrays.hashCode(key);
     return result;
   }
 
+  /**
+   * Compares for equality by key content.
+   *
+   * <p>Two instances are equal when their underlying key byte arrays are equal.
+   */
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof DatabaseKey other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    DatabaseKey other = (DatabaseKey) obj;
-    return java.util.Arrays.equals(databaseKey, other.databaseKey);
+    return Arrays.equals(key, other.key);
   }
 }

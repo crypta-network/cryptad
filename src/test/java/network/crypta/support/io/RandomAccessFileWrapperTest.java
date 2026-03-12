@@ -1,7 +1,5 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -10,28 +8,30 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.support.api.RandomAccessBuffer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
+import static org.junit.jupiter.api.Assertions.*;
+
+class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
 
   public RandomAccessFileWrapperTest() {
     super(TEST_LIST);
   }
 
-  @Before
-  public void setUp() {
-    base.mkdir();
+  @BeforeEach
+  void setUp() {
+    assertTrue(base.mkdir() || base.isDirectory(), "Failed to create test directory: " + base);
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     FileUtil.removeAll(base);
   }
 
   @Test
-  public void testStoreTo() throws IOException, StorageFormatException, ResumeFailedException {
+  void testStoreTo() throws IOException, StorageFormatException, ResumeFailedException {
     File tempFile = File.createTempFile("test-storeto", ".tmp", base);
     byte[] buf = new byte[4096];
     Random r = new Random(1267612);

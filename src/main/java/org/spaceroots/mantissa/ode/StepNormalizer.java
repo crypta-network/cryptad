@@ -1,19 +1,28 @@
 package org.spaceroots.mantissa.ode;
 
 /**
- * This class wraps an object implementing {@link FixedStepHandler} into a {@link StepHandler}.
+ * Normalizes calls from variable-step integrators so a fixed-step handler receives evenly spaced
+ * samples.
  *
- * <p>This wrapper allows to use fixed step handlers with general integrators which cannot guaranty
- * their integration steps will remain constant and therefore only accept general step handlers.
+ * <p>Integrators in this library expose state through {@link StepHandler} callbacks whose cadence
+ * is dictated by the adaptive step-size algorithm. {@code StepNormalizer} adapts that variable
+ * cadence to a user-supplied {@link FixedStepHandler} by generating synthetic callbacks on a
+ * constant grid decided at construction time. The first sample is always taken at the start of the
+ * integration interval and further samples are emitted every {@code h} units until the end of the
+ * last accepted step. The final emitted point is flagged with {@code isLast}, even when the last
+ * segment is shorter than {@code h}.
  *
- * <p>The stepsize used is selected at construction time. The {@link FixedStepHandler#handleStep
- * handleStep} method of the underlying {@link FixedStepHandler} object is called at the beginning
- * time of the integration t0 and also at times t0+h, t0+2h, ... If the integration range is an
- * integer multiple of the stepsize, then the last point handled will be the endpoint of the
- * integration tend, if not, the last point will belong to the interval [tend - h ; tend].
+ * <p>State is cached between invocations, so a single instance is intended to be used for one
+ * integration run and must be {@link #reset() reset} before reuse. Instances are mutable and not
+ * thread-safe; callers should confine them to the integrator thread. This helper does not constrain
+ * the underlying integrator: noninteger step ratios, overshoots, and backward integrations are all
+ * supported transparently.
  *
- * <p>There is no constraint on the integrator, it can use any timestep it needs (time steps longer
- * or shorter than the fixed time step and non-integer ratios are all allowed).
+ * <ul>
+ *   <li>Maintains direction automatically by negating the step when time decreases.
+ *   <li>Requires dense output from the integrator to interpolate intermediate grid points.
+ *   <li>Delegates array ownership to the caller; handlers should copy if they retain state.
+ * </ul>
  *
  * @see StepHandler
  * @see FixedStepHandler
@@ -23,10 +32,17 @@ package org.spaceroots.mantissa.ode;
 public class StepNormalizer implements StepHandler {
 
   /**
-   * Simple constructor.
+   * Creates a normalizer that feeds a fixed-step handler using a constant spacing.
    *
-   * @param h fixed time step (sign is not used)
-   * @param handler fixed time step handler to wrap
+   * <p>The supplied step size is converted to its absolute value; integration direction is inferred
+   * from the first received {@link StepInterpolator}. The wrapped {@link FixedStepHandler} is
+   * invoked immediately at the integration start time and then on each normalized grid point until
+   * the end of the last accepted step.
+   *
+   * @param h desired fixed spacing between emitted samples, in integration time units; sign is
+   *     ignored and zero is legal but produces no internal movement.
+   * @param handler delegate that receives normalized steps; must not be {@code null} and should
+   *     tolerate repeated array reuse by the normalizer.
    */
   public StepNormalizer(double h, FixedStepHandler handler) {
     this.h = Math.abs(h);
@@ -35,20 +51,28 @@ public class StepNormalizer implements StepHandler {
   }
 
   /**
-   * Determines whether this handler needs dense output. This handler needs dense output in order to
-   * provide data at regularly spaced steps regardless of the steps the integrator uses, so this
-   * method always returns true.
+   * Indicates that dense output is required from the driving integrator.
    *
-   * @return always true
+   * <p>The normalizer evaluates the provided {@link StepInterpolator} at arbitrary points inside
+   * each accepted step to align results with its fixed grid. Consequently, integrators using this
+   * handler must provide interpolators capable of returning accurate intermediate states.
+   *
+   * @return {@code true} because intermediate interpolation is mandatory for normalization
    */
+  @Override
   public boolean requiresDenseOutput() {
     return true;
   }
 
   /**
-   * Reset the step handler. Initialize the internal data as required before the first step is
-   * handled.
+   * Clears cached state so the instance can serve a new integration run.
+   *
+   * <p>This method forgets the last time, state vector, and detected direction. It should be called
+   * before reusing the handler with a different integrator or after an integration that terminated
+   * prematurely. Calling it between successive {@link #handleStep(StepInterpolator, boolean)} calls
+   * inside one integration would corrupt the normalization sequence.
    */
+  @Override
   public void reset() {
     lastTime = Double.NaN;
     lastState = null;
@@ -56,17 +80,22 @@ public class StepNormalizer implements StepHandler {
   }
 
   /**
-   * Handle the last accepted step
+   * Emits fixed-interval samples that fall within the accepted step.
    *
-   * @param interpolator interpolator for the last accepted step. For efficiency purposes, the
-   *     various integrators reuse the same object on each call, so if the instance wants to keep it
-   *     across all calls (for example to provide at the end of the integration a continuous model
-   *     valid throughout the integration range), it should build a local copy using the clone
-   *     method and store this copy.
-   * @param isLast true if the step is the last one
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>When first invoked, the method records the start of the interpolation interval and primes
+   * the grid based on the detected integration direction. On each call it walks forward or backward
+   * in {@code h}-sized increments, asking the interpolator for intermediate states and forwarding
+   * them to the wrapped {@link FixedStepHandler}. If {@code isLast} is {@code true}, the final
+   * emitted point is flagged so downstream logic can finalize any accumulation.
+   *
+   * @param interpolator provider for the current accepted step; must support repeated calls to
+   *     {@link StepInterpolator#setInterpolatedTime(double)} within the step bounds.
+   * @param isLast {@code true} when no more steps will arrive from the integrator; marks the final
+   *     delegated callback accordingly.
+   * @throws DerivativeException if the interpolator triggers derivative evaluation while preparing
+   *     an intermediate state and the user function signals a failure.
    */
+  @Override
   public void handleStep(StepInterpolator interpolator, boolean isLast) throws DerivativeException {
 
     double nextTime;
@@ -77,7 +106,7 @@ public class StepNormalizer implements StepHandler {
       interpolator.setInterpolatedTime(lastTime);
 
       double[] state = interpolator.getInterpolatedState();
-      lastState = (double[]) state.clone();
+      lastState = state.clone();
 
       // take the integration direction into account
       forward = (interpolator.getCurrentTime() >= lastTime);
@@ -113,7 +142,7 @@ public class StepNormalizer implements StepHandler {
   private double h;
 
   /** Underlying step handler. */
-  private FixedStepHandler handler;
+  private final FixedStepHandler handler;
 
   /** Last step time. */
   private double lastTime;

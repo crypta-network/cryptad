@@ -1,37 +1,54 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
-
+import com.onionnetworks.fec.PureCode;
+import com.onionnetworks.util.Buffer;
+import java.lang.ref.SoftReference;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Random;
+import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.support.LRUMap;
 import network.crypta.support.TestProperty;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Test the new (post db4o) high level FEC API */
-public class OnionFECCodecTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
-  @Before
-  public void setUp() throws Exception {
+/** Test the new (post db4o) high-level FEC API */
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100")
+class OnionFECCodecTest {
+
+  @BeforeEach
+  void setUp() {
     random = new Random(21482106);
   }
 
   @Test
-  public void testDecodeRandomSubset() {
+  void decode_whenRandomSubsets_expectSuccessfulRecovery() {
+    // Arrange
     int iterations = TestProperty.EXTENSIVE ? 100 : 10;
-    for (int i = 0; i < iterations; i++) {
-      inner(128, 128, random);
-    }
-    for (int i = 0; i < iterations; i++) {
-      inner(127, 129, random);
-    }
-    for (int i = 0; i < iterations; i++) {
-      inner(129, 127, random);
-    }
+    // Act + Assert (in inner(): performs decode + roundtrip assertions)
+    for (int i = 0; i < iterations; i++) inner(128, 128, random);
+    for (int i = 0; i < iterations; i++) inner(127, 129, random);
+    for (int i = 0; i < iterations; i++) inner(129, 127, random);
   }
 
   @Test
-  public void testEncodeThrowsOnNotPaddedLastBlock() {
+  void encode_whenLastDataBlockNotPadded_expectIllegalArgument() {
+    // Arrange
     int data = 128;
     int check = 128;
     originalDataBlocks = createOriginalDataBlocks(random, data);
@@ -41,55 +58,63 @@ public class OnionFECCodecTest {
 
     // Encode the check blocks.
     checkBlocksPresent = new boolean[checkBlocks.length];
+    // Act + Assert
     assertThrows(
         IllegalArgumentException.class,
         () -> codec.encode(dataBlocks, checkBlocks, checkBlocksPresent, BLOCK_SIZE));
   }
 
   @Test
-  public void testDecodeThrowsOnNotPaddedLastBlock() {
+  void encode_whenPresentDataBlockWrongSize_expectIllegalArgument() {
+    // Arrange
     setup(128, 128, random);
-    // Now delete a random selection of blocks
     deleteRandomBlocks(random);
     dataBlocks[127] = new byte[BLOCK_SIZE / 2];
+    // Act + Assert
     assertThrows(
         IllegalArgumentException.class,
         () -> codec.encode(dataBlocks, checkBlocks, checkBlocksPresent, BLOCK_SIZE));
   }
 
   @Test
-  public void testDecodeAlreadyDecoded() {
+  void decode_whenAllDataBlocksPresent_expectNoOp() {
+    // Arrange
     setup(128, 128, random);
-    // Now delete a random selection of blocks
     deleteAllCheckBlocks();
-    decode(); // Should be a no-op.
-  }
-
-  @Test
-  public void testDecodeNoneDecoded() {
-    setup(128, 128, random);
-    // Now delete a random selection of blocks
-    deleteAllDataBlocks();
+    // Act + Assert (decode() asserts data unchanged and re-encode roundtrip)
     decode();
   }
 
   @Test
-  public void testManyCheckFewData() {
-    inner(2, 253, random);
-    inner(5, 250, random);
-    inner(50, 200, random);
-    inner(2, 3, random); // Common case, include it here.
+  void decode_whenNoDataBlocksPresent_expectRecoveryFromChecks() {
+    // Arrange
+    setup(128, 128, random);
+    deleteAllDataBlocks();
+    // Act + Assert
+    decode();
   }
 
   @Test
-  public void testManyDataFewCheck() {
+  void decode_whenManyChecksFewData_expectRecovery() {
+    // Arrange + Act + Assert
+    inner(2, 253, random);
+    inner(5, 250, random);
+    inner(50, 200, random);
+    inner(2, 3, random); // common case
+  }
+
+  @Test
+  void decode_whenManyDataFewChecks_expectRecovery() {
+    // Arrange + Act + Assert
     inner(200, 55, random);
     inner(253, 2, random);
   }
 
   @Test
-  public void testRandomDataCheckCounts() {
+  void decode_whenRandomDataAndCheckCounts_expectRecovery() {
+    // Arrange
     int iterations = TestProperty.EXTENSIVE ? 100 : 10;
+    // Act + Assert
     for (int i = 0; i < iterations; i++) {
       int data = random.nextInt(252) + 2;
       int maxCheck = 255 - data;
@@ -218,4 +243,203 @@ public class OnionFECCodecTest {
   private boolean[] checkBlocksPresent;
   private boolean[] dataBlocksPresent;
   private Random random;
+
+  // ---------------------------- Additional focused unit tests ----------------------------
+
+  @Test
+  @DisplayName("encode() when all check blocks are present does not invoke codec.encode()")
+  void encode_whenAllChecksPresent_expectNoEncodeInvocation() throws Exception {
+    clearCodecCache();
+    int k = 3;
+    int r = 2;
+    byte[][] d = new byte[k][BLOCK_SIZE];
+    for (int i = 0; i < k; i++) Arrays.fill(d[i], (byte) i);
+    byte[][] c = new byte[r][BLOCK_SIZE];
+    boolean[] present = new boolean[r];
+    Arrays.fill(present, true); // nothing to encode
+
+    try (MockedConstruction<PureCode> cons = mockConstruction(PureCode.class)) {
+      codec.encode(d, c, present, BLOCK_SIZE);
+
+      // One PureCode constructed via getCodec(k,n), but encode() must not be called.
+      assertEquals(1, cons.constructed().size(), "codec should be constructed once");
+      PureCode mock = cons.constructed().getFirst();
+      verify(mock, never()).encode(any(Buffer[].class), any(Buffer[].class), any(int[].class));
+      verifyNoMoreInteractions(mock);
+    }
+  }
+
+  @Test
+  @DisplayName("encode() missing check blocks encodes correct parity indices")
+  void encode_whenSomeChecksMissing_expectEncodeWithExpectedIndices() throws Exception {
+    clearCodecCache();
+    int k = 4;
+    int r = 3;
+    byte[][] d = new byte[k][BLOCK_SIZE];
+    byte[][] c = new byte[r][BLOCK_SIZE];
+    // Mark the first and last checks as missing so only those parity blocks are encoded.
+    boolean[] present = new boolean[] {false, true, false};
+
+    try (MockedConstruction<PureCode> cons = mockConstruction(PureCode.class, (_, _) -> {})) {
+      codec.encode(d, c, present, BLOCK_SIZE);
+      PureCode mock = cons.constructed().getFirst();
+
+      ArgumentCaptor<Buffer[]> dataCap = ArgumentCaptor.forClass(Buffer[].class);
+      ArgumentCaptor<Buffer[]> checkCap = ArgumentCaptor.forClass(Buffer[].class);
+      ArgumentCaptor<int[]> idxCap = ArgumentCaptor.forClass(int[].class);
+      verify(mock).encode(dataCap.capture(), checkCap.capture(), idxCap.capture());
+
+      assertEquals(k, dataCap.getValue().length, "data buffers length");
+      assertEquals(2, checkCap.getValue().length, "check buffers to encode (missing only)");
+      //noinspection PointlessArithmeticExpression
+      assertArrayEquals(new int[] {k + 0, k + 2}, idxCap.getValue(), "indices to encode");
+    }
+  }
+
+  @Test
+  @DisplayName("encode() throws on wrong-sized data block")
+  void encode_whenDataBlockWrongSize_expectIllegalArgument() {
+    byte[][] d = new byte[][] {new byte[BLOCK_SIZE], new byte[BLOCK_SIZE / 2]};
+    byte[][] c = new byte[][] {new byte[BLOCK_SIZE]};
+    boolean[] present = new boolean[] {false};
+    assertThrows(IllegalArgumentException.class, () -> codec.encode(d, c, present, BLOCK_SIZE));
+  }
+
+  @Test
+  @DisplayName("encode() throws on wrong-sized check block")
+  void encode_whenCheckBlockWrongSize_expectIllegalArgument() {
+    byte[][] d = new byte[][] {new byte[BLOCK_SIZE]};
+    byte[][] c = new byte[][] {new byte[BLOCK_SIZE / 2]};
+    boolean[] present = new boolean[] {false};
+    assertThrows(IllegalArgumentException.class, () -> codec.encode(d, c, present, BLOCK_SIZE));
+  }
+
+  @Test
+  @DisplayName("decode() wires buffers and block numbers correctly")
+  void decode_whenGapFilledByCheck_expectCorrectBlockNumbersAndCopy() throws Exception {
+    clearCodecCache();
+    int k = 3;
+    int r = 2;
+    byte[][] d = new byte[k][BLOCK_SIZE];
+    // Data present at 0 and 2; missing 1
+    boolean[] dataPresent = new boolean[] {true, false, true};
+    byte[][] c = new byte[r][BLOCK_SIZE];
+    // Only first check available; content should be copied into d[1] before decode
+    Arrays.fill(c[0], (byte) 0x7B);
+    boolean[] checksPresent = new boolean[] {true, false};
+
+    try (MockedConstruction<PureCode> cons = mockConstruction(PureCode.class)) {
+      codec.decode(d, c, dataPresent, checksPresent, BLOCK_SIZE);
+
+      PureCode mock = cons.constructed().getFirst();
+      ArgumentCaptor<Buffer[]> bufsCap = ArgumentCaptor.forClass(Buffer[].class);
+      ArgumentCaptor<int[]> numsCap = ArgumentCaptor.forClass(int[].class);
+      verify(mock).decode(bufsCap.capture(), numsCap.capture());
+
+      // Expect exactly k buffers and block numbers
+      assertEquals(k, bufsCap.getValue().length);
+      //noinspection PointlessArithmeticExpression
+      assertArrayEquals(new int[] {0, k + 0, 2}, numsCap.getValue(), "block numbers");
+      // The missing slot at index 1 must now contain the check block bytes
+      for (int i = 0; i < BLOCK_SIZE; i++) {
+        assertEquals((byte) 0x7B, d[1][i], "copied check content into missing data slot");
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("decode() throws on wrong-sized present data block")
+  void decode_whenDataBlockWrongSize_expectIllegalArgument() {
+    byte[][] d = new byte[][] {new byte[BLOCK_SIZE], new byte[BLOCK_SIZE / 2]};
+    boolean[] dataPresent = new boolean[] {true, true};
+    byte[][] c = new byte[][] {new byte[BLOCK_SIZE]};
+    boolean[] checksPresent = new boolean[] {true};
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> codec.decode(d, c, dataPresent, checksPresent, BLOCK_SIZE));
+  }
+
+  @Test
+  @DisplayName("decode() throws on wrong-sized present check block")
+  void decode_whenCheckBlockWrongSize_expectIllegalArgument() {
+    byte[][] d = new byte[][] {new byte[BLOCK_SIZE], new byte[BLOCK_SIZE]};
+    boolean[] dataPresent = new boolean[] {true, false};
+    byte[][] c = new byte[][] {new byte[BLOCK_SIZE / 2]};
+    boolean[] checksPresent = new boolean[] {true};
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> codec.decode(d, c, dataPresent, checksPresent, BLOCK_SIZE));
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() small data CURRENT → data+1 (capped later if needed)")
+  void getCheckBlocks_whenSmallDataCurrent_expectDataPlusOne() {
+    int data = 5;
+    int result = codec.getCheckBlocks(data, CompatibilityMode.COMPAT_CURRENT);
+    assertEquals(6, result);
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() data=128 CURRENT → clamped to 128 (total ≤256)")
+  void getCheckBlocks_whenAt128Current_expectClamped128() {
+    int result =
+        codec.getCheckBlocks(
+            HighLevelSimpleClientImpl.SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
+            CompatibilityMode.COMPAT_CURRENT);
+    // Raw calculation would be 129; clamped to keep data+check ≤ 256
+    assertEquals(128, result);
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() large data CURRENT is capped to keep sum ≤ 256 (when data<256)")
+  void getCheckBlocks_whenLargeDataCurrent_expectCappedTo256Total() {
+    int data = 200;
+    int checks = codec.getCheckBlocks(data, CompatibilityMode.COMPAT_CURRENT);
+    assertEquals(56, checks); // 200 + 56 = 256
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() small data COMPAT_1250 → at most data")
+  void getCheckBlocks_whenCompat1250Small_expectAtMostData() {
+    int data = 5;
+    int checks = codec.getCheckBlocks(data, CompatibilityMode.COMPAT_1250);
+    assertEquals(5, checks); // data+1 would be 6 but capped to data for 1250
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() data=128 COMPAT_1250 → 128")
+  void getCheckBlocks_whenCompat1250At128_expect128() {
+    int checks =
+        codec.getCheckBlocks(
+            HighLevelSimpleClientImpl.SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
+            CompatibilityMode.COMPAT_1250);
+    assertEquals(128, checks);
+  }
+
+  @Test
+  @DisplayName("getCheckBlocks() data=256 CURRENT → 129 (no 256 cap branch for data>=256)")
+  void getCheckBlocks_whenData256Current_expect129() {
+    int checks = codec.getCheckBlocks(256, CompatibilityMode.COMPAT_CURRENT);
+    assertEquals(129, checks);
+  }
+
+  @Test
+  @DisplayName("maxMemoryOverheadEncode/Decode() follow n*k*2*3 formula")
+  void memoryOverhead_whenTypical_expectExpectedValues() {
+    int data = 10;
+    int check = 2;
+    long expected = (long) (data + check) * data * 2L * 3L;
+    assertEquals(expected, codec.maxMemoryOverheadEncode(data, check));
+    assertEquals(expected, codec.maxMemoryOverheadDecode(data, check));
+  }
+
+  // Clear the private static codec cache to keep tests isolated
+  private static void clearCodecCache() throws Exception {
+    Field f = OnionFECCodec.class.getDeclaredField("recentlyUsedCodecs");
+    f.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    LRUMap<Object, SoftReference<PureCode>> cache =
+        (LRUMap<Object, SoftReference<PureCode>>) f.get(null);
+    cache.clear();
+  }
 }

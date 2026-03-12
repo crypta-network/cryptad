@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.Set;
 import javax.net.ssl.SSLServerSocket;
 import network.crypta.crypt.SSL;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An SSL extension to the {@link NetworkInterface}
@@ -17,25 +19,27 @@ import network.crypta.support.Executor;
  * @author ET
  */
 public class SSLNetworkInterface extends NetworkInterface {
+  private static final Logger LOG = LoggerFactory.getLogger(SSLNetworkInterface.class);
 
-  public static NetworkInterface create(
-      int port, String bindTo, String allowedHosts, Executor executor, boolean ignoreUnbindableIP6)
-      throws IOException {
+  public static NetworkInterface createSsl(
+      int port,
+      String bindTo,
+      String allowedHosts,
+      PriorityAwareExecutor executor,
+      boolean ignoreUnbindableIP6) {
     NetworkInterface iface = new SSLNetworkInterface(port, allowedHosts, executor);
     String[] failedBind = iface.setBindTo(bindTo, ignoreUnbindableIP6);
-    if (failedBind != null) {
-      System.err.println(
-          "Could not bind to some of the interfaces specified for port "
-              + port
-              + " : "
-              + Arrays.toString(failedBind));
+    if (failedBind != null && failedBind.length > 0 && LOG.isWarnEnabled()) {
+      LOG.warn(
+          "Could not bind to some of the interfaces specified for port {} : {}",
+          port,
+          Arrays.toString(failedBind));
     }
     return iface;
   }
 
   /** See {@link NetworkInterface} */
-  protected SSLNetworkInterface(int port, String allowedHosts, Executor executor)
-      throws IOException {
+  protected SSLNetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor) {
     super(port, allowedHosts, executor);
   }
 

@@ -1,36 +1,37 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ChosenBlockImpl;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
 import network.crypta.keys.Key;
 import network.crypta.node.NodeStats.RejectReason;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.RandomGrabArrayItem;
 import network.crypta.support.RandomGrabArrayItemExclusionList;
 import network.crypta.support.math.RunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
- * Starts requests. Nobody starts a request directly, you have to go through RequestStarter. And you
- * have to provide a RequestStarterClient. We do round robin between clients on the same priority
- * level.
+ * Coordinates dequeuing and starting of client requests.
+ *
+ * <p>This component is the only path for starting requests; callers do not start requests directly.
+ * It cooperates with a {@link RequestScheduler} to grab work and with the node executor to launch
+ * per-request sender threads. Starters operate in two modes (bulk or real‑time) and for different
+ * request types (CHK/SSK, fetch/insert); the {@link #name} reflects the mode for diagnostics.
+ *
+ * <p>Threading and interrupts: the {@link #run()} loop waits for work and throttles between
+ * requests. It honors interrupts in blocking waits and exits cleanly so the executor can stop the
+ * thread. Short opennet bootstrap deferrals use a one‑second wait that is also interruptible and
+ * responsive to {@link #wakeUp()} notifications.
+ *
+ * <p>Throttling: the per‑request delay is obtained from {@link BaseRequestThrottle}. Transient
+ * interrupts during throttling are swallowed so later iterations can resume delaying.
  */
 public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionList {
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(RequestStarter.class);
 
   /*
    * Priority classes
@@ -74,27 +75,34 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   private final boolean isInsert;
   private final boolean isSSK;
   final boolean realTime;
+  private boolean wakeUpRequested;
 
-  static final int MAX_WAITING_FOR_SLOTS = 50;
-
+  /**
+   * Creates a new starter for a specific flow (type and mode).
+   *
+   * @param node node client core used to access schedulers and executor
+   * @param throttle adaptive throttle that provides per‑request delays
+   * @param name base name used for diagnostics; mode suffix is appended
+   * @param averageOutputBytesPerRequest running average of bytes sent per request
+   * @param averageInputBytesPerRequest running average of bytes received per request
+   * @param mode request mode (insert/SSK/real-time) for this starter
+   */
   public RequestStarter(
       NodeClientCore node,
       BaseRequestThrottle throttle,
       String name,
       RunningAverage averageOutputBytesPerRequest,
       RunningAverage averageInputBytesPerRequest,
-      boolean isInsert,
-      boolean isSSK,
-      boolean realTime) {
+      SchedulerMode mode) {
     this.core = node;
-    this.stats = core.getNodeStats();
+    this.stats = node.getNode().network().stats();
     this.throttle = throttle;
-    this.name = name + (realTime ? " (realtime)" : " (bulk)");
+    this.name = name + (mode.forRT() ? " (realtime)" : " (bulk)");
     this.averageOutputBytesPerRequest = averageOutputBytesPerRequest;
     this.averageInputBytesPerRequest = averageInputBytesPerRequest;
-    this.isInsert = isInsert;
-    this.isSSK = isSSK;
-    this.realTime = realTime;
+    this.isInsert = mode.forInserts();
+    this.isSSK = mode.forSSKs();
+    this.realTime = mode.forRT();
   }
 
   void setScheduler(RequestScheduler sched) {
@@ -102,158 +110,208 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   }
 
   void start() {
-    core.getExecutor().execute(this, name);
+    core.getNode().network().executor().execute(this, name);
   }
 
   final String name;
 
+  /**
+   * Returns a human‑readable name for diagnostics.
+   *
+   * @return the starter name including its mode suffix
+   */
   @Override
   public String toString() {
     return name;
   }
 
+  // Main worker loop. Grabs or waits for a request, applies throttling, and either
+  // starts it or keeps it for a retry when NodeStats requests a temporary deferral.
   void realRun() {
     ChosenBlock req = null;
-    // The last time at which we sent a request or decided not to
     long cycleTime = System.currentTimeMillis();
     while (true) {
-      // Allow 5 minutes before we start killing requests due to not connecting.
-      OpennetManager om;
-      if (core.getNode().getPeers().countConnectedPeers() < 3
-          && (om = core.getNode().getOpennet()) != null
-          && System.currentTimeMillis() - om.getCreationTime() < MINUTES.toMillis(5)) {
-        try {
-          synchronized (this) {
-            wait(1000);
-          }
-        } catch (InterruptedException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
+      if (shouldDeferForOpennet()) {
+        if (waitOneSecond()) return; // interrupted: avoid spin and let outer run() exit
         continue;
       }
-      if (req == null) {
-        req = sched.grabRequest();
-      }
-      if (req != null) {
-        if (logMINOR) Logger.minor(this, "Running " + req + " priority " + req.getPriority());
-        if (!req.localRequestOnly) {
-          // Wait
-          long delay;
-          delay = throttle.getDelay();
-          if (logMINOR) Logger.minor(this, "Delay=" + delay + " from " + throttle);
-          long sleepUntil = cycleTime + delay;
-          long now;
-          do {
-            now = System.currentTimeMillis();
-            if (now < sleepUntil)
-              try {
-                Thread.sleep(sleepUntil - now);
-                if (logMINOR) Logger.minor(this, "Slept: " + (sleepUntil - now) + "ms");
-              } catch (InterruptedException e) {
-                // Ignore
-              }
-          } while (now < sleepUntil);
-        }
-        //				if(!doAIMD) {
-        //					// Arbitrary limit on number of local requests waiting for slots.
-        //					// Firstly, they use threads. This could be a serious problem for faster nodes.
-        //					// Secondly, it may help to prevent wider problems:
-        //					// If all queues are full, the network will die.
-        //					int[] waiting = core.node.countRequestsWaitingForSlots();
-        //					int localRequestsWaitingForSlots = waiting[0];
-        //					int maxWaitingForSlots = MAX_WAITING_FOR_SLOTS;
-        //					// FIXME calibrate this by the number of local timeouts.
-        //					// FIXME consider an AIMD, or some similar mechanism.
-        //					// Local timeout-waiting-for-slots is largely dependant on
-        //					// the number of requests running, due to strict round-robin,
-        //					// so we can probably do something even simpler than an AIMD.
-        //					// For now we'll just have a fixed number.
-        //					// This should partially address the problem.
-        //					// Note that while waitFor() is blocking, we need such a limit anyway.
-        //					if(localRequestsWaitingForSlots > maxWaitingForSlots) continue;
-        //				}
-        RejectReason reason;
-        assert (req.realTimeFlag == realTime);
-        if (!req.localRequestOnly) {
-          reason =
-              stats.shouldRejectRequest(
-                  true,
-                  isInsert,
-                  isSSK,
-                  true,
-                  false,
-                  null,
-                  false,
-                  Node.PREFER_INSERT_DEFAULT && isInsert,
-                  req.realTimeFlag,
-                  null);
-          if (reason != null) {
-            if (logMINOR) Logger.minor(this, "Not sending local request: " + reason);
-            // Wait one throttle-delay before trying again
-            cycleTime = System.currentTimeMillis();
-            continue; // Let local requests compete with all the others
-          }
-        } else {
-          stats.waitUntilNotOverloaded(isInsert);
-        }
-      } else {
-        if (logMINOR) Logger.minor(this, "Waiting...");
-        // Always take the lock on RequestStarter first. AFAICS we don't synchronize on
-        // RequestStarter anywhere else.
-        // Nested locks here prevent extra latency when there is a race, and therefore allow us to
-        // sleep indefinitely
-        synchronized (this) {
-          req = sched.grabRequest();
-          if (req == null) {
-            try {
-              wait();
-            } catch (InterruptedException e) {
-              // Ignore
-            }
-          }
-        }
-      }
-      if (req == null) continue;
-      if (!startRequest(req, logMINOR)) {
-        // Don't log if it's a cancelled transient request.
-        if (!((!req.isPersistent()) && req.isCancelled()))
-          Logger.normal(this, "No requests to start on " + req);
-      }
-      if (!req.localRequestOnly) cycleTime = System.currentTimeMillis();
-      req = null;
+
+      req = nextRequest(req);
+      if (req == null) return; // interrupted while waiting
+
+      assert (req.realTimeFlag == realTime);
+      ProcessResult pr = processRequest(req, cycleTime);
+      cycleTime = pr.cycleTime;
+      // Drop only when the request was started or handled; keep it when deferred
+      if (!pr.keepRequest) req = null;
     }
   }
 
-  private boolean startRequest(ChosenBlock req, boolean logMINOR) {
-    if ((!req.isPersistent()) && req.isCancelled()) {
+  private ChosenBlock nextRequest(ChosenBlock current) {
+    ChosenBlock r = ensureRequest(current);
+    if (r != null) return r;
+    return waitForRequest();
+  }
+
+  private ProcessResult processRequest(ChosenBlock req, long cycleTime) {
+    if (prepareAndCheckRejection(req, cycleTime)) {
+      // Temporarily rejected by NodeStats: keep the same request and retry after delay
+      return new ProcessResult(System.currentTimeMillis(), true);
+    }
+    boolean started = startRequest(req);
+    logIfNotCancelled(req, started);
+    long nextCycle = !req.localRequestOnly ? System.currentTimeMillis() : cycleTime;
+    return new ProcessResult(nextCycle, false);
+  }
+
+  private record ProcessResult(long cycleTime, boolean keepRequest) {}
+
+  private boolean shouldDeferForOpennet() {
+    OpennetManager om;
+    return core.getNode().network().peers().countConnectedPeers() < 3
+        && (om = core.getNode().network().opennet()) != null
+        && System.currentTimeMillis() - om.getCreationTime() < MINUTES.toMillis(5);
+  }
+
+  private boolean waitOneSecond() {
+    synchronized (this) {
+      long deadline = System.currentTimeMillis() + 1000L;
+      long remaining = 1000L;
+      while (!wakeUpRequested && remaining > 0) {
+        try {
+          wait(remaining);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          if (LOG.isDebugEnabled()) LOG.debug("One-second wait interrupted", e);
+          return true; // signal interrupt to caller to avoid spin under opennet deferring
+        }
+        remaining = deadline - System.currentTimeMillis();
+      }
+      wakeUpRequested = false;
+      return false;
+    }
+  }
+
+  @SuppressWarnings("java:S2142")
+  private void applyThrottleDelay(long cycleTime) {
+    long delay = throttle.getDelay();
+    if (LOG.isDebugEnabled()) LOG.debug("Apply delay={} ms from {}", delay, throttle);
+    long sleepUntil = cycleTime + delay;
+    long now;
+    do {
+      now = System.currentTimeMillis();
+      if (now < sleepUntil)
+        try {
+          Thread.sleep(sleepUntil - now);
+          if (LOG.isDebugEnabled()) LOG.debug("Slept {} ms", sleepUntil - now);
+        } catch (InterruptedException e) {
+          // Swallow interrupts here, so throttling resumes on further iterations.
+          // Do not re-set the interrupt flag; callers that need to exit on interrupt
+          // should return from higher-level waits (e.g., waitForRequest/waitOneSecond).
+          if (LOG.isDebugEnabled()) LOG.debug("Throttle delay interrupted", e);
+          return;
+        }
+    } while (now < sleepUntil);
+  }
+
+  private RejectReason shouldReject(ChosenBlock req) {
+    return stats.shouldRejectRequest(
+        RequestAdmissionContext.of(
+            true,
+            isInsert,
+            isSSK,
+            true,
+            false,
+            null,
+            false,
+            Node.PREFER_INSERT_DEFAULT && isInsert,
+            req.realTimeFlag,
+            null));
+  }
+
+  private void logIfNotCancelled(ChosenBlock req, boolean started) {
+    if (!started && !isCancelledTransient(req)) {
+      LOG.info("No eligible request for {}", req);
+    }
+  }
+
+  private boolean isCancelledTransient(ChosenBlock req) {
+    return !req.isPersistent() && req.isCancelled();
+  }
+
+  private ChosenBlock ensureRequest(ChosenBlock current) {
+    return current != null ? current : sched.grabRequest();
+  }
+
+  private ChosenBlock waitForRequest() {
+    if (LOG.isDebugEnabled()) LOG.debug("Waiting for request...");
+    synchronized (this) {
+      ChosenBlock r = sched.grabRequest();
+      while (r == null) {
+        try {
+          while (!wakeUpRequested && (r = sched.grabRequest()) == null) {
+            wait();
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          if (LOG.isDebugEnabled()) LOG.debug("Wait for request interrupted", e);
+          return null;
+        }
+        wakeUpRequested = false;
+        if (r == null) r = sched.grabRequest();
+      }
+      return r;
+    }
+  }
+
+  private boolean prepareAndCheckRejection(ChosenBlock req, long cycleTime) {
+    if (req.localRequestOnly) {
+      stats.waitUntilNotOverloaded();
+      return false;
+    }
+    applyThrottleDelay(cycleTime);
+    return shouldReject(req) != null;
+  }
+
+  private boolean startRequest(ChosenBlock req) {
+    if (!req.isPersistent() && req.isCancelled()) {
       req.onDumped();
       return false;
     }
-    if (req.key != null) {
-      if (!sched.addToFetching(req.key)) {
-        req.onDumped();
-        return false;
-      }
-    } else if (((ChosenBlockImpl) req).request instanceof SendableInsert insert) {
-      if (!sched.addRunningInsert(insert, req.token.getKey())) {
-        req.onDumped();
-        return false;
-      }
+    boolean failed =
+        (req.key != null && !sched.addToFetching(req.key))
+            || (((ChosenBlockImpl) req).request instanceof SendableInsert insert
+                && !sched.addRunningInsert(insert, req.token.getKey()));
+    if (failed) {
+      req.onDumped();
+      return false;
     }
-    if (logMINOR) Logger.minor(this, "Running request " + req + " priority " + req.getPriority());
-    core.getExecutor()
+    if (LOG.isDebugEnabled())
+      LOG.debug("Start request {} with priority {}", req, req.getPriority());
+    core.getNode()
+        .network()
+        .executor()
         .execute(new SenderThread(req, req.key), "RequestStarter$SenderThread for " + req);
     return true;
   }
 
+  /**
+   * Runs the starter loop until interrupted.
+   *
+   * <p>Exits cleanly when the thread is interrupted. Any unexpected exceptions are logged, and the
+   * loop continues so isolated failures do not stop the starter.
+   */
   @Override
   public void run() {
     while (true) {
+      if (Thread.currentThread().isInterrupted()) {
+        if (LOG.isDebugEnabled()) LOG.debug("RequestStarter interrupted; exiting");
+        return;
+      }
       try {
         realRun();
-      } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+      } catch (Exception t) {
+        LOG.error("Unhandled exception: {}", t, t);
       }
     }
   }
@@ -270,40 +328,50 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 
     @Override
     public void run() {
-      // FIXME ? key is not known for inserts here
+      // Key may be null for inserts
       if (key != null) stats.reportOutgoingLocalRequestLocation(key.toNormalizedDouble());
       if (!req.send(core, sched)) {
-        if (!((!req.isPersistent()) && req.isCancelled()))
-          Logger.error(this, "run() not able to send a request on " + req);
-        else
-          Logger.normal(
-              this, "run() not able to send a request on " + req + " - request was cancelled");
+        if (!(!req.isPersistent() && req.isCancelled()))
+          LOG.error("Send request failed for {}", req);
+        else LOG.info("Send request skipped for {} - request was cancelled", req);
       }
-      if (logMINOR) Logger.minor(this, "Finished " + req);
+      if (LOG.isDebugEnabled()) LOG.debug("Finished request {}", req);
     }
   }
 
   /**
-   * LOCKING: Caller must avoid locking while calling this function. In particular, if the
-   * RequestStarter lock is held we will get a deadlock.
+   * Wakes threads that wait for new work.
+   *
+   * <p>LOCKING: do not hold the {@code RequestStarter} lock when calling this method; waking while
+   * holding it can deadlock waiters attempting to reacquire the same monitor.
    */
   public void wakeUp() {
     synchronized (this) {
+      wakeUpRequested = true;
       notifyAll();
     }
   }
 
-  /** Can this item be excluded, based on e.g. already running requests? */
+  /**
+   * Computes an exclusion time for a candidate item.
+   *
+   * <p>Returns {@code Long.MAX_VALUE} when a persistent request for the same item is already
+   * running or queued. For non‑inserts, delegates to {@link BaseSendableGet#getWakeupTime}.
+   *
+   * @param item candidate request item
+   * @param context client context for computing wakeup time
+   * @param now current time in milliseconds since epoch
+   * @return exclusion delay in milliseconds, or a sentinel value as described above
+   */
   @Override
   public long exclude(RandomGrabArrayItem item, ClientContext context, long now) {
     if (sched.isRunningOrQueuedPersistentRequest((SendableRequest) item)) {
-      Logger.normal(this, "Excluding already-running request: " + item, new Exception("debug"));
+      LOG.info("Exclude already running request {}", item);
       return Long.MAX_VALUE;
     }
     if (isInsert) return -1;
     if (!(item instanceof BaseSendableGet get)) {
-      Logger.error(
-          this, "On a request scheduler, exclude() called with " + item, new Exception("error"));
+      LOG.error("exclude() called with unsupported item {}", item);
       return -1;
     }
     return get.getWakeupTime(context, now);

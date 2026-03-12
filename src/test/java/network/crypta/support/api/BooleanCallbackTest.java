@@ -1,57 +1,49 @@
 package network.crypta.support.api;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertThrows;
-
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class BooleanCallbackTest {
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class BooleanCallbackTest {
 
   @Test
-  public void canCreateBooleanCallbackFromLambdas()
+  void canCreateBooleanCallbackFromLambdas()
       throws NodeNeedRestartException, InvalidConfigValueException {
-    BooleanCallback callback = BooleanCallback.from(() -> true, (value) -> theValue = value);
+    BooleanCallback callback = BooleanCallback.from(() -> true, value -> theValue = value);
     callback.set(true);
 
     assertThat(theValue, Matchers.is(true));
   }
 
   @Test
-  public void canThrowInvalidConfigValueException()
-      throws NodeNeedRestartException, InvalidConfigValueException {
+  void canThrowInvalidConfigValueException() {
     BooleanCallback callback =
         BooleanCallback.from(
             () -> true,
-            (value) -> {
+            _ -> {
               throw new InvalidConfigValueException("invalid");
             });
     assertThrows(InvalidConfigValueException.class, () -> callback.set(true));
   }
 
   @Test
-  public void canThrowNodeNeedRestartException()
-      throws NodeNeedRestartException, InvalidConfigValueException {
+  void canThrowNodeNeedRestartException() {
     BooleanCallback callback =
         BooleanCallback.from(
             () -> true,
-            (value) -> {
+            _ -> {
               throw new NodeNeedRestartException("needs restart");
             });
     assertThrows(NodeNeedRestartException.class, () -> callback.set(true));
   }
 
   @Test
-  public void getGivesTheSetVariable()
-      throws NodeNeedRestartException, InvalidConfigValueException {
-    BooleanCallback callback =
-        BooleanCallback.from(
-            () -> theValue,
-            (value -> {
-              theValue = value;
-            }));
+  void getGivesTheSetVariable() throws NodeNeedRestartException, InvalidConfigValueException {
+    BooleanCallback callback = BooleanCallback.from(() -> theValue, value -> theValue = value);
     callback.set(true);
     boolean trueValue = callback.get();
     callback.set(false);

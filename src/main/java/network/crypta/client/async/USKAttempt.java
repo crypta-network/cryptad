@@ -1,0 +1,242 @@
+package network.crypta.client.async;
+
+import network.crypta.keys.ClientSSKBlock;
+import network.crypta.keys.USK;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Tracks a single edition probe, including its checker state and polling metadata.
+ *
+ * <p>Each attempt owns a {@link USKChecker} that performs the actual request and reports completion
+ * through {@link USKCheckerCallback}. The attempt records whether it has succeeded, failed (DNF),
+ * or been canceled, and it exposes scheduling hooks used by the owning fetcher. The attempt also
+ * tracks whether it has ever entered finite cooldown so that polling rounds can determine when a
+ * round is finished for now.
+ *
+ * <p>The class is mutable and relies on synchronization for checker state updates. Callers usually
+ * treat each attempt as part of a larger scheduling loop, invoking {@link #schedule(ClientContext)}
+ * and reacting to callbacks from the checker. Instances are short-lived and are replaced as polling
+ * rounds advance.
+ *
+ * <ul>
+ *   <li>Owns a checker for a specific USK edition probe.
+ *   <li>Tracks success, DNF, cancellation, and cooldown state.
+ *   <li>Provides scheduling and priority hooks for the polling pipeline.
+ * </ul>
+ */
+public final class USKAttempt implements USKCheckerCallback {
+  /** Logger for attempt scheduling diagnostics. */
+  private static final Logger LOG = LoggerFactory.getLogger(USKAttempt.class);
+
+  /** Literal used in attempt descriptions to keep log formatting consistent. */
+  private static final String FOR_LITERAL = " for ";
+
+  /** Edition number. */
+  long number;
+
+  /** Attempt to fetch that edition number (or null if the fetch has finished). */
+  USKChecker checker;
+
+  /** Successful fetch? */
+  volatile boolean succeeded;
+
+  /** DNF? */
+  boolean dnf;
+
+  /** Whether this attempt has been explicitly canceled. */
+  boolean cancelled;
+
+  /** The lookup descriptor associated with this attempt. */
+  final USKKeyWatchSet.Lookup lookup;
+
+  /** Whether this attempt is a long-lived polling attempt. */
+  final boolean forever;
+
+  /** Whether this attempt has ever entered finite cooldown. */
+  private boolean everInCooldown;
+
+  /** Whether cancellation has already been reported to callbacks. */
+  private boolean cancelNotified;
+
+  /** Callback target for attempt lifecycle events. */
+  private final USKAttemptCallbacks callbacks;
+
+  /** Base USK used for logging and manager lookups. */
+  private final USK origUSK;
+
+  /** Parent requester that supplies priority and scheduling policy. */
+  private final ClientRequester parent;
+
+  /**
+   * Creates a new attempt for the provided lookup descriptor.
+   *
+   * <p>The constructor wires the checker used to probe the target edition and initializes the
+   * attempt state for scheduling. When {@code forever} is {@code true}, the checker is created for
+   * a long-lived polling attempt; otherwise it represents a one-off probe that will retire after
+   * completion.
+   *
+   * @param attemptContext shared configuration for attempt construction
+   * @param lookup descriptor containing edition and key information
+   * @param forever {@code true} to create a polling attempt; {@code false} for a one-off probe
+   */
+  USKAttempt(USKAttemptContext attemptContext, USKKeyWatchSet.Lookup lookup, boolean forever) {
+    this.callbacks = attemptContext.callbacks();
+    this.origUSK = attemptContext.origUSK();
+    this.parent = attemptContext.parent();
+    this.lookup = lookup;
+    this.number = lookup.val;
+    this.succeeded = false;
+    this.dnf = false;
+    this.forever = forever;
+    this.checker =
+        new USKChecker(
+            this,
+            lookup.key,
+            forever ? -1 : attemptContext.ctx().maxUSKRetries,
+            lookup.ignoreStore ? attemptContext.ctxNoStore() : attemptContext.ctx(),
+            attemptContext.parent(),
+            attemptContext.realTimeFlag());
+  }
+
+  @Override
+  public void onDNF(ClientContext context) {
+    synchronized (this) {
+      checker = null;
+      dnf = true;
+    }
+    callbacks.onDNF(this, context);
+  }
+
+  @Override
+  public void onSuccess(ClientSSKBlock block, ClientContext context) {
+    synchronized (this) {
+      checker = null;
+      succeeded = true;
+    }
+    callbacks.onSuccess(this, false, block, context);
+  }
+
+  @Override
+  public void onFatalAuthorError(ClientContext context) {
+    synchronized (this) {
+      checker = null;
+    }
+    // Counts as success except it doesn't update
+    callbacks.onSuccess(this, true, null, context);
+  }
+
+  @Override
+  public void onNetworkError(ClientContext context) {
+    synchronized (this) {
+      checker = null;
+    }
+    // Treat network error as DNF for scheduling purposes
+    callbacks.onDNF(this, context);
+  }
+
+  @Override
+  public void onCancelled(ClientContext context) {
+    synchronized (this) {
+      checker = null;
+      if (cancelNotified) return;
+      cancelNotified = true;
+    }
+    callbacks.onCancelled(this, context);
+  }
+
+  /**
+   * Cancels this attempt and propagates cancellation to the checker if present.
+   *
+   * @param context client context used to cancel scheduling; must not be null
+   */
+  public void cancel(ClientContext context) {
+    cancelled = true;
+    USKChecker c;
+    synchronized (this) {
+      c = checker;
+    }
+    if (c != null) {
+      c.cancel(context);
+    }
+    onCancelled(context);
+  }
+
+  /**
+   * Schedules this attempt with its checker if still active.
+   *
+   * @param context client context used to schedule the checker; must not be null
+   */
+  public void schedule(ClientContext context) {
+    USKChecker c;
+    synchronized (this) {
+      c = checker;
+    }
+    if (c == null) {
+      if (LOG.isDebugEnabled()) LOG.debug("Checker == null in schedule() for {}", this);
+    } else {
+      assert !c.persistent();
+      c.schedule(context);
+    }
+  }
+
+  @Override
+  public String toString() {
+    return "USKAttempt for "
+        + number
+        + FOR_LITERAL
+        + origUSK.getURI()
+        + (forever ? " (forever)" : "");
+  }
+
+  @Override
+  public short getPriority() {
+    if (callbacks.isBackgroundPoll()) {
+      synchronized (this) {
+        if (forever) {
+          if (!everInCooldown) {
+            // Boost the priority initially, so that finding the first edition takes precedence
+            // over ongoing polling after we're fairly sure we're not going to find anything.
+            // The ongoing polling keeps the ULPRs up to date so that we will get told quickly,
+            // but if we are overloaded, we won't be able to keep up regardless.
+            return callbacks.getProgressPollPriority();
+          } else {
+            return callbacks.getNormalPollPriority();
+          }
+        } else {
+          // If !forever, this is a random-probe.
+          // It's not that important.
+          return callbacks.getNormalPollPriority();
+        }
+      }
+    }
+    return parent.getPriorityClass();
+  }
+
+  @Override
+  public void onEnterFiniteCooldown(ClientContext context) {
+    synchronized (this) {
+      everInCooldown = true;
+    }
+    callbacks.onEnterFiniteCooldown(context);
+  }
+
+  /**
+   * Reports whether this attempt has ever entered a finite cooldown.
+   *
+   * @return {@code true} if the attempt has cooled down at least once
+   */
+  public synchronized boolean everInCooldown() {
+    return everInCooldown;
+  }
+
+  /** Refreshes cached poll parameters on the underlying checker, if active. */
+  public void reloadPollParameters() {
+    USKChecker c;
+    synchronized (this) {
+      c = checker;
+    }
+    if (c == null) return;
+    c.onChangedFetchContext();
+  }
+}

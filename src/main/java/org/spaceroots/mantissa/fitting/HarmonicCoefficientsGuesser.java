@@ -1,5 +1,6 @@
 package org.spaceroots.mantissa.fitting;
 
+import java.io.Serial;
 import java.io.Serializable;
 import org.spaceroots.mantissa.estimation.EstimationException;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
@@ -9,115 +10,68 @@ import org.spaceroots.mantissa.functions.vectorial.VectorialValuedPair;
 import org.spaceroots.mantissa.quadrature.vectorial.EnhancedSimpsonIntegratorSampler;
 
 /**
- * This class guesses harmonic coefficients from a sample.
+ * Estimates the amplitude, angular frequency, and phase of a harmonic signal from sampled data.
  *
- * <p>The algorithm used to guess the coefficients is as follows:
+ * <p>This helper builds an initial guess for a sinusoid {@code f(t) = a * cos(omega * t + phi)}
+ * using only time-stamped measurements. It integrates the squared signal and the squared numerical
+ * derivative, then solves a two-parameter least-squares system that links the two integrals; the
+ * resulting coefficients provide the amplitude and pulsation. A second pass averages cosine/sine
+ * projections to recover the phase. The entire procedure runs in linear time with a single
+ * traversal of the sample stream, avoiding Fourier transforms or windowing choices.
  *
- * <p>We know f (t) at some sampling points t<sub>i</sub> and want to find a, &omega; and &phi; such
- * that f (t) = a cos (&omega; t + &phi;).
+ * <p>Typical workflow:
  *
- * <p>From the analytical expression, we can compute two primitives :
+ * <ul>
+ *   <li>Create an instance with chronologically ordered {@link AbstractCurveFitter.FitMeasurement}
+ *       values representing the sampled function.
+ *   <li>Invoke {@link #guess()} once to populate amplitude, angular frequency, and phase fields.
+ *   <li>Read {@link #getA()}, {@link #getOmega()}, and {@link #getPhi()} to seed a non-linear curve
+ *       fitter or optimizer.
+ * </ul>
  *
- * <pre>
- *     If2  (t) = &int; f<sup>2</sup>  = a<sup>2</sup> &times; [t + S (t)] / 2
- *     If'2 (t) = &int; f'<sup>2</sup> = a<sup>2</sup> &omega;<sup>2</sup> &times; [t - S (t)] / 2
- *     where S (t) = sin (2 (&omega; t + &phi;)) / (2 &omega;)
- * </pre>
- *
- * <p>We can remove S between these expressions :
- *
- * <pre>
- *     If'2 (t) = a<sup>2</sup> &omega;<sup>2</sup> t - &omega;<sup>2</sup> If2 (t)
- * </pre>
- *
- * <p>The preceding expression shows that If'2 (t) is a linear combination of both t and If2 (t):
- * If'2 (t) = A &times; t + B &times; If2 (t)
- *
- * <p>From the primitive, we can deduce the same form for definite integrals between t<sub>1</sub>
- * and t<sub>i</sub> for each t<sub>i</sub> :
- *
- * <pre>
- *   If2 (t<sub>i</sub>) - If2 (t<sub>1</sub>) = A &times; (t<sub>i</sub> - t<sub>1</sub>) + B &times; (If2 (t<sub>i</sub>) - If2 (t<sub>1</sub>))
- * </pre>
- *
- * <p>We can find the coefficients A and B that best fit the sample to this linear expression by
- * computing the definite integrals for each sample points.
- *
- * <p>For a bilinear expression z (x<sub>i</sub>, y<sub>i</sub>) = A &times; x<sub>i</sub> + B
- * &times; y<sub>i</sub>, the coefficients A and B that minimize a least square criterion &sum;
- * (z<sub>i</sub> - z (x<sub>i</sub>, y<sub>i</sub>))<sup>2</sup> are given by these expressions:
- *
- * <pre>
- *
- *         &sum;y<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>z<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;y<sub>i</sub>z<sub>i</sub>
- *     A = ------------------------
- *         &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>y<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>y<sub>i</sub>
- *
- *         &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>z<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>z<sub>i</sub>
- *     B = ------------------------
- *         &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>y<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>y<sub>i</sub>
- * </pre>
- *
- * <p>In fact, we can assume both a and &omega; are positive and compute them directly, knowing that
- * A = a<sup>2</sup> &omega;<sup>2</sup> and that B = - &omega;<sup>2</sup>. The complete algorithm
- * is therefore:
- *
- * <pre>
- *
- * for each t<sub>i</sub> from t<sub>1</sub> to t<sub>n-1</sub>, compute:
- *   f  (t<sub>i</sub>)
- *   f' (t<sub>i</sub>) = (f (t<sub>i+1</sub>) - f(t<sub>i-1</sub>)) / (t<sub>i+1</sub> - t<sub>i-1</sub>)
- *   x<sub>i</sub> = t<sub>i</sub> - t<sub>1</sub>
- *   y<sub>i</sub> = &int; f<sup>2</sup> from t<sub>1</sub> to t<sub>i</sub>
- *   z<sub>i</sub> = &int; f'<sup>2</sup> from t<sub>1</sub> to t<sub>i</sub>
- *   update the sums &sum;x<sub>i</sub>x<sub>i</sub>, &sum;y<sub>i</sub>y<sub>i</sub>, &sum;x<sub>i</sub>y<sub>i</sub>, &sum;x<sub>i</sub>z<sub>i</sub> and &sum;y<sub>i</sub>z<sub>i</sub>
- * end for
- *
- *            |--------------------------
- *         \  | &sum;y<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>z<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;y<sub>i</sub>z<sub>i</sub>
- * a     =  \ | ------------------------
- *           \| &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>z<sub>i</sub> - &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>z<sub>i</sub>
- *
- *
- *            |--------------------------
- *         \  | &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>z<sub>i</sub> - &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>z<sub>i</sub>
- * &omega;     =  \ | ------------------------
- *           \| &sum;x<sub>i</sub>x<sub>i</sub> &sum;y<sub>i</sub>y<sub>i</sub> - &sum;x<sub>i</sub>y<sub>i</sub> &sum;x<sub>i</sub>y<sub>i</sub>
- *
- * </pre>
- *
- * <p>Once we know &omega;, we can compute:
- *
- * <pre>
- *    fc = &omega; f (t) cos (&omega; t) - f' (t) sin (&omega; t)
- *    fs = &omega; f (t) sin (&omega; t) + f' (t) cos (&omega; t)
- * </pre>
- *
- * <p>It appears that <code>fc = a &omega; cos (&phi;)</code> and <code>fs = -a &omega; sin (&phi;)
- * </code>, so we can use these expressions to compute &phi;. The best estimate over the sample is
- * given by averaging these expressions.
- *
- * <p>Since integrals and means are involved in the preceding estimations, these operations run in
- * O(n) time, where n is the number of measurements.
+ * <p>The instance retains intermediate sums and therefore is not thread-safe. Estimates assume a
+ * single dominant harmonic component and may degrade with heavy noise or multiple tones; use a
+ * downstream fitter to refine the result. When {@link #guess()} has not been executed, getter
+ * methods return {@code Double.NaN} to signal the absence of a computed estimate.
  *
  * @version $Id: HarmonicCoefficientsGuesser.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
+ * @see AbstractCurveFitter
  */
 public class HarmonicCoefficientsGuesser implements Serializable {
 
+  /**
+   * Construct a guesser bound to the provided measurements.
+   *
+   * <p>The array is defensively cloned so subsequent user modifications do not alter the internal
+   * state. Measurements are expected to describe the sampled function in chronological order so the
+   * Simpson sampler can compute finite differences for the derivative term. All coefficient fields
+   * are initialized to {@code Double.NaN}; they remain in that state until {@link #guess()} is
+   * executed successfully. Supplying fewer than three points will cause estimation to fail because
+   * the derivative approximation requires neighboring values.
+   *
+   * @param measurements sequentially ordered sample points of the observed harmonic signal; the
+   *     array is cloned and must not be {@code null}.
+   */
   public HarmonicCoefficientsGuesser(AbstractCurveFitter.FitMeasurement[] measurements) {
-    this.measurements = (AbstractCurveFitter.FitMeasurement[]) measurements.clone();
+    this.measurements = measurements.clone();
     a = Double.NaN;
     omega = Double.NaN;
   }
 
   /**
-   * Estimate a first guess of the coefficients.
+   * Compute initial amplitude, angular frequency, and phase estimates from the stored sample set.
    *
-   * @exception ExhaustedSampleException if the sample is exhausted.
-   * @exception FunctionException if the integrator throws one.
-   * @exception EstimationException if the sample is too short or if the first guess cannot be
-   *     computed (when the elements under the square roots are negative).
+   * <p>The method first solves a least-squares system on squared integrals to infer the amplitude
+   * and angular frequency, then averages cosine/sine projections to deduce the phase. All results
+   * are cached inside this instance and replace any previous estimate, so repeated calls recompute
+   * the same values for unchanged input. Callers should invoke this method before reading any
+   * getter; otherwise the getters will return {@code Double.NaN} to indicate that no estimate was
+   * produced.
+   *
+   * @throws ExhaustedSampleException if the sampler runs out of points before finishing.
+   * @throws FunctionException if the underlying numerical integrator reports an evaluation error.
+   * @throws EstimationException if the sample is too short or leads to negative square roots.
    */
   public void guess() throws ExhaustedSampleException, FunctionException, EstimationException {
     guessAOmega();
@@ -127,10 +81,10 @@ public class HarmonicCoefficientsGuesser implements Serializable {
   /**
    * Estimate a first guess of the a and &omega; coefficients.
    *
-   * @exception ExhaustedSampleException if the sample is exhausted.
-   * @exception FunctionException if the integrator throws one.
-   * @exception EstimationException if the sample is too short or if the first guess cannot be
-   *     computed (when the elements under the square roots are negative).
+   * @throws ExhaustedSampleException if the sample is exhausted.
+   * @throws FunctionException if the integrator throws one.
+   * @throws EstimationException if the sample is too short or if the first guess cannot be computed
+   *     (when the elements under the square roots are negative).
    */
   private void guessAOmega()
       throws ExhaustedSampleException, FunctionException, EstimationException {
@@ -181,8 +135,8 @@ public class HarmonicCoefficientsGuesser implements Serializable {
   /**
    * Estimate a first guess of the &phi; coefficient.
    *
-   * @exception ExhaustedSampleException if the sample is exhausted.
-   * @exception FunctionException if the sampler throws one.
+   * @throws ExhaustedSampleException if the sample is exhausted.
+   * @throws FunctionException if the sampler throws one.
    */
   private void guessPhi() throws ExhaustedSampleException, FunctionException {
 
@@ -204,22 +158,65 @@ public class HarmonicCoefficientsGuesser implements Serializable {
     phi = Math.atan2(-fsMean, fcMean);
   }
 
+  /**
+   * Return the estimated angular frequency in the sample time unit.
+   *
+   * <p>The value is computed during {@link #guess()} from the least-squares relation between the
+   * squared signal integral and the squared derivative integral. It is always non-negative and
+   * reflects the original time base; rescaling input timestamps scales this number accordingly. If
+   * no estimate has been produced because {@link #guess()} failed or has not been invoked, the
+   * method yields {@code Double.NaN} to signal the missing value.
+   *
+   * @return angular frequency estimate in radians per input time unit, or {@code Double.NaN} when
+   *     the estimate is unavailable.
+   */
   public double getOmega() {
     return omega;
   }
 
+  /**
+   * Return the estimated signal amplitude.
+   *
+   * <p>This value is inferred during {@link #guess()} by combining the linear regression results
+   * that link squared integrals of the function and its derivative. The amplitude is computed as a
+   * positive magnitude; noise or degenerate samples may still produce {@code Double.NaN} when the
+   * estimation path fails. Prior to a successful {@link #guess()} invocation, the amplitude remains
+   * unset and therefore returns {@code Double.NaN}.
+   *
+   * @return positive amplitude estimate consistent with the sampled signal, or {@code Double.NaN}
+   *     when no estimate is available.
+   */
   public double getA() {
     return a;
   }
 
+  /**
+   * Return the estimated phase shift of the signal.
+   *
+   * <p>The value is produced by averaging cosine and sine projections of the measurements after the
+   * angular frequency has been inferred. The result follows the standard {@link Math#atan2(double,
+   * double)} range, typically between {@code -Math.PI} and {@code Math.PI}. If {@link #guess()} has
+   * not been executed, the method returns {@code Double.NaN} to indicate the absence of a phase
+   * estimate.
+   *
+   * @return phase estimate in radians using the measurement time base, or {@code Double.NaN} when
+   *     guessing has not succeeded.
+   */
   public double getPhi() {
     return phi;
   }
 
-  private AbstractCurveFitter.FitMeasurement[] measurements;
+  /** Immutable copy of the sampled measurements used to derive all coefficients. */
+  private final AbstractCurveFitter.FitMeasurement[] measurements;
+
+  /** Latest amplitude estimate; remains {@code Double.NaN} until {@link #guess()} succeeds. */
   private double a;
+
+  /** Latest angular frequency estimate expressed in the input time unit. */
   private double omega;
+
+  /** Latest phase estimate returned by {@link #getPhi()}. */
   private double phi;
 
-  private static final long serialVersionUID = 2400399048702758814L;
+  @Serial private static final long serialVersionUID = 2400399048702758814L;
 }

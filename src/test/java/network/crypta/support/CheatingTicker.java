@@ -2,7 +2,7 @@ package network.crypta.support;
 
 public class CheatingTicker implements Ticker {
 
-  public CheatingTicker(Executor exec) {
+  public CheatingTicker(PriorityAwareExecutor exec) {
     underlying = exec;
   }
 
@@ -18,7 +18,7 @@ public class CheatingTicker implements Ticker {
   }
 
   @Override
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return underlying;
   }
 
@@ -33,5 +33,5 @@ public class CheatingTicker implements Ticker {
     underlying.execute(job);
   }
 
-  final Executor underlying;
+  final PriorityAwareExecutor underlying;
 }

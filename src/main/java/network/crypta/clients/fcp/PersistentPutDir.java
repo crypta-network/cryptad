@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
-import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.BaseManifestPutter;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -8,7 +9,6 @@ import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.ManifestElement;
@@ -19,19 +19,47 @@ import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.PaddedEphemerallyEncryptedBucket;
 import network.crypta.support.io.PersistentTempFileBucket;
 import network.crypta.support.io.TempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class PersistentPutDir extends FCPMessage {
+/**
+ * Builds the wire representation of a persistent directory insert request for the FCP layer.
+ *
+ * <p>This helper gathers the manifest entries, default name, compression hints, persistence
+ * expectations, and encryption material required to serialize a {@code PersistentPutDir} message
+ * that the server sends back to clients. The instance is immutable after construction; all data is
+ * pre-flattened into a {@link SimpleFieldSet} so callers can transmit the message repeatedly
+ * without re-walking the manifest tree. Use this class when the node needs to mirror a client's
+ * persistent directory insertion, for example, during reconnections or resumptions where the node
+ * must restate the pending request.
+ *
+ * <p>Concurrency: the object contains only final fields and is thread-safe for read-only access.
+ * Large manifests are supported by avoiding eager string copies where possible; however, the
+ * resulting field set can still be sizable, so callers should reuse instances rather than building
+ * them per sending. The class does not perform I/O beyond inspecting the supplied buckets.
+ *
+ * <ul>
+ *   <li><strong>Responsibilities:</strong> normalize manifest elements, emit stable message fields,
+ *       attach optional metadata such as compression, retry limits, and crypto keys.
+ *   <li><strong>Notable behaviors:</strong> treats redirected targets as lightweight entries and
+ *       rejects unknown bucket types with a clear {@link IllegalStateException}.
+ * </ul>
+ *
+ * @see BaseManifestPutter#flatten(Map)
+ */
+public final class PersistentPutDir extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentPutDir.class);
+  private static final String NAME = "PersistentPutDir";
+  private static final String UPLOAD_FROM = "UploadFrom";
 
-  static final String name = "PersistentPutDir";
-
-  final String identifier;
+  final String clientIdentifier;
   final FreenetURI uri;
   final FreenetURI privateURI;
   final int verbosity;
   final short priorityClass;
   final Persistence persistence;
   final boolean global;
-  private final HashMap<String, Object> manifestElements;
+  private final Map<String, Object> manifestElements;
   final String defaultName;
   final String token;
   final boolean started;
@@ -44,144 +72,205 @@ public class PersistentPutDir extends FCPMessage {
   final byte[] splitfileCryptoKey;
   final InsertContext.CompatibilityMode compatMode;
 
+  /**
+   * Creates a persistent directory insert message snapshot with all supporting metadata.
+   *
+   * <p>The constructor performs the manifest flattening immediately and caches the resulting field
+   * set so repeated invocations of {@link #getFieldSet()} are cheap. Callers should pass the URIs
+   * exactly as issued by the node; no additional validation or escaping is performed here.
+   *
+   * @param requestParams core request identifiers, scheduling flags, and persistence settings
+   * @param metadata shared persistent insert metadata such as retries and compression flags
+   * @param defaultName the default filename applied to manifest entries lacking an explicit name;
+   *     also used by UI layers when constructing links.
+   * @param manifestElements flattened or hierarchical manifest elements supplied by the client; any
+   *     redirect entries must include a target URI while file entries must carry data buckets.
+   * @param wasDiskPut whether the original request streamed from disk; affects how the node
+   *     represents the upload source within the field set.
+   */
   public PersistentPutDir(
-      String identifier,
-      FreenetURI publicURI,
-      FreenetURI privateURI,
-      int verbosity,
-      short priorityClass,
-      Persistence persistence,
-      boolean global,
+      ClientRequestParams requestParams,
+      PersistentPutRequestMetadata metadata,
       String defaultName,
-      HashMap<String, Object> manifestElements,
-      String token,
-      boolean started,
-      int maxRetries,
-      boolean dontCompress,
-      String compressorDescriptor,
-      boolean wasDiskPut,
-      boolean realTime,
-      byte[] splitfileCryptoKey,
-      InsertContext.CompatibilityMode cmode) {
-    this.identifier = identifier;
-    this.uri = publicURI;
-    this.privateURI = privateURI;
-    this.verbosity = verbosity;
-    this.priorityClass = priorityClass;
-    this.persistence = persistence;
-    this.global = global;
+      Map<String, Object> manifestElements,
+      boolean wasDiskPut) {
+    this.clientIdentifier = requestParams.identifier();
+    this.uri = requestParams.uri();
+    this.privateURI = metadata.privateURI();
+    this.verbosity = requestParams.verbosity();
+    this.priorityClass = requestParams.priorityClass();
+    this.persistence = requestParams.persistence();
+    this.global = requestParams.global();
     this.defaultName = defaultName;
     this.manifestElements = manifestElements;
-    this.token = token;
-    this.started = started;
-    this.maxRetries = maxRetries;
+    this.token = requestParams.clientToken();
+    this.started = metadata.started();
+    this.maxRetries = metadata.maxRetries();
     this.wasDiskPut = wasDiskPut;
-    this.dontCompress = dontCompress;
-    this.compressorDescriptor = compressorDescriptor;
-    this.realTime = realTime;
-    this.splitfileCryptoKey = splitfileCryptoKey;
-    this.compatMode = cmode;
+    this.dontCompress = metadata.dontCompress();
+    this.compressorDescriptor = metadata.compressorDescriptor();
+    this.realTime = requestParams.realTime();
+    this.splitfileCryptoKey = metadata.splitfileCryptoKey();
+    this.compatMode = metadata.compatMode();
     cached = generateFieldSet();
   }
 
   private SimpleFieldSet generateFieldSet() {
+    SimpleFieldSet fs = createBaseFieldSet();
+    ManifestElement[] elements = BaseManifestPutter.flatten(manifestElements);
+    fs.putSingle("DefaultName", defaultName);
+    fs.put("Files", createFilesFieldSet(elements));
+    addOptionalFields(fs);
+    return fs;
+  }
+
+  private SimpleFieldSet createBaseFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(false); // false because this can get HUGE
-    fs.putSingle("Identifier", identifier);
+    fs.putSingle(IDENTIFIER, clientIdentifier);
     fs.putSingle("URI", uri.toString(false, false));
     if (privateURI != null) fs.putSingle("PrivateURI", privateURI.toString(false, false));
     fs.put("Verbosity", verbosity);
-    fs.putSingle("Persistence", persistence.toString().toLowerCase());
+    fs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     fs.put("PriorityClass", priorityClass);
     fs.put("Global", global);
     fs.putSingle("PutDirType", wasDiskPut ? "disk" : "complex");
     fs.putOverwrite("CompatibilityMode", compatMode.name());
+    return fs;
+  }
+
+  private SimpleFieldSet createFilesFieldSet(ManifestElement[] elements) {
     SimpleFieldSet files = new SimpleFieldSet(false);
-    // Flatten the hierarchy, it can be reconstructed on restarting.
-    // Storing it directly would be a PITA.
-    // FIXME/RESOLVE: The new BaseManifestPutter's container mode does not hold the origin data,
-    //                 after composing the PutHandlers (done in BaseManifestPutter), they are
-    // 'lost':
-    //                 A resumed half done container put can not get the complete file list from
-    // BaseManifestPutter.
-    //                 Is it really necessary to include the file list here?
-    ManifestElement[] elements = BaseManifestPutter.flatten(manifestElements);
-    fs.putSingle("DefaultName", defaultName);
     for (int i = 0; i < elements.length; i++) {
-      String num = Integer.toString(i);
-      ManifestElement e = elements[i];
-      String mimeOverride = e.getMimeTypeOverride();
-      SimpleFieldSet subset = new SimpleFieldSet(false);
-      FreenetURI tempURI = e.getTargetURI();
-      subset.putSingle("Name", e.getName());
-      if (tempURI != null) {
-        subset.putSingle("UploadFrom", "redirect");
-        subset.putSingle("TargetURI", tempURI.toString());
-      } else {
-        Bucket data = e.getData();
-        if (data instanceof DelayedFreeBucket bucket1) {
-          data = bucket1.getUnderlying();
-        } else if (data instanceof DelayedFreeRandomAccessBucket bucket) {
-          data = bucket.getUnderlying();
-        }
-        subset.put("DataLength", e.getSize());
-        if (mimeOverride != null) subset.putSingle("Metadata.ContentType", mimeOverride);
-        // What to do with the bucket?
-        // It is either a persistent encrypted bucket or a file bucket ...
-        if (data == null) {
-          Logger.error(
-              this,
-              "Bucket already freed: "
-                  + e.getData()
-                  + " for "
-                  + e
-                  + " for "
-                  + e.getName()
-                  + " for "
-                  + identifier);
-        } else if (data instanceof FileBucket bucket) {
-          subset.putSingle("UploadFrom", "disk");
-          subset.putSingle("Filename", bucket.getFile().getPath());
-        } else if (data instanceof PaddedEphemerallyEncryptedBucket
-            || data instanceof NullBucket
-            || data instanceof PersistentTempFileBucket
-            || data instanceof TempBucketFactory.TempBucket
-            || data instanceof EncryptedRandomAccessBucket) {
-          subset.putSingle("UploadFrom", "direct");
-        } else {
-          throw new IllegalStateException("Don't know what to do with bucket: " + data);
-        }
-      }
-      files.put(num, subset);
+      files.put(Integer.toString(i), createElementFieldSet(elements[i]));
     }
     files.put("Count", elements.length);
-    fs.put("Files", files);
+    return files;
+  }
+
+  private SimpleFieldSet createElementFieldSet(ManifestElement element) {
+    SimpleFieldSet subset = new SimpleFieldSet(false);
+    subset.putSingle("Name", element.getName());
+    FreenetURI targetURI = element.getTargetURI();
+    if (targetURI != null) {
+      subset.putSingle(UPLOAD_FROM, "redirect");
+      subset.putSingle("TargetURI", targetURI.toString());
+      return subset;
+    }
+    Bucket data = unwrapBucket(element.getData());
+    subset.put("DataLength", element.getSize());
+    String mimeOverride = element.getMimeTypeOverride();
+    if (mimeOverride != null) {
+      subset.putSingle("Metadata.ContentType", mimeOverride);
+    }
+    populateUploadSource(subset, data, element);
+    return subset;
+  }
+
+  private void populateUploadSource(SimpleFieldSet subset, Bucket data, ManifestElement element) {
+    if (data == null) {
+      LOG.error(
+          "Bucket already freed: {} for {} for {} for {}",
+          element.getData(),
+          element,
+          element.getName(),
+          clientIdentifier);
+      return;
+    }
+    if (data instanceof FileBucket bucket) {
+      subset.putSingle(UPLOAD_FROM, "disk");
+      subset.putSingle("Filename", bucket.getFile().getPath());
+      return;
+    }
+    if (isDirectUploadBucket(data)) {
+      subset.putSingle(UPLOAD_FROM, "direct");
+      return;
+    }
+    throw new IllegalStateException("Don't know what to do with bucket: " + data);
+  }
+
+  private boolean isDirectUploadBucket(Bucket data) {
+    return data instanceof PaddedEphemerallyEncryptedBucket
+        || data instanceof NullBucket
+        || data instanceof PersistentTempFileBucket
+        || data instanceof TempBucketFactory.TempBucket
+        || data instanceof EncryptedRandomAccessBucket;
+  }
+
+  private Bucket unwrapBucket(Bucket data) {
+    if (data instanceof DelayedFreeBucket bucket) {
+      return bucket.getUnderlying();
+    }
+    if (data instanceof DelayedFreeRandomAccessBucket bucket) {
+      return bucket.getUnderlying();
+    }
+    return data;
+  }
+
+  private void addOptionalFields(SimpleFieldSet fs) {
     if (token != null) fs.putSingle("ClientToken", token);
     fs.put("Started", started);
     fs.put("MaxRetries", maxRetries);
     fs.put("DontCompress", dontCompress);
     if (compressorDescriptor != null) fs.putSingle("Codecs", compressorDescriptor);
     fs.put("RealTime", realTime);
-    if (splitfileCryptoKey != null)
+    if (splitfileCryptoKey != null) {
       fs.putSingle("SplitfileCryptoKey", HexUtil.bytesToHex(splitfileCryptoKey));
-    return fs;
+    }
   }
 
+  /**
+   * Returns the precomputed field set representing this persistent directory insert request.
+   *
+   * <p>The returned {@link SimpleFieldSet} is built once during construction and reused; callers
+   * must not mutate it. The structure contains a flattened manifest, upload sources, and all
+   * optional control flags so it can be sent directly over FCP. Because the field set is cached, it
+   * is safe to reuse this instance across reconnections or retransmissions without re-walking the
+   * manifest. The object is read-only after construction, making it suitable for sharing across
+   * threads that only need to serialize the data.
+   *
+   * @return immutable field set ready for serialization; ownership remains with this instance and
+   *     should not be modified by callers.
+   */
   @Override
   public SimpleFieldSet getFieldSet() {
     return cached;
   }
 
+  /**
+   * Reports the protocol name for this FCP message type.
+   *
+   * <p>The name is a constant required by the FCP framing layer when routing responses. It never
+   * changes across instances and should match the token understood by clients listening for
+   * directory insert status messages. Use this identifier when registering handlers or when logging
+   * message flow so downstream consumers can correlate traffic without inspecting payloads.
+   *
+   * @return stable message type identifier {@code "PersistentPutDir"} for FCP exchanges.
+   */
   @Override
   public String getName() {
-    return name;
+    return NAME;
   }
 
+  /**
+   * Rejects inbound execution because {@code PersistentPutDir} is a server-to-client message only.
+   *
+   * <p>If this method is invoked, the node received an invalid client request. The handler is not
+   * modified; instead a {@link MessageInvalidException} is raised to signal protocol misuse. This
+   * method is intentionally non-idempotent because it always throws.
+   *
+   * @param handler connection handler associated with the client session; not used beyond error
+   *     reporting in this implementation.
+   * @param node node instance that received the message; supplied for interface completeness and
+   *     unchanged here.
+   * @throws MessageInvalidException always thrown to indicate the message direction is incorrect
+   *     when arriving from a client.
+   */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentPut goes from server to client not the other way around",
-        identifier,
+        clientIdentifier,
         global);
   }
 }

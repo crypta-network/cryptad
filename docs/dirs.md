@@ -82,8 +82,6 @@ These are computed as absolute paths from the above base dirs:
 - `node.install.cfgDir = configDir`
 - `node.install.storeDir = dataDir`
 - `node.install.userDir = configDir`
-- `node.install.pluginStoresDir = dataDir/plugin-data`
-- `node.install.pluginDir = dataDir/plugins`
 - `node.install.tempDir = cacheDir/tmp`
 - `node.install.persistentTempDir = cacheDir/persistent-temp`
 - `node.install.nodeDir = dataDir/node`
@@ -98,7 +96,7 @@ On first run with the new feature:
 1. The config is read from the computed `configDir/cryptad.ini`.
 2. If absent, an existing `cryptad.ini` from CWD or the executable directory is copied.
 3. Legacy relative paths are rewritten to placeholders, then expanded at runtime.
-4. A best-effort move migrates legacy directories (e.g. `./datastore`, `./plugins`, `./temp`).
+4. A best-effort move migrates legacy directories (e.g. `./datastore`, `./temp`).
 
 ## Diagnostics
 

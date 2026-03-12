@@ -1,28 +1,36 @@
 package org.spaceroots.mantissa.functions.vectorial;
 
+import java.io.Serial;
 import java.io.Serializable;
 import org.spaceroots.mantissa.functions.FunctionException;
 
 /**
- * This class is a wrapper allowing to sample a {@link ComputableFunction}.
+ * Sampler that exposes a regular grid view over a {@link ComputableFunction}.
  *
- * <p>The sample produced is a regular sample. It can be specified by several means :
+ * <p>Instances describe an evenly spaced sequence of abscissas and compute vector values lazily
+ * when callers request individual sample points. This is useful when algorithms need predictable
+ * spacing (for plotting, interpolation warm starts, quick previews) but the underlying function is
+ * defined in terms of on-demand evaluations. No point values are cached; repeated calls re-evaluate
+ * the function and therefore keep memory usage constant at the price of extra computation.
+ *
+ * <p>Construction supports several grid definitions:
  *
  * <ul>
- *   <li>from an initial point a step and a number of points
- *   <li>from a range and a number of points
- *   <li>from a range and a step between points.
+ *   <li>an origin, a constant step, and an explicit point count;
+ *   <li>a closed range and a desired point count (step inferred);
+ *   <li>a closed range and a desired step, with optional adjustment so the upper bound is exactly
+ *       included.
  * </ul>
  *
- * In the latter case, the step can optionaly be adjusted in order to have the last point exactly at
- * the upper bound of the range.
- *
- * <p>The sample points are computed on demand, they are not stored. This allow to use this method
- * for very large sample with little memory overhead. The drawback is that if the same sample points
- * are going to be requested several times, they will be recomputed each time. In this case, the
- * user should consider storing the points by some other means.
+ * <p>Callers typically obtain the expected size via {@link #size()}, inspect the vector length via
+ * {@link #getDimension()}, and iterate indices with {@link #samplePointAt(int)}. The class is
+ * immutable after construction, thread-safe for concurrent reads assuming the wrapped {@code
+ * ComputableFunction} itself is thread-safe, and produces defensive copies of returned ordinate
+ * arrays.
  *
  * @see ComputableFunction
+ * @see VectorialValuedPair
+ * @see SampledFunction
  * @version $Id: ComputableFunctionSampler.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
@@ -31,13 +39,15 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
   /**
    * Constructor.
    *
-   * <p>Build a sample from an {@link ComputableFunction}. Beware of the classical off-by-one
-   * problem ! If you want to have a sample like this : 0.0, 0.1, 0.2 ..., 1.0, then you should
-   * specify step = 0.1 and n = 11 (not n = 10).
+   * <p>Builds a sampler from a fixed origin, a constant step, and an explicit number of points. Use
+   * this when the grid is already known or derived from upstream constraints such as plot
+   * resolution. Beware of the common off-by-one pattern: a closed range {@code [0, 1]} with step
+   * {@code 0.1} requires {@code n == 11}.
    *
-   * @param begin beginning of the range (will be the abscissa of the first point)
-   * @param step step between points
-   * @param n number of points
+   * @param function underlying function to evaluate; must remain valid for every requested point.
+   * @param begin abscissa of the first grid point; any finite {@code double} is accepted.
+   * @param step positive spacing between successive points, in the same unit as {@code begin}.
+   * @param n total number of grid points to expose; must be positive to avoid empty samples.
    */
   public ComputableFunctionSampler(ComputableFunction function, double begin, double step, int n) {
     this.function = function;
@@ -49,8 +59,15 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
   /**
    * Constructor. Build a sample from an {@link ComputableFunction}.
    *
-   * @param range abscissa range (from <code>range [0]</code> to <code>range [1]</code>)
-   * @param n number of points
+   * <p>Creates a regular grid over a closed range by inferring a constant step from the desired
+   * number of points. The first point lies at {@code range[0]} and the last at {@code range[1]}},
+   * with linear interpolation in between.
+   *
+   * @param function underlying function to evaluate; must support every point in the supplied
+   *     range.
+   * @param range two-element array describing {@code [lower, upper]} abscissa bounds; indices 0 and
+   *     1 are read directly and are not copied.
+   * @param n number of points to produce across the range; must be at least 2 to span the bounds.
    */
   public ComputableFunctionSampler(ComputableFunction function, double[] range, int n) {
     this.function = function;
@@ -62,12 +79,17 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
   /**
    * Constructor. Build a sample from an {@link ComputableFunction}.
    *
-   * @param range abscissa range (from <code>range [0]</code> to <code>range [1]</code>)
-   * @param step step between points
-   * @param adjustStep if true, the step is reduced in order to have the last point of the sample
-   *     exactly at <code>range [1]</code>, if false the last point will be between <code>
-   *     range [1] -
-   * step</code> and <code>range [1]</code>
+   * <p>Creates a grid over a closed range using a preferred step size. When {@code adjustStep} is
+   * {@code true}, the sampler slightly shrinks the step so the final point lands exactly on the
+   * upper bound; otherwise the final point is the largest value that does not exceed the upper
+   * bound by more than one unadjusted step.
+   *
+   * @param function underlying function to evaluate; must accept every generated abscissa.
+   * @param range two-element array describing {@code [lower, upper]} abscissa bounds, read as-is.
+   * @param step preferred spacing between points; must be strictly positive to avoid infinite
+   *     loops.
+   * @param adjustStep whether to reduce the spacing so the last point equals {@code range[1]};
+   *     {@code false} keeps the original spacing even if the last point falls short of the bound.
    */
   public ComputableFunctionSampler(
       ComputableFunction function, double[] range, double step, boolean adjustStep) {
@@ -82,14 +104,40 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
     }
   }
 
+  @Override
   public int size() {
     return n;
   }
 
+  /**
+   * Get the vector dimension produced by the wrapped function.
+   *
+   * <p>The returned value is forwarded from {@link ComputableFunction#getDimension()} without local
+   * caching; repeated calls therefore keep consistency with dynamic implementations but may incur
+   * repeated delegate lookups.
+   *
+   * @return strictly positive vector dimension consistent with all values produced by the sampler.
+   */
+  @Override
   public int getDimension() {
     return function.getDimension();
   }
 
+  /**
+   * Compute the sample point at a given grid index.
+   *
+   * <p>The abscissa is derived from the sampler definition ({@code begin + index * step}); the
+   * ordinate is the function value at that abscissa. The returned {@link VectorialValuedPair}
+   * defensively copies the ordinate array so callers can retain it safely.
+   *
+   * @param index zero-based index within the grid; must satisfy {@code 0 <= index < size()}.
+   * @return pair containing the abscissa and a fresh copy of the ordinate vector at that position.
+   * @throws ArrayIndexOutOfBoundsException if {@code index} is negative or greater than or equal to
+   *     {@link #size()}.
+   * @throws FunctionException if the underlying function rejects the computed abscissa or fails
+   *     during evaluation.
+   */
+  @Override
   public VectorialValuedPair samplePointAt(int index)
       throws ArrayIndexOutOfBoundsException, FunctionException {
 
@@ -102,16 +150,16 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
   }
 
   /** Underlying computable function. */
-  private ComputableFunction function;
+  private final ComputableFunction function;
 
   /** Beginning abscissa. */
-  private double begin;
+  private final double begin;
 
   /** Step between points. */
-  private double step;
+  private final double step;
 
   /** Total number of points. */
-  private int n;
+  private final int n;
 
-  private static final long serialVersionUID = 1368582688313212821L;
+  @Serial private static final long serialVersionUID = 1368582688313212821L;
 }

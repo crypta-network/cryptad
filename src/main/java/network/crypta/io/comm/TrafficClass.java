@@ -1,9 +1,18 @@
 package network.crypta.io.comm;
 
 /**
- * Represents the Traffic Class as set in @see Socket.setTrafficClass(int)
+ * Differentiated Services Code Point (DSCP) values for use with {@link
+ * java.net.Socket#setTrafficClass(int)}.
  *
- * @see https://en.wikipedia.org/wiki/Differentiated_services
+ * <p>Each constant encodes the 6-bit DSCP value left-shifted into the IPv4/IPv6 traffic class
+ * field; the two least significant bits (ECN) are {@code 0}. These values can be passed directly to
+ * {@code Socket#setTrafficClass(int)} on platforms that honor DSCP settings.
+ *
+ * <p>Naming follows common DSCP conventions: {@code CSx} (Class Selector), {@code AFxy} (Assured
+ * Forwarding), and a critical/expedited forwarding class.
+ *
+ * @see java.net.Socket#setTrafficClass(int)
+ * @see <a href="https://en.wikipedia.org/wiki/Differentiated_services">Differentiated services</a>
  */
 public enum TrafficClass {
   BEST_EFFORT(0),
@@ -40,16 +49,17 @@ public enum TrafficClass {
   }
 
   public static TrafficClass getDefault() {
-    // That's high-throughput, high drop probability
+    // Default: CS1 (often treated as lower priority but suitable for bulk throughput).
     return TrafficClass.DSCP_CS1;
   }
 
   public static TrafficClass fromNameOrValue(String tcName) {
+    // Accept either a symbolic enum name (case-insensitive) or a decimal integer value.
     int tcParsed = -1;
     try {
       tcParsed = Integer.parseInt(tcName);
-    } catch (NumberFormatException e) {
-      // it's fine; we might have a name here
+    } catch (NumberFormatException _) {
+      // Not an integer; fall through and attempt name matching.
     }
 
     for (TrafficClass t : TrafficClass.values()) {

@@ -10,35 +10,79 @@ import java.util.Arrays;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * Text‑mode client interface (TMCI) server that accepts inbound TCP connections and dispatches each
+ * session to a {@link TextModeClientInterface} handler.
+ *
+ * <p>This server is created from node configuration (the {@code console} section) and can be
+ * enabled for local administration or remote access, subject to the {@code bindTo} and {@code
+ * allowedHosts} constraints. When SSL support is available and enabled, the server binds using an
+ * {@link SSLNetworkInterface}; otherwise it uses a plain {@link NetworkInterface}. The main loop
+ * runs on the node's executor and performs a non-blocking acceptance with a short socket timeout to
+ * allow responsive shutdown and reconfiguration checks.
+ *
+ * <p>A single instance maintains its listening parameters ({@code port}, {@code bindTo}, and {@code
+ * allowedHosts}). Changes to these values are observed by the acceptance loop and will cause it to
+ * exit so callers can reinitialize bindings as needed. Existing sessions continue to run on their
+ * dedicated handler threads. The server itself is lightweight and intended to be started early in
+ * the node lifecycle and stopped during shutdown.
+ *
+ * <ul>
+ *   <li>Listens on a configured host/port with optional SSL.
+ *   <li>Accepts each connection and runs a per-connection TMCI handler.
+ *   <li>Uses short timeouts to remain responsive to configuration changes.
+ * </ul>
+ *
+ * @see TextModeClientInterface
+ * @see NetworkInterface
+ * @see SSLNetworkInterface
+ * @see Node
+ * @see NodeClientCore
+ */
 public class TextModeClientInterfaceServer implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(TextModeClientInterfaceServer.class);
 
   final RandomSource r;
   final Node n;
   final NodeClientCore core;
   final File downloadsDir;
-  int port;
+  volatile int port;
   String bindTo;
   String allowedHosts;
   boolean isEnabled;
   private static boolean ssl = false;
   final NetworkInterface networkInterface;
 
+  /**
+   * Result returned from {@link #maybeCreate(Node, NodeClientCore, Config)}.
+   *
+   * <p>The returned direct TMCI is created but not started. Callers should register it with {@link
+   * ClientEndpoints#setDirectTMCI(TextModeClientInterface)} and schedule it on the node executor
+   * only after {@link NodeClientCore#getEndpoints()} is fully initialized.
+   *
+   * @param server TMCI server instance, or {@code null} when TMCI is disabled.
+   * @param directTMCI direct text-mode interface instance, or {@code null} when disabled.
+   */
+  public record InitResult(
+      TextModeClientInterfaceServer server, TextModeClientInterface directTMCI) {}
+
   TextModeClientInterfaceServer(
-      Node node, NodeClientCore core, int port, String bindTo, String allowedHosts)
-      throws IOException {
+      Node node, NodeClientCore core, int port, String bindTo, String allowedHosts) {
     this.n = node;
-    this.core = n.getClientCore();
-    this.r = n.getRandom();
+    this.core = n.services().clientCore();
+    this.r = n.bootstrap().random();
     this.downloadsDir = core.getDownloadsDir();
     this.port = port;
     this.bindTo = bindTo;
@@ -46,107 +90,145 @@ public class TextModeClientInterfaceServer implements Runnable {
     this.isEnabled = true;
     if (ssl) {
       networkInterface =
-          SSLNetworkInterface.create(port, bindTo, allowedHosts, n.getExecutor(), true);
+          SSLNetworkInterface.createSsl(port, bindTo, allowedHosts, n.network().executor(), true);
     } else {
-      networkInterface = NetworkInterface.create(port, bindTo, allowedHosts, n.getExecutor(), true);
+      networkInterface =
+          NetworkInterface.create(port, bindTo, allowedHosts, n.network().executor(), true);
     }
   }
 
   void start() {
-    Logger.normal(core, "TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
-    System.out.println("TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
+    LOG.info("TMCI started on {}:{}", networkInterface.getAllowedHosts(), port);
+    TextModeClientInterfaceConsole.print(
+        "TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
 
-    n.getExecutor().execute(this, "Text mode client interface");
+    n.network().executor().execute(this, "Text mode client interface");
   }
 
-  public static TextModeClientInterfaceServer maybeCreate(
-      Node node, NodeClientCore core, Config config) throws IOException {
+  /**
+   * Creates TMCI endpoints according to the provided configuration.
+   *
+   * <p>This method wires the {@code console} sub-configuration, registers relevant options ({@code
+   * enabled}, {@code ssl}, {@code bindTo}, {@code allowedHosts}, {@code port}, and {@code
+   * directEnabled}), and conditionally instantiates the network-backed server. The returned init
+   * result includes a server instance when TMCI is enabled, or {@code null} when disabled. When
+   * {@code directEnabled} is set, a direct in-process text interface is created using the process
+   * input/output streams; callers are responsible for registering and starting it after the core
+   * endpoints are assigned. The returned server is not started automatically; callers should invoke
+   * {@link #start()} when a non-null value is returned.
+   *
+   * <pre>{@code
+   * var init = TextModeClientInterfaceServer.maybeCreate(node, core, config);
+   * if (init.server() != null) {
+   *   init.server().start();
+   * }
+   * }</pre>
+   *
+   * @param node the owning {@link Node}; provides the executor and random source used by handlers;
+   *     must not be {@code null}.
+   * @param core the {@link NodeClientCore} for constructing clients and accessing configuration;
+   *     must not be {@code null}.
+   * @param config the root {@link Config} used to obtain the {@code console} sub-config and read
+   *     options that control TMCI behavior; must not be {@code null}.
+   * @return a result containing the configured server and optional direct TMCI instance.
+   */
+  public static InitResult maybeCreate(Node node, NodeClientCore core, Config config) {
 
     TextModeClientInterfaceServer server = null;
+    TextModeClientInterface directTMCI = null;
 
-    SubConfig TMCIConfig = config.createSubConfig("console");
+    SubConfig tmciConfig = config.createSubConfig("console");
 
-    TMCIConfig.register(
+    tmciConfig.register(
         "enabled",
         false,
-        1,
-        true,
-        true /* FIXME only because can't be changed on the fly */,
-        "TextModeClientInterfaceServer.enabled",
-        "TextModeClientInterfaceServer.enabledLong",
+        new Option.Meta(
+            1,
+            true,
+            true /* only because can't be changed on the fly */,
+            "TextModeClientInterfaceServer.enabled",
+            "TextModeClientInterfaceServer.enabledLong"),
         new TMCIEnabledCallback(core));
-    TMCIConfig.register(
+    tmciConfig.register(
         "ssl",
         false,
-        1,
-        true,
-        true,
-        "TextModeClientInterfaceServer.ssl",
-        "TextModeClientInterfaceServer.sslLong",
+        new Option.Meta(
+            1,
+            true,
+            true,
+            "TextModeClientInterfaceServer.ssl",
+            "TextModeClientInterfaceServer.sslLong"),
         new TMCISSLCallback());
-    TMCIConfig.register(
+    tmciConfig.register(
         "bindTo",
         NetworkInterface.DEFAULT_BIND_TO,
-        2,
-        true,
-        false,
-        "TextModeClientInterfaceServer.bindTo",
-        "TextModeClientInterfaceServer.bindToLong",
+        new Option.Meta(
+            2,
+            true,
+            false,
+            "TextModeClientInterfaceServer.bindTo",
+            "TextModeClientInterfaceServer.bindToLong"),
         new TMCIBindtoCallback(core));
-    TMCIConfig.register(
+    tmciConfig.register(
         "allowedHosts",
         NetworkInterface.DEFAULT_BIND_TO,
-        2,
-        true,
-        false,
-        "TextModeClientInterfaceServer.allowedHosts",
-        "TextModeClientInterfaceServer.allowedHostsLong",
+        new Option.Meta(
+            2,
+            true,
+            false,
+            "TextModeClientInterfaceServer.allowedHosts",
+            "TextModeClientInterfaceServer.allowedHostsLong"),
         new TMCIAllowedHostsCallback(core));
-    TMCIConfig.register(
+    tmciConfig.register(
         "port",
         2323,
-        1,
-        true,
-        false,
-        "TextModeClientInterfaceServer.telnetPortNumber",
-        "TextModeClientInterfaceServer.telnetPortNumberLong",
+        new Option.Meta(
+            1,
+            true,
+            false,
+            "TextModeClientInterfaceServer.telnetPortNumber",
+            "TextModeClientInterfaceServer.telnetPortNumberLong"),
         new TCMIPortNumberCallback(core),
         false);
-    TMCIConfig.register(
+    tmciConfig.register(
         "directEnabled",
         false,
-        1,
-        true,
-        false,
-        "TextModeClientInterfaceServer.enableInputOutput",
-        "TextModeClientInterfaceServer.enableInputOutputLong",
+        new Option.Meta(
+            1,
+            true,
+            false,
+            "TextModeClientInterfaceServer.enableInputOutput",
+            "TextModeClientInterfaceServer.enableInputOutputLong"),
         new TMCIDirectEnabledCallback(core));
 
-    boolean TMCIEnabled = TMCIConfig.getBoolean("enabled");
-    int port = TMCIConfig.getInt("port");
-    String bind_ip = TMCIConfig.getString("bindTo");
-    String allowedHosts = TMCIConfig.getString("allowedHosts");
-    boolean direct = TMCIConfig.getBoolean("directEnabled");
+    boolean tmciEnabled = tmciConfig.getBoolean("enabled");
+    int port = tmciConfig.getInt("port");
+    String bindIp = tmciConfig.getString("bindTo");
+    String allowedHosts = tmciConfig.getString("allowedHosts");
+    boolean direct = tmciConfig.getBoolean("directEnabled");
     if (SSL.available()) {
-      ssl = TMCIConfig.getBoolean("ssl");
+      ssl = tmciConfig.getBoolean("ssl");
     }
 
-    if (TMCIEnabled)
-      server = new TextModeClientInterfaceServer(node, core, port, bind_ip, allowedHosts);
+    if (tmciEnabled)
+      server = new TextModeClientInterfaceServer(node, core, port, bindIp, allowedHosts);
 
     if (direct) {
       HighLevelSimpleClient client =
           core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, false);
-      TextModeClientInterface directTMCI =
+      directTMCI =
           new TextModeClientInterface(
-              node, core, client, core.getDownloadsDir(), System.in, System.out);
-      node.getExecutor().execute(directTMCI, "Direct text mode interface");
-      core.setDirectTMCI(directTMCI);
+              node,
+              core,
+              client,
+              core.getDownloadsDir(),
+              TextModeClientInterfaceConsole.in(),
+              TextModeClientInterfaceConsole.out());
     }
 
-    TMCIConfig.finishedInitialization();
+    tmciConfig.finishedInitialization();
 
-    return server; // caller must call start()
+    return new InitResult(server, directTMCI); // caller must call start()
   }
 
   static class TMCIEnabledCallback extends BooleanCallback {
@@ -159,13 +241,14 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getTextModeClientInterface() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getTextModeClientInterface() != null;
     }
 
     @Override
     public void set(Boolean val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      // FIXME implement - see bug #122
+      // Not supported: cannot be updated on the fly (see bug #122)
       throw new InvalidConfigValueException("Cannot be updated on the fly");
     }
 
@@ -188,13 +271,17 @@ public class TextModeClientInterfaceServer implements Runnable {
       if (!SSL.available()) {
         throw new InvalidConfigValueException("Enable SSL support before use ssl with TMCI");
       }
-      ssl = val;
+      setSsl(val);
       throw new InvalidConfigValueException("Cannot change SSL on the fly, please restart freenet");
     }
 
     @Override
     public boolean isReadOnly() {
       return true;
+    }
+
+    private static synchronized void setSsl(boolean value) {
+      ssl = value;
     }
   }
 
@@ -208,13 +295,14 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getDirectTMCI() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getDirectTMCI() != null;
     }
 
     @Override
     public void set(Boolean val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      // FIXME implement - see bug #122
+      // Not supported: cannot be updated on the fly (see bug #122)
       throw new InvalidConfigValueException("Cannot be updated on the fly");
     }
 
@@ -234,16 +322,20 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null)
-        return core.getTextModeClientInterface().bindTo;
-      else return NetworkInterface.DEFAULT_BIND_TO;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.bindTo;
+      }
+      return NetworkInterface.DEFAULT_BIND_TO;
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (val.equals(get())) return;
       String[] failedAddresses =
-          core.getTextModeClientInterface().networkInterface.setBindTo(val, false);
+          core.getEndpoints().getTextModeClientInterface().networkInterface.setBindTo(val, false);
       if (failedAddresses != null) {
         // This is an advanced option for reasons of reducing clutter,
         // but it is expected to be used by regular users, not devs.
@@ -251,7 +343,7 @@ public class TextModeClientInterfaceServer implements Runnable {
         throw new InvalidConfigValueException(
             "could not change bind to: " + Arrays.toString(failedAddresses));
       }
-      core.getTextModeClientInterface().bindTo = val;
+      core.getEndpoints().getTextModeClientInterface().bindTo = val;
     }
   }
 
@@ -265,8 +357,11 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null) {
-        return core.getTextModeClientInterface().allowedHosts;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.allowedHosts;
       }
       return NetworkInterface.DEFAULT_BIND_TO;
     }
@@ -274,7 +369,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
-        TextModeClientInterfaceServer server = core.getTextModeClientInterface();
+        TextModeClientInterfaceServer server = core.getEndpoints().getTextModeClientInterface();
         if (server != null) {
           try {
             server.networkInterface.setAllowedHosts(val);
@@ -299,59 +394,96 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Integer get() {
-      if (core.getTextModeClientInterface() != null) return core.getTextModeClientInterface().port;
-      else return 2323;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.port;
+      }
+      return 2323;
     }
 
-    // TODO: implement it
+    // Not implemented: port updates handled elsewhere
     @Override
     public void set(Integer val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      core.getTextModeClientInterface().setPort(val);
+      core.getEndpoints().getTextModeClientInterface().setPort(val);
     }
   }
 
-  /** Read commands, run them */
+  /**
+   * Runs the acceptance loop for the TMCI server until disabled or interrupted.
+   *
+   * <p>The loop uses a short socket timeout to periodically check for configuration changes and the
+   * enabled flag. When {@code port} or {@code bindTo} differ from the values used to initialize the
+   * current listener, the loop exits, closes the network interface, and immediately re-enters from
+   * the top to observe the updated parameters. Each accepted socket is handed off to a {@link
+   * TextModeClientInterface} that is executed on the node's executor.
+   */
   @Override
   public void run() {
     while (true) {
       int curPort = port;
       String tempBindTo = this.bindTo;
-      try {
-        networkInterface.setSoTimeout(1000);
-      } catch (SocketException e1) {
-        Logger.error(this, "Could not set timeout: " + e1, e1);
-        System.err.println("Could not start TMCI: " + e1);
-        e1.printStackTrace();
+      if (!configureTimeout()) {
         return;
       }
-      while (isEnabled) {
-        // Maybe something has changed?
-        if (port != curPort) break;
-        if (!(this.bindTo.equals(tempBindTo))) break;
-        try {
-          Socket s = networkInterface.accept();
-          if (s == null) continue; // timeout
-          InputStream in = s.getInputStream();
-          OutputStream out = s.getOutputStream();
+      acceptLoop(curPort, tempBindTo);
+      closeNetworkInterfaceQuietly();
+    }
+  }
 
-          TextModeClientInterface tmci = new TextModeClientInterface(this, in, out);
+  private boolean configureTimeout() {
+    try {
+      networkInterface.setSoTimeout(1000);
+      return true;
+    } catch (SocketException e1) {
+      LOG.error("Could not set timeout: {}", e1.getMessage(), e1);
+      return false;
+    }
+  }
 
-          n.getExecutor().execute(tmci, "Text mode client interface handler for " + s.getPort());
-        } catch (SocketException e) {
-          Logger.error(this, "Socket error : " + e, e);
-        } catch (IOException e) {
-          Logger.error(this, "TMCI failed to accept socket: " + e, e);
-        }
-      }
+  private void acceptLoop(int curPort, String tempBindTo) {
+    while (isEnabled) {
+      if (port != curPort || !this.bindTo.equals(tempBindTo)) break;
       try {
-        networkInterface.close();
+        Socket s = networkInterface.accept();
+        if (s != null) { // non-timeout
+          handleAcceptedSocket(s);
+        }
+      } catch (SocketException e) {
+        LOG.error("Socket error : {}", e.getMessage(), e);
       } catch (IOException e) {
-        Logger.error(this, "Error shuting down TMCI", e);
+        LOG.error("TMCI failed to accept socket: {}", e.getMessage(), e);
       }
     }
   }
 
+  private void handleAcceptedSocket(Socket s) throws IOException {
+    InputStream in = s.getInputStream();
+    OutputStream out = s.getOutputStream();
+    TextModeClientInterface tmci = new TextModeClientInterface(this, in, out);
+    n.network().executor().execute(tmci, "Text mode client interface handler for " + s.getPort());
+  }
+
+  private void closeNetworkInterfaceQuietly() {
+    try {
+      networkInterface.close();
+    } catch (IOException e) {
+      LOG.error("Error shutting down TMCI", e);
+    }
+  }
+
+  /**
+   * Sets the TCP port number used when accepting new TMCI connections.
+   *
+   * <p>The change is observed by the acceptance loop; existing client sessions are not affected.
+   * The provided value should be a valid TCP port in the range 1–65,535. This method performs no
+   * validation.
+   *
+   * @param val the new listening port number to use for future acceptances; typical values are in
+   *     the unprivileged range (>= 1024).
+   */
   public void setPort(int val) {
     port = val;
   }

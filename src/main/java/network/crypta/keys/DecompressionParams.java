@@ -1,0 +1,178 @@
+package network.crypta.keys;
+
+import java.util.Arrays;
+import java.util.Objects;
+import network.crypta.support.api.BucketFactory;
+import org.jetbrains.annotations.NotNull;
+
+/**
+ * Bundles the inputs required to decode and optionally decompress block data.
+ *
+ * <p>This value object acts as a compact carrier for the flags, buffers, and limits that shape a
+ * single decompression attempt. It is typically assembled close to the call site that already has
+ * the raw bytes, then passed into {@link Key#decompress(DecompressionParams)} to keep method
+ * signatures concise and consistent across call paths. The instance is shallowly immutable, but it
+ * holds a mutable {@code byte[]} reference; callers should treat the array as read-only for the
+ * lifetime of the decode operation to avoid surprising results.
+ *
+ * <p>Instances are inexpensive to allocate and intended to be short-lived. The values capture size
+ * constraints, codec identifiers, and header sizing behavior so that the decompressor can validate
+ * bounds consistently across different key types. The instance performs no validation; all
+ * preconditions are enforced by the decode method that consumes it.
+ *
+ * <ul>
+ *   <li>Encapsulates compression flags, limits, and byte buffers for a single decoding.
+ *   <li>Documents the expected header length policy through {@code shortLength}.
+ *   <li>Centralizes bounds and codec metadata for consistent error handling.
+ * </ul>
+ *
+ * @see Key#decompress(DecompressionParams)
+ */
+public final class DecompressionParams {
+  private final boolean isCompressed;
+  private final byte[] input;
+  private final int inputLength;
+  private final BucketFactory bf;
+  private final long maxLength;
+  private final short compressionAlgorithm;
+  private final boolean shortLength;
+
+  /**
+   * Creates a parameter bundle for a single decompression attempt.
+   *
+   * @param isCompressed whether the payload uses compression for this decode operation
+   * @param input raw input bytes to read from; the array is not copied and should be treated as
+   *     immutable while decoding
+   * @param inputLength number of bytes from {@code input} that are valid for this decoding, in
+   *     bytes
+   * @param bf bucket factory used to allocate the decoded output bucket; may be reused by callers
+   * @param maxLength upper bound on the decompressed output size, in bytes; the decoder rejects
+   *     negative values
+   * @param compressionAlgorithm compression codec identifier expected by the decoder; negative
+   *     values mean no compression
+   * @param shortLength whether the precompressed-length header uses 2 bytes instead of 4 for this
+   *     payload
+   */
+  public DecompressionParams(
+      boolean isCompressed,
+      byte[] input,
+      int inputLength,
+      BucketFactory bf,
+      long maxLength,
+      short compressionAlgorithm,
+      boolean shortLength) {
+    this.isCompressed = isCompressed;
+    this.input = input;
+    this.inputLength = inputLength;
+    this.bf = bf;
+    this.maxLength = maxLength;
+    this.compressionAlgorithm = compressionAlgorithm;
+    this.shortLength = shortLength;
+  }
+
+  public boolean isCompressed() {
+    return isCompressed;
+  }
+
+  public byte[] input() {
+    return input;
+  }
+
+  public int inputLength() {
+    return inputLength;
+  }
+
+  public BucketFactory bf() {
+    return bf;
+  }
+
+  public long maxLength() {
+    return maxLength;
+  }
+
+  public short compressionAlgorithm() {
+    return compressionAlgorithm;
+  }
+
+  public boolean shortLength() {
+    return shortLength;
+  }
+
+  /**
+   * Compares this parameter bundle with another for structural equality.
+   *
+   * <p>The comparison treats {@code input} as a content-bearing buffer and therefore uses {@link
+   * Arrays#equals(byte[], byte[])} rather than reference equality. All scalar fields are compared
+   * directly, while {@code bf} is compared using {@link Objects#equals(Object, Object)} so that a
+   * {@code null} factory is handled consistently. This method performs no validation; it simply
+   * reflects the values stored in the fields at the time of comparison.
+   *
+   * @param obj the object to compare against; may be {@code null} or of another type
+   * @return {@code true} when all fields, including the byte contents, match exactly
+   */
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (!(obj instanceof DecompressionParams other)) return false;
+    return isCompressed == other.isCompressed
+        && inputLength == other.inputLength
+        && maxLength == other.maxLength
+        && compressionAlgorithm == other.compressionAlgorithm
+        && shortLength == other.shortLength
+        && Objects.equals(bf, other.bf)
+        && Arrays.equals(input, other.input);
+  }
+
+  /**
+   * Computes a hash code consistent with {@link #equals(Object)}.
+   *
+   * <p>The hash incorporates the content of {@code input} via {@link Arrays#hashCode(byte[])} and
+   * then mixes in the remaining scalar fields. The bucket factory contributes its own hash code
+   * when present; a {@code null} factory contributes {@code 0}. This makes the hash stable for
+   * identical parameter sets while remaining inexpensive for short-lived comparisons in
+   * collections.
+   *
+   * @return a hash code derived from the buffer contents and all other fields
+   */
+  @Override
+  public int hashCode() {
+    int result = Arrays.hashCode(input);
+    result = 31 * result + Boolean.hashCode(isCompressed);
+    result = 31 * result + Integer.hashCode(inputLength);
+    result = 31 * result + (bf == null ? 0 : bf.hashCode());
+    result = 31 * result + Long.hashCode(maxLength);
+    result = 31 * result + Short.hashCode(compressionAlgorithm);
+    result = 31 * result + Boolean.hashCode(shortLength);
+    return result;
+  }
+
+  /**
+   * Returns a diagnostic string describing this parameter bundle.
+   *
+   * <p>The output lists every component, including the full byte content of {@code input} via
+   * {@link Arrays#toString(byte[])}. Because the byte array is rendered eagerly, callers should
+   * avoid invoking this method on very large buffers in hot paths. The returned value is never
+   * {@code null} and is suitable for logs or debugging output when a full buffer dump is
+   * acceptable.
+   *
+   * @return a non-null string containing all fields and the input byte contents
+   */
+  @Override
+  public @NotNull String toString() {
+    return "DecompressionParams[isCompressed="
+        + isCompressed
+        + ", input="
+        + Arrays.toString(input)
+        + ", inputLength="
+        + inputLength
+        + ", bf="
+        + bf
+        + ", maxLength="
+        + maxLength
+        + ", compressionAlgorithm="
+        + compressionAlgorithm
+        + ", shortLength="
+        + shortLength
+        + "]";
+  }
+}

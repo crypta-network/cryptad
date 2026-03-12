@@ -1,13 +1,15 @@
 package network.crypta.support;
 
-public class WaitableExecutor implements Executor {
+import org.jetbrains.annotations.NotNull;
 
-  public WaitableExecutor(Executor exec) {
+public class WaitableExecutor implements PriorityAwareExecutor {
+
+  public WaitableExecutor(PriorityAwareExecutor exec) {
     this.underlying = exec;
   }
 
   @Override
-  public void execute(Runnable job) {
+  public void execute(@NotNull Runnable job) {
     synchronized (this) {
       count++;
     }
@@ -49,7 +51,7 @@ public class WaitableExecutor implements Executor {
     while (count > 0) {
       try {
         wait();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Ignore.
       }
     }
@@ -82,6 +84,6 @@ public class WaitableExecutor implements Executor {
     final Runnable job;
   }
 
-  private final Executor underlying;
+  private final PriorityAwareExecutor underlying;
   private int count;
 }

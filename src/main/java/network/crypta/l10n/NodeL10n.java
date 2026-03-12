@@ -4,66 +4,100 @@ import java.io.File;
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 
 /**
- * This is the interface used to localize the Node. It just wraps a BaseL10n with correct parameters
- * so that this class can entierly be used using static methods, which is much more practical to use
- * than non-static methods.
+ * Static façade for node localization.
  *
- * <p>Why doesn't that class extends BaseL10n ? Because it has to be static.
+ * <p>This class configures and exposes a single shared {@link BaseL10n} instance used across the
+ * node. Application code obtains the instance via {@link #getBase()} and calls its methods to look
+ * up translations.
  *
- * <p>How to change the language ? Simply create a new NodeL1On object. You don't have to stock the
- * created object because you can access it using static methods.
+ * <p>Constructing {@code NodeL10n} reinitializes the shared {@link BaseL10n} with the provided
+ * language and override location. This design keeps call sites simple (static access) while still
+ * allowing the language to be switched during startup or tests by creating a new {@code NodeL10n}.
  *
- * @author Artefact2
+ * <h2>Thread-safety</h2>
+ *
+ * <p>Initialization is lazy and not synchronized. Creating multiple {@code NodeL10n} instances
+ * concurrently may cause the underlying instance to be assigned more than once; the last write
+ * wins. Typical usage initializes this class once during startup.
  */
-public class NodeL10n {
-
-  /**
-   * Initialize the Node localization with the node's default language, and overrides in the working
-   * directory.
-   */
-  public NodeL10n() {
-    this(LANGUAGE.getDefault(), new File("."));
+public final class NodeL10n {
+  /** Ensure the newly created BaseL10n is non-null (instance-only helper). */
+  private void ensureInitialized(BaseL10n base) {
+    if (base == null) {
+      throw new IllegalArgumentException("baseL10n must not be null");
+    }
   }
 
   /**
-   * Initialize the Node localization. You must also call that constructor if you want to change the
-   * language.
+   * Initialize localization using the default language and working-directory overrides.
    *
-   * @param lang Language to use.
+   * <p>Side effect: replaces the shared {@link BaseL10n} used by the application. Subsequent calls
+   * to {@link #getBase()} return the new instance.
+   */
+  public NodeL10n() {
+    BaseL10n created =
+        new BaseL10n(
+            "network/crypta/l10n/",
+            "crypta.l10n.${lang}.properties",
+            new File(".").getPath() + File.separator + "crypta.l10n.${lang}.override.properties",
+            LANGUAGE.getDefault());
+    setBase(created);
+    ensureInitialized(created);
+  }
+
+  /**
+   * Initialize localization for a specific language and override directory.
+   *
+   * <p>Side effect: replaces the shared {@link BaseL10n} used by the application. Subsequent calls
+   * to {@link #getBase()} return the new instance.
+   *
+   * @param lang the language to use; must not be {@code null}
+   * @param overrideDir directory whose path is used to resolve on-disk override files; must not be
+   *     {@code null}
+   * @throws java.util.MissingResourceException if {@code lang} is {@code null}
    * @see LANGUAGE#mapToLanguage(String)
    */
   public NodeL10n(final LANGUAGE lang, File overrideDir) {
-    NodeL10n.b =
+    BaseL10n created =
         new BaseL10n(
             "network/crypta/l10n/",
             "crypta.l10n.${lang}.properties",
             overrideDir.getPath() + File.separator + "crypta.l10n.${lang}.override.properties",
             lang);
+    setBase(created);
+    ensureInitialized(created);
   }
 
   /**
-   * Get the BaseL10n used to localize the node.
+   * Return the shared {@link BaseL10n} used for localization.
    *
-   * @return BaseL10n.
+   * <p>Lazy-initializes the instance to the default language with working-directory overrides when
+   * first called.
+   *
+   * @return the non-{@code null} shared instance
    * @see BaseL10n
    */
   public static BaseL10n getBase() {
     if (b == null) {
+      // Lazily create the default configuration on first access.
       new NodeL10n();
     }
     return b;
   }
 
   /**
-   * Sets the {@link BaseL10n} used to localize the node.
+   * Replace the shared {@link BaseL10n} used by the node.
    *
-   * <p>This method should only be used in tests, via {@code BaseL10nTest#useTestTranslation()}!
+   * <p>Primarily intended for tests and bootstrap wiring. Calling this method updates the instance
+   * returned by {@link #getBase()} for all callers.
    *
-   * @param baseL10n The {@link BaseL10n} object used for localization
+   * @param baseL10n the instance to expose globally; may be {@code null} to clear and trigger lazy
+   *     reinitialization on next {@link #getBase()} call
    */
   static void setBase(BaseL10n baseL10n) {
     b = baseL10n;
   }
 
+  /** Lazily-initialized shared localization instance. Guarded by {@link #getBase()}. */
   private static BaseL10n b;
 }

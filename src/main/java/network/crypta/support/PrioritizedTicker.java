@@ -6,54 +6,76 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.TreeMap;
 import network.crypta.node.FastRunnable;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * High‑priority, time‑based scheduler that dispatches tasks from a dedicated ticker thread.
+ *
+ * <p>This implementation accepts delayed and absolute‑time tasks and drains them in timestamp
+ * order. Tasks that implement {@link FastRunnable} execute inline on the ticker thread to minimize
+ * latency; other tasks are handed off to a {@link PriorityAwareExecutor}. Callers can optionally
+ * suppress enqueuing duplicates and can request that immediate tasks still start on the ticker
+ * thread for priority or testing reasons.
+ *
+ * <p>Thread‑safety: All public methods are thread‑safe. Internal structures are protected by a lock
+ * on {@code timedJobsByTime}. The ticker sleeps by calling {@link #sleep(long)}, which uses a timed
+ * {@code wait} on {@code this}; wake‑ups use {@link #wakeUp()}.
+ *
+ * <p>Time base and units: Delays and times are in milliseconds. Absolute times have been
+ * interpreted as milliseconds since the epoch as returned by {@link System#currentTimeMillis()}.
+ *
+ * <p>Fairness and guarantees: Execution is the best‑effort. Tasks run at or after their scheduled
+ * time; no real‑time guarantees are made. When {@code noDupes} is enabled, duplicate tasks already
+ * queued for the same or an earlier time are not added again.
+ *
+ * @see Ticker
+ * @see PriorityAwareExecutor
+ */
 public class PrioritizedTicker implements Ticker, Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(PrioritizedTicker.class);
 
-  private static volatile boolean logMINOR;
+  // Prefix used in error logs; legacy label retained for log search compatibility.
+  private static final String ERR_PREFIX = "Caught in PacketSender: ";
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
-
-  private static final class Job {
-    final String name;
-    final Runnable job;
-
-    Job(String name, Runnable job) {
-      this.name = name;
-      this.job = job;
-    }
+  private record Job(String name, Runnable task) {
 
     @Override
     public boolean equals(Object o) {
-      if (!(o instanceof Job)) return false;
-      // Ignore the name, we are only interested in the job, needed for noDupes.
-      return ((Job) o).job == job;
+      if (!(o instanceof Job job)) {
+        return false;
+      }
+      // Ignore the name; we are only interested in the job, needed for noDupes.
+      return job.task == task;
     }
 
     @Override
     public int hashCode() {
-      return job.hashCode();
+      return task.hashCode();
     }
   }
 
-  /** ~= Ticker :) */
+  // Map of run time (ms since epoch) -> Job or Job[] scheduled for that instant.
   private final TreeMap<Long, Object> timedJobsByTime;
 
   private final HashMap<Job, Long> timedJobsQueued;
   final NativeThread myThread;
-  final Executor executor;
+  final PriorityAwareExecutor executor;
   static final int MAX_SLEEP_TIME = 200;
+  private boolean wakeUpRequested;
 
-  public PrioritizedTicker(Executor executor, int portNumber) {
+  /**
+   * Creates a ticker backed by the given executor and a dedicated high‑priority thread.
+   *
+   * <p>The thread is named {@code "Ticker thread for <portNumber>"} and marked as a daemon. It is
+   * created at {@link network.crypta.support.io.NativeThread.PriorityLevel#MAX_PRIORITY}.
+   *
+   * @param executor the {@link PriorityAwareExecutor} used to run non‑fast tasks; must be
+   *     non‑{@code null}
+   * @param portNumber used for thread naming and diagnostics
+   */
+  public PrioritizedTicker(PriorityAwareExecutor executor, int portNumber) {
     this.executor = executor;
     timedJobsByTime = new TreeMap<>();
     timedJobsQueued = new HashMap<>();
@@ -66,38 +88,67 @@ public class PrioritizedTicker implements Ticker, Runnable {
     myThread.setDaemon(true);
   }
 
+  /**
+   * Starts the ticker thread.
+   *
+   * <p>Subsequent invocations after the thread has been started may throw {@link
+   * IllegalThreadStateException} as per {@link Thread#start()}.
+   *
+   * @throws IllegalThreadStateException if the thread has already been started
+   */
   public void start() {
-    Logger.normal(this, "Starting Ticker");
-    System.out.println("Starting Ticker");
+    LOG.info("Starting Ticker");
     myThread.start();
   }
 
+  /**
+   * Runs the ticker loop on its dedicated thread.
+   *
+   * <p>The loop drains due tasks, dispatches them, and sleeps for a bounded interval (no greater
+   * than {@link #MAX_SLEEP_TIME}) or until {@link #wakeUp()} is called. The method restores the
+   * interrupt flag and exits when interrupted. Non‑fatal {@link Throwable}s from task execution are
+   * logged and do not terminate the ticker; fatal {@link VirtualMachineError}s are propagated.
+   */
   @Override
+  @SuppressWarnings({"java:S2139", "java:S1181"})
   public void run() {
-    if (logMINOR) Logger.minor(this, "In Ticker.run()");
-    while (true) {
+    if (LOG.isDebugEnabled()) LOG.debug("In Ticker.run()");
+    while (!Thread.currentThread().isInterrupted()) {
       try {
         realRun();
+      } catch (InterruptedException _) {
+        // Restore interrupt status and exit loop so caller controls lifecycle via interrupt.
+        Thread.currentThread().interrupt();
+        break;
+      } catch (VirtualMachineError fatal) {
+        // Don't try to keep running on truly fatal JVM conditions.
+        LOG.error(ERR_PREFIX + "Ticker loop fatal error: {}", fatal, fatal);
+        throw fatal;
       } catch (Throwable t) {
-        Logger.error(this, "Caught in PacketSender: " + t, t);
-        System.err.println("Caught in PacketSender: " + t);
-        t.printStackTrace();
+        // Keep the ticker alive even on Errors (e.g., AssertionError, LinkageError).
+        LOG.error(ERR_PREFIX + "Ticker loop error: {}", t, t);
       }
     }
   }
 
-  private void realRun() {
+  private void realRun() throws InterruptedException {
     long now = System.currentTimeMillis();
+    List<Job> jobsToRun = new ArrayList<>();
+    long sleepTime = drainDueJobs(now, jobsToRun);
+    if (!jobsToRun.isEmpty()) {
+      executeJobs(jobsToRun);
+    }
+    if (sleepTime > 0) {
+      sleep(sleepTime);
+    }
+  }
 
-    List<Job> jobsToRun = null;
-
+  private long drainDueJobs(long now, List<Job> jobsToRun) {
     long sleepTime = MAX_SLEEP_TIME;
-
     synchronized (timedJobsByTime) {
       while (!timedJobsByTime.isEmpty()) {
         Long tRun = timedJobsByTime.firstKey();
         if (tRun <= now) {
-          if (jobsToRun == null) jobsToRun = new ArrayList<>();
           Object o = timedJobsByTime.remove(tRun);
           if (o instanceof Job[] jobs) {
             for (Job r : jobs) {
@@ -115,68 +166,112 @@ public class PrioritizedTicker implements Ticker, Runnable {
         }
       }
     }
+    return sleepTime;
+  }
 
-    if (jobsToRun != null)
-      for (Job r : jobsToRun) {
-        if (logMINOR) Logger.minor(this, "Running " + r);
-        if (r.job instanceof FastRunnable)
-          // Run in-line
-
-          try {
-            r.job.run();
-          } catch (Throwable t) {
-            Logger.error(this, "Caught " + t + " running " + r, t);
-          }
-        else
-          try {
-            executor.execute(r.job, r.name, true);
-          } catch (Throwable t) {
-            Logger.error(this, "Caught in PacketSender: " + t, t);
-            System.err.println("Caught in PacketSender: " + t);
-            t.printStackTrace();
-            System.err.println("Will retry above failed operation...");
-            queueTimedJob(r.job, r.name, 200, true, false);
-          }
-      }
-
-    if (sleepTime > 0) {
-      try {
-        sleep(sleepTime);
-      } catch (InterruptedException e) {
-        // Ignore, just wake up. Probably we got interrupt()ed
-        // because a new job came in.
-      }
+  private void executeJobs(List<Job> jobsToRun) {
+    for (Job r : jobsToRun) {
+      if (LOG.isDebugEnabled()) LOG.debug("Dispatching scheduled job {}", r);
+      runJob(r);
     }
   }
 
+  private void runJob(Job r) {
+    if (r.task instanceof FastRunnable) {
+      runFast(r);
+    } else {
+      runViaExecutor(r);
+    }
+  }
+
+  /**
+   * Runs a {@link FastRunnable} inline on the ticker thread.
+   *
+   * <p>We catch non-fatal {@link Throwable}s so that a failure in one fast job does not abort the
+   * current batch and cause subsequently drained jobs to be dropped. Fatal VM errors are rethrown
+   * to allow the outer loop to handle them.
+   */
+  @SuppressWarnings("java:S1181")
+  private void runFast(Job r) {
+    try {
+      r.task.run();
+    } catch (VirtualMachineError fatal) {
+      throw fatal;
+    } catch (Throwable t) {
+      LOG.error("Caught {} running {}", t, r, t);
+    }
+  }
+
+  /**
+   * Runs a job via the executor. On failures, retries after a short delay.
+   *
+   * <p>We treat any non-fatal {@link Throwable} from the executor as retryable and re-queue the job
+   * for later. Fatal VM errors ({@link VirtualMachineError}) are rethrown to allow the outer loop
+   * to abort as designed.
+   */
+  @SuppressWarnings("java:S1181")
+  private void runViaExecutor(Job r) {
+    try {
+      executor.execute(r.task, r.name, true);
+    } catch (VirtualMachineError fatal) {
+      throw fatal;
+    } catch (Throwable t) {
+      LOG.error(ERR_PREFIX + "Executor dispatch failed: {}", t, t);
+      LOG.warn("Will retry above failed operation...");
+      queueTimedJob(r.task, r.name, 200, true, false);
+    }
+  }
+
+  /**
+   * Sleeps up to {@code sleepTime} milliseconds or until {@link #wakeUp()} requests an early wake.
+   */
   protected void sleep(long sleepTime) throws InterruptedException {
-    if (logMINOR) Logger.minor(this, "Sleeping for " + sleepTime);
+    if (LOG.isDebugEnabled()) LOG.debug("Sleeping for {}", sleepTime);
     synchronized (this) {
-      wait(sleepTime);
+      long deadline = System.currentTimeMillis() + sleepTime;
+      long remaining = sleepTime;
+      while (!wakeUpRequested && remaining > 0) {
+        wait(remaining);
+        remaining = deadline - System.currentTimeMillis();
+      }
+      wakeUpRequested = false;
     }
   }
 
+  /**
+   * Queues a task to run after the given delay.
+   *
+   * <p>If {@code offset <= 0}, the task may run immediately by submitting directly to the executor,
+   * unless a caller requires ticker‑thread dispatch via the more detailed overload.
+   *
+   * @param job the task to run; must be non‑{@code null}
+   * @param offset delay in milliseconds before execution; negative values are treated as zero
+   */
   @Override
   public void queueTimedJob(Runnable job, long offset) {
     queueTimedJob(job, "Scheduled job: " + job, offset, false, false);
   }
 
   /**
-   * Queue a job at a specific time (offset in milliseconds from "now").
+   * Queues a task to run after the given delay with a name and scheduling hints.
    *
-   * @param runner The job to run. FastRunnable's get run directly on the PacketSender thread.
-   * @param name The name of the job, the thread running it will temporarily take this name,
-   *     assuming it is run on a separate thread.
-   * @param offset The time at which to run the job in milliseconds after
-   *     System.currentTimeMillis().
-   * @param runOnTickerAnyway If false, run jobs with offset <=0 on the ticker, to preserve their
-   *     thread priorities; if true, jobs to run immediately through the executor (which normally
-   *     will also preserve thread priorities, but may need to call back via runOnTickerAnyway=true
-   *     if it needs to increase the thread priority).
-   * @param noDupes Don't run this job if it is already scheduled. Relatively expensive, O(n) with
-   *     queued jobs. Necessary for Announcer to ensure that we don't get exponentially increasing
-   *     numbers of announcement check jobs queued, while ensuring that we do always have one queued
-   *     within the given period.
+   * <p>When {@code offset <= 0} and {@code runOnTickerAnyway == false}, the task is submitted
+   * directly to the executor and may execute on a worker thread. When {@code runOnTickerAnyway ==
+   * true}, the task is scheduled on the ticker regardless of the offset, which can help preserve
+   * ticker‑thread priority or provide deterministic hand‑off points in tests.
+   *
+   * <p>When {@code noDupes == true}, an equivalent task already pending is not queued again. This
+   * check is relatively expensive (O(n) in the number of queued tasks at the same timestamp) but
+   * prevents unbounded growth for periodic reschedulers.
+   *
+   * @param runner the task to execute; may implement {@link FastRunnable} to run inline on the
+   *     ticker thread
+   * @param name diagnostic label used by the executor and logs; may be {@code null}
+   * @param offset delay in milliseconds from {@link System#currentTimeMillis()}
+   * @param runOnTickerAnyway if {@code true}, start from the ticker thread even when an immediate
+   *     executor submission is possible
+   * @param noDupes if {@code true}, suppress re‑queuing when an equivalent pending task exists;
+   *     implies {@code runOnTickerAnyway}
    */
   @Override
   public void queueTimedJob(
@@ -188,10 +283,17 @@ public class PrioritizedTicker implements Ticker, Runnable {
   }
 
   /**
-   * Queue a job at a specific time (absolute time in milliseconds). If the time given has passed
-   * already, then run the job ASAP.
+   * Queues a task to run at a specific absolute wall‑clock time.
    *
-   * @param time The time at which to run the job. @see System.currentTimeMillis()
+   * <p>If {@code time} has already passed, the task is scheduled to run as soon as possible.
+   *
+   * @param runner the task to execute; may implement {@link FastRunnable}
+   * @param name diagnostic label used by the executor and logs; may be {@code null}
+   * @param time absolute time in milliseconds since the epoch (see {@link
+   *     System#currentTimeMillis()}) at which to run
+   * @param runOnTickerAnyway if {@code true}, start from the ticker thread even when immediate
+   *     executor submission is possible
+   * @param noDupes if {@code true}, suppress re‑queuing when an equivalent pending task exists
    */
   @Override
   public void queueTimedJobAbsolute(
@@ -204,7 +306,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * Queue a job at a specific absolute time.
    *
    * @param runJobAt The absolute time at which the job should run.
-   * @param offset The offset in milliseconds from "now" (i.e. some recent call to
+   * @param offset The offset in milliseconds from "now" (i.e., some recent call to
    *     System.currentTimeMillis()).
    */
   private void queueTimedJobInner(
@@ -216,31 +318,25 @@ public class PrioritizedTicker implements Ticker, Runnable {
       boolean noDupes) {
     if (noDupes) runOnTickerAnyway = true;
     if (offset <= 0 && !runOnTickerAnyway) {
-      if (logMINOR) Logger.minor(this, "Running directly: " + runner);
+      if (LOG.isDebugEnabled()) LOG.debug("Dispatching immediate job {}", runner);
       executor.execute(runner, name);
       return;
     }
     Job job = new Job(name, runner);
     synchronized (timedJobsByTime) {
-      if (noDupes) {
-        Long alreadyQueuedAt = timedJobsQueued.get(job);
-        if (alreadyQueuedAt != null) {
-          if (alreadyQueuedAt <= runJobAt) {
-            Logger.normal(this, "Not re-running as already queued: " + runner + " for " + name);
-            return;
-          } else {
-            // Delete the existing job because the new job will run first.
-            removeQueuedJobInner(job, alreadyQueuedAt);
-          }
-        }
-      }
+      if (shouldSkipRequeue(job, runJobAt, noDupes, name, runner)) return;
       Object o = timedJobsByTime.get(runJobAt);
-      if (o == null) timedJobsByTime.put(runJobAt, job);
-      else if (o instanceof Job job1) timedJobsByTime.put(runJobAt, new Job[] {job1, job});
-      else if (o instanceof Job[] r) {
-        Job[] jobs = Arrays.copyOf(r, r.length + 1);
-        jobs[jobs.length - 1] = job;
-        timedJobsByTime.put(runJobAt, jobs);
+      switch (o) {
+        case null -> timedJobsByTime.put(runJobAt, job);
+        case Job job1 -> timedJobsByTime.put(runJobAt, new Job[] {job1, job});
+        case Job[] r -> {
+          Job[] jobs = Arrays.copyOf(r, r.length + 1);
+          jobs[jobs.length - 1] = job;
+          timedJobsByTime.put(runJobAt, jobs);
+        }
+        default -> {
+          // Should never happen.
+        }
       }
       timedJobsQueued.put(job, runJobAt);
     }
@@ -249,16 +345,36 @@ public class PrioritizedTicker implements Ticker, Runnable {
     }
   }
 
-  /** Wake up, and run any queued jobs. */
+  private boolean shouldSkipRequeue(
+      Job job, long runJobAt, boolean noDupes, String name, Runnable runner) {
+    if (!noDupes) return false;
+    Long alreadyQueuedAt = timedJobsQueued.get(job);
+    if (alreadyQueuedAt == null) return false;
+    if (alreadyQueuedAt <= runJobAt) {
+      LOG.info("Not re-running as already queued: {} for {}", runner, name);
+      return true;
+    }
+    // Delete the existing job because the new job will run first.
+    removeQueuedJobInner(job, alreadyQueuedAt);
+    return false;
+  }
+
+  /** Wake up the ticker so it can re‑check and dispatch queued jobs sooner. */
   void wakeUp() {
     // Wake up if needed
     synchronized (this) {
+      wakeUpRequested = true;
       notifyAll();
     }
   }
 
+  /**
+   * Returns the executor used by this ticker for non‑fast tasks.
+   *
+   * @return the associated {@link PriorityAwareExecutor}
+   */
   @Override
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return executor;
   }
 
@@ -274,10 +390,16 @@ public class PrioritizedTicker implements Ticker, Runnable {
     }
   }
 
+  /**
+   * Attempts to remove a previously queued task that has not yet started.
+   *
+   * <p>This is the best‑effort cancellation. If the task is not queued or has already started, this
+   * method does nothing.
+   *
+   * @param runnable the task instance to remove; must be the same {@link Runnable} instance that
+   *     was queued
+   */
   @Override
-  /* Remove a queued job.
-   * @param runnable The job to remove. If this is currently queued, it will be
-   * removed. The Ticker should not throw if the job is not queued. */
   public void removeQueuedJob(Runnable runnable) {
     Job job = new Job(null, runnable);
     synchronized (timedJobsByTime) {
@@ -294,38 +416,41 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * all inside the timedJobsByTime lock.
    *
    * @param job The job to remove.
-   * @param t The time at which is it scheduled.
+   * @param t The time at which it is scheduled.
    */
   private void removeQueuedJobInner(Job job, Long t) {
     Object o = timedJobsByTime.get(t);
-    assert (o != null);
+    assert o != null;
     if (o instanceof Job) {
-      assert (o.equals(job));
+      assert o.equals(job);
       timedJobsByTime.remove(t);
-    } else {
-      Job[] jobs = (Job[]) o;
-      if (jobs.length == 1) {
-        assert (jobs[0].equals(job));
-        timedJobsByTime.remove(t);
-      } else {
-        Job[] newJobs = new Job[jobs.length - 1];
-        int x = 0;
-        for (Job oldjob : jobs) {
-          if (oldjob.equals(job)) {
-            continue;
-          }
-          newJobs[x++] = oldjob;
-          assert (x != jobs.length); // Must be in jobs array.
-        }
-        assert (x != 0); // Not duplicated.
-        if (x == 1) {
-          timedJobsByTime.put(t, newJobs[0]);
-        } else {
-          if (x != newJobs.length) newJobs = Arrays.copyOf(newJobs, x);
-          timedJobsByTime.put(t, newJobs);
-          assert (x == jobs.length - 1);
-        }
+      return;
+    }
+    handleArrayRemoval((Job[]) o, job, t);
+  }
+
+  private void handleArrayRemoval(Job[] jobs, Job job, Long t) {
+    if (jobs.length == 1) {
+      assert jobs[0].equals(job);
+      timedJobsByTime.remove(t);
+      return;
+    }
+    Job[] newJobs = new Job[jobs.length - 1];
+    int x = 0;
+    for (Job oldjob : jobs) {
+      if (oldjob.equals(job)) {
+        continue;
       }
+      newJobs[x++] = oldjob;
+      assert (x != jobs.length); // Must be in jobs array.
+    }
+    assert (x != 0); // Not duplicated.
+    if (x == 1) {
+      timedJobsByTime.put(t, newJobs[0]);
+    } else {
+      if (x != newJobs.length) newJobs = Arrays.copyOf(newJobs, x);
+      timedJobsByTime.put(t, newJobs);
+      assert (x == jobs.length - 1);
     }
   }
 }

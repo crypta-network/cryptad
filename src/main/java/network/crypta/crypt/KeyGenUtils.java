@@ -22,9 +22,24 @@ import network.crypta.support.Fields;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
- * KeyGenUtils offers a set of methods to easily generate Keys and KeyPairs for specific algorithms
- * as well as for generating IVs and nonces. It will also take keys stored in byte arrays and put
- * them in SecretKey or KeyPair instances.
+ * Utility methods for generating and converting cryptographic keys and IVs.
+ *
+ * <p>This class provides helpers to:
+ *
+ * <ul>
+ *   <li>Generate asymmetric {@link KeyPair}s for supported algorithms.
+ *   <li>Generate symmetric {@link SecretKey}s for a given {@link KeyType}.
+ *   <li>Wrap encoded keys (byte array or {@link ByteBuffer}) into {@link PublicKey}, {@link
+ *       PrivateKey}, or {@link KeyPair} instances.
+ *   <li>Create random nonces and initialization vectors (IVs).
+ *   <li>Derive keys and IVs via HMAC‑SHA‑512 using a caller‑provided context string.
+ * </ul>
+ *
+ * <p>Overloads accepting {@link ByteBuffer} read the buffer’s remaining bytes and advance the
+ * buffer’s position to its limit.
+ *
+ * <p>On Java 7, Bouncy Castle is used explicitly for certain primitives; newer runtimes use the
+ * default JCE provider resolution.
  *
  * @author unixninja92
  */
@@ -32,26 +47,39 @@ public final class KeyGenUtils {
 
   private static final BouncyCastleProvider bcProvider = new BouncyCastleProvider();
 
+  private KeyGenUtils() {
+    throw new IllegalStateException("Utility class");
+  }
+
   /**
-   * Returns the Java version as an int value.
+   * Returns the Java major version as an integer.
    *
-   * @return the Java version as an int value (8, 9, etc.)
-   * @since 12130 from https://github.com/openstreetmap/josm/ , license GPLv2 or later
+   * <p>Examples: {@code 8}, {@code 9}, {@code 11}, {@code 21}.
+   *
+   * @return the Java major version (e.g., 8, 11, 21)
+   * @since 12130 from <a href="https://github.com/openstreetmap/josm/">JOSM</a>, GPLv2 or later
    */
   private static int getJavaVersion() {
     String version = System.getProperty("java.version");
     if (version.startsWith("1.")) {
       version = version.substring(2);
     }
-    // Allow these formats:
+    // Accept common version formats:
     // 1.8.0_72-ea
     // 9-ea
     // 9
     // 9.0.1
+    // 21
     int dotPos = version.indexOf('.');
     int dashPos = version.indexOf('-');
-    return Integer.parseInt(
-        version.substring(0, dotPos > -1 ? dotPos : dashPos > -1 ? dashPos : 1));
+    int end = version.length();
+    if (dotPos > -1 && dotPos < end) {
+      end = dotPos;
+    }
+    if (dashPos > -1 && dashPos < end) {
+      end = dashPos;
+    }
+    return Integer.parseInt(version.substring(0, end));
   }
 
   private static boolean isJava7() {
@@ -59,14 +87,16 @@ public final class KeyGenUtils {
   }
 
   /**
-   * Generates a public/private key pair formatted for the algorithm specified and stores the keys
-   * in a KeyPair. Can not handle DSA keys.
+   * Generates a public/private key pair for the given algorithm.
    *
-   * @param type The algorithm format that the key pair should be generated for.
-   * @return Returns the generated key pair
+   * <p>DSA is not supported.
+   *
+   * @param type algorithm and parameter specification
+   * @return generated key pair
+   * @throws IllegalStateException if the algorithm is unavailable or the parameters are invalid
    */
   public static KeyPair genKeyPair(KeyPairType type) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {
@@ -78,22 +108,25 @@ public final class KeyGenUtils {
       }
       kg.initialize(type.spec);
       return kg.generateKeyPair();
-    } catch (NoSuchAlgorithmException e) {
-      throw new Error(e); // Impossible?
-    } catch (InvalidAlgorithmParameterException e) {
-      throw new Error(e); // Impossible?
+    } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
+      // Should not occur for supported algorithms and specs.
+      throw new IllegalStateException(e);
     }
   }
 
   /**
-   * Converts a specified key for a specified algorithm to a PublicKey. Can not handle DSA keys.
+   * Decodes an X.509‑encoded public key for the specified algorithm.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as byte[]
-   * @return Public key as PublicKey
+   * <p>DSA is not supported.
+   *
+   * @param type key algorithm
+   * @param pub X.509‑encoded public key bytes
+   * @return decoded public key
+   * @throws IllegalStateException if the algorithm is unavailable
+   * @throws IllegalArgumentException if the encoding is invalid for the algorithm
    */
   public static PublicKey getPublicKey(KeyPairType type, byte[] pub) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {
@@ -106,58 +139,70 @@ public final class KeyGenUtils {
       X509EncodedKeySpec xks = new X509EncodedKeySpec(pub);
       return kf.generatePublic(xks);
     } catch (NoSuchAlgorithmException e) {
-      throw new Error(e); // Impossible?
+      // Should not occur for supported algorithms.
+      throw new IllegalStateException(e);
     } catch (InvalidKeySpecException e) {
-      throw new IllegalArgumentException(e); // Indicates passed in key is bogus
+      // The provided bytes are not a valid X.509 key for the given algorithm.
+      throw new IllegalArgumentException(e);
     }
   }
 
   /**
-   * Converts a specified key for a specified algorithm to a PublicKey. Can not handle DSA keys.
+   * Decodes an X.509‑encoded public key from a buffer.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as ByteBuffer
-   * @return Public key as PublicKey
+   * <p>Reads the buffer’s remaining bytes and advances its position to the limit. DSA is not
+   * supported.
+   *
+   * @param type key algorithm
+   * @param pub buffer containing the X.509‑encoded public key
+   * @return decoded public key
    */
   public static PublicKey getPublicKey(KeyPairType type, ByteBuffer pub) {
     return getPublicKey(type, Fields.copyToArray(pub));
   }
 
   /**
-   * Converts a specified key for a specified algorithm to a PublicKey which is then stored in a
-   * KeyPair. The private key of the KeyPair is null. Can not handle DSA keys.
+   * Wraps a decoded public key in a {@link KeyPair} with a {@code null} private key.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as byte[]
-   * @return Public key as KeyPair with a null private key
+   * <p>DSA is not supported.
+   *
+   * @param type key algorithm
+   * @param pub X.509‑encoded public key bytes
+   * @return key pair containing the public key and a {@code null} private key
    */
   public static KeyPair getPublicKeyPair(KeyPairType type, byte[] pub) {
     return getKeyPair(getPublicKey(type, pub), null);
   }
 
   /**
-   * Converts a specified key for a specified algorithm to a PublicKey which is then stored in a
-   * KeyPair. The private key of the KeyPair is null. Can not handle DSA keys.
+   * Wraps a decoded public key (from a buffer) in a {@link KeyPair} with a {@code null} private
+   * key.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as ByteBuffer
-   * @return Public key as KeyPair with a null private key
+   * <p>Reads the buffer’s remaining bytes and advances its position to the limit. DSA is not
+   * supported.
+   *
+   * @param type key algorithm
+   * @param pub buffer containing the X.509‑encoded public key
+   * @return key pair containing the public key and a {@code null} private key
    */
   public static KeyPair getPublicKeyPair(KeyPairType type, ByteBuffer pub) {
     return getPublicKeyPair(type, Fields.copyToArray(pub));
   }
 
   /**
-   * Converts the specified keys for a specified algorithm to PrivateKey and PublicKey respectively.
-   * These are then placed in a KeyPair. Can not handle DSA keys.
+   * Decodes X.509 public and PKCS#8 private keys and returns them as a {@link KeyPair}.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as byte[]
-   * @param pri Private key as byte[]
-   * @return The public key and private key in a KeyPair
+   * <p>DSA is not supported.
+   *
+   * @param type key algorithm
+   * @param pub X.509‑encoded public key bytes
+   * @param pri PKCS#8‑encoded private key bytes
+   * @return key pair containing the decoded keys
+   * @throws IllegalStateException if the algorithm is unavailable
+   * @throws IllegalArgumentException if either encoding is invalid for the algorithm
    */
   public static KeyPair getKeyPair(KeyPairType type, byte[] pub, byte[] pri) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {
@@ -172,47 +217,48 @@ public final class KeyGenUtils {
 
       PKCS8EncodedKeySpec pks = new PKCS8EncodedKeySpec(pri);
       PrivateKey privK = kf.generatePrivate(pks);
-      // FIXME verify that the keys are consistent if assertions/logging enabled??
-
       return getKeyPair(pubK, privK);
-    } catch (UnsupportedTypeException e) {
-      throw new Error(e); // Should be impossible
-    } catch (NoSuchAlgorithmException e) {
-      throw new Error(e); // Should be impossible
+    } catch (UnsupportedTypeException | NoSuchAlgorithmException e) {
+      // Should not occur for supported algorithms.
+      throw new IllegalStateException(e);
     } catch (InvalidKeySpecException e) {
+      // The provided bytes are not valid encodings for the given algorithm.
       throw new IllegalArgumentException(e);
     }
   }
 
   /**
-   * Converts the specified keys for a specified algorithm to PrivateKey and PublicKey respectively.
-   * These are then placed in a KeyPair. Can not handle DSA keys.
+   * Decodes keys from buffers (X.509 public, PKCS#8 private) and returns them as a {@link KeyPair}.
    *
-   * @param type The type of key being passed in
-   * @param pub Public key as ByteBuffer
-   * @param pri Private key as ByteBuffer
-   * @return The public key and private key in a KeyPair
+   * <p>Reads each buffer’s remaining bytes and advances their positions to the limit. DSA is not
+   * supported.
+   *
+   * @param type key algorithm
+   * @param pub buffer containing the X.509‑encoded public key
+   * @param pri buffer containing the PKCS#8‑encoded private key
+   * @return key pair containing the decoded keys
    */
   public static KeyPair getKeyPair(KeyPairType type, ByteBuffer pub, ByteBuffer pri) {
     return getKeyPair(type, Fields.copyToArray(pub), Fields.copyToArray(pri));
   }
 
   /**
-   * Takes the PublicKey and PrivateKey and stores them in a KeyPair
+   * Constructs a {@link KeyPair} from the given keys.
    *
-   * @param pubK Public key as PublicKey
-   * @param privK Private key as PrivateKey
-   * @return The public key and private key in a KeyPair
+   * @param pubK public key
+   * @param privK private key (may be {@code null})
+   * @return key pair containing the provided keys
    */
   public static KeyPair getKeyPair(PublicKey pubK, PrivateKey privK) {
     return new KeyPair(pubK, privK);
   }
 
   /**
-   * Generates a secret key for the specified symmetric algorithm
+   * Generates a secret key for the specified symmetric algorithm.
    *
-   * @param type Type of key to generate
-   * @return Generated key
+   * @param type key type (algorithm and key size)
+   * @return generated secret key
+   * @throws IllegalStateException if the algorithm is unavailable
    */
   public static SecretKey genSecretKey(KeyType type) {
     try {
@@ -225,18 +271,21 @@ public final class KeyGenUtils {
       kg.init(type.keySize);
       return kg.generateKey();
     } catch (NoSuchAlgorithmException e) {
-      throw new Error(e); // Impossible?
+      // Should not occur for supported algorithms.
+      throw new IllegalStateException(e);
     }
   }
 
   /**
-   * Converts the specified key into a SecretKey for the specified algorithm. Checks the length of
-   * the key to make sure it is correct. HMAC does not have a set key length, so any key is
-   * acceptable when using a key of this type.
+   * Wraps raw key bytes in a {@link SecretKey} for the specified algorithm.
    *
-   * @param key The byte[] of the key
-   * @param type Type of key
-   * @return The key as a SecretKey
+   * <p>For non‑HMAC algorithms, the length must match {@code type.keySize/8}. HMAC keys accept any
+   * length.
+   *
+   * @param type key type (algorithm and key size)
+   * @param key raw key bytes
+   * @return secret key backed by the provided bytes
+   * @throws IllegalArgumentException if the key length does not match the type (non‑HMAC)
    */
   public static SecretKey getSecretKey(KeyType type, byte[] key) {
     if (!type.name().startsWith("HMAC") && key.length != type.keySize >> 3) {
@@ -246,21 +295,23 @@ public final class KeyGenUtils {
   }
 
   /**
-   * Converts the specified key into a SecretKey for the specified algorithm
+   * Wraps key material from a buffer in a {@link SecretKey} for the specified algorithm.
    *
-   * @param key The ByteBuffer of the key
-   * @param type Type of key
-   * @return The key as a SecretKey
+   * <p>Reads the buffer’s remaining bytes and advances its position to the limit.
+   *
+   * @param type key type (algorithm and key size)
+   * @param key buffer containing raw key bytes
+   * @return secret key backed by the provided bytes
    */
   public static SecretKey getSecretKey(KeyType type, ByteBuffer key) {
     return getSecretKey(type, Fields.copyToArray(key));
   }
 
   /**
-   * Generates a random byte[] of a specified length
+   * Generates random bytes of the requested length.
    *
-   * @param length How long the byte[] should be
-   * @return The randomly generated byte[]
+   * @param length number of bytes to generate
+   * @return new array filled with random bytes
    */
   private static byte[] genRandomBytes(int length) {
     byte[] randBytes = new byte[length];
@@ -269,76 +320,81 @@ public final class KeyGenUtils {
   }
 
   /**
-   * Generates a random nonce of a specified length
+   * Generates a random nonce of the specified length.
    *
-   * @param length How long the nonce should be
-   * @return The randomly generated nonce
+   * @param length number of bytes
+   * @return nonce bytes wrapped in a {@link ByteBuffer}
    */
   public static ByteBuffer genNonce(int length) {
     return ByteBuffer.wrap(genRandomBytes(length));
   }
 
   /**
-   * Generates a random iv of a specified length
+   * Generates a random initialization vector (IV) of the specified length.
    *
-   * @param length How long the iv should be in bytes
-   * @return The randomly generated iv
+   * @param length IV length in bytes
+   * @return IV wrapped in an {@link IvParameterSpec}
    */
+  @SuppressWarnings("java:S3329")
   public static IvParameterSpec genIV(int length) {
+    // Use the shared SecureRandom to avoid re-seeding overhead and potential blocking on
+    // some platforms. Keep IV generation aligned with genNonce()/genRandomBytes().
     return new IvParameterSpec(genRandomBytes(length));
   }
 
   /**
-   * Converts an iv in a specified portion of a byte[] and places it in a IvParameterSpec.
+   * Wraps a region of a byte array as an {@link IvParameterSpec}.
    *
-   * @param iv The byte[] containing the iv
-   * @param offset Where the iv begins
-   * @param length How long the iv is
-   * @return Returns an IvParameterSpec containing the iv.
+   * @param iv source array containing the IV
+   * @param offset start offset of the IV within {@code iv}
+   * @param length IV length in bytes
+   * @return IV view as an {@link IvParameterSpec}
    */
   public static IvParameterSpec getIvParameterSpec(byte[] iv, int offset, int length) {
     return new IvParameterSpec(iv, offset, length);
   }
 
   /**
-   * Converts an iv in a ByteBuffer and places it in a IvParameterSpec.
+   * Wraps bytes from a buffer as an {@link IvParameterSpec}.
    *
-   * @param iv The ByteBuffer containing the iv
-   * @return Returns an IvParameterSpec containing the iv.
+   * <p>Reads the buffer’s remaining bytes and advances its position to the limit.
+   *
+   * @param iv buffer containing the IV
+   * @return IV view as an {@link IvParameterSpec}
    */
+  @SuppressWarnings("java:S3329")
   public static IvParameterSpec getIvParameterSpec(ByteBuffer iv) {
     return new IvParameterSpec(Fields.copyToArray(iv));
   }
 
   /**
-   * Derives a ByteBuffer that is 512 bits (32 bytes) long from the given key using the provided
-   * class name and kdfString
+   * Derives 64 bytes using HMAC‑SHA‑512 of {@code className + kdfString} keyed by {@code kdfKey}.
    *
-   * @param kdfKey The key to derive from
-   * @param c Class name to use in derivation
-   * @param kdfString Sting to use in derivation
-   * @return A 512 long ByteBuffer
-   * @throws InvalidKeyException
+   * @param kdfKey base key used as the HMAC key
+   * @param c class whose name provides context for domain separation
+   * @param kdfString additional context string for domain separation
+   * @return 64 derived bytes as a {@link ByteBuffer}
+   * @throws InvalidKeyException if {@code kdfKey} is not valid for HMAC‑SHA‑512
    */
   private static ByteBuffer deriveBytes(SecretKey kdfKey, Class<?> c, String kdfString)
       throws InvalidKeyException {
     if (kdfString == null) {
       throw new NullPointerException();
     }
-    MessageAuthCode kdf = new MessageAuthCode(MACType.HMACSHA512, kdfKey);
+    MessageAuthCode kdf = new MessageAuthCode(MACType.HMAC_SHA512, kdfKey);
     return kdf.genMac((c.getName() + kdfString).getBytes(StandardCharsets.UTF_8));
   }
 
   /**
-   * Derives a ByteBuffer of the specified length from the given key using the provided class name
-   * and kdfString
+   * Derives bytes as in {@link #deriveBytes(SecretKey, Class, String)} and truncates to {@code len}
+   * bytes.
    *
-   * @param kdfKey The key to derive from
-   * @param c Class name to use in derivation
-   * @param kdfString String to use in derivation
-   * @param len How long the new ByteBuffer should be.
-   * @return A ByteBuffer of the specified length
-   * @throws InvalidKeyException
+   * @param kdfKey base key used as the HMAC key
+   * @param c class whose name provides context for domain separation
+   * @param kdfString additional context string for domain separation
+   * @param len number of bytes to return
+   * @return derived bytes of length {@code len}
+   * @throws InvalidKeyException if {@code kdfKey} is not valid for HMAC‑SHA‑512
    */
   private static ByteBuffer deriveBytesTruncated(
       SecretKey kdfKey, Class<?> c, String kdfString, int len) throws InvalidKeyException {
@@ -348,15 +404,17 @@ public final class KeyGenUtils {
   }
 
   /**
-   * Derives a SecretKey of the specified type from the given key using the provided class name and
-   * kdfString
+   * Derives a {@link SecretKey} of the requested {@link KeyType} using HMAC‑SHA‑512.
    *
-   * @param kdfKey The key to derive from
-   * @param c Class name to use in derivation
-   * @param kdfString String to use in derivation
-   * @param type The type of key to derive
-   * @return The derived key as a SecretKey
-   * @throws InvalidKeyException
+   * <p>The derivation input is {@code className + kdfString}. The output is truncated to the
+   * algorithm’s key size.
+   *
+   * @param kdfKey base key used as the HMAC key
+   * @param c class whose name provides context for domain separation
+   * @param kdfString additional context string for domain separation
+   * @param type target key type (algorithm and key size)
+   * @return derived secret key
+   * @throws InvalidKeyException if {@code kdfKey} is not valid for HMAC‑SHA‑512
    */
   public static SecretKey deriveSecretKey(
       SecretKey kdfKey, Class<?> c, String kdfString, KeyType type) throws InvalidKeyException {
@@ -364,15 +422,18 @@ public final class KeyGenUtils {
   }
 
   /**
-   * Derives a IvParameterSpec of the specified type from the given key using the provided class
-   * name and kdfString
+   * Derives an initialization vector (IV) using HMAC‑SHA‑512 and returns it as an {@link
+   * IvParameterSpec}.
    *
-   * @param kdfKey The key to derive from
-   * @param c Class name to use in derivation
-   * @param kdfString String to use in derivation
-   * @param ivType The type of IV to derive
-   * @return The derived IV as an IvParameterSpec
-   * @throws InvalidKeyException
+   * <p>The derivation input is {@code className + kdfString}. The output is truncated to {@code
+   * ivType.ivSize/8} bytes.
+   *
+   * @param kdfKey base key used as the HMAC key
+   * @param c class whose name provides context for domain separation
+   * @param kdfString additional context string for domain separation
+   * @param ivType target IV type (provides the IV size)
+   * @return derived IV wrapped in an {@link IvParameterSpec}
+   * @throws InvalidKeyException if {@code kdfKey} is not valid for HMAC‑SHA‑512
    */
   public static IvParameterSpec deriveIvParameterSpec(
       SecretKey kdfKey, Class<?> c, String kdfString, KeyType ivType) throws InvalidKeyException {

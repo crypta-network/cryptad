@@ -21,7 +21,7 @@ import network.crypta.support.Fields;
  ** As of fred commit e89a2f63e819e8c088a14eaa3c809770db822956, this class, and
  ** its associated test, re-implements the diff between X-A, by extending
  ** o.s.m.r.MersenneTwister. Above that, it is also runtime-compatible with any
- ** version (O,A,X) of it.
+ ** version (O, A, X) of it.
  **
  ** This should provide a smooth upgrade path:
  **
@@ -34,7 +34,7 @@ import network.crypta.support.Fields;
  * additional {@code setSeed()} methods. Instances are synchronized unless created through * {@link
  * #createUnsynchronized}. * * @author infinity0
  */
-public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwister {
+public class MersenneTwister extends MersenneTwisterBase {
 
   @Serial private static final long serialVersionUID = 6555069655883958609L;
 
@@ -56,17 +56,6 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
   /** Creates a new random number generator using a single long seed. */
   public MersenneTwister(long seed) {
     super(seed);
-  }
-
-  /**
-   * Creates a new random number generator using a byte array seed.
-   *
-   * @deprecated use {@link #createSynchronized} or {@link #createUnsynchronized} depending on
-   *     thread-safety requirements
-   */
-  @Deprecated
-  public MersenneTwister(byte[] seed) {
-    super(Fields.bytesToInts(seed, 0, seed.length));
   }
 
   /** {@inheritDoc} */
@@ -91,11 +80,15 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
    * * Reinitialize the generator as if just built with the given byte array seed. *
    *
    * <p>The state of the generator is exactly the same as a new * generator built with the same
-   * seed. * @param seed the initial seed (8 bits byte array), if null * the seed of the generator
-   * will be related to the current time
+   * seed.
+   *
+   * @param seed the initial seed (8-bit byte array), if null * the seed of the generator will be
+   *     related to the current time
    */
-  public synchronized void setSeed(byte[] seed) {
-    super.setSeed(Fields.bytesToInts(seed, 0, seed.length));
+  public void setSeed(byte[] seed) {
+    synchronized (this) {
+      super.setSeed(Fields.bytesToInts(seed, 0, seed.length));
+    }
   }
 
   /** {@inheritDoc} */
@@ -121,9 +114,15 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
     return new Unsynchronized(seed);
   }
 
+  @SuppressWarnings({"UnsynchronizedOverridesSynchronized", "java:S3551"})
   private static final class Unsynchronized extends MersenneTwister {
+    // Random's constructor invokes setSeed(long) before this subclass finishes initialization.
+    // Keep that early call on the constructor-safeguarded path, then switch to lock-free seeding.
+    private final boolean initialized;
+
     private Unsynchronized(byte[] seed) {
       super(Fields.bytesToInts(seed));
+      initialized = true;
     }
 
     @Override
@@ -143,6 +142,10 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
 
     @Override
     public void setSeed(long seed) {
+      if (!initialized) {
+        super.setSeed(seed);
+        return;
+      }
       unsynchronizedSetSeed(seed);
     }
 
@@ -165,10 +168,34 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
   }
 
   final void unsynchronizedSetSeed(long seed) {
-    super.setSeed(seed);
+    super.setSeed(new int[] {(int) (seed >>> 32), (int) (seed & 0xffffffffL)});
   }
 
   final void unsynchronizedSetSeed(byte[] seed) {
     super.setSeed(Fields.bytesToInts(seed));
+  }
+}
+
+/**
+ * Package-private base class to avoid class-name shadowing with the upstream
+ * org.spaceroots.mantissa.random.MersenneTwister while preserving behavior and API.
+ */
+class MersenneTwisterBase extends org.spaceroots.mantissa.random.MersenneTwister {
+  @Serial private static final long serialVersionUID = 1L;
+
+  MersenneTwisterBase() {
+    super();
+  }
+
+  MersenneTwisterBase(int seed) {
+    super(seed);
+  }
+
+  MersenneTwisterBase(int[] seed) {
+    super(seed);
+  }
+
+  MersenneTwisterBase(long seed) {
+    super(seed);
   }
 }

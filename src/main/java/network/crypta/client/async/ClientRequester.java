@@ -5,49 +5,82 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Date;
+import java.time.Instant;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.node.SendableRequest;
-import network.crypta.node.useralerts.SimpleUserAlert;
-import network.crypta.node.useralerts.UserAlert;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * A high level request or insert. This may create any number of low-level requests of inserts, for
- * example a request may follow redirects, download splitfiles and unpack containers, while an
- * insert (for a file or a freesite) may also have to insert many blocks. A high-level request is
- * created by a client, has a FetchContext or InsertContext for configuration. Compare to
+ * High-level client requesting orchestration for fetch or insert operations.
  *
- * @see SendableRequest for a low-level request (which may still be multiple actual requests or
- *     inserts). WARNING: Changing non-transient members on classes that are Serializable can result
- *     in restarting downloads or losing uploads.
+ * <p>This type represents a single user-visible request that may expand into many low-level network
+ * operations over its lifetime. For example, a fetch may follow redirects, retrieve and verify
+ * splitfiles, and unpack container formats before returning data to the caller. Similarly, a large
+ * insert (such as a file or a freesite) may be split into many blocks and scheduled across the
+ * network with redundancy and retries. Each high-level request is created by a client and is
+ * configured via context objects owned by the client layer. Implementations coordinate state
+ * transitions, track progress, and communicate updates back to the client in a thread‑safe manner.
+ *
+ * <p>Requests participate in scheduling via a priority class and a {@linkplain RequestClient}
+ * association, which also determines persistence semantics. Persistent requests survive restarts
+ * and are resumed, while transient ones are tracked only in memory. Implementations must treat
+ * cancellation, failure, and partial completion carefully; the lifecycle is observable through
+ * progress counters and transition callbacks. Concurrency is expected: notification callbacks may
+ * run off the scheduling thread and should avoid expensive work.
+ *
+ * <ul>
+ *   <li>Tracks total, successful, failed, and fatally failed block counts
+ *   <li>Exposes lifecycle hooks for resume, shutdown, and network submission
+ *   <li>Supports dynamic priority changes and real‑time scheduling policies
+ * </ul>
+ *
+ * <p><strong>Serialization note:</strong> changing non‑transient members on {@link Serializable}
+ * classes can require request restarts or cause loss of upload progress across upgrades. Keep the
+ * serialized surface stable for persisted requests.
+ *
+ * @see SendableRequest
  */
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
+  private static final AtomicIntegerFieldUpdater<ClientRequester> TOTAL_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "totalBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> SUCCESSFUL_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "successfulBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> FAILED_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "failedBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> FATALLY_FAILED_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "fatallyFailedBlocks");
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
-  static {
-    Logger.registerClass(ClientRequester.class);
-  }
-
+  /**
+   * Notifies the requester that its visible state has transitioned.
+   *
+   * <p>Implementations should treat this as an observation hook to update internal counters,
+   * propagate progress, and possibly emit client notifications. The method is invoked by the owning
+   * state machine when a transition occurs and may be called on a scheduler thread.
+   *
+   * @param oldState the previous state instance, or {@code null} if this is the initial state
+   * @param newState the new state instance that became active for this requester
+   * @param context the transient {@link ClientContext} providing access to schedulers and helpers
+   */
   public abstract void onTransition(
       ClientGetState oldState, ClientGetState newState, ClientContext context);
 
-  // FIXME move the priority classes from RequestStarter here
   /** Priority class of the request or insert. */
-  protected short priorityClass;
+  protected volatile short priorityClass;
 
   /** Whether this is a real-time request */
   protected final boolean realTimeFlag;
 
-  /** Has the request or insert been cancelled? */
-  protected boolean cancelled;
+  /** Has the request or insert been canceled? */
+  protected volatile boolean cancelled;
 
   /**
    * The RequestClient, used to determine whether this request is persistent, and also we
@@ -56,7 +89,23 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    */
   protected transient RequestClient client;
 
-  /** What is our priority class? */
+  /**
+   * Optional external identifier used to correlate scheduler activity with client-visible requests.
+   *
+   * <p>Typical values include an FCP request identifier prefix such as {@code fcp:...}. The value
+   * is intentionally transient so persistence format remains unchanged.
+   */
+  private transient volatile String externalRequestIdentifier;
+
+  /**
+   * Returns the current scheduling priority class for this request.
+   *
+   * <p>The priority class influences how the request competes for network resources compared to
+   * other requests. Implementations and schedulers use this value to order work relative to other
+   * items in the same queue or group.
+   *
+   * @return the priority class identifier currently assigned to this request instance
+   */
   public short getPriorityClass() {
     return priorityClass;
   }
@@ -68,24 +117,49 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     hashCode = 0;
   }
 
+  /**
+   * Constructs a requester with the specified priority and owning client.
+   *
+   * <p>The provided {@link RequestClient} defines persistence behavior and real‑time scheduling
+   * policies for this request. A stable, process‑lifetime hash code is captured at construction so
+   * that serialized forms can identify the instance across restarts.
+   *
+   * @param priorityClass the initial priority class used for scheduling; higher priorities may be
+   *     processed earlier depending on scheduler policy
+   * @param requestClient the owning client providing persistence policy and scheduling flags; must
+   *     not be {@code null}
+   * @throws NullPointerException if {@code requestClient} is {@code null}
+   */
   protected ClientRequester(short priorityClass, RequestClient requestClient) {
+    this(priorityClass, requireRequestClient(requestClient), System.currentTimeMillis());
+  }
+
+  private ClientRequester(
+      short priorityClass, RequestClient checkedClient, long creationTimeMillis) {
     this.priorityClass = priorityClass;
-    this.client = requestClient;
-    this.realTimeFlag = client.realTimeFlag();
-    if (client == null) throw new NullPointerException();
+    this.client = checkedClient;
+    this.realTimeFlag = checkedClient.realTimeFlag();
     hashCode =
-        super.hashCode(); // the old object id will do fine, as long as we ensure it doesn't change!
+        System.identityHashCode(
+            this); // the old object id will do fine, as long as we ensure it doesn't change!
     synchronized (allRequesters) {
-      if (!persistent()) allRequesters.put(this, dumbValue);
+      if (!checkedClient.persistent()) allRequesters.put(this, dumbValue);
     }
-    creationTime = System.currentTimeMillis();
+    creationTime = creationTimeMillis;
+  }
+
+  private static RequestClient requireRequestClient(RequestClient requestClient) {
+    if (requestClient == null) {
+      throw new NullPointerException("requestClient");
+    }
+    return requestClient;
   }
 
   /**
    * Cancel the request. Inner method, subclasses should actually tell the ClientGetState or
    * whatever to cancel itself: this does not do anything apart from set a flag!
    *
-   * @return Whether we were already cancelled.
+   * @return Whether we were already canceled.
    */
   protected synchronized boolean cancel() {
     boolean ret = cancelled;
@@ -94,31 +168,60 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * Cancel the request. Subclasses must implement to actually tell the ClientGetState's or
-   * ClientPutState's to cancel.
+   * Requests cancellation of the high‑level operation and propagates it to underlying states.
    *
-   * @param context The ClientContext object including essential but non-persistent objects such as
-   *     the schedulers.
+   * <p>Implementations should be idempotent and return quickly, scheduling any expensive work
+   * asynchronously. After cancellation, implementations typically stop creating new network work
+   * and allow in‑flight operations to wind down. Client code should observe completion via {@link
+   * #isFinished()} and progress notifications rather than busy‑waiting.
+   *
+   * @param context the {@link ClientContext} carrying transient components such as schedulers used
+   *     to propagate cancellation to running tasks
    */
   public abstract void cancel(ClientContext context);
 
-  /** Is the request or insert cancelled? */
+  /**
+   * Reports whether the request has been canceled.
+   *
+   * <p>Cancellation is sticky for the lifetime of the instance. Subclasses may set the canceled
+   * flag and then propagate cancellation to underlying states; once set, it remains true even if
+   * background work is still unwinding.
+   *
+   * @return {@code true} if cancellation was requested; {@code false} otherwise
+   */
   public boolean isCancelled() {
     return cancelled;
   }
 
   /**
-   * Get the URI for the request or insert. For a request this is set at creation, but for an
-   * insert, it is set when we know what the final URI will be.
+   * Returns the canonical URI associated with this request.
+   *
+   * <p>For fetch requests this value is fixed at creation time. For inserts, it becomes available
+   * once the final URI is determined by the insert process. Implementations should document whether
+   * this method can return {@code null} before initialization is complete.
+   *
+   * @return the request {@link FreenetURI}, or {@code null} if not yet known for inserts
    */
   public abstract FreenetURI getURI();
 
   /**
-   * Is the request or insert completed (succeeded, failed, or cancelled, which is a kind of
-   * failure)?
+   * Indicates whether the request has reached a terminal state.
+   *
+   * <p>A terminal state includes success, explicit cancellation, or failure conditions that prevent
+   * further progress. Implementations should return {@code true} only when no additional network
+   * activity will occur and final notifications have been or will be emitted.
+   *
+   * @return {@code true} when the request will not perform any further work
    */
   public abstract boolean isFinished();
 
+  /**
+   * Stable per-instance hash used for persistence.
+   *
+   * <p>This field captures the construction‑time identity hash so that serialized forms can
+   * preserve equality semantics across process restarts. See {@link #hashCode()} for the exposed
+   * behavior.
+   */
   private final int hashCode;
 
   /** We need a hash code that persists across restarts. */
@@ -127,77 +230,100 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     return hashCode;
   }
 
-  /** Total number of blocks this request has tried to fetch/put. */
-  protected int totalBlocks;
+  @Override
+  @SuppressWarnings("RedundantMethodOverride")
+  public boolean equals(Object obj) {
+    return obj == this;
+  }
 
-  /** Number of blocks we have successfully completed a fetch/put for. */
-  protected int successfulBlocks;
+  /** Total number of blocks this request has attempted to fetch or insert. */
+  protected volatile int totalBlocks;
+
+  /** Number of blocks successfully fetched or inserted so far. */
+  protected volatile int successfulBlocks;
 
   /**
-   * ATTENTION: This may be null for very old databases.
+   * Timestamp of the most recent successful block completion.
    *
-   * @see #getLatestSuccess() Explanation of the content and especially the default value.
+   * <p>ATTENTION: This may be {@code null} when reading from very old databases. See {@link
+   * #getLatestSuccess()} for the precise semantics and defaulting behavior that keeps the user
+   * interface sortable even before any blocks complete.
    */
-  protected Date latestSuccess = new Date();
+  protected volatile Instant latestSuccess = Instant.now();
 
   /** Number of blocks which have failed. */
-  protected int failedBlocks;
+  protected volatile int failedBlocks;
 
   /** Number of blocks which have failed fatally. */
-  protected int fatallyFailedBlocks;
+  protected volatile int fatallyFailedBlocks;
 
-  /**
-   * @see #getLatestFailure()
-   */
-  protected Date latestFailure = null;
+  /** Timestamp of the most recent failed or fatally failed block, if any. */
+  protected volatile Instant latestFailure = null;
 
   /** Minimum number of blocks required to succeed for success. */
-  protected int minSuccessBlocks;
+  protected volatile int minSuccessBlocks;
 
   /** Has totalBlocks stopped growing? */
-  protected boolean blockSetFinalized;
+  protected volatile boolean blockSetFinalized;
 
   /**
    * Has at least one block been scheduled to be sent to the network? Requests can be satisfied
    * entirely from the datastore sometimes.
    */
-  protected boolean sentToNetwork;
+  protected volatile boolean sentToNetwork;
 
+  /**
+   * Returns the current total number of blocks considered by this request.
+   *
+   * <p>The value includes successful, failed, and pending blocks and may increase as the request
+   * discovers additional work. After {@link #blockSetFinalized(ClientContext)} the total stops
+   * growing.
+   *
+   * @return the total number of blocks counted for this request so far
+   */
   public int getTotalBlocks() {
     return totalBlocks;
   }
 
   /**
-   * UTC Date of latest increase of {@link #successfulBlocks}.<br>
-   * Initialized to current time for usability purposes: This allows the user to sort downloads by
-   * last success in the user interface to determine which ones are stalling - those will be the
-   * ones with the oldest last success date. If we initialized it to "null" only, that would not be
-   * possible: The user couldn't distinguish very old stalling downloads from downloads which merely
-   * had no success yet because they were added a short time ago.<br>
+   * Returns the UTC timestamp of the most recent successful block completion.
+   *
+   * <p>The value is initialized to the current time to keep “sort by last success” UIs usable for
+   * newly created requests. For very old serialized data that lacks this field, the method returns
+   * the epoch start.
+   *
+   * @return the last-success timestamp; never {@code null}
    */
-  public Date getLatestSuccess() {
-    // clone() because Date is mutable.
+  public Instant getLatestSuccess() {
     // Null-check for backwards compatibility: Old serialized versions of objects of this
     // class might not have this field yet.
-    return latestSuccess != null ? (Date) latestSuccess.clone() : new Date(0);
+    return latestSuccess != null ? latestSuccess : Instant.EPOCH;
   }
 
   /**
-   * UTC Date of latest increase of {@link #failedBlocks} or {@link #fatallyFailedBlocks}.<br>
-   * Null if there was no failure yet.
+   * Returns the UTC timestamp of the most recent block failure or fatal failure.
+   *
+   * <p>When no failure has occurred the value is {@code null}.
+   *
+   * @return the last-failure timestamp, or {@code null} when no failures
    */
-  public Date getLatestFailure() {
-    // clone() because Date is mutable.
+  public Instant getLatestFailure() {
     // Null-check for backwards compatibility: Old serialized versions of objects of this
     // class might not have this field yet.
-    return latestFailure != null ? (Date) latestFailure.clone() : null;
+    return latestFailure;
   }
 
+  /**
+   * Resets all progress counters and timestamps to their initial values.
+   *
+   * <p>Used when a requester is reconstructed or restarted and needs to clear tracking state prior
+   * to re-scheduling work. Does not notify clients.
+   */
   protected synchronized void resetBlocks() {
     totalBlocks = 0;
     successfulBlocks = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    latestSuccess = new Date();
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
+    latestSuccess = Instant.now();
     failedBlocks = 0;
     fatallyFailedBlocks = 0;
     latestFailure = null;
@@ -207,48 +333,55 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * The set of blocks has been finalised, total will not change any more. Notify clients.
+   * Finalizes the set of blocks and notifies clients of the transition.
    *
-   * @param context The ClientContext object including essential but non-persistent objects such as
-   *     the schedulers.
+   * <p>After finalization the {@link #totalBlocks} count will no longer increase. This method emits
+   * a progress notification off-thread so UI or client code can update immediately.
+   *
+   * @param context the {@link ClientContext} providing access to schedulers and other transient
+   *     services used to dispatch notifications
    */
   public void blockSetFinalized(ClientContext context) {
     synchronized (this) {
       if (blockSetFinalized) return;
       blockSetFinalized = true;
     }
-    if (logMINOR) Logger.minor(this, "Finalized set of blocks for " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finalized set of blocks for {}", this);
     notifyClients(context);
   }
 
-  /** Add a block to our estimate of the total. Don't notify clients. */
+  /**
+   * Increments the total block estimate by one without notifying clients.
+   *
+   * <p>Use when discovering additional work during planning or request expansion. If the block set
+   * was already finalized, an error is logged and the counter is still incremented.
+   */
   public void addBlock() {
     boolean wasFinalized;
     synchronized (this) {
-      totalBlocks++;
+      TOTAL_BLOCKS_UPDATER.incrementAndGet(this);
       wasFinalized = blockSetFinalized;
     }
 
     if (wasFinalized) {
-      if (LogLevel.MINOR.matchesThreshold(Logger.globalGetThresholdNew()))
-        Logger.error(this, "addBlock() but set finalized! on " + this, new Exception("error"));
-      else Logger.error(this, "addBlock() but set finalized! on " + this);
+      LOG.error("addBlock() but set finalized! on {}", this);
     }
 
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "addBlock(): total="
-              + totalBlocks
-              + " successful="
-              + successfulBlocks
-              + " failed="
-              + failedBlocks
-              + " required="
-              + minSuccessBlocks);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "addBlock(): total={} successful={} failed={} required={}",
+          totalBlocks,
+          successfulBlocks,
+          failedBlocks,
+          minSuccessBlocks);
   }
 
-  /** Add several blocks to our estimate of the total. Don't notify clients. */
+  /**
+   * Adds the specified number of blocks to the total estimate without notifying clients.
+   *
+   * @param num the number of additional blocks discovered and added to the total; negative values
+   *     are ignored by callers and not expected here
+   */
   public void addBlocks(int num) {
     boolean wasFinalized;
     synchronized (this) {
@@ -257,132 +390,122 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     }
 
     if (wasFinalized) {
-      if (LogLevel.MINOR.matchesThreshold(Logger.globalGetThresholdNew()))
-        Logger.error(this, "addBlocks() but set finalized! on " + this, new Exception("error"));
-      else Logger.error(this, "addBlocks() but set finalized! on " + this);
+      LOG.error("addBlocks() but set finalized! on {}", this);
     }
 
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "addBlocks("
-              + num
-              + "): total="
-              + totalBlocks
-              + " successful="
-              + successfulBlocks
-              + " failed="
-              + failedBlocks
-              + " required="
-              + minSuccessBlocks);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "addBlocks({}): total={} successful={} failed={} required={}",
+          num,
+          totalBlocks,
+          successfulBlocks,
+          failedBlocks,
+          minSuccessBlocks);
   }
 
-  /** We completed a block. Count it and notify clients unless dontNotify. */
+  /**
+   * Marks a block as completed and optionally notifies clients.
+   *
+   * <p>Updates counters and the {@link #latestSuccess} timestamp. When {@code dontNotify} is {@code
+   * false}, a progress notification is queued off-thread. Calls from canceled requests are ignored.
+   *
+   * @param dontNotify when {@code true}, suppresses the asynchronous progress notification
+   * @param context the transient {@link ClientContext} used to dispatch notifications
+   */
   public void completedBlock(boolean dontNotify, ClientContext context) {
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Completed block ("
-              + dontNotify
-              + "): total="
-              + totalBlocks
-              + " success="
-              + successfulBlocks
-              + " failed="
-              + failedBlocks
-              + " fatally="
-              + fatallyFailedBlocks
-              + " finalised="
-              + blockSetFinalized
-              + " required="
-              + minSuccessBlocks
-              + " on "
-              + this);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Completed block ({}): total={} success={} failed={} fatally={} finalised={} required={}"
+              + " on {}",
+          dontNotify,
+          totalBlocks,
+          successfulBlocks,
+          failedBlocks,
+          fatallyFailedBlocks,
+          blockSetFinalized,
+          minSuccessBlocks,
+          this);
     synchronized (this) {
       if (cancelled) return;
-      successfulBlocks++;
-      latestSuccess = new Date();
+      SUCCESSFUL_BLOCKS_UPDATER.incrementAndGet(this);
+      latestSuccess = Instant.now();
     }
     if (dontNotify) return;
     notifyClients(context);
   }
 
-  static final UserAlert brokenClientAlert =
-      new SimpleUserAlert(
-          true,
-          "Some broken downloads/uploads were cancelled. Please restart them.",
-          "Some downloads/uploads were broken due to a bug (some time before 1287) causing"
-              + " unrecoverable database corruption. They have been cancelled. Please restart them"
-              + " from the Downloads or Uploads page.",
-          "Some downloads/uploads were broken due to a pre-1287 bug, please restart them.",
-          UserAlert.ERROR);
-
-  /** A block failed. Count it and notify our clients. */
+  /**
+   * Records a non-fatal block failure and optionally notifies clients.
+   *
+   * @param dontNotify when {@code true}, suppresses the asynchronous progress notification
+   * @param context the transient {@link ClientContext} used to dispatch notifications
+   */
   public void failedBlock(boolean dontNotify, ClientContext context) {
     synchronized (this) {
-      failedBlocks++;
-      latestFailure = new Date();
+      FAILED_BLOCKS_UPDATER.incrementAndGet(this);
+      latestFailure = Instant.now();
     }
     if (!dontNotify) notifyClients(context);
   }
 
-  /** A block failed. Count it and notify our clients. */
+  /**
+   * Records a non-fatal block failure and notifies clients.
+   *
+   * @param context the transient {@link ClientContext} used to dispatch notifications
+   */
   public void failedBlock(ClientContext context) {
     failedBlock(false, context);
   }
 
-  /** A block failed fatally. Count it and notify our clients. */
+  /**
+   * Records a fatal block failure and notifies clients.
+   *
+   * @param context the transient {@link ClientContext} used to dispatch notifications
+   */
   public void fatallyFailedBlock(ClientContext context) {
     synchronized (this) {
-      fatallyFailedBlocks++;
-      latestFailure = new Date();
+      FATALLY_FAILED_BLOCKS_UPDATER.incrementAndGet(this);
+      latestFailure = Instant.now();
     }
     notifyClients(context);
   }
 
-  /** Add one or more blocks to the number of requires blocks, and don't notify the clients. */
+  /**
+   * Adds required blocks that must succeed for overall success without notifying clients.
+   *
+   * @param blocks the number of additional blocks that are required to complete successfully
+   */
   public synchronized void addMustSucceedBlocks(int blocks) {
     totalBlocks += blocks;
     minSuccessBlocks += blocks;
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "addMustSucceedBlocks("
-              + blocks
-              + "): total="
-              + totalBlocks
-              + " successful="
-              + successfulBlocks
-              + " failed="
-              + failedBlocks
-              + " required="
-              + minSuccessBlocks);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "addMustSucceedBlocks({}): total={} successful={} failed={} required={}",
+          blocks,
+          totalBlocks,
+          successfulBlocks,
+          failedBlocks,
+          minSuccessBlocks);
   }
 
   /**
-   * Insertors should override this. The method is duplicated rather than calling
-   * addMustSucceedBlocks to avoid confusing consequences when addMustSucceedBlocks does other
-   * things.
+   * Adds blocks that contribute redundancy for insert operations.
+   *
+   * <p>Insert implementations should override to apply insert‑specific semantics. The default
+   * behavior counts them as required blocks.
+   *
+   * @param blocks the number of redundancy blocks discovered during planning
    */
   public synchronized void addRedundantBlocksInsert(int blocks) {
-    totalBlocks += blocks;
-    minSuccessBlocks += blocks;
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "addMustSucceedBlocks("
-              + blocks
-              + "): total="
-              + totalBlocks
-              + " successful="
-              + successfulBlocks
-              + " failed="
-              + failedBlocks
-              + " required="
-              + minSuccessBlocks);
+    addMustSucceedBlocks(blocks);
   }
 
-  /** Notify clients by calling innerNotifyClients off-thread. */
+  /**
+   * Notifies clients of progress by delegating to {@link #innerNotifyClients(ClientContext)}
+   * off-thread.
+   *
+   * @param context the transient {@link ClientContext} used to enqueue the notification job
+   */
   public final void notifyClients(ClientContext context) {
     context
         .getJobRunner(persistent())
@@ -394,16 +517,23 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * Notify clients, usually via a SplitfileProgressEvent, of the current progress. Called
-   * off-thread. Please do not change SimpleEventProducer to always produce events off-thread, it is
-   * better to deal with that here, because events could be re-ordered, which matters for some
-   * events notably SimpleProgressEvent.
+   * Performs the actual progress notification to clients.
+   *
+   * <p>Implementations should emit events in order for the same requester and avoid heavy work in
+   * the notification path. This method is called on a worker thread chosen by the scheduler.
+   *
+   * @param context the transient {@link ClientContext} providing access to event infrastructure
    */
   protected abstract void innerNotifyClients(ClientContext context);
 
   /**
-   * Called when we first send a request to the network. Ensures that it really is the first time
-   * and passes on to innerToNetwork().
+   * Marks the first submission of this request to the network and invokes {@link
+   * #innerToNetwork(ClientContext)}.
+   *
+   * <p>Idempotent: repeated calls after the first have no effect. Useful for UIs that wish to know
+   * when a request moved beyond datastore checks.
+   *
+   * @param context the transient {@link ClientContext} used for notification
    */
   public void toNetwork(ClientContext context) {
     synchronized (this) {
@@ -414,11 +544,18 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * Notify clients that a request has gone to the network, for the first time, i.e. we have
-   * finished checking the datastore for at least one part of the request.
+   * Notifies clients that the network is now processing at least one part of the request.
+   *
+   * @param context the transient {@link ClientContext} used for notification and scheduling
    */
   protected abstract void innerToNetwork(ClientContext context);
 
+  /**
+   * Clears internal counters when a requester is reloaded or restarted.
+   *
+   * <p>Called during resume flows before any progress notifications are sent. Subclasses may
+   * augment behavior but should preserve the reset semantics.
+   */
   protected void clearCountersOnRestart() {
     this.blockSetFinalized = false;
     this.cancelled = false;
@@ -428,21 +565,58 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     this.minSuccessBlocks = 0;
     this.sentToNetwork = false;
     this.successfulBlocks = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    this.latestSuccess = new Date();
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
+    this.latestSuccess = Instant.now();
     this.totalBlocks = 0;
   }
 
-  /** Get client context object */
+  /**
+   * Returns the owning {@link RequestClient} associated with this request.
+   *
+   * @return the {@link RequestClient} that provides persistence and scheduling policy
+   */
   public RequestClient getClient() {
     return client;
   }
 
   /**
-   * Change the priority class of the request (request includes inserts here).
+   * Assigns an external correlation identifier for diagnostics.
    *
-   * @param newPriorityClass The new priority class for the request or insert.
-   * @param ctx The ClientContext, contains essential transient objects such as the schedulers.
+   * <p>This does not affect routing or scheduling; it only enriches logs when low-level stalls are
+   * reported.
+   *
+   * @param externalRequestIdentifier external identifier string, or {@code null} to clear
+   */
+  public final void setExternalRequestIdentifier(String externalRequestIdentifier) {
+    this.externalRequestIdentifier = normalizeExternalRequestIdentifier(externalRequestIdentifier);
+  }
+
+  /**
+   * Returns the optional external correlation identifier used for diagnostics.
+   *
+   * @return external identifier, or {@code null} if none has been assigned
+   */
+  public final String getExternalRequestIdentifier() {
+    return externalRequestIdentifier;
+  }
+
+  private static String normalizeExternalRequestIdentifier(String externalRequestIdentifier) {
+    if (externalRequestIdentifier == null) {
+      return null;
+    }
+    String normalized = externalRequestIdentifier.trim();
+    return normalized.isEmpty() ? null : normalized;
+  }
+
+  /**
+   * Changes the scheduling priority class of this request and re-registers all sub-requests.
+   *
+   * <p>The change takes effect promptly by re-registering with the relevant schedulers. The method
+   * is safe to call repeatedly and may be used to temporarily boost or reduce a request’s priority
+   * based on user action or policy.
+   *
+   * @param newPriorityClass the new priority class to apply for all later scheduling
+   * @param ctx the {@link ClientContext} used to perform re-registration with all schedulers
    */
   public void setPriorityClass(short newPriorityClass, ClientContext ctx) {
     short oldPrio;
@@ -450,29 +624,50 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
       oldPrio = priorityClass;
       this.priorityClass = newPriorityClass;
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Changing priority class of " + this + " from " + oldPrio + " to " + newPriorityClass);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Changing priority class of {} from {} to {}", this, oldPrio, newPriorityClass);
     ctx.getChkFetchScheduler(realTimeFlag).reregisterAll(this, oldPrio);
     ctx.getChkInsertScheduler(realTimeFlag).reregisterAll(this, oldPrio);
     ctx.getSskFetchScheduler(realTimeFlag).reregisterAll(this, oldPrio);
     ctx.getSskInsertScheduler(realTimeFlag).reregisterAll(this, oldPrio);
   }
 
+  /**
+   * Indicates whether this request is managed under real‑time scheduling policies.
+   *
+   * @return {@code true} if the owning client marked this request as real‑time
+   */
   public boolean realTimeFlag() {
     return realTimeFlag;
   }
 
-  /** Is this request persistent? */
+  /**
+   * Reports whether this request is persistent and should survive restarts.
+   *
+   * @return {@code true} when the owning client is persistent; {@code false} otherwise
+   */
   public boolean persistent() {
     return client.persistent();
   }
 
   private static final WeakHashMap<ClientRequester, Object> allRequesters = new WeakHashMap<>();
   private static final Object dumbValue = new Object();
+
+  /**
+   * Wall‑clock timestamp of construction in milliseconds since the epoch (UTC).
+   *
+   * <p>Useful for sorting and for UIs that display how long a request has been active.
+   */
   public final long creationTime;
 
+  /**
+   * Returns a snapshot of all currently live non‑persistent requesters.
+   *
+   * <p>The returned array is the best‑effort snapshot based on weak references and may exclude
+   * items that have been garbage‑collected.
+   *
+   * @return an array containing the live requesters known to this JVM
+   */
   public static ClientRequester[] getAll() {
     synchronized (allRequesters) {
       return allRequesters.keySet().toArray(new ClientRequester[0]);
@@ -480,16 +675,32 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * @return A byte[] representing the original client, to be written to the file storing a
-   *     persistent download. E.g. for FCP, this will include the Identifier, whether it is on the
-   *     global queue and the client name.
-   * @param checker Used to checksum and isolate large components where we can recover if they fail.
-   * @throws IOException
+   * Encodes metadata describing the original client for persistence.
+   *
+   * <p>Implementations may include details such as an identifier, queue placement, and a client
+   * name so that the request can be reconstructed after a restart. The default implementation
+   * returns an empty array to indicate that no additional client metadata is stored.
+   *
+   * @param checker a checksum helper used to protect large sections so partial failures can be
+   *     detected and isolated during reads
+   * @return a byte array representing client metadata; callers should treat it as immutable data
+   * @throws IOException if serialization of client details fails due to I/O or encoding errors
    */
   public byte[] getClientDetail(ChecksumChecker checker) throws IOException {
     return new byte[0];
   }
 
+  /**
+   * Helper that serializes a {@link PersistentClientCallback} into a byte array with checksum
+   * protection.
+   *
+   * @param callback the callback that writes its client detail to the provided stream; must not be
+   *     {@code null}
+   * @param checker a checksum helper used to wrap large regions for integrity checking on readback
+   * @return a byte array containing the callback’s serialized metadata; ownership is transferred to
+   *     the caller
+   * @throws IOException if the callback or stream encounters an I/O error during serialization
+   */
   protected static byte[] getClientDetail(
       PersistentClientCallback callback, ChecksumChecker checker) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -501,10 +712,12 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   private transient boolean resumed = false;
 
   /**
-   * Called for a persistent request after startup. Should call notifyClients() at the end, after
-   * the callback has been registered etc.
+   * Resumes a persistent request after startup and performs any necessary re‑registration.
    *
-   * @throws ResumeFailedException
+   * <p>Implementations should register callbacks and then notify clients of the current state.
+   *
+   * @param context the transient {@link ClientContext} providing schedulers and helpers for resume
+   * @throws ResumeFailedException if the persistent state cannot be restored successfully
    */
   public final void onResume(ClientContext context) throws ResumeFailedException {
     synchronized (this) {
@@ -515,32 +728,54 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * Called by onResume() once and only once after restarting. Must be overridden, and must call
-   * super.innerOnResume().
+   * Implementation hook for resume, invoked exactly once by {@link #onResume(ClientContext)}.
    *
-   * @throws ResumeFailedException
+   * <p>Subclasses overriding this method must call {@code super.innerOnResume(context)} to ensure
+   * common initialization is performed.
+   *
+   * @param context the transient {@link ClientContext} used during resume
+   * @throws ResumeFailedException if restoring the persistent state fails
    */
   protected void innerOnResume(ClientContext context) throws ResumeFailedException {
     ClientBaseCallback cb = getCallback();
     client = cb.getRequestClient();
-    assert (client.persistent());
+    assert client.persistent();
     if (sentToNetwork) innerToNetwork(context);
   }
 
+  /**
+   * Returns the callback that bridges this requester to its client for persistence and events.
+   *
+   * @return the client callback used to access the owning {@link RequestClient}
+   */
   protected abstract ClientBaseCallback getCallback();
 
-  /** Called just before the final write when shutting down the node. */
+  /**
+   * Hook invoked prior to the final writing during node shutdown.
+   *
+   * @param context the transient {@link ClientContext} provided for shutdown coordination
+   */
   public void onShutdown(ClientContext context) {
     // Do nothing.
   }
 
+  /**
+   * Indicates whether the supplied state object represents this requester’s current state.
+   *
+   * @param state the state instance to compare against the requester’s current state
+   * @return {@code true} if the argument describes the current state of this request
+   */
   public boolean isCurrentState(ClientGetState state) {
     return false;
   }
 
   /**
-   * Get the group the request belongs to. For single requests (the default) this is the request
-   * itself; for those in a group, such as a site insert, it is a common value between them.
+   * Returns the scheduler group associated with this request.
+   *
+   * <p>For single requests this is the requester itself. Grouped requests (for example, a site
+   * insert) return a shared grouping instance so schedulers can coordinate related work.
+   *
+   * @return the scheduler group that should be used for queueing and fairness decisions
    */
   public ClientRequestSchedulerGroup getSchedulerGroup() {
     return this;

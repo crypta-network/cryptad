@@ -33,6 +33,7 @@ class CorruptingOutputStream extends OutputStream {
     ptr = 0;
   }
 
+  @Override
   public void write(int b) throws IOException {
     if (ptr < killBytes.length && ctr++ == killBytes[ptr]) {
       b ^= (1 << random.nextInt(7));
@@ -41,6 +42,7 @@ class CorruptingOutputStream extends OutputStream {
     os.write(b);
   }
 
+  @Override
   public void close() throws IOException {
     os.close();
   }

@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-// import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -11,90 +10,112 @@ import java.util.Map;
  */
 public class HTMLDecoder {
 
-  static Map<String, Character> charTable = HTMLEntities.decodeMap;
+  private static final Map<String, Character> charTable = HTMLEntities.decodeMap;
 
   public static String decode(String s) {
-    String t;
-    Character ch;
-    int tmpPos, i;
-
     int maxPos = s.length();
     StringBuilder sb = new StringBuilder(maxPos);
     int curPos = 0;
     while (curPos < maxPos) {
       char c = s.charAt(curPos++);
       if (c == '&') {
-        tmpPos = curPos;
-        if (tmpPos < maxPos) {
-          char d = s.charAt(tmpPos++);
-          if (d == '#') { // REDFLAG: FIXME: We might want to prevent control characters from beeing
-            // created here...
-            if (tmpPos < maxPos) {
-              d = s.charAt(tmpPos++);
-              if ((d == 'x') || (d == 'X')) {
-                if (tmpPos < maxPos) {
-                  d = s.charAt(tmpPos++);
-                  if (isHexDigit(d)) {
-                    while (tmpPos < maxPos) {
-                      d = s.charAt(tmpPos++);
-                      if (!isHexDigit(d)) {
-                        if (d == ';') {
-                          t = s.substring(curPos + 2, tmpPos - 1);
-                          try {
-                            i = Integer.parseInt(t, 16);
-                            if ((i >= 0) && (i < 65536)) {
-                              c = (char) i;
-                              curPos = tmpPos;
-                            }
-                          } catch (NumberFormatException e) {
-                          }
-                        }
-                        break;
-                      }
-                    }
-                  }
-                }
-              } else if (isDigit(d)) {
-                while (tmpPos < maxPos) {
-                  d = s.charAt(tmpPos++);
-                  if (!isDigit(d)) {
-                    if (d == ';') {
-                      t = s.substring(curPos + 1, tmpPos - 1);
-                      try {
-                        i = Integer.parseInt(t);
-                        if ((i >= 0) && (i < 65536)) {
-                          c = (char) i;
-                          curPos = tmpPos;
-                        }
-                      } catch (NumberFormatException e) {
-                      }
-                    }
-                    break;
-                  }
-                }
-              }
-            }
-          } else if (isLetter(d)) {
-            while (tmpPos < maxPos) {
-              d = s.charAt(tmpPos++);
-              if (!isLetterOrDigit(d)) {
-                if (d == ';') {
-                  t = s.substring(curPos, tmpPos - 1);
-                  ch = charTable.get(t);
-                  if (ch != null) {
-                    c = ch;
-                    curPos = tmpPos;
-                  }
-                }
-                break;
-              }
-            }
-          }
+        DecodeResult res = decodeAfterAmp(s, curPos, maxPos);
+        if (res.decoded) {
+          c = res.ch;
+          curPos = res.nextPos;
         }
       }
       sb.append(c);
     }
     return sb.toString();
+  }
+
+  private record DecodeResult(boolean decoded, char ch, int nextPos) {}
+
+  private static DecodeResult decodeAfterAmp(String s, int curPos, int maxPos) {
+    int tmpPos = curPos;
+    if (tmpPos >= maxPos) {
+      return new DecodeResult(false, '&', curPos);
+    }
+    char d = s.charAt(tmpPos++);
+    if (d == '#') {
+      return decodeNumericEntity(s, tmpPos, maxPos, curPos);
+    } else if (isLetter(d)) {
+      return decodeNamedEntity(s, tmpPos, maxPos, curPos);
+    }
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult decodeNumericEntity(String s, int tmpPos, int maxPos, int curPos) {
+    if (tmpPos >= maxPos) {
+      return new DecodeResult(false, '&', curPos);
+    }
+    char d = s.charAt(tmpPos++);
+    if ((d == 'x') || (d == 'X')) {
+      return decodeHexEntity(s, tmpPos, maxPos, curPos);
+    } else if (isDigit(d)) {
+      return decodeDecEntity(s, tmpPos, maxPos, curPos);
+    }
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult decodeHexEntity(String s, int tmpPos, int maxPos, int curPos) {
+    if (tmpPos >= maxPos) {
+      return new DecodeResult(false, '&', curPos);
+    }
+    char d = s.charAt(tmpPos++);
+    if (isHexDigit(d)) {
+      return scanHexEntity(s, tmpPos, maxPos, curPos);
+    }
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult scanHexEntity(String s, int tmpPos, int maxPos, int curPos) {
+    boolean done = false;
+    while (tmpPos < maxPos && !done) {
+      char d = s.charAt(tmpPos++);
+      if (!isHexDigit(d)) {
+        if (d == ';') {
+          String t = s.substring(curPos + 2, tmpPos - 1);
+          Character ch = parseHexChar(t);
+          if (ch != null) return new DecodeResult(true, ch, tmpPos);
+        }
+        done = true;
+      }
+    }
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult decodeDecEntity(String s, int tmpPos, int maxPos, int curPos) {
+    while (tmpPos < maxPos) {
+      char d = s.charAt(tmpPos++);
+      if (!isDigit(d)) {
+        if (d == ';') {
+          String t = s.substring(curPos + 1, tmpPos - 1);
+          Character ch = parseDecChar(t);
+          if (ch != null) return new DecodeResult(true, ch, tmpPos);
+        }
+        break;
+      }
+    }
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult decodeNamedEntity(String s, int tmpPos, int maxPos, int curPos) {
+    while (tmpPos < maxPos) {
+      char d = s.charAt(tmpPos++);
+      if (!isLetterOrDigit(d)) {
+        if (d == ';') {
+          String t = s.substring(curPos, tmpPos - 1);
+          Character ch = charTable.get(t);
+          if (ch != null) {
+            return new DecodeResult(true, ch, tmpPos);
+          }
+        }
+        break;
+      }
+    }
+    return new DecodeResult(false, '&', curPos);
   }
 
   private static boolean isLetterOrDigit(char c) {
@@ -144,10 +165,36 @@ public class HTMLDecoder {
         // Unix newline
         || (ch == '\n')
         // tab
-        || (ch == '	')
+        || (ch == '\t')
         // Control
         || (ch == '\u000c')
         // zero width space
         || (ch == '\u200b');
+  }
+
+  private HTMLDecoder() {}
+
+  private static Character parseHexChar(String t) {
+    try {
+      int i = Integer.parseInt(t, 16);
+      if ((i >= 0) && (i < 65536)) {
+        return (char) i;
+      }
+    } catch (NumberFormatException _) {
+      // ignore
+    }
+    return null;
+  }
+
+  private static Character parseDecChar(String t) {
+    try {
+      int i = Integer.parseInt(t);
+      if ((i >= 0) && (i < 65536)) {
+        return (char) i;
+      }
+    } catch (NumberFormatException _) {
+      // ignore
+    }
+    return null;
   }
 }

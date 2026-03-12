@@ -1,39 +1,66 @@
 package network.crypta.support;
 
 import java.util.*;
+
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A hashtable that can store several values for each entry.
+ * A thread-safe multimap storing zero or more values per key.
  *
- * <p>This object is thread-safe, it may be read and updated concurrently. Access rules are similar
- * to collections from {@link java.util.concurrent} package.
+ * <p>This class provides a simple multi-value table backed by a {@link
+ * java.util.concurrent.ConcurrentHashMap} from keys to immutable {@link List}s of values. Reads and
+ * updates may run concurrently; updates replace a key's value list atomically with a new immutable
+ * list. Methods that expose collections clearly document whether they return live views or
+ * immutable snapshots.
  *
+ * <p>Nullability and semantics:
+ *
+ * <ul>
+ *   <li>Keys must be non-null; passing a null key throws {@link NullPointerException} (enforced by
+ *       {@code ConcurrentHashMap}).
+ *   <li>Value elements may be null and are stored as {@code null} entries in the per-key list.
+ *   <li>Per-key lists are immutable; callers cannot modify them.
+ * </ul>
+ *
+ * <p>Threading: All public operations are safe for concurrent use without external synchronization.
+ * Atomicity is at the key level; for example, {@link #put(Object, Object)} installs a new immutable
+ * list for the key in a single {@code Map.compute} operation.
+ *
+ * @param <K> key type (non-null)
+ * @param <V> value element type (elements may be null)
  * @author oskar
  */
 public class MultiValueTable<K, V> {
   private final Map<K, List<V>> table;
 
+  /** Creates an empty table with a default initial capacity. */
   public MultiValueTable() {
     table = new ConcurrentHashMap<>();
   }
 
+  /**
+   * Creates an empty table with the given initial capacity.
+   *
+   * @param initialSize expected number of keys; used to size the underlying map
+   * @throws IllegalArgumentException if {@code initialSize} is negative
+   */
   public MultiValueTable(int initialSize) {
     table = new ConcurrentHashMap<>(initialSize);
   }
 
   /**
-   * Deprecated constructor, please use other variant with only one single size parameter
+   * Builds a table from parallel arrays of keys and values, pairing entries by index.
    *
-   * @param initialSize table initial size
-   * @param unused this parameter was used as initial value collection size, and it is not unused
-   *     anymore. Values collections grow according to Java collection rules.
+   * <p>For duplicated keys, values are appended in encounter order for that key.
+   *
+   * @param keys keys array; elements must be non-null
+   * @param values values array; elements may be null
+   * @param <K> key type
+   * @param <V> value element type
+   * @return a new table containing all pairs
+   * @throws IllegalArgumentException if arrays have different lengths
+   * @throws NullPointerException if any key is null
    */
-  @Deprecated
-  public MultiValueTable(int initialSize, int unused) {
-    this(initialSize);
-  }
-
   public static <K, V> MultiValueTable<K, V> from(K[] keys, V[] values) {
     if (keys.length != values.length) {
       throw new IllegalArgumentException(
@@ -47,24 +74,55 @@ public class MultiValueTable<K, V> {
     return table;
   }
 
+  /**
+   * Builds a single-key table from the given key and vararg values.
+   *
+   * @param key non-null key
+   * @param values values to associate with {@code key}; elements may be null
+   * @param <K> key type
+   * @param <V> value element type
+   * @return a new table with {@code key -> values}
+   * @throws NullPointerException if {@code key} is null
+   */
   @SafeVarargs
   public static <K, V> MultiValueTable<K, V> from(K key, V... values) {
     return from(key, Arrays.asList(values));
   }
 
+  /**
+   * Builds a single-key table from the given key and values collection.
+   *
+   * @param key non-null key
+   * @param values values to associate with {@code key}; elements may be null
+   * @param <K> key type
+   * @param <V> value element type
+   * @return a new table with {@code key -> values}
+   * @throws NullPointerException if {@code key} or {@code values} is null
+   */
   public static <K, V> MultiValueTable<K, V> from(K key, Collection<? extends V> values) {
     MultiValueTable<K, V> table = new MultiValueTable<>(1);
     table.putAll(key, values);
     return table;
   }
 
+  /**
+   * Appends a single value to the list associated with the key.
+   *
+   * <p>If the key is absent, a new immutable list containing the value is installed. If present, a
+   * new immutable list is created by copying the existing list and appending the value, then
+   * atomically replacing the old list.
+   *
+   * @param key non-null key
+   * @param value value to append; may be null
+   * @throws NullPointerException if {@code key} is null
+   */
   public void put(K key, V value) {
     this.table.compute(
         key,
         (k, previousList) -> {
           List<V> result;
           if (previousList == null) {
-            // FIXME: replace with List.of(v) when Java version baseline becomes >= 11
+            // Use ArrayList to preserve null-accepting semantics and predictable growth.
             result = new ArrayList<>(1);
           } else {
             result = new ArrayList<>(previousList.size() + 1);
@@ -75,6 +133,16 @@ public class MultiValueTable<K, V> {
         });
   }
 
+  /**
+   * Appends all elements to the list associated with the key.
+   *
+   * <p>Behavior mirrors {@link #put(Object, Object)} but appends an entire collection in one atomic
+   * replacement.
+   *
+   * @param key non-null key
+   * @param elements values to append; elements may be null
+   * @throws NullPointerException if {@code key} or {@code elements} is null
+   */
   public void putAll(K key, Collection<? extends V> elements) {
     this.table.compute(
         key,
@@ -92,16 +160,14 @@ public class MultiValueTable<K, V> {
   }
 
   /**
-   * Returns the first element for this key.
+   * Returns the first value associated with the key, or {@code null} if none.
    *
-   * @deprecated use {@link #getFirst(Object)} instead
+   * <p>When the key exists, the first element is the earliest value inserted for that key.
+   *
+   * @param key non-null key
+   * @return first value, or {@code null} when the key is missing or mapped to an empty list
+   * @throws NullPointerException if {@code key} is null
    */
-  @Deprecated
-  public V get(K key) {
-    return getFirst(key);
-  }
-
-  /** Returns the first element for this key. */
   public V getFirst(K key) {
     List<V> list = this.table.get(key);
     if (list == null || list.isEmpty()) {
@@ -110,112 +176,106 @@ public class MultiValueTable<K, V> {
     return list.getFirst();
   }
 
+  /**
+   * Returns whether the table contains the key.
+   *
+   * @param key non-null key
+   * @return {@code true} if present; {@code false} otherwise
+   * @throws NullPointerException if {@code key} is null
+   */
   public boolean containsKey(K key) {
     return this.table.containsKey(key);
   }
 
-  public boolean containsElement(K key, V value) {
-    List<V> list = this.table.get(key);
-    if (list == null || list.isEmpty()) {
-      return false;
-    }
-    return list.contains(value);
-  }
-
   /**
-   * Returns mapped value collection as {@link Enumeration}. This enumeration is backed by the
-   * immutable collection of mapped values, see more in the description of {@link
-   * #getAllAsList(Object)}.
+   * Returns the values for a key as an immutable {@link List}.
    *
-   * @deprecated use other {@link #getAllAsList(Object)} method variant, which provides a {@link
-   *     List}
-   * @param key key mapping
-   * @return mapped value collection as {@link Enumeration}
-   */
-  @Deprecated
-  public Enumeration<V> getAll(K key) {
-    return Collections.enumeration(getAllAsList(key));
-  }
-
-  /**
-   * Returns mapped value collection as {@link List}.
+   * <p>The returned list is the current immutable list installed for the key and will not reflect
+   * later changes: subsequent {@link #put(Object, Object)} or {@link #putAll(Object, Collection)}
+   * calls for the same key install a new list and leave previously returned lists unchanged.
    *
-   * @param key key mapping
-   * @return The immutable collection of mapped values. This {@link List} does not depend on any
-   *     modifications in the multi-value table.
+   * @param key non-null key
+   * @return immutable list of values; {@link Collections#emptyList()} if the key is absent
+   * @throws NullPointerException if {@code key} is null
    */
   public List<V> getAllAsList(K key) {
     return this.table.getOrDefault(key, Collections.emptyList());
   }
 
   /**
-   * To be used in for(x : y).
+   * Returns an {@link Iterable} view of the current values for a key.
    *
-   * @return {@link Iterable} for the mapped value collection. This {@link Iterable} is backed by
-   *     the immutable collection of mapped values. Iteration does not depend on any modifications
-   *     in the multi-value table.
+   * <p>This is equivalent to {@link #getAllAsList(Object)} and is convenient for enhanced {@code
+   * for} loops. The underlying list is immutable and does not reflect later changes for the key.
+   *
+   * @param key non-null key
+   * @return iterable over the current immutable list
+   * @throws NullPointerException if {@code key} is null
    */
   public Iterable<V> iterateAll(K key) {
     return getAllAsList(key);
   }
 
+  /**
+   * Returns the number of values currently associated with the key.
+   *
+   * @param key non-null key
+   * @return value count for the key (zero when absent)
+   * @throws NullPointerException if {@code key} is null
+   */
   public int countAll(K key) {
     return getAllAsList(key).size();
   }
 
   /**
-   * Returns mapped value collection as raw {@link Object}
+   * Removes all values for the key.
    *
-   * @param key key mapping
-   * @return a new {@link Vector} of mapped values. For compatibility reasons this method returns a
-   *     raw {@link Object}, and the real type of returned value is {@link Vector}. The returned
-   *     value is a new modifiable copy of mapped values.
-   * @deprecated this method was used in previous {@code synchronized} implementation variant. Use
-   *     other {@link #getAllAsList(Object)})} method variant, which provides a typed {@link List}
-   *     collection. *
+   * @param key non-null key
+   * @throws NullPointerException if {@code key} is null
    */
-  @Deprecated
-  public Object getSync(K key) {
-    List<V> l = this.table.get(key);
-    if (l == null) {
-      return null;
-    }
-    return new Vector<>(l);
-  }
-
-  /**
-   * Returns mapped value collection as array
-   *
-   * @param key key mapping
-   * @return the new array copy of values mapped to provided key or {@code null} if key is missing
-   * @deprecated use {@link #getAllAsList(Object)} with {@link List#toArray()} to obtain the values
-   *     as object array
-   */
-  @Deprecated
-  public Object[] getArray(K key) {
-    List<V> l = this.table.get(key);
-    if (l == null) {
-      return null;
-    }
-    return l.toArray();
-  }
-
   public void remove(K key) {
     this.table.remove(key);
   }
 
+  /**
+   * Returns whether the table has no keys.
+   *
+   * @return {@code true} if empty; {@code false} otherwise
+   */
   public boolean isEmpty() {
     return this.table.isEmpty();
   }
 
+  /**
+   * Returns the number of distinct keys currently in the table.
+   *
+   * @return key count
+   */
   public int size() {
     return this.table.size();
   }
 
+  /**
+   * Removes all keys and values.
+   *
+   * <p>This operation is atomic with respect to individual key mappings but does not block
+   * concurrent reads.
+   */
   public void clear() {
     this.table.clear();
   }
 
+  /**
+   * Removes a single occurrence of {@code value} from the list for {@code key}, if present.
+   *
+   * <p>When the removal empties the list, the key is removed from the table.
+   *
+   * @param key non-null key
+   * @param value value to remove; a {@code null} value removes a {@code null} element if present
+   * @return {@code true} if an element was removed, {@code false} otherwise
+   * @throws NullPointerException if {@code key} is null
+   */
+  @SuppressWarnings("UnusedReturnValue")
   public boolean removeElement(K key, V value) {
     boolean[] removed = new boolean[1];
     this.table.computeIfPresent(
@@ -233,7 +293,7 @@ public class MultiValueTable<K, V> {
             }
           }
           if (result.isEmpty()) {
-            // null result removes element from Map
+            // Returning null to Map.computeIfPresent removes the mapping.
             return null;
           }
           return Collections.unmodifiableList(result);
@@ -242,47 +302,24 @@ public class MultiValueTable<K, V> {
   }
 
   /**
-   * Returns table keys as {@link Enumeration}. This enumeration is backed by the immutable copy of
-   * keys, see more in the description of {@link #keySet()}.
+   * Returns an immutable snapshot of the current key set.
    *
-   * @return table keys as {@link Enumeration}
-   * @deprecated use other {@link #keySet()} method variant, which provides a {@link Set} of keys.
-   */
-  @Deprecated
-  public Enumeration<K> keys() {
-    return Collections.enumeration(keySet());
-  }
-
-  /**
-   * @return The immutable copy of table keys. This collection result cannot be modified, and
-   *     therefore it cannot affect any keys in the multi-value table. Any following changes in the
-   *     table keys are not reflected in the returned collection.
+   * <p>The returned set cannot be modified and does not reflect later changes to the table.
+   *
+   * @return immutable snapshot of keys
    */
   public Set<K> keySet() {
-    // FIXME: replace with Set.copyOf() when Java version baseline becomes >= 11
-    return Collections.unmodifiableSet(new HashSet<>(this.table.keySet()));
+    // Java 10+: returns an unmodifiable snapshot of current keys.
+    return Set.copyOf(this.table.keySet());
   }
 
   /**
-   * Returns table values as {@link Enumeration}. This iterates over value collections mapped to all
-   * existing keys. This enumeration is backed by the immutable copy of values, see more in the
-   * description of {@link #values()}
+   * Returns an immutable snapshot of all values across all keys.
    *
-   * @return table values
-   * @deprecated use other {@link #values()} method variant, which provides a {@link Collection} of
-   *     values. *
-   */
-  @Deprecated
-  public Enumeration<V> elements() {
-    return Collections.enumeration(values());
-  }
-
-  /**
-   * @return The immutable copy of table entries. This collection result cannot be modified, and
-   *     therefore it cannot affect any entries in the multi-value table. Each {@link Map.Entry} in
-   *     the returned collection is also unmodifiable, and it cannot be used to update entries in
-   *     this multi-value table. Any following changes in the table keys are not reflected in the
-   *     returned collection.
+   * <p>Order is the concatenation of per-key lists in the map's iteration order. The returned
+   * collection is independent of subsequent updates.
+   *
+   * @return immutable snapshot of all values
    */
   public Collection<V> values() {
     List<V> allValues = new ArrayList<>();
@@ -293,18 +330,29 @@ public class MultiValueTable<K, V> {
   }
 
   /**
-   * @return The immutable copy of table entries. This collection result cannot be modified, and
-   *     therefore it cannot affect any entries in the multi-value table. Each {@link Map.Entry} in
-   *     the returned collection is also unmodifiable, and it cannot be used to update entries in
-   *     this multi-value table. Any following changes of the table keys are not reflected in the
-   *     returned collection.
+   * Returns an immutable snapshot of the table entries.
+   *
+   * <p>The returned set contains unmodifiable {@link Map.Entry} instances; calling {@link
+   * Map.Entry#setValue(Object)} throws {@link UnsupportedOperationException}. The snapshot does not
+   * reflect subsequent updates to the table.
+   *
+   * @return immutable snapshot of entries with unmodifiable values lists
    */
   public Set<Map.Entry<K, List<V>>> entrySet() {
-    // FIXME: replace with Set.copyOf() when Java version baseline becomes >= 11
-    return Collections.unmodifiableSet(
-        new HashSet<>(Collections.unmodifiableMap(this.table).entrySet()));
+    // Snapshot as an unmodifiable set of unmodifiable entries.
+    // Use Map.entry(...) to ensure Map.Entry#setValue is unsupported.
+    Set<Map.Entry<K, List<V>>> snapshot = HashSet.newHashSet(this.table.size());
+    for (Map.Entry<K, List<V>> e : this.table.entrySet()) {
+      snapshot.add(Map.entry(e.getKey(), e.getValue()));
+    }
+    return Collections.unmodifiableSet(snapshot);
   }
 
+  /**
+   * Returns a human-readable representation intended for diagnostics.
+   *
+   * @return string representation including the backing map
+   */
   @Override
   public String toString() {
     return "[MultiValueTable table=" + table + "]";

@@ -10,10 +10,34 @@ import java.util.Map;
 import network.crypta.l10n.NodeL10n;
 
 /**
- * Content filter for GIF's. This throws out all optional non-raster data that it cannot validate.
+ * Validates and sanitizes GIF image data (GIF87a/GIF89a).
  *
- * <p>References: https://www.w3.org/Graphics/GIF/spec-gif87.txt
- * https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+ * <p>This filter parses the GIF header and logical screen descriptor, optionally validates and
+ * forwards the global and local color tables, and then processes the data stream block by block. It
+ * preserves raster image data while discarding, normalizing, or ignoring unsupported or malformed
+ * optional structures. For GIF89a, a limited set of application/graphic control extensions is
+ * recognized (notably the Netscape loop extension); invalid or duplicated control data is safely
+ * skipped. The implementation favors a positive, parsing-based approach and rejects inputs that do
+ * not conform to the respective specification.
+ *
+ * <p>Use this filter when accepting GIF files from untrusted sources and a fast, streaming
+ * validation is required before handing the content to downstream consumers such as image decoders
+ * or web browsers. The filter operates without loading the full image into memory, does not rely on
+ * {@code available()} and retains no shared mutable state, so a single instance can be reused
+ * across requests as long as a fresh stream pair is provided per invocation.
+ *
+ * <ul>
+ *   <li>Checks header and logical screen descriptor, optionally copies global color table.
+ *   <li>Validates image descriptors and LZW minimum code size range.
+ *   <li>GIF87a: enforces legacy constraints (no sort flag, no aspect ratio, disposal 0).
+ *   <li>GIF89a: preserves a valid graphic control block for the next image only.
+ * </ul>
+ *
+ * <p>References: <a href="https://www.w3.org/Graphics/GIF/spec-gif87.txt">GIF87a</a>, <a
+ * href="https://www.w3.org/Graphics/GIF/spec-gif89a.txt">GIF89a</a>
+ *
+ * @see ContentDataFilter
+ * @see #readFilter(InputStream, OutputStream, String, java.util.Map, String, FilterCallback)
  */
 public class GIFFilter implements ContentDataFilter {
 
@@ -25,6 +49,50 @@ public class GIFFilter implements ContentDataFilter {
     (byte) 'G', (byte) 'I', (byte) 'F', (byte) '8', (byte) '9', (byte) 'a'
   };
 
+  /**
+   * Creates a new GIF filter instance.
+   *
+   * <p>Instances are stateless and may be reused across validations as long as a fresh input/output
+   * stream pair is supplied to {@link #readFilter(InputStream, OutputStream, String, java.util.Map,
+   * String, FilterCallback)} for each invocation. No configuration is required.
+   */
+  public GIFFilter() {
+    // Intentionally empty: the filter is stateless and requires no initialization.
+  }
+
+  /**
+   * Validates and forwards GIF image bytes in a streaming fashion.
+   *
+   * <p>The method accepts GIF87a or GIF89a inputs, verifies the header and logical screen
+   * descriptor, and copies the content while dropping or normalizing unsupported or invalid
+   * optional blocks. For GIF87a a stricter rule set applies (no sort flag, no aspect ratio, and a
+   * disposal method of zero). When processing GIF89a, a valid graphic control block is emitted once
+   * for the subsequent image descriptor only; loop extensions are preserved when well-formed and
+   * encountered before the first render block. The filter does not parse or validate the LZW
+   * payload beyond checking the minimum code size range, and it does not rely on {@code
+   * available()} to detect end of stream.
+   *
+   * <pre>{@code
+   * // Example: validate and forward GIF bytes
+   * var filter = new GIFFilter();
+   * filter.readFilter(inStream, outStream, null, java.util.Map.of(), null, null);
+   * }</pre>
+   *
+   * @param input source stream containing the candidate GIF image; may be network-backed and is not
+   *     closed by this method.
+   * @param output destination for sanitized bytes; the method flushes the stream but does not close
+   *     it on completion.
+   * @param charset declared character set (ignored for GIF as a binary format); may be {@code null}
+   *     or empty.
+   * @param otherParams additional media-type parameters (unused for GIF); callers may pass an empty
+   *     map, entries are ignored by this implementation.
+   * @param schemeHostAndPort externally visible endpoint information (unused for GIF); may be
+   *     {@code null}.
+   * @param cb optional callback for content filters that support fine-grained decisions (unused for
+   *     GIF); may be {@code null}.
+   * @throws IOException if an I/O failure occurs during read or write, or if validation fails and a
+   *     {@link DataFilterException} is raised to reject the content.
+   */
   @Override
   public void readFilter(
       InputStream input,
@@ -47,10 +115,11 @@ public class GIFFilter implements ContentDataFilter {
       output.write(headerCheck);
       if (isGIF87a) {
         GIF87aValidator.filter(input, output);
-      } else if (isGIF89a) {
+      } else {
+        // By elimination, this must be GIF89a here.
         GIF89aValidator.filter(input, output);
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       throwDataError(l10n("unexpectedEOFTitle"), l10n("unexpectedEOF"));
     }
     output.flush();
@@ -81,13 +150,23 @@ public class GIFFilter implements ContentDataFilter {
     }
 
     /** Checks whether the parsed screen descriptor is valid. */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     protected boolean validateScreenDescriptor() {
       // Not in the specification, but check whether the background color index is within
       // the bounds of the Global Color Table just to be sure.
       return screenBackgroundColor < screenColors;
     }
 
-    /** Checks whether the given image flags are valid. */
+    /**
+     * Checks whether the given image flags are valid.
+     *
+     * <p>The default implementation accepts all flag combinations. Subclasses may override to
+     * enforce format-specific constraints (for example, GIF87a restrictions).
+     *
+     * @param imageFlags the per-image flag byte as read from the stream
+     * @return {@code true} to accept the image; {@code false} to reject and skip its data
+     */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     protected boolean validateImageFlags(int imageFlags) {
       return true;
     }
@@ -147,17 +226,14 @@ public class GIFFilter implements ContentDataFilter {
       int lastByte;
       while (!terminated && (lastByte = input.read()) != -1) {
         switch (lastByte) {
-          case IMAGE_SEPARATOR:
-            imageSeen |= filterImage();
-            break;
-          case GIF_TERMINATOR:
-            terminated |= imageSeen;
-            break;
-          case EXTENSION_INTRODUCER:
-            filterExtensionBlock();
-            break;
-          default:
+          case IMAGE_SEPARATOR -> imageSeen |= filterImage();
+          case GIF_TERMINATOR ->
+              // If we have seen at least one image, encountering the terminator ends the stream.
+              terminated = imageSeen;
+          case EXTENSION_INTRODUCER -> filterExtensionBlock();
+          default -> {
             // The specification expects us to skip other data; we can simply omit it.
+          }
         }
       }
       if (!imageSeen) {
@@ -384,14 +460,9 @@ public class GIFFilter implements ContentDataFilter {
     protected void filterExtensionBlock() throws IOException {
       int label = readByte();
       switch (label) {
-        case GRAPHIC_CONTROL_LABEL:
-          readGraphicControl();
-          break;
-        case APPLICATION_LABEL:
-          filterApplicationBlock();
-          break;
-        default:
-          skipSubBlocks();
+        case GRAPHIC_CONTROL_LABEL -> readGraphicControl();
+        case APPLICATION_LABEL -> filterApplicationBlock();
+        default -> skipSubBlocks();
       }
     }
 

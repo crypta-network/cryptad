@@ -1,19 +1,19 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
-
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import network.crypta.support.Fields;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class CryptUtilTest {
+import static org.junit.jupiter.api.Assertions.*;
+
+class CryptUtilTest {
 
   @Test
-  public void testRandomBytes() {
+  void testRandomBytes() {
     // two predictable pseudo-random sequence
     MersenneTwister mt1 = new MersenneTwister(Long.MAX_VALUE);
     MersenneTwister mt2 = new MersenneTwister(Long.MAX_VALUE);
@@ -25,13 +25,13 @@ public class CryptUtilTest {
         mt1.nextBytes(b1);
         Util.randomBytes(mt2, b2, off, len);
         assertTrue(
-            "Random offset=" + off + " length=" + len, Fields.byteArrayEqual(b1, b2, 0, off, len));
+            Fields.byteArrayEqual(b1, b2, 0, off, len), "Random offset=" + off + " length=" + len);
       }
     }
   }
 
   @Test
-  public void testSecureRandomBytes() {
+  void testSecureRandomBytes() {
     SecureRandom r1;
     SecureRandom r2;
     try {
@@ -68,8 +68,8 @@ public class CryptUtilTest {
         r1.nextBytes(b1);
         Util.randomBytes(r2, b2, off, len);
         assertTrue(
-            "SecureRandom offset=" + off + " length=" + len,
-            Fields.byteArrayEqual(b1, b2, 0, off, len));
+            Fields.byteArrayEqual(b1, b2, 0, off, len),
+            "SecureRandom offset=" + off + " length=" + len);
       }
     }
   }

@@ -1,6 +1,8 @@
 package network.crypta.store.caching;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.ProxyFreenetStore;
@@ -22,10 +24,9 @@ public class SleepingFreenetStore<T extends StorableBlock> extends ProxyFreenetS
   @Override
   public void put(T block, byte[] data, byte[] header, boolean overwrite, boolean oldBlock)
       throws IOException, KeyCollisionException {
-    try {
-      Thread.sleep(delay);
-    } catch (InterruptedException e) {
-      // Ignore.
+    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(delay));
+    if (Thread.interrupted()) {
+      Thread.onSpinWait();
     }
     super.put(block, data, header, overwrite, oldBlock);
   }

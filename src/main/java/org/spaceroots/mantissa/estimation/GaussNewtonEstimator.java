@@ -1,5 +1,6 @@
 package org.spaceroots.mantissa.estimation;
 
+import java.io.Serial;
 import java.io.Serializable;
 import org.spaceroots.mantissa.linalg.GeneralMatrix;
 import org.spaceroots.mantissa.linalg.Matrix;
@@ -7,10 +8,24 @@ import org.spaceroots.mantissa.linalg.SingularMatrixException;
 import org.spaceroots.mantissa.linalg.SymetricalMatrix;
 
 /**
- * This class implements a solver for estimation problems.
+ * Gauss-Newton implementation of a weighted least squares estimator.
  *
- * <p>This class solves estimation problems using a weighted least squares criterion on the
- * measurement residuals. It uses a Gauss-Newton algorithm.
+ * <p>The estimator iteratively refines a set of {@link EstimatedParameter estimated parameters} so
+ * that the weighted residuals of the provided {@link WeightedMeasurement measurements} are
+ * minimized in the least squares sense. It follows the classical Gauss-Newton scheme: linearize the
+ * model around the current parameters, solve the normal equations, and update the parameters.
+ * Convergence is governed by configurable thresholds that balance numerical stability against
+ * runtime cost. The class is mutable during an estimation run but not thread-safe; callers should
+ * isolate instances per estimation session or provide external synchronization if shared. Typical
+ * usage builds an instance with problem-specific tolerances, calls {@link
+ * #estimate(EstimationProblem)} repeatedly for different problems, and inspects derived metrics
+ * such as {@link #getRMS(EstimationProblem)} to judge fit quality.
+ *
+ * <ul>
+ *   <li>Iterative nonlinear least squares with Gauss-Newton updates
+ *   <li>Configurable iteration cap, steady-state detection, and singularity guard
+ *   <li>Convenience path for fully linear problems via {@link #linearEstimate(EstimationProblem)}
+ * </ul>
  *
  * @version $Id: GaussNewtonEstimator.java 1678 2005-12-16 11:11:40Z luc $
  * @author L. Maisonobe
@@ -18,32 +33,21 @@ import org.spaceroots.mantissa.linalg.SymetricalMatrix;
 public class GaussNewtonEstimator implements Estimator, Serializable {
 
   /**
-   * Simple constructor.
+   * Build an estimator with explicit convergence and stability thresholds.
    *
-   * <p>This constructor build an estimator and store its convergence characteristics.
+   * <p>The constructor captures the stopping rules used by every subsequent estimation run. An
+   * iteration stops early when the criterion falls under the {@code convergence} floor or when two
+   * consecutive criteria differ by less than {@code steadyStateThreshold} times the current value
+   * ({@code Math.abs(Jn - JnMinus1) < Jn * steadyStateThreshold}). A failure to satisfy either rule
+   * within {@code maxIterations} iterations results in an {@link EstimationException} during
+   * execution. The {@code epsilon} parameter defines the minimal pivot magnitude accepted by the
+   * linear solver; values below it are treated as singular to avoid unstable updates. Choose
+   * thresholds based on measurement noise level and acceptable runtime.
    *
-   * <p>An estimator is considered to have converged whenever either the criterion goes below a
-   * physical threshold under which improvements are considered useless or when the algorithm is
-   * unable to improve it (even if it is still high). The first condition that is met stops the
-   * iterations.
-   *
-   * <p>The fact an estimator has converged does not mean that the model accurately fits the
-   * measurements. It only means no better solution can be found, it does not mean this one is good.
-   * Such an analysis is left to the caller.
-   *
-   * <p>If neither conditions are fulfilled before a given number of iterations, the algorithm is
-   * considered to have failed and an {@link EstimationException} is thrown.
-   *
-   * @param maxIterations maximum number of iterations allowed
-   * @param convergence criterion threshold below which we do not need to improve the criterion
-   *     anymore
-   * @param steadyStateThreshold steady state detection threshold, the problem has converged has
-   *     reached a steady state if <code>Math.abs (Jn - Jn-1) < Jn * convergence</code>, where
-   *     <code>Jn</code> and <code>Jn-1</code> are the current and preceding criterion value (square
-   *     sum of the weighted residuals of considered measurements).
-   * @param epsilon threshold under which the matrix of the linearized problem is considered
-   *     singular (see {@link org.spaceroots.mantissa.linalg.SquareMatrix#solve(Matrix,double)
-   *     SquareMatrix.solve}).
+   * @param maxIterations maximum number of Gauss-Newton iterations permitted before failure
+   * @param convergence absolute criterion floor; values below stop further refinements
+   * @param steadyStateThreshold relative change limit detecting stalled improvement between steps
+   * @param epsilon smallest allowed diagonal pivot before the normal matrix is considered singular
    */
   public GaussNewtonEstimator(
       int maxIterations, double convergence, double steadyStateThreshold, double epsilon) {
@@ -54,25 +58,31 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
   }
 
   /**
-   * Solve an estimation problem using a least squares criterion.
+   * Solve an estimation problem using iterative Gauss-Newton updates.
    *
-   * <p>This method set the unbound parameters of the given problem starting from their current
-   * values through several iterations. At each step, the unbound parameters are changed in order to
-   * minimize a weighted least square criterion based on the measurements of the problem.
+   * <p>The method starts from the current estimates stored in the {@code problem} and repeatedly
+   * linearizes the model, solves the associated normal equations, and shifts the parameters toward
+   * the least squares minimum. Iterations end when either the criterion falls below the configured
+   * {@code convergence} floor or changes less than {@code steadyStateThreshold} relative to its
+   * current value, indicating steady state. Failure to satisfy these conditions within {@code
+   * maxIterations} steps triggers an {@link EstimationException}. Parameter arrays and measurement
+   * collections provided by the problem instance are mutated in place.
    *
-   * <p>The iterations are stopped either when the criterion goes below a physical threshold under
-   * which improvement are considered useless or when the algorithm is unable to improve it (even if
-   * it is still high). The first condition that is met stops the iterations. If the convergence it
-   * nos reached before the maximum number of iterations, an {@link EstimationException} is thrown.
+   * <p>The routine is not thread-safe and assumes the problem is consistent across iterations. The
+   * caller should ensure residuals and partial derivatives are recomputed on each invocation of
+   * {@link WeightedMeasurement} accessors.
    *
-   * @param problem estimation problem to solve
-   * @exception EstimationException if the problem cannot be solved
+   * @param problem estimation problem supplying measurements and adjustable parameters; must be
+   *     non-null and return consistent residuals for each iteration
+   * @exception EstimationException if convergence fails or the linear subproblem becomes singular
    * @see EstimationProblem
    */
+  @Override
   public void estimate(EstimationProblem problem) throws EstimationException {
     int iterations = 0;
-    double previous = 0.0;
-    double current = 0.0;
+    double previous = evaluateCriterion(problem);
+    double current;
+    double difference;
 
     // iterate until convergence is reached
     do {
@@ -85,25 +95,27 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
       // perform one iteration
       linearEstimate(problem);
 
-      previous = current;
       current = evaluateCriterion(problem);
+      difference = Math.abs(previous - current);
+      previous = current;
 
     } while ((iterations < 2)
-        || (Math.abs(previous - current) > (current * steadyStateThreshold)
-            && (Math.abs(current) > convergence)));
+        || (difference > (current * steadyStateThreshold) && (Math.abs(current) > convergence)));
   }
 
   /**
-   * Estimate the solution of a linear least square problem.
+   * Perform one linearized Gauss-Newton step or solve a purely linear problem.
    *
-   * <p>The Gauss-Newton algorithm is iterative. Each iteration consist in solving a linearized
-   * least square problem. Several iterations are needed for general problems since the
-   * linearization is only an approximation of the problem behaviour. However, for linear problems
-   * one iteration is enough to get the solution. This method is provided in the public interface in
-   * order to handle more efficiently these linear problems.
+   * <p>The routine constructs the normal matrix and right-hand side from the measurement residuals
+   * and partial derivatives, solves the resulting linear system, and applies the increment to each
+   * unbound parameter. For a truly linear model this single call completes the estimation; for
+   * nonlinear models it represents one iteration of {@link #estimate(EstimationProblem)}. The
+   * method relies on {@link WeightedMeasurement} to provide up-to-date residuals and partials at
+   * the current parameter values.
    *
-   * @param problem estimation problem to solve
-   * @exception EstimationException if the problem cannot be solved
+   * @param problem estimation problem whose measurements define residuals and Jacobian entries; it
+   *     must expose unbound parameters that can be updated in place
+   * @exception EstimationException if the normal matrix is singular or the solver cannot progress
    */
   public void linearEstimate(EstimationProblem problem) throws EstimationException {
 
@@ -113,16 +125,16 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
     // build the linear problem
     GeneralMatrix b = new GeneralMatrix(parameters.length, 1);
     SymetricalMatrix a = new SymetricalMatrix(parameters.length);
-    for (int i = 0; i < measurements.length; ++i) {
-      if (!measurements[i].isIgnored()) {
-        double weight = measurements[i].getWeight();
-        double residual = measurements[i].getResidual();
+    for (WeightedMeasurement measurement : measurements) {
+      if (!measurement.isIgnored()) {
+        double weight = measurement.getWeight();
+        double residual = measurement.getResidual();
 
         // compute the normal equation
         double[] grad = new double[parameters.length];
         Matrix bDecrement = new GeneralMatrix(parameters.length, 1);
         for (int j = 0; j < parameters.length; ++j) {
-          grad[j] = measurements[i].getPartial(parameters[j]);
+          grad[j] = measurement.getPartial(parameters[j]);
           bDecrement.setElement(j, 0, weight * residual * grad[j]);
         }
 
@@ -151,33 +163,57 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
     double criterion = 0.0;
     WeightedMeasurement[] measurements = problem.getMeasurements();
 
-    for (int i = 0; i < measurements.length; ++i) {
-      double residual = measurements[i].getResidual();
-      criterion += measurements[i].getWeight() * residual * residual;
+    for (WeightedMeasurement measurement : measurements) {
+      double residual = measurement.getResidual();
+      criterion += measurement.getWeight() * residual * residual;
     }
 
     return criterion;
   }
 
   /**
-   * Get the Root Mean Square value. Get the Root Mean Square value, i.e. the root of the arithmetic
-   * mean of the square of all weighted residuals. This is related to the criterion that is
-   * minimized by the estimator as follows: if <em>c</em> if the criterion, and <em>n</em> is the
-   * number of measurements, then the RMS is <em>sqrt (c/n)</em>.
+   * Compute the root-mean-square of the weighted residuals for a problem.
    *
-   * @param problem estimation problem
-   * @return RMS value
+   * <p>The RMS equals {@code sqrt(criterion / n)} where {@code criterion} is the sum of weighted
+   * squared residuals across the measurements and {@code n} is their count. It provides a
+   * normalized measure of fit quality that is directly comparable across problems with different
+   * numbers of measurements. The method does not alter the problem or the estimator state and can
+   * be invoked between iterations to monitor convergence progress.
+   *
+   * @param problem estimation problem supplying residuals and weights; must be consistent with the
+   *     most recent parameter estimates
+   * @return RMS value derived from current residuals; {@code Double.NaN} is never returned
    */
+  @Override
   public double getRMS(EstimationProblem problem) {
     double criterion = evaluateCriterion(problem);
     int n = problem.getMeasurements().length;
     return Math.sqrt(criterion / n);
   }
 
-  private int maxIterations;
-  private double steadyStateThreshold;
-  private double convergence;
-  private double epsilon;
+  /**
+   * Maximum count of Gauss-Newton iterations permitted for any estimation run. Exceeding this cap
+   * indicates the algorithm stalled or diverged and results in an {@link EstimationException}.
+   */
+  private final int maxIterations;
 
-  private static final long serialVersionUID = -7606628156644194170L;
+  /**
+   * Relative threshold used to detect steady-state behaviour between successive criteria values.
+   * When the absolute delta falls below this fraction of the current criterion, iterations stop.
+   */
+  private final double steadyStateThreshold;
+
+  /**
+   * Absolute criterion floor that short-circuits further refinement once reached, representing the
+   * minimum useful objective value given measurement noise and model fidelity.
+   */
+  private final double convergence;
+
+  /**
+   * Pivot magnitude cutoff passed to the linear solver; smaller values flag the normal matrix as
+   * numerically singular to prevent unstable parameter updates.
+   */
+  private final double epsilon;
+
+  @Serial private static final long serialVersionUID = -7606628156644194170L;
 }

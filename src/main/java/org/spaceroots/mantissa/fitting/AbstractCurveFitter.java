@@ -1,16 +1,22 @@
 package org.spaceroots.mantissa.fitting;
 
+import org.spaceroots.mantissa.estimation.*;
+
+import java.io.IOException;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import org.spaceroots.mantissa.estimation.*;
 
 /**
  * This class is the base class for all curve fitting classes in the package.
  *
  * <p>This class handles all common features of curve fitting like the sample points handling. It
  * declares two methods ({@link #valueAt} and {@link #partial}) which should be implemented by
- * sub-classes to define the precise shape of the curve they represent.
+ * subclasses to define the precise shape of the curve they represent.
  *
  * @version $Id: AbstractCurveFitter.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
@@ -26,7 +32,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
   protected AbstractCurveFitter(int n, Estimator estimator) {
 
     coefficients = new EstimatedParameter[n];
-    measurements = new ArrayList();
+    measurements = new ArrayList<>();
     this.estimator = estimator;
   }
 
@@ -34,14 +40,14 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    * Simple constructor.
    *
    * @param coefficients first estimate of the coefficients. A reference to this array is hold by
-   *     the newly created object. Its elements will be adjusted during the fitting process and they
-   *     will be set to the adjusted coefficients at the end.
+   *     the newly created object. Its elements will be adjusted during the fitting process, and
+   *     they will be set to the adjusted coefficients at the end.
    * @param estimator estimator to use for the fitting
    */
   protected AbstractCurveFitter(EstimatedParameter[] coefficients, Estimator estimator) {
 
     this.coefficients = coefficients;
-    measurements = new ArrayList();
+    measurements = new ArrayList<>();
     this.estimator = estimator;
   }
 
@@ -52,6 +58,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    * @param x abscissa
    * @param y ordinate, we have <code>y = f (x)</code>
    */
+  @SuppressWarnings("unused")
   public void addWeightedPair(double weight, double x, double y) {
     measurements.add(new FitMeasurement(weight, x, y));
   }
@@ -64,7 +71,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    *
    * @return coefficients of the curve
    * @exception EstimationException if the fitting is not possible (for example if the sample has to
-   *     few independant points)
+   *     few independent points)
    */
   public double[] fit() throws EstimationException {
     // perform the fit
@@ -79,8 +86,9 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
     return fittedCoefficients;
   }
 
+  @Override
   public WeightedMeasurement[] getMeasurements() {
-    return (WeightedMeasurement[]) measurements.toArray(new FitMeasurement[measurements.size()]);
+    return measurements.toArray(new FitMeasurement[0]);
   }
 
   /**
@@ -89,8 +97,9 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    *
    * @return unbound parameters
    */
+  @Override
   public EstimatedParameter[] getUnboundParameters() {
-    return (EstimatedParameter[]) coefficients.clone();
+    return coefficients.clone();
   }
 
   /**
@@ -98,8 +107,9 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    *
    * @return parameters
    */
+  @Override
   public EstimatedParameter[] getAllParameters() {
-    return (EstimatedParameter[]) coefficients.clone();
+    return coefficients.clone();
   }
 
   /**
@@ -114,24 +124,18 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
     // Since the samples are almost always already sorted, this
     // method is implemented as an insertion sort that reorders the
     // elements in place. Insertion sort is very efficient in this case.
-    FitMeasurement curr = (FitMeasurement) measurements.get(0);
+    FitMeasurement curr = measurements.getFirst();
     for (int j = 1; j < measurements.size(); ++j) {
-      FitMeasurement prec = curr;
-      curr = (FitMeasurement) measurements.get(j);
-      if (curr.x < prec.x) {
-        // the current element should be inserted closer to the beginning
+      FitMeasurement previous = curr;
+      curr = measurements.get(j);
+      if (curr.x < previous.x) {
         int i = j - 1;
-        FitMeasurement mI = (FitMeasurement) measurements.get(i);
-        while ((i >= 0) && (curr.x < mI.x)) {
-          measurements.set(i + 1, mI);
-          if (i-- != 0) {
-            mI = (FitMeasurement) measurements.get(i);
-          } else {
-            mI = null;
-          }
+        while (i >= 0 && curr.x < measurements.get(i).x) {
+          measurements.set(i + 1, measurements.get(i));
+          i--;
         }
         measurements.set(i + 1, curr);
-        curr = (FitMeasurement) measurements.get(j);
+        curr = measurements.get(j);
       }
     }
   }
@@ -157,7 +161,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    * This class represents the fit measurements. One measurement is a weighted pair (x, y), where
    * <code>y = f
    * (x)</code> is the value of the function at x abscissa. This class is an inner class because the
-   * methods related to the computation of f values and derivative are proveded by the fitter
+   * methods related to the computation of f values and derivative are provided by the fitter
    * implementations.
    */
   public class FitMeasurement extends WeightedMeasurement {
@@ -179,6 +183,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
      *
      * @return theoretical value at the measurement abscissa
      */
+    @Override
     public double getTheoreticalValue() {
       return valueAt(x);
     }
@@ -189,6 +194,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
      * @param p parameter with respect to which the derivative is requested
      * @return partial derivative
      */
+    @Override
     public double getPartial(EstimatedParameter p) {
       return partial(x, p);
     }
@@ -196,15 +202,25 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
     /** Abscissa of the measurement. */
     public final double x;
 
-    private static final long serialVersionUID = -2682582852369995960L;
+    @Serial private static final long serialVersionUID = -2682582852369995960L;
   }
 
   /** Coefficients of the function */
   protected EstimatedParameter[] coefficients;
 
   /** Measurements vector */
-  protected List measurements;
+  protected List<FitMeasurement> measurements;
 
   /** Estimator for the fitting problem. */
-  private Estimator estimator;
+  private final Estimator estimator;
+
+  @Serial
+  private void writeObject(ObjectOutputStream out) throws IOException {
+    throw new NotSerializableException(getClass().getName());
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    throw new NotSerializableException(getClass().getName());
+  }
 }

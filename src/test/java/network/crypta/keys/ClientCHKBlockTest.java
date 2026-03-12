@@ -1,25 +1,36 @@
 package network.crypta.keys;
 
-import static org.junit.Assert.*;
-
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
+import network.crypta.node.Node;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
+import network.crypta.support.io.BucketTools;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ClientCHKBlockTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SuppressWarnings("java:S100")
+class ClientCHKBlockTest {
 
   @Test
-  public void testEncodeDecodeEmptyBlock() throws Exception {
+  void testEncodeDecodeEmptyBlock() throws Exception {
     byte[] buf = new byte[0];
     checkBlock(buf, false);
     checkBlock(buf, true);
   }
 
   @Test
-  public void testEncodeDecodeFullBlock() throws Exception {
+  void testEncodeDecodeFullBlock() throws Exception {
     byte[] fullBlock = new byte[CHKBlock.DATA_LENGTH];
     MersenneTwister random = new MersenneTwister(42);
     for (int i = 0; i < 10; i++) {
@@ -30,7 +41,7 @@ public class ClientCHKBlockTest {
   }
 
   @Test
-  public void testEncodeDecodeShortInteger() throws Exception {
+  void testEncodeDecodeShortInteger() throws Exception {
     for (int i = 0; i < 100; i++) {
       String s = Integer.toString(i);
       checkBlock(s.getBytes(StandardCharsets.UTF_8), false);
@@ -39,7 +50,7 @@ public class ClientCHKBlockTest {
   }
 
   @Test
-  public void testEncodeDecodeRandomLength() throws Exception {
+  void testEncodeDecodeRandomLength() throws Exception {
     MersenneTwister random = new MersenneTwister(42);
     for (int i = 0; i < 10; i++) {
       byte[] buf = new byte[random.nextInt(CHKBlock.DATA_LENGTH + 1)];
@@ -50,7 +61,7 @@ public class ClientCHKBlockTest {
   }
 
   @Test
-  public void testEncodeDecodeNearlyFullBlock() throws Exception {
+  void testEncodeDecodeNearlyFullBlock() throws Exception {
     MersenneTwister random = new MersenneTwister(68);
     for (int i = 0; i < 10; i++) {
       byte[] buf = new byte[CHKBlock.DATA_LENGTH - i];
@@ -72,27 +83,19 @@ public class ClientCHKBlockTest {
     System.arraycopy(data, 0, copyOfData, 0, data.length);
     ClientCHKBlock encodedBlock =
         ClientCHKBlock.encode(
-            new ArrayBucket(data),
-            false,
-            false,
-            (short) -1,
-            data.length,
-            null,
+            new BlockEncodeParams(
+                new ArrayBucket(data), false, false, (short) -1, data.length, null),
             null,
             cryptoAlgorithm);
     // Not modified in-place.
-    assert (Arrays.equals(data, copyOfData));
+    assertArrayEquals(copyOfData, data);
     ClientCHK key = encodedBlock.getClientKey();
     if (newAlgo) {
       // Check with no JCA.
       ClientCHKBlock otherEncodedBlock =
           ClientCHKBlock.encode(
-              new ArrayBucket(data),
-              false,
-              false,
-              (short) -1,
-              data.length,
-              null,
+              new BlockEncodeParams(
+                  new ArrayBucket(data), false, false, (short) -1, data.length, null),
               null,
               cryptoAlgorithm,
               true);
@@ -105,13 +108,184 @@ public class ClientCHKBlockTest {
         CHKBlock.construct(
             encodedBlock.getBlock().data, encodedBlock.getBlock().headers, cryptoAlgorithm);
     ClientCHKBlock checkBlock = new ClientCHKBlock(block, key);
-    ArrayBucket checkData =
-        (ArrayBucket) checkBlock.decode(new ArrayBucketFactory(), data.length, false);
-    assert (Arrays.equals(checkData.toByteArray(), data));
-    if (newAlgo) {
-      checkData =
-          (ArrayBucket) checkBlock.decode(new ArrayBucketFactory(), data.length, false, true);
-      assert (Arrays.equals(checkData.toByteArray(), data));
+    try (Bucket checkData = checkBlock.decode(new ArrayBucketFactory(), data.length, false)) {
+      assertArrayEquals(data, BucketTools.toByteArray(checkData));
     }
+    if (newAlgo) {
+      try (Bucket checkData =
+          checkBlock.decode(new ArrayBucketFactory(), data.length, false, true)) {
+        assertArrayEquals(data, BucketTools.toByteArray(checkData));
+      }
+    }
+  }
+
+  @Test
+  void memoryDecode_whenCtrNoCompression_returnsOriginal() throws Exception {
+    byte[] buf = "hello world".getBytes(StandardCharsets.UTF_8);
+    ClientCHKBlock block =
+        ClientCHKBlock.encode(
+            buf, /* asMetadata= */ false, /* dontCompress= */ true, (short) -1, buf.length, null);
+    byte[] decoded = block.memoryDecode();
+    assertArrayEquals(buf, decoded);
+  }
+
+  @Test
+  void decode_whenWrongKey_expectCHKDecodeException() throws Exception {
+    byte[] data = "wrong-key test".getBytes(StandardCharsets.UTF_8);
+    ClientCHKBlock good =
+        ClientCHKBlock.encode(
+            data, /* asMetadata= */ false, /* dontCompress= */ true, (short) -1, data.length, null);
+
+    // Rebuild a block with the same bytes but a different client key (HMAC mismatch).
+    ClientCHK correctKey = good.getClientKey();
+    byte[] routing = correctKey.getRoutingKey();
+    byte[] extra = correctKey.getExtra();
+    byte[] wrongEnc = correctKey.getCryptoKey().clone();
+    wrongEnc[0] ^= 0x7F; // flip bits deterministically
+    ClientCHK wrongKey = new ClientCHK(routing, wrongEnc, extra);
+    ClientCHKBlock forged = forgeBlock(good, wrongKey);
+
+    assertThrows(
+        CHKDecodeException.class,
+        () -> {
+          try (Bucket ignored =
+              forged.decode(new ArrayBucketFactory(), data.length, /* dontCompress= */ false)) {
+            // Touch the resource to avoid an empty try block warning.
+            ignored.size();
+          }
+        });
+  }
+
+  @Test
+  void decode_whenCryptoKeyTooShort_expectCHKDecodeException() throws Exception {
+    byte[] data = "short-key test".getBytes(StandardCharsets.UTF_8);
+    ClientCHKBlock good =
+        ClientCHKBlock.encode(
+            data, /* asMetadata= */ false, /* dontCompress= */ true, (short) -1, data.length, null);
+
+    ClientCHK goodKey = good.getClientKey();
+    byte[] routing = goodKey.getRoutingKey();
+    byte[] extra = goodKey.getExtra();
+    // Use a deterministic short key: length SYMMETRIC_KEY_LENGTH - 1
+    byte[] shortKey = Arrays.copyOf(goodKey.getCryptoKey(), Node.SYMMETRIC_KEY_LENGTH - 1);
+    ClientCHK shortClientKey = new ClientCHK(routing, shortKey, extra);
+
+    ClientCHKBlock forged = forgeBlock(good, shortClientKey);
+
+    CHKDecodeException ex =
+        assertThrows(
+            CHKDecodeException.class,
+            () -> {
+              try (Bucket ignored =
+                  forged.decode(new ArrayBucketFactory(), data.length, /* dontCompress= */ false)) {
+                // Touch the resource to avoid an empty try block warning.
+                ignored.size();
+              }
+            });
+    // Message is stable in implementation; assert for clarity.
+    assertEquals("Crypto key too short", ex.getMessage());
+  }
+
+  @Test
+  void equalsAndHashCode_whenSameContent_expectEqual() throws Exception {
+    byte[] payload = "equality-check".getBytes(StandardCharsets.UTF_8);
+    ClientCHKBlock a =
+        ClientCHKBlock.encode(
+            payload,
+            /* asMetadata= */ false,
+            /* dontCompress= */ true,
+            (short) -1,
+            payload.length,
+            null);
+    ClientCHKBlock b =
+        ClientCHKBlock.encode(
+            payload,
+            /* asMetadata= */ false,
+            /* dontCompress= */ true,
+            (short) -1,
+            payload.length,
+            null);
+    assertEquals(a, b);
+    assertEquals(a.hashCode(), b.hashCode());
+
+    ClientCHKBlock different =
+        ClientCHKBlock.encode(
+            "different".getBytes(StandardCharsets.UTF_8),
+            /* asMetadata= */ false,
+            /* dontCompress= */ true,
+            (short) -1,
+            "different".length(),
+            null);
+    assertNotEquals(a, different);
+  }
+
+  @Test
+  void getClientKey_and_isMetadata_exposeExpectedValues() throws Exception {
+    byte[] payload = "meta".getBytes(StandardCharsets.UTF_8);
+    ClientCHKBlock meta =
+        ClientCHKBlock.encode(
+            payload,
+            /* asMetadata= */ true,
+            /* dontCompress= */ true,
+            (short) -1,
+            payload.length,
+            null);
+    assertNotNull(meta.getClientKey());
+    assertTrue(meta.isMetadata());
+
+    ClientCHKBlock nonMeta =
+        ClientCHKBlock.encode(
+            payload,
+            /* asMetadata= */ false,
+            /* dontCompress= */ true,
+            (short) -1,
+            payload.length,
+            null);
+    assertFalse(nonMeta.isMetadata());
+  }
+
+  @Test
+  void encodeNew_throwsOnWrongAlgorithm() {
+    byte[] data = new byte[CHKBlock.DATA_LENGTH];
+    byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
+    MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
+    ClientCHKEncodeParams params =
+        new ClientCHKEncodeParams(
+            new ClientCHKEncodePayload(data, /* dataLength= */ 0, md, encKey),
+            new ClientCHKEncodeAlgorithms(
+                /* asMetadata= */ false,
+                (short) -1,
+                Key.ALGO_AES_PCFB_256_SHA256,
+                KeyBlock.HASH_SHA256));
+    assertThrows(IllegalArgumentException.class, () -> ClientCHKBlock.encodeNew(params));
+  }
+
+  @Test
+  void innerEncode_doesNotModifyInputArray() {
+    byte[] data = new byte[CHKBlock.DATA_LENGTH];
+    for (int i = 0; i < data.length; i++) data[i] = (byte) (i & 0xFF);
+    byte[] original = data.clone();
+    MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
+    byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
+    ClientCHKBlock.innerEncode(
+        new ClientCHKEncodeParams(
+            new ClientCHKEncodePayload(data, /* dataLength= */ 123, md, encKey),
+            new ClientCHKEncodeAlgorithms(
+                /* asMetadata= */ false,
+                (short) -1,
+                Key.ALGO_AES_PCFB_256_SHA256,
+                KeyBlock.HASH_SHA256)));
+    // Ensure the original input array was not mutated
+    assertArrayEquals(original, data);
+  }
+
+  // Helpers
+  private static ClientCHKBlock forgeBlock(ClientCHKBlock template, ClientCHK newClientKey)
+      throws CHKVerifyException {
+    return new ClientCHKBlock(
+        template.getBlock().getData(),
+        template.getBlock().getHeaders(),
+        newClientKey,
+        /* verify= */ false);
   }
 }

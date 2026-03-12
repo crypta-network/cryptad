@@ -3,7 +3,7 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -15,36 +15,62 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.NoFreeBucket;
 
 /**
- * Object represents context for a single request. Is used as a token, when the Toadlet wants to
- * e.g. write a reply.
+ * Context object describing a single incoming HTTP request processed by the web interface layer.
+ * Implementations provide utilities for building responses, querying request-scoped metadata, and
+ * enforcing security policies such as form-password validation and access level checks. A {@code
+ * ToadletContext} is typically created by the request dispatcher and passed into a {@link Toadlet}
+ * handler; the handler uses it to send headers and body data, inspect cookies, manage response
+ * cookies, and obtain helpers like {@link PageMaker}. Instances are short-lived and not
+ * thread-safe: they represent one connection/request pair and should not be shared across threads
+ * without external synchronization. Typical call flow is: validate permissions, send reply headers
+ * tailored to the content type (static, FProxy, or dynamic), write the body via {@link
+ * #writeData(byte[], int, int)}, and optionally adjust connection behavior with {@link
+ * #forceDisconnect()}. Implementers must track connection state to prevent writes after closure.
+ *
+ * <p><strong>Responsibilities</strong>
+ *
+ * <ul>
+ *   <li>Expose request headers, cookies, and URI for business logic.
+ *   <li>Send correctly formed HTTP response headers for various content classes.
+ *   <li>Provide helper factories ({@link BucketFactory}, {@link PageMaker}) for response bodies.
+ *   <li>Enforce security levers: form passwords, advanced-mode gates, full-access checks.
+ * </ul>
+ *
+ * @see Toadlet
+ * @see ToadletContainer
+ * @see PageMaker
  */
 public interface ToadletContext {
 
   /**
-   * Write reply headers for generated content (web interface pages) and redirects etc.
+   * Write reply headers for dynamically generated responses such as HTML pages, JSON payloads, or
+   * redirects.
    *
-   * @param code HTTP code.
-   * @param desc HTTP code description.
-   * @param mvt Any extra headers. Can be null.
-   * @param mimeType The MIME type of the reply.
-   * @param length The length of the reply.
-   * @param forceDisableJavascript Disable javascript even if it is enabled for the web interface as
-   *     a whole.
+   * @param code HTTP status code to send (e.g., 200, 302); must be a valid numeric code.
+   * @param desc Human-readable status text matching {@code code}; non-null and short.
+   * @param mvt Additional headers to include; may be {@code null} for none.
+   * @param mimeType MIME type of the response body; {@code null} when no content follows.
+   * @param length Declared content length in bytes, or a negative value when unknown/streaming.
+   * @throws ToadletContextClosedException if the underlying connection has already been closed.
+   * @throws IOException if writing to the client socket fails or is interrupted.
    */
   void sendReplyHeaders(
       int code, String desc, MultiValueTable<String, String> mvt, String mimeType, long length)
       throws ToadletContextClosedException, IOException;
 
   /**
-   * Write reply headers for generated content (web interface pages) and redirects etc.
+   * Write reply headers for dynamic content while optionally disabling client-side JavaScript even
+   * when the global setting allows it.
    *
-   * @param code HTTP code.
-   * @param desc HTTP code description.
-   * @param mvt Any extra headers. Can be null.
-   * @param mimeType The MIME type of the reply.
-   * @param length The length of the reply.
-   * @param forceDisableJavascript Disable javascript even if it is enabled for the web interface as
-   *     a whole.
+   * @param code HTTP status code to emit; must be positive and standards-compliant.
+   * @param desc Descriptive phrase paired with {@code code}; should reflect the status semantics.
+   * @param mvt Additional headers keyed by lowercase names; {@code null} means no extra headers.
+   * @param mimeType MIME type for the response body; {@code null} allowed when no body is sent.
+   * @param length Length in bytes to advertise in {@code Content-Length}; negative to omit header.
+   * @param forceDisableJavascript When {@code true}, adds headers that disallow script execution in
+   *     the rendered page.
+   * @throws ToadletContextClosedException if the context is closed before headers are written.
+   * @throws IOException if the output stream cannot be written.
    */
   void sendReplyHeaders(
       int code,
@@ -56,28 +82,20 @@ public interface ToadletContext {
       throws ToadletContextClosedException, IOException;
 
   /**
-   * @deprecated Write reply headers for either generated content (web interface pages) or static
-   *     content. Callers should use either sendReplyHeaders() or sendReplyHeadersStatic()!
-   */
-  @Deprecated
-  void sendReplyHeaders(
-      int code,
-      String desc,
-      MultiValueTable<String, String> mvt,
-      String mimeType,
-      long length,
-      Date mTime)
-      throws ToadletContextClosedException, IOException;
-
-  /**
-   * Write reply headers with a customised modification time for static content.
+   * Write reply headers for static resources while supplying an explicit last-modified timestamp to
+   * support cache validation.
    *
-   * @param code HTTP code.
-   * @param desc HTTP code description.
-   * @param mvt Any extra headers. Can be null.
-   * @param mimeType The MIME type of the reply.
-   * @param length The length of the reply.
-   * @param mTime The modification time of the data being sent.
+   * @param code HTTP status code such as 200 or 304; must align with the cache semantics desired.
+   * @param desc Status description paired with {@code code}; required and non-empty.
+   * @param mvt Extra headers to include; {@code null} permitted when no additional headers are
+   *     needed.
+   * @param mimeType MIME type for the static payload; may be {@code null} when no body follows.
+   * @param length Content length in bytes; negative values suppress the {@code Content-Length}
+   *     header.
+   * @param mTime Modification time used for {@code Last-Modified}; must be non-null to avoid
+   *     ambiguous cache hints.
+   * @throws ToadletContextClosedException if the connection is already closed before writing.
+   * @throws IOException if socket output fails while sending headers.
    */
   void sendReplyHeadersStatic(
       int code,
@@ -85,89 +103,113 @@ public interface ToadletContext {
       MultiValueTable<String, String> mvt,
       String mimeType,
       long length,
-      Date mTime)
+      Instant mTime)
       throws ToadletContextClosedException, IOException;
 
   /**
-   * Write reply headers for content downloaded from Freenet. Progress bars etc are not content
-   * downloaded from Freenet, so are rendered using sendReplyHeaders(). For content downloaded from
-   * Freenet we send headers which absolutely forbid Javascript, even if it somehow got through the
-   * content filter.
+   * Write reply headers tailored for content fetched from Freenet where JavaScript must always be
+   * disabled to prevent injected scripts from executing.
    *
-   * @param code HTTP code.
-   * @param desc HTTP code description.
-   * @param mvt Any extra headers. Can be null.
-   * @param mimeType The MIME type of the reply.
-   * @param length The length of the reply.
+   * @param code HTTP status code to return for the proxied content; commonly 200 or 302.
+   * @param desc Textual description of {@code code}; must match the status meaning.
+   * @param mvt Additional headers; may be {@code null} when no overrides are required.
+   * @param mimeType MIME type of the fetched object; {@code null} acceptable for header-only
+   *     responses.
+   * @param length Byte length of the body; negative when unknown or streaming.
+   * @throws ToadletContextClosedException if headers cannot be written because the context is
+   *     closed.
+   * @throws IOException if low-level I/O fails while emitting the header block.
    */
   void sendReplyHeadersFProxy(
       int code, String desc, MultiValueTable<String, String> mvt, String mimeType, long length)
       throws ToadletContextClosedException, IOException;
 
-  /** Write data. Note you must send reply headers first. */
+  /**
+   * Write a contiguous slice of bytes to the response body. Callers must send headers beforehand
+   * using one of the {@code sendReplyHeaders*} methods.
+   *
+   * @param data Buffer containing response bytes; must not be {@code null}.
+   * @param offset Starting index within {@code data} to write; zero or greater.
+   * @param length Number of bytes to send from {@code data}; zero allowed for empty writes.
+   * @throws ToadletContextClosedException if the context is closed before or during the write.
+   * @throws IOException if writing to the underlying stream fails.
+   */
   void writeData(byte[] data, int offset, int length)
       throws ToadletContextClosedException, IOException;
 
   /**
-   * Force a disconnection after handling this request. Used only when a throwable was thrown and we
-   * don't know what the state of the connection is. FIXME we could handle this better by
-   * remembering whether headers have been sent, how long the attached data should be, how much data
-   * has been sent etc.
+   * Force a disconnection after handling this request. Used only when a throwable was thrown, and
+   * we don't know what the state of the connection is. Callers use this when header/body state may
+   * be inconsistent and a clean close is safer than attempting further writes.
    */
   void forceDisconnect();
 
   /**
-   * Convenience method that simply calls {@link #writeData(byte[], int, int)}.
+   * Convenience method that writes an entire buffer to the client without specifying an offset or
+   * length.
    *
-   * @param data The data to write
-   * @throws ToadletContextClosedException if the context has already been closed
-   * @throws IOException if an I/O error occurs
+   * @param data Complete response payload to send; must not be {@code null}.
+   * @throws ToadletContextClosedException if the context was closed before the write begins.
+   * @throws IOException if the stream cannot be written due to network or socket errors.
    */
   void writeData(byte[] data) throws ToadletContextClosedException, IOException;
 
   /**
-   * Write data from a bucket. You must send reply headers first.
+   * Write the contents of a {@link Bucket} to the client. Ownership of the bucket transfers to the
+   * context, which frees it after transmission unless wrapped in a {@link NoFreeBucket}.
    *
-   * @param data The Bucket which contains the data. This function assumes ownership of the Bucket,
-   *     calling free() on it when done. If this behavior is undesired, callers can wrap their
-   *     Bucket in a NoFreeBucket.
-   * @see NoFreeBucket
+   * @param data Bucket containing the response body; must be non-null and readable for its length.
+   * @throws ToadletContextClosedException if the connection has already been closed.
+   * @throws IOException if streaming the bucket to the socket fails.
    */
   void writeData(Bucket data) throws ToadletContextClosedException, IOException;
 
-  /** Get the page maker object. */
+  /**
+   * Obtain the {@link PageMaker} helper for generating HTML scaffolding and infoboxes.
+   *
+   * @return PageMaker bound to this request; never {@code null}.
+   */
   PageMaker getPageMaker();
 
-  /** Get the form password required for "dangerous" operations. */
+  /**
+   * Retrieve the CSRF-style form password required for sensitive operations in the web interface.
+   *
+   * @return Non-null secret string that must match the user's submitted value.
+   */
   String getFormPassword();
 
   /**
-   * Check a request for the form password, and send an error to the client if the password is not
-   * valid.
+   * Validate a form password present in the request and emit an error or redirect when it is
+   * missing or invalid.
    *
-   * @param request The request to check.
-   * @param redirectTo The location to redirect to if the password is not set.
-   * @return Whether the request contains a valid form password
+   * @param request Incoming request to inspect; must not be {@code null}.
+   * @param redirectTo Location to redirect the client when validation fails; may be {@code null} to
+   *     send an inline error page instead.
+   * @return {@code true} when the supplied password matches; {@code false} when an error page or
+   *     redirect has been sent.
+   * @throws ToadletContextClosedException if the context is already closed during the response.
+   * @throws IOException if writing the failure response cannot complete.
    */
   boolean checkFormPassword(HTTPRequest request, String redirectTo)
       throws ToadletContextClosedException, IOException;
 
   /**
-   * Check a request for the form password, and send an error to the client if the password is not
-   * valid.
+   * Validate the form password in the request, sending an error response on failure.
    *
-   * @param request The request to check.
-   * @return Whether the request contains a valid form password
-   * @throws ToadletContextClosedException
-   * @throws IOException
+   * @param request Request containing form fields or cookies; must not be {@code null}.
+   * @return {@code true} when validation succeeds; {@code false} after an error response is sent.
+   * @throws ToadletContextClosedException if the connection is closed while handling the error.
+   * @throws IOException if writing the validation error fails.
    */
   boolean checkFormPassword(HTTPRequest request) throws ToadletContextClosedException, IOException;
 
   /**
-   * Check a request for the form password. Some Toadlet's will want to e.g. send a confirmation
-   * page using the submitted data if the form password isn't present.
+   * Check whether the request provides a form password without sending a response, allowing callers
+   * to defer how they handle the absence (for example, by showing a confirmation page).
    *
-   * @throws IOException
+   * @param request Request to inspect for form password presence; non-null required.
+   * @return {@code true} when a password is present and valid; {@code false} otherwise.
+   * @throws IOException if parsing or inspecting the request fails.
    */
   boolean hasFormPassword(HTTPRequest request) throws IOException;
 
@@ -178,25 +220,58 @@ public interface ToadletContext {
    * abort processing of the request.
    *
    * @return The return value of {@link #isAllowedFullAccess()}.
+   * @param toadlet The toadlet requesting access; used for context in unauthorized responses.
    * @throws IOException See {@link Toadlet#sendUnauthorizedPage(ToadletContext)}
    * @throws ToadletContextClosedException See {@link Toadlet#sendUnauthorizedPage(ToadletContext)}
    */
   boolean checkFullAccess(Toadlet toadlet) throws ToadletContextClosedException, IOException;
 
-  /** Get the user alert manager. */
+  /**
+   * Access the {@link UserAlertManager} that accumulates alerts for the current node.
+   *
+   * @return Non-null alert manager tied to this context.
+   */
   UserAlertManager getAlertManager();
 
-  /** Get the bookmark manager. */
+  /**
+   * Access the {@link BookmarkManager} used to read or update bookmarks within this request.
+   *
+   * @return Non-null bookmark manager instance.
+   */
   BookmarkManager getBookmarkManager();
 
+  /**
+   * Obtain the {@link BucketFactory} used to create buckets for reading request bodies or composing
+   * responses.
+   *
+   * @return Bucket factory for this context; never {@code null}.
+   */
   BucketFactory getBucketFactory();
 
+  /**
+   * Retrieve the request headers captured from the client.
+   *
+   * @return Mutable multivalue table of header names to values; never {@code null}.
+   */
   MultiValueTable<String, String> getHeaders();
 
-  /** Get an existing {@link Cookie} (sent by the client) from the headers. */
+  /**
+   * Look up an existing {@link Cookie} provided by the client that matches the supplied scope.
+   *
+   * @param domain Domain to match against the cookie's domain attribute; must not be {@code null}.
+   * @param path Path to compare with the cookie path attribute; must not be {@code null}.
+   * @param name Cookie name to search for; must not be {@code null} or empty.
+   * @return Matching cookie instance, or {@code null} when no cookie satisfies the criteria.
+   * @throws ParseException if cookie headers cannot be parsed into structured data.
+   */
   ReceivedCookie getCookie(URI domain, URI path, String name) throws ParseException;
 
-  /** Set a {@link Cookie}, it will be sent with the reply headers to the client. */
+  /**
+   * Register a {@link Cookie} to be emitted with the response headers. Replaces any existing cookie
+   * with the same name, domain, and path.
+   *
+   * @param newCookie Cookie to send back to the client; must be non-null and fully specified.
+   */
   void setCookie(Cookie newCookie);
 
   /**
@@ -207,26 +282,56 @@ public interface ToadletContext {
    * @param target Where the form should be POSTed to.
    * @param id HTML name for the form for stylesheet/script access. Will be added as both id and
    *     name.
-   * @return The form HTMLNode.
+   * @return The newly created form node attached under {@code parentNode}; never {@code null}.
    */
   HTMLNode addFormChild(HTMLNode parentNode, String target, String id);
 
   /**
    * Is this Toadlet allowed full access to the node, including the ability to reconfigure it,
-   * restart it etc?
+   * restart it etc.?
+   *
+   * @return {@code true} when the current request is authorized for full administrative access;
+   *     {@code false} otherwise.
    */
   boolean isAllowedFullAccess();
 
-  /** Is the web interface in advanced mode? */
+  /**
+   * Determine whether the web interface is operating in advanced mode, enabling additional
+   * settings.
+   *
+   * @return {@code true} when advanced mode is enabled for this request; otherwise {@code false}.
+   */
   boolean isAdvancedModeEnabled();
 
-  /** Return a robots.txt excluding all spiders and other non-browser HTTP clients? */
+  /**
+   * Indicate whether this context should return a restrictive {@code robots.txt} that blocks
+   * crawlers.
+   *
+   * @return {@code true} if robots should be disallowed; {@code false} to allow default behavior.
+   */
   boolean doRobots();
 
+  /**
+   * Provide the container managing this context, enabling access to shared configuration and
+   * resource factories.
+   *
+   * @return Owning {@link ToadletContainer}; never {@code null}.
+   */
   ToadletContainer getContainer();
 
+  /**
+   * Signal whether the standard progress page should be disabled for this request, typically for
+   * lightweight or background responses.
+   *
+   * @return {@code true} when progress pages are suppressed; {@code false} otherwise.
+   */
   boolean disableProgressPage();
 
+  /**
+   * Return the currently active {@link Toadlet} handling this context.
+   *
+   * @return Active toadlet instance; may be {@code null} if none is registered yet.
+   */
   Toadlet activeToadlet();
 
   /**
@@ -236,11 +341,18 @@ public interface ToadletContext {
    */
   String getUniqueId();
 
+  /**
+   * Retrieve the {@link URI} of the inbound request after parsing and normalization.
+   *
+   * @return Normalized absolute or relative {@code URI} representing the request target.
+   */
   URI getUri();
 
   /**
-   * What to do when we find cached data on the global queue but it's already been filtered, and we
+   * What to do when we find cached data on the global queue, but it's already been filtered, and we
    * want a filtered copy.
+   *
+   * @return Policy describing whether to refilter, reuse, or skip cached filtered data.
    */
   REFILTER_POLICY getReFilterPolicy();
 }

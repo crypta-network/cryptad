@@ -1,7 +1,5 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
-
 import com.onionnetworks.fec.FECCode;
 import com.onionnetworks.fec.FECCodeFactory;
 import com.onionnetworks.fec.FECMath;
@@ -9,81 +7,93 @@ import com.onionnetworks.fec.PureCode;
 import com.onionnetworks.util.Buffer;
 import com.onionnetworks.util.Util;
 import network.crypta.support.TestProperty;
-import org.junit.Test;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
-public class CodeTest {
+import static org.junit.jupiter.api.Assertions.*;
+
+class CodeTest {
 
   public static final int KK = 192;
   public static final int PACKET_SIZE = 4096;
   public static FECMath fecMath = new FECMath(8);
 
   @Test
-  public void testBenchmark() {
-    if (!TestProperty.BENCHMARK) {
-      return;
-    }
+  void benchmark_whenBenchmarkEnabled_doesNotThrow() {
+    Assumptions.assumeTrue(TestProperty.BENCHMARK, "Benchmark tests are disabled");
 
-    int lim = fecMath.gfSize + 1;
-    try (FECCode maybeNative = FECCodeFactory.getDefault().createFECCode(KK, lim);
-        FECCode pureCode = new PureCode(KK, lim)) {
-      int[] index = new int[KK];
+    // Arrange
+    int lim = fecMath.getGfSize() + 1;
 
-      for (int i = 0; i < KK; i++) {
-        index[i] = lim - i - 1;
-      }
+    // Act
+    Executable benchmark =
+        () -> {
+          try (FECCode maybeNative = FECCodeFactory.getDefault().createFECCode(KK, lim);
+              FECCode pureCode = new PureCode(KK, lim)) {
+            int[] index = new int[KK];
 
-      byte[] src = new byte[KK * PACKET_SIZE];
-      Util.rand.nextBytes(src);
-      Buffer[] srcBufs = createBuffers(src);
+            for (int i = 0; i < KK; i++) {
+              index[i] = lim - i - 1;
+            }
 
-      byte[] repair = new byte[KK * PACKET_SIZE];
-      Buffer[] repairBufs = createBuffers(repair);
+            byte[] src = new byte[KK * PACKET_SIZE];
+            Util.getRand().nextBytes(src);
+            Buffer[] srcBufs = createBuffers(src);
 
-      int[] indexBackup = new int[index.length];
-      System.arraycopy(index, 0, indexBackup, 0, index.length);
+            byte[] repair = new byte[KK * PACKET_SIZE];
+            Buffer[] repairBufs = createBuffers(repair);
 
-      System.out.println("Getting ready for benchmarking encode()");
-      long t1 = System.currentTimeMillis();
-      maybeNative.encode(srcBufs, repairBufs, index);
-      long t2 = System.currentTimeMillis();
-      pureCode.encode(srcBufs, repairBufs, indexBackup);
-      long t3 = System.currentTimeMillis();
+            int[] indexBackup = new int[index.length];
+            System.arraycopy(index, 0, indexBackup, 0, index.length);
 
-      float dNativeEncode = t2 - t1;
-      float dPureEncode = t3 - t2;
+            System.out.println("Getting ready for benchmarking encode()");
+            long t1 = System.currentTimeMillis();
+            maybeNative.encode(srcBufs, repairBufs, index);
+            long t2 = System.currentTimeMillis();
+            pureCode.encode(srcBufs, repairBufs, indexBackup);
+            long t3 = System.currentTimeMillis();
 
-      Buffer[] repairBufs2 = repairBufs.clone();
-      System.arraycopy(repairBufs, 0, repairBufs2, 0, repairBufs.length);
-      System.out.println("Getting ready for benchmarking decode()");
-      t1 = System.currentTimeMillis();
-      maybeNative.decode(repairBufs, index);
-      t2 = System.currentTimeMillis();
-      pureCode.decode(repairBufs2, indexBackup);
-      t3 = System.currentTimeMillis();
+            float dNativeEncode = t2 - t1;
+            float dPureEncode = t3 - t2;
 
-      float dNativeDecode = t2 - t1;
-      float dPureDecode = t3 - t2;
+            Buffer[] repairBufs2 = repairBufs.clone();
+            System.arraycopy(repairBufs, 0, repairBufs2, 0, repairBufs.length);
+            System.out.println("Getting ready for benchmarking decode()");
+            t1 = System.currentTimeMillis();
+            maybeNative.decode(repairBufs, index);
+            t2 = System.currentTimeMillis();
+            pureCode.decode(repairBufs2, indexBackup);
+            t3 = System.currentTimeMillis();
 
-      System.out.println(maybeNative);
-      System.out.println(pureCode);
-      System.out.println(
-          "Native code took "
-              + dNativeEncode
-              + "ms whereas java's code took "
-              + dPureEncode
-              + "ms to encode()");
-      System.out.println(
-          "Native code took "
-              + dNativeDecode
-              + "ms whereas java's code took "
-              + dPureDecode
-              + "ms to decode()");
-    }
+            float dNativeDecode = t2 - t1;
+            float dPureDecode = t3 - t2;
+
+            System.out.println(maybeNative);
+            System.out.println(pureCode);
+            System.out.println(
+                "Native code took "
+                    + dNativeEncode
+                    + "ms whereas java's code took "
+                    + dPureEncode
+                    + "ms to encode()");
+            System.out.println(
+                "Native code took "
+                    + dNativeDecode
+                    + "ms whereas java's code took "
+                    + dPureDecode
+                    + "ms to decode()");
+          }
+        };
+
+    // Assert
+    assertDoesNotThrow(benchmark);
   }
 
   @Test
-  public void testSimpleRev() {
-    int lim = fecMath.gfSize + 1;
+  void encodeDecode_whenIndexReversedFromGfSize_roundTripsData() {
+    // Arrange
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
@@ -92,14 +102,20 @@ public class CodeTest {
         index[i] = lim - i - 1;
       }
 
-      encodeDecode(code, code2, index);
-      encodeDecode(code2, code, index);
+      // Act
+      EncodeDecodeResult nativeThenPure = encodeDecode(code, code2, index);
+      EncodeDecodeResult pureThenNative = encodeDecode(code2, code, index);
+
+      // Assert
+      assertArrayEquals(nativeThenPure.original(), nativeThenPure.decoded());
+      assertArrayEquals(pureThenNative.original(), pureThenNative.decoded());
     }
   }
 
   @Test
-  public void testSimple() {
-    int lim = fecMath.gfSize + 1;
+  void encodeDecode_whenIndexReversedFromKk_roundTripsData() {
+    // Arrange
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
@@ -107,40 +123,54 @@ public class CodeTest {
       for (int i = 0; i < KK; i++) {
         index[i] = KK - i;
       }
-      encodeDecode(code, code2, index);
-      encodeDecode(code2, code, index);
+
+      // Act
+      EncodeDecodeResult nativeThenPure = encodeDecode(code, code2, index);
+      EncodeDecodeResult pureThenNative = encodeDecode(code2, code, index);
+
+      // Assert
+      assertArrayEquals(nativeThenPure.original(), nativeThenPure.decoded());
+      assertArrayEquals(pureThenNative.original(), pureThenNative.decoded());
     }
   }
 
   @Test
-  public void testShifted() {
-    int lim = fecMath.gfSize + 1;
+  void encodeDecode_whenShiftedIndexOrder_roundTripsData() {
+    // Arrange
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
 
-      int max_i0 = KK / 2;
-      if (max_i0 + KK > lim) {
-        max_i0 = lim - KK;
+      int maxI0 = KK / 2;
+      if (maxI0 + KK > lim) {
+        maxI0 = lim - KK;
       }
 
-      for (int s = max_i0 - 2; s <= max_i0; s++) {
+      for (int s = maxI0 - 2; s <= maxI0; s++) {
         for (int i = 0; i < KK; i++) {
           index[i] = i + s;
         }
-        encodeDecode(code, code2, index);
-        encodeDecode(code2, code, index);
+
+        // Act
+        EncodeDecodeResult nativeThenPure = encodeDecode(code, code2, index);
+        EncodeDecodeResult pureThenNative = encodeDecode(code2, code, index);
+
+        // Assert
+        assertArrayEquals(nativeThenPure.original(), nativeThenPure.decoded());
+        assertArrayEquals(pureThenNative.original(), pureThenNative.decoded());
       }
     }
   }
 
   /**
-   * Creates k packets of size sz of random data, encodes them, and tries to decode. Index contains
-   * the permutation entry.
+   * Encodes random packet data and decodes it using the provided codes and index.
+   *
+   * @return a result containing the original and decoded data for comparison
    */
-  private static void encodeDecode(FECCode encode, FECCode decode, int[] index) {
+  private static EncodeDecodeResult encodeDecode(FECCode encode, FECCode decode, int[] index) {
     byte[] src = new byte[KK * PACKET_SIZE];
-    Util.rand.nextBytes(src);
+    Util.getRand().nextBytes(src);
     Buffer[] srcBufs = createBuffers(src);
 
     byte[] repair = new byte[KK * PACKET_SIZE];
@@ -149,7 +179,25 @@ public class CodeTest {
     encode.encode(srcBufs, repairBufs, index);
     decode.decode(repairBufs, index);
 
-    assertArrayEquals(src, repair);
+    return new EncodeDecodeResult(src, repair);
+  }
+
+  private static final class EncodeDecodeResult {
+    private final byte[] original;
+    private final byte[] decoded;
+
+    private EncodeDecodeResult(byte[] original, byte[] decoded) {
+      this.original = original;
+      this.decoded = decoded;
+    }
+
+    private byte[] original() {
+      return original;
+    }
+
+    private byte[] decoded() {
+      return decoded;
+    }
   }
 
   private static Buffer[] createBuffers(byte[] src) {

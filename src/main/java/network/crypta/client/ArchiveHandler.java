@@ -6,21 +6,54 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 
 /**
- * @author toad The public face (to Fetcher, for example) of ArchiveStoreContext. Mostly has methods
- *     for fetching stuff, but SingleFileFetcher needs to be able to download and then ask the
- *     ArchiveManager to extract it, so we include that functionality (extractToCache) too. Because
- *     ArchiveManager is not persistent, we have to pass it in to each method.
+ * Handles client archive operations such as reading metadata, retrieving entries, and extracting
+ * content into a cache.
+ *
+ * <p>This interface is the public face of the archive subsystem used by fetchers and other client
+ * components. Typical call patterns are:
+ *
+ * <ul>
+ *   <li>Call {@link #getMetadata(ArchiveContext, ArchiveManager)} to obtain the container metadata
+ *       (manifest) as a non-persistent {@link Bucket}.
+ *   <li>Call {@link #get(String, ArchiveContext, ArchiveManager)} to retrieve the content of a
+ *       single entry by its internal name, reusing any available cache when possible.
+ *   <li>After the raw archive has been fetched, call {@link #extractToCache(Bucket, ArchiveContext,
+ *       String, ArchiveExtractCallback, ArchiveManager, ClientContext)} to unpack it and notify a
+ *       callback.
+ * </ul>
+ *
+ * <p>Implementations may be stateful (e.g., holding short-lived references to decoded manifests)
+ * but are expected to be safe to call from multiple threads if shared by higher-level components.
+ * The returned {@code Bucket} instances are always non-persistent; callers should copy data to a
+ * persistent store when longer retention is required. Because {@link ArchiveManager} instances are
+ * not persistent, a manager is passed into each operation to mediate caching and extraction.
+ *
+ * @author toad
  */
 public interface ArchiveHandler {
 
   /**
-   * Get the metadata for this ZIP manifest, as a Bucket. THE RETURNED BUCKET WILL ALWAYS BE
-   * NON-PERSISTENT.
+   * Returns the archive metadata (manifest) as a non-persistent {@link Bucket}.
    *
-   * @return The metadata as a Bucket, or null.
-   * @param manager The ArchiveManager.
-   * @throws FetchException If the container could not be fetched.
-   * @throws MetadataParseException If there was an error parsing intermediary metadata.
+   * <p>The metadata typically contains structural information about the archive entries and may be
+   * used to render directory listings or resolve an entry’s existence before attempting content
+   * retrieval. The returned bucket is ephemeral; if the data must outlive the current operation,
+   * copy it to a persistent destination.
+   *
+   * @param archiveContext context used to scope and coordinate archive operations; includes
+   *     request-specific configuration and must be non-null.
+   * @param manager non-persistent archive manager that provides cache and extraction helpers; must
+   *     be supplied by the caller for each operation.
+   * @return a non-persistent bucket containing the metadata, or {@code null} if unavailable or not
+   *     applicable to this archive.
+   * @throws ArchiveFailureException if the archive cannot be processed due to a terminal condition
+   *     such as corruption or unsupported structure.
+   * @throws ArchiveRestartException if the operation should be retried, typically after upstream
+   *     state changes or cache refresh.
+   * @throws MetadataParseException if intermediary metadata was fetched but failed to parse
+   *     correctly.
+   * @throws FetchException if an upstream fetch required to obtain metadata fails or is aborted by
+   *     the client.
    */
   Bucket getMetadata(ArchiveContext archiveContext, ArchiveManager manager)
       throws ArchiveFailureException,
@@ -29,15 +62,28 @@ public interface ArchiveHandler {
           FetchException;
 
   /**
-   * Get a file from this ZIP manifest, as a Bucket. If possible, read it from cache. If not, return
-   * null. THE RETURNED BUCKET WILL ALWAYS BE NON-PERSISTENT.
+   * Retrieves a single entry from the archive as a non-persistent {@link Bucket}.
    *
-   * @param inSplitZipManifest If true, indicates that the key points to a splitfile zip manifest,
-   *     which means that we need to pass a flag to the fetcher to tell it to pretend it was a
-   *     straight splitfile.
-   * @param manager The ArchiveManager.
-   * @throws FetchException
-   * @throws MetadataParseException
+   * <p>Implementations should prefer cached data when available and only fetch or extract the
+   * underlying content when necessary. When the requested entry is not present, or cannot be
+   * determined to exist, this method returns {@code null}. The returned bucket is ephemeral and
+   * should be copied by callers that require persistence.
+   *
+   * @param internalName the entry’s internal name within the archive; typically a path-like string
+   *     relative to the root of the container.
+   * @param archiveContext context used to scope and coordinate archive operations for this request;
+   *     must be non-null.
+   * @param manager non-persistent archive manager mediating cache and extraction behaviors; the
+   *     caller provides it.
+   * @return a non-persistent bucket containing the entry’s content, or {@code null} if the entry is
+   *     not found or not retrievable under current conditions.
+   * @throws ArchiveFailureException if the archive or entry cannot be processed due to a terminal
+   *     condition (for example, corruption or an unsupported format).
+   * @throws ArchiveRestartException if the operation should be retried later, typically after cache
+   *     changes or additional data becomes available.
+   * @throws MetadataParseException if intermediary metadata used to locate the entry could not be
+   *     parsed successfully.
+   * @throws FetchException if an upstream fetch required to obtain the entry or metadata fails.
    */
   Bucket get(String internalName, ArchiveContext archiveContext, ArchiveManager manager)
       throws ArchiveFailureException,
@@ -45,23 +91,44 @@ public interface ArchiveHandler {
           MetadataParseException,
           FetchException;
 
-  /** Get the archive type. */
+  /**
+   * Returns the archive type handled by this instance.
+   *
+   * @return the concrete archive type (for example, TAR or ZIP) used by the handler.
+   */
   ARCHIVE_TYPE getArchiveType();
 
-  /** Get the key. */
+  /**
+   * Returns the key that identifies the root archive for this handler.
+   *
+   * @return the non-null key associated with the archive represented by this handler.
+   */
   FreenetURI getKey();
 
   /**
-   * Unpack a fetched archive to cache, and call the callback if there is one.
+   * Extracts a fetched archive into the cache and notifies an optional callback.
    *
-   * @param bucket The downloaded data for the archive.
-   * @param actx The ArchiveContext.
-   * @param element The single element that the caller is especially interested in.
-   * @param callback Callback to be notified whether the content is available, and if so, fed the
-   *     data.
-   * @param manager The ArchiveManager.
-   * @throws ArchiveFailureException
-   * @throws ArchiveRestartException
+   * <p>The supplied {@code bucket} contains the raw downloaded archive data. Implementations unpack
+   * its contents into a cache coordinated by the provided {@link ArchiveManager} and then notify
+   * the {@code callback} about availability. The {@code element} parameter may indicate a specific
+   * entry of interest so implementations can prioritize extraction.
+   *
+   * @param bucket non-persistent bucket holding the raw archive bytes to be extracted; must be
+   *     readable for the duration of the operation.
+   * @param actx archive context carrying per-request configuration and state needed during
+   *     extraction; must be non-null.
+   * @param element an optional internal name for a specific entry to prioritize; may be {@code
+   *     null} to indicate no single preferred entry.
+   * @param callback callback to receive notifications about availability and to consume extracted
+   *     data when ready; may be {@code null} if the caller does not require notifications.
+   * @param manager non-persistent archive manager mediating cache writes and bookkeeping; supplied
+   *     by the caller.
+   * @param context client execution context used to schedule or coordinate work with the broader
+   *     client subsystem; must be non-null.
+   * @throws ArchiveFailureException if extraction fails due to terminal conditions such as
+   *     corruption or unsupported structures.
+   * @throws ArchiveRestartException if the extraction should be retried, for example due to
+   *     upstream state changes or interrupted inputs.
    */
   void extractToCache(
       Bucket bucket,
@@ -72,5 +139,15 @@ public interface ArchiveHandler {
       ClientContext context)
       throws ArchiveFailureException, ArchiveRestartException;
 
+  /**
+   * Creates a new handler instance with equivalent configuration and key.
+   *
+   * <p>The returned handler can be used independently of the original, which is useful when client
+   * components wish to perform operations concurrently without sharing transient state. The clone
+   * does not copy caches held by {@link ArchiveManager}; callers should pass their own manager per
+   * operation.
+   *
+   * @return a new handler instance functionally equivalent to this one.
+   */
   ArchiveHandler cloneHandler();
 }

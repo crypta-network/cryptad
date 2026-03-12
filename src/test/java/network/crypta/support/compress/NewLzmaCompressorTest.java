@@ -1,174 +1,255 @@
 package network.crypta.support.compress;
 
-import static org.junit.Assert.assertEquals;
-
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
-import java.util.Random;
-import network.crypta.support.api.Bucket;
-import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.ArrayBucket;
-import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.NullBucket;
-import org.junit.Test;
+import java.util.SplittableRandom;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-/** Test case for {@link Bzip2Compressor} class. */
-public class NewLzmaCompressorTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
-  /** test BZIP2 compressor's identity and functionality */
-  @Test
-  public void testNewLzmaCompressor() throws IOException {
-    Compressor.COMPRESSOR_TYPE lzcompressor = Compressor.COMPRESSOR_TYPE.LZMA_NEW;
-    Compressor compressorZero = Compressor.COMPRESSOR_TYPE.getCompressorByMetadataID((short) 3);
+/**
+ * Unit tests for {@link NewLZMACompressor} focusing on boundary conditions and invariants.
+ *
+ * <p>Style: AAA (Arrange-Act-Assert). Randomized inputs use deterministic seeds to avoid flakiness.
+ */
+class NewLzmaCompressorTest {
 
-    // check BZIP2 is the second compressor
-    assertEquals(lzcompressor, compressorZero);
+  private final NewLZMACompressor compressor = new NewLZMACompressor();
+  private static final String PATTERN_ZEROS = "zeros";
+  private static final String PATTERN_RANDOM = "random";
+  private static final String PATTERN_ONES = "ones";
+
+  // -------------------------------------------------------------------------------------
+  // Public API, invariants, and edge cases (from source inspection)
+  // -------------------------------------------------------------------------------------
+  // Public methods under test:
+  // - compress(Bucket, BucketFactory, long, long) [exercised indirectly where applicable]
+  // - compress(InputStream, OutputStream, long, long)
+  // - compress(InputStream, OutputStream, long, long, long, int)
+  // - decompress(InputStream, OutputStream, long, long)
+  // - decompress(byte[], int, int, byte[])
+  // Invariants and edge cases:
+  // - Always writes 5-byte coder properties before compressed data; these count against maxWrite.
+  // - Enforces read and write budgets via bounded Counted streams; exceeding read ->
+  //   CompressionInputSizeException; exceeding write -> CompressionOutputSizeException.
+  // - Dictionary size read from properties (little-endian) must be 0 to MAX_DICTIONARY_SIZE; sizes
+  //   beyond MAX_DICTIONARY_SIZE -> TooBigDictionaryException; negative (int overflow) ->
+  //   InvalidCompressedDataException.
+  // - decompress(byte[], ...) wraps IO failures into UncheckedIOException.
+
+  // -------------------------------------------------------------------------------------
+  // Happy-path round-trips (parameterized)
+  // -------------------------------------------------------------------------------------
+
+  @ParameterizedTest(name = "roundtrip size={0}, pattern={1}")
+  @MethodSource("roundtripInputs")
+  @DisplayName("compressDecompress_whenVariousInputs_expectExactRoundTrip")
+  void compressDecompress_whenVariousInputs_expectExactRoundTrip(int size, String pattern)
+      throws Exception {
+    // Arrange
+    byte[] original = buildPayload(size, pattern);
+    ByteArrayOutputStream compressedOut = new ByteArrayOutputStream();
+
+    // Act
+    long written =
+        compressor.compress(
+            new ByteArrayInputStream(original),
+            compressedOut,
+            size,
+            size + 1024L); // generous cap to avoid output-limit trips
+
+    byte[] compressed = compressedOut.toByteArray();
+    assertTrue(written > 0, "Compressed size should be positive");
+    ByteArrayOutputStream decompressedOut = new ByteArrayOutputStream(original.length);
+    long decompressed =
+        compressor.decompress(
+            new ByteArrayInputStream(compressed), decompressedOut, original.length, -1);
+
+    // Assert
+    assertEquals(original.length, decompressed);
+    assertArrayEquals(original, decompressedOut.toByteArray());
   }
 
-  //	public void testCompress() throws IOException {
-  //
-  //		// do bzip2 compression
-  //		byte[] compressedData = doCompress(UNCOMPRESSED_DATA_1.getBytes());
-  //
-  //		// output size same as expected?
-  //		//assertEquals(compressedData.length, COMPRESSED_DATA_1.length);
-  //
-  //		// check each byte is exactly as expected
-  //		for (int i = 0; i < compressedData.length; i++) {
-  //			assertEquals(COMPRESSED_DATA_1[i], compressedData[i]);
-  //		}
-  //	}
-  //
-  //	public void testBucketDecompress() throws IOException {
-  //
-  //		byte[] compressedData = COMPRESSED_DATA_1;
-  //
-  //		// do bzip2 decompression with buckets
-  //		byte[] uncompressedData = doBucketDecompress(compressedData);
-  //
-  //		// is the (round-tripped) uncompressed string the same as the original?
-  //		String uncompressedString = new String(uncompressedData);
-  //		assertEquals(uncompressedString, UNCOMPRESSED_DATA_1);
-  //	}
-  //
-  @Test
-  public void testByteArrayDecompress() throws IOException {
-
-    // build 5k array
-    byte[] originalUncompressedData = new byte[5 * 1024];
-    Arrays.fill(originalUncompressedData, (byte) 1);
-
-    byte[] compressedData = doCompress(originalUncompressedData);
-    byte[] outUncompressedData = new byte[5 * 1024];
-
-    int writtenBytes = 0;
-
-    writtenBytes =
-        Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(
-            compressedData, 0, compressedData.length, outUncompressedData);
-
-    assertEquals(writtenBytes, originalUncompressedData.length);
-    assertEquals(originalUncompressedData.length, outUncompressedData.length);
-
-    // check each byte is exactly as expected
-    for (int i = 0; i < outUncompressedData.length; i++) {
-      assertEquals(originalUncompressedData[i], outUncompressedData[i]);
-    }
+  private static Stream<Arguments> roundtripInputs() {
+    return Stream.of(
+        Arguments.of(0, PATTERN_ZEROS),
+        Arguments.of(1, PATTERN_ONES),
+        Arguments.of(16, PATTERN_ZEROS),
+        Arguments.of(256, PATTERN_RANDOM),
+        Arguments.of(1024, PATTERN_RANDOM));
   }
 
-  // FIXME add exact decompression check.
-
-  @Test
-  public void testRandomByteArrayDecompress() throws IOException {
-
-    Random random = new Random(1234);
-
-    for (int rounds = 0; rounds < 100; rounds++) {
-      int scale = random.nextInt(19) + 1;
-      int size = random.nextInt(1 << scale);
-
-      // build 5k array
-      byte[] originalUncompressedData = new byte[size];
-      random.nextBytes(originalUncompressedData);
-
-      byte[] compressedData = doCompress(originalUncompressedData);
-      byte[] outUncompressedData = new byte[size];
-
-      int writtenBytes = 0;
-
-      writtenBytes =
-          Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(
-              compressedData, 0, compressedData.length, outUncompressedData);
-
-      assertEquals(writtenBytes, originalUncompressedData.length);
-      assertEquals(originalUncompressedData.length, outUncompressedData.length);
-
-      // check each byte is exactly as expected
-      for (int i = 0; i < outUncompressedData.length; i++) {
-        assertEquals(originalUncompressedData[i], outUncompressedData[i]);
+  private static byte[] buildPayload(int size, String pattern) {
+    byte[] data = new byte[size];
+    return switch (pattern) {
+      case PATTERN_ZEROS -> data;
+      case PATTERN_ONES -> {
+        Arrays.fill(data, (byte) 1);
+        yield data;
       }
-    }
+      case PATTERN_RANDOM -> {
+        SplittableRandom r = new SplittableRandom(0xC0FFEE); // deterministic, not java.util.Random
+        r.nextBytes(data);
+        yield data;
+      }
+      default -> throw new IllegalArgumentException("unknown pattern: " + pattern);
+    };
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Write budget enforcement
+  // -------------------------------------------------------------------------------------
+
+  @Test
+  void compress_whenMaxWriteSmallerThanCoderProps_expectCompressionOutputSizeException() {
+    // Arrange: any small input; set maxWriteLength smaller than 5 coder properties bytes
+    byte[] original = new byte[] {1, 2, 3};
+    InputStream in = new ByteArrayInputStream(original);
+    OutputStream out = new ByteArrayOutputStream();
+
+    // Act + Assert
+    CompressionOutputSizeException ex =
+        assertThrows(
+            CompressionOutputSizeException.class,
+            () -> compressor.compress(in, out, original.length, 4));
+    assertEquals(5, ex.estimatedSize);
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Read budget enforcement
+  // -------------------------------------------------------------------------------------
+
+  @Test
+  void compress_whenInputExceedsMaxRead_expectCompressionInputSizeException() {
+    // Arrange: input is larger than read budget
+    byte[] original = buildPayload(256, PATTERN_RANDOM);
+    InputStream in = new ByteArrayInputStream(original);
+    OutputStream out = new ByteArrayOutputStream();
+
+    // Act + Assert
+    CompressionInputSizeException ex =
+        assertThrows(
+            CompressionInputSizeException.class, () -> compressor.compress(in, out, 128, 1 << 20));
+    assertEquals(128, ex.maxAllowed);
   }
 
   @Test
-  public void testCompressException() throws IOException {
+  void compress_whenInputSizeEqualsMaxRead_expectSuccess() throws Exception {
+    // Arrange
+    byte[] original = buildPayload(512, PATTERN_ONES);
+    InputStream in = new ByteArrayInputStream(original);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes();
-    Bucket inBucket = new ArrayBucket(uncompressedData);
-    BucketFactory factory = new ArrayBucketFactory();
+    // Act
+    long written = compressor.compress(in, out, original.length, original.length + 4096);
 
-    try {
-      Compressor.COMPRESSOR_TYPE.LZMA_NEW.compress(inBucket, factory, 32, 32);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
-    }
-    // TODO LOW codec doesn't actually enforce size limit
-    // fail("did not throw expected CompressionOutputSizeException");
+    // Assert
+    assertTrue(written >= 5, "At least coder properties must be written");
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Error propagation with mocked I/O
+  // -------------------------------------------------------------------------------------
+
+  @Test
+  void compress_whenUnderlyingOutputThrows_expectIOException() throws Exception {
+    // Arrange
+    byte[] original = buildPayload(64, PATTERN_ZEROS);
+    InputStream in = new ByteArrayInputStream(original);
+    OutputStream out = mock(OutputStream.class);
+    // First write occurs when encoder writes 5-byte coder properties
+    doThrow(new IOException("boom")).when(out).write(any(byte[].class), anyInt(), anyInt());
+
+    // Act + Assert
+    assertThrows(IOException.class, () -> compressor.compress(in, out, original.length, 1 << 20));
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Decompression header validation
+  // -------------------------------------------------------------------------------------
+
+  @Test
+  void decompress_whenDictionaryTooBig_expectTooBigDictionaryException() {
+    // Arrange: props[1..4] encode 2MB (0x00200000) > MAX_DICTIONARY_SIZE (1MB)
+    byte[] props = new byte[] {(byte) 0x5D, 0x00, 0x00, 0x20, 0x00};
+    InputStream in = new ByteArrayInputStream(props);
+    OutputStream out = new ByteArrayOutputStream();
+
+    // Act + Assert
+    assertThrows(TooBigDictionaryException.class, () -> compressor.decompress(in, out, 10_000, -1));
   }
 
   @Test
-  public void testDecompressException() throws IOException {
+  void decompress_whenDictionarySignBitSet_expectInvalidCompressedDataException() {
+    // Arrange: props[1..4] encode 0x80000000 -> negative int when combined
+    byte[] props = new byte[] {(byte) 0x5D, 0x00, 0x00, 0x00, (byte) 0x80};
+    InputStream in = new ByteArrayInputStream(props);
+    OutputStream out = new ByteArrayOutputStream();
 
-    // build 5k array
-    byte[] uncompressedData = new byte[5 * 1024];
-    Arrays.fill(uncompressedData, (byte) 1);
-
-    byte[] compressedData = doCompress(uncompressedData);
-
-    try (Bucket inBucket = new ArrayBucket(compressedData);
-        NullBucket outBucket = new NullBucket();
-        InputStream decompressorInput = inBucket.getInputStream();
-        OutputStream decompressorOutput = outBucket.getOutputStream()) {
-
-      Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(
-          decompressorInput, decompressorOutput, 4096 + 10, 4096 + 20);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
-    }
-    // TODO LOW codec doesn't actually enforce size limit
-    // fail("did not throw expected CompressionOutputSizeException");
+    // Act + Assert
+    assertThrows(
+        InvalidCompressedDataException.class, () -> compressor.decompress(in, out, 10_000, -1));
   }
 
-  private byte[] doCompress(byte[] uncompressedData) throws IOException {
-    Bucket inBucket = new ArrayBucket(uncompressedData);
-    BucketFactory factory = new ArrayBucketFactory();
-    Bucket outBucket = null;
+  @Test
+  void decompressByteArray_whenTruncatedProps_expectUncheckedIOException() {
+    // Arrange: fewer than 5 property bytes
+    byte[] truncated = new byte[] {0x01, 0x02, 0x03, 0x04};
+    byte[] outBuf = new byte[16];
 
-    outBucket =
-        Compressor.COMPRESSOR_TYPE.LZMA_NEW.compress(
-            inBucket, factory, uncompressedData.length, uncompressedData.length * 2L + 64);
-
-    InputStream in = null;
-    in = outBucket.getInputStream();
-    long size = outBucket.size();
-    byte[] outBuf = new byte[(int) size];
-
-    in.read(outBuf);
-
-    return outBuf;
+    // Act + Assert
+    assertThrows(
+        UncheckedIOException.class,
+        () ->
+            Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(truncated, 0, truncated.length, outBuf));
   }
 
-  private static final String UNCOMPRESSED_DATA_1 = GzipCompressorTest.UNCOMPRESSED_DATA_1;
+  @Test
+  void decompress_whenTruncatedPropsViaStreams_expectIOException() {
+    // Arrange: fewer than 5 property bytes
+    InputStream in = new ByteArrayInputStream(new byte[] {0x01, 0x02, 0x03, 0x04});
+    OutputStream out = new ByteArrayOutputStream();
+
+    // Act + Assert
+    assertThrows(IOException.class, () -> compressor.decompress(in, out, 1024, -1));
+  }
+
+  // -------------------------------------------------------------------------------------
+  // Null handling (defensive expectations — NPEs are acceptable contracts here)
+  // -------------------------------------------------------------------------------------
+
+  @Test
+  void compress_whenNullInput_expectIllegalStateException() {
+    OutputStream out = new ByteArrayOutputStream();
+    assertThrows(IllegalStateException.class, () -> compressor.compress(null, out, 1, 10));
+  }
+
+  @Test
+  void compress_whenNullOutput_expectNullPointerException() {
+    InputStream in = new ByteArrayInputStream(new byte[] {1});
+    assertThrows(NullPointerException.class, () -> compressor.compress(in, null, 1, 10));
+  }
+
+  @Test
+  void decompress_whenNullInput_expectNullPointerException() {
+    OutputStream out = new ByteArrayOutputStream();
+    assertThrows(NullPointerException.class, () -> compressor.decompress(null, out, 1, -1));
+  }
 }

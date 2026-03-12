@@ -4,43 +4,72 @@ import java.io.File;
 import network.crypta.client.ClientMetadata;
 
 /**
- * If a request will return the downloaded data to a file (not a temporary file), and if the data
- * doesn't need decompressing or filtering, and if we are doing the final stage of the download, we
- * can create a file in the same directory and use it for temporary storage, then when the download
- * completes call onSuccess(), which will check the hashes and then rename the file.
+ * Callback specialization for downloads that materialize directly to a regular {@link File}.
  *
- * <p>This saves us a lot of copying, disk I/O and (peak) disk space.
+ * <p>When a request will store the final content as a non-temporary file, and the data does not
+ * require post-processing such as decompression or filtering, the client can avoid extra copying by
+ * writing into a temporary file in the destination directory. On successful completion the caller
+ * invokes {@link #onSuccess(File, long, ClientMetadata, ClientGetState, ClientContext)} to allow
+ * the implementation to verify hashes, truncate to the exact length, and atomically move/rename the
+ * file into its final location where appropriate.
  *
- * <p>The ClientGetState calling the callback must only use this interface if it is the final fetch.
+ * <p>This strategy reduces peak disk usage and filesystem I/O by eliminating an intermediate buffer
+ * or staging copy. The calling {@link ClientGetState} must only use this interface when performing
+ * the final fetch stage, since earlier phases may still require transformation or splitting logic.
+ * Callers should assume callbacks may be invoked from internal worker threads and avoid blocking
+ * operations inside handlers.
  *
- * @author toad
+ * <ul>
+ *   <li>Optimized path for direct-to-file downloads with stable metadata.
+ *   <li>Explicit lifecycle: temporary file write → success/failure signal.
+ *   <li>Context-limited helpers via {@link ClientContext} for the duration of calls.
+ * </ul>
+ *
+ * @see GetCompletionCallback
+ * @see ClientGetState
+ * @see ClientMetadata
  */
 public interface FileGetCompletionCallback extends GetCompletionCallback {
 
   /**
-   * Get the final location of the downloaded data. If this returns non-null, the caller may create
-   * a temporary file in the same directory and use it for e.g. storing the downloaded splitfile
-   * blocks. When complete, the caller should truncate the file to the correct length, and then call
-   * onSuccess().
+   * Returns the final target location for the downloaded data, when applicable.
    *
-   * @return The final target File, or null if the download isn't to a (non-temporary) file, the
-   *     target file can't be used for temporary storage etc. The returned file must be absolute.
+   * <p>If a non-{@code null} value is returned, the caller may create a temporary file in the same
+   * directory and use it to store downloaded blocks while assembling the result. On completion, the
+   * caller should truncate the file to the exact length and then invoke {@link #onSuccess(File,
+   * long, ClientMetadata, ClientGetState, ClientContext)} to commit the result. Returning {@code
+   * null} indicates that direct-to-file optimization is not suitable for this request.
+   *
+   * @return the absolute path to the final destination file when direct-to-file handling is
+   *     supported; otherwise {@code null} to fall back to standard streaming and staging
    */
   File getCompletionFile();
 
   /**
-   * Call when the download has completed and the tempFile contains the downloaded data, but may be
-   * too long. The callback must truncate the file, check the hashes on the file and complete the
-   * request.
+   * Finalizes a direct-to-file download where {@code tempFile} holds the assembled content.
    *
-   * @param tempFile A file in the same directory as the completion file, containing the downloaded
-   *     data.
-   * @param length The length of the downloaded data.
-   * @param metadata The MIME type of the downloaded data.
-   * @param state The calling ClientGetState.
-   * @param context Contains run-time support structures such as executors, temporary storage
-   *     factories etc. Not static because we want to be able to run multiple nodes in one VM for
-   *     tests etc.
+   * <p>The temporary file resides in the same directory as the target. Implementations should
+   * truncate the file to {@code length} bytes if necessary, verify integrity using the known
+   * hashes, and commit the file as the final result (e.g., via an atomic move/rename when
+   * permissible). Any failure should be reported through the regular failure path of the
+   * surrounding fetch request. Callers should not modify or delete {@code tempFile} after invoking
+   * this method unless instructed by the implementation.
+   *
+   * <pre>{@code
+   * // Typical commit from the final fetch stage
+   * callback.onSuccess(tempFile, expectedLength, metadata, state, context);
+   * }</pre>
+   *
+   * @param tempFile a file in the same directory as the completion file containing the assembled
+   *     data ready for verification and commit; must be readable and writable by the process
+   * @param length the exact expected length of the final content in bytes; implementations may
+   *     truncate the file to this size prior to verification
+   * @param metadata content metadata such as MIME type and parameters available at completion; may
+   *     inform downstream handling or user presentation
+   * @param state the calling {@link ClientGetState} representing the final stage of the request at
+   *     completion time; useful for logging and auditing
+   * @param context run-time helpers such as executors and temporary storage factories; valid only
+   *     during the invocation and not intended for cross-thread retention
    */
   void onSuccess(
       File tempFile,

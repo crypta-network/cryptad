@@ -4,7 +4,6 @@ import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,31 +20,54 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.NodeStarter;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.StringValidityChecker;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * Utility methods for common file and stream operations.
+ *
+ * <p>This class provides helpers for safe filename sanitization across operating systems,
+ * consistent reading/writing of byte and character streams, directory removal, best‑effort secure
+ * deletion, and a few portability probes (detected OS/architecture). All methods are static and
+ * side‑effect free except where they perform explicit filesystem I/O.
+ *
+ * <p>Unless otherwise stated, methods do not perform synchronization and are not inherently
+ * thread‑safe. Callers are responsible for coordinating concurrent access to the same files.
+ */
 public final class FileUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(FileUtil.class);
 
+  /**
+   * Default buffer size (bytes) used for stream copy and comparison operations. The current value
+   * is {@code 32 * 1024} (32 KiB).
+   */
   public static final int BUFFER_SIZE = 32 * 1024;
+
+  private static final int REPLACE_MOVE_MAX_ATTEMPTS = 5;
+  private static final long REPLACE_MOVE_BASE_BACKOFF_MILLIS = 50;
+  private static final long REPLACE_MOVE_MAX_BACKOFF_MILLIS = 400;
+
   private static final Random SEED_GENERATOR =
       MersenneTwister.createSynchronized(NodeStarter.getGlobalSecureRandom().generateSeed(32));
 
   /**
-   * Returns a line reading stream for the content of <code>logfile</code>. The stream will contain
-   * at most <code>byteLimit</code> bytes. If <code>byteLimit</code> is less than the size of <code>
-   * logfile</code>, the first part of the file will be skipped. If this leaves a partial line at
-   * the beginning of the content to read, that partial line will also be skipped.
+   * Opens a {@link LineReadingInputStream} positioned to read the tail of a log file.
    *
-   * @param logfile The file to open
-   * @param byteLimit The maximum number of bytes to read
-   * @return A line reader for the trailing portion of the file
-   * @throws IOException if an I/O error occurs
+   * <p>The returned stream exposes at most {@code byteLimit} bytes from the end of {@code logfile}.
+   * When truncating, the method skips an initial partial line so consumers see complete lines only.
+   * The caller owns the returned stream and must close it.
+   *
+   * @param logfile file to open
+   * @param byteLimit maximum number of bytes of trailing content to expose
+   * @return a line‑aware input stream over the tail of {@code logfile}
+   * @throws IOException on I/O failure opening or positioning the stream
    */
   public static LineReadingInputStream getLogTailReader(File logfile, long byteLimit)
       throws IOException {
@@ -61,14 +83,18 @@ public final class FileUtil {
       fis = new FileInputStream(logfile);
       lis = new LineReadingInputStream(fis);
       if (skip > 0) {
-        lis.skip(skip);
+        // Skip up to the requested number of bytes, but tolerate concurrent truncation.
+        long remaining = skip;
+        while (remaining > 0) {
+          long s = lis.skip(remaining);
+          if (s <= 0) break; // EOF or no progress
+          remaining -= s;
+        }
+        // Drop a potential partial first line after skipping whatever was available.
         lis.readLine(100000, 200, true);
       }
       // Success - return the stream to the caller
-      LineReadingInputStream result = lis;
-      lis = null; // Don't close in finally block since we're returning it
-      fis = null; // Don't close in finally block since it's wrapped by lis
-      return result;
+      return lis;
     } catch (IOException | RuntimeException e) {
       // Clean up resources if setup failed
       IOUtils.closeQuietly(lis);
@@ -77,16 +103,25 @@ public final class FileUtil {
     }
   }
 
+  /**
+   * Coarse‑grained operating system categories used for portability decisions such as filename
+   * sanitization and path handling.
+   */
   public enum OperatingSystem {
-    Unknown(false, false, false), // Special-cased in filename sanitising code.
-    MacOS(false, true, true), // OS/X in that it can run scripts.
-    Linux(false, false, true),
-    FreeBSD(false, false, true),
-    GenericUnix(false, false, true),
-    Windows(true, false, false);
+    UNKNOWN(false, false, false), // Special-cased in filename sanitising code.
+    MAC_OS(false, true, true), // OS/X in that it can run scripts.
+    LINUX(false, false, true),
+    FREE_BSD(false, false, true),
+    GENERIC_UNIX(false, false, true),
+    WINDOWS(true, false, false);
 
+    /** Whether the platform behaves like Windows for path and filename rules. */
     public final boolean isWindows;
+
+    /** Whether the platform is macOS (a Unix that historically had its own filename rules). */
     public final boolean isMac;
+
+    /** Whether the platform is a Unix/POSIX derivative (Linux, *BSD, etc.). */
     public final boolean isUnix;
 
     OperatingSystem(boolean win, boolean mac, boolean unix) {
@@ -96,8 +131,12 @@ public final class FileUtil {
     }
   }
 
+  /**
+   * CPU architectures recognized by legacy runtime logic. Values are the best effort and may not
+   * distinguish word sizes in all cases.
+   */
   public enum CPUArchitecture {
-    Unknown,
+    UNKNOWN,
     X86,
     X86_64,
     PPC_32,
@@ -107,12 +146,22 @@ public final class FileUtil {
     IA64
   }
 
+  /**
+   * Best‑effort detection of the current operating system at class initialization time.
+   *
+   * <p>See {@link #detectOperatingSystem()} for the algorithm. This value is process‑global and not
+   * expected to change while the JVM is running.
+   */
   public static final OperatingSystem detectedOS;
 
   /**
-   * Caveat: Sometimes this may not be entirely accurate, e.g. we may not be able to distinguish
-   * 32-bit from 64-bit, we may be using the wrong JVM for the platform, we may be using an x86
-   * wrapper or JVM on an IA64 system etc. This *should* be the version the JVM is running.
+   * Best‑effort detection of the current CPU architecture at class initialization time.
+   *
+   * <p>Warnings: This may not be entirely accurate. The JVM may not expose enough details to
+   * distinguish 32‑bit from 64‑bit in all cases, a mismatched JVM may be running (e.g., x86 JVM on
+   * IA64 hardware), and the legacy enum does not encode some modern variants (e.g., ARM64 is mapped
+   * to {@link CPUArchitecture#ARM}). The value reflects what the JVM reports for the current
+   * process.
    */
   public static final CPUArchitecture detectedArch;
 
@@ -123,57 +172,108 @@ public final class FileUtil {
 
     detectedArch = detectCPUArchitecture();
 
-    // I did not find any way to detect the Charset of the file system so I'm using the file
-    // encoding charset.
-    // On Windows and Linux this is set based on the users configured system language which is
-    // probably equal to the filename charset.
-    // The worst thing which can happen if we misdetect the filename charset is that downloads fail
-    // because the filenames are invalid:
-    // We disallow path and file separator characters anyway so its not possible to cause files to
-    // be stored in arbitrary places.
+    /*
+     * There is no reliable cross‑platform API to get the filesystem's filename charset,
+     * so use the process default encoding as a pragmatic approximation. On Windows and many
+     * Linux setups, this tracks the configured locale and is typically suitable.
+     *
+     * Mis‑detecting the charset may cause invalid filenames to be rejected; this is acceptable
+     * because path and separator characters are rejected independently, preventing placement
+     * outside intended directories.
+     */
     fileNameCharset = getFileEncodingCharset();
   }
 
-  private static volatile boolean logMINOR;
+  private static char chooseDefaultReplacement(String extraChars) {
+    if (extraChars.indexOf(' ') == -1) return ' ';
+    if (extraChars.indexOf('_') == -1) return '_';
+    if (extraChars.indexOf('-') == -1) return '-';
+    throw new IllegalArgumentException("What do you want me to use instead of spaces???");
+  }
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
+  private static boolean isReservedForAnyOS(char c) {
+    return StringValidityChecker.isWindowsReservedPrintableFilenameCharacter(c)
+        || StringValidityChecker.isMacOSReservedPrintableFilenameCharacter(c)
+        || StringValidityChecker.isUnixReservedPrintableFilenameCharacter(c);
+  }
+
+  private static boolean isReservedForOS(OperatingSystem targetOS, char c) {
+    if (targetOS == OperatingSystem.UNKNOWN) return isReservedForAnyOS(c);
+    if (targetOS.isWindows && StringValidityChecker.isWindowsReservedPrintableFilenameCharacter(c))
+      return true;
+    if (targetOS.isMac && StringValidityChecker.isMacOSReservedPrintableFilenameCharacter(c))
+      return true;
+    return targetOS.isUnix && StringValidityChecker.isUnixReservedPrintableFilenameCharacter(c);
+  }
+
+  private static boolean shouldReplaceChar(char c, OperatingSystem targetOS, String extraChars) {
+    return extraChars.indexOf(c) != -1
+        || Character.getType(c) == Character.CONTROL
+        || Character.isWhitespace(c)
+        || isReservedForOS(targetOS, c);
+  }
+
+  private static void trimWindowsTrailingSpaceDot(StringBuilder sb, OperatingSystem targetOS) {
+    if (targetOS == OperatingSystem.UNKNOWN || targetOS.isWindows) {
+      int lastCharIndex = sb.length() - 1;
+      while (lastCharIndex >= 0) {
+        char lastChar = sb.charAt(lastCharIndex);
+        if (lastChar == ' ' || lastChar == '.') sb.deleteCharAt(lastCharIndex--);
+        else break;
+      }
+    }
+  }
+
+  private static void fixWindowsReservedBasename(StringBuilder sb, OperatingSystem targetOS) {
+    if ((targetOS == OperatingSystem.UNKNOWN || targetOS.isWindows)
+        && StringValidityChecker.isWindowsReservedFilename(sb.toString())) {
+      sb.insert(0, '_');
+    }
   }
 
   /**
-   * Detects the operating system in which the JVM is running. Returns OperatingSystem.Unknown if
-   * the OS is unknown or an error occured. Therefore this function should never throw.
+   * Detects the operating system in which the JVM is running. Returns {@link
+   * OperatingSystem#UNKNOWN} if the OS is unknown or an error occurred. This method never throws.
    */
   private static OperatingSystem detectOperatingSystem() { // Now delegates to AppEnv first
     try {
       network.crypta.fs.AppEnv env = new network.crypta.fs.AppEnv();
-      switch (env.osKind()) {
-        case WINDOWS:
-          return OperatingSystem.Windows;
-        case MAC:
-          return OperatingSystem.MacOS;
-        case LINUX:
-          return OperatingSystem.Linux;
-        default:
-          break; // fall through to legacy heuristics for other Unix variants
+      OperatingSystem detected =
+          switch (env.osKind()) {
+            case WINDOWS -> OperatingSystem.WINDOWS;
+            case MAC -> OperatingSystem.MAC_OS;
+            case LINUX -> {
+              // AppEnv groups all non-Windows/non-macOS here, which includes FreeBSD and other
+              // Unix.
+              // Only return LINUX when the JVM reports actual Linux; otherwise fall through, so
+              // FreeBSD keeps its legacy mapping.
+              // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
+              // misclassifying FreeBSD as Linux.
+              final String n =
+                  String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+              if (n.contains("linux")) {
+                yield OperatingSystem.LINUX;
+              }
+              yield null;
+            }
+            default -> null;
+          };
+      if (detected != null) {
+        return detected;
       }
-      // Legacy fallback to preserve FreeBSD/GenericUnix behavior when not covered by AppEnv
-      final String name = System.getProperty("os.name").toLowerCase();
-      if (name.contains("freebsd")) return OperatingSystem.FreeBSD;
-      if (name.contains("unix")) return OperatingSystem.GenericUnix;
-      else if (File.separatorChar == '/') return OperatingSystem.GenericUnix;
-      else if (File.separatorChar == '\\') return OperatingSystem.Windows;
-      Logger.error(FileUtil.class, "Unknown operating system:" + name);
-    } catch (Throwable t) {
-      Logger.error(FileUtil.class, "Operating system detection failed", t);
+    } catch (Exception e) {
+      // If AppEnv is unavailable (e.g., restricted env), fall back to legacy detection below
+      LOG.error("Operating system detection via AppEnv failed", e);
     }
-    return OperatingSystem.Unknown;
+    // Legacy fallback to preserve FreeBSD/GenericUnix behavior and work in restricted envs
+    final String name = String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+    if (name.contains("freebsd")) return OperatingSystem.FREE_BSD;
+    if (name.contains("linux")) return OperatingSystem.LINUX;
+    if (name.contains("unix")) return OperatingSystem.GENERIC_UNIX;
+    else if (File.separatorChar == '/') return OperatingSystem.GENERIC_UNIX;
+    else if (File.separatorChar == '\\') return OperatingSystem.WINDOWS;
+    LOG.error("Unknown operating system:{}", name);
+    return OperatingSystem.UNKNOWN;
   }
 
   private static CPUArchitecture detectCPUArchitecture() { // Prefer AppEnv, fall back for legacy
@@ -182,11 +282,11 @@ public final class FileUtil {
       String a = env.arch(); // "amd64" or "arm64"
       if ("amd64".equals(a)) return CPUArchitecture.X86_64;
       if ("arm64".equals(a)) return CPUArchitecture.ARM; // legacy enum has no ARM64
-    } catch (Throwable t) {
-      Logger.error(FileUtil.class, "CPU architecture detection via AppEnv failed", t);
+    } catch (Exception e) {
+      LOG.error("CPU architecture detection via AppEnv failed", e);
     }
     try {
-      final String name = System.getProperty("os.arch").toLowerCase();
+      final String name = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
       if (name.equals("x86") || name.equals("i386") || name.matches("i[3-9]86"))
         return CPUArchitecture.X86;
       if (name.equals("amd64")
@@ -199,55 +299,40 @@ public final class FileUtil {
       if (name.equals("ppc") || name.equals("powerpc")) return CPUArchitecture.PPC_32;
       if (name.equals("ppc64")) return CPUArchitecture.PPC_64;
       if (name.startsWith("ia64")) return CPUArchitecture.IA64;
-    } catch (Throwable t) {
-      Logger.error(FileUtil.class, "CPU architecture detection failed", t);
+    } catch (Exception e) {
+      LOG.error("CPU architecture detection failed", e);
     }
-    return CPUArchitecture.Unknown;
+    return CPUArchitecture.UNKNOWN;
   }
 
   /**
-   * Returns the Charset which is equal to the "file.encoding" property. This property is set to the
-   * users configured system language on windows for example.
+   * Returns the charset corresponding to the JVM's default file encoding.
    *
-   * <p>If any error occurs, the default Charset is returned. Therefore this function should never
-   * throw.
+   * <p>On Windows and many Linux distributions this typically follows the user's locale. If the
+   * charset cannot be resolved, the platform default as returned by {@link
+   * Charset#defaultCharset()} is used. This method never throws.
+   *
+   * @return a non-null {@link Charset} suitable for interpreting filenames
    */
   public static Charset getFileEncodingCharset() {
     try {
-      return Charset.forName(System.getProperty("file.encoding"));
-    } catch (Throwable t) {
+      return Charset.forName(Charset.defaultCharset().displayName());
+    } catch (Exception _) {
       return Charset.defaultCharset();
     }
   }
 
-  /** Round up a value to the next multiple of a power of 2 */
-  private static long roundup_2n(long val, int blocksize) {
-    int mask = blocksize - 1;
-    return (val + mask) & ~mask;
-  }
-
-  /** Guesstimate real disk usage for a file with a given filename, of a given length. */
-  public static long estimateUsage(File file, long flen) {
-    /**
-     * It's possible that none of these assumptions are accurate for any filesystem; this is
-     * intended to be a plausible worst case.
-     */
-    // Assume 4kB clusters for calculating block usage (NTFS)
-    long blockUsage = roundup_2n(flen, 4096);
-    // Assume 512 byte filename entries, with 100 bytes overhead, for filename overhead (NTFS)
-    String filename = file.getName();
-    int nameLength =
-        100
-            + Math.max(
-                filename.getBytes(StandardCharsets.UTF_16).length,
-                filename.getBytes(StandardCharsets.UTF_8).length);
-    long filenameUsage = roundup_2n(nameLength, 512);
-    // Assume 50 bytes per block tree overhead with 1kB blocks (reiser3 worst case)
-    long extra = (roundup_2n(flen, 1024) / 1024) * 50;
-    return blockUsage + filenameUsage + extra;
-  }
-
-  /** Is possParent a parent of filename? Why doesn't java provide this? :( */
+  /**
+   * Tests whether {@code poss} is an ancestor directory of {@code filename}.
+   *
+   * <p>Both arguments are also checked after canonicalization to account for symlinks and relative
+   * segments. The check walks parent directories and does not touch the filesystem beyond resolving
+   * canonical paths.
+   *
+   * @param poss potential ancestor directory
+   * @param filename file or directory to test
+   * @return {@code true} if {@code poss} is {@code filename} or one of its parents
+   */
   public static boolean isParent(File poss, File filename) {
     File canon = FileUtil.getCanonicalFile(poss);
     File canonFile = FileUtil.getCanonicalFile(filename);
@@ -267,73 +352,69 @@ public final class FileUtil {
   }
 
   public static File getCanonicalFile(File file) {
-    // Having some problems storing File's in db4o ...
-    // It would start up, and canonicalise a file with path
-    // "/var/lib/freenet-experimental/persistent-temp-24374"
-    // to /var/lib/freenet-experimental/var/lib/freenet-experimental/persistent-temp-24374
-    // (where /var/lib/freenet-experimental is the current working dir)
-    // Regenerating from path worked. So do that here.
-    // And yes, it's voodoo.
+    // Rebuild from the path string before canonicalization to avoid historical double‑prefix
+    // issues observed with some persistence layers.
     String name = file.getPath();
     if (File.pathSeparatorChar == '\\') {
-      name = name.toLowerCase();
+      name = name.toLowerCase(Locale.ROOT);
     }
     file = new File(name);
     File result;
     try {
       result = file.getAbsoluteFile().getCanonicalFile();
-    } catch (IOException e) {
+    } catch (IOException _) {
       result = file.getAbsoluteFile();
     }
     return result;
   }
 
   /**
-   * Reads the entire content of a file as UTF-8 and returns it.
+   * Reads the entire contents of a file as UTF‑8 into a {@link StringBuilder}.
    *
-   * @param file The file to read
-   * @return The content of <code>file</code>
-   * @throws FileNotFoundException if <code>file</code> cannot be opened
-   * @throws IOException if an I/O error occurs
+   * @param file file to read
+   * @return a buffer containing the decoded characters
+   * @throws IOException on I/O failure opening or reading the file
    */
-  public static StringBuilder readUTF(File file) throws FileNotFoundException, IOException {
+  public static StringBuilder readUTF(File file) throws IOException {
     return readUTF(file, 0);
   }
 
   /**
-   * Reads the content of a file as UTF-8, starting at a specified offset, and returns it.
+   * Reads a file as UTF‑8 starting at a byte offset into a {@link StringBuilder}.
    *
-   * @param file The file to read
-   * @param offset The point in <code>file</code> at which to start reading
-   * @return The content of <code>file</code>, starting at <code>offset</code>
-   * @throws FileNotFoundException if <code>file</code> cannot be opened
-   * @throws IOException if an I/O error occurs
+   * @param file file to read
+   * @param offset number of bytes to skip from the start before decoding
+   * @return a buffer containing the decoded characters from {@code offset}
+   * @throws IOException on I/O failure opening or reading the file
    */
-  public static StringBuilder readUTF(File file, long offset)
-      throws FileNotFoundException, IOException {
+  public static StringBuilder readUTF(File file, long offset) throws IOException {
     try (FileInputStream fis = new FileInputStream(file)) {
       return readUTF(fis, offset);
     }
   }
 
   /**
-   * Reads the entire content of a stream as UTF-8 and returns it.
+   * Reads the entire contents of a stream as UTF‑8 into a {@link StringBuilder}.
    *
-   * @param stream The stream to read
-   * @return The content of <code>stream</code>
-   * @throws IOException if an I/O error occurs
+   * <p>The provided stream is consumed and closed by this method.
+   *
+   * @param stream input to read (consumed and closed)
+   * @return a buffer containing the decoded characters
+   * @throws IOException on I/O failure while reading
    */
   public static StringBuilder readUTF(InputStream stream) throws IOException {
     return readUTF(stream, 0);
   }
 
   /**
-   * Reads the content of a stream as UTF-8, starting at a specified offset, and returns it.
+   * Reads a stream as UTF‑8 starting at a byte offset into a {@link StringBuilder}.
    *
-   * @param stream The stream to read
-   * @param offset The point in <code>stream</code> at which to start reading
-   * @return The content of <code>stream</code>, starting at <code>offset</code>
-   * @throws IOException if an I/O error occurs
+   * <p>The provided stream is consumed and closed by this method.
+   *
+   * @param stream input to read (consumed and closed)
+   * @param offset number of bytes to skip before decoding
+   * @return a buffer containing the decoded characters from {@code offset}
+   * @throws IOException on I/O failure while reading
    */
   public static StringBuilder readUTF(InputStream stream, long offset) throws IOException {
     skipFully(stream, offset);
@@ -348,7 +429,16 @@ public final class FileUtil {
     }
   }
 
-  /** Reliably skip a number of bytes or throw. */
+  /**
+   * Skips exactly {@code skip} bytes from an {@link InputStream} or throws if unable to do so.
+   *
+   * <p>Unlike {@link InputStream#skip(long)}, this method guarantees progress or fails with an
+   * {@link IOException}.
+   *
+   * @param is input stream (not closed by this method)
+   * @param skip number of bytes to skip; must be non‑negative
+   * @throws IOException if the stream cannot skip the requested number of bytes
+   */
   public static void skipFully(InputStream is, long skip) throws IOException {
     long skipped = 0;
     while (skipped < skip) {
@@ -358,10 +448,23 @@ public final class FileUtil {
     }
   }
 
+  /**
+   * Writes all bytes from {@code input} to a temporary file in {@code target}'s directory and then
+   * renames it into place.
+   *
+   * <p>An atomic move is attempted via {@link #moveTo(File, File)}; when not supported by the
+   * filesystem, a non‑atomic replacement is performed. This method does not close the input stream.
+   *
+   * @param input source of bytes (not closed)
+   * @param target destination file to create or replace
+   * @return {@code true} on success, {@code false} if the move failed (the temporary file is then
+   *     deleted when possible)
+   * @throws IOException on I/O failure writing the temporary file
+   */
   public static boolean writeTo(InputStream input, File target) throws IOException {
     File file = File.createTempFile("temp", ".tmp", target.getParentFile());
-    if (logMINOR) {
-      Logger.minor(FileUtil.class, "Writing to " + file + " to be renamed to " + target);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Writing to {} to be renamed to {}", file, target);
     }
 
     try (FileOutputStream fos = new FileOutputStream(file)) {
@@ -369,27 +472,24 @@ public final class FileUtil {
     }
 
     if (!moveTo(file, target)) {
-      file.delete();
+      try {
+        Files.delete(file.toPath());
+      } catch (IOException e) {
+        LOG.warn("Could not delete temporary file {}", file, e);
+      }
       return false;
     }
     return true;
   }
 
   /**
-   * @deprecated use {@link #moveTo(File, File)} or {@link #moveTo(File, File, boolean)}
-   */
-  @Deprecated
-  public static boolean renameTo(File orig, File dest) {
-    return moveTo(orig, dest);
-  }
-
-  /**
-   * Move or rename a file to a destination file.
+   * Moves or renames a file, optionally allowing replacement.
    *
-   * @param orig the file to move
-   * @param dest the destination file
-   * @param overwrite when true, allows replacing the destination file if it exists
-   * @return whether the file was successfully moved
+   * @param orig file to move
+   * @param dest destination path
+   * @param overwrite if {@code true}, allow replacing an existing {@code dest}
+   * @return {@code true} if moved, {@code false} if {@code dest} exists and {@code overwrite} is
+   *     {@code false} or the move otherwise failed
    */
   public static boolean moveTo(File orig, File dest, boolean overwrite) {
     if (!overwrite && dest.exists()) {
@@ -399,146 +499,192 @@ public final class FileUtil {
   }
 
   /**
-   * Move or rename a file to a destination file, replacing the destination file if it exists. An
-   * atomic move is attempted, but not guaranteed. When not supported, the file is moved
-   * non-atomically.
+   * Moves or renames a file, replacing the destination if it exists.
    *
-   * @param orig the file to move
-   * @param dest the destination file
-   * @return whether the file was successfully moved
+   * <p>An atomic move is attempted ({@link StandardCopyOption#ATOMIC_MOVE}); when not supported, a
+   * non‑atomic replacement is performed. This method may fail when moving across filesystems.
+   *
+   * @param orig file to move
+   * @param dest destination path
+   * @return {@code true} on success; {@code false} when the move fails
    */
   public static boolean moveTo(File orig, File dest) {
     Path source = orig.toPath();
     Path target = dest.toPath();
+    if (tryAtomicMove(source, target, orig, dest)) {
+      return true;
+    }
+    return moveWithReplaceRetries(source, target, orig, dest);
+  }
+
+  private static boolean tryAtomicMove(Path source, Path target, File orig, File dest) {
     try {
-      try {
-        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-      } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
-        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+      return true;
+    } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Atomic move unavailable for {} -> {}: {}", orig, dest, e.toString());
       }
     } catch (IOException e) {
-      Logger.error(FileUtil.class, "Could not move " + orig + " to " + dest + ": " + e);
+      // On Windows this frequently fails when replacing an existing file; retry with
+      // REPLACE_EXISTING before giving up.
+      if (LOG.isWarnEnabled()) {
+        String atomicFailure = e.toString();
+        LOG.warn(
+            "Atomic move failed for {} -> {}, retrying non-atomically: {}",
+            orig,
+            dest,
+            atomicFailure);
+      }
+    }
+    return false;
+  }
+
+  private static boolean moveWithReplaceRetries(Path source, Path target, File orig, File dest) {
+    IOException lastFailure = null;
+    for (int attempt = 1; attempt <= REPLACE_MOVE_MAX_ATTEMPTS; attempt++) {
+      try {
+        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        return true;
+      } catch (IOException e) {
+        lastFailure = e;
+        if (attempt == 1) {
+          LOG.warn(
+              "Replace-existing move failed for {} -> {} (attempt {}/{}), retrying: {}",
+              orig,
+              dest,
+              attempt,
+              REPLACE_MOVE_MAX_ATTEMPTS,
+              e.toString());
+        } else if (attempt < REPLACE_MOVE_MAX_ATTEMPTS && LOG.isDebugEnabled()) {
+          LOG.debug(
+              "Replace-existing move retry failed for {} -> {} (attempt {}/{}): {}",
+              orig,
+              dest,
+              attempt,
+              REPLACE_MOVE_MAX_ATTEMPTS,
+              e.toString());
+        }
+        if (attempt == REPLACE_MOVE_MAX_ATTEMPTS) break;
+        if (!sleepBeforeReplaceMoveRetry(orig, dest, attempt)) {
+          return false;
+        }
+      }
+    }
+    LOG.error(
+        "Replace-existing move failed for {} -> {} after {} attempts: {}",
+        orig,
+        dest,
+        REPLACE_MOVE_MAX_ATTEMPTS,
+        lastFailure,
+        lastFailure);
+    return false;
+  }
+
+  private static boolean sleepBeforeReplaceMoveRetry(File orig, File dest, int attempt) {
+    long backoffMillis = retryBackoffMillis(attempt);
+    try {
+      Thread.sleep(backoffMillis);
+      return true;
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      LOG.error(
+          "Interrupted while retrying replace-existing move for {} -> {} (attempt {}/{}).",
+          orig,
+          dest,
+          attempt,
+          REPLACE_MOVE_MAX_ATTEMPTS,
+          interrupted);
       return false;
     }
-    return true;
+  }
+
+  private static long retryBackoffMillis(int failedAttempt) {
+    long backoff = REPLACE_MOVE_BASE_BACKOFF_MILLIS;
+    int shifts = failedAttempt - 1;
+    if (shifts > 0) {
+      backoff <<= Math.min(shifts, 30);
+    }
+    return Math.min(backoff, REPLACE_MOVE_MAX_BACKOFF_MILLIS);
   }
 
   /**
-   * Sanitizes the given filename to be valid on the given operating system. If
-   * OperatingSystem.Unknown is specified this function will generate a filename which fullfils the
-   * restrictions of all known OS, currently this is MacOS, Unix and Windows.
+   * Produces a safe filename for the specified target operating system.
+   *
+   * <p>Control and whitespace characters, characters reserved by the target OS, and any characters
+   * listed in {@code extraChars} are replaced with a default substitute (space, underscore, or
+   * hyphen). On Windows, trailing spaces and dots are removed. If the basename is a Windows
+   * reserved name (e.g., {@code CON}, {@code NUL}), an underscore is prefixed. The result is
+   * trimmed; if it is empty, a placeholder string is returned.
+   *
+   * @param fileName input name to sanitize
+   * @param targetOS ruleset to apply; {@link OperatingSystem#UNKNOWN} applies a conservative union
+   *     of all supported OS rules
+   * @param extraChars additional characters to replace regardless of OS rules
+   * @return a sanitized filename
    */
   public static String sanitizeFileName(
       final String fileName, OperatingSystem targetOS, String extraChars) {
-    // Filter out any characters which do not exist in the charset.
+    // Filter out any characters that do not exist in the charset.
     final CharBuffer buffer =
-        fileNameCharset.decode(fileNameCharset.encode(fileName)); // Charset are thread-safe
+        fileNameCharset.decode(fileNameCharset.encode(fileName)); // Charsets are thread‑safe
 
     final StringBuilder sb = new StringBuilder(fileName.length() + 1);
 
-    switch (targetOS) {
-      case Unknown:
-        break;
-      case MacOS:
-        break;
-      case Linux:
-        break;
-      case FreeBSD:
-        break;
-      case GenericUnix:
-        break;
-      case Windows:
-        break;
-      default:
-        Logger.error(FileUtil.class, "Unsupported operating system: " + targetOS);
-        targetOS = OperatingSystem.Unknown;
-        break;
-    }
-
-    char def = ' ';
-    if (extraChars.indexOf(' ') != -1) {
-      def = '_';
-      if (extraChars.indexOf(def) != -1) {
-        def = '-';
-        if (extraChars.indexOf(def) != -1)
-          throw new IllegalArgumentException("What do you want me to use instead of spaces???");
-      }
-    }
+    char def = chooseDefaultReplacement(extraChars);
 
     for (char c :
         buffer.array()) { // Note that this will add extra whitespace to the end, which we will trim
       // later.
 
-      if (extraChars.indexOf(c) != -1) {
-        sb.append(def);
-        continue;
-      }
-
-      // Control characters and whitespace are converted to space for all OS.
-      // We do not check for the file separator character because it is included in each OS list of
-      // reserved characters.
-      if (Character.getType(c) == Character.CONTROL || Character.isWhitespace(c)) {
-        sb.append(def);
-        continue;
-      }
-
-      if (targetOS == OperatingSystem.Unknown || targetOS.isWindows) {
-        if (StringValidityChecker.isWindowsReservedPrintableFilenameCharacter(c)) {
-          sb.append(def);
-          continue;
-        }
-      }
-
-      if (targetOS == OperatingSystem.Unknown || targetOS.isMac) {
-        if (StringValidityChecker.isMacOSReservedPrintableFilenameCharacter(c)) {
-          sb.append(def);
-          continue;
-        }
-      }
-
-      if (targetOS == OperatingSystem.Unknown || targetOS.isUnix) {
-        if (StringValidityChecker.isUnixReservedPrintableFilenameCharacter(c)) {
-          sb.append(def);
-          continue;
-        }
-      }
-
-      // Nothing did continue; so the character is okay
-      sb.append(c);
+      boolean replace = shouldReplaceChar(c, targetOS, extraChars);
+      sb.append(replace ? def : c);
     }
 
-    // In windows, the last character of a filename may not be space or dot. We cut them off
-    if (targetOS == OperatingSystem.Unknown || targetOS.isWindows) {
-      int lastCharIndex = sb.length() - 1;
-      while (lastCharIndex >= 0) {
-        char lastChar = sb.charAt(lastCharIndex);
-        if (lastChar == ' ' || lastChar == '.') sb.deleteCharAt(lastCharIndex--);
-        else break;
-      }
-    }
+    // On Windows, a filename must not end with a space or dot; remove any trailing instances.
+    trimWindowsTrailingSpaceDot(sb, targetOS);
 
-    // Now the filename might be one of the reserved filenames in Windows (CON etc.) and we must
-    // replace it if it is...
-    if (targetOS == OperatingSystem.Unknown || targetOS.isWindows) {
-      if (StringValidityChecker.isWindowsReservedFilename(sb.toString())) sb.insert(0, '_');
-    }
+    // Avoid Windows reserved basenames (e.g., CON, NUL) by prefixing an underscore when needed.
+    fixWindowsReservedBasename(sb, targetOS);
 
     if (sb.isEmpty()) {
-      sb.append("Invalid filename"); // TODO: L10n
+      sb.append("Invalid filename"); // Note: not localized
     }
 
     return sb.toString().trim(); // Trim leading and trailing whitespace.
     // Some of the trailing whitespace may be from the CharBuffer.
   }
 
+  /**
+   * Sanitizes a filename using the rules for the detected operating system.
+   *
+   * @param fileName input name
+   * @return a sanitized filename valid on the current platform
+   */
   public static String sanitize(String fileName) {
     return sanitizeFileName(fileName, detectedOS, "");
   }
 
+  /**
+   * Sanitizes a filename using the rules for the detected operating system and replaces additional
+   * caller‑provided characters.
+   *
+   * @param fileName input name
+   * @param extraChars characters that must be replaced regardless of OS rules
+   * @return a sanitized filename
+   */
   public static String sanitizeFileNameWithExtras(String fileName, String extraChars) {
     return sanitizeFileName(fileName, detectedOS, extraChars);
   }
 
+  /**
+   * Sanitizes a filename and enforces an extension suitable for the provided MIME type.
+   *
+   * @param filename input name
+   * @param mimeType MIME type used to select or adjust the filename extension; if {@code null}, no
+   *     extension enforcement occurs
+   * @return a sanitized filename, possibly with an adjusted extension
+   */
   public static String sanitize(String filename, String mimeType) {
     filename = sanitize(filename);
     if (mimeType == null) return filename;
@@ -546,36 +692,17 @@ public final class FileUtil {
   }
 
   /**
-   * Find the length of an input stream. This method will consume the complete input stream until
-   * its {@link InputStream#read(byte[])} method returns <code>-1</code>, thus signalling the end of
-   * the stream.
+   * Copies bytes from {@code source} to {@code destination}.
    *
-   * @param source The input stream to find the length of
-   * @return The numbe of bytes that can be read from the stream
-   * @throws IOException if an I/O error occurs
-   */
-  public static long findLength(InputStream source) throws IOException {
-    long length = 0;
-    byte[] buffer = new byte[BUFFER_SIZE];
-    int read = 0;
-    while (read > -1) {
-      read = source.read(buffer);
-      if (read != -1) {
-        length += read;
-      }
-    }
-    return length;
-  }
-
-  /**
-   * Copies <code>length</code> bytes from the source input stream to the destination output stream.
-   * If <code>length</code> is <code>-1</code> as much bytes as possible will be copied (i.e. until
-   * {@link InputStream#read()} returns <code>-1</code> to signal the end of the stream).
+   * <p>If {@code length == -1}, bytes are copied until the end‑of‑stream; otherwise exactly {@code
+   * length} bytes are copied and an {@link EOFException} is thrown if insufficient data is
+   * available. This method closes neither stream.
    *
-   * @param source The input stream to read from
-   * @param destination The output stream to write to
-   * @param length The number of bytes to copy
-   * @throws IOException if an I/O error occurs
+   * @param source input stream to read from (not closed)
+   * @param destination output stream to write to (not closed)
+   * @param length number of bytes to copy, or {@code -1} to copy until EOF
+   * @throws IOException on read or write failure, or when EOF occurs before copying {@code length}
+   *     bytes
    */
   public static void copy(InputStream source, OutputStream destination, long length)
       throws IOException {
@@ -592,81 +719,159 @@ public final class FileUtil {
     }
   }
 
+  /**
+   * Best‑effort secure deletion of a file or recursive deletion of a directory tree.
+   *
+   * <p>For regular files this overwrites contents with pseudorandom data and then deletes the file.
+   * For directories this removes all children and then the directory itself. Deletion is the best
+   * effort and may not be effective on some filesystems (e.g., copy‑on‑write, journaling, SSDs).
+   *
+   * <p>Callers should prefer to check the boolean return value. {@code IOException} is declared for
+   * historical reasons; current implementation logs errors and returns {@code false} instead of
+   * throwing.
+   *
+   * @param wd file or directory to delete
+   * @return {@code true} on success; {@code false} if any deletion step failed
+   * @throws IOException retained for signature compatibility; current implementation logs and
+   *     returns {@code false} instead of propagating I/O failures
+   */
+  @SuppressWarnings("UnusedReturnValue")
   public static boolean secureDeleteAll(File wd) throws IOException {
     if (!wd.isDirectory()) {
-      System.err.println("DELETING FILE " + wd);
+      LOG.debug("secureDeleteAll deleting file {}", wd);
       try {
         secureDelete(wd);
       } catch (IOException e) {
-        Logger.error(FileUtil.class, "Could not delete file: " + wd, e);
+        LOG.error("secureDeleteAll failed to delete file {}", wd, e);
         return false;
       }
     } else {
-      for (File subfile : wd.listFiles()) {
-        if (!removeAll(subfile)) return false;
+      File[] children = wd.listFiles();
+      if (children != null) {
+        for (File subfile : children) {
+          if (!removeAll(subfile)) return false;
+        }
       }
-      if (!wd.delete()) {
-        Logger.error(FileUtil.class, "Could not delete directory: " + wd);
+      try {
+        Files.delete(wd.toPath());
+      } catch (IOException e) {
+        LOG.error("secureDeleteAll failed to delete directory {}", wd, e);
       }
     }
     return true;
   }
 
   /**
-   * Delete everything in a directory. Only use this when we are *very sure* there is no important
-   * data below it!
+   * Recursively deletes a directory and all its contents.
+   *
+   * <p>Use with caution: this is destructive and irreversible.
+   *
+   * @param wd directory to delete (or file; files are deleted directly)
+   * @return {@code true} on success; {@code false} if any path could not be deleted
    */
   public static boolean removeAll(File wd) {
     if (!wd.isDirectory()) {
-      System.err.println("DELETING FILE " + wd);
-      if (!wd.delete() && wd.exists()) {
-        Logger.error(FileUtil.class, "Could not delete file: " + wd);
-        return false;
-      }
-    } else {
-      for (File subfile : wd.listFiles()) {
-        if (!removeAll(subfile)) return false;
-      }
-      if (!wd.delete()) {
-        Logger.error(FileUtil.class, "Could not delete directory: " + wd);
-      }
+      return deleteSingleFile(wd);
     }
-    return true;
+    return deleteDirectoryContentsAndSelf(wd);
   }
 
+  /** Deletes a single file, logging and tolerating non-existent paths after an attempt. */
+  private static boolean deleteSingleFile(File file) {
+    LOG.debug("deleteSingleFile deleting file {}", file);
+    try {
+      Files.delete(file.toPath());
+      return true;
+    } catch (IOException e) {
+      if (Files.exists(file.toPath())) {
+        LOG.error("deleteSingleFile failed to delete file {}", file, e);
+        return false;
+      }
+      return true; // already gone
+    }
+  }
+
+  /** Recursively deletes all contents of a directory, then the directory itself. */
+  private static boolean deleteDirectoryContentsAndSelf(File dir) {
+    File[] children = dir.listFiles();
+    if (children != null) {
+      for (File subfile : children) {
+        if (!removeAll(subfile)) return false;
+      }
+    }
+    try {
+      Files.delete(dir.toPath());
+      return true;
+    } catch (IOException e) {
+      LOG.error("deleteDirectoryContentsAndSelf failed to delete directory {}", dir, e);
+      return false;
+    }
+  }
+
+  /**
+   * Overwrites a regular file with pseudorandom bytes and deletes it.
+   *
+   * <p>This is the best‑effort mechanism. It may not prevent data recovery on certain storage or
+   * filesystems (e.g., wear‑leveling SSDs, COW/journaling filesystems). Consider stronger
+   * mitigations when threat models require them. This method performs a single-pass overwriting of
+   * file contents and does not attempt metadata scrubbing.
+   *
+   * @param file non‑directory file to delete; no effect if the file does not exist
+   * @throws IOException if the file exists but cannot be deleted
+   */
   public static void secureDelete(File file) throws IOException {
-    // FIXME somebody who understands these things should have a look at this...
     if (!file.exists()) return;
     long size = file.length();
     if (size > 0) {
       try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-        System.out.println(
-            "Securely deleting " + file + " which is of length " + size + " bytes...");
+        LOG.info("Securely deleting {} which is of length {} bytes...", file, size);
         // Random data first.
         raf.seek(0);
         fill(new RandomAccessFileOutputStream(raf), size);
         raf.getFD().sync();
       }
     }
-    if ((!file.delete()) && file.exists()) throw new IOException("Unable to delete file " + file);
+    try {
+      Files.delete(file.toPath());
+    } catch (IOException e) {
+      if (Files.exists(file.toPath())) throw new IOException("Unable to delete file " + file, e);
+    }
   }
 
-  @Deprecated
-  public static void secureDelete(File file, Random random) throws IOException {
-    secureDelete(file);
-  }
-
-  /** * Set owner-only RW on the given file. */
+  /**
+   * Sets owner read/write permissions and removes permissions for groups and others.
+   *
+   * @param f target file or directory
+   * @return {@code true} if all permission changes succeeded
+   */
+  @SuppressWarnings("UnusedReturnValue")
   public static boolean setOwnerRW(File f) {
     return setOwnerPerm(f, true, true, false);
   }
 
-  /** * Set owner-only RWX on the given file. */
+  /**
+   * Sets owner read/write/execute permissions and removes permissions for groups and others.
+   *
+   * @param f target file or directory
+   * @return {@code true} if all permission changes succeeded
+   */
+  @SuppressWarnings("UnusedReturnValue")
   public static boolean setOwnerRWX(File f) {
     return setOwnerPerm(f, true, true, true);
   }
 
-  /** * Set owner-only permissions on the given file. */
+  /**
+   * Sets owner permissions explicitly and removes permissions for groups and others.
+   *
+   * <p>Semantics depend on the underlying platform. On non‑POSIX platforms some changes may be
+   * ignored. The method returns {@code false} if any change operation fails.
+   *
+   * @param f target file or directory
+   * @param r whether the owner may read
+   * @param w whether the owner may write
+   * @param x whether the owner may execute
+   * @return {@code true} if all permission changes succeeded
+   */
   public static boolean setOwnerPerm(File f, boolean r, boolean w, boolean x) {
     boolean success = true;
     success &= f.setReadable(false, false);
@@ -678,18 +883,36 @@ public final class FileUtil {
     return success;
   }
 
+  /**
+   * Compares two paths for equality after canonicalization.
+   *
+   * <p>This method resolves absolute canonical paths for both arguments (which may normalize case
+   * on case‑insensitive platforms) and then compares them with {@link File#equals(Object)}.
+   *
+   * @param a first file
+   * @param b second file
+   * @return {@code true} if both refer to the same canonical path
+   */
   public static boolean equals(File a, File b) {
-    if (a == b) return true;
-    if (a.equals(b)) return true;
+    if (Objects.equals(a, b)) return true;
+    if (a == null || b == null) return false;
     a = getCanonicalFile(a);
     b = getCanonicalFile(b);
     return a.equals(b);
   }
 
   /**
-   * Create a temp file in a specific directory. Null = ".".
+   * Creates a temporary file in the given directory.
    *
-   * @throws IOException
+   * <p>If {@code directory} is {@code null}, the current working directory is used. When the {@code
+   * prefix} is shorter than 3 characters, a {@code -TMP} suffix is appended to satisfy the JDK
+   * requirement.
+   *
+   * @param prefix filename prefix (at least 3 characters or extended as noted)
+   * @param suffix filename suffix (may be {@code null})
+   * @param directory directory in which to create the file; {@code null} means {@code "."}
+   * @return the created temporary file
+   * @throws IOException if the file cannot be created
    */
   public static File createTempFile(String prefix, String suffix, File directory)
       throws IOException {
@@ -700,12 +923,14 @@ public final class FileUtil {
   }
 
   /**
-   * Copies the file from the source to the target location, including its attributes.
+   * Copies a file, replacing the target if it exists, and preserves basic attributes when
+   * supported.
    *
-   * @param copyFrom the source filename
-   * @param copyTo the target filename
-   * @return whether the file was copied successfully
+   * @param copyFrom source file
+   * @param copyTo destination file
+   * @return {@code true} on success; {@code false} on failure (errors are logged)
    */
+  @SuppressWarnings("unused")
   public static boolean copyFile(File copyFrom, File copyTo) {
     try {
       Path source = copyFrom.toPath();
@@ -714,31 +939,26 @@ public final class FileUtil {
           source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
       return true;
     } catch (IOException | InvalidPathException e) {
-      System.err.println("Unable to copy from " + copyFrom + " to " + copyTo);
+      LOG.warn("Unable to copy from {} to {}", copyFrom, copyTo, e);
       return false;
     }
   }
 
   /**
-   * Write hard to identify random data to the OutputStream. Does not drain the global secure random
-   * number generator, and is significantly faster than it.
+   * Writes pseudorandom bytes to a stream without using the global secure RNG.
    *
-   * @param os The stream to write to.
-   * @param length The number of bytes to write.
-   * @throws IOException If unable to write to the stream.
+   * <p>Bytes are generated from a per‑call {@link Random} seeded by a synchronized PRNG to avoid
+   * draining the global secure generator, providing speed while remaining hard to predict for
+   * casual inspection.
+   *
+   * @param os destination stream (not closed)
+   * @param length number of bytes to write
+   * @throws IOException if writing fails
    */
   public static void fill(OutputStream os, long length) throws IOException {
     byte[] seed = new byte[16];
     SEED_GENERATOR.nextBytes(seed);
     writeRandomBytes(os, MersenneTwister.createUnsynchronized(seed), length);
-  }
-
-  /**
-   * @deprecated
-   */
-  @Deprecated
-  public static void fill(OutputStream os, Random random, long length) throws IOException {
-    writeRandomBytes(os, random, length);
   }
 
   private static void writeRandomBytes(OutputStream os, Random random, long length)
@@ -753,6 +973,20 @@ public final class FileUtil {
     }
   }
 
+  /**
+   * Compares two streams for byte equality up to {@code size} bytes.
+   *
+   * <p>Reads exactly {@code size} bytes from each stream and compares chunk by chunk. Uses {@link
+   * MessageDigest#isEqual(byte[], byte[])} to avoid timing differences. Streams are not closed by
+   * this method.
+   *
+   * @param a first stream (not closed)
+   * @param b second stream (not closed)
+   * @param size number of bytes to compare
+   * @return {@code true} if the first {@code size} bytes are identical
+   * @throws EOFException if either stream contains fewer than {@code size} bytes
+   * @throws IOException on I/O failure
+   */
   public static boolean equalStreams(InputStream a, InputStream b, long size) throws IOException {
     byte[] aBuffer = new byte[BUFFER_SIZE];
     byte[] bBuffer = new byte[BUFFER_SIZE];

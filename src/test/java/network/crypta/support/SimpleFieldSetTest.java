@@ -1,39 +1,58 @@
 package network.crypta.support;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.anEmptyMap;
-import static org.junit.Assert.*;
-
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import network.crypta.node.FSParseException;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anEmptyMap;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Test case for {@link SimpleFieldSet} class.
+ * Tests for {@link SimpleFieldSet} using JUnit 6.
+ *
+ * <p>Style: AAA (Arrange–Act–Assert). Deterministic, no external I/O.
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
-public class SimpleFieldSetTest {
+class SimpleFieldSetTest {
 
   /**
    * Tests putSingle(String,String) method trying to store a key with two paired multi_level_chars
    * (i.e. "..").
    */
   @Test
-  public void testSimpleFieldSetPutSingle_StringString_WithTwoPairedMultiLevelChars() {
+  void testSimpleFieldSetPutSingle_StringString_WithTwoPairedMultiLevelChars() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     String methodKey = "foo..bar.";
     String methodValue = "foobar";
+
+    // Act
     methodSFS.putSingle(methodKey, methodValue);
-    assertEquals(methodSFS.subset("foo").subset("").subset("bar").get(""), methodValue);
-    assertEquals(methodSFS.get(methodKey), methodValue);
+
+    // Assert
+    assertEquals(methodValue, methodSFS.subset("foo").subset("").subset("bar").get(""));
+    assertEquals(methodValue, methodSFS.get(methodKey));
   }
 
   /**
@@ -41,30 +60,38 @@ public class SimpleFieldSetTest {
    * (i.e. "..").
    */
   @Test
-  public void testSimpleFieldSetPutAppend_StringString_WithTwoPairedMultiLevelChars() {
+  void testSimpleFieldSetPutAppend_StringString_WithTwoPairedMultiLevelChars() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     String methodKey = "foo..bar";
     String methodValue = "foobar";
+
+    // Act
     methodSFS.putAppend(methodKey, methodValue);
-    assertEquals(methodSFS.get(methodKey), methodValue);
+
+    // Assert
+    assertEquals(methodValue, methodSFS.get(methodKey));
   }
 
   /** Tests put() and get() methods using a normal Map behaviour and without MULTI_LEVEL_CHARs */
   @Test
-  public void testSimpleFieldSetPutAndGet_NoMultiLevel() {
+  void testSimpleFieldSetPutAndGet_NoMultiLevel() {
+    // Arrange
     String[][] methodPairsArray = {
       {"A", "a"}, {"B", "b"}, {"C", "c"}, {"D", "d"}, {"E", "e"}, {"F", "f"}
     };
+    // Act & Assert
     assertTrue(checkPutAndGetPairs(methodPairsArray));
   }
 
   /** Tests put() and get() methods using a normal Map behaviour and with MULTI_LEVEL_CHARs */
   @Test
-  public void testSimpleFieldSetPutAndGet_MultiLevel() {
-    String[][] methodPairsArray_DoubleLevel = {
+  void testSimpleFieldSetPutAndGet_MultiLevel() {
+    // Arrange
+    String[][] methodPairsArrayDoubleLevel = {
       {"A.A", "aa"}, {"A.B", "ab"}, {"A.C", "ac"}, {"A.D", "ad"}, {"A.E", "ae"}, {"A.F", "af"}
     };
-    String[][] methodPairsArray_MultiLevel = {
+    String[][] methodPairsArrayMultiLevel = {
       {"A.A.A.A", "aa"},
       {"A.B.A", "ab"},
       {"A.C.Cc", "ac"},
@@ -72,8 +99,9 @@ public class SimpleFieldSetTest {
       {"A.E.G", "ae"},
       {"A.F.J.II.UI.BOO", "af"}
     };
-    assertTrue(checkPutAndGetPairs(methodPairsArray_DoubleLevel));
-    assertTrue(checkPutAndGetPairs(methodPairsArray_MultiLevel));
+    // Act & Assert
+    assertTrue(checkPutAndGetPairs(methodPairsArrayDoubleLevel));
+    assertTrue(checkPutAndGetPairs(methodPairsArrayMultiLevel));
   }
 
   /**
@@ -81,9 +109,10 @@ public class SimpleFieldSetTest {
    * the first level and then get() on the second
    */
   @Test
-  public void testSimpleFieldSetSubset_String() {
+  void testSimpleFieldSetSubset_String() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    String[][] methodPairsArray_MultiLevel = {
+    String[][] methodPairsArrayMultiLevel = {
       {"A", "A", "aa"},
       {"A", "B", "ab"},
       {"A", "C", "ac"},
@@ -91,23 +120,15 @@ public class SimpleFieldSetTest {
       {"A", "E", "ae"},
       {"A", "F", "af"}
     };
-    // putting values
-    for (int i = 0; i < methodPairsArray_MultiLevel.length; i++) {
-      methodSFS.putSingle(
-          methodPairsArray_MultiLevel[i][0]
-              + SimpleFieldSet.MULTI_LEVEL_CHAR
-              + methodPairsArray_MultiLevel[i][1],
-          methodPairsArray_MultiLevel[i][2]);
+    // Act
+    for (String[] value : methodPairsArrayMultiLevel) {
+      methodSFS.putSingle(value[0] + SimpleFieldSet.MULTI_LEVEL_CHAR + value[1], value[2]);
     }
-    // getting subsets and then values
-    for (int i = 0; i < methodPairsArray_MultiLevel.length; i++) {
-      assertEquals(
-          methodSFS
-              .subset(methodPairsArray_MultiLevel[i][0])
-              .get(methodPairsArray_MultiLevel[i][1]),
-          methodPairsArray_MultiLevel[i][2]);
+    // Assert (getting subsets and then values)
+    for (String[] strings : methodPairsArrayMultiLevel) {
+      assertEquals(methodSFS.subset(strings[0]).get(strings[1]), strings[2]);
     }
-    assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray_MultiLevel.length));
+    assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArrayMultiLevel.length));
   }
 
   /**
@@ -115,47 +136,64 @@ public class SimpleFieldSetTest {
    * another with same keys but different values
    */
   @Test
-  public void testPutAllOverwrite() {
+  void testPutAllOverwrite() {
+    // Arrange
     String methodAppendedString = "buu";
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
     SimpleFieldSet methodNewSFS = this.sfsFromStringPairs(methodAppendedString);
+
+    // Act
     methodSFS.putAllOverwrite(methodNewSFS);
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
-      assertEquals(
-          methodSFS.get(SAMPLE_STRING_PAIRS[i][0]),
-          SAMPLE_STRING_PAIRS[i][1] + methodAppendedString);
+
+    // Assert
+    for (String[] stringPair : SAMPLE_STRING_PAIRS) {
+      assertEquals(methodSFS.get(stringPair[0]), stringPair[1] + methodAppendedString);
     }
+    // Arrange another target
     SimpleFieldSet nullSFS = new SimpleFieldSet(false);
+    // Act
     nullSFS.putAllOverwrite(methodNewSFS);
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
-      assertEquals(
-          nullSFS.get(SAMPLE_STRING_PAIRS[i][0]), SAMPLE_STRING_PAIRS[i][1] + methodAppendedString);
+    // Assert
+    for (String[] sampleStringPair : SAMPLE_STRING_PAIRS) {
+      assertEquals(nullSFS.get(sampleStringPair[0]), sampleStringPair[1] + methodAppendedString);
     }
   }
 
   /** Tests put(String,SimpleFieldSet) method */
   @Test
-  public void testPut_StringSimpleFieldSet() {
+  void testPut_StringSimpleFieldSet() {
+    // Arrange
     String methodKey = "prefix";
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    methodSFS.put(methodKey, sfsFromSampleStringPairs());
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
+    SimpleFieldSet child = sfsFromSampleStringPairs();
+
+    // Act
+    methodSFS.put(methodKey, child);
+
+    // Assert
+    for (String[] sampleStringPair : SAMPLE_STRING_PAIRS) {
       assertEquals(
-          methodSFS.get(methodKey + SimpleFieldSet.MULTI_LEVEL_CHAR + SAMPLE_STRING_PAIRS[i][0]),
-          SAMPLE_STRING_PAIRS[i][1]);
+          methodSFS.get(methodKey + SimpleFieldSet.MULTI_LEVEL_CHAR + sampleStringPair[0]),
+          sampleStringPair[1]);
     }
   }
 
   /** Tests put(String,SimpleFieldSet) method */
   @Test
-  public void testTPut_StringSimpleFieldSet() {
+  void testTPut_StringSimpleFieldSet() {
+    // Arrange
     String methodKey = "prefix";
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    methodSFS.tput(methodKey, sfsFromSampleStringPairs());
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
+    SimpleFieldSet child = sfsFromSampleStringPairs();
+
+    // Act
+    methodSFS.tput(methodKey, child);
+
+    // Assert
+    for (String[] sampleStringPair : SAMPLE_STRING_PAIRS) {
       assertEquals(
-          methodSFS.get(methodKey + SimpleFieldSet.MULTI_LEVEL_CHAR + SAMPLE_STRING_PAIRS[i][0]),
-          SAMPLE_STRING_PAIRS[i][1]);
+          methodSFS.get(methodKey + SimpleFieldSet.MULTI_LEVEL_CHAR + sampleStringPair[0]),
+          sampleStringPair[1]);
     }
   }
 
@@ -164,20 +202,16 @@ public class SimpleFieldSetTest {
    * structures
    */
   @Test
-  public void testPutAndTPut_WithEmpty() {
+  void testPutAndTPut_WithEmpty() {
+    // Arrange
     SimpleFieldSet methodEmptySFS = new SimpleFieldSet(true);
     SimpleFieldSet methodSampleSFS = sfsFromSampleStringPairs();
-    try {
-      methodSampleSFS.put("sample", methodEmptySFS);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (IllegalArgumentException anException) {
-      assertNotNull(anException);
-    }
-    try {
-      methodSampleSFS.tput("sample", methodSampleSFS);
-    } catch (IllegalArgumentException aException) {
-      fail("Not expected exception thrown : " + aException.getMessage());
-    }
+
+    // Act + Assert
+    assertThrows(
+        IllegalArgumentException.class, () -> methodSampleSFS.put("sample", methodEmptySFS));
+    // Act (tput should not throw)
+    assertDoesNotThrow(() -> methodSampleSFS.tput("sample", methodSampleSFS));
   }
 
   /**
@@ -186,12 +220,15 @@ public class SimpleFieldSetTest {
    * "true", so we are sure if it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringBoolean() {
+  void testPut_StringBoolean() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     int length = 15;
     for (int i = 0; i < length; i++) {
       methodSFS.put(Integer.toString(i), true);
     }
+
+    // Act & Assert
     for (int i = 0; i < length; i++) {
       assertTrue(methodSFS.getBoolean(Integer.toString(i), false));
     }
@@ -204,21 +241,20 @@ public class SimpleFieldSetTest {
    * it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringInt() {
+  void testPut_StringInt() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     int[][] methodPairsArray = {{1, 1}, {2, 2}, {3, 3}, {4, 4}};
-    for (int i = 0; i < methodPairsArray.length; i++) {
-      methodSFS.put(Integer.toString(methodPairsArray[i][0]), methodPairsArray[i][1]);
+    for (int[] value : methodPairsArray) {
+      methodSFS.put(Integer.toString(value[0]), value[1]);
     }
 
+    // Act & Assert
     assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray.length));
-
-    for (int i = 0; i < methodPairsArray.length; i++) {
+    for (int[] ints : methodPairsArray) {
       try {
-        assertEquals(
-            methodSFS.getInt(Integer.toString(methodPairsArray[i][0])), methodPairsArray[i][1]);
-        assertEquals(
-            methodSFS.getInt(Integer.toString(methodPairsArray[i][0]), 5), methodPairsArray[i][1]);
+        assertEquals(methodSFS.getInt(Integer.toString(ints[0])), ints[1]);
+        assertEquals(methodSFS.getInt(Integer.toString(ints[0]), 5), ints[1]);
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -231,21 +267,20 @@ public class SimpleFieldSetTest {
    * sure if it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringLong() {
+  void testPut_StringLong() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     long[][] methodPairsArray = {{1, 1}, {2, 2}, {3, 3}, {4, 4}};
-    for (int i = 0; i < methodPairsArray.length; i++) {
-      methodSFS.put(Long.toString(methodPairsArray[i][0]), methodPairsArray[i][1]);
+    for (long[] value : methodPairsArray) {
+      methodSFS.put(Long.toString(value[0]), value[1]);
     }
 
+    // Act & Assert
     assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray.length));
-
-    for (int i = 0; i < methodPairsArray.length; i++) {
+    for (long[] longs : methodPairsArray) {
       try {
-        assertEquals(
-            methodSFS.getLong(Long.toString(methodPairsArray[i][0])), methodPairsArray[i][1]);
-        assertEquals(
-            methodSFS.getLong(Long.toString(methodPairsArray[i][0]), 5), methodPairsArray[i][1]);
+        assertEquals(methodSFS.getLong(Long.toString(longs[0])), longs[1]);
+        assertEquals(methodSFS.getLong(Long.toString(longs[0]), 5), longs[1]);
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -258,21 +293,20 @@ public class SimpleFieldSetTest {
    * sure if it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringChar() {
+  void testPut_StringChar() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     char[][] methodPairsArray = {{'1', '1'}, {'2', '2'}, {'3', '3'}, {'4', '4'}};
-    for (int i = 0; i < methodPairsArray.length; i++) {
-      methodSFS.put(String.valueOf(methodPairsArray[i][0]), methodPairsArray[i][1]);
+    for (char[] value : methodPairsArray) {
+      methodSFS.put(String.valueOf(value[0]), value[1]);
     }
 
+    // Act & Assert
     assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray.length));
-
-    for (int i = 0; i < methodPairsArray.length; i++) {
+    for (char[] chars : methodPairsArray) {
       try {
-        assertEquals(
-            methodSFS.getChar(String.valueOf(methodPairsArray[i][0])), methodPairsArray[i][1]);
-        assertEquals(
-            methodSFS.getChar(String.valueOf(methodPairsArray[i][0]), '5'), methodPairsArray[i][1]);
+        assertEquals(methodSFS.getChar(String.valueOf(chars[0])), chars[1]);
+        assertEquals(chars[1], methodSFS.getChar(String.valueOf(chars[0]), '5'));
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -285,22 +319,20 @@ public class SimpleFieldSetTest {
    * sure if it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringShort() {
+  void testPut_StringShort() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     short[][] methodPairsArray = {{1, 1}, {2, 2}, {3, 3}, {4, 4}};
-    for (int i = 0; i < methodPairsArray.length; i++) {
-      methodSFS.put(Short.toString(methodPairsArray[i][0]), methodPairsArray[i][1]);
+    for (short[] value : methodPairsArray) {
+      methodSFS.put(Short.toString(value[0]), value[1]);
     }
 
+    // Act & Assert
     assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray.length));
-
-    for (int i = 0; i < methodPairsArray.length; i++) {
+    for (short[] shorts : methodPairsArray) {
       try {
-        assertEquals(
-            methodSFS.getShort(Short.toString(methodPairsArray[i][0])), methodPairsArray[i][1]);
-        assertEquals(
-            methodSFS.getShort(Short.toString(methodPairsArray[i][0]), (short) 5),
-            methodPairsArray[i][1]);
+        assertEquals(methodSFS.getShort(Short.toString(shorts[0])), shorts[1]);
+        assertEquals(methodSFS.getShort(Short.toString(shorts[0]), (short) 5), shorts[1]);
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -313,28 +345,23 @@ public class SimpleFieldSetTest {
    * we are sure if it finds the right value or not (and does not use the default).
    */
   @Test
-  public void testPut_StringDouble() {
+  void testPut_StringDouble() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     double[][] methodPairsArray = {{1, 1}, {2, 2}, {3, 3}, {4, 4}};
-    for (int i = 0; i < methodPairsArray.length; i++) {
-      methodSFS.put(Double.toString(methodPairsArray[i][0]), methodPairsArray[i][1]);
+    for (double[] value : methodPairsArray) {
+      methodSFS.put(Double.toString(value[0]), value[1]);
     }
 
+    // Act & Assert
     assertTrue(checkSimpleFieldSetSize(methodSFS, methodPairsArray.length));
-
-    for (int i = 0; i < methodPairsArray.length; i++) {
+    for (double[] doubles : methodPairsArray) {
       try {
         // there is no assertEquals(Double,Double) so we are obliged to do this way -_-
         assertEquals(
-            Double.compare(
-                (methodSFS.getDouble(Double.toString(methodPairsArray[i][0]))),
-                methodPairsArray[i][1]),
-            0);
+            0, Double.compare(methodSFS.getDouble(Double.toString(doubles[0])), doubles[1]));
         assertEquals(
-            Double.compare(
-                methodSFS.getDouble(Double.toString(methodPairsArray[i][0]), 5),
-                methodPairsArray[i][1]),
-            0);
+            0, Double.compare(methodSFS.getDouble(Double.toString(doubles[0]), 5), doubles[1]));
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -346,13 +373,18 @@ public class SimpleFieldSetTest {
    * canonical form.
    */
   @Test
-  public void testSimpleFieldSet_StringBooleanBoolean() {
+  void testSimpleFieldSet_StringBooleanBoolean() {
+    // Arrange
     String[][] methodStringPairs = SAMPLE_STRING_PAIRS;
     String methodStringToParse = sfsReadyString(methodStringPairs);
+
+    // Act
     try {
       SimpleFieldSet methodSFS = new SimpleFieldSet(methodStringToParse, false, false, false);
-      for (int i = 0; i < methodStringPairs.length; i++) {
-        assertEquals(methodSFS.get(methodStringPairs[i][0]), methodStringPairs[i][1]);
+
+      // Assert
+      for (String[] methodStringPair : methodStringPairs) {
+        assertEquals(methodSFS.get(methodStringPair[0]), methodStringPair[1]);
       }
     } catch (IOException aException) {
       fail("Not expected exception thrown : " + aException.getMessage());
@@ -364,14 +396,17 @@ public class SimpleFieldSetTest {
    * of the canonical form.
    */
   @Test
-  public void testSimpleFieldSet_BufferedReaderBooleanBoolean() {
+  void testSimpleFieldSet_BufferedReaderBooleanBoolean() {
+    // Arrange
     String[][] methodStringPairs = SAMPLE_STRING_PAIRS;
     BufferedReader methodBufferedReader =
         new BufferedReader(new StringReader(sfsReadyString(methodStringPairs)));
+    // Act
     try {
       SimpleFieldSet methodSFS = new SimpleFieldSet(methodBufferedReader, false, false);
-      for (int i = 0; i < methodStringPairs.length; i++) {
-        assertEquals(methodSFS.get(methodStringPairs[i][0]), methodStringPairs[i][1]);
+      // Assert
+      for (String[] methodStringPair : methodStringPairs) {
+        assertEquals(methodSFS.get(methodStringPair[0]), methodStringPair[1]);
       }
     } catch (IOException aException) {
       fail("Not expected exception thrown : " + aException.getMessage());
@@ -383,24 +418,30 @@ public class SimpleFieldSetTest {
    * form.
    */
   @Test
-  public void testSimpleFieldSet_SimpleFieldSet() {
+  void testSimpleFieldSet_SimpleFieldSet() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(sfsFromSampleStringPairs());
-    String[][] methodStringPairs = SAMPLE_STRING_PAIRS;
-    for (int i = 0; i < methodStringPairs.length; i++) {
-      assertEquals(methodSFS.get(methodStringPairs[i][0]), methodStringPairs[i][1]);
+
+    // Act & Assert
+    for (String[] methodStringPair : SAMPLE_STRING_PAIRS) {
+      assertEquals(methodSFS.get(methodStringPair[0]), methodStringPair[1]);
     }
   }
 
   /** Tests {get,set}EndMarker(String) methods using them after a String parsing */
   @Test
-  public void testEndMarker() {
+  void testEndMarker() {
+    // Arrange
     String methodEndMarker = "ANOTHER-ENDING";
     String methodStringToParse = sfsReadyString(SAMPLE_STRING_PAIRS);
     try {
       SimpleFieldSet methodSFS = new SimpleFieldSet(methodStringToParse, false, false, false);
-      assertEquals(methodSFS.getEndMarker(), SAMPLE_END_MARKER);
+      // Assert initial
+      assertEquals(SAMPLE_END_MARKER, methodSFS.getEndMarker());
+      // Act
       methodSFS.setEndMarker(methodEndMarker);
-      assertEquals(methodSFS.getEndMarker(), methodEndMarker);
+      // Assert updated
+      assertEquals(methodEndMarker, methodSFS.getEndMarker());
     } catch (IOException aException) {
       fail("Not expected exception thrown : " + aException.getMessage());
     }
@@ -408,10 +449,14 @@ public class SimpleFieldSetTest {
 
   /** Tests isEmpty() method. */
   @Test
-  public void testIsEmpty() {
+  void testIsEmpty() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Assert non-empty
     assertFalse(methodSFS.isEmpty());
+    // Arrange empty
     methodSFS = new SimpleFieldSet(true);
+    // Assert empty
     assertTrue(methodSFS.isEmpty());
   }
 
@@ -420,87 +465,111 @@ public class SimpleFieldSetTest {
    * expected subset is "foo".
    */
   @Test
-  public void testDirectSubsetNameIterator() {
+  void testDirectSubsetNameIterator() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
     String expectedSubset = SAMPLE_STRING_PAIRS[0][0]; // "foo"
+    // Act
     Iterator<String> methodIter = methodSFS.directSubsetNameIterator();
+    // Assert
     while (methodIter.hasNext()) {
       assertEquals(methodIter.next(), expectedSubset);
     }
+    // Arrange empty SFS
     methodSFS = new SimpleFieldSet(true);
+    // Act & Assert: should be null when no subsets
     methodIter = methodSFS.directSubsetNameIterator();
     assertNull(methodIter);
   }
 
   /** Tests nameOfDirectSubsets() method. */
   @Test
-  public void testNamesOfDirectSubsets() {
+  void testNamesOfDirectSubsets() {
+    // Arrange
     String[] expectedResult = {SAMPLE_STRING_PAIRS[0][0]};
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act & Assert
     assertArrayEquals(methodSFS.namesOfDirectSubsets(), expectedResult);
 
+    // Arrange empty
     methodSFS = new SimpleFieldSet(true);
-    assertArrayEquals(methodSFS.namesOfDirectSubsets(), new String[0]);
+    // Act & Assert
+    assertArrayEquals(new String[0], methodSFS.namesOfDirectSubsets());
   }
 
   /** Test the putOverwrite(String,String) method. */
   @Test
-  public void testPutOverwrite_String() {
+  void testPutOverwrite_String() {
+    // Arrange
     String methodKey = "foo.bar";
     String[] methodValues = {"boo", "bar", "zoo"};
     String expectedResult = "zoo";
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    for (int i = 0; i < methodValues.length; i++) {
-      methodSFS.putOverwrite(methodKey, methodValues[i]);
+    // Act
+    for (String methodValue : methodValues) {
+      methodSFS.putOverwrite(methodKey, methodValue);
     }
-    assertEquals(methodSFS.get(methodKey), expectedResult);
+    // Assert
+    assertEquals(expectedResult, methodSFS.get(methodKey));
   }
 
   /** Test the putOverwrite(String,String[]) method. */
   @Test
-  public void testPutOverwrite_StringArray() {
+  void testPutOverwrite_StringArray() {
+    // Arrange
     String methodKey = "foo.bar";
     String[] methodValues = {"boo", "bar", "zoo"};
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
+    // Act
     methodSFS.putOverwrite(methodKey, methodValues);
+    // Assert
     assertArrayEquals(methodSFS.getAll(methodKey), methodValues);
   }
 
   /** Test the putAppend(String,String) method. */
   @Test
-  public void testPutAppend() {
+  void testPutAppend() {
+    // Arrange
     String methodKey = "foo.bar";
     String[] methodValues = {"boo", "bar", "zoo"};
     String expectedResult =
         "boo" + SimpleFieldSet.MULTI_VALUE_CHAR + "bar" + SimpleFieldSet.MULTI_VALUE_CHAR + "zoo";
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    for (int i = 0; i < methodValues.length; i++) {
-      methodSFS.putAppend(methodKey, methodValues[i]);
+    // Act
+    for (String methodValue : methodValues) {
+      methodSFS.putAppend(methodKey, methodValue);
     }
-    assertEquals(methodSFS.get(methodKey), expectedResult);
+    // Assert
+    assertEquals(expectedResult, methodSFS.get(methodKey));
   }
 
   /** Tests the getAll(String) method. */
   @Test
-  public void testGetAll() {
+  void testGetAll() {
+    // Arrange
     String methodKey = "foo.bar";
     String[] methodValues = {"boo", "bar", "zoo"};
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    for (int i = 0; i < methodValues.length; i++) {
-      methodSFS.putAppend(methodKey, methodValues[i]);
+    // Act
+    for (String methodValue : methodValues) {
+      methodSFS.putAppend(methodKey, methodValue);
     }
+    // Assert
     assertArrayEquals(methodSFS.getAll(methodKey), methodValues);
   }
 
   /** Tests the getIntArray(String) method */
   @Test
-  public void testGetIntArray() {
+  void testGetIntArray() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     String keyPrefix = "foo";
     for (int i = 0; i < 15; i++) {
       methodSFS.putAppend(keyPrefix, String.valueOf(i));
     }
+    // Act
     int[] result = methodSFS.getIntArray(keyPrefix);
+    // Assert
     for (int i = 0; i < 15; i++) {
       assertEquals(result[i], i);
     }
@@ -508,23 +577,29 @@ public class SimpleFieldSetTest {
 
   /** Tests the getDoubleArray(String) method */
   @Test
-  public void testGetDoubleArray() {
+  void testGetDoubleArray() {
+    // Arrange
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     String keyPrefix = "foo";
     for (int i = 0; i < 15; i++) {
       methodSFS.putAppend(keyPrefix, String.valueOf((double) i));
     }
+    // Act
     double[] result = methodSFS.getDoubleArray(keyPrefix);
+    // Assert
     for (int i = 0; i < 15; i++) {
-      assertEquals(result[i], (i), 0.0);
+      assertEquals(result[i], i, 0.0);
     }
   }
 
   /** Tests removeValue(String) method */
   @Test
-  public void testRemoveValue() {
+  void testRemoveValue() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act
     methodSFS.removeValue("foo");
+    // Assert
     assertNull(methodSFS.get(SAMPLE_STRING_PAIRS[0][0]));
     for (int i = 1; i < SAMPLE_STRING_PAIRS.length; i++) {
       assertEquals(methodSFS.get(SAMPLE_STRING_PAIRS[i][0]), SAMPLE_STRING_PAIRS[i][1]);
@@ -533,13 +608,16 @@ public class SimpleFieldSetTest {
 
   /** Tests removeSubset(String) method */
   @Test
-  public void testRemoveSubset() {
+  void testRemoveSubset() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act
     methodSFS.removeSubset("foo");
+    // Assert
     for (int i = 1; i < 4; i++) {
       assertNull(methodSFS.get(SAMPLE_STRING_PAIRS[i][0]));
     }
-    assertEquals(methodSFS.get(SAMPLE_STRING_PAIRS[0][0]), SAMPLE_STRING_PAIRS[0][1]);
+    assertEquals(SAMPLE_STRING_PAIRS[0][1], methodSFS.get(SAMPLE_STRING_PAIRS[0][0]));
     for (int i = 4; i < 6; i++) {
       assertEquals(methodSFS.get(SAMPLE_STRING_PAIRS[i][0]), SAMPLE_STRING_PAIRS[i][1]);
     }
@@ -549,59 +627,64 @@ public class SimpleFieldSetTest {
    * Tests the Iterator given for the SimpleFieldSet class. It tests hasNext() and next() methods.
    */
   @Test
-  public void testKeyIterator() {
+  void testKeyIterator() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act
     Iterator<String> itr = methodSFS.keyIterator();
-    assertTrue(areAllContainedKeys(SAMPLE_STRING_PAIRS, "", itr));
+    // Assert
+    assertTrue(areAllContainedKeys("", itr));
   }
 
   /** Tests the Iterator created using prefix given for the SimpleFieldSet class */
   @Test
-  public void testKeyIterator_String() {
+  void testKeyIterator_String() {
+    // Arrange
     String methodPrefix = "bob";
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act
     Iterator<String> itr = methodSFS.keyIterator(methodPrefix);
-    assertTrue(areAllContainedKeys(SAMPLE_STRING_PAIRS, methodPrefix, itr));
+    // Assert
+    assertTrue(areAllContainedKeys(methodPrefix, itr));
   }
 
   /**
    * Tests the toplevelIterator given for the SimpleFieldSet class. It tests hasNext() and next()
    * methods.
-   *
-   * <p>TODO: improve the test
    */
   @Test
-  public void testToplevelKeyIterator() {
+  void testToplevelKeyIterator() {
+    // Arrange
     SimpleFieldSet methodSFS = sfsFromSampleStringPairs();
+    // Act
     Iterator<String> itr = methodSFS.toplevelKeyIterator();
-
+    // Assert
     for (int i = 0; i < 3; i++) {
       assertTrue(itr.hasNext());
-      assertTrue(isAKey(SAMPLE_STRING_PAIRS, "", itr.next()));
+      assertTrue(isAKey("", itr.next()));
     }
     assertFalse(itr.hasNext());
   }
 
   @Test
-  public void testKeyIterationPastEnd() {
-    System.out.println("Starting iterator test");
-
+  void testKeyIterationPastEnd() {
+    // Arrange
     SimpleFieldSet sfs = new SimpleFieldSet(true);
     sfs.putOverwrite("test", "test");
 
+    // Act
     Iterator<String> keyIterator = sfs.keyIterator();
-    assertEquals("test", keyIterator.next());
+    String first = keyIterator.next();
 
-    try {
-      String s = keyIterator.next();
-      fail("Expected NoSuchElementException, but got " + s);
-    } catch (NoSuchElementException e) {
-      // Expected
-    }
+    // Assert
+    assertEquals("test", first);
+    assertThrows(NoSuchElementException.class, keyIterator::next);
   }
 
   @Test
-  public void testBase64() throws IOException {
+  void testBase64() throws IOException {
+    // Arrange
+    // Act & Assert
     checkBase64("test", " ", "IA");
     for (String[] s : SAMPLE_STRING_PAIRS) {
       String evilValue = "=" + s[1];
@@ -611,61 +694,69 @@ public class SimpleFieldSetTest {
   }
 
   @Test
-  public void testEmptyValue() throws IOException {
+  void testEmptyValue() throws IOException {
+    // Arrange
     String written = "foo.blah=\nEnd\n";
+    // Act
     LineReader r = Readers.fromBufferedReader(new BufferedReader(new StringReader(written)));
     SimpleFieldSet sfsCheck = new SimpleFieldSet(r, 1024, 1024, true, false, true, false);
+    // Assert
     assertTrue(sfsCheck.get("foo.blah").isEmpty());
+    // Act again with allowBase64 true
     r = Readers.fromBufferedReader(new BufferedReader(new StringReader(written)));
     sfsCheck = new SimpleFieldSet(r, 1024, 1024, true, false, true, true);
+    // Assert
     assertTrue(sfsCheck.get("foo.blah").isEmpty());
   }
 
   @Test
-  public void testSplit() {
-    assertArrayEquals(SimpleFieldSet.split("blah"), new String[] {"blah"});
-    assertArrayEquals(SimpleFieldSet.split("blah; blah"), new String[] {"blah", " blah"});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2"), new String[] {"blah", "1", "2"});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2;"), new String[] {"blah", "1", "2", ""});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2;;"), new String[] {"blah", "1", "2", "", ""});
+  void testSplit() {
+    // Arrange/Act/Assert
+    assertArrayEquals(new String[] {"blah"}, SimpleFieldSet.split("blah"));
+    assertArrayEquals(new String[] {"blah", " blah"}, SimpleFieldSet.split("blah; blah"));
+    assertArrayEquals(new String[] {"blah", "1", "2"}, SimpleFieldSet.split("blah;1;2"));
+    assertArrayEquals(new String[] {"blah", "1", "2", ""}, SimpleFieldSet.split("blah;1;2;"));
+    assertArrayEquals(new String[] {"blah", "1", "2", "", ""}, SimpleFieldSet.split("blah;1;2;;"));
     assertArrayEquals(
-        SimpleFieldSet.split(";blah;1;2;;"), new String[] {"", "blah", "1", "2", "", ""});
+        new String[] {"", "blah", "1", "2", "", ""}, SimpleFieldSet.split(";blah;1;2;;"));
     assertArrayEquals(
-        SimpleFieldSet.split(";;blah;1;2;;"), new String[] {"", "", "blah", "1", "2", "", ""});
-    assertArrayEquals(SimpleFieldSet.split(";;;"), new String[] {"", "", ""});
+        new String[] {"", "", "blah", "1", "2", "", ""}, SimpleFieldSet.split(";;blah;1;2;;"));
+    assertArrayEquals(new String[] {"", "", ""}, SimpleFieldSet.split(";;;"));
   }
 
   // This fixes https://freenet.mantishub.io/view.php?id=7197.
   @Test
-  public void directSubsetsReturnsEmptyMapWhenSubsetsIsNotInitialized() {
+  void directSubsetsReturnsEmptyMapWhenSubsetsIsNotInitialized() {
+    // Arrange
     SimpleFieldSet simpleFieldSet = new SimpleFieldSet(true);
+    // Act & Assert
     assertThat(simpleFieldSet.directSubsets(), anEmptyMap());
   }
 
   /**
-   * It puts key-value pairs in a SimpleFieldSet and verify if it can do the correspondant get
+   * It puts key-value pairs in a SimpleFieldSet and verify if it can do the correspondent get
    * correctly.
    *
-   * @param aPairsArray
+   * @param aPairsArray array of key/value pairs to insert and then verify via get()
    * @return true if it is correct
    */
   private boolean checkPutAndGetPairs(String[][] aPairsArray) {
     boolean retValue = true;
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     // putting values
-    for (int i = 0; i < aPairsArray.length; i++) {
-      methodSFS.putSingle(aPairsArray[i][0], aPairsArray[i][1]);
+    for (String[] value : aPairsArray) {
+      methodSFS.putSingle(value[0], value[1]);
     }
-    for (int i = 0; i < aPairsArray.length; i++) // getting values
-    {
-      retValue &= methodSFS.get(aPairsArray[i][0]).equals(aPairsArray[i][1]);
+    // getting values
+    for (String[] strings : aPairsArray) {
+      retValue &= methodSFS.get(strings[0]).equals(strings[1]);
     }
     retValue &= checkSimpleFieldSetSize(methodSFS, aPairsArray.length);
     return retValue;
   }
 
   /**
-   * It creates a SFS from the SAMPLE_STRING_PAIRS and putting a suffix after every value
+   * It creates an SFS from the SAMPLE_STRING_PAIRS and putting a suffix after every value
    *
    * @param aSuffix to put after every value
    * @return the SimpleFieldSet created
@@ -673,8 +764,8 @@ public class SimpleFieldSetTest {
   private SimpleFieldSet sfsFromStringPairs(String aSuffix) {
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
     // creating new
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
-      methodSFS.putSingle(SAMPLE_STRING_PAIRS[i][0], SAMPLE_STRING_PAIRS[i][1] + aSuffix);
+    for (String[] sampleStringPair : SAMPLE_STRING_PAIRS) {
+      methodSFS.putSingle(sampleStringPair[0], sampleStringPair[1] + aSuffix);
     }
     return methodSFS;
   }
@@ -682,8 +773,8 @@ public class SimpleFieldSetTest {
   /**
    * Checks if the provided SimpleFieldSet has the right size
    *
-   * @param aSimpleFieldSet
-   * @param expectedSize
+   * @param aSimpleFieldSet the SimpleFieldSet whose number of keys is checked
+   * @param expectedSize the expected number of keys returned by keyIterator()
    * @return true if the size is the expected
    */
   private boolean checkSimpleFieldSetSize(SimpleFieldSet aSimpleFieldSet, int expectedSize) {
@@ -699,17 +790,17 @@ public class SimpleFieldSetTest {
   /**
    * Generates a string for the SFS parser in the canonical form: key=value END
    *
-   * @param aStringPairsArray
-   * @return a String ready to be read by a SFS parser
+   * @param aStringPairsArray array of key/value pairs used to build the canonical string
+   * @return a String ready to be read by an SFS parser
    */
   private String sfsReadyString(String[][] aStringPairsArray) {
 
     StringBuilder methodStringToReturn = new StringBuilder();
-    for (int i = 0; i < aStringPairsArray.length; i++) {
+    for (String[] strings : aStringPairsArray) {
       methodStringToReturn
-          .append(aStringPairsArray[i][0])
+          .append(strings[0])
           .append(KEY_VALUE_SEPARATOR)
-          .append(aStringPairsArray[i][1])
+          .append(strings[1])
           .append('\n');
     }
     methodStringToReturn.append(SAMPLE_END_MARKER);
@@ -723,25 +814,24 @@ public class SimpleFieldSetTest {
    */
   private SimpleFieldSet sfsFromSampleStringPairs() {
     SimpleFieldSet methodSFS = new SimpleFieldSet(true);
-    for (int i = 0; i < SAMPLE_STRING_PAIRS.length; i++) {
-      methodSFS.putSingle(SAMPLE_STRING_PAIRS[i][0], SAMPLE_STRING_PAIRS[i][1]);
+    for (String[] sampleStringPair : SAMPLE_STRING_PAIRS) {
+      methodSFS.putSingle(sampleStringPair[0], sampleStringPair[1]);
     }
     assertTrue(checkSimpleFieldSetSize(methodSFS, SAMPLE_STRING_PAIRS.length));
     return methodSFS;
   }
 
   /**
-   * Searches for a key in a given String[][] array. We consider that keys are stored in
-   * String[x][0]
+   * Checks whether a given key (optionally prefixed) exists in SAMPLE_STRING_PAIRS. We consider
+   * that keys are stored in {@code SAMPLE_STRING_PAIRS[x][0]}.
    *
-   * @param aStringPairsArray
-   * @param aPrefix that could be put before found key
-   * @param aKey to be searched
-   * @return true if there is the key
+   * @param aPrefix prefix to put before the found key when comparing
+   * @param aKey the key to search for
+   * @return true if the key exists (with the optional prefix), false otherwise
    */
-  private boolean isAKey(String[][] aStringPairsArray, String aPrefix, String aKey) {
-    for (int i = 0; i < aStringPairsArray.length; i++) {
-      if (aKey.equals(aPrefix + aStringPairsArray[i][0])) {
+  private boolean isAKey(String aPrefix, String aKey) {
+    for (String[] strings : SAMPLE_STRING_PAIRS) {
+      if (aKey.equals(aPrefix + strings[0])) {
         return true;
       }
     }
@@ -749,23 +839,21 @@ public class SimpleFieldSetTest {
   }
 
   /**
-   * Verifies if all keys in a String[][] (We consider that keys are stored in String[x][0]) are the
-   * same that the Iterator provides. In this way both hasNext() and next() methods are tested.
+   * Verifies that all keys provided by the iterator match the keys in SAMPLE_STRING_PAIRS (with an
+   * optional prefix). This exercises both {@link Iterator#hasNext()} and {@link Iterator#next()}.
    *
-   * @param aStringPairsArray
-   * @param aPrefix that could be put before found key
-   * @param aIterator
-   * @return true if they have the same key set
+   * @param aPrefix prefix to put before each expected key
+   * @param aIterator iterator over keys to validate
+   * @return true if the iterator yields exactly the expected keys
    */
-  private boolean areAllContainedKeys(
-      String[][] aStringPairsArray, String aPrefix, Iterator<String> aIterator) {
+  private boolean areAllContainedKeys(String aPrefix, Iterator<String> aIterator) {
     boolean retValue = true;
     int actualLength = 0;
     while (aIterator.hasNext()) {
       actualLength++;
-      retValue &= isAKey(aStringPairsArray, aPrefix, aIterator.next());
+      retValue &= isAKey(aPrefix, aIterator.next());
     }
-    retValue &= (actualLength == aStringPairsArray.length);
+    retValue &= (actualLength == SAMPLE_STRING_PAIRS.length);
     return retValue;
   }
 
@@ -796,4 +884,272 @@ public class SimpleFieldSetTest {
     {"foo3", KEY_VALUE_SEPARATOR + "bar"}
   };
   private static final String SAMPLE_END_MARKER = "END";
+
+  // --- New tests adding coverage for edge cases and error paths ---
+
+  @Test
+  @SuppressWarnings("java:S100") // method_whenCondition_expectOutcome naming
+  void directMaps_andSets_whenMixedLevels_expectOnlyTopLevelAndUnmodifiable() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("top", "1");
+    sfs.putSingle("nest.a", "2");
+    sfs.putSingle("nest.b", "3");
+
+    // Act
+    Map<String, String> direct = sfs.directKeyValues();
+    Set<String> directKeys = sfs.directKeys();
+    Map<String, SimpleFieldSet> subsets = sfs.directSubsets();
+
+    // Assert: contents
+    assertEquals(Collections.singletonMap("top", "1"), direct);
+    assertEquals(Collections.singleton("top"), directKeys);
+    assertTrue(subsets.containsKey("nest"));
+    assertEquals("2", subsets.get("nest").get("a"));
+
+    // Assert: unmodifiable
+    assertThrows(UnsupportedOperationException.class, () -> direct.put("x", "y"));
+    assertThrows(UnsupportedOperationException.class, () -> directKeys.add("x"));
+    // Create argument outside to ensure the lambda has a single potentially throwing call
+    SimpleFieldSet newSubset = new SimpleFieldSet(true);
+    assertThrows(UnsupportedOperationException.class, () -> subsets.put("x", newSubset));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void tput_whenNullOrEmpty_expectNoChange() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("a", "1");
+
+    // Act
+    sfs.tput("b", null); // no-op
+    sfs.tput("c", new SimpleFieldSet(true)); // empty = no-op
+
+    // Assert
+    assertEquals("1", sfs.get("a"));
+    assertNull(sfs.get("b.x"));
+    assertNull(sfs.get("c.x"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void putSubset_whenDuplicateKey_expectIllegalArgumentException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    SimpleFieldSet child = new SimpleFieldSet(true);
+    child.putSingle("k", "v");
+    sfs.put("dup", child);
+
+    // Act + Assert
+    SimpleFieldSet another = new SimpleFieldSet(true);
+    another.putSingle("z", "y");
+    assertThrows(IllegalArgumentException.class, () -> sfs.put("dup", another));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void putAppend_whenValueContainsMultiValueChar_expectIllegalArgumentException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> sfs.putAppend("k", "a;b"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void putWithNewline_whenAlwaysUseBase64False_expectIllegalArgumentException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true, false);
+
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> sfs.putOverwrite("k", "line1\nline2"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void putWithNewline_whenAlwaysUseBase64True_expectBase64OnWrite() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true, true);
+    String valueWithNewline = "line1\nline2";
+    sfs.putOverwrite("k", valueWithNewline);
+
+    // Act
+    String ordered = sfs.toOrderedString();
+
+    // Assert: should use == and be decodable
+    String expectedEncoded = Base64.encodeUTF8(valueWithNewline);
+    assertEquals("k==" + expectedEncoded + "\nEnd\n", ordered);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getBoolean_whenInvalid_expectFSParseException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("flag", "notABoolean");
+
+    // Act + Assert
+    assertThrows(FSParseException.class, () -> sfs.getBoolean("flag"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getString_whenMissing_expectFSParseException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+
+    // Act + Assert
+    assertThrows(FSParseException.class, () -> sfs.getString("missing"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getChar_whenInvalidLength_expectFSParseException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("ch", "ab");
+
+    // Act + Assert
+    assertThrows(FSParseException.class, () -> sfs.getChar("ch"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getByteArray_whenInvalidBase64_expectFSParseException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("bytes", "not-base64!!!");
+
+    // Act + Assert
+    assertThrows(FSParseException.class, () -> sfs.getByteArray("bytes"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getSubset_whenMissing_expectFSParseException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("a.b", "1");
+
+    // Act + Assert
+    assertThrows(FSParseException.class, () -> sfs.getSubset("missing"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void writeTo_andReadFrom_roundTrip_expectSameValues() throws IOException {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.setHeader("hdr1", "hdr2");
+    sfs.putSingle("x", "1 2");
+    sfs.putSingle("nest.k", "v");
+
+    // Act
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    sfs.writeTo(bos);
+    byte[] data = bos.toByteArray();
+
+    SimpleFieldSet read = SimpleFieldSet.readFrom(new ByteArrayInputStream(data), false, true);
+
+    // Assert
+    assertEquals("1 2", read.get("x"));
+    assertEquals("v", read.get("nest.k"));
+    assertArrayEquals(new String[] {"hdr1", "hdr2"}, read.getHeader());
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void writeToBigBuffer_andReadFrom_roundTrip_expectSameValues() throws IOException {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("a", "alpha");
+    sfs.putSingle("b.c", "charlie");
+
+    // Act
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    sfs.writeToBigBuffer(bos);
+    SimpleFieldSet read =
+        SimpleFieldSet.readFrom(new ByteArrayInputStream(bos.toByteArray()), false, true);
+
+    // Assert
+    assertEquals("alpha", read.get("a"));
+    assertEquals("charlie", read.get("b.c"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void putEncoded_andGetAllEncoded_whenRoundTrip_expectOriginalStrings() throws Exception {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    String[] original = new String[] {"", "a;b", "with space", "=equals=", "new\nline"};
+
+    // Act
+    sfs.putEncoded("enc", original);
+    String[] decoded = sfs.getAllEncoded("enc");
+
+    // Assert
+    assertArrayEquals(original, decoded);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void toOrderedStringWithBase64_whenSpecialChars_expectDoubleEqualsAndDecodable() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true, true);
+    String val = "value with spaces and = and . and ;";
+    sfs.putOverwrite("k", val);
+
+    // Act
+    String out = sfs.toOrderedStringWithBase64();
+
+    // Assert
+    String expected = "k==" + Base64.encodeUTF8(val) + "\nEnd\n";
+    assertEquals(expected, out);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void keyIterator_remove_expectUnsupportedOperationException() {
+    // Arrange
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    sfs.putSingle("a", "1");
+    Iterator<String> it = sfs.keyIterator();
+    it.next();
+
+    // Act + Assert
+    assertThrows(UnsupportedOperationException.class, it::remove);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void readFrom_StringArray_whenValid_expectParsedValues() throws IOException {
+    // Arrange
+    String[] lines = new String[] {"a=1", "b.c=2", SAMPLE_END_MARKER};
+
+    // Act
+    SimpleFieldSet sfs = new SimpleFieldSet(lines, false, true, false);
+
+    // Assert
+    assertEquals("1", sfs.get("a"));
+    assertEquals("2", sfs.get("b.c"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void readWithInlineComment_insideBody_expectSubsequentPairsParsed() throws IOException {
+    // Arrange
+    String s = "a=1\n# comment\nb=2\nEnd\n";
+    BufferedReader br = new BufferedReader(new StringReader(s));
+
+    // Act
+    SimpleFieldSet sfs = new SimpleFieldSet(br, false, true);
+
+    // Assert
+    assertEquals("1", sfs.get("a"));
+    assertEquals("2", sfs.get("b"));
+    assertEquals("End", sfs.getEndMarker());
+    assertNull(sfs.getHeader());
+  }
 }

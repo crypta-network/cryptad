@@ -7,13 +7,58 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
-/** This is just documentation, it will be replaced with a plugin wizard eventually. */
+/**
+ * Renders the informational page that guides users through inserting a freesite into Crypta via the
+ * browser interface. The toadlet builds a static set of localized instructions, curated links to
+ * helper tools (jSite, FlogHelper, Thingamablog), and direct pointers to on-network tutorials that
+ * explain freesite publishing. It does not perform any network I/O itself; instead, it acts purely
+ * as a documentation surface so users can choose the workflow that fits their experience level.
+ *
+ * <p>Usage pattern:
+ *
+ * <ul>
+ *   <li>The containing {@link ToadletContainer} routes {@code GET /insertsite/} to this instance.
+ *   <li>{@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} builds a {@link PageNode}, adds
+ *       alert summaries, and emits a single HTML reply.
+ *   <li>No mutable state is retained between invocations; the class is safe for reuse across
+ *       requests as long as callers provide a fresh {@link ToadletContext}.
+ * </ul>
+ *
+ * <p>Thread-safety: instances are stateless and rely on the provided context for per-request data,
+ * so they are safe to use concurrently when the container hands each request its own context. The
+ * localization and link content are fixed at compile time, which avoids runtime variability and
+ * keeps the rendered HTML deterministic for testing.
+ */
 public class InsertFreesiteToadlet extends Toadlet {
 
+  /**
+   * Create a new freesite help toadlet bound to the shared high-level client.
+   *
+   * @param client non-null helper used by the base {@link Toadlet}; retained for parity with other
+   *     toadlets even though this class performs only static rendering
+   */
   protected InsertFreesiteToadlet(HighLevelSimpleClient client) {
     super(client);
   }
 
+  /**
+   * Handle {@code GET /insertsite/} by emitting a localized help page that explains how to publish
+   * a freesite. The method assembles a {@link PageNode}, injects the current alert summary, builds
+   * an infobox with helper links (FlogHelper, jSite downloads, on-network tutorials, and
+   * Thingamablog), and returns a 200 OK HTML response via {@link #writeHTMLReply(ToadletContext,
+   * int, String, String)}. No request parameters are inspected and no state is modified.
+   *
+   * @param uri resolved request URI; used only for signature parity and may be {@code null} in
+   *     tests
+   * @param req HTTP request wrapper; not read by this implementation but must be non-null to comply
+   *     with the dispatch contract
+   * @param ctx active request context providing page construction utilities and output streams;
+   *     must be open and non-null
+   * @throws ToadletContextClosedException if the client disconnects before headers or body are
+   *     written
+   * @throws IOException if header emission or HTML streaming fails while writing the reply
+   */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("title"), ctx);
@@ -27,12 +72,7 @@ public class InsertFreesiteToadlet extends Toadlet {
 
     contentBox.addChild("p", l10n("content1"));
 
-    NodeL10n.getBase()
-        .addL10nSubstitution(
-            contentBox.addChild("p"),
-            "InsertFreesiteToadlet.contentFlogHelper",
-            new String[] {"plugins"},
-            new HTMLNode[] {HTMLNode.link(PproxyToadlet.PATH)});
+    contentBox.addChild("p", l10n("contentFlogHelper"));
 
     NodeL10n.getBase()
         .addL10nSubstitution(
@@ -81,10 +121,21 @@ public class InsertFreesiteToadlet extends Toadlet {
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }
 
+  /**
+   * Localized string helper scoped to this toadlet.
+   *
+   * @param string suffix key appended to {@code InsertFreesiteToadlet.} in the localization bundle
+   * @return resolved localization value or the key itself if missing; never {@code null}
+   */
   private static String l10n(String string) {
     return NodeL10n.getBase().getString("InsertFreesiteToadlet." + string);
   }
 
+  /**
+   * Return the mount path used by the toadlet container to route freesite help requests.
+   *
+   * @return absolute path {@code "/insertsite/"}; stable for bookmarks and menu entries
+   */
   @Override
   public String path() {
     return "/insertsite/";

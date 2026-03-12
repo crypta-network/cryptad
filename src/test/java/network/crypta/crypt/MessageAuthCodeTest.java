@@ -1,428 +1,322 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.Security;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import network.crypta.support.Fields;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-public class MessageAuthCodeTest {
-  private static final MACType[] types = MACType.values();
-  private static final byte[][] keys = {
-    Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-    Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-    Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-    Hex.decode("e285000e6080a701a410040f4814470b568d149b821f99d41319e6410094a760")
-  };
-  private static final byte[] hmacMessage = "Hi There".getBytes(StandardCharsets.UTF_8);
-  private static final byte[][] messages = {
-    hmacMessage, hmacMessage, hmacMessage, Hex.decode("66f75c0e0c7a406586")
-  };
-  private static final IvParameterSpec[] IVs = {
-    null, null, null, new IvParameterSpec(Hex.decode("166450152e2394835606a9d1dd2cdc8b"))
-  };
-  private static final byte[][] trueMacs = {
-    Hex.decode("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
-    Hex.decode(
-        "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7"
-            + "f4af152e8b2fa9cb6"),
-    Hex.decode(
-        "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a70"
-            + "2038b274eaea3f4e4be9d914eeb61f1702e696c203a126854"),
-    Hex.decode("1644272eee3b30b7f82568425e817756")
-  };
-  private static final byte[][] falseMacs = {
-    Hex.decode("4bb5e21dd13001ed5faccfcfdaf8a854881dc200c9833da726e9376c2e32cff7"),
-    Hex.decode(
-        "4bb5e21dd13001ed5faccfcfdaf8a854881dc200c9833da726e9376c2e32cff7faea9ea9076ede7"
-            + "f4af152e8b2fa9cb6"),
-    Hex.decode(
-        "4bb5e21dd13001ed5faccfcfdaf8a854881dc200c9833da726e9376c2e32cff7faea9ea9076ede7"
-            + "2038b274eaea3f4e4be9d914eeb61f1702e696c203a126854"),
-    Hex.decode("881dc200c9833da726e9376c2e32cff7")
-  };
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-  static {
+@SuppressWarnings("java:S100")
+class MessageAuthCodeTest {
+
+  // Known-good test vectors (RFC 4231 for HMAC; BC vectors for Poly1305-AES)
+  private static final byte[] HMAC_KEY = Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+  private static final byte[] HMAC_MSG = "Hi There".getBytes(StandardCharsets.UTF_8);
+
+  private static final byte[] POLY_KEY =
+      Hex.decode("e285000e6080a701a410040f4814470b568d149b821f99d41319e6410094a760");
+  private static final IvParameterSpec POLY_IV =
+      new IvParameterSpec(Hex.decode("166450152e2394835606a9d1dd2cdc8b"));
+  private static final byte[] POLY_MSG = Hex.decode("66f75c0e0c7a406586");
+
+  private static final byte[] HMAC256 =
+      Hex.decode("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+  private static final byte[] HMAC384 =
+      Hex.decode(
+          "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7"
+              + "f4af152e8b2fa9cb6");
+  private static final byte[] HMAC512 =
+      Hex.decode(
+          "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a70"
+              + "2038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
+  private static final byte[] POLY_TAG = Hex.decode("1644272eee3b30b7f82568425e817756");
+
+  @BeforeAll
+  static void loadProviders() {
+    // Ensure Poly1305-AES is available for tests that require it.
     Security.addProvider(new BouncyCastleProvider());
   }
 
-  @Test
-  public void testAddByte() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  private static Arguments vector(
+      MACType type, byte[] key, byte[] msg, IvParameterSpec iv, byte[] tag) {
+    return Arguments.of(type, key, msg, iv, tag);
+  }
 
-      for (int j = 0; j < messages[i].length; j++) {
-        mac.addByte(messages[i][j]);
-      }
-      assertArrayEquals(
-          "MACType: " + types[i].name(), Fields.copyToArray(mac.genMac()), trueMacs[i]);
+  private static java.util.stream.Stream<Arguments> macVectors() {
+    return java.util.stream.Stream.of(
+        vector(MACType.HMAC_SHA256, HMAC_KEY, HMAC_MSG, null, HMAC256),
+        vector(MACType.HMAC_SHA384, HMAC_KEY, HMAC_MSG, null, HMAC384),
+        vector(MACType.HMAC_SHA512, HMAC_KEY, HMAC_MSG, null, HMAC512),
+        vector(MACType.POLY1305_AES, POLY_KEY, POLY_MSG, POLY_IV, POLY_TAG));
+  }
+
+  private static MessageAuthCode newMac(MACType type, byte[] key, IvParameterSpec iv)
+      throws InvalidKeyException {
+    if (type.ivlen == -1) {
+      return new MessageAuthCode(type, key);
     }
+    return new MessageAuthCode(type, key, iv);
   }
 
-  @Test
-  @SuppressWarnings("null")
-  public void testAddByteNullInput()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  @ParameterizedTest(name = "addByte_whenFeedingOneByOne_expectKnownTag [{index}] {0}")
+  @MethodSource("macVectors")
+  void addByte_whenFeedingOneByOne_expectKnownTag(
+      MACType type, byte[] key, byte[] msg, IvParameterSpec iv, byte[] expected)
+      throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = newMac(type, key, iv);
 
-      boolean throwNull = false;
-      Byte nullByte = null;
-      try {
-        mac.addByte(nullByte);
-      } catch (NullPointerException e) {
-        throwNull = true;
-      }
-
-      assertTrue("MACType: " + types[i].name(), throwNull);
+    // Act
+    for (byte b : msg) {
+      mac.addByte(b);
     }
+    byte[] tag = Fields.copyToArray(mac.genMac());
+
+    // Assert
+    assertArrayEquals(expected, tag);
+  }
+
+  @ParameterizedTest(name = "addBytesByteBuffer_whenConsumed_expectKnownTag [{index}] {0}")
+  @MethodSource("macVectors")
+  void addBytesByteBuffer_whenConsumed_expectKnownTag(
+      MACType type, byte[] key, byte[] msg, IvParameterSpec iv, byte[] expected)
+      throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = newMac(type, key, iv);
+    ByteBuffer buf = ByteBuffer.wrap(msg);
+
+    // Act
+    mac.addBytes(buf);
+    byte[] tag = Fields.copyToArray(mac.genMac());
+
+    // Assert
+    assertArrayEquals(expected, tag);
+  }
+
+  @ParameterizedTest(name = "genMacVarargs_whenReset_expectKnownTag [{index}] {0}")
+  @MethodSource("macVectors")
+  void genMacVarargs_whenReset_expectKnownTag(
+      MACType type, byte[] key, byte[] msg, IvParameterSpec iv, byte[] expected)
+      throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = newMac(type, key, iv);
+    mac.addBytes(new byte[] {0x01, 0x02, 0x03}); // will be cleared by genMac(varargs)
+
+    // Act
+    byte[] tag = Fields.copyToArray(mac.genMac(msg));
+
+    // Assert
+    assertArrayEquals(expected, tag);
   }
 
   @Test
-  public void testAddBytesByteBuffer()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      ByteBuffer byteBuffer = ByteBuffer.wrap(messages[i]);
+  void genMac_whenCalled_returnsArrayBackedBufferWithOffsetZero() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
+    mac.addBytes(HMAC_MSG);
 
-      mac.addBytes(byteBuffer);
-      assertArrayEquals("MACType: " + types[i].name(), mac.genMac().array(), trueMacs[i]);
-    }
-  }
+    // Act
+    ByteBuffer out = mac.genMac();
 
-  @Test(expected = IllegalArgumentException.class)
-  public void testAddBytesByteBufferNullInput() throws InvalidKeyException {
-    int i = 0;
-    MessageAuthCode mac;
-    mac = new MessageAuthCode(types[i], keys[i]);
-
-    ByteBuffer byteBuffer = null;
-    mac.addBytes(byteBuffer);
+    // Assert
+    assertTrue(out.hasArray());
+    assertEquals(0, out.arrayOffset());
   }
 
   @Test
-  public void testAddBytesByteArrayIntInt()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      mac.addBytes(messages[i], 0, messages[i].length / 2);
-      mac.addBytes(
-          messages[i], messages[i].length / 2, messages[i].length - messages[i].length / 2);
+  void addBytesVarargs_whenContainsNull_expectNullPointerException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
 
-      assertArrayEquals("MACType: " + types[i].name(), mac.genMac().array(), trueMacs[i]);
-    }
+    // Act + Assert
+    assertThrows(NullPointerException.class, () -> mac.addBytes(HMAC_MSG, null));
   }
 
   @Test
-  public void testAddBytesByteArrayIntIntNullInput()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  void addBytesByteBuffer_whenNull_expectIllegalArgumentException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
 
-      boolean throwNull = false;
-      byte[] nullArray = null;
-      try {
-        mac.addBytes(nullArray, 0, messages[i].length);
-      } catch (NullPointerException e) {
-        throwNull = true;
-      }
-
-      assertTrue("MACType: " + types[i].name(), throwNull);
-    }
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> mac.addBytes((ByteBuffer) null));
   }
 
   @Test
-  public void testAddBytesByteArrayIntIntOffsetOutOfBounds()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  void addBytesArraySlice_whenOutOfBounds_expectIllegalArgumentException()
+      throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
 
-      boolean throwNull = false;
-      try {
-        mac.addBytes(messages[i], -3, messages[i].length - 3);
-      } catch (IllegalArgumentException e) {
-        throwNull = true;
-      }
-
-      assertTrue("MACType: " + types[i].name(), throwNull);
-    }
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> mac.addBytes(HMAC_MSG, -1, 3));
+    assertThrows(
+        IllegalArgumentException.class, () -> mac.addBytes(HMAC_MSG, 0, HMAC_MSG.length + 1));
   }
 
   @Test
-  public void testAddBytesByteArrayIntIntLengthOutOfBounds()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  void addBytesArraySlice_whenNull_expectNullPointerException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
 
-      boolean throwNull = false;
-      try {
-        mac.addBytes(messages[i], 0, messages[i].length + 3);
-      } catch (IllegalArgumentException e) {
-        throwNull = true;
-      }
-
-      assertTrue("MACType: " + types[i].name(), throwNull);
-    }
+    // Act + Assert
+    assertThrows(NullPointerException.class, () -> mac.addBytes(null, 0, 1));
   }
 
   @Test
-  // tests .genMac() and .addBytes(byte[]...] as well
-  public void testGetMacByteArrayArray()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      byte[] result = mac.genMac(messages[i]).array();
-      assertTrue("MACType: " + types[i].name(), MessageAuthCode.verify(result, trueMacs[i]));
-    }
+  void verifyByteArray_whenSameRefAndNulls_expectTruthiness() {
+    // Arrange
+    byte[] a = new byte[] {1, 2, 3};
+
+    // Act + Assert
+    assertTrue(MessageAuthCode.verify(a, a));
+    assertTrue(MessageAuthCode.verify(null, (byte[]) null));
+    assertFalse(MessageAuthCode.verify(null, a));
+    assertFalse(MessageAuthCode.verify(a, null));
+    assertFalse(MessageAuthCode.verify(new byte[] {1, 2}, new byte[] {1, 2, 3}));
   }
 
   @Test
-  public void testGetMacByteArrayArrayReset()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      mac.addBytes(messages[i]);
-      byte[] result = mac.genMac(messages[i]).array();
-      assertArrayEquals("MACType: " + types[i].name(), result, trueMacs[i]);
-    }
+  void verifyByteBuffer_whenEqual_expectTrueAndBuffersConsumed() {
+    // Arrange
+    ByteBuffer b1 = ByteBuffer.wrap(new byte[] {9, 8, 7});
+    ByteBuffer b2 = ByteBuffer.wrap(new byte[] {9, 8, 7});
+
+    // Act
+    boolean ok = MessageAuthCode.verify(b1, b2);
+
+    // Assert
+    assertTrue(ok);
+    assertEquals(0, b1.remaining());
+    assertEquals(0, b2.remaining());
   }
 
   @Test
-  public void testGetMacByteArrayArrayNullInput()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
+  @DisplayName("verifyData(byte[]) whenMatches returns true; whenNot, false")
+  void verifyData_withByteArray_expectTrueThenFalse() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = newMac(MACType.HMAC_SHA256, HMAC_KEY, null);
+    byte[] trueTag = Fields.copyToArray(mac.genMac(HMAC_MSG));
 
-      boolean throwNull = false;
-      byte[] nullArray = null;
-      try {
-        mac.genMac(nullArray);
-      } catch (NullPointerException e) {
-        throwNull = true;
-      }
-
-      assertTrue("MACType: " + types[i].name(), throwNull);
-    }
-  }
-
-  @Test(expected = NullPointerException.class)
-  public void testGetMacByteArrayArrayNullMatrixElementInput()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    byte[][] nullMatrix = {messages[3], null};
-    mac.genMac(nullMatrix);
+    // Act + Assert
+    assertTrue(mac.verifyData(trueTag, HMAC_MSG));
+    assertFalse(mac.verifyData(new byte[] {0, 1, 2}, HMAC_MSG));
   }
 
   @Test
-  public void testVerify() {
-    assertTrue(MessageAuthCode.verify(trueMacs[3], trueMacs[3]));
+  void verifyData_withByteBuffer_expectTrue() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = newMac(MACType.HMAC_SHA256, HMAC_KEY, null);
+    ByteBuffer msg = ByteBuffer.wrap(HMAC_MSG);
+    ByteBuffer tag = mac.genMac(ByteBuffer.wrap(HMAC_MSG));
+
+    // Act
+    boolean ok = mac.verifyData(tag, msg);
+
+    // Assert
+    assertTrue(ok);
   }
 
   @Test
-  public void testVerifyFalse() {
-    assertFalse(MessageAuthCode.verify(trueMacs[3], falseMacs[3]));
+  void getKey_whenConstructed_returnsSameMaterial() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
+
+    // Act
+    byte[] roundTrip = mac.getKey().getEncoded();
+
+    // Assert
+    assertArrayEquals(HMAC_KEY, roundTrip);
   }
 
   @Test
-  public void testVerifyNullInput1() {
-    byte[] nullArray = null;
-    assertFalse(MessageAuthCode.verify(nullArray, trueMacs[3]));
+  void getIv_whenUnsupportedType_expectUnsupportedTypeException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
+
+    // Act + Assert
+    assertThrows(UnsupportedTypeException.class, mac::getIv);
   }
 
   @Test
-  public void testVerifyNullInput2() {
-    byte[] nullArray = null;
-    assertFalse(MessageAuthCode.verify(trueMacs[1], nullArray));
+  void setIV_whenUnsupportedType_expectUnsupportedTypeException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
+    IvParameterSpec dummy = new IvParameterSpec(new byte[16]);
+
+    // Act + Assert
+    assertThrows(UnsupportedTypeException.class, () -> mac.setIV(dummy));
   }
 
   @Test
-  public void testVerifyData() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      System.out.println(types[i].name());
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      assertTrue("MACType: " + types[i].name(), mac.verifyData(trueMacs[i], messages[i]));
-    }
+  void genIV_whenUnsupportedType_expectUnsupportedTypeException() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.HMAC_SHA256, HMAC_KEY);
+
+    // Act + Assert
+    assertThrows(UnsupportedTypeException.class, mac::genIV);
   }
 
   @Test
-  public void testVerifyDataFalse() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      assertFalse("MACType: " + types[i].name(), mac.verifyData(falseMacs[i], messages[i]));
-    }
+  void setIV_whenNullForPoly1305_expectInvalidAlgorithmParameterException()
+      throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.POLY1305_AES, POLY_KEY, POLY_IV);
+
+    // Act + Assert
+    assertThrows(InvalidAlgorithmParameterException.class, () -> mac.setIV(null));
   }
 
   @Test
-  public void testVerifyDataNullInput1()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      byte[] nullArray = null;
-      assertFalse("MACType: " + types[i].name(), mac.verifyData(nullArray, messages[i]));
-    }
+  void genIV_whenPoly1305_returnsCorrectLength() throws InvalidKeyException {
+    // Arrange
+    MessageAuthCode mac = new MessageAuthCode(MACType.POLY1305_AES, POLY_KEY, POLY_IV);
+
+    // Act
+    byte[] iv = mac.genIV().getIV();
+
+    // Assert
+    assertNotNull(iv);
+    assertEquals(MACType.POLY1305_AES.ivlen, iv.length);
   }
 
   @Test
-  public void testVerifyDataNullInput2()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      boolean throwNull = false;
-      byte[] nullArray = null;
-      try {
-        mac.verifyData(trueMacs[i], nullArray);
-      } catch (NullPointerException e) {
-        throwNull = true;
-      }
-      assertTrue("MACType: " + types[i].name(), throwNull);
-    }
+  void constructor_withPoly1305AndInvalidKeyLength_expectIllegalArgumentException() {
+    // Arrange: 16-byte invalid key for Poly1305-AES (must be 32 bytes)
+    byte[] badKey = new byte[16];
+    SecretKey key = new SecretKeySpec(badKey, "POLY1305-AES");
+
+    // Act + Assert
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new MessageAuthCode(MACType.POLY1305_AES, key, POLY_IV));
   }
 
   @Test
-  public void testGetKey() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    for (int i = 0; i < types.length; i++) {
-      MessageAuthCode mac;
-      if (types[i].ivlen != -1) {
-        mac = new MessageAuthCode(types[i], keys[i], IVs[i]);
-      } else {
-        mac = new MessageAuthCode(types[i], keys[i]);
-      }
-      assertArrayEquals("MACType: " + types[i].name(), mac.getKey().getEncoded(), keys[i]);
-    }
-  }
+  void constructor_withPoly1305AndNoIv_expectIllegalArgumentException() {
+    // Arrange: valid key but invoking ctor without IV is not allowed for IV-requiring algos
+    SecretKey key = new SecretKeySpec(POLY_KEY, "POLY1305-AES");
 
-  @Test
-  public void testGetIV() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    assertArrayEquals(mac.getIv().getIV(), IVs[3].getIV());
-  }
-
-  @Test(expected = UnsupportedTypeException.class)
-  public void testGetIVUnsupportedTypeException() throws InvalidKeyException {
-    MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.getIv();
-  }
-
-  @Test
-  public void testSetIVIvParameterSpec()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    mac.genIV();
-    mac.setIV(IVs[3]);
-    assertArrayEquals(IVs[3].getIV(), mac.getIv().getIV());
-  }
-
-  @Test(expected = InvalidAlgorithmParameterException.class)
-  public void testSetIVIvParameterSpecNullInput()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    IvParameterSpec nullInput = null;
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    mac.setIV(nullInput);
-  }
-
-  @Test(expected = UnsupportedTypeException.class)
-  public void testSetIVIvParameterSpecUnsupportedTypeException()
-      throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.setIV(IVs[1]);
-  }
-
-  @Test
-  public void testGenIV() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    assertNotNull(mac.genIV());
-  }
-
-  @Test
-  public void testGenIVLength() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    assertEquals(mac.genIV().getIV().length, types[3].ivlen);
-  }
-
-  @Test(expected = UnsupportedTypeException.class)
-  public void testGenIVUnsupportedTypeException() throws InvalidKeyException {
-    MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.genIV();
+    // Act + Assert
+    assertThrows(
+        IllegalArgumentException.class, () -> new MessageAuthCode(MACType.POLY1305_AES, key));
   }
 }

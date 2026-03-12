@@ -1,179 +1,326 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Test case for {@link BitArray} class.
+ * Comprehensive unit tests for {@link BitArray}.
  *
- * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
+ * <p>These tests cover construction, serialization/deserialization, boundary conditions, and the
+ * search helpers.
  */
-public class BitArrayTest {
+@SuppressWarnings("java:S5778")
+class BitArrayTest {
 
-  private final int sampleBitsNumber = 10;
+  private static final int SAMPLE_SIZE = 10;
 
-  /**
-   * Creates a BitArray with all values set to the boolean argument
-   *
-   * @param arraySize the size of the BitArray
-   * @param value the value for each bit
-   * @return the set BitArray
-   */
-  private BitArray createAllEqualsBitArray(int arraySize, boolean value) {
-    BitArray methodBitArray = new BitArray(arraySize);
-    // setting all bits true
-    for (int i = 0; i < methodBitArray.getSize(); i++) methodBitArray.setBit(i, value);
-    return methodBitArray;
+  private static BitArray newFilled(int size, boolean value) {
+    BitArray arr = new BitArray(size);
+    for (int i = 0; i < arr.getSize(); i++) {
+      arr.setBit(i, value);
+    }
+    return arr;
   }
 
-  /**
-   * Creates a String of toRepeat String as long as needed
-   *
-   * @param stringSize length requested
-   * @param toRepeat String to repeat stringSize times
-   * @return the String of toRepeat
-   */
-  private String createAllOneString(int stringSize, String toRepeat) {
-    StringBuilder methodStringBuilder = new StringBuilder();
-    for (int i = 0; i < stringSize; i++) methodStringBuilder.append(toRepeat);
-    return methodStringBuilder.toString();
+  private static String repeat(int count, char c) {
+    return String.valueOf(c).repeat(Math.max(0, count));
   }
 
-  /**
-   * Tests BitArray(int) constructor and verifies if the instance is well created (all values must
-   * be readable and false, and the length has to be correct)
-   */
   @Test
-  public void testBitArray_int() {
-    BitArray methodBitArray = new BitArray(sampleBitsNumber);
-    for (int i = 0; i < sampleBitsNumber; i++) assertFalse(methodBitArray.bitAt(i));
-    assertEquals(methodBitArray.getSize(), sampleBitsNumber);
-  }
+  @DisplayName("constructor_withSize_initializesAllFalseAndSizeCorrect")
+  void constructorWithSizeInitializesAllFalseAndSizeCorrect() {
+    // Arrange & Act
+    BitArray arr = new BitArray(SAMPLE_SIZE);
 
-  /** Tests toString() method creating BitArrays with same value bits. */
-  @Test
-  public void testToStringAllEquals() {
-    BitArray methodBitArray = createAllEqualsBitArray(sampleBitsNumber, true);
-    String expectedString = createAllOneString(sampleBitsNumber, "1");
-    assertEquals(methodBitArray.toString(), expectedString);
-    methodBitArray = createAllEqualsBitArray(sampleBitsNumber, false);
-    expectedString = createAllOneString(sampleBitsNumber, "0");
-    assertEquals(methodBitArray.toString(), expectedString);
-  }
-
-  /** Tests toString() method with a BitArray with size zero. */
-  @Test
-  public void testToStringEmpty() {
-    BitArray methodBitArray = new BitArray(0);
-    assertEquals(methodBitArray.toString().length(), 0);
-  }
-
-  /** Tests setBit(int,boolean) method trying to set a bit out of bounds */
-  @Test
-  public void testSetBit_OutOfBounds() {
-    BitArray methodBitArray = new BitArray(sampleBitsNumber);
-    try {
-      methodBitArray.setBit(sampleBitsNumber, true);
-      // fail("Expected Exception Error Not Thrown!");
-    } catch (ArrayIndexOutOfBoundsException anException) {
-      assertNotNull(anException);
+    // Assert
+    assertEquals(SAMPLE_SIZE, arr.getSize());
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+      assertFalse(arr.bitAt(i));
     }
   }
 
-  /** Tests setBit(int,boolean) method using getAt(int) to verify if they are consistent. */
   @Test
-  public void testSetAndGetBit() {
-    BitArray methodBitArray = new BitArray(sampleBitsNumber);
-    // setting true even bits
-    for (int i = 0; i < methodBitArray.getSize(); i = i + 2) methodBitArray.setBit(i, true);
-    // checking even bits
-    for (int i = 0; i < methodBitArray.getSize(); i = i + 2) assertTrue(methodBitArray.bitAt(i));
-    // checking odd bits
-    for (int i = 1; i < methodBitArray.getSize(); i = i + 2) assertFalse(methodBitArray.bitAt(i));
+  @DisplayName("toString_whenAllOnesOrZeros_matchesExpected")
+  void toStringWhenAllOnesOrZerosMatchesExpected() {
+    // Arrange
+    BitArray ones = newFilled(SAMPLE_SIZE, true);
+    BitArray zeros =
+        newFilled(8, false); // use a different size to avoid a constant-parameter smell
+
+    // Act
+    String onesStr = ones.toString();
+    String zerosStr = zeros.toString();
+
+    // Assert
+    assertEquals(repeat(SAMPLE_SIZE, '1'), onesStr);
+    assertEquals(repeat(zeros.getSize(), '0'), zerosStr);
   }
 
-  /**
-   * Tests unsignedByteToInt(byte) method trying it correctness for every possible (i.e. 256) byte
-   * value
-   */
   @Test
-  public void testUnsignedByteToInt() {
-    byte sampleByte;
+  @DisplayName("toString_whenZeroSize_returnsEmpty")
+  void toStringWhenZeroSizeReturnsEmpty() {
+    // Arrange
+    BitArray arr = new BitArray(0);
+
+    // Act & Assert
+    assertEquals(0, arr.toString().length());
+  }
+
+  @Test
+  @DisplayName("setBit_whenIndexGreaterThanSize_throwsAIOOBE")
+  void setBitWhenIndexGreaterThanSizeThrowsAIOOBE() {
+    // Arrange
+    BitArray arr = new BitArray(SAMPLE_SIZE);
+
+    // Act & Assert
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.setBit(SAMPLE_SIZE + 1, true));
+  }
+
+  @Test
+  @DisplayName("bitAccess_whenIndexNegative_throwsAIOOBE")
+  void bitAccessWhenIndexNegativeThrowsAIOOBE() {
+    // Arrange
+    BitArray arr = new BitArray(SAMPLE_SIZE);
+
+    // Act & Assert
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> arr.setBit(-1, true));
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(arr.bitAt(-1));
+        });
+  }
+
+  @Test
+  @DisplayName("setAndGetBit_whenEvenIndices_setTrueAndOddRemainFalse")
+  void setAndGetBitWhenEvenIndicesSetTrueAndOddRemainFalse() {
+    // Arrange
+    BitArray arr = new BitArray(SAMPLE_SIZE);
+
+    // Act
+    for (int i = 0; i < arr.getSize(); i += 2) {
+      arr.setBit(i, true);
+    }
+
+    // Assert
+    for (int i = 0; i < arr.getSize(); i += 2) {
+      assertTrue(arr.bitAt(i));
+    }
+    for (int i = 1; i < arr.getSize(); i += 2) {
+      assertFalse(arr.bitAt(i));
+    }
+  }
+
+  @Test
+  @DisplayName("unsignedByteToInt_whenAllByteValues_returnsUnsignedRange")
+  void unsignedByteToIntWhenAllByteValuesReturnsUnsignedRange() {
+    // Arrange, Act & Assert
     for (int i = 0; i < 256; i++) {
-      sampleByte = (byte) i;
-      assertEquals(i, BitArray.unsignedByteToInt(sampleByte));
+      byte b = (byte) i;
+      assertEquals(i, BitArray.unsignedByteToInt(b));
     }
   }
 
-  /** Tests getSize() method */
   @Test
-  public void testGetSize() {
-    BitArray methodBitArray = new BitArray(0);
-    assertEquals(methodBitArray.getSize(), 0);
-    methodBitArray = createAllEqualsBitArray(sampleBitsNumber, true);
-    assertEquals(methodBitArray.getSize(), sampleBitsNumber);
+  @DisplayName("getSize_whenVariousSizes_returnsConfiguredSize")
+  void getSizeWhenVariousSizesReturnsConfiguredSize() {
+    // Arrange, Act & Assert
+    assertEquals(0, new BitArray(0).getSize());
+    assertEquals(SAMPLE_SIZE, new BitArray(SAMPLE_SIZE).getSize());
   }
 
-  /** Tests setAllOnes() method comparing the result to a BitArray with already all ones set. */
   @Test
-  public void testSetAllOnes() {
-    BitArray methodBitArray = createAllEqualsBitArray(sampleBitsNumber, true);
-    BitArray methodBitArrayToVerify = new BitArray(sampleBitsNumber);
-    methodBitArrayToVerify.setAllOnes();
-    assertEquals(methodBitArray, methodBitArrayToVerify);
+  @DisplayName("setAllOnes_whenCalled_setsEveryBitTrue")
+  void setAllOnesWhenCalledSetsEveryBitTrue() {
+    // Arrange
+    BitArray expected = newFilled(SAMPLE_SIZE, true);
+    BitArray actual = new BitArray(SAMPLE_SIZE);
+
+    // Act
+    actual.setAllOnes();
+
+    // Assert
+    assertEquals(expected, actual);
   }
 
-  /**
-   * Tests firstOne() method far all possible first-one-position in a BitArray with as many bits as
-   * in a single byte
-   */
   @Test
-  public void testFirstOne() {
+  @DisplayName("firstOne_whenSingleBitSet_returnsCorrectIndexAndMinusOneWhenEmpty")
+  void firstOneWhenSingleBitSetReturnsCorrectIndexAndMinusOneWhenEmpty() {
+    // Arrange
     int oneByteBits = 8;
-    BitArray methodBitArray = new BitArray(oneByteBits);
-    // only one "1"
+    BitArray arr = new BitArray(oneByteBits);
+
+    // Act & Assert: exactly one bit set at each position
     for (int i = 0; i < oneByteBits; i++) {
-      methodBitArray = new BitArray(oneByteBits);
-      methodBitArray.setBit(i, true);
-      assertEquals(methodBitArray.firstOne(), i);
+      arr = new BitArray(oneByteBits);
+      arr.setBit(i, true);
+      assertEquals(i, arr.firstOne());
     }
 
-    methodBitArray.setAllOnes();
-    // augmenting zeros
+    // All ones then progressively introduce zeros at the front
+    arr.setAllOnes();
     for (int i = 0; i < oneByteBits - 1; i++) {
-      methodBitArray.setBit(i, false);
-      assertEquals(methodBitArray.firstOne(), i + 1);
+      arr.setBit(i, false);
+      assertEquals(i + 1, arr.firstOne());
     }
-    // all zeros
-    methodBitArray.setBit(oneByteBits - 1, false);
-    assertEquals(methodBitArray.firstOne(), -1);
+
+    // All zeros
+    arr.setBit(oneByteBits - 1, false);
+    assertEquals(-1, arr.firstOne());
   }
 
   @Test
-  public void testLastOne() {
-    BitArray array = new BitArray(16);
-    array.setAllOnes();
-    for (int i = 15; i >= 0; i--) {
-      assertEquals(i, array.lastOne(Integer.MAX_VALUE));
-      assertEquals(i, array.lastOne(i + 1));
-      assertEquals(i, array.lastOne(i + 8));
-      array.setBit(i, false);
-    }
-    assert (array.lastOne(Integer.MAX_VALUE) == -1);
-    assert (array.lastOne(0) == -1);
+  @DisplayName("firstZero_whenMixedOrAllOnes_returnsExpectedIndexOrMinusOne")
+  void firstZeroWhenMixedOrAllOnesReturnsExpectedIndexOrMinusOne() {
+    // Arrange: 8 bits; set first three bits to 1, others 0
+    BitArray arr = new BitArray(8);
+    arr.setBit(0, true);
+    arr.setBit(1, true);
+    arr.setBit(2, true);
+
+    // Act & Assert
+    assertEquals(3, arr.firstZero(0));
+    assertEquals(4, arr.firstZero(4));
+
+    // All ones -> no zero within size
+    arr.setAllOnes();
+    assertEquals(-1, arr.firstZero(0));
+    assertEquals(-1, arr.firstZero(5));
   }
 
   @Test
-  public void testShrinkGrow() {
-    BitArray array = new BitArray(16);
-    array.setAllOnes();
-    array.setSize(9);
-    array.setSize(16);
-    for (int i = 9; i < 16; i++) assert (!array.bitAt(i));
-    for (int i = 0; i < 9; i++) assert (array.bitAt(i));
+  @DisplayName("lastOne_whenMultipleBitsSet_returnsNearestAtOrBeforeStartOrMinusOne")
+  void lastOneWhenMultipleBitsSetReturnsNearestAtOrBeforeStartOrMinusOne() {
+    // Arrange
+    BitArray arr = new BitArray(16);
+    arr.setBit(3, true);
+    arr.setBit(7, true);
+    arr.setBit(12, true);
+
+    // Assert
+    assertEquals(12, arr.lastOne(Integer.MAX_VALUE));
+    assertEquals(12, arr.lastOne(15));
+    assertEquals(7, arr.lastOne(10));
+    assertEquals(3, arr.lastOne(3));
+    assertEquals(-1, arr.lastOne(2));
+
+    BitArray empty = new BitArray(16);
+    assertEquals(-1, empty.lastOne(Integer.MAX_VALUE));
+    assertEquals(-1, empty.lastOne(0));
+  }
+
+  @Test
+  @DisplayName("setSize_whenShrinkThenGrow_bitsBeyondNewSizeAreCleared")
+  void setSizeWhenShrinkThenGrowBitsBeyondNewSizeAreCleared() {
+    // Arrange
+    BitArray arr = new BitArray(16);
+    arr.setAllOnes();
+
+    // Act: shrink then grow
+    arr.setSize(9);
+    arr.setSize(16);
+
+    // Assert
+    for (int i = 0; i < 9; i++) {
+      assertTrue(arr.bitAt(i));
+    }
+    for (int i = 9; i < 16; i++) {
+      assertFalse(arr.bitAt(i));
+    }
+  }
+
+  @Test
+  @DisplayName("serialization_roundTrip_preservesBitsAndSizeForNonByteMultiple")
+  void serializationRoundTripPreservesBitsAndSizeForNonByteMultiple() throws IOException {
+    // Arrange: size=10 (spans 2 full bytes + 2 bits => 3 bytes)
+    BitArray original = new BitArray(10);
+    original.setBit(0, true);
+    original.setBit(6, true);
+    original.setBit(9, true);
+
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream(bos);
+
+    // Act: write -> read
+    original.writeToDataOutputStream(dos);
+    byte[] serialized = bos.toByteArray();
+
+    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(serialized));
+    BitArray roundTrip = new BitArray(dis);
+
+    // Assert
+    assertEquals(original, roundTrip);
+    assertEquals(BitArray.serializedLength(original.getSize()), serialized.length);
+  }
+
+  @Test
+  @DisplayName("constructor_fromDataInput_whenSizeZeroOrNegative_throwsIOException")
+  void constructorFromDataInputWhenSizeZeroOrNegativeThrowsIOException() throws IOException {
+    // Arrange: size = 0
+    ByteArrayOutputStream bos0 = new ByteArrayOutputStream();
+    DataOutputStream dos0 = new DataOutputStream(bos0);
+    dos0.writeInt(0);
+    DataInputStream dis0 = new DataInputStream(new ByteArrayInputStream(bos0.toByteArray()));
+    assertThrows(IOException.class, () -> new BitArray(dis0));
+
+    // Arrange: size = -5
+    ByteArrayOutputStream bosNeg = new ByteArrayOutputStream();
+    DataOutputStream dosNeg = new DataOutputStream(bosNeg);
+    dosNeg.writeInt(-5);
+    DataInputStream disNeg = new DataInputStream(new ByteArrayInputStream(bosNeg.toByteArray()));
+    assertThrows(IOException.class, () -> new BitArray(disNeg));
+  }
+
+  @Test
+  @DisplayName("constructor_fromDataInputWithMaxSize_whenExceeds_throwsIOException")
+  void constructorFromDataInputWithMaxSizeWhenExceedsThrowsIOException() throws IOException {
+    // Arrange: encode size=16 with 2 bytes of data
+    int size = 16;
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream(bos);
+    dos.writeInt(size);
+    dos.write(new byte[(size + 7) / 8]);
+
+    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bos.toByteArray()));
+
+    // Act & Assert
+    assertThrows(IOException.class, () -> new BitArray(dis, 15));
+  }
+
+  @Test
+  @DisplayName("equalsAndHashCode_whenSameBitsAndSize_areConsistent")
+  void equalsAndHashCodeWhenSameBitsAndSizeAreConsistent() {
+    // Arrange
+    BitArray a = new BitArray(8);
+    a.setBit(1, true);
+    a.setBit(3, true);
+
+    BitArray b = new BitArray(8);
+    b.setBit(1, true);
+    b.setBit(3, true);
+
+    // Act & Assert
+    assertEquals(a, b);
+    assertEquals(a.hashCode(), b.hashCode());
+
+    BitArray cDifferentBits = new BitArray(8);
+    cDifferentBits.setBit(1, true);
+    assertNotEquals(a, cDifferentBits);
+
+    BitArray dDifferentSize = new BitArray(9);
+    dDifferentSize.setBit(1, true);
+    dDifferentSize.setBit(3, true);
+    assertNotEquals(a, dDifferentSize);
   }
 }

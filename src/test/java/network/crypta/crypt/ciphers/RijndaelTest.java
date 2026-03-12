@@ -1,7 +1,5 @@
 package network.crypta.crypt.ciphers;
 
-import static org.junit.Assert.*;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,166 +14,210 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
-import network.crypta.crypt.CTRBlockCipherTest;
+import network.crypta.crypt.TestJca;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.support.HexUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @author sdiz
  */
-public class RijndaelTest {
+@SuppressWarnings({
+  "java:S100",
+  "java:S116",
+  "java:S117",
+  "java:S1192",
+  "java:S2245",
+  "java:S3776",
+  "java:S5542",
+  "java:S6541"
+})
+class RijndaelTest {
+  private static final String JCA_AES_ECB_NOPADDING = "AES/ECB/NOPADDING";
+
   @Test
-  public void testKnownValue() throws UnsupportedCipherException {
+  void encipherDecipher_whenUsingKnownVectors_expectCorrectRoundTrip()
+      throws UnsupportedCipherException {
+    // Arrange (128-bit)
     Rijndael aes128 = new Rijndael(128, 128);
-    byte[] res128 = new byte[128 / 8];
     aes128.initialize(KEY128_1);
-    aes128.encipher(PLAINTXT128_1, res128);
-    assertArrayEquals("(128,128) ENCIPHER", res128, CIPHER128_1);
-    byte[] des128 = new byte[128 / 8];
-    aes128.decipher(res128, des128);
-    assertArrayEquals("(128,128) DECIPHER", des128, PLAINTXT128_1);
+    byte[] plaintext128 = PLAINTXT128_1;
+    byte[] cipher128 = new byte[128 / 8];
+    byte[] decrypted128 = new byte[128 / 8];
 
-    if (false) {
-      /* 192 block size support is dropped for now */
-      Rijndael aes192 = new Rijndael(192, 192);
-      byte[] res192 = new byte[192 / 8];
-      aes192.initialize(KEY192_1);
-      aes192.encipher(PLAINTXT192_1, res192);
-      assertArrayEquals("(192,192) ENCIPHER", res192, CIPHER192_1);
-      byte[] des192 = new byte[192 / 8];
-      aes192.decipher(res192, des192);
-      assertArrayEquals("(192,192) DECIPHER", des192, PLAINTXT192_1);
-    }
+    // Act (128-bit)
+    aes128.encipher(plaintext128, cipher128);
+    aes128.decipher(cipher128, decrypted128);
 
+    // Assert (128-bit)
+    assertArrayEquals(CIPHER128_1, cipher128, "(128,128) ENCIPHER");
+    assertArrayEquals(plaintext128, decrypted128, "(128,128) DECIPHER");
+
+    // Arrange (256-bit)
     Rijndael aes256 = new Rijndael(256, 256);
-    byte[] res256 = new byte[256 / 8];
     aes256.initialize(KEY256_1);
-    aes256.encipher(PLAINTXT256_1, res256);
-    assertArrayEquals("(256,256) ENCIPHER", res256, CIPHER256_1);
-    byte[] des256 = new byte[256 / 8];
-    aes256.decipher(res256, des256);
-    assertArrayEquals("(256,256) DECIPHER", des256, PLAINTXT256_1);
+    byte[] plaintext256 = PLAINTXT256_1;
+    byte[] cipher256 = new byte[256 / 8];
+    byte[] decrypted256 = new byte[256 / 8];
+
+    // Act (256-bit)
+    aes256.encipher(plaintext256, cipher256);
+    aes256.decipher(cipher256, decrypted256);
+
+    // Assert (256-bit)
+    assertArrayEquals(CIPHER256_1, cipher256, "(256,256) ENCIPHER");
+    assertArrayEquals(plaintext256, decrypted256, "(256,256) DECIPHER");
   }
 
   @Test
-  public void testStandardTestVK() throws UnsupportedCipherException {
-    // KEYSIZE=128
+  void encipher_whenUsingVariableKeyVectors_expectExpectedCiphertext()
+      throws UnsupportedCipherException {
+    // Arrange (AES-128, variable key)
     Rijndael aes128 = new Rijndael(128, 128);
+    // Act & Assert for each vector
     for (int i = 0; i < TEST_VK128.length; i++) {
-      aes128.initialize(TEST_VK128[i][0]);
+      // Arrange
+      byte[] key = TEST_VK128[i][0];
+      byte[] expectedCipher = TEST_VK128[i][1];
+      byte[] ciphertext = new byte[128 / 8];
+      aes128.initialize(key);
 
-      byte[] cipher = new byte[128 / 8];
-      aes128.encipher(TEST_VK_PT, cipher);
-      assertArrayEquals("ECB_VK KEYSIZE=128 I=" + (i + 1), cipher, TEST_VK128[i][1]);
+      // Act
+      aes128.encipher(TEST_VK_PT, ciphertext);
+
+      // Assert
+      assertArrayEquals(expectedCipher, ciphertext, "ECB_VK KEYSIZE=128 I=" + (i + 1));
     }
 
+    // Arrange (AES-192, variable key)
     Rijndael aes192 = new Rijndael(192, 128);
     for (int i = 0; i < TEST_VK192.length; i++) {
-      aes192.initialize(TEST_VK192[i][0]);
+      // Arrange
+      byte[] key = TEST_VK192[i][0];
+      byte[] expectedCipher = TEST_VK192[i][1];
+      byte[] ciphertext = new byte[128 / 8];
+      aes192.initialize(key);
 
-      byte[] cipher = new byte[128 / 8];
-      aes192.encipher(TEST_VK_PT, cipher);
-      assertArrayEquals("ECB_VK KEYSIZE=192 I=" + (i + 1), cipher, TEST_VK192[i][1]);
+      // Act
+      aes192.encipher(TEST_VK_PT, ciphertext);
+
+      // Assert
+      assertArrayEquals(expectedCipher, ciphertext, "ECB_VK KEYSIZE=192 I=" + (i + 1));
     }
   }
 
   @Test
-  public void testStandardTestVKJCA()
-      throws UnsupportedCipherException,
-          InvalidKeyException,
+  void jcaEcbEncipher_whenUsingVariableKeyVectors_expectExpectedCiphertext()
+      throws InvalidKeyException,
           NoSuchAlgorithmException,
           NoSuchPaddingException,
           IllegalBlockSizeException,
           BadPaddingException {
-    if (!CTRBlockCipherTest.TEST_JCA) {
+    if (!TestJca.AES_CTR_AVAILABLE) {
       return;
     }
-    // KEYSIZE=128
-    for (int i = 0; i < TEST_VK128.length; i++) {
-      SecretKeySpec k = new SecretKeySpec(TEST_VK128[i][0], "AES");
-      Cipher c = Cipher.getInstance("AES/ECB/NOPADDING");
+    // Act & Assert (AES-128, variable key)
+    for (byte[][] bytes : TEST_VK128) {
+      // Arrange
+      SecretKeySpec k = new SecretKeySpec(bytes[0], "AES");
+      Cipher c = Cipher.getInstance(JCA_AES_ECB_NOPADDING);
       c.init(Cipher.ENCRYPT_MODE, k);
 
+      // Act
       byte[] output = c.doFinal(TEST_VK_PT);
-      assertArrayEquals(output, TEST_VK128[i][1]);
+
+      // Assert
+      assertArrayEquals(bytes[1], output);
     }
 
-    // KEYSIZE=192
+    // Act & Assert (AES-192, variable key)
     for (int i = 0; i < TEST_VK192.length; i++) {
+      // Arrange
       SecretKeySpec k = new SecretKeySpec(TEST_VK192[i][0], "AES");
-      Cipher c = Cipher.getInstance("AES/ECB/NOPADDING");
+      Cipher c = Cipher.getInstance(JCA_AES_ECB_NOPADDING);
       c.init(Cipher.ENCRYPT_MODE, k);
 
+      // Act
       byte[] output = c.doFinal(TEST_VK_PT);
-      assertArrayEquals("ECB_VK KEYSIZE=192 I=" + (i + 1), output, TEST_VK192[i][1]);
+
+      // Assert
+      assertArrayEquals(TEST_VK192[i][1], output, "ECB_VK KEYSIZE=192 I=" + (i + 1));
     }
   }
 
   @Test
-  public void testRandom() throws UnsupportedCipherException {
-    final int[] SIZE = new int[] {128, /*192,*/ 256};
+  void encipherDecipher_whenUsingRandomData_expectRoundTripEquality()
+      throws UnsupportedCipherException {
+    final int[] sizes = new int[] {128, /*192,*/ 256};
 
-    for (int k = 0; k < SIZE.length; k++) {
-      int size = SIZE[k];
+    for (int size : sizes) {
+      // Arrange (per key)
       Rijndael aes = new Rijndael(size, size);
-
       byte[] key = new byte[size / 8];
       rand.nextBytes(key);
       aes.initialize(key);
 
       for (int i = 0; i < 1024; i++) {
+        // Arrange (per block)
         byte[] plain = new byte[size / 8];
         rand.nextBytes(plain);
-
         byte[] cipher = new byte[size / 8];
+        byte[] decrypted = new byte[size / 8];
+
+        // Act
         aes.encipher(plain, cipher);
+        aes.decipher(cipher, decrypted);
 
-        byte[] plain2 = new byte[size / 8];
-        aes.decipher(cipher, plain2);
-
+        // Assert
         assertArrayEquals(
+            plain,
+            decrypted,
             "("
                 + size
                 + ","
                 + size
-                + //
-                ") KEY="
+                + ") KEY="
                 + HexUtil.bytesToHex(key)
-                + //
-                ", PLAIN="
+                + ", PLAIN="
                 + HexUtil.bytesToHex(plain)
-                + //
-                ", CIPHER="
+                + ", CIPHER="
                 + HexUtil.bytesToHex(cipher)
-                + //
-                ", PLAIN2="
-                + HexUtil.bytesToHex(plain2),
-            plain,
-            plain2);
+                + ", PLAIN2="
+                + HexUtil.bytesToHex(decrypted));
       }
     }
   }
 
   @Test
-  public void testNonStandardTestVK() throws UnsupportedCipherException {
-    Rijndael aes128 = new Rijndael(256, 256);
+  void encipher_whenUsing256x256Vectors_expectExpectedCiphertext()
+      throws UnsupportedCipherException {
+    // Arrange
+    Rijndael aes256 = new Rijndael(256, 256);
     for (int i = 0; i < TEST_VK256x256.length; i++) {
-      aes128.initialize(TEST_VK256x256[i][0]);
+      // Arrange (per vector)
+      byte[] key = TEST_VK256x256[i][0];
+      byte[] expectedCipher = TEST_VK256x256[i][1];
+      byte[] ciphertext = new byte[256 / 8];
+      aes256.initialize(key);
 
-      byte[] cipher = new byte[256 / 8];
-      aes128.encipher(TEST_VK_PTx256, cipher);
-      //			System.out.println("\t\t\t/* I="+(i+1)+" */");
-      //			System.out.println("\t\t\t{ HexUtil.hexToBytes(\""+HexUtil.bytesToHex
-      //			(TEST_VK256x256[i][0])+"\"),");
-      //			System.out.println("\t\t\t\t\tHexUtil.hexToBytes(\""+HexUtil.bytesToHex(cipher)
-      //			+"\") }, //");
-      assertArrayEquals("ECB_VK KEYSIZE=256 I=" + (i + 1), cipher, TEST_VK256x256[i][1]);
+      // Act
+      aes256.encipher(TEST_VK_PTx256, ciphertext);
+
+      // Assert
+      assertArrayEquals(expectedCipher, ciphertext, "ECB_VK KEYSIZE=256 I=" + (i + 1));
     }
   }
 
   @Test
-  public void testGladmanTestVectors()
+  void encipherDecipher_whenUsingGladmanVectors_expectExpectedCiphertextAndPlaintext()
       throws UnsupportedCipherException,
           IOException,
           InvalidKeyException,
@@ -183,7 +225,10 @@ public class RijndaelTest {
           NoSuchPaddingException,
           IllegalBlockSizeException,
           BadPaddingException {
+    // Arrange/Act/Assert delegated to helper for both types
+    // Act & Assert (variable text)
     checkGladmanTestVectors("t");
+    // Act & Assert (variable key)
     checkGladmanTestVectors("k");
   }
 
@@ -196,71 +241,83 @@ public class RijndaelTest {
           IllegalBlockSizeException,
           BadPaddingException {
     for (int testNumber : GLADMAN_TEST_NUMBERS) {
-      try (InputStream is =
-              getClass()
-                  .getResourceAsStream(
-                      "/network/crypta/crypt/ciphers/rijndael-gladman-test-data/ecbn"
-                          + type
-                          + testNumber
-                          + ".txt");
-          InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
-          BufferedReader br = new BufferedReader(isr)) {
-        for (int i = 0; i < 7; i++) {
-          br.readLine(); // Skip header
-        }
-        String line = br.readLine();
-        int blockSize = Integer.parseInt(line.substring("BLOCKSIZE=".length()));
-        line = br.readLine();
-        int keySize = Integer.parseInt(line.substring("KEYSIZE=  ".length()));
-        assert (blockSize == 128 || blockSize == 192 || blockSize == 256);
-        assert (keySize == 128 || keySize == 192 || keySize == 256);
-        br.readLine();
-        byte[] plaintext = null;
-        byte[] key = null;
-        byte[] ciphertext = null;
-        int test; // Ignored.
-        while (true) {
-          line = br.readLine();
-          if (line == null) {
-            break; // End of file.
+      String path =
+          "/network/crypta/crypt/ciphers/rijndael-gladman-test-data/ecbn"
+              + type
+              + testNumber
+              + ".txt";
+      try (InputStream is = getClass().getResourceAsStream(path)) {
+        assertNotNull(is, "Missing test vector resource: " + path);
+        try (InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
+            BufferedReader br = new BufferedReader(isr)) {
+          for (int i = 0; i < 7; i++) {
+            assertNotNull(br.readLine()); // Skip header, ensure present
           }
-          String prefix = line.substring(0, 6);
-          if (prefix.equals("TEST= ")) {
-            test = Integer.parseInt(line.substring(6));
-          } else {
-            byte[] data = HexUtil.hexToBytes(line.substring(6));
-            if (prefix.equals("PT=   ")) {
-              assertNull(plaintext);
-              plaintext = data;
-              assertEquals(plaintext.length, blockSize / 8);
-            } else if (prefix.equals("KEY=  ")) {
-              assertNull(key);
-              key = data;
-              assertEquals(key.length, keySize / 8);
-            } else if (prefix.equals("CT=   ")) {
-              assertNull(ciphertext);
-              ciphertext = data;
-              assertEquals(ciphertext.length, blockSize / 8);
+          String line = br.readLine();
+          assertNotNull(line, "Missing BLOCKSIZE line in " + path);
+          int blockSize = Integer.parseInt(line.substring("BLOCKSIZE=".length()));
+          line = br.readLine();
+          assertNotNull(line, "Missing KEYSIZE line in " + path);
+          int keySize = Integer.parseInt(line.substring("KEYSIZE=  ".length()));
+          assert (blockSize == 128 || blockSize == 192 || blockSize == 256);
+          assert (keySize == 128 || keySize == 192 || keySize == 256);
+          assertNotNull(br.readLine());
+          byte[] plaintext = null;
+          byte[] key = null;
+          byte[] ciphertext = null;
+          while (true) {
+            line = br.readLine();
+            if (line == null) {
+              break; // End of file.
             }
-            if (plaintext != null && ciphertext != null && key != null) {
-              Rijndael cipher = new Rijndael(keySize, blockSize);
-              cipher.initialize(key);
-              // Encrypt
-              byte[] copyOfPlaintext = Arrays.copyOf(plaintext, plaintext.length);
-              byte[] output = new byte[blockSize / 8];
-              cipher.encipher(copyOfPlaintext, output);
-              assertArrayEquals(output, ciphertext);
-              // Decrypt
-              byte[] copyOfCiphertext = Arrays.copyOf(ciphertext, ciphertext.length);
-              Arrays.fill(output, (byte) 0);
-              cipher.decipher(copyOfCiphertext, output);
-              assertArrayEquals(output, plaintext);
-              if (blockSize == 128) {
-                if (keySize == 128 || CTRBlockCipherTest.TEST_JCA) {
+            String prefix = line.substring(0, 6);
+            if (!prefix.equals("TEST= ")) {
+              byte[] data = HexUtil.hexToBytes(line.substring(6));
+              switch (prefix) {
+                case "PT=   " -> {
+                  assertNull(plaintext);
+                  plaintext = data;
+                  assertEquals(plaintext.length, blockSize / 8);
+                }
+                case "KEY=  " -> {
+                  assertNull(key);
+                  key = data;
+                  assertEquals(key.length, keySize / 8);
+                }
+                case "CT=   " -> {
+                  assertNull(ciphertext);
+                  ciphertext = data;
+                  assertEquals(ciphertext.length, blockSize / 8);
+                }
+                default ->
+                    fail(
+                        "Unexpected prefix '"
+                            + prefix
+                            + "' in Gladman vector (type="
+                            + type
+                            + ", test="
+                            + testNumber
+                            + "): "
+                            + line);
+              }
+              if (plaintext != null && ciphertext != null && key != null) {
+                Rijndael cipher = new Rijndael(keySize, blockSize);
+                cipher.initialize(key);
+                // Encrypt
+                byte[] copyOfPlaintext = Arrays.copyOf(plaintext, plaintext.length);
+                byte[] output = new byte[blockSize / 8];
+                cipher.encipher(copyOfPlaintext, output);
+                assertArrayEquals(output, ciphertext);
+                // Decrypt
+                byte[] copyOfCiphertext = Arrays.copyOf(ciphertext, ciphertext.length);
+                Arrays.fill(output, (byte) 0);
+                cipher.decipher(copyOfCiphertext, output);
+                assertArrayEquals(output, plaintext);
+                if (blockSize == 128 && (keySize == 128 || TestJca.AES_CTR_AVAILABLE)) {
                   // We can test with JCA too.
                   // Encrypt.
                   SecretKeySpec k = new SecretKeySpec(key, "AES");
-                  Cipher c = Cipher.getInstance("AES/ECB/NOPADDING");
+                  Cipher c = Cipher.getInstance(JCA_AES_ECB_NOPADDING);
                   c.init(Cipher.ENCRYPT_MODE, k);
                   output = c.doFinal(plaintext);
                   assertArrayEquals(output, ciphertext);
@@ -270,14 +327,14 @@ public class RijndaelTest {
                   output = c.doFinal(ciphertext);
                   assertArrayEquals(output, plaintext);
                 }
-              }
-              // Clear
-              if (type.equals("t")) {
-                plaintext = null;
-              }
-              ciphertext = null;
-              if (type.equals("k")) {
-                key = null;
+                // Clear
+                if (type.equals("t")) {
+                  plaintext = null;
+                }
+                ciphertext = null;
+                if (type.equals("k")) {
+                  key = null;
+                }
               }
             }
           }
@@ -1891,7 +1948,7 @@ public class RijndaelTest {
       HexUtil.hexToBytes("8BAE4EFB70D33A9792EEA9BE70889D72")
     }, //
   };
-  /* This test vector for Rijndael(256,256) was generated with generic implementation */
+  /* This test vector for Rijndael(256,256) was generated with a generic implementation */
   private static final byte[][][] TEST_VK256x256 = { //
     /* I=1 */
     {
@@ -3182,12 +3239,6 @@ public class RijndaelTest {
   private final byte[] PLAINTXT128_1 = HexUtil.hexToBytes("0123456789abcdef1123456789abcdef");
   private final byte[] KEY128_1 = HexUtil.hexToBytes("deadbeefcafebabe0123456789abcdef");
   private final byte[] CIPHER128_1 = HexUtil.hexToBytes("8c5b8c04805c0e07dd62b381730d5d10");
-  private final byte[] PLAINTXT192_1 =
-      HexUtil.hexToBytes("0123456789abcdef1123456789abcdef2123456789abcdef");
-  private final byte[] KEY192_1 =
-      HexUtil.hexToBytes("deadbeefcafebabe0123456789abcdefcafebabedeadbeef");
-  private final byte[] CIPHER192_1 =
-      HexUtil.hexToBytes("7fae974786a9741d96693654bc7a8aff09b3f116840ffced");
   private final byte[] PLAINTXT256_1 =
       HexUtil.hexToBytes("0123456789abcdef1123456789abcdef2123456789abcdef3123456789abcdef");
   private final byte[] KEY256_1 =
@@ -3207,4 +3258,102 @@ public class RijndaelTest {
   private final byte[] TEST_VK_PT = HexUtil.hexToBytes("00000000000000000000000000000000");
   private final byte[] TEST_VK_PTx256 =
       HexUtil.hexToBytes("0000000000000000000000000000000000000000000000000000000000000000");
+
+  // --- New API/edge-case tests to improve coverage ---
+  @Test
+  void constructor_whenInvalidKeysize_expectUnsupportedCipherException() {
+    assertThrows(UnsupportedCipherException.class, () -> new Rijndael(64, 128));
+    assertThrows(UnsupportedCipherException.class, () -> new Rijndael(129, 128));
+  }
+
+  @Test
+  void constructor_whenInvalidBlocksize_expectUnsupportedCipherException() {
+    assertThrows(UnsupportedCipherException.class, () -> new Rijndael(128, 192));
+    assertThrows(UnsupportedCipherException.class, () -> new Rijndael(256, 192));
+  }
+
+  @Test
+  void defaultConstructor_whenUsed_expect128BitDefaults() {
+    Rijndael rij = new Rijndael();
+    assertEquals(128, rij.getKeySize());
+    assertEquals(128, rij.getBlockSize());
+  }
+
+  @Test
+  void getProviderName_whenCalled_doesNotThrow() {
+    String name = Rijndael.getProviderName();
+    if (name != null) {
+      assertFalse(name.isEmpty());
+    }
+  }
+
+  @Test
+  void initialize_whenNullKey_expectNullPointerException() throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    assertThrows(NullPointerException.class, () -> rij.initialize(null));
+  }
+
+  @Test
+  void initialize_whenShortKey_expectArrayIndexOutOfBounds() throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    byte[] tooShort = new byte[8];
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> rij.initialize(tooShort));
+  }
+
+  @Test
+  void initialize_whenLongerKey_usesFirstNBytes() throws UnsupportedCipherException {
+    Rijndael rij1 = new Rijndael(128, 128);
+    Rijndael rij2 = new Rijndael(128, 128);
+
+    byte[] key16 = HexUtil.hexToBytes("00112233445566778899AABBCCDDEEFF");
+    byte[] key32 =
+        HexUtil.hexToBytes("00112233445566778899AABBCCDDEEFFFFEEDDCCBBAA99887766554433221100");
+
+    rij1.initialize(key16);
+    rij2.initialize(key32);
+
+    byte[] pt = HexUtil.hexToBytes("000102030405060708090A0B0C0D0E0F");
+    byte[] ct1 = new byte[16];
+    byte[] ct2 = new byte[16];
+    rij1.encipher(pt.clone(), ct1);
+    rij2.encipher(pt.clone(), ct2);
+    assertArrayEquals(ct1, ct2);
+  }
+
+  @Test
+  void encipher_whenWrongBlockLength_expectIllegalArgumentException()
+      throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    rij.initialize(new byte[16]);
+    byte[] bad = new byte[15];
+    byte[] out = new byte[16];
+    assertThrows(IllegalArgumentException.class, () -> rij.encipher(bad, out));
+  }
+
+  @Test
+  void decipher_whenWrongBlockLength_expectIllegalArgumentException()
+      throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    rij.initialize(new byte[16]);
+    byte[] bad = new byte[15];
+    byte[] out = new byte[16];
+    assertThrows(IllegalArgumentException.class, () -> rij.decipher(bad, out));
+  }
+
+  @Test
+  void encipher_whenResultTooSmall_expectArrayIndexOutOfBounds() throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    rij.initialize(new byte[16]);
+    byte[] block = new byte[16];
+    byte[] tooSmall = new byte[8];
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> rij.encipher(block, tooSmall));
+  }
+
+  @Test
+  void encipher_whenNotInitialized_expectNullPointerException() throws UnsupportedCipherException {
+    Rijndael rij = new Rijndael(128, 128);
+    byte[] block = new byte[16];
+    byte[] out = new byte[16];
+    assertThrows(NullPointerException.class, () -> rij.encipher(block, out));
+  }
 }

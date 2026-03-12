@@ -1,10 +1,20 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class LocationTest {
+@SuppressWarnings("java:S100")
+@ExtendWith(MockitoExtension.class)
+class LocationTest {
 
   // Maximal acceptable difference to consider two doubles equal.
   private static final double EPSILON = 1e-12;
@@ -23,7 +33,7 @@ public class LocationTest {
   private static final double INVALID_2 = 1.1;
 
   @Test
-  public void testIsValid() {
+  void isValid_whenWithinAndAtBounds_expectTrueOtherwiseFalse() {
     // Simple cases.
     assertTrue(Location.isValid(VALID_1));
     assertTrue(Location.isValid(VALID_2));
@@ -36,7 +46,7 @@ public class LocationTest {
   }
 
   @Test
-  public void testEquals() {
+  void equals_whenVariousValidAndInvalidCombinations_expectExpectedTruthValues() {
     // Simple cases.
     assertTrue(Location.equals(VALID_1, VALID_1));
     assertTrue(Location.equals(VALID_2, VALID_2));
@@ -61,7 +71,7 @@ public class LocationTest {
   }
 
   @Test
-  public void testDistance() {
+  void distance_whenValidLocations_expectShortestCircularDistance() {
     // Simple cases.
     assertEquals(DIST_12, Location.distance(VALID_1, VALID_2), EPSILON);
     assertEquals(DIST_12, Location.distance(VALID_2, VALID_1), EPSILON);
@@ -78,7 +88,7 @@ public class LocationTest {
   }
 
   @Test
-  public void testChange() {
+  void change_whenValidLocations_expectSignedShortestChange() {
     // Simple cases.
     assertEquals(CHANGE_12, Location.change(VALID_1, VALID_2), EPSILON);
     assertEquals(CHANGE_21, Location.change(VALID_2, VALID_1), EPSILON);
@@ -95,7 +105,7 @@ public class LocationTest {
   }
 
   @Test
-  public void testNormalize() {
+  void normalize_whenOffsetsApplied_expectValueWrappedIntoRange() {
     // Simple cases.
     for (int i = 0; i < 5; i++) {
       assertEquals(VALID_1, Location.normalize(VALID_1 + i), EPSILON);
@@ -109,7 +119,7 @@ public class LocationTest {
   }
 
   @Test
-  public void testDistanceAllowInvalid() {
+  void distanceAllowInvalid_whenAnyInvalid_expectSpecifiedSemantics() {
     // Simple cases.
     assertEquals(DIST_12, Location.distanceAllowInvalid(VALID_1, VALID_2), EPSILON);
     assertEquals(DIST_12, Location.distanceAllowInvalid(VALID_2, VALID_1), EPSILON);
@@ -143,5 +153,76 @@ public class LocationTest {
     assertEquals(0.0, Location.distanceAllowInvalid(INVALID_1, INVALID_2), EPSILON);
     assertEquals(0.0, Location.distanceAllowInvalid(INVALID_2, INVALID_1), EPSILON);
     assertEquals(0.0, Location.distanceAllowInvalid(INVALID_2, INVALID_2), EPSILON);
+  }
+
+  // --- Additional tests for untested public methods ---
+
+  @ParameterizedTest
+  @CsvSource({
+    // valid inputs
+    "0, 0.0",
+    "0.0, 0.0",
+    "1.0, 1.0",
+    "0.25, 0.25",
+    // whitespace tolerated by Double.parseDouble
+    " 0.5 , 0.5"
+  })
+  void getLocation_whenParsableAndInRange_expectSameValue(String input, double expected) {
+    // Act
+    double result = Location.getLocation(input);
+    // Assert
+    assertEquals(expected, result, EPSILON);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    // parse errors
+    "abc",
+    "\"\"",
+    // numbers out of range
+    "-0.1",
+    "1.0000000001",
+    // non-finite values
+    "NaN",
+    "Infinity",
+    "-Infinity"
+  })
+  void getLocation_whenUnparsableOrOutOfRange_expectLocationInvalid(String input) {
+    // Act
+    double result = Location.getLocation(input);
+    // Assert
+    assertEquals(Location.LOCATION_INVALID, result, EPSILON);
+  }
+
+  @Test
+  void getLocation_whenNullInput_expectLocationInvalid() {
+    // Act
+    double result = Location.getLocation(null);
+    // Assert
+    assertEquals(Location.LOCATION_INVALID, result, EPSILON);
+  }
+
+  @Test
+  void distance_withPeerNode_whenPeerAndTargetValid_expectSameAsDoubleDistance() {
+    // Arrange
+    PeerNode peer = Mockito.mock(PeerNode.class);
+    Mockito.when(peer.getLocation()).thenReturn(VALID_1);
+    double expected = Location.distance(VALID_1, VALID_2);
+
+    // Act
+    double result = Location.distance(peer, VALID_2);
+
+    // Assert
+    assertEquals(expected, result, EPSILON);
+  }
+
+  @Test
+  void distance_withPeerNode_whenPeerLocationInvalid_expectIllegalArgumentException() {
+    // Arrange
+    PeerNode peer = Mockito.mock(PeerNode.class);
+    Mockito.when(peer.getLocation()).thenReturn(INVALID_1);
+
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> Location.distance(peer, VALID_1));
   }
 }

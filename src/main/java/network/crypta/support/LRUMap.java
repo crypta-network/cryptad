@@ -1,70 +1,113 @@
 package network.crypta.support;
 
+import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * An LRU map from K to V. That is, when a mapping is added, it is pushed to the top of the queue,
- * even if it was already present, and pop/peek operate from the bottom of the queue i.e. the least
- * recently pushed. The caller must implement any size limit needed. FIXME most callers should be
- * switched to LinkedHashMap. Does not support null keys.
+ * Least-recently-used (LRU) map from keys to values.
  *
- * @param <K> The key type.
- * @param <V> The value type.
+ * <p>When a mapping is {@linkplain #push(Object, Object) pushed}, the entry becomes the most
+ * recently used, even if the key already exists. Removal and peeking operations work from the
+ * least-recently-used side (i.e., the entry that was pushed furthest in the past). The caller is
+ * responsible for enforcing any size limits or eviction policies on top of this primitive.
+ *
+ * <p>In many cases, a {@link java.util.LinkedHashMap} configured for access order can offer similar
+ * behavior, but this implementation avoids rehashing and uses an intrusive list for predictable
+ * constant-time operations.
+ *
+ * <h3>Threading</h3>
+ *
+ * Most mutating and order-sensitive methods are {@code synchronized}. Methods such as {@link
+ * #size()} and {@link #isEmpty()} are not synchronized and may reflect a momentarily stale view
+ * under concurrent access.
+ *
+ * <h3>Nullability</h3>
+ *
+ * Null keys are not permitted and cause a {@link NullPointerException}. Null values are allowed.
+ *
+ * <h3>Iteration</h3>
+ *
+ * {@link #keys()} and {@link #values()} return snapshot enumerations in LRU→MRU order. The snapshot
+ * is created under synchronization and is not affected by later modifications.
+ *
+ * @param <K> the key type (non-null)
+ * @param <V> the value type (may be null)
  */
 public class LRUMap<K, V> {
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(LRUMap.class);
+  private static final String NULL_KEY_IN_QITEM = "LRUMap invariant violated: null key in QItem";
 
   /**
-   * We use our own DoublyLinkedList implementation because it improves performance to be able to
-   * inherit from and refer to QItem's directly.
+   * Intrusive list of entries, ordered MRU→LRU (head is MRU, tail is LRU). We use an intrusive
+   * structure to store neighbor links in the nodes themselves for {@code O(1)} moves and removals.
    */
   private final DoublyLinkedListImpl<QItem<K, V>> list = new DoublyLinkedListImpl<>();
 
   private final Map<K, QItem<K, V>> hash;
 
+  /**
+   * Creates an instance backed by a {@link HashMap}. This variant is fast but not resilient to
+   * adversarial hash collisions; prefer {@link #createSafeMap()} when keys may be
+   * attacker-controlled.
+   */
   public LRUMap() {
     hash = new HashMap<>();
   }
 
-  /** Takes an arbitrary map */
+  /**
+   * Creates an instance reusing the provided backing map.
+   *
+   * <p>Implementation detail: used by safe factory methods to switch map type.
+   */
   private LRUMap(Map<K, QItem<K, V>> map) {
     hash = map;
   }
 
   /**
-   * Create a LRUMap that is safe to use with keys that can be controlled by an attacker. Meaning
-   * one based on a TreeMap, not a HashMap (think hash collision DoS's).
+   * Creates a variant that is safer for attacker-controlled keys.
+   *
+   * <p>Backed by a {@link TreeMap} to avoid pathological {@link HashMap} collision attacks.
+   *
+   * @param <K> comparable key type
+   * @param <V> value type
+   * @return a new map using {@link TreeMap} as the backing map
    */
   public static <K extends Comparable<K>, V> LRUMap<K, V> createSafeMap() {
     return new LRUMap<>(new TreeMap<>());
   }
 
   /**
-   * Create a LRUMap that is safe to use with keys that can be controlled by an attacker. Meaning
-   * one based on a TreeMap, not a HashMap (think hash collision DoS's).
+   * Creates a variant that is safer for attacker-controlled keys using a custom comparator.
+   *
+   * <p>Backed by a {@link TreeMap} with the supplied {@link Comparator}.
+   *
+   * @param comparator comparator for ordering keys; must impose a total order
+   * @param <K> key type
+   * @param <V> value type
+   * @return a new map using {@link TreeMap} as the backing map
    */
   public static <K, V> LRUMap<K, V> createSafeMap(Comparator<K> comparator) {
     return new LRUMap<>(new TreeMap<>(comparator));
   }
 
   /**
-   * push()ing an object that is already in the queue moves that object to the most recently used
-   * position, but doesn't add a duplicate entry in the queue.
+   * Inserts or updates a mapping and promotes it to most-recently-used (MRU).
+   *
+   * <p>If the key already exists, its value is replaced and the entry is moved to the MRU position.
+   * No duplicate entry is inserted.
+   *
+   * @param key non-null key
+   * @param value value (may be null)
+   * @return the previous value associated with {@code key}, or {@code null} if none
+   * @throws NullPointerException if {@code key} is {@code null}
+   * @implNote Runs in {@code O(1)} time.
    */
   public final synchronized V push(K key, V value) {
     if (key == null) throw new NullPointerException();
@@ -74,61 +117,118 @@ public class LRUMap<K, V> {
       insert = new QItem<>(key, value);
       hash.put(key, insert);
     } else {
-      old = insert.value;
-      insert.value = value;
+      old = insert.getValue();
+      insert.setValue(value);
       list.remove(insert);
     }
-    if (logMINOR) Logger.minor(this, "Pushed " + insert + " ( " + key + ' ' + value + " )");
+    LOG.debug("Pushed {} ( {} {} )", insert, key, value);
 
     list.unshift(insert);
     return old;
   }
 
   /**
-   * @return Least recently pushed key.
+   * Removes and returns the least-recently-used key.
+   *
+   * <p>Also removes the corresponding mapping.
+   *
+   * @return the LRU key, or {@code null} if empty
+   * @implNote Runs in {@code O(1)} time.
    */
   public final synchronized K popKey() {
     if (!list.isEmpty()) {
-      return hash.remove(list.pop().obj).obj;
+      QItem<K, V> popped = list.pop();
+      if (popped == null) return null; // defensive: static analysis may not infer non-null here
+      K k = Objects.requireNonNull(popped.getObj(), NULL_KEY_IN_QITEM);
+      QItem<K, V> removed =
+          Objects.requireNonNull(
+              hash.remove(k), "LRUMap invariant violated: hash missing popped key");
+      return removed.getObj();
     } else {
       return null;
     }
   }
 
   /**
-   * @return Least recently pushed value.
+   * Removes and returns the least-recently-used value.
+   *
+   * <p>Also removes the corresponding mapping.
+   *
+   * @return the LRU value, or {@code null} if empty
+   * @implNote Runs in {@code O(1)} time.
    */
   public final synchronized V popValue() {
     if (!list.isEmpty()) {
-      return hash.remove(list.pop().obj).value;
+      QItem<K, V> popped = list.pop();
+      if (popped == null) return null; // defensive: static analysis may not infer non-null here
+      K k = Objects.requireNonNull(popped.getObj(), NULL_KEY_IN_QITEM);
+      QItem<K, V> removed =
+          Objects.requireNonNull(
+              hash.remove(k), "LRUMap invariant violated: hash missing popped key");
+      return removed.getValue();
     } else {
       return null;
     }
   }
 
+  /**
+   * Returns the least-recently-used value without removing it.
+   *
+   * @return the LRU value, or {@code null} if empty
+   */
   public final synchronized V peekValue() {
     if (!list.isEmpty()) {
-      return hash.get(list.tail().obj).value;
+      QItem<K, V> tail = list.tail();
+      if (tail == null) return null; // defensive
+      K k = Objects.requireNonNull(tail.getObj(), NULL_KEY_IN_QITEM);
+      QItem<K, V> q =
+          Objects.requireNonNull(hash.get(k), "LRUMap invariant violated: hash missing tail key");
+      return q.getValue();
     } else {
       return null;
     }
   }
 
+  /**
+   * Returns the least-recently-used key without removing it.
+   *
+   * @return the LRU key, or {@code null} if empty
+   */
   public final synchronized K peekKey() {
     if (!list.isEmpty()) {
-      return hash.get(list.tail().obj).obj;
+      QItem<K, V> tail = list.tail();
+      if (tail == null) return null; // defensive
+      K k = Objects.requireNonNull(tail.getObj(), NULL_KEY_IN_QITEM);
+      QItem<K, V> q =
+          Objects.requireNonNull(hash.get(k), "LRUMap invariant violated: hash missing tail key");
+      return q.getObj();
     } else {
       return null;
     }
   }
 
+  /**
+   * Returns the number of mappings currently stored.
+   *
+   * <p>Not synchronized; may reflect a slightly stale value under concurrent access.
+   *
+   * @return current entry count (never negative)
+   */
   public final int size() {
     return list.size();
   }
 
+  /**
+   * Removes a mapping by key.
+   *
+   * @param key non-null key
+   * @return {@code true} if a mapping was removed; {@code false} if the key was absent
+   * @throws NullPointerException if {@code key} is {@code null}
+   * @implNote Runs in {@code O(1)} time.
+   */
   public final synchronized boolean removeKey(K key) {
     if (key == null) throw new NullPointerException();
-    QItem<K, V> i = (hash.remove(key));
+    QItem<K, V> i = hash.remove(key);
     if (i != null) {
       list.remove(i);
       return true;
@@ -138,10 +238,11 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Check if this queue contains obj
+   * Returns whether a mapping for the key exists.
    *
-   * @param obj Object to match
-   * @return true if this queue contains obj.
+   * @param key non-null key
+   * @return {@code true} if present; {@code false} otherwise
+   * @throws NullPointerException if {@code key} is {@code null}
    */
   public final synchronized boolean containsKey(K key) {
     if (key == null) throw new NullPointerException();
@@ -149,67 +250,100 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Note that this does not automatically promote the key. You have to do that by hand with
-   * push(key, value).
+   * Returns the value for the key without promotion.
+   *
+   * <p>This does not change LRU order. To promote, call {@link #push(Object, Object)} with the same
+   * key and value.
+   *
+   * @param key non-null key
+   * @return the value, or {@code null} if absent
+   * @throws NullPointerException if {@code key} is {@code null}
    */
   public final synchronized V get(K key) {
     if (key == null) throw new NullPointerException();
     QItem<K, V> q = hash.get(key);
     if (q == null) return null;
-    return q.value;
+    return q.getValue();
   }
 
-  public Enumeration<K> keys() {
-    return new ItemEnumeration();
-  }
-
-  public Enumeration<V> values() {
-    return new ValuesEnumeration();
-  }
-
-  private class ItemEnumeration implements Enumeration<K> {
-    private final Enumeration<QItem<K, V>> source = list.reverseElements();
-
-    @Override
-    public boolean hasMoreElements() {
-      synchronized (LRUMap.this) {
-        return source.hasMoreElements();
+  /**
+   * Returns a snapshot {@link Iterator} of keys in LRU→MRU order.
+   *
+   * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
+   *
+   * @return iterator of keys from least- to most-recently-used
+   */
+  public Iterator<K> keys() {
+    synchronized (this) {
+      ArrayList<K> out = new ArrayList<>(list.size());
+      Iterator<QItem<K, V>> e = list.reverseElements();
+      while (e.hasNext()) {
+        out.add(e.next().getObj());
       }
-    }
-
-    @Override
-    public K nextElement() {
-      synchronized (LRUMap.this) {
-        return source.nextElement().obj;
-      }
+      return out.iterator();
     }
   }
 
-  private class ValuesEnumeration implements Enumeration<V> {
-    private final Enumeration<QItem<K, V>> source = list.reverseElements();
-
-    @Override
-    public boolean hasMoreElements() {
-      synchronized (LRUMap.this) {
-        return source.hasMoreElements();
+  /**
+   * Returns a snapshot {@link Iterator} of values in LRU→MRU order.
+   *
+   * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
+   *
+   * @return iterator of values from least- to most-recently-used
+   */
+  public Iterator<V> values() {
+    synchronized (this) {
+      ArrayList<V> out = new ArrayList<>(list.size());
+      Iterator<QItem<K, V>> e = list.reverseElements();
+      while (e.hasNext()) {
+        out.add(e.next().getValue());
       }
-    }
-
-    @Override
-    public V nextElement() {
-      synchronized (LRUMap.this) {
-        return source.nextElement().value;
-      }
+      return out.iterator();
     }
   }
 
+  /**
+   * Node stored in the intrusive list.
+   *
+   * <p>Public for historical reasons; intended for internal use. Holds a key/value pair and the
+   * neighbor links required by {@link DoublyLinkedListImpl}.
+   *
+   * @param <K> key type
+   * @param <V> value type
+   */
   public static class QItem<K, V> extends DoublyLinkedListImpl.Item<QItem<K, V>> {
-    public K obj;
-    public V value;
+    private K obj;
+    private V value;
 
+    /**
+     * Creates a node.
+     *
+     * @param key key (may be null only for internal/defensive states)
+     * @param val value (may be null)
+     */
     public QItem(K key, V val) {
       this.obj = key;
       this.value = val;
+    }
+
+    /** Returns the key. */
+    public K getObj() {
+      return obj;
+    }
+
+    /** Sets the key. */
+    public void setObj(K obj) {
+      this.obj = obj;
+    }
+
+    /** Returns the value. */
+    public V getValue() {
+      return value;
+    }
+
+    /** Sets the value. */
+    public void setValue(V value) {
+      this.value = value;
     }
 
     @Override
@@ -218,23 +352,36 @@ public class LRUMap<K, V> {
     }
   }
 
+  /**
+   * Returns whether the map is empty.
+   *
+   * <p>Not synchronized; may reflect a slightly stale value under concurrent access.
+   *
+   * @return {@code true} if size is 0, otherwise {@code false}
+   */
   public boolean isEmpty() {
     return list.isEmpty();
   }
 
   /**
-   * Note that unlike the java.util versions, this will not reallocate (hence it doesn't return), so
-   * pass in an appropriately big array, and make sure you hold the lock!
+   * Copies values into the provided array in LRU→MRU order.
    *
-   * @param entries
-   * @return
+   * <p>Unlike many {@code java.util} methods, this method never reallocates and therefore does not
+   * return the filled array. Ensure {@code entries.length >= size()} before calling.
+   *
+   * @param entries destination array in which values are written from index 0 upward
    */
   public synchronized void valuesToArray(V[] entries) {
-    Enumeration<V> values = values();
+    Iterator<V> values = values();
     int i = 0;
-    while (values.hasMoreElements()) entries[i++] = values.nextElement();
+    while (values.hasNext()) entries[i++] = values.next();
   }
 
+  /**
+   * Removes all entries.
+   *
+   * <p>Clears both the intrusive list and the backing map.
+   */
   public synchronized void clear() {
     list.clear();
     hash.clear();

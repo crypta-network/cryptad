@@ -1,44 +1,62 @@
 package network.crypta.io.comm;
 
 /**
- * Sometimes it really is simpler to do things asynchronously. And sometimes it's essential for
- * performance.
+ * Callback interface for asynchronous message filter events.
+ *
+ * <p>Implementations receive notifications when a message matches a filter, when a filter is
+ * expired, and when a peer connection is disconnected or restarted. Callbacks may be invoked from
+ * transport or maintenance threads; implementations should avoid long-running or blocking work and
+ * should offload heavy processing where appropriate.
+ *
+ * <p>Unless otherwise stated, callbacks are invoked after the corresponding filter has been removed
+ * and without holding filter-list locks. See individual method documentation for threading/locking
+ * constraints.
  *
  * @author toad
  */
 public interface AsyncMessageFilterCallback {
 
   /**
-   * Called when the filter is matched. It will have been removed before the callback is called, and
-   * no locks should be held.
+   * Notifies that a message matched the filter.
    *
-   * @param m The message which matched the filter.
+   * <p>The filter is removed before this callback is invoked, and no filter-list locks are held by
+   * the caller. Implementations should return promptly and perform only lightweight work in this
+   * method.
+   *
+   * @param m the {@link Message} that matched the filter; never modified by the caller.
    */
   void onMatched(Message m);
 
   /**
-   * Check whether the filter should be removed. Note that USM locks may be held by the caller when
-   * this is called: the implementation should not do anything that might cause USM-related locks to
-   * be taken or messages to be sent.
+   * Indicates whether the filter should be timed out immediately.
    *
-   * @return True if the filter should be immediately timed out.
+   * <p>This method may be called while USM locks are held by the caller. The implementation must
+   * not perform actions that acquire USM-related locks or that could trigger sending messages. Keep
+   * the check side effect free and fast.
+   *
+   * @return {@code true} to request immediate timeout/removal; {@code false} to keep the filter
+   *     active.
    */
   boolean shouldTimeout();
 
-  /** Called when the filter times out and is removed from the list of filters to match. */
+  /**
+   * Notifies that the filter has timed out and was removed from matching.
+   *
+   * <p>Use this to release resources associated with the filter or to update any related state.
+   */
   void onTimeout();
 
   /**
-   * Called when the filter is dropped because a connection is dropped.
+   * Notifies that the filter was dropped due to a peer connection being disconnected.
    *
-   * @param ctx
+   * @param ctx the {@link PeerContext} for the disconnected peer.
    */
   void onDisconnect(PeerContext ctx);
 
   /**
-   * Called when the filter is dropped because a connection is restarted.
+   * Notifies that the filter was dropped due to a peer connection restart.
    *
-   * @param ctx
+   * @param ctx the {@link PeerContext} for the restarted peer.
    */
   void onRestarted(PeerContext ctx);
 }

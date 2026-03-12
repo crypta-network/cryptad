@@ -1,7 +1,5 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -10,358 +8,555 @@ import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.Security;
+import java.util.Locale;
 import java.util.Random;
+import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
+import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.ByteArrayRandomAccessBuffer;
+import network.crypta.support.io.DelayedFree;
 import network.crypta.support.io.FileRandomAccessBuffer;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.FilenameGenerator;
+import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.ResumeFailedException;
-import network.crypta.support.io.StorageFormatException;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mockito;
 
-public class EncryptedRandomAccessBufferTest {
-  private static final EncryptedRandomAccessBufferType[] types =
-      EncryptedRandomAccessBufferType.values();
-  private static final byte[] message = "message".getBytes(StandardCharsets.UTF_8);
-  private static final MasterSecret secret = new MasterSecret();
-  private static final long falseMagic = 0x2c158a6c8882ffd3L;
+import static org.junit.jupiter.api.Assertions.*;
 
-  static {
-    Security.addProvider(new BouncyCastleProvider());
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+/**
+ * Unit tests for {@link EncryptedRandomAccessBuffer}.
+ *
+ * <p>Strategy: - Use in-memory or file-backed underlying RAFs with deterministic {@link
+ * MasterSecret}. - Verify header handling (new vs existing), bounds, close semantics, resume
+ * behavior, and persistence round-trips via {@link BucketTools#restoreRAFFrom}.
+ */
+@SuppressWarnings("java:S100")
+class EncryptedRandomAccessBufferTest {
+
+  @BeforeAll
+  static void ensureJceLoaded() {
+    // Ensure providers/algorithms are registered (BC etc.).
+    JceLoader.dumpLoaded();
   }
 
-  @Rule public ExpectedException thrown = ExpectedException.none();
+  private static MasterSecret deterministicSecret() {
+    byte[] s = new byte[64];
+    for (int i = 0; i < s.length; i++) s[i] = (byte) (i ^ 0xA5);
+    return new MasterSecret(s);
+  }
 
-  @Test
-  public void testSuccesfulRoundTrip() throws IOException, GeneralSecurityException {
-    for (EncryptedRandomAccessBufferType type : types) {
-      byte[] bytes = new byte[100];
-      ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-      EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(type, barat, secret, true);
-      erat.pwrite(0, message, 0, message.length);
-      byte[] result = new byte[message.length];
-      erat.pread(0, result, 0, result.length);
-      erat.close();
-      assertArrayEquals(message, result);
+  static Stream<EncryptedRandomAccessBufferType> types() {
+    return Stream.of(EncryptedRandomAccessBufferType.values());
+  }
+
+  // ---------------- Construction & size ----------------
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("size_whenNewFile_expectUnderlyingMinusHeaderLen")
+  void size_whenNewFile_expectUnderlyingMinusHeaderLen(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    // Arrange
+    int payload = 256;
+    long underlyingSize = (long) type.headerLen + payload;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer((int) underlyingSize);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      assertEquals(payload, raf.size());
     }
   }
 
-  @Test
-  public void testSuccesfulRoundTripReadHeader() throws IOException, GeneralSecurityException {
-    for (EncryptedRandomAccessBufferType type : types) {
-      byte[] bytes = new byte[100];
-      ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-      EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(type, barat, secret, true);
-      erat.pwrite(0, message, 0, message.length);
-      erat.close();
-      ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-      EncryptedRandomAccessBuffer erat2 =
-          new EncryptedRandomAccessBuffer(type, barat2, secret, false);
-      byte[] result = new byte[message.length];
-      erat2.pread(0, result, 0, result.length);
-      erat2.close();
-      assertArrayEquals(message, result);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("constructor_whenUnderlyingTooSmall_expectIOException")
+  void constructor_whenUnderlyingTooSmall_expectIOException(EncryptedRandomAccessBufferType type) {
+    // Arrange: underlying smaller than header
+    try (LockableRandomAccessBuffer tiny =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen - 1)) {
+      assertThrows(
+          IOException.class,
+          () -> new EncryptedRandomAccessBuffer(type, tiny, deterministicSecret(), true));
     }
   }
 
-  @Test
-  public void testWrongERATType() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(IOException.class);
-    thrown.expectMessage("This is not an EncryptedRandomAccessBuffer"); // Different header lengths.
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[1], barat2, secret, false);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("constructor_whenExistingAndBadMagic_expectIOException")
+  void constructor_whenExistingAndBadMagic_expectIOException(EncryptedRandomAccessBufferType type) {
+    // Arrange: header area is zeroed -> bad magic
+    try (LockableRandomAccessBuffer underlying =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + 10)) {
+      assertThrows(
+          IOException.class,
+          () -> new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), false));
+    }
   }
 
-  @Test
-  public void testUnderlyingRandomAccessThingTooSmall()
-      throws GeneralSecurityException, IOException {
-    byte[] bytes = new byte[10];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Underlying RandomAccessBuffer is not long enough to include the " + "footer.");
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+  // ---------------- Read/Write ----------------
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pwrite_pread_whenRoundTrip_expectOriginalBytes")
+  void pwrite_pread_whenRoundTrip_expectOriginalBytes(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    // Arrange
+    int payload = 512;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      byte[] data = new byte[payload];
+      for (int i = 0; i < data.length; i++) data[i] = (byte) (i & 0xFF);
+      raf.pwrite(0, data, 0, data.length);
+      byte[] out = new byte[payload];
+      raf.pread(0, out, 0, out.length);
+      assertArrayEquals(data, out);
+
+      byte[] chunk = new byte[100];
+      for (int i = 0; i < chunk.length; i++) chunk[i] = (byte) (255 - i);
+      int off = 50;
+      raf.pwrite(off, chunk, 0, chunk.length);
+      byte[] chk = new byte[chunk.length];
+      raf.pread(off, chk, 0, chk.length);
+      assertArrayEquals(chunk, chk);
+    }
   }
 
-  @Test
-  public void testWrongMagic() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-    byte[] magic = ByteBuffer.allocate(8).putLong(falseMagic).array();
-    barat2.pwrite(types[0].headerLen - 8, magic, 0, 8);
-    thrown.expect(IOException.class);
-    thrown.expectMessage("This is not an EncryptedRandomAccessBuffer!");
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[0], barat2, secret, false);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pread_whenNegativeOffset_expectIllegalArgumentException")
+  void pread_whenNegativeOffset_expectIllegalArgumentException(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 32;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      assertThrows(IllegalArgumentException.class, () -> raf.pread(-1, new byte[1], 0, 1));
+    }
   }
 
-  @Test
-  public void testWrongMasterSecret() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(GeneralSecurityException.class);
-    thrown.expectMessage("MAC is incorrect");
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[0], barat2, new MasterSecret(), false);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pwrite_whenNegativeOffset_expectIllegalArgumentException")
+  void pwrite_whenNegativeOffset_expectIllegalArgumentException(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    int payload = 32;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      assertThrows(IllegalArgumentException.class, () -> raf.pwrite(-1, new byte[1], 0, 1));
+    }
   }
 
-  @Test(expected = NullPointerException.class)
-  public void testEncryptedRandomAccessThingNullInput1()
-      throws GeneralSecurityException, IOException {
-    byte[] bytes = new byte[10];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(null, barat, secret, true);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pread_whenBeyondEnd_expectIOException")
+  void pread_whenBeyondEnd_expectIOException(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 16;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      assertThrows(IOException.class, () -> raf.pread(0, new byte[17], 0, 17));
+    }
   }
 
-  @Test(expected = NullPointerException.class)
-  public void testEncryptedRandomAccessThingNullByteArray()
-      throws GeneralSecurityException, IOException {
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(null);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pwrite_whenBeyondEnd_expectIOException")
+  void pwrite_whenBeyondEnd_expectIOException(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 16;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      assertThrows(IOException.class, () -> raf.pwrite(8, new byte[12], 0, 12));
+    }
   }
 
-  @Test(expected = NullPointerException.class)
-  public void testEncryptedRandomAccessThingNullBARAT()
-      throws GeneralSecurityException, IOException {
-    ByteArrayRandomAccessBuffer barat = null;
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("pread_pwrite_afterClose_expectIOException")
+  void pread_pwrite_afterClose_expectIOException(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 8;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      raf.close();
+      assertThrows(IOException.class, () -> raf.pread(0, new byte[1], 0, 1));
+      assertThrows(IOException.class, () -> raf.pwrite(0, new byte[1], 0, 1));
+    }
   }
 
-  @Test(expected = NullPointerException.class)
-  public void testEncryptedRandomAccessThingNullInput3()
-      throws GeneralSecurityException, IOException {
-    byte[] bytes = new byte[10];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(types[0], barat, null, true);
+  // ---------------- Header verify (existing) ----------------
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("constructor_whenExistingWithSameSecret_canReadPlaintext")
+  void constructor_whenExistingWithSameSecret_canReadPlaintext(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 128;
+    try (LockableRandomAccessBuffer underlying =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload)) {
+      MasterSecret secret = deterministicSecret();
+      byte[] data = new byte[payload];
+      for (int i = 0; i < payload; i++) data[i] = (byte) (i * 3);
+
+      EncryptedRandomAccessBuffer first =
+          new EncryptedRandomAccessBuffer(type, underlying, secret, true);
+      first.pwrite(0, data, 0, data.length);
+
+      // Act: reopen over same underlying with newFile=false
+      try (EncryptedRandomAccessBuffer reopened =
+          new EncryptedRandomAccessBuffer(type, underlying, secret, false)) {
+        byte[] out = new byte[payload];
+        reopened.pread(0, out, 0, out.length);
+        assertArrayEquals(data, out);
+      }
+      // Now safe to close the original wrapper
+      first.close();
+    }
   }
 
-  @Test
-  public void testSize() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    assertEquals(erat.size(), barat.size() - types[0].headerLen);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("constructor_whenExistingWithWrongSecret_expectGeneralSecurityException")
+  void constructor_whenExistingWithWrongSecret_expectGeneralSecurityException(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    int payload = 64;
+    try (LockableRandomAccessBuffer underlying =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload)) {
+      MasterSecret correct = deterministicSecret();
+      MasterSecret wrong = new MasterSecret(new byte[64]);
+
+      EncryptedRandomAccessBuffer first =
+          new EncryptedRandomAccessBuffer(type, underlying, correct, true);
+      first.pwrite(0, new byte[payload], 0, payload);
+
+      assertThrows(
+          java.security.GeneralSecurityException.class,
+          () -> new EncryptedRandomAccessBuffer(type, underlying, wrong, false));
+      first.close();
+    }
   }
 
-  @Test
-  public void testPreadFileOffsetTooSmall() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    byte[] result = new byte[20];
-    thrown.expect(IllegalArgumentException.class);
-    thrown.expectMessage("Cannot read before zero");
-    erat.pread(-1, result, 0, 20);
+  // ---------------- lockOpen ----------------
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("lockOpen_whenUnlockTwice_secondUnlockThrows")
+  void lockOpen_whenUnlockTwice_secondUnlockThrows(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + 1);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      LockableRandomAccessBuffer.RAFLock lock = raf.lockOpen();
+      lock.unlock();
+      assertThrows(IllegalStateException.class, lock::unlock);
+    }
   }
 
-  @Test
-  public void testPreadFileOffsetTooBig() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    int len = 20;
-    byte[] result = new byte[len];
-    int offset = 100;
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Cannot read after end: trying to read from "
-            + offset
-            + " to "
-            + (offset + len)
-            + " on block length "
-            + erat.size());
-    erat.pread(offset, result, 0, len);
+  // ---------------- onResume ----------------
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("onResume_whenSameSecret_expectReadable")
+  void onResume_whenSameSecret_expectReadable(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 32;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      MasterSecret secret = deterministicSecret();
+      byte[] data = new byte[payload];
+      for (int i = 0; i < data.length; i++) data[i] = (byte) (i + 7);
+      raf.pwrite(0, data, 0, data.length);
+
+      ClientContext ctx = Mockito.mock(ClientContext.class);
+      Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
+
+      // Act
+      raf.onResume(ctx);
+
+      // Assert: still readable and data intact
+      byte[] out = new byte[payload];
+      raf.pread(0, out, 0, out.length);
+      assertArrayEquals(data, out);
+    }
   }
 
-  @Test
-  public void testPwriteFileOffsetTooSmall() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    byte[] result = new byte[20];
-    thrown.expect(IllegalArgumentException.class);
-    thrown.expectMessage("Cannot read before zero");
-    erat.pwrite(-1, result, 0, 20);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("onResume_whenWrongSecret_expectResumeFailedException")
+  void onResume_whenWrongSecret_expectResumeFailedException(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 8;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      raf.pwrite(0, new byte[payload], 0, payload);
+
+      ClientContext ctx = Mockito.mock(ClientContext.class);
+      Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(new MasterSecret(new byte[64]));
+
+      assertThrows(ResumeFailedException.class, () -> raf.onResume(ctx));
+    }
   }
 
-  @Test
-  public void testPwriteFileOffsetTooBig() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    int len = 20;
-    byte[] result = new byte[len];
-    int offset = 100;
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Cannot write after end: trying to write from "
-            + offset
-            + " to "
-            + (offset + len)
-            + " on block length "
-            + erat.size());
-    erat.pwrite(offset, result, 0, len);
+  // ---------------- storeTo / restoreRAFFrom round-trip ----------------
+
+  @TempDir File tmpDir;
+
+  private record DummyTracker(File dir, FilenameGenerator gen) implements PersistentFileTracker {
+
+    @Override
+    public void register(File file) {
+      // no-op for tests
+    }
+
+    @Override
+    public long commitID() {
+      return 1L;
+    }
+
+    @Override
+    public void delayedFree(DelayedFree bucket, long createdCommitID) {
+      // no-op for tests
+    }
+
+    @Override
+    public FilenameGenerator getGenerator() {
+      return gen;
+    }
+
+    @Override
+    public boolean checkDiskSpace(File file, int toWrite, int bufferSize) {
+      return true; // Always allow in tests
+    }
   }
 
-  @Test
-  public void testClose() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    erat.close();
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("storeTo_and_restoreRAFFrom_roundTrip_expectReadable")
+  void storeTo_and_restoreRAFFrom_roundTrip_expectReadable(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    // Arrange underlying file-backed buffer so it can be restored from stream
+    File file = new File(tmpDir, "underlying.dat");
+    int payload = 200;
+    try (FileRandomAccessBuffer fab =
+        new FileRandomAccessBuffer(file, type.headerLen + payload, false)) {
+      MasterSecret secret = deterministicSecret();
+      try (EncryptedRandomAccessBuffer raf =
+          new EncryptedRandomAccessBuffer(type, fab, secret, true)) {
+        byte[] data = new byte[payload];
+        for (int i = 0; i < data.length; i++) data[i] = (byte) (i * 7 + 1);
+        raf.pwrite(0, data, 0, data.length);
+
+        // Persist wrapper
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream dos = new DataOutputStream(bos)) {
+          raf.storeTo(dos);
+        }
+
+        // Restore via BucketTools (consumes wrapper magic then type, then underlying)
+        ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
+        DataInputStream dis = new DataInputStream(bis);
+        FilenameGenerator fg = new FilenameGenerator(new Random(1234L), false, tmpDir, "tst-");
+        PersistentFileTracker pft = new DummyTracker(tmpDir, fg);
+        LockableRandomAccessBuffer restored = BucketTools.restoreRAFFrom(dis, fg, pft, secret);
+
+        byte[] out = new byte[payload];
+        restored.pread(0, out, 0, out.length);
+        assertArrayEquals(data, out);
+
+        // Equality and hashCode should match for logically same wrapper
+        assertEquals(raf, restored);
+        assertEquals(raf.hashCode(), restored.hashCode());
+
+        restored.close();
+        restored.free();
+      }
+    }
   }
 
-  @Test
-  public void testClosePread() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    byte[] result = new byte[20];
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "This RandomAccessBuffer has already been closed. It can no longer" + " be read from.");
-    erat.pread(0, result, 0, 20);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("restoreRAFFrom_whenWrongSecret_expectResumeFailedException")
+  void restoreRAFFrom_whenWrongSecret_expectResumeFailedException(
+      EncryptedRandomAccessBufferType type)
+      throws IOException, java.security.GeneralSecurityException {
+    // Arrange
+    File file = new File(tmpDir, "underlying2.dat");
+    int payload = 64;
+    MasterSecret secret = deterministicSecret();
+    try (FileRandomAccessBuffer fab =
+        new FileRandomAccessBuffer(file, type.headerLen + payload, false)) {
+      try (EncryptedRandomAccessBuffer raf =
+          new EncryptedRandomAccessBuffer(type, fab, secret, true)) {
+        raf.pwrite(0, new byte[payload], 0, payload);
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream dos = new DataOutputStream(bos)) {
+          raf.storeTo(dos);
+        }
+
+        ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
+        DataInputStream dis = new DataInputStream(bis);
+        FilenameGenerator fg = new FilenameGenerator(new Random(5678L), false, tmpDir, "t-");
+        PersistentFileTracker pft = new DummyTracker(tmpDir, fg);
+
+        // Act + Assert (wrong secret)
+        MasterSecret wrong = new MasterSecret(new byte[64]);
+        assertThrows(
+            ResumeFailedException.class, () -> BucketTools.restoreRAFFrom(dis, fg, pft, wrong));
+      }
+    }
   }
 
-  @Test
-  public void testClosePwrite() throws IOException, GeneralSecurityException {
-    byte[] bytes = new byte[100];
-    ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
-    erat.close();
-    byte[] result = new byte[20];
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "This RandomAccessBuffer has already been closed. It can no longer" + " be written to.");
-    erat.pwrite(0, result, 0, 20);
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle")
+  void restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    assumeTrue(System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"));
+
+    // Arrange
+    File file = new File(tmpDir, "underlying-win-" + type.name() + ".dat");
+    int payload = 64;
+    MasterSecret secret = deterministicSecret();
+    byte[] persisted;
+    try (FileRandomAccessBuffer fab =
+            new FileRandomAccessBuffer(file, type.headerLen + payload, false);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, fab, secret, true)) {
+      raf.pwrite(0, new byte[payload], 0, payload);
+
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+      try (DataOutputStream dos = new DataOutputStream(bos)) {
+        raf.storeTo(dos);
+      }
+      persisted = bos.toByteArray();
+    }
+
+    FilenameGenerator fg = new FilenameGenerator(new Random(9123L), false, tmpDir, "t-win-");
+    PersistentFileTracker pft = new DummyTracker(tmpDir, fg);
+    MasterSecret wrong = new MasterSecret(new byte[64]);
+
+    // Act + Assert
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(persisted))) {
+      assertThrows(
+          ResumeFailedException.class, () -> BucketTools.restoreRAFFrom(dis, fg, pft, wrong));
+    }
+
+    assertTrue(file.delete(), "Expected failed restore to leave no open file handle");
   }
 
-  private final File base = new File("tmp.encrypted-random-access-thing-test");
+  // ---------------- Java serialization ----------------
 
-  @Before
-  public void setUp() {
-    base.mkdir();
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName(
+      "serialize/deserialize round-trip restores underlying and remains readable after onResume")
+  void serializeRoundTrip_restoresUnderlying_andReadableAfterOnResume(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    int payload = 1024;
+
+    try (LockableRandomAccessBuffer underlying =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload)) {
+      MasterSecret secret = deterministicSecret();
+
+      EncryptedRandomAccessBuffer raf =
+          new EncryptedRandomAccessBuffer(type, underlying, secret, true);
+      byte[] data = new byte[payload];
+      new Random(1234L).nextBytes(data);
+      raf.pwrite(0, data, 0, data.length);
+
+      // Serialize
+      byte[] bytes;
+      try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+          ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+        oos.writeObject(raf);
+        oos.flush();
+        bytes = bos.toByteArray();
+      }
+
+      // Deserialize and use try-with-resources to ensure close()
+      try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+          EncryptedRandomAccessBuffer restored = (EncryptedRandomAccessBuffer) ois.readObject()) {
+        assertNotNull(restored);
+        // Supply persistent secret and verify readability
+        ClientContext ctx = Mockito.mock(ClientContext.class);
+        Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
+        restored.onResume(ctx);
+
+        byte[] out = new byte[payload];
+        restored.pread(0, out, 0, out.length);
+        assertArrayEquals(data, out);
+
+        restored.free();
+      }
+
+      raf.close();
+    }
   }
 
-  @After
-  public void tearDown() {
-    FileUtil.removeAll(base);
-  }
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("deserialize does not consume following object in stream")
+  void deserialize_doesNotConsumeFollowingObject(EncryptedRandomAccessBufferType type)
+      throws Exception {
+    int payload = 128;
+    try (LockableRandomAccessBuffer underlying =
+        new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload)) {
+      MasterSecret secret = deterministicSecret();
+      EncryptedRandomAccessBuffer raf =
+          new EncryptedRandomAccessBuffer(type, underlying, secret, true);
+      byte[] data = new byte[payload];
+      for (int i = 0; i < data.length; i++) data[i] = (byte) i;
+      raf.pwrite(0, data, 0, data.length);
 
-  @Test
-  public void testStoreTo()
-      throws IOException, StorageFormatException, ResumeFailedException, GeneralSecurityException {
-    File tempFile = File.createTempFile("test-storeto", ".tmp", base);
-    byte[] buf = new byte[4096];
-    Random r = new Random(1267612);
-    r.nextBytes(buf);
-    FileRandomAccessBuffer rafw =
-        new FileRandomAccessBuffer(tempFile, buf.length + types[0].headerLen, false);
-    EncryptedRandomAccessBuffer eraf =
-        new EncryptedRandomAccessBuffer(types[0], rafw, secret, true);
-    eraf.pwrite(0, buf, 0, buf.length);
-    byte[] tmp = new byte[buf.length];
-    eraf.pread(0, tmp, 0, buf.length);
-    assertArrayEquals(buf, tmp);
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    DataOutputStream dos = new DataOutputStream(baos);
-    eraf.storeTo(dos);
-    dos.close();
-    eraf.close();
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
-    ClientContext context =
-        new ClientContext(
-            0, null, null, null, null, null, null, null, null, null, r, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
-    context.setPersistentMasterSecret(secret);
-    EncryptedRandomAccessBuffer restored =
-        (EncryptedRandomAccessBuffer)
-            BucketTools.restoreRAFFrom(
-                dis, context.persistentFG, context.persistentFileTracker, secret);
-    assertEquals(buf.length, restored.size());
-    // assertEquals(rafw, restored);
-    tmp = new byte[buf.length];
-    restored.pread(0, tmp, 0, buf.length);
-    assertArrayEquals(buf, tmp);
-    restored.close();
-    restored.free();
-  }
+      // Write the ERAB followed by an Integer
+      byte[] bytes;
+      try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+          ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+        oos.writeObject(raf);
+        oos.writeObject(424242);
+        oos.flush();
+        bytes = bos.toByteArray();
+      }
 
-  @Test
-  public void testSerialize()
-      throws IOException,
-          StorageFormatException,
-          ResumeFailedException,
-          GeneralSecurityException,
-          ClassNotFoundException {
-    File tempFile = File.createTempFile("test-storeto", ".tmp", base);
-    byte[] buf = new byte[4096];
-    Random r = new Random(1267612);
-    r.nextBytes(buf);
-    FileRandomAccessBuffer rafw =
-        new FileRandomAccessBuffer(tempFile, buf.length + types[0].headerLen, false);
-    EncryptedRandomAccessBuffer eraf =
-        new EncryptedRandomAccessBuffer(types[0], rafw, secret, true);
-    eraf.pwrite(0, buf, 0, buf.length);
-    byte[] tmp = new byte[buf.length];
-    eraf.pread(0, tmp, 0, buf.length);
-    assertArrayEquals(buf, tmp);
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    ObjectOutputStream oos = new ObjectOutputStream(baos);
-    oos.writeObject(eraf);
-    oos.close();
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
-    ClientContext context =
-        new ClientContext(
-            0, null, null, null, null, null, null, null, null, null, r, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
-    context.setPersistentMasterSecret(secret);
-    ObjectInputStream ois = new ObjectInputStream(dis);
-    EncryptedRandomAccessBuffer restored = (EncryptedRandomAccessBuffer) ois.readObject();
-    restored.onResume(context);
-    assertEquals(buf.length, restored.size());
-    assertEquals(eraf, restored);
-    tmp = new byte[buf.length];
-    restored.pread(0, tmp, 0, buf.length);
-    assertArrayEquals(buf, tmp);
-    restored.close();
-    restored.free();
+      try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+          EncryptedRandomAccessBuffer restored = (EncryptedRandomAccessBuffer) ois.readObject()) {
+        ClientContext ctx = Mockito.mock(ClientContext.class);
+        Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
+        restored.onResume(ctx);
+        byte[] out = new byte[payload];
+        restored.pread(0, out, 0, out.length);
+        assertArrayEquals(data, out);
+
+        Object next = ois.readObject();
+        assertInstanceOf(Integer.class, next);
+        assertEquals(424242, ((Integer) next).intValue());
+
+        restored.free();
+      }
+    }
   }
 }

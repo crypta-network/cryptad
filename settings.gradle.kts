@@ -18,13 +18,6 @@ dependencyResolutionManagement {
         ignoreGradleMetadataRedirection()
       }
     }
-    maven("https://jitpack.io") {
-      metadataSources {
-        mavenPom()
-        artifact()
-        ignoreGradleMetadataRedirection()
-      }
-    }
   }
 }
 

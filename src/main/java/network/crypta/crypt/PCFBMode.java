@@ -5,213 +5,235 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * Control mechanism for the Periodic Cipher Feed Back mode. This is a CFB variant used apparently
- * by a number of programs, including PGP. Thanks to Hal for suggesting it.
+ * Byte-oriented implementation of Periodic Cipher Feedback (PCFB) mode over a {@link BlockCipher}.
  *
- * <p>http://www.streamsec.com/pcfb1.pdf
+ * <p>The mode maintains a feedback register whose size equals the cipher's block size in bytes. For
+ * each processed byte, one byte from the register is used as keystream and is XORed with the input
+ * byte; the resulting ciphertext (for {@link #encipher(int)}) or the consumed ciphertext (for
+ * {@link #decipher(int)}) is written back into the same register position. When the register is
+ * exhausted, the entire register is encrypted in place to produce the next block of keystream—the
+ * "periodic" step in PCFB.
  *
- * <p>NOTE: This is identical to CFB if block size = key size. As of Freenet 0.7, we use it with
- * block size = key size. Which is not recommended, but is as safe as CFB. We will get rid of this
- * eventually, and move to 128-bit block size (i.e. standard AES) with a more standard mode (e.g.
- * CTR or CBC).
+ * <p>Specification reference: <a
+ * href="https://csrc.nist.rip/groups/ST/toolkit/BCM/documents/proposedmodes/pcfb/pcfb-spec.pdf">PCFB
+ * mode (proposed)</a>.
  *
- * @author Scott
+ * <p>Instances are stateful and not thread-safe. A unique, unpredictable IV must be used for every
+ * key. The helper methods {@link #writeIV(RandomSource, OutputStream)} and {@link
+ * #readIV(InputStream)} are provided for IV transport.
  */
 public class PCFBMode {
 
   /** The underlying block cipher. */
   protected final BlockCipher c;
 
-  /** The register, with which data is XOR'ed */
-  protected final byte[] feedback_register;
+  /** The register, with which data is XOR'ed. */
+  protected final byte[] feedbackRegister;
 
   /** When this reaches the end of the register, we refillBuffer() i.e. re-encrypt the register. */
   protected int registerPointer;
 
   /**
-   * Create the PCFB with no IV. The caller must either: a) Call reset() with a proper IV, or b)
-   * Accept the initial IV of all zero's. (We will still encrypt this before using it). If the key
-   * is random and never reused, for instance if it is a one time key or derived from a hash, b) may
-   * be acceptable. It is used in some parts of Freenet. However, it is very bad practice
-   * cryptographically, and we should get rid of it. NOTE THAT IV:KEY PAIRS *MUST* BE UNIQUE! If two
-   * instances use the same key with the same empty IV, the bad guys will be able to XOR the two
-   * ciphertexts to get the XOR of the plaintext. If they can deduce the register's value they may
-   * even be able to decrypt the next 32 bytes, however after that they should hopefully be stumped
-   * - but it will certainly make more sophisticated attacks easier. FIXME CRYPTO !!!
+   * Creates a PCFB instance with an explicit IV starting at offset {@code 0}.
    *
-   * @param c The underlying block cipher
-   * @deprecated
+   * <p>The register pointer is positioned at the end so the next operation re-encrypts the register
+   * before any data is processed.
+   *
+   * @param c the underlying block cipher
+   * @param iv the initialization vector; must contain at least {@link #lengthIV(BlockCipher)} bytes
+   *     for {@code c}
+   * @return a new PCFB instance
+   * @throws ArrayIndexOutOfBoundsException if {@code iv} is shorter than {@code lengthIV(c)}
    */
-  @Deprecated
-  public static PCFBMode create(BlockCipher c) {
-    return new PCFBMode(c);
-  }
-
   public static PCFBMode create(BlockCipher c, byte[] iv) {
     return create(c, iv, 0);
   }
 
   /**
-   * Create the PCFB with an IV. The register pointer will be set to the end of the IV, so
-   * refillBuffer() will be called prior to any encryption. IV's *must* be unique for a given key.
-   * IT IS STRONGLY RECOMMENDED TO USE THIS CONSTRUCTOR, THE OTHER ONE WILL BE REMOVED EVENTUALLY.
+   * Creates a PCFB instance with an explicit IV region in {@code iv}.
    *
-   * @param offset
+   * <p>The bytes {@code iv[offset .. offset + lengthIV(c))} are copied into the register. The
+   * register pointer is positioned at the end so the next operation re-encrypts the register before
+   * any data is processed. For a given key, IVs must be unique and unpredictable.
+   *
+   * @param c the underlying block cipher
+   * @param iv the buffer containing the IV
+   * @param offset the starting offset of the IV within {@code iv}
+   * @return a new PCFB instance
+   * @throws ArrayIndexOutOfBoundsException if {@code iv} does not contain {@code lengthIV(c)} bytes
+   *     from {@code offset}
    */
   public static PCFBMode create(BlockCipher c, byte[] iv, int offset) {
     return new PCFBMode(c, iv, offset);
   }
 
+  /**
+   * Constructs a PCFB instance with a zero IV.
+   *
+   * <p>The register is filled with zeros and the pointer is set to the end, causing an immediate
+   * re-encryption on first use.
+   *
+   * @param c the underlying block cipher
+   */
   protected PCFBMode(BlockCipher c) {
     this.c = c;
-    feedback_register = new byte[c.getBlockSize() >> 3];
-    registerPointer = feedback_register.length;
+    feedbackRegister = new byte[c.getBlockSize() >> 3];
+    registerPointer = feedbackRegister.length;
   }
 
+  /**
+   * Constructs a PCFB instance and initializes it with an IV segment from {@code iv}.
+   *
+   * @param c the underlying block cipher
+   * @param iv the buffer that contains the IV bytes
+   * @param offset the starting offset of the IV within {@code iv}
+   * @throws ArrayIndexOutOfBoundsException if the IV segment is shorter than {@code lengthIV(c)}
+   */
   protected PCFBMode(BlockCipher c, byte[] iv, int offset) {
     this(c);
-    System.arraycopy(iv, offset, feedback_register, 0, feedback_register.length);
-    // registerPointer is already set to the end by this(c), so we will refillBuffer() immediately.
-  }
-
-  /** Resets the PCFBMode to an initial IV */
-  public final void reset(byte[] iv) {
-    System.arraycopy(iv, 0, feedback_register, 0, feedback_register.length);
-    registerPointer = feedback_register.length;
+    System.arraycopy(iv, offset, feedbackRegister, 0, feedbackRegister.length);
+    // Register pointer is already at end from this(c); the next operation will refill immediately.
   }
 
   /**
-   * Resets the PCFBMode to an initial IV
+   * Resets the internal register to the given IV and positions the pointer at the end.
    *
-   * @param iv The buffer containing the IV.
-   * @param offset The offset to start reading the IV at.
+   * <p>The next encipher/decipher call re-encrypts the register before processing data.
+   *
+   * @param iv the initialization vector; must be {@link #lengthIV()} bytes long
+   */
+  public final void reset(byte[] iv) {
+    System.arraycopy(iv, 0, feedbackRegister, 0, feedbackRegister.length);
+    registerPointer = feedbackRegister.length;
+  }
+
+  /**
+   * Resets the internal register to the IV segment beginning at {@code offset} and positions the
+   * pointer at the end.
+   *
+   * <p>The next encipher/decipher call re-encrypts the register before processing data.
+   *
+   * @param iv the buffer containing the IV
+   * @param offset the starting offset of the IV within {@code iv}
+   * @throws ArrayIndexOutOfBoundsException if the IV segment is shorter than {@link #lengthIV()}
+   *     bytes
    */
   public final void reset(byte[] iv, int offset) {
-    System.arraycopy(iv, offset, feedback_register, 0, feedback_register.length);
-    registerPointer = feedback_register.length;
+    System.arraycopy(iv, offset, feedbackRegister, 0, feedbackRegister.length);
+    registerPointer = feedbackRegister.length;
   }
 
   /**
-   * Writes the initialization vector to the stream. Though the IV is transmitted in the clear, this
-   * gives the attacker no additional information because the registerPointer is set so that the
-   * encrypted buffer is empty. This causes an immediate encryption of the IV, thus invalidating any
-   * information that the attacker had.
+   * Generates a fresh random IV, stores it into the internal register, and writes it to the output
+   * stream.
+   *
+   * <p>Although the IV is sent in the clear, it is encrypted in place before any payload bytes are
+   * processed because the register pointer is positioned to force an immediate refill.
+   *
+   * @param rs the random source used to generate the IV
+   * @param out the stream to which the IV is written
+   * @throws IOException if writing to {@code out} fails
    */
   public void writeIV(RandomSource rs, OutputStream out) throws IOException {
-    rs.nextBytes(feedback_register);
-    out.write(feedback_register);
+    rs.nextBytes(feedbackRegister);
+    out.write(feedbackRegister);
   }
 
-  /** Reads the initialization vector from the given stream. */
+  /**
+   * Reads exactly {@link #lengthIV()} bytes from {@code in} into the internal register.
+   *
+   * @param in the stream to read the IV from
+   * @throws IOException if reading the required number of bytes fails
+   */
   public void readIV(InputStream in) throws IOException {
-    // for (int i=0; i<feedback_register.length; i++) {
-    //    feedback_register[i]=(byte)in.read();
-    // }
-    Util.readFully(in, feedback_register);
+    Util.readFully(in, feedbackRegister);
   }
 
-  /** returns the length of the IV */
+  /**
+   * Returns the IV length, in bytes, for this instance.
+   *
+   * @return the IV length in bytes
+   */
   public int lengthIV() {
-    return feedback_register.length;
+    return feedbackRegister.length;
   }
 
-  /** returns the length of the IV for a PCFB created with a specific cipher. */
+  /**
+   * Returns the IV length, in bytes, for PCFB over the given cipher.
+   *
+   * @param c the block cipher
+   * @return the IV length in bytes, equal to {@code c.getBlockSize() / 8}
+   */
   public static int lengthIV(BlockCipher c) {
     return c.getBlockSize() >> 3;
   }
 
   /**
-   * Deciphers one byte of data, by XOR'ing the ciphertext byte with one byte from the encrypted
-   * buffer. Then places the received byte in the feedback register. If no bytes are available in
-   * the encrypted buffer, the feedback register is encrypted, providing block_size/8 new bytes for
-   * decryption
+   * Deciphers a single byte.
+   *
+   * <p>The method XORs the next keystream byte from the register with {@code b} and returns the
+   * plaintext. The ciphertext {@code b} is written into the current register position. When the
+   * register is exhausted, it is re-encrypted to produce the next block of keystream.
+   *
+   * @param b the ciphertext byte as an unsigned value in {@code 0..255}
+   * @return the plaintext byte as an unsigned value in {@code 0..255}
    */
-  // public synchronized int decipher(int b) {
   public int decipher(int b) {
-    if (registerPointer == feedback_register.length) refillBuffer();
-    int rv = (feedback_register[registerPointer] ^ (byte) b) & 0xff;
-    feedback_register[registerPointer++] = (byte) b;
+    if (registerPointer == feedbackRegister.length) refillBuffer();
+    int rv = (feedbackRegister[registerPointer] ^ (byte) b) & 0xff;
+    feedbackRegister[registerPointer++] = (byte) b;
     return rv;
   }
 
+  /**
+   * Deciphers {@code len} bytes in place in {@code buf} starting at {@code off}.
+   *
+   * @param buf the buffer containing ciphertext; replaced with plaintext
+   * @param off the starting offset within {@code buf}
+   * @param len the number of bytes to process
+   */
   public void blockDecipher(byte[] buf, int off, int len) {
-    final int feedback_length = feedback_register.length;
-    if (registerPointer != 0) {
-      /* handle first incomplete feedback run */
-      int l = Math.min(feedback_length - registerPointer, len);
-      len -= l;
-      while (l-- > 0) {
-        byte b = buf[off];
-        buf[off++] ^= feedback_register[registerPointer];
-        feedback_register[registerPointer++] = b;
-      }
-      if (len == 0) return;
-      refillBuffer();
-    }
-    // assert(registerPointer == 0);
-    while (len > feedback_length) {
-      /* consume full blocks */
-      // note: we skip *last* full block to avoid extra refillBuffer()
-      len -= feedback_length;
-      while (registerPointer < feedback_length) {
-        byte b = buf[off];
-        buf[off++] ^= feedback_register[registerPointer];
-        feedback_register[registerPointer++] = b;
-      }
-      refillBuffer();
-    }
-    // assert(registerPointer == 0 && len <= feedback_length);
-    while (len-- > 0) {
-      /* handle final block */
-      byte b = buf[off];
-      buf[off++] ^= feedback_register[registerPointer];
-      feedback_register[registerPointer++] = b;
+    for (int i = 0; i < len; i++) {
+      buf[off + i] = (byte) decipher(buf[off + i] & 0xFF);
     }
   }
 
   /**
-   * Enciphers one byte of data, by XOR'ing the plaintext byte with one byte from the encrypted
-   * buffer. Then places the enciphered byte in the feedback register. If no bytes are available in
-   * the encrypted buffer, the feedback register is encrypted, providing block_size/8 new bytes for
-   * encryption
+   * Enciphers a single byte.
+   *
+   * <p>The method XORs the next keystream byte from the register with {@code b}, writes the
+   * resulting ciphertext into the current register position, and returns it. When the register is
+   * exhausted, it is re-encrypted to produce the next block of keystream.
+   *
+   * @param b the plaintext byte as an unsigned value in {@code 0..255}
+   * @return the ciphertext byte as an unsigned value in {@code 0..255}
    */
-  // public synchronized int encipher(int b) {
   public int encipher(int b) {
-    if (registerPointer == feedback_register.length) refillBuffer();
-    feedback_register[registerPointer] ^= (byte) b;
-    return feedback_register[registerPointer++] & 0xff;
+    if (registerPointer == feedbackRegister.length) refillBuffer();
+    feedbackRegister[registerPointer] ^= (byte) b;
+    return feedbackRegister[registerPointer++] & 0xff;
   }
 
+  /**
+   * Enciphers {@code len} bytes in place in {@code buf} starting at {@code off}.
+   *
+   * @param buf the buffer containing plaintext; replaced with ciphertext
+   * @param off the starting offset within {@code buf}
+   * @param len the number of bytes to process
+   */
   public void blockEncipher(byte[] buf, int off, int len) {
-    final int feedback_length = feedback_register.length;
-    if (registerPointer != 0) {
-      /* handle first incomplete feedback run */
-      int l = Math.min(feedback_length - registerPointer, len);
-      for (len -= l; l-- > 0; off++) buf[off] = (feedback_register[registerPointer++] ^= buf[off]);
-      if (len == 0) return;
-      refillBuffer();
-    }
-    // assert(registerPointer == 0);
-    while (len > feedback_length) {
-      /* consume full blocks */
-      // note: we skip *last* full block to avoid extra refillBuffer()
-      len -= feedback_length;
-      for (; registerPointer < feedback_length; off++)
-        buf[off] = (feedback_register[registerPointer++] ^= buf[off]);
-      refillBuffer();
-    }
-    // assert(registerPointer == 0 && len <= feedback_length);
-    for (; len-- > 0; off++) {
-      /* handle final partial block */
-      buf[off] = (feedback_register[registerPointer++] ^= buf[off]);
+    for (int i = 0; i < len; i++) {
+      buf[off + i] = (byte) encipher(buf[off + i] & 0xFF);
     }
   }
 
-  // Refills the encrypted buffer with data.
-  // private synchronized void refillBuffer() {
+  /**
+   * Encrypts the feedback register in place to produce the next keystream block and resets the
+   * pointer to the beginning of the register.
+   */
   protected void refillBuffer() {
-    // Encrypt feedback into result
-    c.encipher(feedback_register, feedback_register);
+    // Encrypt current register to derive fresh keystream bytes.
+    c.encipher(feedbackRegister, feedbackRegister);
 
     registerPointer = 0;
   }

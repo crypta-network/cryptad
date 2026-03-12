@@ -1,9 +1,9 @@
 import java.io.IOException
 import org.gradle.api.tasks.SourceSetContainer
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.api.tasks.compile.JavaCompile
 
 val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
-val versionSrc = "network/crypta/node/Version.kt"
+val versionSrc = "network/crypta/node/Version.java"
 
 val gitrev: String =
   try {
@@ -19,7 +19,7 @@ val gitrev: String =
     "@unknown@"
   }
 
-val sourceSetsContainer = extensions.getByType(SourceSetContainer::class.java)
+val sourceSetsContainer: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
 
 val generateVersionSource by
   tasks.registering(Copy::class) {
@@ -27,15 +27,16 @@ val generateVersionSource by
     val buildVersion = project.version.toString()
 
     // Inputs: the template file and dynamic properties that impact content
-    val templateInputs = sourceSetsContainer["main"].java.srcDirs.map { it.resolve(versionSrc) }
+    val javaSrcDirs = sourceSetsContainer["main"].java.srcDirs
+    val templateInputs = javaSrcDirs.map { it.resolve(versionSrc) }
     inputs.files(templateInputs)
     inputs.property("buildVersion", buildVersion)
     inputs.property("gitRevision", gitrev)
 
-    // Output: the generated Version.kt in the build dir
+    // Output: the generated Version.java in the build dir
     outputs.file(file(versionBuildDir.resolve(versionSrc)))
 
-    from(sourceSetsContainer["main"].java.srcDirs) {
+    from(javaSrcDirs) {
       include(versionSrc)
       filter { line: String ->
         line.replace("@build_number@", buildVersion).replace("@git_rev@", gitrev)
@@ -44,7 +45,7 @@ val generateVersionSource by
     into(versionBuildDir)
   }
 
-tasks.named<KotlinCompile>("compileKotlin") {
+tasks.named<JavaCompile>("compileJava") {
   dependsOn(generateVersionSource)
   source(versionBuildDir)
   inputs.property("buildNumber", project.version.toString())

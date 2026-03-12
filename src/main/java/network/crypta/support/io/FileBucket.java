@@ -1,48 +1,106 @@
 package network.crypta.support.io;
 
-import java.io.*;
-import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.Objects;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 
 /**
- * A file Bucket is an implementation of Bucket that writes to a file.
+ * File-backed {@link Bucket} implementation.
+ *
+ * <p>This bucket persists data to a single {@link File}. Writes are staged via a temporary file in
+ * the same directory and atomically moved into place on close (see {@link
+ * #tempFileAlreadyExists()}). The class delegates most coordination, stream tracking, and lifecycle
+ * management to {@link BaseFileBucket}.
+ *
+ * <p>Thread-safety: public methods that mutate or expose internal state synchronize on {@code
+ * this}. Instances are not intended for broad sharing without external coordination.
+ *
+ * <p>Read-only behavior: once {@link #setReadOnly()} is called or a random-access view is derived
+ * by the base type, further write attempts fail with {@link java.io.IOException}.
  *
  * @author oskar
  */
-public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
+public final class FileBucket extends BaseFileBucket implements Bucket, Serializable {
 
+  /** Serialization identifier. */
   @Serial private static final long serialVersionUID = 1L;
-  protected final File file;
-  protected boolean readOnly;
-  protected boolean deleteOnFree;
-  protected final boolean deleteOnExit;
-  protected final boolean createFileOnly;
-  // JVM caches File.size() and there is no way to flush the cache, so we
-  // need to track it ourselves
 
-  private static volatile boolean logMINOR;
+  /** Absolute path to the backing file. Never {@code null} for normal (non-deserialization) use. */
+  final File file;
 
-  static {
-    Logger.registerClass(FileBucket.class);
-  }
+  /** Whether this bucket rejects further writes. Set by {@link #setReadOnly()}. */
+  boolean readOnly;
 
   /**
-   * Creates a new FileBucket.
+   * Whether {@link #free()} deletes the backing file.
    *
-   * @param file The File to read and write to.
-   * @param readOnly If true, any attempt to write to the bucket will result in an IOException. Can
-   *     be set later. Irreversible. @see isReadOnly(), setReadOnly()
-   * @param createFileOnly If true, create the file if it doesn't exist, but if it does exist, throw
-   *     a FileExistsException on any write operation. This is safe against symlink attacks because
-   *     we write to a temp file and then rename. It is technically possible that the rename will
-   *     clobber an existing file if there is a race condition, but since it will not write over a
-   *     symlink this is probably not dangerous. User-supplied filenames should in any case be
-   *     restricted by higher levels.
-   * @param deleteOnExit If true, delete the file on a clean exit of the JVM. Irreversible - use
-   *     with care!
-   * @param deleteOnFree If true, delete the file on finalization. Reversible.
+   * <p>Naming: renamed from {@code deleteOnFree}. The new name avoids a symbol clash with the base
+   * class method {@link #deleteOnFree()} and clarifies intent.
+   *
+   * <p>Serialization note: default Java serialization compatibility with older versions is not
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
+   */
+  boolean deleteOnFreeFlag;
+
+  /**
+   * Whether temporary files created by this instance are registered with {@link
+   * File#deleteOnExit()} (JVM exit only).
+   *
+   * <p>Naming: renamed from {@code deleteOnExit}. The new name avoids a symbol clash with the base
+   * class method {@link #deleteOnExit()} and clarifies intent.
+   *
+   * <p>Serialization note: default Java serialization compatibility with older versions is not
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
+   */
+  final boolean deleteOnExitFlag;
+
+  /**
+   * Whether the target must be created and must not pre-exist on the first open for writing.
+   *
+   * <p>Naming: renamed from {@code createFileOnly}. The new name avoids a symbol clash with the
+   * base class method {@link #createFileOnly()} and clarifies intent.
+   *
+   * <p>Serialization note: default Java serialization compatibility with older versions is not
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
+   */
+  final boolean createFileOnlyFlag;
+
+  /*
+   * Historical note: some runtimes historically cached file length metadata. This class relies on
+   * {@link BaseFileBucket#size()} which queries {@link File#length()} directly; no additional size
+   * cache is maintained here. The constructor resets the restart counter managed by the base class
+   * to ensure stale streams are detected.
+   */
+
+  /**
+   * Constructs a new file-backed bucket.
+   *
+   * <p>The {@code file} is resolved to its absolute form. When it resolves to the same path, a
+   * distinct {@link File} instance pointing to that path is created so the file can be safely
+   * deleted without impacting the caller’s instance.
+   *
+   * @param file backing file path; resolved to an absolute path (must be non-{@code null})
+   * @param readOnly when {@code true}, further write attempts fail immediately; can also be set
+   *     later via {@link #setReadOnly()} (irreversible)
+   * @param createFileOnly when {@code true}, the first open for writing fails if the target already
+   *     exists; writes are staged via a temp file and atomically moved on close to minimize races
+   *     and avoid symlink overwrites
+   * @param deleteOnExit when {@code true}, registers temporary files for deletion on JVM exit;
+   *     persistent objects must not set this (see {@link #storeTo(DataOutputStream)})
+   * @param deleteOnFree when {@code true}, {@link #free()} attempts to delete the underlying file
+   * @throws NullPointerException if {@code file} is {@code null}
    */
   public FileBucket(
       File file,
@@ -50,63 +108,104 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
       boolean createFileOnly,
       boolean deleteOnExit,
       boolean deleteOnFree) {
-    super(file, deleteOnExit);
-    if (file == null) throw new NullPointerException();
-    File origFile = file;
-    file = file.getAbsoluteFile();
+    Objects.requireNonNull(file, "file");
+    super(file, deleteOnExit, createFileOnly, false);
+    File absFile = file.getAbsoluteFile();
     // Copy it so we can safely delete it.
-    if (origFile == file) file = new File(file.getPath());
+    if (file.equals(absFile)) absFile = new File(absFile.getPath());
     this.readOnly = readOnly;
-    this.createFileOnly = createFileOnly;
-    this.file = file;
-    this.deleteOnFree = deleteOnFree;
-    this.deleteOnExit = deleteOnExit;
-    // Useful for finding temp file leaks.
-    // System.err.println("-- FileBucket.ctr(0) -- " +
-    // file.getAbsolutePath());
-    // (new Exception("get stack")).printStackTrace();
+    this.createFileOnlyFlag = createFileOnly;
+    this.file = absFile;
+    this.deleteOnFreeFlag = deleteOnFree;
+    this.deleteOnExitFlag = deleteOnExit;
     fileRestartCounter = 0;
   }
 
-  protected FileBucket() {
-    // For serialization.
+  /**
+   * No-args constructor for serialization frameworks.
+   *
+   * <p>Instances created through this constructor are incomplete until restored from a serialized
+   * form (see the {@link #FileBucket(DataInputStream)} constructor). In this state, {@link #file}
+   * is {@code null}.
+   */
+  FileBucket() {
+    // For serialization frameworks only.
     super();
     file = null;
-    deleteOnExit = false;
-    createFileOnly = false;
+    deleteOnExitFlag = false;
+    createFileOnlyFlag = false;
   }
 
-  /** Returns the file object this buckets data is kept in. */
+  /**
+   * Returns the backing file.
+   *
+   * @return absolute {@link File} path backing this bucket; may be {@code null} only for partially
+   *     constructed instances created via the no-args constructor for deserialization
+   */
   @Override
   public synchronized File getFile() {
     return file;
   }
 
+  /**
+   * Indicates whether this bucket currently rejects writes.
+   *
+   * @return {@code true} if the bucket is read-only; {@code false} otherwise
+   */
   @Override
   public synchronized boolean isReadOnly() {
     return readOnly;
   }
 
+  /**
+   * Makes this bucket read-only.
+   *
+   * <p>After calling this method, attempts to get an output stream or otherwise modify the contents
+   * fail with {@link java.io.IOException}. This operation is irreversible.
+   */
   @Override
   public synchronized void setReadOnly() {
     readOnly = true;
   }
 
+  /**
+   * Whether the first open for writing must create the file (and fail if it already exists).
+   *
+   * @return {@code true} to enforce creation-only semantics on the first writing
+   */
   @Override
   protected boolean createFileOnly() {
-    return createFileOnly;
+    return createFileOnlyFlag;
   }
 
+  /**
+   * Whether temporary files created by this instance are registered for deletion on JVM exit.
+   *
+   * @return {@code true} if temp files are registered with {@link File#deleteOnExit()}
+   */
   @Override
   protected boolean deleteOnExit() {
-    return deleteOnExit;
+    return deleteOnExitFlag;
   }
 
+  /**
+   * Whether {@link #free()} deletes the underlying file.
+   *
+   * @return {@code true} if the file is deleted when the bucket is freed
+   */
   @Override
   protected boolean deleteOnFree() {
-    return deleteOnFree;
+    return deleteOnFreeFlag;
   }
 
+  /**
+   * Creates a shallow, read-only view over the same file.
+   *
+   * <p>The returned bucket references the same path and is independent of this instance, but the
+   * underlying file is shared. Deleting the file invalidates both.
+   *
+   * @return a new read-only bucket referencing the same file path
+   */
   @Override
   public RandomAccessBucket createShadow() {
     String fnam = file.getPath();
@@ -114,19 +213,37 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
     return new FileBucket(newFile, true, false, false, false);
   }
 
-  @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
-    super.onResume(context);
-  }
-
+  /**
+   * Indicates whether the target file is an existing temporary file.
+   *
+   * <p>This implementation always returns {@code false} to stage writes in a temporary file and
+   * perform an atomic move on close.
+   *
+   * @return always {@code false}
+   */
   @Override
   protected boolean tempFileAlreadyExists() {
     return false;
   }
 
+  /** Serialization marker for this subclass when using {@link #storeTo(DataOutputStream)}. */
   public static final int MAGIC = 0x8fe6e41b;
+
+  /** On-disk format version for this subclass. */
   static final int VERSION = 1;
 
+  /**
+   * Writes the minimal state required to reconstruct this bucket.
+   *
+   * <p>Format: {@link #MAGIC} (int), base header (see {@link BaseFileBucket#storeTo}), {@link
+   * #VERSION} (int), absolute path (UTF), {@link #readOnly} (boolean), {@link #deleteOnFreeFlag}
+   * (boolean), {@link #createFileOnlyFlag} (boolean). Persistent buckets must not request
+   * delete-on-exit; an {@link IllegalStateException} is thrown in that case.
+   *
+   * @param dos destination stream
+   * @throws IOException on I/O errors
+   * @throws IllegalStateException if {@link #deleteOnExitFlag} is {@code true}
+   */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
     dos.writeInt(MAGIC);
@@ -134,53 +251,66 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
     dos.writeInt(VERSION);
     dos.writeUTF(file.toString());
     dos.writeBoolean(readOnly);
-    dos.writeBoolean(deleteOnFree);
-    if (deleteOnExit) throw new IllegalStateException("Must not free on exit if persistent");
-    dos.writeBoolean(createFileOnly);
+    dos.writeBoolean(deleteOnFreeFlag);
+    if (deleteOnExitFlag) throw new IllegalStateException("Must not free on exit if persistent");
+    dos.writeBoolean(createFileOnlyFlag);
   }
 
-  protected FileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    super(dis);
-    int version = dis.readInt();
-    if (version != VERSION) throw new StorageFormatException("Bad version");
-    file = new File(dis.readUTF());
-    readOnly = dis.readBoolean();
-    deleteOnFree = dis.readBoolean();
-    deleteOnExit = false;
-    createFileOnly = dis.readBoolean();
+  /**
+   * Reconstructs an instance from a stream produced by {@link #storeTo(DataOutputStream)}.
+   *
+   * <p>Precondition: the caller must have already consumed this subclass’s magic (see {@link
+   * #MAGIC}). This constructor reads and validates the base header via {@link
+   * BaseFileBucket#BaseFileBucket(DataInputStream)}, then validates the subclass {@link #VERSION}
+   * and restores the flags. The {@link #deleteOnExitFlag} is always restored as {@code false} to
+   * avoid relying on JVM-exit semantics for persisted objects.
+   *
+   * @param dis source stream positioned at the subclass header
+   * @throws IOException on I/O errors
+   * @throws StorageFormatException if the version is unknown or the data is malformed
+   */
+  FileBucket(DataInputStream dis) throws IOException, StorageFormatException {
+    this(readStoredState(dis));
   }
 
+  private FileBucket(StoredState state) {
+    super(state.freed());
+    file = state.file();
+    readOnly = state.readOnly();
+    deleteOnFreeFlag = state.deleteOnFreeFlag();
+    deleteOnExitFlag = false;
+    createFileOnlyFlag = state.createFileOnlyFlag();
+  }
+
+  /** {@inheritDoc} */
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    result = prime * result + (createFileOnly ? 1231 : 1237);
-    result = prime * result + (deleteOnExit ? 1231 : 1237);
-    result = prime * result + (deleteOnFree ? 1231 : 1237);
+    result = prime * result + (createFileOnlyFlag ? 1231 : 1237);
+    result = prime * result + (deleteOnExitFlag ? 1231 : 1237);
+    result = prime * result + (deleteOnFreeFlag ? 1231 : 1237);
     result = prime * result + ((file == null) ? 0 : file.hashCode());
     result = prime * result + (readOnly ? 1231 : 1237);
     return result;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof FileBucket other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
+    if (createFileOnlyFlag != other.createFileOnlyFlag) {
       return false;
     }
-    FileBucket other = (FileBucket) obj;
-    if (createFileOnly != other.createFileOnly) {
+    if (deleteOnExitFlag != other.deleteOnExitFlag) {
       return false;
     }
-    if (deleteOnExit != other.deleteOnExit) {
-      return false;
-    }
-    if (deleteOnFree != other.deleteOnFree) {
+    if (deleteOnFreeFlag != other.deleteOnFreeFlag) {
       return false;
     }
     if (file == null) {
@@ -192,4 +322,23 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
     }
     return readOnly == other.readOnly;
   }
+
+  private static StoredState readStoredState(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    boolean freed = BaseFileBucket.readStoredFreed(dis);
+    int version = dis.readInt();
+    if (version != VERSION) throw new StorageFormatException("Bad version");
+    File file = new File(dis.readUTF());
+    boolean readOnly = dis.readBoolean();
+    boolean deleteOnFreeFlag = dis.readBoolean();
+    boolean createFileOnlyFlag = dis.readBoolean();
+    return new StoredState(freed, file, readOnly, deleteOnFreeFlag, createFileOnlyFlag);
+  }
+
+  private record StoredState(
+      boolean freed,
+      File file,
+      boolean readOnly,
+      boolean deleteOnFreeFlag,
+      boolean createFileOnlyFlag) {}
 }

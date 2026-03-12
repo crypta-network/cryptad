@@ -1,143 +1,238 @@
 package com.onionnetworks.util;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URL;
-import java.util.*;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.StringTokenizer;
+import network.crypta.fs.AppEnv;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * This class is used for deploying native libraries that are stored inside jar files.
+ * Deploys native libraries that are packaged inside JAR resources into an executable location on
+ * the local filesystem.
  *
- * <p>For each jar that contains native libraries there must be a file called
- * "lib/native.properties" that has a format similar to the following:
+ * <p>This utility discovers platform-appropriate native binaries via {@code lib/native.properties}
+ * descriptors bundled in dependent JARs, normalizes the current operating system and architecture,
+ * and extracts the selected resource to a temporary file with restrictive permissions. It favors
+ * minimal state: every invocation performs a fresh extraction instead of caching, which keeps
+ * behavior predictable for short-lived processes and avoids stale binaries at the cost of repeated
+ * I/O when used frequently. Callers typically invoke {@link #getLibraryPath(ClassLoader, String)}
+ * before loading a JNI library so the JVM can link against the extracted file path.
  *
- * <pre>
- * com.onionnetworks.native.keys=fec8-linux-x86,fec16-linux-x86,fec8-win32,fec16-win32
+ * <p>Responsibilities include:
  *
- * com.onionnetworks.native.fec8-linux-x86.name=fec8
- * com.onionnetworks.native.fec8-linux-x86.osarch=linux-x86
- * com.onionnetworks.native.fec8-linux-x86.path=lib/linux/x86/libfec8.so
+ * <ul>
+ *   <li>Detecting a normalized {@code os-arch} token compatible with bundled property files.
+ *   <li>Locating the matching resource path for the requested library name.
+ *   <li>Extracting the native library into a secure, temporary location with best-effort owner-only
+ *       permissions.
+ * </ul>
  *
- * com.onionnetworks.native.fec16-linux-x86.name=fec16
- * com.onionnetworks.native.fec16-linux-x86.osarch=linux-x86
- * com.onionnetworks.native.fec16-linux-x86.path=lib/linux/x86/libfec16.so
- *
- * com.onionnetworks.native.fec8-win32.name=fec8
- * com.onionnetworks.native.fec8-win32.osarch=win32
- * com.onionnetworks.native.fec8-win32.path=lib/win32/fec8.dll
- *
- * com.onionnetworks.native.fec16-win32.name=fec16
- * com.onionnetworks.native.fec16-win32.osarch=win32
- * com.onionnetworks.native.fec16-win32.path=lib/win32/fec16.dll
- * </pre>
- *
- * For the "osarch" property note that Sun's VM uses 'i386' and IBM's uses 'x86' so we convert all
- * to 'x86'. For now, we map 'Windows 95', 'Windows 98', 'Windows NT', and 'Windows 2000', no matter
- * what the architecture, all to 'win32'. Depending on what native libraries are added in the
- * future, this may have to be made more flexible; for example, if a library depends on Windows 2000
- * features or is tuned for Pentium processors. We will just the "os.name" and "os.arch" properties
- * to retrieve this information on all other systems not explicitly mentioned above.
+ * <p>The class is stateless and thread-safe through synchronization on extraction methods. It does
+ * not manage library unloading and assumes the caller controls lifetime and later cleanup.
  *
  * @author Justin F. Chapweske
+ * @see AppEnv
  */
 public class NativeDeployer {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(NativeDeployer.class);
+
+  /**
+   * Normalized operating system and architecture token (for example, {@code linux-x86_64} or {@code
+   * win32-arm64}) used to match entries in {@code lib/native.properties}.
+   *
+   * <p>The value is derived once at class initialization based on {@link AppEnv} heuristics and the
+   * JVM-reported {@code os.arch}. It remains constant for the life of the JVM and is safe to reuse
+   * when selecting platform-specific native artifacts.
+   */
   public static final String OS_ARCH;
 
+  private static final String NATIVE_PROPERTIES_PATH = "lib/native.properties";
+  private static final String NATIVE_PROPERTY_PREFIX = "com.onionnetworks.native.";
+
   static {
-    network.crypta.fs.AppEnv _env = new network.crypta.fs.AppEnv();
-    final String baseOS =
-        _env.isWindows()
-            ? "win32"
-            : (_env.isMac()
-                ? "mac os x"
-                : (_env.isLinux() ? "linux" : _env.osNameRaw().toLowerCase()));
-    final String sysArch = System.getProperty("os.arch").toLowerCase();
-    final String a = _env.arch(); // "amd64" or "arm64"
-    if ("amd64".equals(a) || sysArch.matches("(i?[x0-9]86_64|amd64)")) OS_ARCH = baseOS + "-x86_64";
-    else if ("arm64".equals(a)) OS_ARCH = baseOS + "-arm64";
-    else if (sysArch.contains("86")) OS_ARCH = baseOS + "-x86";
-    else OS_ARCH = baseOS + "-" + sysArch;
-    System.out.println("Attempting to deploy Native FEC for " + OS_ARCH);
+    AppEnv env = new AppEnv();
+    final String baseOS;
+    if (env.isWindows()) {
+      baseOS = "win32";
+    } else if (env.isMac()) {
+      baseOS = "mac os x";
+    } else if (env.isLinux()) {
+      baseOS = "linux";
+    } else {
+      baseOS = env.osNameRaw().toLowerCase(Locale.ROOT);
+    }
+    final String sysArch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
+    final String detectedArch = env.arch(); // "amd64" or "arm64"
+    if ("amd64".equals(detectedArch) || sysArch.matches("(i?[x0-9]86_64|amd64)")) {
+      OS_ARCH = baseOS + "-x86_64";
+    } else if ("arm64".equals(detectedArch)) {
+      OS_ARCH = baseOS + "-arm64";
+    } else if (sysArch.contains("86")) {
+      OS_ARCH = baseOS + "-x86";
+    } else {
+      OS_ARCH = baseOS + "-" + sysArch;
+    }
+    LOGGER.info("Attempting to deploy Native FEC for {}", OS_ARCH);
   }
 
-  public static final String NATIVE_PROPERTIES_PATH = "lib/native.properties";
+  private NativeDeployer() {}
 
-  public static final synchronized String getLibraryPath(ClassLoader cl, String libName) {
-    long t = System.currentTimeMillis();
-    IOException iox = null;
-    /* this code avoids try {} finally {} idiom for the sake of GCJ 3.0 */
+  /**
+   * Locates and extracts a named native library for the current platform.
+   *
+   * <p>This method resolves the platform-specific path described in bundled {@code
+   * lib/native.properties} files, copies the resource to a secure temporary location, and returns
+   * the absolute file system path. The method is synchronized to avoid concurrent extractions of
+   * the same artifact and to keep temporary file naming deterministic. Callers typically pass the
+   * class loader that owns the native resources so lookup works in shaded, plugin, or container
+   * environments.
+   *
+   * <pre>{@code
+   * String extracted =
+   *     NativeDeployer.getLibraryPath(MyPlugin.class.getClassLoader(), "fec8");
+   * if (extracted != null) {
+   *   System.load(extracted);
+   * }
+   * }</pre>
+   *
+   * @param cl class loader used to locate {@code lib/native.properties} and the native resource;
+   *     must not be {@code null} and should match the JAR containing the library.
+   * @param libName logical library key defined in {@code lib/native.properties}; value is
+   *     case-sensitive and should correspond to a configured {@code name} entry.
+   * @return absolute path to the extracted library, or {@code null} when none matches the platform.
+   */
+  public static synchronized String getLibraryPath(ClassLoader cl, String libName) {
+    long start = System.currentTimeMillis();
     try {
-      String libPath = (String) findLibraries(cl).get(libName);
+      String libPath = findLibraries(cl).get(libName);
       if (libPath == null) {
         return null;
       }
-      try {
-        return getLocalResourcePath(cl, libPath);
-      } catch (IOException ex) {
-        iox = ex;
-      }
-      System.out.println(
-          "It took " + (System.currentTimeMillis() - t) + " millis to extract " + libName);
-      if (iox != null) {
-        iox.printStackTrace();
-      }
-
+      String localPath = getLocalResourcePath(cl, libPath);
+      LOGGER.info("Extracted {} in {} ms", libName, System.currentTimeMillis() - start);
+      return localPath;
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.warn("Unable to deploy native library {}", libName, e);
+      return null;
     }
-    return null;
   }
 
-  // Since the local copy of the resource isn't stored in a temporary
-  // directory, at some point we'll presumably implement version-based
-  // caching rather than extracting the file every time the code is run....
-  public static final synchronized String getLocalResourcePath(ClassLoader cl, String resourcePath)
+  /**
+   * Extracts a classpath resource to a secure temporary file and returns its absolute path.
+   *
+   * <p>The method creates a temporary file with best-effort owner-only permissions, streams the
+   * resource content into it, and preserves the restrictive permissions after the copy. Synchronize
+   * calls to serialize concurrent extractions, reducing duplicate work when multiple threads
+   * request the same native binary. Each call writes a fresh copy; callers are responsible for any
+   * reuse or cleanup semantics.
+   *
+   * @param cl class loader used to resolve the resource; should be non-null and aligned to the JAR
+   *     containing the native binary.
+   * @param resourcePath classpath-relative path (e.g., {@code lib/linux/x86/libfec8.so}) referenced
+   *     in {@code lib/native.properties}; must correspond to an existing bundled resource.
+   * @return absolute path to the copied resource suitable for {@link System#load(String)}, or
+   *     {@code null} if the resource is missing.
+   * @throws IOException if the resource cannot be read, or the temporary file cannot be written
+   *     with the required permissions.
+   */
+  public static synchronized String getLocalResourcePath(ClassLoader cl, String resourcePath)
       throws IOException {
 
-    File f = File.createTempFile("libfec", ".tmp");
+    Path tempPath = createSecureTempFile();
     URL url = cl.getResource(resourcePath);
     if (url == null) {
       return null;
     }
-    InputStream is = url.openStream();
-    f.delete(); // VERY VERY important, VM crashes w/o this :P
-    OutputStream os = new FileOutputStream(f);
+    try (InputStream is = url.openStream();
+        OutputStream os =
+            Files.newOutputStream(
+                tempPath,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE)) {
 
-    byte[] b = new byte[1024];
-    int c;
-    while ((c = is.read(b)) != -1) {
-      os.write(b, 0, c);
+      byte[] b = new byte[1024];
+      int c;
+      while ((c = is.read(b)) != -1) {
+        os.write(b, 0, c);
+      }
+      os.flush();
+      return tempPath.toString();
     }
-    is.close();
-    os.flush();
-    os.close();
-    return f.toString();
   }
 
   /**
-   * @return A HashMap mapping library names to paths for this os/arch.
+   * Parses bundled {@code lib/native.properties} resources and returns a mapping of library names
+   * to platform-specific resource paths for the detected {@link #OS_ARCH}.
+   *
+   * @param cl class loader used to list property resources; must supply access to bundled {@code
+   *     lib/native.properties} files.
+   * @return map of logical library names to resource paths scoped to the current platform; entries
+   *     are trimmed but not validated for existence.
+   * @throws IOException if any property file cannot be opened or read from the supplied class
+   *     loader.
    */
-  private static final HashMap findLibraries(ClassLoader cl) throws IOException {
+  private static Map<String, String> findLibraries(ClassLoader cl) throws IOException {
 
-    HashMap libMap = new HashMap();
-    // loop through all of the properties files.
-    for (Enumeration en = cl.getResources(NATIVE_PROPERTIES_PATH); en.hasMoreElements(); ) {
+    Map<String, String> libMap = new HashMap<>();
+    // loop through all the properties files.
+    Enumeration<URL> resources = cl.getResources(NATIVE_PROPERTIES_PATH);
+    while (resources.hasMoreElements()) {
       Properties p = new Properties();
-      p.load(((URL) en.nextElement()).openStream());
-      // Extract the keys and loop through all of the libs.
+      URL resource = resources.nextElement();
+      try (InputStream stream = resource.openStream()) {
+        p.load(stream);
+      }
+      // Extract the keys and loop through all the libs.
       for (StringTokenizer st =
-              new StringTokenizer(p.getProperty("com.onionnetworks.native.keys"), ",");
+              new StringTokenizer(p.getProperty(NATIVE_PROPERTY_PREFIX + "keys"), ",");
           st.hasMoreTokens(); ) {
         String key = st.nextToken().trim();
-        // If it matches the os and arch then add it.
-        if (p.getProperty("com.onionnetworks.native." + key + ".osarch").trim().equals(OS_ARCH)) {
+        // If it matches the os and arch, then add it.
+        if (p.getProperty(NATIVE_PROPERTY_PREFIX + key + ".osarch").trim().equals(OS_ARCH)) {
 
           libMap.put(
-              p.getProperty("com.onionnetworks.native." + key + ".name").trim(),
-              p.getProperty("com.onionnetworks.native." + key + ".path").trim());
+              p.getProperty(NATIVE_PROPERTY_PREFIX + key + ".name").trim(),
+              p.getProperty(NATIVE_PROPERTY_PREFIX + key + ".path").trim());
         }
       }
     }
     return libMap;
+  }
+
+  private static Path createSecureTempFile() throws IOException {
+    if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+      FileAttribute<Set<PosixFilePermission>> attr =
+          PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
+      return Files.createTempFile("libfec", ".tmp", attr);
+    }
+    Path userTempRoot = Path.of(System.getProperty("user.home"), ".cryptad-temp");
+    Files.createDirectories(userTempRoot);
+    Path tempPath = Files.createTempFile(userTempRoot, "libfec", ".tmp");
+    File tempFile = tempPath.toFile();
+    boolean readable = tempFile.setReadable(true, true);
+    boolean writable = tempFile.setWritable(true, true);
+    if (!readable || !writable) {
+      LOGGER.warn("Failed to restrict permissions on temporary file {}", tempPath);
+    }
+    return tempPath;
   }
 }

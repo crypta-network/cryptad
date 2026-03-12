@@ -1,143 +1,294 @@
 package network.crypta.clients.http;
 
-import static org.junit.Assert.*;
-
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.Date;
-import org.junit.Before;
-import org.junit.Test;
+import java.time.Instant;
+import network.crypta.support.TimeUtil;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class CookieTest {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-  static final String VALID_PATH = "/Freetalk";
-  static final String VALID_NAME = "SessionID";
-  static final String VALID_VALUE = "abCd12345";
+@SuppressWarnings("java:S100")
+class CookieTest {
 
-  URI validPath;
-  Date validExpiresDate;
+  private static final URI VALID_PATH = URI.create("/Freetalk");
+  private static final String VALID_NAME = "SessionID";
+  private static final String VALID_VALUE = "abCd12345";
+  private static final Instant FUTURE_DATE = Instant.parse("2099-01-01T00:00:00Z");
 
-  Cookie cookie;
+  private Cookie cookie;
 
-  @Before
-  public void setUp() throws Exception {
-    validPath = new URI(VALID_PATH);
-    validExpiresDate = new Date(System.currentTimeMillis() + 60 * 60 * 1000);
-    cookie = new Cookie(validPath, VALID_NAME, VALID_VALUE, validExpiresDate);
+  @BeforeEach
+  void setUp() {
+    cookie = Cookie.create(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
   }
 
   @Test
-  public void testCookieURIStringStringDate() throws URISyntaxException {
-    try {
-      new Cookie(null, VALID_NAME, VALID_VALUE, validExpiresDate);
-      fail("Constructor allows path to be null");
-    } catch (RuntimeException e) {
-    }
+  void validatePath_withAbsoluteUri_expectException() {
+    URI absolute = URI.create("http://example.com");
 
-    try {
-      new Cookie(new URI(""), VALID_NAME, VALID_VALUE, validExpiresDate);
-      fail("Constructor allows path to be empty");
-    } catch (RuntimeException e) {
-    }
-
-    // TODO: Test for invalid characters in path.
-
-    try {
-      new Cookie(validPath, null, VALID_VALUE, validExpiresDate);
-      fail("Constructor allows name to be null");
-    } catch (RuntimeException e) {
-    }
-
-    try {
-      new Cookie(validPath, "", VALID_VALUE, validExpiresDate);
-      fail("Constructor allows name to be empty");
-    } catch (RuntimeException e) {
-    }
-
-    try {
-      new Cookie(validPath, "test;", VALID_VALUE, validExpiresDate);
-      fail("Constructor allows invalid characters in name");
-    } catch (RuntimeException e) {
-    }
-
-    // TODO: Test for more invalid characters in name
-
-    // Empty values are allowed;
-    new Cookie(validPath, VALID_NAME, null, validExpiresDate).getValue();
-    new Cookie(validPath, VALID_NAME, "", validExpiresDate);
-
-    try {
-      new Cookie(validPath, VALID_NAME, "\"", validExpiresDate);
-      fail("Constructor allows invalid characters in value");
-    } catch (RuntimeException e) {
-    }
-
-    try {
-      new Cookie(validPath, VALID_NAME, VALID_VALUE + "ä", validExpiresDate);
-      fail("Constructor allows non-US-ASCII characters in value");
-    } catch (RuntimeException e) {
-    }
-
-    // TODO: Test for more invalid characters in value;
-
-    try {
-      new Cookie(validPath, VALID_NAME, VALID_VALUE, new Date(System.currentTimeMillis() - 1));
-      fail("Constructor allows construction of expired cookies.");
-    } catch (RuntimeException e) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validatePath(absolute));
   }
 
   @Test
-  public void testEqualsObject() throws URISyntaxException {
-    assertEquals(cookie, cookie);
-    assertEquals(
-        cookie,
-        new Cookie(
-            validPath, VALID_NAME, VALID_VALUE, new Date(System.currentTimeMillis() + 60 * 1000)));
+  void validatePath_withoutLeadingSlash_expectException() {
+    URI relative = URI.create("relative");
 
-    // Value is not checked in equals().
-    assertEquals(
-        cookie,
-        new Cookie(validPath, VALID_NAME, "", new Date(System.currentTimeMillis() + 60 * 1000)));
-
-    assertNotEquals(
-        cookie,
-        new Cookie(new URI(VALID_PATH.toLowerCase()), VALID_NAME, VALID_VALUE, validExpiresDate));
-    assertEquals(
-        cookie, new Cookie(validPath, VALID_NAME.toLowerCase(), VALID_VALUE, validExpiresDate));
-
-    // TODO: Test domain. This is currently done in ReceivedCookieTest
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validatePath(relative));
   }
 
   @Test
-  public void testGetDomain() {
-    // TODO: Implement.
+  void validatePath_withLeadingSlashRelative_expectSamePath() {
+    URI result = Cookie.validatePath(URI.create("/some/Path"));
+
+    assertEquals("/some/Path", result.toString());
   }
 
   @Test
-  public void testGetPath() {
-    assertEquals(VALID_PATH, cookie.getPath().toString());
+  void validateDomain_withInvalidScheme_expectException() {
+    URI invalidScheme = URI.create("ftp://example.com");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(invalidScheme));
   }
 
   @Test
-  public void testGetName() {
-    assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
+  void validateDomain_withoutScheme_expectException() {
+    URI withoutScheme = URI.create("example.com");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withoutScheme));
   }
 
   @Test
-  public void testGetValue() {
-    assertEquals(VALID_VALUE, cookie.getValue());
+  void validateDomain_withPathComponent_expectException() {
+    URI withPath = URI.create("http://example.com/path");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withPath));
   }
 
-  // TODO: getExpirationDate() is commented out because it is broken, see ReceivedCookie.java
-  //	public void testGetExpirationDate() {
-  //		assertEquals(validExpiresDate, cookie.getExpirationDate());
-  //	}
+  @Test
+  void validateDomain_withQuery_expectException() {
+    URI withQuery = URI.create("http://example.com?x=1");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withQuery));
+  }
 
   @Test
-  public void testEncodeToHeaderValue() {
-    System.out.println(cookie.encodeToHeaderValue());
+  void validateDomain_withFragment_expectException() {
+    URI withFragment = URI.create("http://example.com#frag");
 
-    // TODO: Implement.
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withFragment));
+  }
+
+  @Test
+  void validateDomain_withUserInfo_expectException() {
+    URI withUserInfo = URI.create("http://user@example.com");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withUserInfo));
+  }
+
+  @Test
+  void validateDomain_withHttpAndHttps_expectReturnedUri() {
+    URI http = Cookie.validateDomain(URI.create("http://example.com"));
+    URI https = Cookie.validateDomain(URI.create("https://example.com"));
+
+    assertEquals("http://example.com", http.toString());
+    assertEquals("https://example.com", https.toString());
+  }
+
+  @Test
+  void validateDomain_withMixedCaseUri_expectLowercasedUri() {
+    URI validated = Cookie.validateDomain(URI.create("http://EXAMPLE.com"));
+
+    assertEquals("http://example.com", validated.toString());
+  }
+
+  @Test
+  void validateName_withUppercaseAndWhitespace_expectLowercaseTrimmed() {
+    String validated = Cookie.validateName("  SessionID  ");
+
+    assertEquals("sessionid", validated);
+  }
+
+  @Test
+  void validateName_withSeparatorCharacter_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateName("invalid;name"));
+  }
+
+  @Test
+  void validateName_withReservedToken_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateName("domain"));
+  }
+
+  @Test
+  void validateName_withNonAscii_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateName("näm"));
+  }
+
+  @Test
+  void validateValue_withTrimmedWhitespace_expectTrimmedResult() {
+    String validated = Cookie.validateValue("  value  ");
+
+    assertEquals("value", validated);
+  }
+
+  @Test
+  void validateValue_withControlCharacter_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateValue("abc\u0001def"));
+  }
+
+  @Test
+  void validateValue_withInvalidCharacter_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateValue("has(parenthesis"));
+  }
+
+  @Test
+  void validateValue_withNonAscii_expectException() {
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateValue("väl"));
+  }
+
+  @Test
+  void validateExpirationDate_withFutureDate_expectSameInstance() {
+    Instant validated = Cookie.validateExpirationDate(FUTURE_DATE);
+
+    assertEquals(FUTURE_DATE, validated);
+  }
+
+  @Test
+  void validateExpirationDate_withPastDate_expectException() {
+    Instant past = Instant.parse("2020-01-01T00:00:00Z");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateExpirationDate(past));
+  }
+
+  @Test
+  void constructor_withNullPath_expectNullPointer() {
+    assertThrows(
+        NullPointerException.class,
+        () -> Cookie.create(null, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+  }
+
+  @Test
+  void constructor_withNullName_expectNullPointer() {
+    assertThrows(
+        NullPointerException.class,
+        () -> Cookie.create(VALID_PATH, null, VALID_VALUE, FUTURE_DATE));
+  }
+
+  @Test
+  void constructor_withNullValue_expectEmptyString() {
+    Cookie created = Cookie.create(VALID_PATH, VALID_NAME, null, FUTURE_DATE);
+
+    assertEquals("", created.getValue());
+  }
+
+  @Test
+  void constructor_normalizesNameToLowercase() {
+    Cookie created = Cookie.create(VALID_PATH, "MiXeD", VALID_VALUE, FUTURE_DATE);
+
+    assertEquals("mixed", created.getName());
+  }
+
+  @Test
+  void constructor_withDomainContainingQuery_expectException() {
+    URI withQuery = URI.create("http://example.com?x=1");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> Cookie.create(withQuery, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+  }
+
+  @Test
+  void constructor_withDomainWithoutScheme_expectException() {
+    URI withoutScheme = URI.create("example.com");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> Cookie.create(withoutScheme, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+  }
+
+  @Test
+  void equals_whenPathDiffers_expectFalse() {
+    Cookie other = Cookie.create(URI.create("/Other"), VALID_NAME, VALID_VALUE, FUTURE_DATE);
+
+    assertNotEquals(cookie, other);
+  }
+
+  @Test
+  void equals_whenDomainDiffers_expectFalse() {
+    Cookie withDomain =
+        Cookie.create(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie otherDomain =
+        Cookie.create(
+            URI.create("http://other.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+
+    assertNotEquals(withDomain, otherDomain);
+  }
+
+  @Test
+  void equals_whenDomainCaseDiffers_expectTrue() {
+    Cookie uppercaseDomain =
+        Cookie.create(
+            URI.create("http://EXAMPLE.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie lowercaseDomain =
+        Cookie.create(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+
+    assertEquals(uppercaseDomain, lowercaseDomain);
+    assertEquals(uppercaseDomain.hashCode(), lowercaseDomain.hashCode());
+  }
+
+  @Test
+  void equals_whenOnlyValueDiffers_expectTrue() {
+    Cookie other = Cookie.create(VALID_PATH, VALID_NAME, "different", FUTURE_DATE);
+
+    assertEquals(cookie, other);
+  }
+
+  @Test
+  void hashCode_whenFieldsSet_matchesEqualsContract() {
+    Cookie first =
+        Cookie.create(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie second =
+        Cookie.create(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
+
+    assertEquals(first, second);
+    assertEquals(first.hashCode(), second.hashCode());
+  }
+
+  @Test
+  void hashCode_withoutDomain_matchesEqualsContract() {
+    Cookie first = Cookie.create(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie second = Cookie.create(VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
+
+    assertEquals(first, second);
+    assertEquals(first.hashCode(), second.hashCode());
+  }
+
+  @Test
+  void encodeToHeaderValue_withDomain_includesDomainAttribute() {
+    Cookie withDomain =
+        Cookie.create(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+
+    String encoded = withDomain.encodeToHeaderValue();
+
+    assertTrue(encoded.contains("domain=http://example.com;"));
+  }
+
+  @Test
+  void encodeToHeaderValue_includesAllAttributesInOrder() {
+    String encoded = cookie.encodeToHeaderValue();
+    String expectedExpires = TimeUtil.makeHTTPDate(FUTURE_DATE.toEpochMilli());
+
+    assertTrue(encoded.startsWith("sessionid=" + VALID_VALUE + ";version=1;"));
+    assertTrue(encoded.contains("path=" + VALID_PATH + ";"));
+    assertTrue(encoded.contains("expires=" + expectedExpires + ";"));
+    assertTrue(encoded.endsWith("discard=true;"));
   }
 }

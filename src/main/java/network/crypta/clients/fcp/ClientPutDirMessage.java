@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
 import java.net.MalformedURLException;
+import java.util.Locale;
+import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -13,17 +15,82 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 
 /**
- * Put a directory, rather than a file. Base class.
+ * Base message for inserting directory hierarchies through the Freenet Client Protocol (FCP).
  *
- * <p>Two forms: ClientPutDiskDir and ClientPutComplexDir
+ * <p>This abstract container centralizes the parsing and validation shared by {@link
+ * ClientPutDiskDirMessage} and {@link ClientPutComplexDirMessage}. A node controller builds an
+ * instance from an inbound {@link SimpleFieldSet} and hands it to {@link RequestStarter}, which
+ * turns the embedded metadata into the actual insert pipeline. The message spells out the target
+ * {@link FreenetURI}, retry envelope, splitfile compatibility mode, compression hints, and
+ * persistence knobs expected by the storage layer so that both directory flavors remain
+ * interoperable.
  *
- * <p>Both share: Identifier=<identifier> Verbosity=<verbosity as ClientPut> MaxRetries=<max retries
- * as ClientPut> PriorityClass=<priority class> URI=<target URI> GetCHKOnly=<GetCHKOnly as
- * ClientPut> DontCompress=<DontCompress as ClientPut> ClientToken=<ClientToken as ClientPut>
- * Persistence=<Persistence as ClientPut> Global=<Global as ClientPut>
+ * <p>All fields are populated during construction, and the type is effectively immutable afterward,
+ * which lets callers hand references across worker threads without additional synchronization. The
+ * class enforces conservative defaults—such as the immediate priority class and cache-writing
+ * guardrails—so that omitted wire fields cannot accidentally degrade node health. Subclasses add
+ * payload handling (disk vs. complex manifests) while reusing the contract defined here.
+ *
+ * <ul>
+ *   <li>Validates every user-supplied numeric or binary option and reports protocol errors.
+ *   <li>Exposes computed defaults through getters so monitoring code can serialize them back.
+ *   <li>Coordinates cache controls, compressor descriptors, and URI post-processing.
+ * </ul>
+ *
+ * @see ClientPutDiskDirMessage
+ * @see ClientPutComplexDirMessage
  */
 public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
   // Some subtypes of this (ClientPutComplexDirMessage) may carry a payload.
+
+  /** Parsed common fields used to construct {@link ClientPutDirMessage} without throwing. */
+  protected static final class ParsedCommonFields {
+    private final ClientRequestParams requestParams;
+    private final FcpInsertBehaviorOptions behaviorOptions;
+    private final FcpInsertTuningOptions tuningOptions;
+    private final String defaultName;
+    private final byte[] overrideSplitfileCryptoKey;
+    private final String targetFilename;
+
+    private ParsedCommonFields(
+        ClientRequestParams requestParams,
+        FcpInsertBehaviorOptions behaviorOptions,
+        FcpInsertTuningOptions tuningOptions,
+        String defaultName,
+        byte[] overrideSplitfileCryptoKey,
+        String targetFilename) {
+      this.requestParams = requestParams;
+      this.behaviorOptions = behaviorOptions;
+      this.tuningOptions = tuningOptions;
+      this.defaultName = defaultName;
+      this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
+      this.targetFilename = targetFilename;
+    }
+
+    private ClientRequestParams requestParams() {
+      return requestParams;
+    }
+
+    private FcpInsertBehaviorOptions behaviorOptions() {
+      return behaviorOptions;
+    }
+
+    private FcpInsertTuningOptions tuningOptions() {
+      return tuningOptions;
+    }
+
+    private String defaultName() {
+      return defaultName;
+    }
+
+    private byte[] overrideSplitfileCryptoKey() {
+      return overrideSplitfileCryptoKey;
+    }
+
+    private String targetFilename() {
+      return targetFilename;
+    }
+  }
 
   final String identifier;
   final FreenetURI uri;
@@ -39,7 +106,15 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
   final boolean earlyEncode;
   final boolean canWriteClientCache;
   final String compressorDescriptor;
-  public boolean forkOnCacheable;
+
+  /**
+   * Signals whether cacheable blocks should be forked into independent inserts while obeying the
+   * node's {@link Node#FORK_ON_CACHEABLE_DEFAULT} policy. Callers read this flag to decide if a
+   * cache hit should spawn separate background persistence work or remain in-band with the parent
+   * request, allowing UI clients to trade extra bandwidth for faster convergence on popular data.
+   */
+  public final boolean forkOnCacheable;
+
   final int extraInsertsSingleBlock;
   final int extraInsertsSplitfileHeaderBlock;
   final InsertContext.CompatibilityMode compatibilityMode;
@@ -49,158 +124,146 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
   final String targetFilename;
   final boolean ignoreUSKDatehints;
 
-  public ClientPutDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    identifier = fs.get("Identifier");
-    global = fs.getBoolean("Global", false);
-    defaultName = fs.get("DefaultName");
-    String s = fs.get("CompatibilityMode");
-    InsertContext.CompatibilityMode cmode = null;
-    if (s == null) cmode = InsertContext.CompatibilityMode.COMPAT_DEFAULT;
-    else {
-      try {
-        cmode = InsertContext.CompatibilityMode.valueOf(s);
-      } catch (IllegalArgumentException e) {
-        try {
-          cmode = InsertContext.CompatibilityMode.values()[Integer.parseInt(s)];
-        } catch (NumberFormatException e1) {
-          throw new MessageInvalidException(
-              ProtocolErrorMessage.INVALID_FIELD,
-              "Invalid CompatibilityMode (not a name and not a number)",
-              identifier,
-              global);
-        } catch (ArrayIndexOutOfBoundsException e1) {
-          throw new MessageInvalidException(
-              ProtocolErrorMessage.INVALID_FIELD,
-              "Invalid CompatibilityMode (not a valid number)",
-              identifier,
-              global);
-        }
-      }
-    }
-    compatibilityMode = cmode.intern();
-    s = fs.get("OverrideSplitfileCryptoKey");
-    if (s == null) overrideSplitfileCryptoKey = null;
-    else
-      try {
-        overrideSplitfileCryptoKey = HexUtil.hexToBytes(s);
-      } catch (NumberFormatException e1) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Invalid splitfile crypto key (not hex)",
-            identifier,
-            global);
-      } catch (IndexOutOfBoundsException e1) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Invalid splitfile crypto key (too short)",
-            identifier,
-            global);
-      }
-    localRequestOnly = fs.getBoolean("LocalRequestOnly", false);
-    if (identifier == null)
+  /**
+   * Creates the message from an already-validated common directory put field.
+   *
+   * <p>Subclasses should call {@link #parseCommonFields(SimpleFieldSet)} before invoking this
+   * constructor so parse failures are reported from subclass constructors instead of this non-final
+   * base class constructor.
+   *
+   * @param parsed parsed field group produced by {@link #parseCommonFields(SimpleFieldSet)}
+   */
+  protected ClientPutDirMessage(ParsedCommonFields parsed) {
+    ClientRequestParams requestParams = parsed.requestParams();
+    FcpInsertBehaviorOptions behaviorOptions = parsed.behaviorOptions();
+    FcpInsertTuningOptions tuningOptions = parsed.tuningOptions();
+    identifier = requestParams.identifier();
+    uri = requestParams.uri();
+    verbosity = requestParams.verbosity();
+    maxRetries = behaviorOptions.maxRetries();
+    getCHKOnly = behaviorOptions.getCHKOnly();
+    priorityClass = requestParams.priorityClass();
+    persistence = requestParams.persistence();
+    dontCompress = behaviorOptions.dontCompress();
+    clientToken = requestParams.clientToken();
+    global = requestParams.global();
+    defaultName = parsed.defaultName();
+    earlyEncode = behaviorOptions.earlyEncode();
+    canWriteClientCache = tuningOptions.canWriteClientCache();
+    compressorDescriptor = tuningOptions.compressorDescriptor();
+    forkOnCacheable = tuningOptions.forkOnCacheable();
+    extraInsertsSingleBlock = tuningOptions.extraInsertsSingleBlock();
+    extraInsertsSplitfileHeaderBlock = tuningOptions.extraInsertsSplitfileHeaderBlock();
+    compatibilityMode = tuningOptions.compatibilityMode();
+    overrideSplitfileCryptoKey = parsed.overrideSplitfileCryptoKey();
+    localRequestOnly = behaviorOptions.localRequestOnly();
+    realTimeFlag = behaviorOptions.realTimeFlag();
+    targetFilename = parsed.targetFilename();
+    ignoreUSKDatehints = behaviorOptions.ignoreUSKDatehints();
+  }
+
+  /**
+   * Parses and validates common directory insert fields shared by both put-dir message types.
+   *
+   * @param fs parsed field set received from the client
+   * @return parsed common values suitable for {@link #ClientPutDirMessage(ParsedCommonFields)}
+   * @throws MessageInvalidException if required or optional fields are invalid
+   */
+  protected static ParsedCommonFields parseCommonFields(SimpleFieldSet fs)
+      throws MessageInvalidException {
+    String identifier = fs.get("Identifier");
+    boolean global = fs.getBoolean("Global", false);
+    String defaultName = fs.get("DefaultName");
+    InsertContext.CompatibilityMode compatibilityMode =
+        parseCompatibilityMode(fs, identifier, global);
+    byte[] overrideSplitfileCryptoKey =
+        parseOverrideSplitfileCryptoKey(fs, identifier, global).orElse(null);
+    boolean localRequestOnly = fs.getBoolean("LocalRequestOnly", false);
+    if (identifier == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "No Identifier", null, global);
-    try {
-      String u = fs.get("URI");
-      if (u == null)
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.MISSING_FIELD, "No URI", identifier, global);
-      FreenetURI uu = new FreenetURI(u);
-      // Client is allowed to put a slash at the end if it wants to, but this is discouraged.
-      String[] meta = uu.getAllMetaStrings();
-      if (meta != null && meta.length == 1 && meta[0].isEmpty()) uu = uu.setMetaString(null);
-      uri = uu;
-    } catch (MalformedURLException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, e.getMessage(), identifier, global);
     }
-    String verbosityString = fs.get("Verbosity");
-    if (verbosityString == null) verbosity = 0;
-    else {
-      try {
-        verbosity = Integer.parseInt(verbosityString, 10);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing Verbosity field: " + e.getMessage(),
-            identifier,
-            global);
-      }
-    }
-    String maxRetriesString = fs.get("MaxRetries");
-    if (maxRetriesString == null)
-      // default to 0
-      maxRetries = 0;
-    else {
-      try {
-        maxRetries = Integer.parseInt(maxRetriesString, 10);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing MaxSize field: " + e.getMessage(),
-            identifier,
-            global);
-      }
-    }
-    getCHKOnly = fs.getBoolean("GetCHKOnly", false);
-    String priorityString = fs.get("PriorityClass");
-    if (priorityString == null) {
-      // defaults to the one just below FProxy
-      priorityClass = RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
-    } else {
-      try {
-        priorityClass = Short.parseShort(priorityString);
-        if (!RequestStarter.isValidPriorityClass(priorityClass))
-          throw new MessageInvalidException(
-              ProtocolErrorMessage.INVALID_FIELD,
-              "Invalid priority class "
-                  + priorityClass
-                  + " - range is "
-                  + RequestStarter.PAUSED_PRIORITY_CLASS
-                  + " to "
-                  + RequestStarter.MAXIMUM_PRIORITY_CLASS,
-              identifier,
-              global);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing PriorityClass field: " + e.getMessage(),
-            identifier,
-            global);
-      }
-    }
-    dontCompress = fs.getBoolean("DontCompress", false);
-    String persistenceString = fs.get("Persistence");
-    persistence = Persistence.parseOrThrow(persistenceString, identifier, global);
-    canWriteClientCache = fs.getBoolean("WriteToClientCache", false);
-    clientToken = fs.get("ClientToken");
-    targetFilename = fs.get("TargetFilename");
-    earlyEncode = fs.getBoolean("EarlyEncode", false);
-    String codecs = fs.get("Codecs");
-    if (codecs != null) {
-      COMPRESSOR_TYPE[] ca;
-      try {
-        ca = COMPRESSOR_TYPE.getCompressorsArrayNoDefault(codecs);
-      } catch (InvalidCompressionCodecException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
-      }
-      if (ca == null) codecs = null;
-    }
-    compressorDescriptor = codecs;
-    if (fs.get("ForkOnCacheable") != null)
-      forkOnCacheable = fs.getBoolean("ForkOnCacheable", false);
-    else forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
-    extraInsertsSingleBlock =
+
+    FreenetURI uri = parseUri(fs, identifier, global);
+    int verbosity = parseOptionalInt(fs, "Verbosity", "Verbosity field", identifier, global);
+    int maxRetries = parseOptionalInt(fs, "MaxRetries", "MaxSize field", identifier, global);
+    boolean getCHKOnly = fs.getBoolean("GetCHKOnly", false);
+    short priorityClass = parsePriorityClass(fs, identifier, global);
+    Persistence persistence = Persistence.parseOrThrow(fs.get("Persistence"), identifier, global);
+    boolean dontCompress = fs.getBoolean("DontCompress", false);
+    String clientToken = fs.get("ClientToken");
+    boolean earlyEncode = fs.getBoolean("EarlyEncode", false);
+    boolean canWriteClientCache = fs.getBoolean("WriteToClientCache", false);
+    String compressorDescriptor = parseCompressorDescriptor(fs, identifier, global);
+    boolean forkOnCacheable = parseForkOnCacheable(fs);
+    int extraInsertsSingleBlock =
         fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
-    extraInsertsSplitfileHeaderBlock =
+    int extraInsertsSplitfileHeaderBlock =
         fs.getInt(
             "ExtraInsertsSplitfileHeaderBlock",
             HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
-    realTimeFlag = fs.getBoolean("RealTimeFlag", false);
-    ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
+    boolean realTimeFlag = fs.getBoolean("RealTimeFlag", false);
+    String targetFilename = fs.get("TargetFilename");
+    boolean ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
+
+    FcpInsertBehaviorOptions behaviorOptions =
+        new FcpInsertBehaviorOptions(
+            getCHKOnly,
+            dontCompress,
+            localRequestOnly,
+            maxRetries,
+            earlyEncode,
+            realTimeFlag,
+            ignoreUSKDatehints);
+    FcpInsertTuningOptions tuningOptions =
+        new FcpInsertTuningOptions(
+            canWriteClientCache,
+            forkOnCacheable,
+            compressorDescriptor,
+            extraInsertsSingleBlock,
+            extraInsertsSplitfileHeaderBlock,
+            compatibilityMode);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            realTimeFlag,
+            clientToken,
+            global);
+
+    return new ParsedCommonFields(
+        requestParams,
+        behaviorOptions,
+        tuningOptions,
+        defaultName,
+        overrideSplitfileCryptoKey,
+        targetFilename);
   }
 
+  private static boolean parseForkOnCacheable(SimpleFieldSet fs) {
+    if (fs.get("ForkOnCacheable") != null) {
+      return fs.getBoolean("ForkOnCacheable", false);
+    }
+    return Node.FORK_ON_CACHEABLE_DEFAULT;
+  }
+
+  /**
+   * Serializes the message back into a {@link SimpleFieldSet} that mirrors the original request.
+   *
+   * <p>The resulting structure contains the normalized URI, identifier, verbosity and retry budget,
+   * and flags such as {@code GetCHKOnly} or compression preferences so downstream logging or
+   * round-tripping code can faithfully represent the mutation task. Optional fields—including
+   * compressor descriptors and default file names—are included only when specified to keep the wire
+   * format compact. The returned field set is newly allocated on every call, so callers may mutate
+   * it without affecting the message, and the method is safe to invoke from concurrent inspection
+   * routines. No payload data is exposed because subclasses handle directory blobs separately.
+   *
+   * @return mutable field set containing the canonicalized header values ready for transmission or
+   *     auditing, excluding any directory payload bytes handled by subclasses.
+   */
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
@@ -211,11 +274,150 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     sfs.putSingle("ClientToken", clientToken);
     sfs.put("GetCHKOnly", getCHKOnly);
     sfs.put("PriorityClass", priorityClass);
-    sfs.putSingle("Persistence", persistence.toString().toLowerCase());
+    sfs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     sfs.put("DontCompress", dontCompress);
     if (compressorDescriptor != null) sfs.putSingle("Codecs", compressorDescriptor);
     sfs.put("Global", global);
     sfs.putSingle("DefaultName", defaultName);
     return sfs;
+  }
+
+  private static InsertContext.CompatibilityMode parseCompatibilityMode(
+      SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
+    String modeValue = fs.get("CompatibilityMode");
+    if (modeValue == null) {
+      return InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern();
+    }
+    try {
+      return InsertContext.CompatibilityMode.valueOf(modeValue).intern();
+    } catch (IllegalArgumentException _) {
+      try {
+        int code = Integer.parseInt(modeValue);
+        return InsertContext.CompatibilityMode.byCode((short) code).intern();
+      } catch (NumberFormatException _) {
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.INVALID_FIELD,
+            "Invalid CompatibilityMode (not a name and not a number)",
+            identifier,
+            global);
+      } catch (IllegalArgumentException _) {
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.INVALID_FIELD,
+            "Invalid CompatibilityMode (not a valid number)",
+            identifier,
+            global);
+      }
+    }
+  }
+
+  private static Optional<byte[]> parseOverrideSplitfileCryptoKey(
+      SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
+    String key = fs.get("OverrideSplitfileCryptoKey");
+    if (key == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(HexUtil.hexToBytes(key));
+    } catch (NumberFormatException _) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD,
+          "Invalid splitfile crypto key (not hex)",
+          identifier,
+          global);
+    } catch (IndexOutOfBoundsException _) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD,
+          "Invalid splitfile crypto key (too short)",
+          identifier,
+          global);
+    }
+  }
+
+  private static FreenetURI parseUri(SimpleFieldSet fs, String identifier, boolean global)
+      throws MessageInvalidException {
+    try {
+      String uriValue = fs.get("URI");
+      if (uriValue == null)
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.MISSING_FIELD, "No URI", identifier, global);
+      FreenetURI parsed = new FreenetURI(uriValue);
+      String[] meta = parsed.getAllMetaStrings();
+      if (meta != null && meta.length == 1 && meta[0].isEmpty()) {
+        parsed = parsed.setMetaString(null);
+      }
+      return parsed;
+    } catch (MalformedURLException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, e.getMessage(), identifier, global);
+    }
+  }
+
+  private static int parseOptionalInt(
+      SimpleFieldSet fs,
+      String fieldName,
+      String errorFieldLabel,
+      String identifier,
+      boolean global)
+      throws MessageInvalidException {
+    String value = fs.get(fieldName);
+    if (value == null) {
+      return 0;
+    }
+    try {
+      return Integer.parseInt(value, 10);
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing " + errorFieldLabel + ": " + e.getMessage(),
+          identifier,
+          global);
+    }
+  }
+
+  private static short parsePriorityClass(SimpleFieldSet fs, String identifier, boolean global)
+      throws MessageInvalidException {
+    String priorityString = fs.get("PriorityClass");
+    if (priorityString == null) {
+      return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
+    }
+    try {
+      short parsed = Short.parseShort(priorityString);
+      if (!RequestStarter.isValidPriorityClass(parsed))
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.INVALID_FIELD,
+            "Invalid priority class "
+                + parsed
+                + " - range is "
+                + RequestStarter.PAUSED_PRIORITY_CLASS
+                + " to "
+                + RequestStarter.MAXIMUM_PRIORITY_CLASS,
+            identifier,
+            global);
+      return parsed;
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing PriorityClass field: " + e.getMessage(),
+          identifier,
+          global);
+    }
+  }
+
+  private static String parseCompressorDescriptor(
+      SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
+    String codecs = fs.get("Codecs");
+    if (codecs == null) {
+      return null;
+    }
+    try {
+      COMPRESSOR_TYPE[] compressors = COMPRESSOR_TYPE.getCompressorsArrayNoDefault(codecs);
+      if (compressors.length == 0) {
+        return null;
+      }
+      return codecs;
+    } catch (InvalidCompressionCodecException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
+    }
   }
 }

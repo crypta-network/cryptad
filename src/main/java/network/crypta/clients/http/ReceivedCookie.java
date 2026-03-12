@@ -3,224 +3,269 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Hashtable;
-import network.crypta.support.Logger;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * A cookie which the server has received from the client.
+ * Represents a single cookie sent by an HTTP client and parsed from the {@code Cookie} request
+ * header. Instances hold the raw attributes supplied by the peer but defer validation until a
+ * caller actually reads an attribute via the accessors. That lazy validation mirrors the inbound
+ * nature of these cookies: many user agents attach large cookie headers while the server consumes
+ * only a subset, so avoiding upfront parsing reduces CPU overhead for unused cookies.
  *
- * <p>This class is not thread-safe!
+ * <p>Typical call flow is {@link #parseHeader(String)} during request handling, followed by
+ * optional reads such as {@link #getName()} or {@link #getValue()} once the handler decides a
+ * cookie is relevant. Parsed attributes are cached after the first successful validation to avoid
+ * repeated work. The class is intentionally <strong>not thread-safe</strong>; treat each instance
+ * as request-scoped and never share it across handlers or worker threads.
  *
+ * <p>Notable behaviors include preservation of the original attribute map for diagnostics, strict
+ * validation that throws {@link IllegalArgumentException} on malformed names, values, domains, or
+ * paths, and refusal to encode back into headers because inbound cookies should not be re-emitted
+ * without explicit reconstruction. Mutability is limited to internal lazy-initialization caches;
+ * callers observe effectively immutable state once a field has been validated.
+ *
+ * <ul>
+ *   <li>Responsibilities: parse inbound cookie headers, lazily validate attributes, expose
+ *       canonicalized getters.
+ *   <li>Trade-offs: reduced upfront CPU at the cost of possible runtime exceptions when attributes
+ *       are first accessed.
+ *   <li>Thread-safety: none; allocate per request to avoid cross-thread sharing.
+ * </ul>
+ *
+ * @see Cookie
+ * @see #parseHeader(String)
  * @author xor (xor@freenetproject.org)
  */
 public final class ReceivedCookie extends Cookie {
+  private static final Logger LOG = LoggerFactory.getLogger(ReceivedCookie.class);
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerClass(ReceivedCookie.class);
-  }
+  private static final int DEFAULT_COOKIE_CAPACITY = 4;
+  private static final URI PLACEHOLDER_PATH = URI.create("/");
+  private static final String PLACEHOLDER_NAME = "receivedcookie";
+  private static final Instant PLACEHOLDER_EXPIRATION = Instant.MAX;
 
   private String notValidatedName;
 
-  private final Hashtable<String, String> content;
+  private final Map<String, String> content;
+  private URI domain;
+  private URI path;
+  private String name;
+  private String value;
 
   /**
    * Constructor for creating cookies from parsed key-value pairs.
    *
    * <p>Does not validate the names or values of the keys, each attribute is validated at the first
-   * call to it's getter method. Therefore, no CPU time is wasted if the client sends cookies which
+   * call to its getter method. Therefore, no CPU time is wasted if the client sends cookies which
    * we do not use.
    */
-  private ReceivedCookie(String myName, Hashtable<String, String> myContent) {
+  private ReceivedCookie(String myName, Map<String, String> myContent) {
+    super(PLACEHOLDER_PATH, PLACEHOLDER_NAME, "", PLACEHOLDER_EXPIRATION);
     // We do not validate the input here, we only parse it if someone actually tries to access this
     // cookie.
     notValidatedName = myName;
     content = myContent;
-
-    // We do NOT parse the version even though RFC2965 requires it because Firefox (3.0.14) does not
-    // give us a version.
-
-    version = 1;
-    // version = Integer.parseInt(content.get("$version"));
-
-    // if(version != 1)
-    //	throw new IllegalArgumentException("Invalid version: " + version);
   }
 
   /**
-   * Parses the value of a "Cookie:" HTTP header and returns a list of received cookies which it
-   * contained. - A single "Cookie:" header is allowed to contain multiple cookies. Further, a HTTP
-   * request can contain multiple "Cookie" keys!.
+   * Parses the raw value of an HTTP {@code Cookie} header into individual {@link ReceivedCookie}
+   * instances while preserving arrival order.
    *
-   * @param httpHeader The value of a "Cookie:" header (i.e. the prefix "Cookie:" must not be
-   *     contained in this parameter!)
-   * @return A list of {@link ReceivedCookie} objects. The validity of their name/value pairs is not
-   *     deeply checked, their getName() / getValue() might throw!
-   * @throws ParseException If the general formatting of the cookie is wrong.
+   * <p>The parser accepts multiple cookie pairs within a single header and tolerates multiple
+   * {@code Cookie} header lines per request. Attribute names beginning with {@code $} are treated
+   * as cookie attributes and attached to the current cookie; other key-value pairs start a new
+   * cookie entry. Values may be quoted or unquoted and are trimmed of surrounding whitespace but
+   * otherwise left untouched. Validation of names and values is deferred to the corresponding
+   * accessor methods so unused cookies do not incur additional cost. The returned list is mutable
+   * to allow callers to filter or reorder if needed.
+   *
+   * @param httpHeader Raw header value that follows the {@code Cookie:} prefix in the request.
+   * @return List of parsed cookies in request order; entries validate lazily on first attribute
+   *     access.
+   * @throws ParseException If the general cookie formatting or quoting rules are violated.
    */
-  static ArrayList<ReceivedCookie> parseHeader(String httpHeader) throws ParseException {
+  static List<ReceivedCookie> parseHeader(String httpHeader) throws ParseException {
 
-    if (logMINOR) Logger.minor(ReceivedCookie.class, "Received HTTP cookie header:" + httpHeader);
+    if (LOG.isDebugEnabled()) LOG.debug("Received HTTP cookie header:{}", httpHeader);
 
     char[] header = httpHeader.toCharArray();
 
     String currentCookieName = null;
-    Hashtable<String, String> currentCookieContent = new Hashtable<>(16);
+    Map<String, String> currentCookieContent = HashMap.newHashMap(16);
 
     ArrayList<ReceivedCookie> cookies =
-        new ArrayList<>(4); // TODO: Adjust to the usual amount of cookies which fred uses + 1
+        new ArrayList<>(DEFAULT_COOKIE_CAPACITY); // Capacity tuned for typical cookie counts
 
-    // We do manual parsing instead of using regular expressions for two reasons:
-    // 1. The value of cookies can be quoted, therefore it is a context-free language and not a
-    // regular language - we cannot express it with a regexp!
-    // 2. Its very fast :)
-
-    // Set to true if a broken browser (Konqueror) specifies a cookie where the name is NOT the
-    // first attribute.
-    try {
-      for (int i = 0; i < header.length; ) {
-        // Skip leading whitespace of key, we must do a header.length check because there might be
-        // no more key, so we continue;
-        if (Character.isWhitespace(header[i])) {
-          ++i;
-          continue;
-        }
-
-        String key;
-        String value = null;
-
-        // Parse key
-        {
-          int keyBeginIndex = i;
-
-          while (i < header.length && header[i] != '=' && header[i] != ';') ++i;
-
-          int keyEndIndex = i;
-
-          if (keyEndIndex >= header.length || header[keyEndIndex] == ';') value = "";
-
-          while (Character.isWhitespace(header[keyEndIndex - 1])) // Remove trailing whitespace
-          --keyEndIndex;
-
-          key = new String(header, keyBeginIndex, keyEndIndex - keyBeginIndex).toLowerCase();
-
-          if (key.isEmpty())
-            throw new ParseException("Invalid cookie: Contains an empty key: " + httpHeader, i);
-
-          // We're done parsing the key, continue to the next character.
-          ++i;
-        }
-
-        // Parse value (empty values are allowed).
-        if (value == null && i < header.length) {
-          while (Character.isWhitespace(header[i])) // Skip leading whitespace
-          ++i;
-
-          int valueBeginIndex;
-          char valueEndChar;
-
-          if (header[i] == '\"') { // Value is quoted
-            valueEndChar = '\"';
-            valueBeginIndex = ++i;
-
-            while (header[i] != valueEndChar) ++i;
-
-          } else {
-            valueEndChar = ';';
-            valueBeginIndex = i;
-
-            while (i < header.length && header[i] != valueEndChar) ++i;
-          }
-
-          int valueEndIndex = i;
-
-          while (valueEndIndex > valueBeginIndex
-              && Character.isWhitespace(header[valueEndIndex - 1])) // Remove trailing whitespace
-          --valueEndIndex;
-
-          value = new String(header, valueBeginIndex, valueEndIndex - valueBeginIndex);
-
-          // We're done parsing the value, continue to the next character
-          ++i;
-
-          // Skip whitespace between end of quotation and the semicolon following the quotation.
-          if (valueEndChar == '\"') {
-            while (i < header.length && header[i] != ';') {
-              if (!Character.isWhitespace(header[i]))
-                throw new ParseException(
-                    "Invalid cookie: Missing terminating semicolon after value quotation: "
-                        + httpHeader,
-                    i);
-
-              ++i;
-            }
-
-            // We found the semicolon, skip it
-            ++i;
-          }
-
-        } else value = "";
-
-        // RFC2965: Name MUST be first. Anything key besides the name of the cookie begins with $.
-        // The next cookie begins if a key occurs which is not
-        // prefixed with $.
-
-        if (currentCookieName
-            == null) { // We have not found the name yet, the first key/value pair must be the name
-          // and the value of the cookie.
-          if (key.charAt(0) == '$') {
-            // We cannot throw because Konqueror (4.2.2) is broken and specifies $version as the
-            // first attribute.
-            // throw new IllegalArgumentException("Invalid cookie: Name is not the first attribute:
-            // " + httpHeader);
-
-            currentCookieContent.put(key, value);
-          } else {
-            currentCookieName = key;
-            currentCookieContent.put(currentCookieName, value);
-          }
-        } else {
-          if (key.charAt(0) == '$') currentCookieContent.put(key, value);
-          else { // We finished parsing of the current cookie, a new one starts here.
-            // if(singleCookie)
-            //	throw new ParseException("Invalid cookie header: Multiple cookies specified but "
-            //			+ " the name of the first cookie was not the first attribute: " + httpHeader, i);
-
-            cookies.add(
-                new ReceivedCookie(
-                    currentCookieName, currentCookieContent)); // Store the previous cookie.
-
-            currentCookieName = key;
-            currentCookieContent = new Hashtable<>(16);
-            currentCookieContent.put(currentCookieName, value);
-          }
-        }
+    int index = 0;
+    while (index < header.length) {
+      index = skipWhitespace(header, index);
+      if (index >= header.length) {
+        break;
       }
-    } catch (ArrayIndexOutOfBoundsException e) {
-      ParseException p =
-          new ParseException(
-              "Index out of bounds (" + e.getMessage() + ") for cookie " + httpHeader, 0);
-      p.setStackTrace(e.getStackTrace());
-      throw p;
+
+      ParsedAttribute attribute = parseAttribute(header, httpHeader, index);
+      index = attribute.nextIndex;
+
+      if (currentCookieName == null) {
+        currentCookieName = applyNameOrAttribute(attribute, currentCookieContent);
+      } else if (isCookieAttribute(attribute.key())) {
+        currentCookieContent.put(attribute.key(), attribute.value());
+      } else {
+        cookies.add(new ReceivedCookie(currentCookieName, currentCookieContent));
+        currentCookieName = attribute.key();
+        currentCookieContent = HashMap.newHashMap(16);
+        currentCookieContent.put(currentCookieName, attribute.value());
+      }
     }
 
-    // Store the last cookie (the loop only stores the current cookie when a new one starts).
-    if (currentCookieName != null)
+    if (currentCookieName != null) {
       cookies.add(new ReceivedCookie(currentCookieName, currentCookieContent));
+    }
 
     return cookies;
   }
 
+  private static String applyNameOrAttribute(
+      ParsedAttribute attribute, Map<String, String> currentCookieContent) {
+    if (isCookieAttribute(attribute.key())) {
+      currentCookieContent.put(attribute.key(), attribute.value());
+      return null;
+    }
+
+    currentCookieContent.put(attribute.key(), attribute.value());
+    return attribute.key();
+  }
+
+  private static ParsedAttribute parseAttribute(char[] header, String httpHeader, int startIndex)
+      throws ParseException {
+    int index = startIndex;
+
+    int keyBeginIndex = index;
+    while (index < header.length && header[index] != '=' && header[index] != ';') {
+      index++;
+    }
+
+    int keyEndIndex = index;
+    while (keyEndIndex > keyBeginIndex && Character.isWhitespace(header[keyEndIndex - 1])) {
+      keyEndIndex--;
+    }
+
+    String key =
+        new String(header, keyBeginIndex, keyEndIndex - keyBeginIndex).toLowerCase(Locale.ROOT);
+
+    if (key.isEmpty()) {
+      throw new ParseException("Invalid cookie: Contains an empty key: " + httpHeader, index);
+    }
+
+    if (index >= header.length) {
+      return new ParsedAttribute(key, "", header.length);
+    }
+
+    char separator = header[index];
+    if (separator == ';') {
+      return new ParsedAttribute(key, "", index + 1);
+    }
+
+    index++;
+    index = skipWhitespace(header, index);
+
+    if (index >= header.length) {
+      return new ParsedAttribute(key, "", header.length);
+    }
+
+    if (header[index] == '\"') {
+      return parseQuotedValue(header, httpHeader, key, index + 1);
+    }
+
+    return parseUnquotedValue(header, key, index);
+  }
+
+  private static ParsedAttribute parseQuotedValue(
+      char[] header, String httpHeader, String key, int valueBeginIndex) throws ParseException {
+    int index = valueBeginIndex;
+    while (index < header.length && header[index] != '\"') {
+      index++;
+    }
+
+    if (index >= header.length) {
+      throw new ParseException("Invalid cookie: Unterminated quoted value: " + httpHeader, index);
+    }
+
+    String value = new String(header, valueBeginIndex, index - valueBeginIndex);
+    index++;
+
+    index = skipWhitespace(header, index);
+    if (index < header.length && header[index] != ';') {
+      throw new ParseException(
+          "Invalid cookie: Missing terminating semicolon after value quotation: " + httpHeader,
+          index);
+    }
+
+    if (index < header.length) {
+      index++;
+    }
+
+    return new ParsedAttribute(key, value, index);
+  }
+
+  private static ParsedAttribute parseUnquotedValue(
+      char[] header, String key, int valueBeginIndex) {
+    int index = valueBeginIndex;
+    while (index < header.length && header[index] != ';') {
+      index++;
+    }
+
+    int valueEndIndex = index;
+    while (valueEndIndex > valueBeginIndex && Character.isWhitespace(header[valueEndIndex - 1])) {
+      valueEndIndex--;
+    }
+
+    String value = new String(header, valueBeginIndex, valueEndIndex - valueBeginIndex);
+
+    if (index < header.length) {
+      index++;
+    }
+
+    return new ParsedAttribute(key, value, index);
+  }
+
+  private static int skipWhitespace(char[] header, int index) {
+    while (index < header.length && Character.isWhitespace(header[index])) {
+      index++;
+    }
+    return index;
+  }
+
+  private static boolean isCookieAttribute(String key) {
+    return key.charAt(0) == '$';
+  }
+
+  private record ParsedAttribute(String key, String value, int nextIndex) {}
+
   /**
-   * @throws IllegalArgumentException If the validation of the name fails.
+   * Returns the validated cookie name, computing and caching it on first access.
+   *
+   * <p>The raw name provided by the user agent is validated lazily to avoid work when the cookie is
+   * never consumed. Validation lowers the case, checks for illegal separator characters, and
+   * enforces the outbound naming rules inherited from {@link Cookie}. After successful validation,
+   * the result is cached and reused for later calls. If the stored name violates the constraints,
+   * the method throws an {@link IllegalArgumentException} to surface the malformed header to
+   * callers.
+   *
+   * @return Canonicalized cookie name; never {@code null} once validation succeeds and cached.
+   * @throws IllegalArgumentException If the stored name fails, RFC-inspired validation checks.
    */
   @Override
   public String getName() {
     if (name == null) {
-      name = validateName(notValidatedName);
+      name = Cookie.validateName(notValidatedName);
       notValidatedName = null;
     }
 
@@ -228,7 +273,16 @@ public final class ReceivedCookie extends Cookie {
   }
 
   /**
-   * @throws IllegalArgumentException If the validation of the domain fails.
+   * Returns the validated domain attribute as a {@link URI}, or {@code null} when absent.
+   *
+   * <p>The domain is parsed only when first requested to conserve resources for unused cookies. If
+   * the client omitted a {@code $domain} attribute, the method returns {@code null}. Otherwise, the
+   * attribute is validated via {@link Cookie#validateDomain(String)} and cached. Invalid domain
+   * strings lead to {@link IllegalArgumentException}, wrapping the underlying {@link
+   * URISyntaxException} to unify error signaling for callers.
+   *
+   * @return Normalized domain URI or {@code null} when the client did not specify a domain.
+   * @throws IllegalArgumentException If domain parsing or validation fails for the stored value.
    */
   @Override
   public URI getDomain() {
@@ -237,7 +291,7 @@ public final class ReceivedCookie extends Cookie {
         String domainString = content.get("$domain");
         if (domainString == null) return null;
 
-        domain = validateDomain(domainString);
+        domain = Cookie.validateDomain(domainString);
       } catch (URISyntaxException e) {
         throw new IllegalArgumentException(e);
       }
@@ -247,13 +301,21 @@ public final class ReceivedCookie extends Cookie {
   }
 
   /**
-   * @throws IllegalArgumentException If the validation of the path fails.
+   * Returns the validated path attribute, defaulting to {@code null} when unspecified.
+   *
+   * <p>Path parsing is performed lazily using {@link Cookie#validatePath(URI)} to ensure the value
+   * is a relative URI beginning with {@code /}. The validated result is cached to avoid repeat work
+   * on later invocations. If the stored path string is malformed or violates the validation rules,
+   * the method throws {@link IllegalArgumentException} to alert request handlers of bad input.
+   *
+   * @return Canonicalized path URI or {@code null} if no {@code $path} attribute was supplied.
+   * @throws IllegalArgumentException If path parsing or validation fails for the recorded value.
    */
   @Override
   public URI getPath() {
     if (path == null) {
       try {
-        path = validatePath(content.get("$path"));
+        path = Cookie.validatePath(content.get("$path"));
       } catch (URISyntaxException e) {
         throw new IllegalArgumentException(e);
       }
@@ -263,31 +325,68 @@ public final class ReceivedCookie extends Cookie {
   }
 
   /**
-   * @throws IllegalArgumentException If the validation of the name fails.
+   * Returns the validated cookie value associated with the cookie name.
+   *
+   * <p>The value is fetched from the parsed attribute map, validated for illegal characters via the
+   * shared {@link Cookie#validateValue(String)} routine, and cached for later calls. Because
+   * validation occurs on demand, malformed values encountered here raise {@link
+   * IllegalArgumentException} even if the cookie was otherwise accepted during parsing. Callers
+   * should be prepared to handle that exception when processing untrusted headers.
+   *
+   * @return Canonicalized cookie value string; never {@code null} once successfully validated.
+   * @throws IllegalArgumentException If value validation fails for the stored attribute content.
    */
   @Override
   public String getValue() {
-    if (value == null) value = validateValue(content.get(getName()));
+    if (value == null) value = Cookie.validateValue(content.get(getName()));
 
     return value;
   }
 
-  // TODO: This is broken because TimeUtil.parseHTTPDate() does not work.
-  //	public Date getExpirationDate() {
-  //		if(expirationDate == null) {
-  //			try {
-  //				expirationDate = validateExpirationDate(TimeUtil.parseHTTPDate(content.get("$expires")));
-  //			} catch (ParseException e) {
-  //				throw new IllegalArgumentException(e);
-  //			}
-  //		}
-  //
-  //		return expirationDate;
-  //	}
+  // Expiration parsing intentionally omitted because TimeUtil.parseHTTPDate() is not reliable here.
 
+  /**
+   * Always throws because inbound cookies must not be serialized back into the header form.
+   *
+   * <p>{@link ReceivedCookie} models client-supplied data and therefore does not support rendering
+   * a {@code Set-Cookie} header. Attempting to call this method indicates a programming error; the
+   * caller should construct a fresh {@link Cookie} instead. The exception message suggests using
+   * the outbound cookie type to avoid accidentally echoing user-provided data.
+   *
+   * @return This method never returns; it always throws an {@link UnsupportedOperationException}.
+   * @throws UnsupportedOperationException Always thrown to signal that encoding is unsupported for
+   *     received cookies.
+   */
+  @SuppressWarnings("DoNotCallSuggester")
   @Override
-  protected String encodeToHeaderValue() {
+  String encodeToHeaderValue() {
     throw new UnsupportedOperationException(
         "ReceivedCookie objects cannot be encoded to a HTTP header value, use Cookie objects!");
+  }
+
+  /** Returns true if this cookie has equal domain, path, and name as another Cookie. */
+  @Override
+  public boolean equals(Object obj) {
+    if (obj == this) return true;
+
+    if (!(obj instanceof Cookie other)) return false;
+
+    URI myDomain = getDomain();
+    URI otherDomain = other.getDomain();
+
+    if (myDomain != null) {
+      if (otherDomain == null || !otherDomain.toString().equals(myDomain.toString())) return false;
+    } else if (otherDomain != null) return false;
+
+    if (!getPath().toString().equals(other.getPath().toString())) return false;
+
+    return getName().equals(other.getName());
+  }
+
+  @Override
+  public int hashCode() {
+    URI cookieDomain = getDomain();
+    int domainHash = cookieDomain != null ? cookieDomain.hashCode() : 0;
+    return domainHash + getPath().hashCode() + getName().hashCode();
   }
 }

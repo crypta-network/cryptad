@@ -1,10 +1,24 @@
 package network.crypta.io.comm;
 
+/**
+ * Transport that can re-evaluate external reachability (port forwarding) on demand.
+ *
+ * <p>Used by components that observe conditions implying that previously detected connectivity (for
+ * example, NAT or firewall port mappings) may no longer be accurate. Implementations should trigger
+ * a fresh probe and update the {@link network.crypta.io.AddressTracker} status used by the node for
+ * routing and UI hints.
+ *
+ * <p>Threading: Callers may invoke methods from I/O or management threads. Implementations should
+ * avoid long blocking work on the caller thread.
+ */
 public interface PortForwardSensitiveSocketHandler extends SocketHandler {
 
   /**
-   * Something has changed at a higher level suggesting the port forwarding status may be bogus, so
-   * we need to rescan.
+   * Requests that the transport verify current port-forwarding status.
+   *
+   * <p>Implementations should initiate any necessary checks (for example, NAT-PMP/UPnP queries or
+   * external reachability tests) and propagate updated status to interested components.
    */
+  @SuppressWarnings("unused")
   void rescanPortForward();
 }

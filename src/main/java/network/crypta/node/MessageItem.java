@@ -4,14 +4,23 @@ import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * A queued byte[], maybe including a Message, and a callback, which may be null. Note that we
- * always create the byte[] on construction, as almost everywhere which uses a MessageItem needs to
- * know its length immediately.
+ * Queued outbound payload with optional {@link Message} and callbacks.
+ *
+ * <p>This item holds the encoded bytes that will be sent on the wire. The buffer is created during
+ * construction so callers can obtain the exact length immediately. When {@link #formatted} is
+ * {@code true}, the buffer may contain multiple messages already framed as one packet.
+ *
+ * <p>Resilience: byte counting and callback notifications are deliberately isolated from the core
+ * networking flow. Implementations of {@link AsyncMessageCallback} and {@link ByteCounter} are
+ * allowed to throw; we catch and log {@link Throwable} around those invocations to ensure a
+ * misbehaving observer cannot break send, disconnect, or accounting paths.
  */
-public class MessageItem {
+public final class MessageItem {
+  private static final Logger LOG = LoggerFactory.getLogger(MessageItem.class);
 
   final Message msg;
   final byte[] buf;
@@ -19,8 +28,8 @@ public class MessageItem {
   final long submitted;
 
   /**
-   * If true, the buffer may contain several messages, and is formatted for sending as a single
-   * packet.
+   * When {@code true}, {@link #buf} may contain multiple messages and is preformatted as a single
+   * packet for immediate transmission.
    */
   final boolean formatted;
 
@@ -41,12 +50,12 @@ public class MessageItem {
     else priority = msg2.getPriority();
     buf = msg.encodeToPacket();
     if (buf.length > NewPacketFormat.MAX_MESSAGE_SIZE) {
-      // This is bad because fairness between UID's happens at the level of message queueing,
-      // and the window size is frequently very small, so if we have really big messages they
-      // could cause big problems e.g. starvation of other messages, resulting in timeouts
-      // (especially if there are retransmits).
-      Logger.error(
-          this, "WARNING: Message too big: " + buf.length + " for " + msg2, new Exception("error"));
+      /*
+       * Fairness is enforced at message queueing. Very large frames can monopolize a small
+       * send window and starve other UIDs, which in turn increases timeout risk (especially
+       * under retransmission).
+       */
+      LOG.warn("Encoded message size {} bytes exceeds limit for {}", buf.length, msg2);
     }
   }
 
@@ -66,28 +75,44 @@ public class MessageItem {
     this.priority = priority;
   }
 
-  /** Return the data contents of this MessageItem. */
+  /**
+   * Returns the encoded payload.
+   *
+   * <p>When {@link #formatted} is {@code true}, the buffer may carry multiple messages arranged as
+   * one packet. The returned array is the internal backing buffer and must not be modified by
+   * callers.
+   *
+   * @return byte array containing the on‑wire representation; never {@code null}
+   */
   public byte[] getData() {
     return buf;
   }
 
+  /**
+   * Returns the number of bytes in {@link #getData()}.
+   *
+   * @return payload length in bytes
+   */
   public int getLength() {
     return buf.length;
   }
 
   /**
+   * Records the number of bytes sent for throttle accounting.
+   *
    * @param length The actual number of bytes sent to send this message, including our share of the
    *     packet overheads, *and including alreadyReportedBytes*, which is only used when deciding
    *     how many bytes to report to the throttle.
    */
+  @SuppressWarnings("java:S1181")
   public void onSent(int length) {
-    // NB: The fact that the bytes are counted before callback notifications is important for load
-    // management.
+    // Count bytes before invoking callbacks to keep load accounting consistent.
     if (ctrCallback != null) {
       try {
         ctrCallback.sentBytes(length);
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t + " reporting " + length + " sent bytes on " + this, t);
+        // Callbacks/instrumentation must never break the send flow.
+        LOG.error("sentBytes callback threw; bytes={} item={}", length, this, t);
       }
     }
   }
@@ -101,30 +126,50 @@ public class MessageItem {
     return super.toString() + ":formatted=" + formatted + ",msg=" + msg;
   }
 
+  /**
+   * Notifies callbacks that the connection closed before delivery completed.
+   *
+   * <p>Exceptions from callbacks are caught and logged to preserve the disconnect loop.
+   */
+  @SuppressWarnings("java:S1181")
   public void onDisconnect() {
     if (cb != null) {
       for (AsyncMessageCallback cbi : cb) {
         try {
           cbi.disconnected();
         } catch (Throwable t) {
-          Logger.error(this, "Caught " + t + " calling sent() on " + cbi + " for " + this, t);
+          // Keep the disconnect loop resilient if callbacks misbehave.
+          LOG.error("disconnected() callback threw on {} for {}", cbi, this, t);
         }
       }
     }
   }
 
+  /** Notifies callbacks that a fatal error occurred and the item cannot be delivered. */
+  @SuppressWarnings("java:S1181")
   public void onFailed() {
     if (cb != null) {
       for (AsyncMessageCallback cbi : cb) {
         try {
           cbi.fatalError();
         } catch (Throwable t) {
-          Logger.error(this, "Caught " + t + " calling sent() on " + cbi + " for " + this, t);
+          LOG.error("fatalError() callback threw on {} for {}", cbi, this, t);
         }
       }
     }
   }
 
+  /**
+   * Returns a stable identifier for logging/fairness derived from {@link DMT#UID}.
+   *
+   * <p>The value is computed once and cached. When this item wraps a raw buffer ({@link #msg} is
+   * {@code null}) or when the underlying message lacks a UID, {@code -1} is returned.
+   *
+   * <p>Thread‑safety: synchronized to ensure a single computation and visibility of the cached
+   * value.
+   *
+   * @return UID as a {@code long}, or {@code -1} when unavailable
+   */
   public synchronized long getID() {
     if (hasCachedID) return cachedID;
     cachedID = generateID();
@@ -135,21 +180,27 @@ public class MessageItem {
   private long generateID() {
     if (msg == null) return -1;
     Object o = msg.getObject(DMT.UID);
-    if (!(o instanceof Long)) {
-      return -1;
+    if (o instanceof Long id) {
+      return id;
     } else {
-      return (Long) o;
+      return -1;
     }
   }
 
-  /** Called the first time we have sent all of the message. */
+  /**
+   * Invoked the first time the full payload has been transmitted.
+   *
+   * <p>Subsequent retransmissions do not trigger another call. Exceptions from callbacks are caught
+   * and logged.
+   */
+  @SuppressWarnings("java:S1181")
   public void onSentAll() {
     if (cb != null) {
       for (AsyncMessageCallback cbi : cb) {
         try {
           cbi.sent();
         } catch (Throwable t) {
-          Logger.error(this, "Caught " + t + " calling sent() on " + cbi + " for " + this, t);
+          LOG.error("sent() callback threw on {} for {}", cbi, this, t);
         }
       }
     }
@@ -159,18 +210,28 @@ public class MessageItem {
    * Set the deadline for this message. Called when a message is unqueued, when we start to send it.
    * Used if the message does not entirely fit in the packet, and also if it is retransmitted.
    *
-   * @param time The time (in the future) to set the deadline to.
+   * <p>Thread‑safety: synchronized.
+   *
+   * @param time absolute time in milliseconds since epoch at which this item expires
    */
   public synchronized void setDeadline(long time) {
     deadline = time;
   }
 
-  /** Clear the deadline for this message. */
+  /**
+   * Clears any previously set deadline.
+   *
+   * <p>Thread‑safety: synchronized.
+   */
   public synchronized void clearDeadline() {
     deadline = 0;
   }
 
-  /** Get the deadline for this message. 0 means no deadline has been set. */
+  /**
+   * Returns the current deadline.
+   *
+   * @return absolute time in milliseconds since epoch, or {@code 0} when no deadline is set
+   */
   public synchronized long getDeadline() {
     return deadline;
   }

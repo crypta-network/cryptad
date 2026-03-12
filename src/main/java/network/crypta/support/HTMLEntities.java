@@ -1,20 +1,63 @@
 package network.crypta.support;
 
 import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Class that provides data structures filled with HTML Entities and correspondent char value
+ * Lookup tables for HTML entity names and their corresponding characters.
+ *
+ * <p>This utility class exposes two package-visible maps used by the HTML/XML encoding/decoding
+ * helpers in this package:
+ *
+ * <ul>
+ *   <li>{@link #encodeMap}: maps a {@code char} to an <em>entity name</em> string (without the
+ *       leading {@code '&'} or trailing {@code ';'}). For example, {@code '<' → "lt"}, {@code '"' →
+ *       "quot"}, and the apostrophe ({@code '\''}) → {@code "#39"}.
+ *   <li>{@link #decodeMap}: reverse mapping from entity name (again, without {@code '&'} or {@code
+ *       ';'}) to the corresponding {@code char}.
+ * </ul>
+ *
+ * <p>Entity names may be either standard named entities (for example, {@code "copy"}) or numeric
+ * forms written as {@code "#<decimal>"} (for example, {@code "#0"} for the NUL character and {@code
+ * "#39"} for the apostrophe). Neither map contains null keys or values.
+ *
+ * <p>Thread-safety: maps are created and populated during class initialization and are not modified
+ * by this class afterward. Clients should treat them as read-only. Lookups are {@code O(1)} on the
+ * underlying {@link java.util.HashMap} implementation.
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
 public final class HTMLEntities {
 
-  /** a Map where the HTML Entity is the value and the correspondent char is the key */
-  public static final HashMap<Character, String> encodeMap;
+  private HTMLEntities() {
+    throw new IllegalStateException("Utility class");
+  }
 
-  /** a Map where the HTML Entity is the key and the correspondent char is the value */
-  public static final HashMap<String, Character> decodeMap;
+  /**
+   * Mapping from character to HTML entity name (without {@code '&'} or {@code ';'}).
+   *
+   * <p>Populated once at class load time from an internal table. Exposed at package scope for use
+   * by {@link HTMLEncoder}. Not intended to be modified at runtime.
+   */
+  static final Map<Character, String> encodeMap;
 
+  /**
+   * Mapping from HTML entity name (without {@code '&'} or {@code ';'}) to character.
+   *
+   * <p>Populated once at class load time from an internal table. Exposed at package scope for use
+   * by {@link HTMLDecoder}. Not intended to be modified at runtime.
+   */
+  static final Map<String, Character> decodeMap;
+
+  /*
+   * Source data for both maps. Each entry is a pair: (character, entityName).
+   *
+   * - Entity names are bare (no leading '&' and no trailing ';').
+   * - Numeric entities are represented as "#<decimal>".
+   * - The set includes common HTML entities (ASCII, ISO-8859-1, Greek, math symbols, spacing).
+   * - Duplicate entries, if any, are harmless: later entries overwrite earlier ones with the same
+   *   mapping when building the HashMaps below.
+   */
   private static final Object[][] charArray = {
     {(char) 0, "#0"},
     {(char) 34, "quot"},
@@ -289,10 +332,12 @@ public final class HTMLEntities {
   };
 
   static {
+    // Build both lookup maps from the table above at class initialization.
     encodeMap = new HashMap<>();
     decodeMap = new HashMap<>();
 
     for (Object[] ch : charArray) {
+      // Keys and values are non-null by construction; cast to the exact types.
       encodeMap.put((Character) ch[0], (String) ch[1]);
       decodeMap.put((String) ch[1], (Character) ch[0]);
     }

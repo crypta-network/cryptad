@@ -1,23 +1,29 @@
 package network.crypta.client.async;
 
-import static org.junit.Assert.*;
-
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.CheatingTicker;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.WaitableExecutor;
 import network.crypta.support.io.NativeThread;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PersistentJobRunnerImplTest {
+import static org.junit.jupiter.api.Assertions.*;
 
-  public PersistentJobRunnerImplTest() {
+class PersistentJobRunnerImplTest {
+
+  PersistentJobRunnerImplTest() {
     jobRunner = new JobRunner(exec, ticker, 1000);
     context =
         new ClientContext(
-            0, null, exec, null, null, null, null, null, null, null, null, ticker, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
+            0,
+            new ClientContextRuntime(null, exec, null, ticker, null, null, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
     jobRunner.start(context);
     jobRunner.onStarted(false);
     exec.waitForIdle();
@@ -25,34 +31,43 @@ public class PersistentJobRunnerImplTest {
   }
 
   @Test
-  public void testWaitForCheckpoint() throws PersistenceDisabledException {
+  void waitAndCheckpoint_whenJobWoken_expectJobFinishes() throws PersistenceDisabledException {
+    // Arrange
     jobRunner.onLoading();
-    WakeableJob w = new WakeableJob();
-    jobRunner.queue(w, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-    w.waitForStarted();
+    WakeableJob job = new WakeableJob();
+    jobRunner.queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
+    job.waitForStarted();
     WaitAndCheckpoint checkpointer = new WaitAndCheckpoint(jobRunner);
-    new Thread(checkpointer).start();
+    Thread checkpointThread = new Thread(checkpointer);
+    checkpointThread.start();
     checkpointer.waitForStarted();
-    w.wakeUp();
+
+    // Act
+    job.wakeUp();
     checkpointer.waitForFinished();
-    assertTrue(w.finished());
+
+    // Assert
+    assertTrue(job.finished());
+    assertTrue(jobRunner.grabHasCheckpointed());
   }
 
   @Test
-  public void testDisabledCheckpointing() throws PersistenceDisabledException {
+  void mustCheckpoint_whenCheckpointingDisabled_expectFalseAfterJob()
+      throws PersistenceDisabledException {
+    // Arrange
     jobRunner.setCheckpointASAP();
     exec.waitForIdle();
-    assertFalse(jobRunner.mustCheckpoint()); // Has checkpointed, now false.
+    assertFalse(jobRunner.mustCheckpoint());
     jobRunner.disableWrite();
     assertFalse(jobRunner.mustCheckpoint());
+
+    // Act
     jobRunner.setCheckpointASAP();
     assertFalse(jobRunner.mustCheckpoint());
-
-    // Run a job which will request a checkpoint.
-    jobRunner.queue(context -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-
-    // Wait for the job to complete.
+    jobRunner.queue(ctx -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     exec.waitForIdle();
+
+    // Assert
     assertFalse(jobRunner.mustCheckpoint());
   }
 
@@ -65,7 +80,7 @@ public class PersistentJobRunnerImplTest {
         while (!wake) {
           try {
             wait();
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // Ignore.
           }
         }
@@ -80,10 +95,6 @@ public class PersistentJobRunnerImplTest {
       notifyAll();
     }
 
-    public synchronized boolean started() {
-      return started;
-    }
-
     public synchronized boolean finished() {
       return finished;
     }
@@ -92,7 +103,7 @@ public class PersistentJobRunnerImplTest {
       while (!started) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -105,9 +116,8 @@ public class PersistentJobRunnerImplTest {
 
   private static class JobRunner extends PersistentJobRunnerImpl {
 
-    public JobRunner(Executor executor, Ticker ticker, long interval) {
+    public JobRunner(PriorityAwareExecutor executor, Ticker ticker, long interval) {
       super(executor, ticker, interval);
-      // TODO Auto-generated constructor stub
     }
 
     @Override
@@ -149,7 +159,6 @@ public class PersistentJobRunnerImplTest {
         throw new IllegalStateException(
             JobRunner.class.getSimpleName() + " has failed with unexpected exception", e);
       }
-      assertTrue(jobRunner.grabHasCheckpointed());
       synchronized (this) {
         finished = true;
         notifyAll();
@@ -160,7 +169,7 @@ public class PersistentJobRunnerImplTest {
       while (!finished) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -170,7 +179,7 @@ public class PersistentJobRunnerImplTest {
       while (!started) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }

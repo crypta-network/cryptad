@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -10,8 +8,9 @@ import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.Locale;
 import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
@@ -29,40 +28,52 @@ import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
-import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.ProcessPriority;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
 import picocli.CommandLine;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+
 /**
+ * Bridges the Tanuki Wrapper lifecycle and the Crypta node.
+ *
+ * <p>NodeStarter wires process lifecycle callbacks (start, stop, control events) from the native
+ * Wrapper into the Java node. It also provides helpers for test environments and OSGi entry points.
+ * Only one instance is created per JVM.
+ *
  * @author nextgens
- *     <p>A class to tie the wrapper and the node (needed for self-restarting support).
- *     <p>There will only ever be one instance of NodeStarter.
  */
 public class NodeStarter implements WrapperListener {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
 
-  /*
-  (File.separatorChar == '\\') &&
-  (System.getProperty("os.arch").toLowerCase().matches("(i?[x0-9]86_64|amd64)")) ? 6 : 2;
-   */
+  // Platform-dependent legacy constant removed; source control retains history.
 
   /*---------------------------------------------------------------
    * Constructors
    *-------------------------------------------------------------*/
   private NodeStarter() {
-    // Force it to load right now, and log what exactly is loaded.
+    // Force it to load right now and log what exactly is loaded.
     JceLoader.dumpLoaded();
   }
 
-  /** If false, this is some sort of multi-node testing VM */
+  /**
+   * Returns whether this JVM was initialized for testing via {@link #globalTestInit}.
+   *
+   * <p>When {@code true}, the process is in a test/simulator VM. When {@code false}, it is a
+   * regular node process. This method is valid only after the startup has begun.
+   *
+   * @return {@code true} when running in a testing VM; otherwise {@code false}
+   * @throws IllegalStateException if called before startup initializes the flag
+   */
   public static synchronized boolean isTestingVM() {
     if (isStarted) {
       return isTestingVM;
@@ -74,288 +85,152 @@ public class NodeStarter implements WrapperListener {
   /*---------------------------------------------------------------
    * Main Method
    *-------------------------------------------------------------*/
+  /**
+   * Process entrypoint. Delegates to the native Wrapper which invokes {@link #start(String[])}.
+   *
+   * @param args command-line arguments forwarded to the application
+   */
   public static void main(String[] args) {
-    // Immediately try entering background mode. This way also class
-    //  loading will be subject to reduced priority.
+    // Enter background mode early so class loading also uses reduced priority.
     ProcessPriority.enterBackgroundMode();
 
-    // Start the application.  If the JVM was launched from the native
-    //  Wrapper then the application will wait for the native Wrapper to
-    //  call the application's start method.  Otherwise the start method
-    //  will be called immediately.
+    // Start the application. If launched by the native Wrapper, it will call start(); otherwise
+    // start() is called immediately here.
     WrapperManager.start(new NodeStarter(), args);
   }
 
   /**
-   * @see #globalTestInit(File, boolean, LogLevel, String, boolean, RandomSource)
-   * @deprecated Instead use {@link #globalTestInit(File, boolean, LogLevel, String, boolean,
-   *     RandomSource)}.
-   */
-  @Deprecated
-  public static RandomSource globalTestInit(
-      String testName, boolean enablePlug, LogLevel logThreshold, String details, boolean noDNS)
-      throws InvalidThresholdException {
-
-    return globalTestInit(new File(testName), enablePlug, logThreshold, details, noDNS, null);
-  }
-
-  /**
-   * VM-specific init. Not Node-specific; many nodes may be created later.
+   * Initializes a testing VM. This is a VM-scoped state; multiple nodes may be created afterward.
    *
-   * @param baseDirectory The directory in which the test data will be placed. Will be created
-   *     automatically if it does not exist. You should use the same one in {@link
-   *     TestNodeParameters#baseDirectory} afterwards for each individual test node as long as it
-   *     has a distinct port. See its JavaDoc.<br>
-   *     The function will NOT fail if the directory exists already. You should make sure on your
-   *     own to delete this before and after tests to ensure a clean state. Notice that JUnit
-   *     provides a mechanism for automatic creation and deletion of test directories
-   *     (TemporaryFolder).
-   * @param RandomSource The random number generator of the Node. Null for the default of {@link
-   *     Yarrow}. <br>
-   *     You might want to use a {@link DummyRandomSource} in unit tests:<br>
-   *     - Unlike Yarrow, it won't block startup waiting for entropy.<br>
-   *     - It allows you to specify a seed which you then can print to stdout so randomized unit
-   *     tests are reproducible.<br>
-   *     - It should be a lot faster than Yarrow.<br>
-   * @return If you passed a {@link RandomSource}, the same one is returned. Otherwise, a new {@link
-   *     Yarrow} is returned.
+   * @param baseDirectory directory for test data; created if missing (caller cleans up)
+   * @param enablePlug when {@code true}, starts a background keep-alive thread
+   * @param logThreshold minimum log level for test logging
+   * @param details optional logging details string (may be {@code null})
+   * @param noDNS when {@code true}, disables DNS requests in tests
+   * @param randomSource random source to use; when {@code null}, a new {@link Yarrow} is created
+   * @return the {@link RandomSource} in use (either {@code randomSource} or a new {@link Yarrow})
+   * @throws IllegalStateException if called more than once per JVM
+   *     <p>Side effects:
+   *     <ul>
+   *       <li>Bootstraps logging for test/simulator environments.
+   *       <li>Sets {@code networkaddress.cache.ttl} and {@code networkaddress.cache.negative.ttl}
+   *           to {@code 0} to avoid DNS caching.
+   *       <li>Optionally spawns a keep-alive thread to prevent idle exits.
+   *     </ul>
    */
   public static RandomSource globalTestInit(
       File baseDirectory,
       boolean enablePlug,
-      LogLevel logThreshold,
+      org.slf4j.event.Level logThreshold,
       String details,
       boolean noDNS,
-      RandomSource randomSource)
-      throws InvalidThresholdException {
+      RandomSource randomSource) {
+    markStarted(true);
 
+    ensureDirectoryExists(baseDirectory);
+
+    // Configure SLF4J logging for tests/simulator environments.
+    Logging.bootstrap(logThreshold, details);
+
+    // Do not cache DNS results; tests often rely on dynamic hostnames.
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
+
+    // Initialize RNG, defaulting to Yarrow if none supplied.
+    RandomSource random = randomSource != null ? randomSource : new Yarrow();
+
+    if (enablePlug) {
+      startKeepAlivePlugThread();
+    }
+
+    DNSRequester.disable = noDNS;
+
+    return random;
+  }
+
+  private static void markStarted(boolean testingVm) {
     synchronized (NodeStarter.class) {
       if (isStarted) {
         throw new IllegalStateException();
       }
       isStarted = true;
-      isTestingVM = true;
+      isTestingVM = testingVm;
     }
+  }
 
-    if ((!baseDirectory.mkdir()) && ((!baseDirectory.exists()) || (!baseDirectory.isDirectory()))) {
-
-      System.err.println("Cannot create directory for test");
+  private static void ensureDirectoryExists(File dir) {
+    if (!dir.mkdir() && (!dir.exists() || !dir.isDirectory())) {
+      LOG.error("Test base directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
+  }
 
-    Logger.setupStdoutLogging(logThreshold, details);
-
-    // set Java's DNS cache not to cache forever, since many people
-    // use dyndns hostnames
-    Security.setProperty("networkaddress.cache.ttl", "0");
-    Security.setProperty("networkaddress.cache.negative.ttl", "0");
-
-    // Setup RNG
-    RandomSource random = randomSource != null ? randomSource : new Yarrow();
-
-    if (enablePlug) {
-
-      // Thread to keep the node up.
-      // JVM deadlocks losing a lock when two threads of different types (daemon|app)
-      // are contended for the same lock. So make USM daemon, and use useless to keep the JVM
-      // up.
-      // http://forum.java.sun.com/thread.jspa?threadID=343023&messageID=2942637 - last message
-      Runnable useless =
-          new Runnable() {
-
-            @Override
-            public void run() {
-              while (true) {
-                try {
-                  Thread.sleep(MINUTES.toMillis(60));
-                } catch (InterruptedException e) {
-                  // Ignore
-                } catch (Throwable t) {
-                  try {
-                    Logger.error(this, "Caught " + t, t);
-                  } catch (Throwable t1) {
-                    // Ignore
-                  }
-                }
+  @SuppressWarnings("java:S1181")
+  private static void startKeepAlivePlugThread() {
+    Runnable useless =
+        () -> {
+          while (true) {
+            try {
+              //noinspection BusyWait
+              Thread.sleep(MINUTES.toMillis(60));
+            } catch (InterruptedException _) {
+              Thread.currentThread().interrupt();
+              return;
+            } catch (Exception t) {
+              try {
+                LOG.error("Keep-alive plug thread error: {}", t, t);
+              } catch (Throwable _) {
+                // Ignore
               }
             }
-          };
-      Thread plug = new Thread(useless, "Plug");
-      // Not daemon, but doesn't do anything.
-      // Keeps the JVM alive.
-      plug.setDaemon(false);
-      plug.start();
-    }
-
-    DNSRequester.DISABLE = noDNS;
-
-    return random;
+          }
+        };
+    Thread plug = new Thread(useless, "Plug");
+    plug.setDaemon(false);
+    plug.start();
   }
 
   /**
-   * @deprecated Use {@link #createTestNode(TestNodeParameters)} instead
-   */
-  @Deprecated
-  public static Node createTestNode(
-      int port,
-      int opennetPort,
-      String testName,
-      boolean disableProbabilisticHTLs,
-      short maxHTL,
-      int dropProb,
-      RandomSource random,
-      Executor executor,
-      int threadLimit,
-      long storeSize,
-      boolean ramStore,
-      boolean enableSwapping,
-      boolean enableARKs,
-      boolean enableULPRs,
-      boolean enablePerNodeFailureTables,
-      boolean enableSwapQueueing,
-      boolean enablePacketCoalescing,
-      int outputBandwidthLimit,
-      boolean enableFOAF,
-      boolean connectToSeednodes,
-      boolean longPingTimes,
-      boolean useSlashdotCache,
-      String ipAddressOverride)
-      throws NodeInitException {
-    return createTestNode(
-        port,
-        opennetPort,
-        testName,
-        disableProbabilisticHTLs,
-        maxHTL,
-        dropProb,
-        random,
-        executor,
-        threadLimit,
-        storeSize,
-        ramStore,
-        enableSwapping,
-        enableARKs,
-        enableULPRs,
-        enablePerNodeFailureTables,
-        enableSwapQueueing,
-        enablePacketCoalescing,
-        outputBandwidthLimit,
-        enableFOAF,
-        connectToSeednodes,
-        longPingTimes,
-        useSlashdotCache,
-        ipAddressOverride,
-        false);
-  }
-
-  /**
-   * Create a test node.
+   * Creates a node configured for tests using {@link TestNodeParameters}.
    *
-   * @param port The node port number. Each test node must have a different port number.
-   * @param testName The test name.
-   * @throws NodeInitException If the node cannot start up for some reason, most likely a config
-   *     problem.
-   * @deprecated Use {@link #createTestNode(TestNodeParameters)} instead
-   */
-  @Deprecated
-  public static Node createTestNode(
-      int port,
-      int opennetPort,
-      String testName,
-      boolean disableProbabilisticHTLs,
-      short maxHTL,
-      int dropProb,
-      RandomSource random,
-      Executor executor,
-      int threadLimit,
-      long storeSize,
-      boolean ramStore,
-      boolean enableSwapping,
-      boolean enableARKs,
-      boolean enableULPRs,
-      boolean enablePerNodeFailureTables,
-      boolean enableSwapQueueing,
-      boolean enablePacketCoalescing,
-      int outputBandwidthLimit,
-      boolean enableFOAF,
-      boolean connectToSeednodes,
-      boolean longPingTimes,
-      boolean useSlashdotCache,
-      String ipAddressOverride,
-      boolean enableFCP)
-      throws NodeInitException {
-
-    TestNodeParameters params = new TestNodeParameters();
-    params.port = port;
-    params.opennetPort = opennetPort;
-    params.baseDirectory = new File(testName);
-    params.disableProbabilisticHTLs = disableProbabilisticHTLs;
-    params.maxHTL = maxHTL;
-    params.dropProb = dropProb;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = threadLimit;
-    params.storeSize = storeSize;
-    params.ramStore = ramStore;
-    params.enableSwapping = enableSwapping;
-    params.enableARKs = enableARKs;
-    params.enableULPRs = enableULPRs;
-    params.enablePerNodeFailureTables = enablePerNodeFailureTables;
-    params.enableSwapQueueing = enableSwapQueueing;
-    params.enablePacketCoalescing = enablePacketCoalescing;
-    params.outputBandwidthLimit = outputBandwidthLimit;
-    params.enableFOAF = enableFOAF;
-    params.connectToSeednodes = connectToSeednodes;
-    params.longPingTimes = longPingTimes;
-    params.useSlashdotCache = useSlashdotCache;
-    params.ipAddressOverride = ipAddressOverride;
-    params.enableFCP = enableFCP;
-
-    return createTestNode(params);
-  }
-
-  /**
-   * Create a test node.
-   *
-   * @throws NodeInitException If the node cannot start up for some reason, most likely a config
-   *     problem.
+   * @param params test parameters including ports, store size, and feature toggles
+   * @return a newly created {@link Node} not yet connected to any peers
+   * @throws NodeInitException if startup cannot proceed due to configuration problems
    */
   public static Node createTestNode(TestNodeParameters params) throws NodeInitException {
 
     synchronized (NodeStarter.class) {
-      if ((!isStarted) || (!isTestingVM)) {
+      if (!isStarted || !isTestingVM) {
         throw new IllegalStateException("Call globalTestInit() first!");
       }
     }
 
-    File baseDir = params.baseDirectory;
-    File portDir = new File(baseDir, Integer.toString(params.port));
-    if ((!portDir.mkdir()) && ((!portDir.exists()) || (!portDir.isDirectory()))) {
-      System.err.println("Cannot create directory for test");
+    File baseDir = params.getBaseDirectory();
+    File portDir = new File(baseDir, Integer.toString(params.getPort()));
+    if (!portDir.mkdir() && (!portDir.exists() || !portDir.isDirectory())) {
+      LOG.error("Test port directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
-    // Set up config for testing
-    SimpleFieldSet configFS = new SimpleFieldSet(false); // only happens once in entire simulation
-    if (params.outputBandwidthLimit > 0) {
-      configFS.put("node.outputBandwidthLimit", params.outputBandwidthLimit);
+    // Set up config for testing.
+    SimpleFieldSet configFS = new SimpleFieldSet(false); // Built once per simulation run.
+    if (params.getOutputBandwidthLimit() > 0) {
+      configFS.put("node.outputBandwidthLimit", params.getOutputBandwidthLimit());
       configFS.put("node.throttleLocalTraffic", true);
     } else {
-      // Even with throttleLocalTraffic=false, requests still count in NodeStats.
-      // So set outputBandwidthLimit to something insanely high.
+      // Even with throttleLocalTraffic=false, requests count in NodeStats.
+      // Set an extremely high outputBandwidthLimit to avoid throttling.
       configFS.put("node.outputBandwidthLimit", 16 * 1024 * 1024);
       configFS.put("node.throttleLocalTraffic", false);
     }
-    configFS.put("node.useSlashdotCache", params.useSlashdotCache);
-    configFS.put("node.listenPort", params.port);
-    configFS.put("node.disableProbabilisticHTLs", params.disableProbabilisticHTLs);
+    configFS.put("node.useSlashdotCache", params.isUseSlashdotCache());
+    configFS.put("node.listenPort", params.getPort());
+    configFS.put("node.disableProbabilisticHTLs", params.isDisableProbabilisticHTLs());
     configFS.put("fproxy.enabled", false);
-    configFS.put("fcp.enabled", params.enableFCP);
+    configFS.put("fcp.enabled", params.isEnableFCP());
     configFS.put("fcp.port", 9481);
     configFS.put("fcp.ssl", false);
-    configFS.put("pluginmanager.enabled", params.enablePlugins);
     configFS.put("console.enabled", false);
-    configFS.putSingle("pluginmanager.loadplugin", "");
     configFS.put("node.updater.enabled", false);
     configFS.putSingle("node.install.tempDir", new File(portDir, "temp").toString());
     configFS.putSingle("node.install.storeDir", new File(portDir, "store").toString());
@@ -365,38 +240,38 @@ public class NodeStarter implements WrapperListener {
     configFS.putSingle("node.install.userDir", portDir.toString());
     configFS.putSingle("node.install.runDir", portDir.toString());
     configFS.putSingle("node.install.cfgDir", portDir.toString());
-    configFS.put("node.maxHTL", params.maxHTL);
-    configFS.put("node.testingDropPacketsEvery", params.dropProb);
+    configFS.put("node.maxHTL", params.getMaxHTL());
+    configFS.put("node.testingDropPacketsEvery", params.getDropProb());
     configFS.put("node.alwaysAllowLocalAddresses", true);
     configFS.put("node.includeLocalAddressesInNoderefs", true);
     configFS.put("node.enableARKs", false);
-    configFS.put("node.load.threadLimit", params.threadLimit);
-    if (params.ramStore) {
+    configFS.put("node.load.threadLimit", params.getThreadLimit());
+    if (params.isRamStore()) {
       configFS.putSingle("node.storeType", "ram");
     }
-    configFS.put("node.storeSize", params.storeSize);
+    configFS.put("node.storeSize", params.getStoreSize());
     configFS.put("node.disableHangCheckers", true);
-    configFS.put("node.enableSwapping", params.enableSwapping);
-    configFS.put("node.enableSwapQueueing", params.enableSwapQueueing);
-    configFS.put("node.enableARKs", params.enableARKs);
-    configFS.put("node.enableULPRDataPropagation", params.enableULPRs);
-    configFS.put("node.enablePerNodeFailureTables", params.enablePerNodeFailureTables);
-    configFS.put("node.enablePacketCoalescing", params.enablePacketCoalescing);
-    configFS.put("node.publishOurPeersLocation", params.enableFOAF);
-    configFS.put("node.routeAccordingToOurPeersLocation", params.enableFOAF);
-    configFS.put("node.opennet.enabled", params.opennetPort > 0);
-    configFS.put("node.opennet.listenPort", params.opennetPort);
+    configFS.put("node.enableSwapping", params.isEnableSwapping());
+    configFS.put("node.enableSwapQueueing", params.isEnableSwapQueueing());
+    configFS.put("node.enableARKs", params.isEnableARKs());
+    configFS.put("node.enableULPRDataPropagation", params.isEnableULPRs());
+    configFS.put("node.enablePerNodeFailureTables", params.isEnablePerNodeFailureTables());
+    configFS.put("node.enablePacketCoalescing", params.isEnablePacketCoalescing());
+    configFS.put("node.publishOurPeersLocation", params.isEnableFOAF());
+    configFS.put("node.routeAccordingToOurPeersLocation", params.isEnableFOAF());
+    configFS.put("node.opennet.enabled", params.getOpennetPort() > 0);
+    configFS.put("node.opennet.listenPort", params.getOpennetPort());
     configFS.put("node.opennet.alwaysAllowLocalAddresses", true);
     configFS.put("node.opennet.oneConnectionPerIP", false);
     configFS.put("node.opennet.assumeNATed", true);
-    configFS.put("node.opennet.connectToSeednodes", params.connectToSeednodes);
+    configFS.put("node.opennet.connectToSeednodes", params.isConnectToSeednodes());
     configFS.put("node.encryptTempBuckets", false);
     configFS.put("node.encryptPersistentTempBuckets", false);
     configFS.put("node.enableRoutedPing", true);
-    if (params.ipAddressOverride != null) {
-      configFS.putSingle("node.ipAddressOverride", params.ipAddressOverride);
+    if (params.getIpAddressOverride() != null) {
+      configFS.putSingle("node.ipAddressOverride", params.getIpAddressOverride());
     }
-    if (params.longPingTimes) {
+    if (params.isLongPingTimes()) {
       configFS.put("node.maxPingTime", 100000);
       configFS.put("node.subMaxPingTime", 50000);
     }
@@ -410,32 +285,69 @@ public class NodeStarter implements WrapperListener {
 
     PersistentConfig config = new PersistentConfig(configFS);
 
-    Node node = new Node(config, params.random, params.random, null, null, params.executor);
+    Node node =
+        new Node(config, params.getRandom(), params.getRandom(), null, params.getExecutor());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
-    node.getPeers().removeAllPeers();
+    node.network().peers().removeAllPeers();
 
     return node;
   }
 
-  // experimental osgi support
+  // Experimental OSGi support.
+  /**
+   * Starts the daemon through the OSGi entry point.
+   *
+   * <p>This helper mirrors standard startup and stores a singleton reference used by {@link
+   * #stop_osgi(int)}. If a startup returns a non-null exit code, the wrapper receives that code
+   * when running under the native wrapper. Outside wrapper control, non-zero exit codes are treated
+   * as startup failure and converted to an exception after stopping.
+   *
+   * @param args command-line arguments forwarded to standard startup processing
+   */
+  @SuppressWarnings({"unused", "java:S100"})
   public static void start_osgi(String[] args) {
     nodestarter_osgi = new NodeStarter();
-    nodestarter_osgi.start(args);
+    Integer exitCode = nodestarter_osgi.start(args);
+    if (exitCode != null) {
+      if (WrapperManager.isControlledByNativeWrapper()) {
+        WrapperManager.stop(exitCode);
+      } else if (exitCode != 0) {
+        stop_osgi(exitCode);
+        throw new IllegalStateException("Node startup failed with exit code " + exitCode);
+      }
+    }
   }
 
   /*---------------------------------------------------------------
    * WrapperListener Methods
    *-------------------------------------------------------------*/
 
-  // experimental osgi support
+  // Experimental OSGi support.
+  /**
+   * Stops the OSGi-managed daemon instance.
+   *
+   * <p>The currently registered OSGi starter instance is asked to shut down with the provided exit
+   * code and then cleared so later starting create a fresh instance.
+   *
+   * @param exitCode process exit code used for the shutdown sequence
+   */
+  @SuppressWarnings({"unused", "java:S100"})
   public static void stop_osgi(int exitCode) {
     nodestarter_osgi.stop(exitCode);
     nodestarter_osgi = null;
   }
 
-  /** Get the memory limit in MB. Return -1 if we don't know, -2 for unlimited. */
+  /**
+   * Returns the memory limit in mebibyte.
+   *
+   * <p>Special values: {@code -1} when unknown, {@code -2} when unlimited. Values round down to the
+   * nearest MiB. Extremely large limits above {@code Integer.MAX_VALUE} MiB are reported as
+   * unknown.
+   *
+   * @return memory limit in MiB, {@code -1} unknown, or {@code -2} unlimited
+   */
   public static long getMemoryLimitMB() {
     long limit = getMemoryLimitBytes();
     if (limit <= 0) {
@@ -446,13 +358,19 @@ public class NodeStarter implements WrapperListener {
     }
     limit /= (1024 * 1024);
     if (limit > Integer.MAX_VALUE) {
-      return -1; // Seems unlikely. FIXME 2TB limit!
+      // Note: values above ~2TB are reported as unknown (-1) due to int return limits.
+      return -1;
     }
     return limit;
   }
 
   /**
-   * Get the memory limit in bytes. Return -1 if we don't know. Compensate for odd JVMs' behaviour.
+   * Returns the JVM memory limit in bytes, or {@code -1} when unknown.
+   *
+   * <p>Some JVMs historically reported the limit in MiB. This method compensates by treating small
+   * values as MiB and converting to bytes.
+   *
+   * @return memory limit in bytes, or {@code -1} when unknown
    */
   public static long getMemoryLimitBytes() {
     long maxMemory = Runtime.getRuntime().maxMemory();
@@ -470,8 +388,12 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * check whether the OS, JVM and wrapper are 64bits On Windows this will be always true (the
-   * wrapper we deploy is 32bits)
+   * Heuristic 32-bit check for the runtime environment.
+   *
+   * <p>Returns {@code true} when indicators suggest a 32-bit setup. On Windows this may always
+   * return {@code true} due to wrapper specifics.
+   *
+   * @return {@code true} if a 32-bit environment is detected
    */
   public static boolean isSomething32bits() {
     Properties wrapperProperties = WrapperManager.getProperties();
@@ -479,15 +401,28 @@ public class NodeStarter implements WrapperListener {
         && !wrapperProperties.getProperty("wrapper.java.additional.auto_bits").startsWith("32");
   }
 
+  /**
+   * Returns a lazily initialized process-wide {@link SecureRandom} and ensures it seeds eagerly.
+   *
+   * @return shared {@link SecureRandom} instance
+   */
   public static synchronized SecureRandom getGlobalSecureRandom() {
     if (globalSecureRandom == null) {
       globalSecureRandom = new SecureRandom();
-      globalSecureRandom.nextBytes(
-          new byte[16]); // Force it to seed itself so it blocks now not later.
+      forceSecureRandomSeeding(globalSecureRandom);
     }
     return globalSecureRandom;
   }
 
+  private static void forceSecureRandomSeeding(SecureRandom secureRandom) {
+    secureRandom.nextBytes(new byte[16]); // Force it to seed itself so it blocks now, not later.
+  }
+
+  /**
+   * Returns this instance. Used by environments that require a direct reference (e.g., OSGi).
+   *
+   * @return this {@link NodeStarter}
+   */
   public NodeStarter get() {
     return this;
   }
@@ -495,21 +430,29 @@ public class NodeStarter implements WrapperListener {
   /**
    * Print resolved directories to stdout to help users understand where files are stored. Includes
    * the configuration file path and the resolved config, data, cache, run, and logs directories.
-   * Reflects environment detection (service vs user) and CLI overrides.
+   * Reflects environment detection (service vs. user) and CLI overrides.
    */
   private static void printResolvedDirectories(Resolved r, File configFile, boolean serviceMode) {
     try {
-      System.out.println(
-          "\nResolved directories (" + (serviceMode ? "service" : "user") + " mode):");
-      System.out.println("  Config file:  " + configFile.getAbsolutePath());
-      System.out.println("  Config dir:   " + r.getConfigDir());
-      System.out.println("  Data dir:     " + r.getDataDir());
-      System.out.println("  Cache dir:    " + r.getCacheDir());
-      System.out.println("  Run dir:      " + r.getRunDir());
-      System.out.println("  Logs dir:     " + r.getLogsDir());
-      System.out.println();
-    } catch (Throwable t) {
-      // Do not fail startup due to printing
+      LOG.info(
+          """
+          Resolved directories ({} mode):
+            Config file:  {}
+            Config dir:   {}
+            Data dir:     {}
+            Cache dir:    {}
+            Run dir:      {}
+            Logs dir:     {}
+          """,
+          (serviceMode ? "service" : "user"),
+          configFile.getAbsolutePath(),
+          r.configDir(),
+          r.dataDir(),
+          r.cacheDir(),
+          r.runDir(),
+          r.logsDir());
+    } catch (Exception _) {
+      // Do not fail to start up due to logging
     }
   }
 
@@ -518,8 +461,8 @@ public class NodeStarter implements WrapperListener {
    * it can start its application. This method call is expected to return, so a new thread should be
    * launched if necessary.
    *
-   * <p>CLI is powered by picocli for a better user experience. Standard help and version flags are
-   * supported, along with intuitive options for directory overrides and mode selection.
+   * <p>CLI uses picocli. Standard help/version flags are supported, plus options for directory
+   * overrides and service/user mode selection.
    *
    * <p>Supported CLI options: - <code>-h</code>, <code>--help</code>: Show usage help - <code>-V
    * </code>, <code>--version</code>: Show version information - <code>-c</code>, <code>
@@ -535,62 +478,113 @@ public class NodeStarter implements WrapperListener {
    *
    * @param args List of arguments used to initialize the application.
    * @return Any error code if the application should exit on completion of the start method. If
-   *     there were no problems then this method should return null.
+   *     there were no problems, then this method should return null.
    */
   @Override
   public Integer start(String[] args) {
-    synchronized (NodeStarter.class) {
-      if (isStarted) {
-        throw new IllegalStateException();
-      }
-      isStarted = true;
-      isTestingVM = false;
-    }
-    // Parse CLI using picocli for a better UX
+    markStarted(false);
+
     NodeCli cli = new NodeCli();
     CommandLine cmd = new CommandLine(cli);
     cmd.setExecutionExceptionHandler(new NodeCli.PrettyExceptionHandler());
-    try {
-      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
-      if (parseResult.isVersionHelpRequested()) {
-        cmd.printVersionHelp(System.out);
-        return 0;
-      }
-      if (parseResult.isUsageHelpRequested()) {
-        cmd.usage(System.out);
-        return 0;
-      }
-    } catch (CommandLine.ParameterException ex) {
-      cmd.getErr().println("Error: " + ex.getMessage());
-      cmd.getErr().println();
-      cmd.usage(cmd.getErr());
-      return CommandLine.ExitCode.USAGE;
+    Integer earlyExit = handleCliAndMaybeExit(args, cmd);
+    if (earlyExit != null) {
+      return earlyExit;
     }
 
     Map<String, String> overrides = cli.directoryOverrides();
     File explicitConfigFile = cli.explicitConfigFile();
     String serviceModeOverride = cli.serviceModeOverride();
     if (serviceModeOverride != null) {
-      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase());
+      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase(Locale.ROOT));
     }
+
     AppEnv appEnv = new AppEnv();
     boolean serviceMode = appEnv.isServiceMode();
-    Path configDirPath;
-    if (serviceMode) {
-      ServiceDirs svc = new ServiceDirs(overrides);
-      Resolved r = svc.resolve();
-      configDirPath = r.getConfigDir();
-    } else {
-      AppDirs dirs = new AppDirs(overrides);
-      Resolved r = dirs.resolve();
-      configDirPath = r.getConfigDir();
-    }
-    File configFilename;
-    configFilename =
+    Path configDirPath = resolveConfigDirPath(overrides, serviceMode);
+    File configFilename =
         Objects.requireNonNullElseGet(
             explicitConfigFile, () -> configDirPath.resolve("cryptad.ini").toFile());
 
-    // Migrate config if needed and create defaults
+    migrateConfigQuietly(overrides, serviceMode);
+
+    // Do not cache DNS results; nodes are often accessed via dynamic hostnames.
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
+
+    FreenetFilePersistentConfig cfg;
+    try {
+      LOG.info("Loading configuration from {}", configFilename);
+      cfg = loadConfig(configFilename, overrides, serviceMode, appEnv);
+    } catch (IOException e) {
+      LOG.error("Configuration load failed: {}", e, e);
+      return -1;
+    }
+
+    try {
+      setupLogging(cfg);
+    } catch (InvalidConfigValueException e) {
+      LOG.error("Logging setup failed: {}", e.getMessage(), e);
+      return -2;
+    }
+
+    PooledExecutor executor = startExecutor();
+
+    // Extend wrapper startup timeout to 500,000 ms. Diffie-Hellman init can be slow on some hosts.
+    WrapperManager.signalStarting(500000);
+
+    startKeepAliveNativePlugThread();
+
+    initSSL(cfg);
+
+    try {
+      node = new Node(cfg, null, null, this, executor);
+      installSeednodesIfMissing(node);
+      node.start(false);
+      LOG.info("Node initialization completed");
+    } catch (NodeInitException e) {
+      LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
+      // Return the exit code so WrapperManager handles process termination without re-entering
+      // stop() while startup may still be partially initialized.
+      return e.exitCode;
+    }
+
+    return null;
+  }
+
+  private Integer handleCliAndMaybeExit(String[] args, CommandLine cmd) {
+    try {
+      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
+      if (parseResult.isVersionHelpRequested()) {
+        cmd.printVersionHelp(cmd.getOut());
+        return 0;
+      }
+      if (parseResult.isUsageHelpRequested()) {
+        cmd.usage(cmd.getOut());
+        return 0;
+      }
+      return null;
+    } catch (CommandLine.ParameterException ex) {
+      cmd.getErr().println("Error: " + ex.getMessage());
+      cmd.getErr().println();
+      cmd.usage(cmd.getErr());
+      return CommandLine.ExitCode.USAGE;
+    }
+  }
+
+  private static Path resolveConfigDirPath(Map<String, String> overrides, boolean serviceMode) {
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      Resolved r = svc.resolve();
+      return r.configDir();
+    } else {
+      AppDirs dirs = new AppDirs(overrides);
+      Resolved r = dirs.resolve();
+      return r.configDir();
+    }
+  }
+
+  private void migrateConfigQuietly(Map<String, String> overrides, boolean serviceMode) {
     try {
       Resolved ar;
       if (serviceMode) {
@@ -603,144 +597,116 @@ public class NodeStarter implements WrapperListener {
       Path exeDir = getExecutableDir();
       ConfigMigrator.migrateIfNeeded(ar, exeDir);
     } catch (Exception e) {
-      System.err.println("Warning: migration encountered an error: " + e.getMessage());
+      LOG.warn("Config migration error: {}", e.getMessage());
     }
+  }
 
-    // set Java's DNS cache not to cache forever, since many people
-    // use dyndns hostnames
-    Security.setProperty("networkaddress.cache.ttl", "0");
-    Security.setProperty("networkaddress.cache.negative.ttl", "0");
-
-    FreenetFilePersistentConfig cfg;
-    try {
-      System.out.println("Loading config from " + configFilename);
-      Path cfgPath = configFilename.toPath();
-      Resolved resolved;
-      if (serviceMode) {
-        ServiceDirs svc = new ServiceDirs(overrides);
-        resolved = svc.resolve();
-      } else {
-        Map<String, String> sysMap = new HashMap<>();
-        Properties props = System.getProperties();
-        for (Entry<Object, Object> e : props.entrySet()) {
-          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-        }
-        // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
-        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
-        resolved = dirs.resolve();
+  private static FreenetFilePersistentConfig loadConfig(
+      File configFilename, Map<String, String> overrides, boolean serviceMode, AppEnv appEnv)
+      throws IOException {
+    Path cfgPath = configFilename.toPath();
+    Resolved resolved;
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      resolved = svc.resolve();
+    } else {
+      Map<String, String> sysMap = new HashMap<>();
+      Properties props = System.getProperties();
+      for (Entry<Object, Object> e : props.entrySet()) {
+        sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
       }
-      // Inform the user where data and logs will be stored.
-      printResolvedDirectories(resolved, configFilename, serviceMode);
-      SimpleFieldSet sfs =
-          CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
-      File tmp = new File(configFilename.getPath() + ".tmp");
-      cfg = new FreenetFilePersistentConfig(sfs, configFilename, tmp);
-    } catch (IOException e) {
-      System.out.println("Error : " + e);
-      e.printStackTrace();
-      return -1;
+      // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
+      AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+      resolved = dirs.resolve();
     }
+    printResolvedDirectories(resolved, configFilename, serviceMode);
+    SimpleFieldSet sfs =
+        CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
+    File tmp = new File(configFilename.getPath() + ".tmp");
+    return new FreenetFilePersistentConfig(sfs, configFilename, tmp);
+  }
 
-    // First, set up logging. It is global, and may be shared between several nodes.
+  private static void setupLogging(FreenetFilePersistentConfig cfg)
+      throws InvalidConfigValueException {
+    LOG.info("Creating logger configuration...");
     SubConfig loggingConfig = cfg.createSubConfig("logger");
+    new LoggingConfigHandler(loggingConfig);
+  }
 
+  private static PooledExecutor startExecutor() {
+    LOG.info("Starting executor");
     PooledExecutor executor = new PooledExecutor();
-
-    LoggingConfigHandler logConfigHandler;
-    try {
-      System.out.println("Creating logger...");
-      logConfigHandler = new LoggingConfigHandler(loggingConfig, executor);
-    } catch (InvalidConfigValueException e) {
-      System.err.println("Error: could not set up logging: " + e.getMessage());
-      e.printStackTrace();
-      return -2;
-    }
-
-    System.out.println("Starting executor...");
     executor.start();
+    return executor;
+  }
 
-    // Prevent timeouts for a while. The DiffieHellman init for example could take some time on a
-    // very slow system.
-    WrapperManager.signalStarting(500000);
-
-    // Thread to keep the node up.
-    // JVM deadlocks losing a lock when two threads of different types (daemon|app)
-    // are contended for the same lock. So make USM daemon, and use useless to keep the JVM
-    // up.
-    // http://forum.java.sun.com/thread.jspa?threadID=343023&messageID=2942637 - last message
-    Runnable useless =
-        new Runnable() {
-
-          @Override
-          public void run() {
-            while (true) {
+  @SuppressWarnings("java:S1181")
+  private static synchronized void startKeepAliveNativePlugThread() {
+    if (nativeKeepAlivePlugThread != null && nativeKeepAlivePlugThread.isAlive()) {
+      return;
+    }
+    Runnable r =
+        () -> {
+          while (true) {
+            try {
+              //noinspection BusyWait
+              Thread.sleep(MINUTES.toMillis(60));
+            } catch (InterruptedException _) {
+              Thread.currentThread().interrupt();
+              return;
+            } catch (Exception t) {
               try {
-                Thread.sleep(MINUTES.toMillis(60));
-              } catch (InterruptedException e) {
+                LOG.error("Keep-alive native plug thread error: {}", t, t);
+              } catch (Throwable _) {
                 // Ignore
-              } catch (Throwable t) {
-                try {
-                  Logger.error(this, "Caught " + t, t);
-                } catch (Throwable t1) {
-                  // Ignore
-                }
               }
             }
           }
         };
     NativeThread plug =
-        new NativeThread(useless, "Plug", NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
-    // Not daemon, but doesn't do anything.
-    // Keeps the JVM alive.
+        new NativeThread(r, "Plug", NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
     plug.setDaemon(false);
+    nativeKeepAlivePlugThread = plug;
     plug.start();
+  }
 
-    // Initialize SSL
+  private static synchronized void stopKeepAliveNativePlugThread() {
+    Thread keepAlive = nativeKeepAlivePlugThread;
+    nativeKeepAlivePlugThread = null;
+    if (keepAlive != null) {
+      keepAlive.interrupt();
+    }
+  }
+
+  private static void initSSL(FreenetFilePersistentConfig cfg) {
     SubConfig sslConfig = cfg.createSubConfig("ssl");
     SSL.init(sslConfig);
+  }
 
+  @SuppressWarnings("java:S1181")
+  private static void installSeednodesIfMissing(Node node) {
     try {
-      node = new Node(cfg, null, null, logConfigHandler, this, executor);
-      // Ensure seednodes.fref exists at node.install.nodeDir. Install from packaged resource if
-      // missing.
-      try {
-        File seedFile = NodeFile.Seednodes.getFile(node);
-        if (!seedFile.exists()) {
-          try (java.io.InputStream in =
-              NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
-            if (in != null) {
-              java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
-              java.nio.file.Files.copy(in, seedFile.toPath());
-              System.out.println(
-                  "Installed default seednodes from resource at " + seedFile.getAbsolutePath());
-            } else {
-              System.err.println(
-                  "Warning: No default seednodes.fref found in resources; opennet bootstrap may be"
-                      + " delayed.");
-            }
+      File seedFile = NodeFile.SEEDNODES.getFile(node);
+      if (!seedFile.exists()) {
+        try (java.io.InputStream in =
+            NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
+          if (in != null) {
+            java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
+            java.nio.file.Files.copy(in, seedFile.toPath());
+            LOG.info("Installed default seednodes from resource at {}", seedFile.getAbsolutePath());
+          } else {
+            LOG.warn(
+                "No default seednodes.fref found in resources; opennet bootstrap may be delayed.");
           }
         }
-      } catch (Throwable t) {
-        // Always print a concise warning to stdout for immediate visibility
-        System.out.printf(
-            "Warning: failed to install seednodes.fref: %s: %s%n",
-            t.getClass().getSimpleName(), t.getMessage());
-        // Log full stack trace for debugging instead of only the message
-        try {
-          Logger.error(this, "Warning: failed to install seednodes.fref", t);
-        } catch (Throwable ignored) {
-          // ignored
-        }
       }
-      node.start(false);
-      System.out.println("Node initialization completed.");
-    } catch (NodeInitException e) {
-      System.err.println("Failed to load node: " + e.exitCode + " : " + e.getMessage());
-      e.printStackTrace();
-      System.exit(e.exitCode);
+    } catch (Throwable t) {
+      try {
+        LOG.error("Default seednodes install failed", t);
+      } catch (Throwable _) {
+        // ignored
+      }
     }
-
-    return null;
   }
 
   private Path getExecutableDir() {
@@ -751,33 +717,44 @@ public class NodeStarter implements WrapperListener {
         return p.getParent();
       }
       return p;
-    } catch (Exception e) {
+    } catch (Exception _) {
       return Paths.get("").toAbsolutePath();
     }
   }
 
   /**
    * Called when the application is shutting down. The Wrapper assumes that this method will return
-   * fairly quickly. If the shutdown code code could potentially take a long time, then
+   * fairly quickly. If the shutdown code could take a long time, then
    * WrapperManager.signalStopping() should be called to extend the timeout period. If for some
-   * reason, the stop method can not return, then it must call WrapperManager.stopped() to avoid
+   * reason, the stop method cannot return, then it must call WrapperManager.stopped() to avoid
    * warning messages from the Wrapper.
    *
    * @param exitCode The suggested exit code that will be returned to the OS when the JVM exits.
    * @return The exit code to actually return to the OS. In most cases, this should just be the
-   *     value of exitCode, however the user code has the option of changing the exit code if there
+   *     value of exitCode. However, the user code has the option of changing the exit code if there
    *     are any problems during shutdown.
    */
   @Override
   public int stop(int exitCode) {
-    System.err.println("Shutting down with exit code " + exitCode);
-    node.park();
-    // see #354
+    LOG.info("Shutting down with exit code {}", exitCode);
+    if (node != null) {
+      node.park();
+    } else {
+      LOG.warn("Node was not initialized; skipping park during shutdown.");
+    }
+    stopKeepAliveNativePlugThread();
+    // Extend the wrapper shutdown timeout to 120,000 ms (see #354).
     WrapperManager.signalStopping(120000);
 
     return exitCode;
   }
 
+  /**
+   * Requests a process restart through the Java Service Wrapper.
+   *
+   * <p>This delegates restart behavior to the wrapper runtime instead of reinitializing the node in
+   * place.
+   */
   public void restart() {
     WrapperManager.restart();
   }
@@ -794,9 +771,9 @@ public class NodeStarter implements WrapperListener {
   public void controlEvent(int event) {
     if (WrapperManager.isControlledByNativeWrapper()) {
       // The Wrapper will take care of this event
-    } else
-    // We are not being controlled by the Wrapper, so
-    //  handle the event ourselves.
+      return;
+    }
+    // We are not being controlled by the Wrapper, so handle the event ourselves.
     if ((event == WrapperManager.WRAPPER_CTRL_C_EVENT)
         || (event == WrapperManager.WRAPPER_CTRL_CLOSE_EVENT)
         || (event == WrapperManager.WRAPPER_CTRL_SHUTDOWN_EVENT)) {
@@ -804,59 +781,490 @@ public class NodeStarter implements WrapperListener {
     }
   }
 
-  /** TODO FIXME: Someone who understands all the parameters please add sane defaults. */
+  /**
+   * Parameters for constructing a test node.
+   *
+   * <p>This mutable parameter container captures optional startup knobs used by {@link
+   * #createTestNode(TestNodeParameters)}. The defaults favor lightweight local runs, while callers
+   * can selectively override networking, datastore, executor, and feature toggles to model specific
+   * scenarios. Values are consumed as plain configuration inputs; this type intentionally performs
+   * minimal validation so tests can probe boundary behavior.
+   *
+   * <p>Instances are typically configured in arrange/setup phases and then treated as immutable
+   * once node creation begins.
+   */
   public static final class TestNodeParameters {
 
-    /** The UDP port number. Each test node must have a different port number. */
-    public int port;
+    private int port;
+    private int opennetPort;
+    private File baseDirectory = new File("crypta-test-node-" + UUID.randomUUID());
+    private boolean disableProbabilisticHTLs;
+    private short maxHTL;
+    private int dropProb;
+    private RandomSource random;
+    private PriorityAwareExecutor executor;
+    private int threadLimit = 500;
+    private long storeSize;
+    private boolean ramStore;
+    private boolean enableSwapping;
+    private boolean enableARKs;
+    private boolean enableULPRs;
+    private boolean enablePerNodeFailureTables;
+    private boolean enableSwapQueueing;
+    private boolean enablePacketCoalescing;
+    private int outputBandwidthLimit;
+    private boolean enableFOAF;
+    private boolean connectToSeednodes;
+    private boolean longPingTimes;
+    private boolean useSlashdotCache;
+    private String ipAddressOverride;
+    private boolean enableFCP;
 
-    /** The UDP opennet port number. Each test node must have a different port number. */
-    public int opennetPort;
+    /** Creates a parameter set with defaults suitable for local test-node initialization. */
+    public TestNodeParameters() {
+      // Intentionally empty: callers configure fields via setters before creating a test node.
+    }
 
     /**
-     * The directory where the test node will put all its data. <br>
-     * Will be created automatically if it does not exist.<br>
-     * {@link NodeStarter#createTestNode(TestNodeParameters)} will NOT fail if this exists. You
-     * should make sure on your own to delete this before and after tests to ensure a clean state.
-     * Notice that JUnit provides a mechanism for automatic creation and deletion of test
-     * directories (TemporaryFolder).<br>
-     * Notice that a subdirectory with the name being the port number of the node will be created
-     * there, and all data of the node will be put into it. So you can and should use the same
-     * baseDirectory when calling {@link NodeStarter#globalTestInit(File, boolean, LogLevel, String,
-     * boolean, RandomSource)} (which you have to do once for each Java VM): Each one will start
-     * with a fresh empty subdirectory for as long as each of them uses a unique port number.
+     * Returns the darknet listen port used by the test node.
+     *
+     * @return configured darknet listen port value
      */
-    public File baseDirectory = new File("crypta-test-node-" + UUID.randomUUID());
+    public int getPort() {
+      return port;
+    }
 
-    public boolean disableProbabilisticHTLs;
-    public short maxHTL;
-    public int dropProb;
-    public RandomSource random;
-    public Executor executor;
-    public int threadLimit = 500;
-    public long storeSize;
-    public boolean ramStore;
-    public boolean enableSwapping;
-    public boolean enableARKs;
-    public boolean enableULPRs;
-    public boolean enablePerNodeFailureTables;
-    public boolean enableSwapQueueing;
-    public boolean enablePacketCoalescing;
-    public int outputBandwidthLimit;
-    public boolean enableFOAF;
-    public boolean connectToSeednodes;
-    public boolean longPingTimes;
-    public boolean useSlashdotCache;
-    public String ipAddressOverride;
-    public boolean enableFCP;
-    public boolean enablePlugins;
+    /**
+     * Sets the darknet listen port used by the test node.
+     *
+     * @param port the listen port value to apply to test-node configuration
+     */
+    public void setPort(int port) {
+      this.port = port;
+    }
+
+    /**
+     * Returns the opennet listen port for test-node configuration.
+     *
+     * @return configured opennet listen port value
+     */
+    public int getOpennetPort() {
+      return opennetPort;
+    }
+
+    /**
+     * Sets the opennet listen port for test-node configuration.
+     *
+     * @param opennetPort listen port value used for opennet mode
+     */
+    public void setOpennetPort(int opennetPort) {
+      this.opennetPort = opennetPort;
+    }
+
+    /**
+     * Returns the base directory used for persistent test-node files.
+     *
+     * @return filesystem directory used as the node base path
+     */
+    public File getBaseDirectory() {
+      return baseDirectory;
+    }
+
+    /**
+     * Sets the base directory used for persistent test-node files.
+     *
+     * @param baseDirectory filesystem directory to use as the node base path
+     */
+    public void setBaseDirectory(File baseDirectory) {
+      this.baseDirectory = baseDirectory;
+    }
+
+    /**
+     * Returns whether probabilistic HTLs are disabled.
+     *
+     * @return {@code true} when probabilistic HTL behavior is disabled
+     */
+    public boolean isDisableProbabilisticHTLs() {
+      return disableProbabilisticHTLs;
+    }
+
+    /**
+     * Enables or disables probabilistic HTLs in generated test configuration.
+     *
+     * @param v {@code true} to disable probabilistic HTLs, {@code false} to keep them enabled
+     */
+    public void setDisableProbabilisticHTLs(boolean v) {
+      this.disableProbabilisticHTLs = v;
+    }
+
+    /**
+     * Returns the maximum HTL configured for test routing behavior.
+     *
+     * @return maximum HTL value applied to test-node configuration
+     */
+    public short getMaxHTL() {
+      return maxHTL;
+    }
+
+    /**
+     * Sets the maximum HTL configured for test routing behavior.
+     *
+     * @param maxHTL maximum HTL value to apply
+     */
+    public void setMaxHTL(short maxHTL) {
+      this.maxHTL = maxHTL;
+    }
+
+    /**
+     * Returns the configured drop-probability value.
+     *
+     * @return drop-probability setting used by test node setup
+     */
+    public int getDropProb() {
+      return dropProb;
+    }
+
+    /**
+     * Sets the drop-probability value used by test node setup.
+     *
+     * @param dropProb drop-probability setting to apply
+     */
+    public void setDropProb(int dropProb) {
+      this.dropProb = dropProb;
+    }
+
+    /**
+     * Returns the random source used by test-node subsystems.
+     *
+     * @return configured random source, or {@code null} to allow defaults
+     */
+    public RandomSource getRandom() {
+      return random;
+    }
+
+    /**
+     * Sets the random source used by test-node subsystems.
+     *
+     * @param random random source instance, or {@code null} to use default behavior
+     */
+    public void setRandom(RandomSource random) {
+      this.random = random;
+    }
+
+    /**
+     * Returns the executor used by the test node.
+     *
+     * @return configured executor, or {@code null} to use default executor creation
+     */
+    public PriorityAwareExecutor getExecutor() {
+      return executor;
+    }
+
+    /**
+     * Sets the executor used by the test node.
+     *
+     * @param executor executor instance, or {@code null} to use default executor creation
+     */
+    public void setExecutor(PriorityAwareExecutor executor) {
+      this.executor = executor;
+    }
+
+    /**
+     * Returns the thread limit passed to node loading configuration.
+     *
+     * @return configured thread-limit value
+     */
+    public int getThreadLimit() {
+      return threadLimit;
+    }
+
+    /**
+     * Sets the thread limit passed to node loading configuration.
+     *
+     * @param threadLimit thread-limit value to apply
+     */
+    public void setThreadLimit(int threadLimit) {
+      this.threadLimit = threadLimit;
+    }
+
+    /**
+     * Returns the datastore size setting used for the test node.
+     *
+     * @return configured datastore size value
+     */
+    public long getStoreSize() {
+      return storeSize;
+    }
+
+    /**
+     * Sets the datastore size setting used for the test node.
+     *
+     * @param storeSize datastore size value to apply
+     */
+    public void setStoreSize(long storeSize) {
+      this.storeSize = storeSize;
+    }
+
+    /**
+     * Returns whether the test node uses an in-memory store type.
+     *
+     * @return {@code true} when RAM store mode is enabled
+     */
+    public boolean isRamStore() {
+      return ramStore;
+    }
+
+    /**
+     * Sets whether the test node uses an in-memory store type.
+     *
+     * @param ramStore {@code true} to enable RAM store mode
+     */
+    public void setRamStore(boolean ramStore) {
+      this.ramStore = ramStore;
+    }
+
+    /**
+     * Returns whether datastore swapping is enabled.
+     *
+     * @return {@code true} when swapping is enabled
+     */
+    public boolean isEnableSwapping() {
+      return enableSwapping;
+    }
+
+    /**
+     * Sets whether datastore swapping is enabled.
+     *
+     * @param enableSwapping {@code true} to enable swapping
+     */
+    public void setEnableSwapping(boolean enableSwapping) {
+      this.enableSwapping = enableSwapping;
+    }
+
+    /**
+     * Returns whether ARK support is enabled.
+     *
+     * @return {@code true} when ARK support is enabled
+     */
+    public boolean isEnableARKs() {
+      return enableARKs;
+    }
+
+    /**
+     * Sets whether ARK support is enabled.
+     *
+     * @param enableARKs {@code true} to enable ARK support
+     */
+    public void setEnableARKs(boolean enableARKs) {
+      this.enableARKs = enableARKs;
+    }
+
+    /**
+     * Returns whether ULPR data propagation is enabled.
+     *
+     * @return {@code true} when ULPR behavior is enabled
+     */
+    public boolean isEnableULPRs() {
+      return enableULPRs;
+    }
+
+    /**
+     * Sets whether ULPR data propagation is enabled.
+     *
+     * @param enableULPRs {@code true} to enable ULPR behavior
+     */
+    public void setEnableULPRs(boolean enableULPRs) {
+      this.enableULPRs = enableULPRs;
+    }
+
+    /**
+     * Returns whether per-node failure tables are enabled.
+     *
+     * @return {@code true} when per-node failure tables are enabled
+     */
+    public boolean isEnablePerNodeFailureTables() {
+      return enablePerNodeFailureTables;
+    }
+
+    /**
+     * Sets whether per-node failure tables are enabled.
+     *
+     * @param v {@code true} to enable per-node failure tables
+     */
+    public void setEnablePerNodeFailureTables(boolean v) {
+      this.enablePerNodeFailureTables = v;
+    }
+
+    /**
+     * Returns whether swap queueing is enabled.
+     *
+     * @return {@code true} when swap queueing is enabled
+     */
+    public boolean isEnableSwapQueueing() {
+      return enableSwapQueueing;
+    }
+
+    /**
+     * Sets whether swap queueing is enabled.
+     *
+     * @param enableSwapQueueing {@code true} to enable swap queueing
+     */
+    public void setEnableSwapQueueing(boolean enableSwapQueueing) {
+      this.enableSwapQueueing = enableSwapQueueing;
+    }
+
+    /**
+     * Returns whether packet coalescing is enabled.
+     *
+     * @return {@code true} when packet coalescing is enabled
+     */
+    public boolean isEnablePacketCoalescing() {
+      return enablePacketCoalescing;
+    }
+
+    /**
+     * Sets whether packet coalescing is enabled.
+     *
+     * @param enablePacketCoalescing {@code true} to enable packet coalescing
+     */
+    public void setEnablePacketCoalescing(boolean enablePacketCoalescing) {
+      this.enablePacketCoalescing = enablePacketCoalescing;
+    }
+
+    /**
+     * Returns the output bandwidth limit value used for test configuration.
+     *
+     * @return configured output bandwidth limit value
+     */
+    public int getOutputBandwidthLimit() {
+      return outputBandwidthLimit;
+    }
+
+    /**
+     * Sets the output bandwidth limit value used for test configuration.
+     *
+     * @param outputBandwidthLimit output bandwidth limit value to apply
+     */
+    public void setOutputBandwidthLimit(int outputBandwidthLimit) {
+      this.outputBandwidthLimit = outputBandwidthLimit;
+    }
+
+    /**
+     * Returns whether FOAF-related peer-location behavior is enabled.
+     *
+     * @return {@code true} when FOAF behavior is enabled
+     */
+    public boolean isEnableFOAF() {
+      return enableFOAF;
+    }
+
+    /**
+     * Sets whether FOAF-related peer-location behavior is enabled.
+     *
+     * @param enableFOAF {@code true} to enable FOAF behavior
+     */
+    public void setEnableFOAF(boolean enableFOAF) {
+      this.enableFOAF = enableFOAF;
+    }
+
+    /**
+     * Returns whether opennet seednode bootstrapping is enabled.
+     *
+     * @return {@code true} when seednode connections are enabled
+     */
+    public boolean isConnectToSeednodes() {
+      return connectToSeednodes;
+    }
+
+    /**
+     * Sets whether opennet seednode bootstrapping is enabled.
+     *
+     * @param connectToSeednodes {@code true} to enable seednode connections
+     */
+    public void setConnectToSeednodes(boolean connectToSeednodes) {
+      this.connectToSeednodes = connectToSeednodes;
+    }
+
+    /**
+     * Returns whether long ping-time test thresholds are enabled.
+     *
+     * @return {@code true} when long ping-time thresholds are enabled
+     */
+    public boolean isLongPingTimes() {
+      return longPingTimes;
+    }
+
+    /**
+     * Sets whether long ping-time test thresholds are enabled.
+     *
+     * @param longPingTimes {@code true} to enable long ping-time thresholds
+     */
+    public void setLongPingTimes(boolean longPingTimes) {
+      this.longPingTimes = longPingTimes;
+    }
+
+    /**
+     * Returns whether slashdot cache behavior is enabled.
+     *
+     * @return {@code true} when slashdot cache behavior is enabled
+     */
+    public boolean isUseSlashdotCache() {
+      return useSlashdotCache;
+    }
+
+    /**
+     * Sets whether slashdot cache behavior is enabled.
+     *
+     * @param useSlashdotCache {@code true} to enable slashdot cache behavior
+     */
+    public void setUseSlashdotCache(boolean useSlashdotCache) {
+      this.useSlashdotCache = useSlashdotCache;
+    }
+
+    /**
+     * Returns the explicit IP address override value.
+     *
+     * @return configured IP address override, or {@code null} when unset
+     */
+    public String getIpAddressOverride() {
+      return ipAddressOverride;
+    }
+
+    /**
+     * Sets the explicit IP address override value.
+     *
+     * @param ipAddressOverride IP address override string, or {@code null} to clear
+     */
+    public void setIpAddressOverride(String ipAddressOverride) {
+      this.ipAddressOverride = ipAddressOverride;
+    }
+
+    /**
+     * Returns whether FCP support is enabled for the test node.
+     *
+     * @return {@code true} when FCP is enabled
+     */
+    public boolean isEnableFCP() {
+      return enableFCP;
+    }
+
+    /**
+     * Sets whether FCP support is enabled for the test node.
+     *
+     * @param enableFCP {@code true} to enable FCP support
+     */
+    public void setEnableFCP(boolean enableFCP) {
+      this.enableFCP = enableFCP;
+    }
   }
 
-  static SemiOrderedShutdownHook shutdownHook;
   // experimental osgi support
+  @SuppressWarnings("java:S3008")
   private static NodeStarter nodestarter_osgi = null;
+
   private static boolean isTestingVM;
   private static boolean isStarted;
+  private static Thread nativeKeepAlivePlugThread;
 
   /** Static instance of SecureRandom, as opposed to Node's copy. @see getSecureRandom() */
   private static SecureRandom globalSecureRandom;

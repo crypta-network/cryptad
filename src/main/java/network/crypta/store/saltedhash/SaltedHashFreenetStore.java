@@ -1,19 +1,19 @@
 package network.crypta.store.saltedhash;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
+import java.nio.file.Files;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -40,6 +40,7 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.store.BlockMetadata;
+import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.StorableBlock;
@@ -47,27 +48,42 @@ import network.crypta.store.StoreCallback;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.io.Fallocate;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 /**
- * Index-less data store based on salted hash.
+ * Index-less on-disk store that maps keys to slots using a salted hash.
  *
- * <p>Provide a pseudo-random replacement based on a salt value generated on create. Keys are check
- * against a bloom filter before probing. Data are encrypted using the route key and the salt, so
- * there is no way to recover the data without holding the route key. (For debugging, you can set
- * OPTION_SAVE_PLAINKEY=true in source code)
+ * <p>The store uses a fixed number of slots and quadratic probing. A per-store salt (derived from
+ * the master key) ensures the mapping is not predictable across nodes. A compact on-disk “slot
+ * filter” (a Bloom-filter replacement) records, for each slot, whether it has been checked and the
+ * first three bytes of the salted key. This allows the reader to skip most disk seeks when there is
+ * no match and to avoid scanning slots known to be free.
+ *
+ * <p>All payload bytes are encrypted with a key derived from the routing key and salt; without the
+ * routing key, the content is unrecoverable. For debugging only, {@code OPTION_SAVE_PLAINKEY} can
+ * be enabled to persist the plain routing key alongside the entry; this must never be enabled in a
+ * client cache.
+ *
+ * <p>The store optionally overflows writes to a secondary “alt” store when the primary is full. The
+ * cleaner thread periodically completes, resizes, and rebuilds the slot filter after format
+ * changes.
  *
  * @author sdiz
  */
-public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
-  /** Option for saving plainkey. SECURITY: This should NEVER be enabled for a client-cache! */
+public final class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
+  private static final Logger LOG = LoggerFactory.getLogger(SaltedHashFreenetStore.class);
+
+  /** Option for saving plainkey. SECURITY: never enable this for a client cache. */
   private static final boolean OPTION_SAVE_PLAINKEY = false;
 
   static final int OPTION_MAX_PROBE = 5;
@@ -76,26 +92,31 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private static final byte FLAG_REBUILD_BLOOM = 0x2;
 
   /**
-   * Alternative to a Bloom filter which allows us to know exactly which slots to check, so
-   * radically reduces disk I/O even when there is a hit.
+   * Compact per-slot index (“slot filter”).
    *
-   * <p>Each slot in a 4 byte integer. bit 31 - Must be 1. 0 indicates we have not checked this slot
-   * so must read the entry. bit 30 - ENTRY_FLAG_OCCUPIED: 0 = Slot is free, 1 = slot is occupied.
-   * bit 29 - ENTRY_NEW_BLOCK: 0 = Old (pre-1224) or should not be in store, 1 = New and should be
-   * in store. bit 28 - ENTRY_WRONG_STORE: 0 = Stored in correct store, 1 = stored in wrong store.
-   * bit 0...23 - The first 3 bytes of the salted key.
+   * <p>This replaces the historical Bloom filter and indicates exactly which slots to check. Each
+   * slot is represented by a 4-byte integer with the following layout:
+   *
+   * <ul>
+   *   <li>Bit 31 ({@link #SLOT_CHECKED}) — set when the slot has been examined; if clear the
+   *       content is unknown and the entry must be read.
+   *   <li>Bit 30 ({@link #SLOT_OCCUPIED}) — 1 if the slot contains an entry, 0 if free.
+   *   <li>Bit 29 ({@link #SLOT_NEW_BLOCK}) — 1 for entries considered “new” according to the
+   *       current policy (e.g., post-local-request caching change), 0 otherwise.
+   *   <li>Bit 28 ({@link #SLOT_WRONG_STORE}) — 1 when the entry was written to an alternate store.
+   *   <li>Bits 0–23 — the first three bytes of the salted key.
+   * </ul>
+   *
+   * <p>Using the filter significantly reduces disk I/O on both hits and misses.
    */
   private final ResizablePersistentIntBuffer slotFilter;
 
-  /** If true, don't create a slot filter, don't keep it up to date, don't do anything with it. */
+  /** If true, the slot filter is disabled and not maintained. */
   private final boolean slotFilterDisabled;
 
   /**
-   * If true, then treat the slot filter as authoritative. If the slot filter gives a certain
-   * content for a particular slot, assume it is right. This saves a lot of seeks, both when reading
-   * and when writing. Note that the slot filter will indicate when it doesn't have any information
-   * about a slot, which is the default, which is why it has to be rebuilt on conversion from an old
-   * store. We normally also check slotFilterDisabled to see whether there *is* a slot filter.
+   * When true, the slot filter is treated as authoritative for checked slots. Unknown slots (bit 31
+   * clear) still require reads. Disabled entirely when {@link #slotFilterDisabled} is true.
    */
   private static final boolean USE_SLOT_FILTER = true;
 
@@ -103,9 +124,14 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private static final int SLOT_OCCUPIED = 1 << 30;
   private static final int SLOT_NEW_BLOCK = 1 << 29;
   private static final int SLOT_WRONG_STORE = 1 << 28;
+  private static final String LOG_OFFSET = ", offset=";
+  private static final String META_EXT = ".metadata";
+  private static final String CACHE_WAS = " cache was ";
+  private static final String STR_FROM = " from ";
+  private static final String KEY_PROCESSED = "processed";
+  private static final String KEY_TOTAL = "total";
 
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
+  // Legacy debug gates removed; prefer SLF4J guards directly.
 
   private final File baseDir;
   private final String name;
@@ -120,28 +146,72 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private int generation;
   private int flags;
 
-  private boolean preallocate = true;
-  public static boolean NO_CLEANER_SLEEP = false;
+  private volatile boolean preallocate;
+  // Mutable test hook: keep non-public and expose minimal accessor.
+  private static volatile boolean noCleanerSleep = false;
 
-  /** true if close() hase been called */
+  /** Controls whether the cleaner should skip its initial sleep (test hook). */
+  public static void setNoCleanerSleep(boolean value) {
+    noCleanerSleep = value;
+  }
+
+  /** true if close() has been called */
   private final AtomicBoolean closeCalled = new AtomicBoolean(false);
 
   /**
-   * If we have no space in this store, try writing it to the alternate store, with the wrong store
-   * flag set. Note that we do not *read from* it, the caller must do that. IMPORTANT LOCKING NOTE:
-   * This must only happen in one direction! If two stores have altStore set to each other, deadlock
-   * is likely! (Infinite recursion is also possible). However, fortunately we don't need to do it
-   * bidirectionally - the cache needs more space from the store, but the store grows so slowly it
-   * will hardly ever need more space from the cache.
+   * Optional overflow target for writes when this store has no free slots.
+   *
+   * <p>Entries written to the alternate store are flagged as “wrong store”. Callers must read from
+   * both stores as appropriate; this class does not consult {@code altStore} on reads. The wiring
+   * must be strictly one-way to avoid deadlocks and recursion.
    */
   private SaltedHashFreenetStore<T> altStore;
 
+  /**
+   * Sets the alternate store used for overflow writes.
+   *
+   * <p><strong>Locking:</strong> Do not create cycles (A→B and B→A). A bidirectional relationship
+   * can deadlock and/or recurse.
+   *
+   * @param store destination store that must itself not have an alternate store
+   * @throws IllegalArgumentException if {@code store} already has an {@code altStore}
+   */
   public void setAltStore(SaltedHashFreenetStore<T> store) {
     if (store.altStore != null)
       throw new IllegalArgumentException("Target must not have an altStore - deadlock can result");
     altStore = store;
   }
 
+  /**
+   * Factory for constructing a salted-hash store from grouped parameters.
+   *
+   * @param params parameter object describing the store instance to create
+   * @return the created store
+   * @throws IOException on I/O errors creating or opening the store
+   */
+  public static <T extends StorableBlock> SaltedHashFreenetStore<T> construct(
+      SaltedHashStoreParams<T> params) throws IOException {
+    Objects.requireNonNull(params, "params");
+    return new SaltedHashFreenetStore<>(params);
+  }
+
+  /**
+   * Factory for constructing a salted-hash store.
+   *
+   * @param baseDir directory where the store files live; created if missing
+   * @param name logical name; also used as a filename prefix
+   * @param callback callback used to get header/data lengths and to (de-)serialize blocks
+   * @param random randomness source for encryption and placement tie-breakers
+   * @param maxKeys number of slots in the store (capacity)
+   * @param useSlotFilter whether to enable the on-disk slot filter index
+   * @param shutdownHook hook on which the store registers a close task
+   * @param preallocate whether to preallocate files up to {@code maxKeys}
+   * @param resizeOnStart when true, finishes any in-progress resize before returning
+   * @param masterKey master key used to derive per-store salts
+   * @return the created store
+   * @throws IOException on I/O errors creating or opening the store
+   */
+  @SuppressWarnings("java:S107") // legacy delegator to params object
   public static <T extends StorableBlock> SaltedHashFreenetStore<T> construct(
       File baseDir,
       String name,
@@ -152,64 +222,106 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       SemiOrderedShutdownHook shutdownHook,
       boolean preallocate,
       boolean resizeOnStart,
-      Ticker exec,
       byte[] masterKey)
       throws IOException {
-    return new SaltedHashFreenetStore<>(
-        baseDir,
-        name,
-        callback,
-        random,
-        maxKeys,
-        useSlotFilter,
-        shutdownHook,
-        preallocate,
-        resizeOnStart,
-        masterKey);
+    return construct(
+        SaltedHashStoreParams.of(
+            new SaltedHashStoreLocation(baseDir, name),
+            new SaltedHashStoreDependencies<>(callback, random, shutdownHook, masterKey),
+            new SaltedHashStoreSizing(maxKeys, useSlotFilter, preallocate, resizeOnStart)));
   }
 
-  private SaltedHashFreenetStore(
-      File baseDir,
-      String name,
-      StoreCallback<T> callback,
-      Random random,
-      long maxKeys,
-      boolean enableSlotFilters,
-      SemiOrderedShutdownHook shutdownHook,
-      boolean preallocate,
-      boolean resizeOnStart,
-      byte[] masterKey)
-      throws IOException {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+  private SaltedHashFreenetStore(SaltedHashStoreParams<T> params) throws IOException {
+    this.baseDir = params.baseDir();
+    this.name = params.name();
 
-    this.baseDir = baseDir;
-    this.name = name;
-
-    this.callback = callback;
+    this.callback = params.callback();
     collisionPossible = callback.collisionPossible();
     headerBlockLength = callback.headerLength();
-    int fullKeyLength = callback.fullKeyLength();
     dataBlockLength = callback.dataLength();
 
     hdPadding =
-        ((headerBlockLength + dataBlockLength + 512 - 1) & ~(512 - 1))
+        ((headerBlockLength + dataBlockLength + 512 - 1) & -512)
             - (headerBlockLength + dataBlockLength);
 
-    this.random = random;
-    storeSize = maxKeys;
-    this.preallocate = preallocate;
+    this.random = params.random();
+    storeSize = params.maxKeys();
+    this.preallocate = params.preallocate();
 
     lockManager = new LockManager();
 
-    // Create a directory it not exist
-    this.baseDir.mkdirs();
-
-    if (storeSize > Integer.MAX_VALUE) // FIXME 64-bit.
-    throw new IllegalArgumentException(
-          "Store size over MAXINT not supported due to ResizablePersistentIntBuffer limitations.");
+    // Create the base directory and validate the target size.
+    createBaseDirIfMissing();
+    validateStoreSizeLimit();
 
     configFile = new File(this.baseDir, name + ".config");
+    boolean newStore = loadConfigAndMaybeResize(params.masterKey(), params.maxKeys());
+
+    // Open/lock the backing files.
+    newStore |= openStoreFiles(baseDir, name);
+
+    // Bloom is obsolete; ensure it is removed with a message.
+    bloomFile = new File(this.baseDir, name + ".bloom");
+    initializeBloom(bloomFile);
+
+    // Initialize or drop the on-disk slot filter structure.
+    slotFilterDisabled = !params.useSlotFilter();
+    slotFilter = initializeSlotFilter((int) Math.max(storeSize, prevStoreSize), newStore);
+
+    if ((flags & FLAG_DIRTY) != 0) LOG.warn("Datastore({}) is dirty.", name);
+
+    flags |= FLAG_DIRTY; // datastore is now dirty until flushAndClose()
+    writeConfigFile();
+
+    callback.setStore(this);
+    registerShutdown(params.shutdownHook());
+
+    cleanerThread = new Cleaner();
+    cleanerStatusUserAlert = new CleanerStatusUserAlert(cleanerThread);
+
+    // Finish all resizing before continue if requested.
+    maybeCompleteResizeOnStart(params.resizeOnStart());
+
+    // Decide whether to rebuild the slot filter now.
+    maybeScheduleSlotFilterRebuild(newStore);
+  }
+
+  private void registerShutdown(SemiOrderedShutdownHook shutdownHook) {
+    shutdownHook.addEarlyJob(
+        new NativeThread(
+            new ShutdownDB(),
+            "Shutdown salted hash store",
+            NativeThread.PriorityLevel.HIGH_PRIORITY.value,
+            true));
+  }
+
+  /** Ensures {@code baseDir} exists and is a directory. */
+  private void createBaseDirIfMissing() throws IOException {
+    // Create the directory tree if missing; throw if creation fails or the path is not a directory.
+    if (baseDir == null) {
+      throw new IOException("Base directory is null");
+    }
+    if (baseDir.exists()) {
+      if (!baseDir.isDirectory()) {
+        throw new IOException("Base path exists but is not a directory: " + baseDir);
+      }
+      return;
+    }
+    try {
+      Files.createDirectories(baseDir.toPath());
+    } catch (IOException ioe) {
+      throw new IOException("Failed to create base directory: " + baseDir, ioe);
+    }
+  }
+
+  private void validateStoreSizeLimit() {
+    if (storeSize > Integer.MAX_VALUE) { // Note: 32-bit limit due to ResizablePersistentIntBuffer.
+      throw new IllegalArgumentException(
+          "Store size over MAXINT not supported due to ResizablePersistentIntBuffer limitations.");
+    }
+  }
+
+  private boolean loadConfigAndMaybeResize(byte[] masterKey, long maxKeys) throws IOException {
     boolean newStore = loadConfigFile(masterKey);
     if (storeSize != 0 && storeSize != maxKeys && prevStoreSize == 0) {
       // If not already resizing, start resizing to the new store size.
@@ -217,68 +329,54 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       storeSize = maxKeys;
       writeConfigFile();
     }
+    return newStore;
+  }
 
-    newStore |= openStoreFiles(baseDir, name);
-
-    bloomFile = new File(this.baseDir, name + ".bloom");
-    if (bloomFile.exists()) {
-      bloomFile.delete();
-      System.err.println("Deleted old bloom filter for " + name + " - obsoleted by slot filter");
-      System.err.println(
-          "We will need to rebuild the slot filters, it will take a while and there will be a lot"
-              + " of disk access, but once it's done there should be a lot less disk access.");
+  private void initializeBloom(File bloom) {
+    // Only delete old bloom files; slot filter replaces it.
+    if (bloom.exists()) {
+      try {
+        Files.deleteIfExists(bloom.toPath());
+        LOG.info("Deleted old bloom filter for {} - obsoleted by slot filter", name);
+        LOG.info(
+            "Slot filters will be rebuilt; expect heavy disk access until complete, then fewer"
+                + " seeks.");
+      } catch (IOException ioe) {
+        LOG.warn("Failed to delete obsolete bloom filter file: {}", bloom, ioe);
+      }
     }
+  }
 
+  private ResizablePersistentIntBuffer initializeSlotFilter(int size, boolean newStore)
+      throws IOException {
     File slotFilterFile = new File(this.baseDir, name + ".slotfilter");
-    int size = (int) Math.max(storeSize, prevStoreSize);
-    slotFilterDisabled = !enableSlotFilters;
     if (!slotFilterDisabled) {
-      slotFilter = new ResizablePersistentIntBuffer(slotFilterFile, size);
-      System.err.println(
-          "Slot filter ("
-              + slotFilterFile
-              + ") for "
-              + name
-              + " is loaded (new="
-              + slotFilter.isNew()
-              + ").");
-      if (newStore && slotFilter.isNew()) slotFilter.fill(SLOT_CHECKED);
+      ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(slotFilterFile, size);
+      LOG.info("Slot filter ({}) for {} is loaded (new={}).", slotFilterFile, name, buf.isNew());
+      if (newStore && buf.isNew()) buf.fill(SLOT_CHECKED);
+      return buf;
     } else {
       if (slotFilterFile.exists()) {
-        if (slotFilterFile.delete()) {
-          System.err.println(
-              "Old slot filter file deleted as slot filters are disabled, keeping it might cause"
-                  + " data loss when they are turned back on.");
-        } else {
-          System.err.println(
-              "Old slot filter file "
-                  + slotFilterFile
-                  + " could not be deleted. If you turn on slot filters later you might lose data"
-                  + " from your datastore. Please delete it manually.");
+        try {
+          Files.deleteIfExists(slotFilterFile.toPath());
+          LOG.info(
+              "Old slot filter file deleted as slot filters are disabled; keeping it could risk"
+                  + " data when re-enabled.");
+        } catch (IOException ioe) {
+          LOG.warn(
+              "Old slot filter file {} could not be deleted. If you enable slot filters later you"
+                  + " might lose data; please delete it manually.",
+              slotFilterFile,
+              ioe);
         }
       }
-      slotFilter = null;
+      return null;
     }
+  }
 
-    if ((flags & FLAG_DIRTY) != 0) System.err.println("Datastore(" + name + ") is dirty.");
-
-    flags |= FLAG_DIRTY; // datastore is now dirty until flushAndClose()
-    writeConfigFile();
-
-    callback.setStore(this);
-    shutdownHook.addEarlyJob(
-        new NativeThread(
-            new ShutdownDB(),
-            "Shutdown salted hash store",
-            NativeThread.PriorityLevel.HIGH_PRIORITY.value,
-            true));
-
-    cleanerThread = new Cleaner();
-    cleanerStatusUserAlert = new CleanerStatusUserAlert(cleanerThread);
-
-    // finish all resizing before continue
+  private void maybeCompleteResizeOnStart(boolean resizeOnStart) {
     if (resizeOnStart && prevStoreSize != 0 && cleanerGlobalLock.tryLock()) {
-      System.out.println("Resizing datastore (" + name + ")");
+      LOG.info("Resizing datastore ({})", name);
       try {
         cleanerThread.resizeStore(prevStoreSize, false);
       } finally {
@@ -286,22 +384,35 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       }
       writeConfigFile();
     }
+  }
 
-    if (((!slotFilterDisabled) && slotFilter.isNew()) && !newStore) {
+  private void maybeScheduleSlotFilterRebuild(boolean newStore) {
+    if (!slotFilterDisabled && slotFilter.isNew() && !newStore) {
       flags |= FLAG_REBUILD_BLOOM;
-      System.out.println("Rebuilding slot filter because new");
-    } else if ((flags & FLAG_REBUILD_BLOOM) != 0)
-      System.out.println("Slot filter still needs rebuilding");
+      LOG.info("Rebuilding slot filter because it is new");
+    } else if ((flags & FLAG_REBUILD_BLOOM) != 0) {
+      LOG.info("Slot filter still needs rebuilding");
+    }
   }
 
   private boolean started = false;
 
   /**
-   * If start can be completed quickly, or longStart is true, then do it. If longStart is false and
-   * start cannot be completed quickly, return true. Don't start twice.
+   * Starts the store and the background cleaner thread.
    *
-   * @throws IOException
+   * <p>If initialization can complete quickly, or {@code longStart} is {@code true}, the method
+   * performs any required file growth and schedules the cleaner. When {@code longStart} is {@code
+   * false} and a slow resize/pad is required, the method returns early without performing it so the
+   * caller can defer work (e.g., on a UI thread). Subsequent calls are idempotent.
+   *
+   * @param ticker optional scheduler used to start the cleaner asynchronously; when {@code null}
+   *     the cleaner is started directly
+   * @param longStart whether slow operations (e.g., file padding) are allowed inline
+   * @return {@code false} when initialization completed or was scheduled; {@code true} when already
+   *     started or when heavy work was deferred because {@code longStart} was {@code false}
+   * @throws IOException on I/O errors
    */
+  @Override
   public boolean start(Ticker ticker, boolean longStart) throws IOException {
 
     if (started) return true;
@@ -341,14 +452,33 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       cleanerThread.start();
     } else
       ticker.queueTimedJob(
-          (FastRunnable) () -> cleanerThread.start(), "Start cleaner thread", 0, true, false);
+          (FastRunnable) cleanerThread::start, "Start cleaner thread", 0, true, false);
 
     started = true;
 
     return false;
   }
 
+  /**
+   * Fetches a block by its routing key.
+   *
+   * <p>The lookup uses the salted-hash slots and the slot filter to minimize disk I/O. On a hit,
+   * the entry is decrypted and verified. This implementation does not promote entries, so {@code
+   * dontPromote} is accepted for interface compatibility and ignored.
+   *
+   * @param routingKey plain routing key used to derive encryption and placement
+   * @param fullKey full key material provided by the caller
+   * @param dontPromote ignored by this implementation
+   * @param canReadClientCache whether the caller may read from the client cache (passed to
+   *     callback)
+   * @param canReadSlashdotCache whether the caller may read from the slashdot cache (callback)
+   * @param ignoreOldBlocks when {@code true}, entries marked as old are treated as misses
+   * @param meta optional metadata sink that is populated on success
+   * @return the block on success; {@code null} on miss or verification failure
+   * @throws IOException on I/O errors
+   */
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -358,57 +488,31 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
-    if (logMINOR)
-      Logger.minor(this, "Fetch " + HexUtil.bytesToHex(routingKey) + " for " + callback);
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
 
-    try {
-      int retry = 0;
-      while (!configLock.readLock().tryLock(2, TimeUnit.SECONDS)) {
-        if (shutdown) return null;
-        if (retry++ > 10) throw new IOException("lock timeout (20s)");
-      }
-    } catch (InterruptedException e) {
-      throw new IOException("interrupted: " + e);
-    }
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
+    Objects.requireNonNull(options, "options");
+    if (LOG.isDebugEnabled())
+      LOG.debug("Fetch {} for {}", HexUtil.bytesToHex(routingKey), callback);
+
+    if (!tryAcquireConfigReadLock()) return null;
     byte[] digestedKey = cipherManager.getDigestedKey(routingKey);
     try {
       Map<Long, Condition> lockMap = lockDigestedKey(digestedKey, true);
-      if (lockMap == null) {
-        if (logDEBUG)
-          Logger.debug(
-              this, "cannot lock key: " + HexUtil.bytesToHex(routingKey) + ", shutting down?");
+      if (lockMap.isEmpty()) {
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Fetch lock unavailable for key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
         return null;
       }
       try {
-        Entry entry = probeEntry(digestedKey, routingKey, true);
-        if (entry == null) {
-          misses.incrementAndGet();
-          return null;
-        }
-
-        if ((entry.flag & Entry.ENTRY_NEW_BLOCK) == 0) {
-          if (ignoreOldBlocks) {
-            Logger.normal(this, "Ignoring old block");
-            return null;
-          }
-          if (meta != null) meta.setOldBlock();
-        }
-
-        try {
-          T block =
-              entry.getStorableBlock(
-                  routingKey, fullKey, canReadClientCache, canReadSlashdotCache, meta, null);
-          if (block == null) {
-            misses.incrementAndGet();
-            return null;
-          }
-          hits.incrementAndGet();
-          return block;
-        } catch (KeyVerifyException e) {
-          Logger.minor(this, "key verification exception", e);
-          misses.incrementAndGet();
-          return null;
-        }
+        return fetchLocked(digestedKey, routingKey, fullKey, options);
       } finally {
         unlockDigestedKey(digestedKey, true, lockMap);
       }
@@ -417,14 +521,72 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+  private boolean tryAcquireConfigReadLock() throws IOException {
+    try {
+      int retry = 0;
+      while (!configLock.readLock().tryLock(2, TimeUnit.SECONDS)) {
+        if (shutdown) return false;
+        if (retry++ > 10) throw new IOException("lock timeout (20s)");
+      }
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IOException("interrupted: " + e);
+    }
+  }
+
+  private T fetchLocked(byte[] digestedKey, byte[] routingKey, byte[] fullKey, FetchOptions options)
+      throws IOException {
+    Entry entry = probeEntry(digestedKey, routingKey, true);
+    if (entry == null) {
+      misses.incrementAndGet();
+      return null;
+    }
+
+    if ((entry.flag & Entry.ENTRY_NEW_BLOCK) == 0) {
+      if (options.ignoreOldBlocks()) {
+        LOG.info("Ignoring old block");
+        return null;
+      }
+      if (options.meta() != null) options.meta().setOldBlock();
+    }
+
+    try {
+      T block =
+          entry.getStorableBlock(
+              routingKey,
+              fullKey,
+              options.canReadClientCache(),
+              options.canReadSlashdotCache(),
+              options.meta(),
+              null);
+      if (block == null) {
+        misses.incrementAndGet();
+        return null;
+      }
+      hits.incrementAndGet();
+      return block;
+    } catch (KeyVerifyException e) {
+      LOG.debug("key verification exception", e);
+      misses.incrementAndGet();
+      return null;
+    }
+  }
+
   /**
-   * Find and lock an entry with a specific routing key. This function would <strong>not</strong>
-   * lock the entries.
+   * Probes candidate slots for an entry matching the provided key.
    *
-   * @param routingKey
-   * @param withData
-   * @return <code>Entry</code> object
-   * @throws IOException
+   * <p>This method does not acquire any slot locks; callers must lock the relevant offsets before
+   * calling. When {@code withData} is {@code true}, it also reads header+data and attempts
+   * decryption; otherwise it reads metadata only.
+   *
+   * @param digestedKey salted/digested routing key used for slot calculation
+   * @param routingKey plain routing key used for decryption/verification; required when {@code
+   *     withData} is {@code true}
+   * @param withData whether to read and decrypt the entry payload if a candidate is found
+   * @return the matching {@code Entry}, or {@code null} when not found or verification fails
+   * @throws IOException on I/O errors
    */
   private Entry probeEntry(byte[] digestedKey, byte[] routingKey, boolean withData)
       throws IOException {
@@ -440,11 +602,11 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private Entry probeEntry0(
       byte[] digestedKey, byte[] routingKey, long probeStoreSize, boolean withData)
       throws IOException {
-    Entry entry = null;
+    Entry entry;
     long[] offset = getOffsetFromDigestedKey(digestedKey, probeStoreSize);
 
     for (int i = 0; i < offset.length; i++) {
-      if (logDEBUG) Logger.debug(this, "probing for i=" + i + ", offset=" + offset[i]);
+      if (LOG.isTraceEnabled()) LOG.trace("probing for i={}" + LOG_OFFSET + "{}", i, offset[i]);
 
       try {
         if (storeFileOffsetReady == -1 || offset[i] < this.storeFileOffsetReady) {
@@ -452,19 +614,58 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           if (entry != null) return entry;
         }
       } catch (EOFException e) {
-        if (prevStoreSize == 0) // may occur on store shrinking
-        Logger.error(this, "EOFException on probeEntry", e);
+        if (prevStoreSize == 0) { // may occur on store shrinking
+          LOG.error("EOFException on probeEntry", e);
+        }
       }
     }
     return null;
   }
 
+  /**
+   * Inserts or updates a block in the store.
+   *
+   * <p>If an entry with the same key exists, the behavior depends on {@code overwrite}. When the
+   * store is full, the writing may be directed to the alternate store (if configured). The {@code
+   * isOldBlock} flag controls how the “new block” bit is set in metadata.
+   *
+   * @param block storable block being persisted
+   * @param data serialized block data bytes; length must equal the configured data size
+   * @param header serialized block header bytes; length must equal the configured header size
+   * @param overwrite whether to overwrite an existing non-identical entry; when {@code false}, a
+   *     collision raises an exception
+   * @param isOldBlock whether the entry should be marked as “old” (not considered cacheable for
+   *     certain policies)
+   * @throws IOException on I/O errors
+   * @throws KeyCollisionException when a different entry with the same key exists and {@code
+   *     overwrite} is {@code false}
+   */
   @Override
   public void put(T block, byte[] data, byte[] header, boolean overwrite, boolean isOldBlock)
       throws IOException, KeyCollisionException {
     put(block, data, header, overwrite, isOldBlock, false);
   }
 
+  /**
+   * Inserts or updates a block with explicit control over the “wrong store” flag.
+   *
+   * <p>Identical to {@link #put(StorableBlock, byte[], byte[], boolean, boolean)} but allows the
+   * caller to mark the entry as having been written to an alternate store.
+   *
+   * @param block storable block being persisted
+   * @param data serialized block data bytes
+   * @param header serialized block header bytes
+   * @param overwrite whether to overwrite an existing non-identical entry
+   * @param isOldBlock whether the entry should be marked as “old”
+   * @param wrongStore whether the entry is being written to an alternate store
+   * @return {@code true} if the operation completed successfully in this store. This includes both
+   *     cases where bytes were written and cases where the identical entry already existed (and may
+   *     have had metadata updated). Returns {@code false} only when the operation was intentionally
+   *     deferred due to locking or scheduling semantics.
+   * @throws IOException on I/O errors
+   * @throws KeyCollisionException when a different entry with the same key exists and overwrite is
+   *     not permitted
+   */
   public boolean put(
       T block,
       byte[] data,
@@ -476,142 +677,46 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     byte[] routingKey = block.getRoutingKey();
     byte[] fullKey = block.getFullKey();
 
-    if (logMINOR)
-      Logger.minor(this, "Putting " + HexUtil.bytesToHex(routingKey) + " (" + name + ")");
+    if (LOG.isDebugEnabled()) LOG.debug("Putting {} ({})", HexUtil.bytesToHex(routingKey), name);
 
-    try {
-      int retry = 0;
-      while (!configLock.readLock().tryLock(2, TimeUnit.SECONDS)) {
-        if (shutdown) return true;
-        if (retry++ > 10) throw new IOException("lock timeout (20s)");
-      }
-    } catch (InterruptedException e) {
-      throw new IOException("interrupted: " + e);
-    }
+    if (!tryAcquireConfigReadLock()) return true;
     byte[] digestedKey = cipherManager.getDigestedKey(routingKey);
     try {
       Map<Long, Condition> lockMap = lockDigestedKey(digestedKey, false);
-      if (lockMap == null) {
-        if (logDEBUG)
-          Logger.debug(
-              this, "cannot lock key: " + HexUtil.bytesToHex(routingKey) + ", shutting down?");
+      if (lockMap.isEmpty()) {
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Put lock unavailable for key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
         return false;
       }
       try {
-        /*
-         * Use lazy loading here. This may lost data if digestedRoutingKey collide but
-         * collisionPossible is false. Should be very rare as digestedRoutingKey is a
-         * SHA-256 hash.
-         */
+        // Check for an existing entry and handle it first.
         Entry oldEntry = probeEntry(digestedKey, routingKey, false);
         if (oldEntry != null && !oldEntry.isFree()) {
-          long oldOffset = oldEntry.curOffset;
-          try {
-            if (!collisionPossible) {
-              if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
-                oldEntry = readEntry(oldEntry.curOffset, digestedKey, routingKey, true);
-                // Currently flagged as an old block
-                oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
-                if (logMINOR) Logger.minor(this, "Setting old block to new block");
-                oldEntry.storeSize = storeSize;
-                writeEntry(oldEntry, digestedKey, oldOffset);
-              }
-              return true;
-            }
-            oldEntry.setHD(readHD(oldOffset)); // read from disk
-            T oldBlock =
-                oldEntry.getStorableBlock(
-                    routingKey,
-                    fullKey,
-                    false,
-                    false,
-                    null,
-                    (block instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
-            if (block.equals(oldBlock)) {
-              if (logDEBUG) Logger.debug(this, "Block already stored");
-              if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
-                // Currently flagged as an old block
-                oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
-                if (logMINOR) Logger.minor(this, "Setting old block to new block");
-                oldEntry.storeSize = storeSize;
-                writeEntry(oldEntry, digestedKey, oldOffset);
-              }
-              return false; // already in store
-            } else if (!overwrite) {
-              throw new KeyCollisionException();
-            }
-          } catch (KeyVerifyException e) {
-            // ignore
-          }
-
-          // Overwrite old offset with same key
-          Entry entry = new Entry(routingKey, header, data, !isOldBlock, wrongStore);
-          writeEntry(entry, digestedKey, oldOffset);
-          if (oldEntry.generation != generation) keyCount.incrementAndGet();
-          return true;
+          return handleExistingEntryWhenPresent(
+              new ExistingEntryParams<>(oldEntry, block, overwrite, isOldBlock, wrongStore),
+              new KeyContext(digestedKey, routingKey, fullKey),
+              new EntryData(header, data));
         }
 
         Entry entry = new Entry(routingKey, header, data, !isOldBlock, wrongStore);
         long[] offset = entry.getOffset();
 
-        int firstWrongStoreIndex = -1;
-        int wrongStoreCount = 0;
+        WrongStoreScanResult scan = scanOffsetsForWrite(offset, entry, digestedKey);
+        if (scan.written()) return true;
 
-        for (int i = 0; i < offset.length; i++) {
-          if (offset[i] < storeFileOffsetReady) {
-            long flag = getFlag(offset[i], false);
-            if ((flag & Entry.ENTRY_FLAG_OCCUPIED) == 0) {
-              // write to free block
-              if (logDEBUG)
-                Logger.debug(this, "probing, write to i=" + i + ", offset=" + offset[i]);
-              writeEntry(entry, digestedKey, offset[i]);
-              keyCount.incrementAndGet();
-              onWrite();
-              return true;
-            } else if (((flag & Entry.ENTRY_WRONG_STORE) == Entry.ENTRY_WRONG_STORE)) {
-              if (wrongStoreCount == 0) firstWrongStoreIndex = i;
-              wrongStoreCount++;
-            }
-          }
+        if (!wrongStore
+            && altStore != null
+            && tryWriteToAltStore(block, data, header, overwrite, isOldBlock)) {
+          return true;
         }
 
-        if ((!wrongStore) && altStore != null) {
-          if (altStore.put(block, data, header, overwrite, isOldBlock, true)) {
-            if (logMINOR)
-              Logger.minor(
-                  this, "Successfully wrote block to wrong store " + altStore + " on " + this);
-            return true;
-          } else {
-            if (logMINOR)
-              Logger.minor(this, "Writing to wrong store " + altStore + " on " + this + " failed");
-          }
-        }
+        Integer indexToOverwrite =
+            chooseOverwriteIndex(wrongStore, scan.wrongStoreCount(), scan.firstWrongStoreIndex());
+        if (indexToOverwrite == null)
+          return false; // Force overwriting to happen in the right store.
 
-        // There are no free slots for this Entry, so some slot will have to get overwritten.
-        int indexToOverwrite = -1;
-
-        if (wrongStore) {
-          // Distribute overwrites evenly between the right store and the wrong store.
-          if (random.nextInt(OPTION_MAX_PROBE + wrongStoreCount) < wrongStoreCount)
-            // Allow the overwrite to happen in the wrong store.
-            indexToOverwrite = firstWrongStoreIndex;
-          else
-            // Force the overwrite to happen in the right store.
-            return false;
-        } else {
-          // By default, overwrite offset[0] when not writing to wrong store.
-          indexToOverwrite = 0;
-        }
-
-        // Do the overwriting.
-        if (logDEBUG)
-          Logger.debug(
-              this,
-              "collision, write to i=" + indexToOverwrite + ", offset=" + offset[indexToOverwrite]);
-        oldEntry = readEntry(offset[indexToOverwrite], null, null, false);
-        writeEntry(entry, digestedKey, offset[indexToOverwrite]);
-        if (oldEntry.generation != generation) keyCount.incrementAndGet();
-        onWrite();
+        overwriteAtIndex(offset, indexToOverwrite, entry, digestedKey);
         return true;
       } finally {
         unlockDigestedKey(digestedKey, false, lockMap);
@@ -621,8 +726,169 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  private boolean onWrite() {
-    return (writes.incrementAndGet() % (storeSize * 2) == 0);
+  private boolean handleExistingEntryWhenPresent(
+      ExistingEntryParams<T> params, KeyContext keyContext, EntryData entryData)
+      throws IOException, KeyCollisionException {
+    long oldOffset = params.oldEntry().curOffset;
+    try {
+      if (!collisionPossible) {
+        // When collisions are impossible, confirming the existing entry is enough for callers
+        // (including alt-store writes) to consider the operation successful. Update metadata if
+        // needed, but always report success to avoid duplicate writes in the primary store.
+        updateNewBlockFlagIfNeeded(
+            params.oldEntry(),
+            keyContext.digestedKey(),
+            keyContext.routingKey(),
+            oldOffset,
+            params.isOldBlock());
+        return true;
+      }
+      params.oldEntry().setHD(readHD(oldOffset)); // read from disk
+      T oldBlock =
+          params
+              .oldEntry()
+              .getStorableBlock(
+                  keyContext.routingKey(),
+                  keyContext.fullKey(),
+                  false,
+                  false,
+                  null,
+                  (params.block() instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
+      if (params.block().equals(oldBlock)) {
+        return handleAlreadyStored(
+            params.oldEntry(), params.isOldBlock(), keyContext.digestedKey(), oldOffset);
+      } else if (!params.overwrite()) {
+        throw new KeyCollisionException();
+      }
+    } catch (KeyVerifyException _) {
+      // ignore
+    }
+
+    // Overwrite the old offset with the same key
+    Entry entry =
+        new Entry(
+            keyContext.routingKey(),
+            entryData.header(),
+            entryData.data(),
+            !params.isOldBlock(),
+            params.wrongStore());
+    writeEntry(entry, keyContext.digestedKey(), oldOffset);
+    if (params.oldEntry().generation != generation) keyCount.incrementAndGet();
+    return true;
+  }
+
+  private void updateNewBlockFlagIfNeeded(
+      Entry oldEntry, byte[] digestedKey, byte[] routingKey, long oldOffset, boolean isOldBlock)
+      throws IOException {
+    if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
+      // Re-read with data for a safe in-place metadata update; may return null if verification
+      // fails.
+      oldEntry = readEntry(oldEntry.curOffset, digestedKey, routingKey, true);
+      if (oldEntry == null) {
+        // Entry no longer matches or could not be decrypted; skip flag update safely.
+        if (LOG.isDebugEnabled()) LOG.debug("Skipping flag update; entry could not be verified");
+        return; // no change performed
+      }
+      // Currently flagged as an old block; update and persist.
+      oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
+      if (LOG.isDebugEnabled()) LOG.debug("Updating entry flag from old to new after verify");
+      oldEntry.storeSize = storeSize;
+      writeEntry(oldEntry, digestedKey, oldOffset);
+    }
+  }
+
+  private boolean handleAlreadyStored(
+      Entry oldEntry, boolean isOldBlock, byte[] digestedKey, long oldOffset) throws IOException {
+    if (LOG.isTraceEnabled()) LOG.trace("Block already stored");
+    if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
+      // Currently flagged as an old block
+      oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
+      if (LOG.isDebugEnabled())
+        LOG.debug("Updating entry flag from old to new on already stored entry");
+      oldEntry.storeSize = storeSize;
+      writeEntry(oldEntry, digestedKey, oldOffset);
+    }
+    // Report success: the block is already present (and metadata may have been updated).
+    return true;
+  }
+
+  private record WrongStoreScanResult(
+      int firstWrongStoreIndex, int wrongStoreCount, boolean written) {
+    static WrongStoreScanResult createWritten() {
+      return new WrongStoreScanResult(-1, 0, true);
+    }
+  }
+
+  private WrongStoreScanResult scanOffsetsForWrite(long[] offset, Entry entry, byte[] digestedKey)
+      throws IOException {
+    int firstWrongStoreIndex = -1;
+    int wrongStoreCount = 0;
+    for (int i = 0; i < offset.length; i++) {
+      if (offset[i] < storeFileOffsetReady) {
+        long flag = getFlag(offset[i]);
+        if ((flag & Entry.ENTRY_FLAG_OCCUPIED) == 0) {
+          // write to free block
+          if (LOG.isTraceEnabled())
+            LOG.trace("probing, write to i={}" + LOG_OFFSET + "{}", i, offset[i]);
+          writeEntry(entry, digestedKey, offset[i]);
+          keyCount.incrementAndGet();
+          onWrite();
+          return WrongStoreScanResult.createWritten();
+        } else if (((flag & Entry.ENTRY_WRONG_STORE) == Entry.ENTRY_WRONG_STORE)) {
+          if (wrongStoreCount == 0) firstWrongStoreIndex = i;
+          wrongStoreCount++;
+        }
+      }
+    }
+    return new WrongStoreScanResult(firstWrongStoreIndex, wrongStoreCount, false);
+  }
+
+  private boolean tryWriteToAltStore(
+      T block, byte[] data, byte[] header, boolean overwrite, boolean isOldBlock)
+      throws IOException, KeyCollisionException {
+    if (altStore.put(block, data, header, overwrite, isOldBlock, true)) {
+      if (LOG.isDebugEnabled())
+        LOG.debug("Successfully wrote block to wrong store {} on {}", altStore, this);
+      return true;
+    } else {
+      if (LOG.isDebugEnabled()) LOG.debug("Writing to wrong store {} on {} failed", altStore, this);
+      return false;
+    }
+  }
+
+  private Integer chooseOverwriteIndex(
+      boolean wrongStore, int wrongStoreCount, int firstWrongStoreIndex) {
+    if (wrongStore) {
+      // Distribute overwriting evenly between the right store and the wrong store.
+      if (random.nextInt(OPTION_MAX_PROBE + wrongStoreCount) < wrongStoreCount) {
+        // Allow the overwriting to happen in the wrong store.
+        return firstWrongStoreIndex;
+      } else {
+        // Force the overwriting to happen in the right store.
+        return null;
+      }
+    } else {
+      // By default, overwrite offset[0] when not writing to the wrong store.
+      return 0;
+    }
+  }
+
+  private void overwriteAtIndex(
+      long[] offset, int indexToOverwrite, Entry entry, byte[] digestedKey) throws IOException {
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "collision, write to i={}" + LOG_OFFSET + "{}",
+          indexToOverwrite,
+          offset[indexToOverwrite]);
+    Entry oldEntry = readEntry(offset[indexToOverwrite], null, null, false);
+    writeEntry(entry, digestedKey, offset[indexToOverwrite]);
+    if (oldEntry != null && oldEntry.generation != generation) keyCount.incrementAndGet();
+    onWrite();
+  }
+
+  private void onWrite() {
+    // Increment write counter; threshold-based boolean was unused by callers.
+    writes.incrementAndGet();
   }
 
   // ------------- Entry I/O
@@ -630,10 +896,12 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private File metaFile;
   private RandomAccessFile metaRAF;
   private FileChannel metaFC;
+  private FileLock metaLock;
   // header+data file
   private File hdFile;
   private RandomAccessFile hdRAF;
   private FileChannel hdFC;
+  private FileLock hdLock;
   private final int hdPadding;
 
   /**
@@ -663,17 +931,17 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    *  Gen = Generation
    * </pre>
    */
-  class Entry {
+  final class Entry {
     /** Flag for occupied space */
     private static final long ENTRY_FLAG_OCCUPIED = 0x00000001L;
 
-    /** Flag for plain key available */
+    /** Flag for a plain key available */
     private static final long ENTRY_FLAG_PLAINKEY = 0x00000002L;
 
     /** Flag for block added after we stopped caching local (and high htl) requests */
     private static final long ENTRY_NEW_BLOCK = 0x00000004L;
 
-    /** Flag set if the block was stored in the wrong datastore i.e. store instead of cache */
+    /** Flag set if the block was stored in the wrong datastore i.e., store instead of cache */
     private static final long ENTRY_WRONG_STORE = 0x00000008L;
 
     /** Control block length */
@@ -719,10 +987,11 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     /**
-     * Set header/data after construction.
+     * Sets {@code header} and {@code data} arrays from the provided buffer.
      *
-     * @param storeBuf
-     * @param store
+     * <p>Used when the metadata was constructed first and the payload needs to be attached.
+     *
+     * @param hdBuf buffer containing {@code headerBlockLength + dataBlockLength + hdPadding} bytes
      */
     private void setHD(ByteBuffer hdBuf) {
       assert hdBuf.remaining() == headerBlockLength + dataBlockLength + hdPadding;
@@ -736,11 +1005,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     /**
-     * Create a new entry
+     * Creates a new entry from the plain routing key and serialized payload.
      *
-     * @param plainRoutingKey
-     * @param header
-     * @param data
+     * @param plainRoutingKey plain routing key (un-digested)
+     * @param header serialized header bytes (copied)
+     * @param data serialized data bytes (copied)
+     * @param newBlock whether the entry should be marked as “new”
+     * @param wrongStore whether the entry is flagged as stored in the alternate store
      */
     private Entry(
         byte[] plainRoutingKey, byte[] header, byte[] data, boolean newBlock, boolean wrongStore) {
@@ -786,11 +1057,11 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     private ByteBuffer toHDBuffer() {
-      assert isEncrypted; // should have encrypted to get dataEncryptIV in control buffer
+      if (header == null || data == null) return null;
+
+      assert isEncrypted; // should have encrypted to get dataEncryptIV in the control buffer
       assert header.length == headerBlockLength;
       assert data.length == dataBlockLength;
-
-      if (header == null || data == null) return null;
 
       ByteBuffer out = ByteBuffer.allocate(headerBlockLength + dataBlockLength + hdPadding);
       out.put(header);
@@ -813,13 +1084,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       T block =
           callback.construct(
-              data,
-              header,
-              routingKey,
-              fullKey,
-              canReadClientCache,
-              canReadSlashdotCache,
-              meta,
+              new StoreCallback.BlockPayload(data, header, routingKey, fullKey),
+              new StoreCallback.ConstructOptions(canReadClientCache, canReadSlashdotCache, meta),
               knownKey);
       byte[] blockRoutingKey = block.getRoutingKey();
 
@@ -834,7 +1100,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private long[] getOffset() {
       if (digestedRoutingKey != null)
         return getOffsetFromDigestedKey(digestedRoutingKey, storeSize);
-      else return getOffsetFromPlainKey(plainRoutingKey, storeSize);
+      else
+        return getOffsetFromDigestedKey(cipherManager.getDigestedKey(plainRoutingKey), storeSize);
     }
 
     private boolean isFree() {
@@ -842,9 +1109,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     byte[] getDigestedRoutingKey() {
-      if (digestedRoutingKey == null)
-        if (plainRoutingKey == null) return null;
-        else digestedRoutingKey = cipherManager.getDigestedKey(plainRoutingKey);
+      if (digestedRoutingKey == null) {
+        if (plainRoutingKey == null) {
+          throw new IllegalStateException("Entry has neither plain nor digested routing key");
+        } else {
+          digestedRoutingKey = cipherManager.getDigestedKey(plainRoutingKey);
+        }
+      }
       return digestedRoutingKey;
     }
 
@@ -865,9 +1136,17 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  /**
+   * Checks whether a slot-filter value likely matches a given digested key.
+   *
+   * @param value slot-filter entry
+   * @param digestedRoutingKey salted/digested routing key
+   * @return {@code true} if the filter indicates a likely match; {@code false} if the slot is
+   *     known-free, unknown, or the prefix does not match
+   */
   public boolean slotCacheLikelyMatch(int value, byte[] digestedRoutingKey) {
-    if ((value & (SLOT_CHECKED)) == 0) return false;
-    if ((value & (SLOT_OCCUPIED)) == 0) return false;
+    if ((value & SLOT_CHECKED) == 0) return false;
+    if ((value & SLOT_OCCUPIED) == 0) return false;
     int wanted =
         (digestedRoutingKey[2] & 0xFF)
             + ((digestedRoutingKey[1] & 0xFF) << 8)
@@ -891,15 +1170,18 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private volatile long storeFileOffsetReady = -1;
 
   /**
-   * Open all store files
+   * Opens and exclusively locks the metadata and data files for this store.
    *
-   * @param baseDir
-   * @param name
-   * @return <code>true</code> iff this is a new datastore
-   * @throws IOException
+   * <p>Creates the files when they do not exist and returns whether this is a new store. Acquires
+   * process-wide locks on both channels to prevent concurrent writers.
+   *
+   * @param baseDir directory containing the store files
+   * @param name filename prefix used for the pair of files
+   * @return {@code true} if files were newly created; {@code false} otherwise
+   * @throws IOException on I/O errors opening or locking the files
    */
   private boolean openStoreFiles(File baseDir, String name) throws IOException {
-    metaFile = new File(baseDir, name + ".metadata");
+    metaFile = new File(baseDir, name + META_EXT);
     hdFile = new File(baseDir, name + ".hd");
 
     boolean newStore = !metaFile.exists() || !hdFile.exists();
@@ -908,120 +1190,279 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     metaFC = metaRAF.getChannel();
 
     try {
-      metaFC.lock();
+      // Hold the lock for the life of this channel; released on close.
+      metaLock = metaFC.lock();
     } catch (OverlappingFileLockException ex) {
-      throw new Error(
-          "Could not aquire lock for file " + baseDir.toPath().resolve(name + ".metadata"), ex);
+      throw new IllegalStateException(
+          "Could not acquire lock for file " + baseDir.toPath().resolve(name + META_EXT), ex);
     }
 
     hdRAF = new RandomAccessFile(hdFile, "rw");
     hdFC = hdRAF.getChannel();
     try {
-      hdFC.lock();
+      // Hold the lock for the life of this channel; released on close.
+      hdLock = hdFC.lock();
     } catch (OverlappingFileLockException ex) {
-      throw new Error(
-          "Could not aquire lock for file " + baseDir.toPath().resolve(name + ".hd"), ex);
+      throw new IllegalStateException(
+          "Could not acquire lock for file " + baseDir.toPath().resolve(name + ".hd"), ex);
     }
 
     return newStore;
   }
 
   /**
-   * Read entry from disk. Before calling this function, you should acquire all required locks.
+   * Reads an entry's metadata (and optionally payload) from the disk at a given slot.
    *
-   * @return <code>null</code> if and only if <code>routingKey</code> is not <code>null</code> and
-   *     the key does not match the entry.
+   * <p>Callers must acquire the necessary slot locks before invoking. When {@code routingKey} is
+   * non-{@code null}, a free slot or a digested-key mismatch returns {@code null}. When {@code
+   * withData} is {@code true}, the method also reads header+data and attempts decryption, returning
+   * {@code null} on decryption failure. The slot filter is updated when the observed state differs
+   * from its cached value.
+   *
+   * @param offset slot index
+   * @param digestedRoutingKey salted/digested key used to check for a match; may be {@code null}
+   * @param routingKey plain routing key used for decryption; may be {@code null} to read metadata
+   *     only
+   * @param withData whether to read and decrypt header+data if a candidate looks plausible
+   * @return the populated {@code Entry} on success; {@code null} when no match
+   * @throws IOException on I/O errors
    */
   private Entry readEntry(
       long offset, byte[] digestedRoutingKey, byte[] routingKey, boolean withData)
       throws IOException {
     if (offset >= Integer.MAX_VALUE) throw new IllegalArgumentException();
-    int cache = 0;
-    boolean validCache = false;
-    boolean likelyMatch = false;
-    if (digestedRoutingKey != null && !slotFilterDisabled) {
-      cache = slotFilter.get((int) offset);
-      validCache = (cache & SLOT_CHECKED) != 0;
-      likelyMatch = slotCacheLikelyMatch(cache, digestedRoutingKey);
-      if (USE_SLOT_FILTER && validCache && !likelyMatch) return null;
-    }
-    if (validCache && logMINOR) {
-      if (likelyMatch) Logger.minor(this, "Likely match");
-      else Logger.minor(this, "Unlikely match");
-    }
-    ByteBuffer mbf = ByteBuffer.allocate(Entry.METADATA_LENGTH);
 
-    do {
-      int status = metaFC.read(mbf, Entry.METADATA_LENGTH * offset + mbf.position());
-      if (status == -1) {
-        Logger.error(this, "Failed to access offset " + offset, new Exception("error"));
-        throw new EOFException();
-      }
-    } while (mbf.hasRemaining());
-    mbf.flip();
+    CacheState cacheState = getCacheState(digestedRoutingKey, offset);
+    if (USE_SLOT_FILTER && cacheState.valid() && !cacheState.likelyMatch()) return null;
+    logCacheLikelihood(cacheState);
 
-    Entry entry = new Entry(mbf, null);
-    entry.curOffset = offset;
-
-    byte[] slotDigestedRoutingKey = entry.digestedRoutingKey;
-    int trueCache = entry.getSlotFilterEntry();
-    if (trueCache != cache && !slotFilterDisabled) {
-      if (validCache)
-        Logger.error(
-            this,
-            "Slot cache has changed for slot " + offset + " from " + cache + " to " + trueCache);
-      slotFilter.put((int) offset, trueCache);
-    }
+    Entry entry = readMetadata(offset);
+    updateSlotFilterIfChanged(offset, cacheState, entry);
 
     if (routingKey != null) {
-      if (entry.isFree()) {
-        if (validCache && !likelyMatch && !slotCacheIsFree(cache)) {
-          Logger.error(
-              this,
-              "Slot falsely identified as non-free on slot " + offset + " cache was " + cache);
-          bloomFalsePos.incrementAndGet();
-        } else if (logMINOR && validCache && !likelyMatch && slotCacheIsFree(cache))
-          Logger.minor(this, "True negative!");
+      if (shouldReturnNullForFreeOrMismatchedKey(entry, cacheState, digestedRoutingKey, offset))
         return null;
-      }
-      if (!Arrays.equals(digestedRoutingKey, slotDigestedRoutingKey)) {
-        if (validCache && likelyMatch) {
-          Logger.normal(
-              this, "False positive from slot cache on slot " + offset + " cache was " + cache);
-          bloomFalsePos.incrementAndGet();
-        } else if (logMINOR && validCache && !likelyMatch) Logger.minor(this, "True negative!");
-        return null;
-      }
 
-      if (validCache && !likelyMatch) {
-        Logger.error(
-            this, "False NEGATIVE from slot cache on slot " + offset + " cache was " + cache);
+      if (cacheState.valid() && !cacheState.likelyMatch()) {
+        LOG.error(
+            "False NEGATIVE from slot cache on slot {}" + CACHE_WAS + "{}",
+            offset,
+            cacheState.cache());
         bloomFalsePos.incrementAndGet();
       }
 
-      if (withData) {
-        ByteBuffer hdBuf = readHD(offset);
-        entry.setHD(hdBuf);
-        boolean decrypted = cipherManager.decrypt(entry, routingKey);
-        if (!decrypted) {
-          if (logMINOR && validCache && likelyMatch)
-            Logger.minor(
-                this, "True positive but decrypt failed on slot " + offset + " cache was " + cache);
-          return null;
-        } else {
-          if (logMINOR && validCache && likelyMatch) Logger.minor(this, "True positive!");
-        }
-      }
+      if (withData && !decryptEntryData(entry, routingKey, cacheState, offset)) return null;
     }
 
     return entry;
   }
 
+  private boolean decryptEntryData(
+      Entry entry, byte[] routingKey, CacheState cacheState, long offset) throws IOException {
+    ByteBuffer hdBuf = readHD(offset);
+    entry.setHD(hdBuf);
+    boolean decrypted = cipherManager.decrypt(entry, routingKey);
+    if (!decrypted) {
+      if (LOG.isDebugEnabled() && cacheState.valid() && cacheState.likelyMatch())
+        LOG.debug(
+            "True positive but decrypt failed on slot {}" + CACHE_WAS + "{}",
+            offset,
+            cacheState.cache());
+      return false;
+    } else {
+      if (LOG.isDebugEnabled() && cacheState.valid() && cacheState.likelyMatch())
+        LOG.debug("True positive!");
+    }
+    return true;
+  }
+
+  private boolean shouldReturnNullForFreeOrMismatchedKey(
+      Entry entry, CacheState cs, byte[] digestedRoutingKey, long offset) {
+    if (entry.isFree()) {
+      if (cs.valid() && !cs.likelyMatch() && !slotCacheIsFree(cs.cache())) {
+        LOG.error(
+            "Slot falsely identified as non-free on slot {}" + CACHE_WAS + "{}",
+            offset,
+            cs.cache());
+        bloomFalsePos.incrementAndGet();
+      } else if (LOG.isDebugEnabled()
+          && cs.valid()
+          && !cs.likelyMatch()
+          && slotCacheIsFree(cs.cache())) LOG.debug("Slot filter true negative: free slot");
+      return true;
+    }
+    if (!Arrays.equals(digestedRoutingKey, entry.digestedRoutingKey)) {
+      if (cs.valid() && cs.likelyMatch()) {
+        LOG.info(
+            "False positive from slot cache on slot {}" + CACHE_WAS + "{}", offset, cs.cache());
+        bloomFalsePos.incrementAndGet();
+      } else if (LOG.isDebugEnabled() && cs.valid())
+        LOG.debug("Slot filter true negative: key mismatch");
+      return true;
+    }
+    return false;
+  }
+
+  private void updateSlotFilterIfChanged(long offset, CacheState cs, Entry entry) {
+    int trueCache = entry.getSlotFilterEntry();
+    if (trueCache != cs.cache() && !slotFilterDisabled) {
+      if (cs.valid())
+        LOG.error(
+            "Slot cache has changed for slot {}" + STR_FROM + "{} to {}",
+            offset,
+            cs.cache(),
+            trueCache);
+      try {
+        slotFilter.put((int) offset, trueCache);
+      } catch (IOException e) {
+        LOG.error("Slot filter update failed after cache change: {}", e, e);
+      }
+    }
+  }
+
+  private Entry readMetadata(long offset) throws IOException {
+    ByteBuffer mbf = ByteBuffer.allocate(Entry.METADATA_LENGTH);
+    do {
+      int status = metaFC.read(mbf, Entry.METADATA_LENGTH * offset + mbf.position());
+      if (status == -1) {
+        LOG.error("Failed to access offset {}", offset);
+        throw new EOFException();
+      }
+    } while (mbf.hasRemaining());
+    mbf.flip();
+    Entry entry = new Entry(mbf, null);
+    entry.curOffset = offset;
+    return entry;
+  }
+
+  private void logCacheLikelihood(CacheState cs) {
+    if (cs.valid && LOG.isDebugEnabled()) {
+      if (cs.likelyMatch) LOG.debug("Likely match");
+      else LOG.debug("Unlikely match");
+    }
+  }
+
+  private CacheState getCacheState(byte[] digestedRoutingKey, long offset) {
+    if (digestedRoutingKey == null || slotFilterDisabled) return new CacheState(0, false, false);
+    int cache = slotFilter.get((int) offset);
+    boolean validCache = (cache & SLOT_CHECKED) != 0;
+    boolean likelyMatch = slotCacheLikelyMatch(cache, digestedRoutingKey);
+    return new CacheState(cache, validCache, likelyMatch);
+  }
+
+  private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
+
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
+  private static final class KeyContext {
+    private final byte[] digestedKey;
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    private KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+      this.digestedKey = digestedKey;
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
+    private byte[] digestedKey() {
+      return digestedKey;
+    }
+
+    private byte[] routingKey() {
+      return routingKey;
+    }
+
+    private byte[] fullKey() {
+      return fullKey;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) return true;
+      if (!(other instanceof KeyContext keyContext)) return false;
+      return Arrays.equals(digestedKey, keyContext.digestedKey)
+          && Arrays.equals(routingKey, keyContext.routingKey)
+          && Arrays.equals(fullKey, keyContext.fullKey);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(digestedKey);
+      result = 31 * result + Arrays.hashCode(routingKey);
+      result = 31 * result + Arrays.hashCode(fullKey);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "KeyContext[digestedKey="
+          + Arrays.toString(digestedKey)
+          + ", routingKey="
+          + Arrays.toString(routingKey)
+          + ", fullKey="
+          + Arrays.toString(fullKey)
+          + "]";
+    }
+  }
+
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
+  private static final class EntryData {
+    private final byte[] header;
+    private final byte[] data;
+
+    private EntryData(byte[] header, byte[] data) {
+      this.header = header;
+      this.data = data;
+    }
+
+    private byte[] header() {
+      return header;
+    }
+
+    private byte[] data() {
+      return data;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) return true;
+      if (!(other instanceof EntryData entryData)) return false;
+      return Arrays.equals(header, entryData.header) && Arrays.equals(data, entryData.data);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(header);
+      result = 31 * result + Arrays.hashCode(data);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "EntryData[header="
+          + Arrays.toString(header)
+          + ", data="
+          + Arrays.toString(data)
+          + "]";
+    }
+  }
+
+  private record ExistingEntryParams<T extends StorableBlock>(
+      SaltedHashFreenetStore<T>.Entry oldEntry,
+      T block,
+      boolean overwrite,
+      boolean isOldBlock,
+      boolean wrongStore) {}
+
   /**
-   * Read header + data from disk
+   * Reads the header+data region for a slot.
    *
-   * @param offset
-   * @throws IOException
+   * <p>Returns a buffer sized {@code headerBlockLength + dataBlockLength + hdPadding} positioned at
+   * the start (i.e., flipped). The caller consumes bytes to populate an {@code Entry}.
+   *
+   * @param offset slot index
+   * @return a buffer containing the raw header+data bytes for the slot
+   * @throws IOException on I/O errors
    */
   private ByteBuffer readHD(long offset) throws IOException {
     ByteBuffer buf = ByteBuffer.allocate(headerBlockLength + dataBlockLength + hdPadding);
@@ -1037,50 +1478,40 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   }
 
   /**
-   * Get the flags for a slot. Tries to use the slot filter if possible. However, the
-   * ENTRY_FLAG_PLAINKEY flag is not included in the slot filter, so it won't contain that one.
+   * Returns a slot's flags, consulting the slot filter when available.
    *
-   * @param offset
-   * @param forceReadEntry
-   * @return
-   * @throws IOException
+   * <p>When the slot filter marks a slot as “checked”, its bits are translated to entry flags
+   * without reading from the disk. Otherwise, the entry metadata is read. Note that {@code
+   * ENTRY_FLAG_PLAINKEY} is not represented in the slot filter and is only visible when reading
+   * metadata.
+   *
+   * @param offset slot index to read
+   * @return entry flags at the slot
+   * @throws IOException on I/O errors
    */
-  private long getFlag(long offset, boolean forceReadEntry) throws IOException {
-    if ((!forceReadEntry) && (!slotFilterDisabled) && USE_SLOT_FILTER) {
+  private long getFlag(long offset) throws IOException {
+    if (!slotFilterDisabled && USE_SLOT_FILTER) {
       int cache = slotFilter.get((int) offset);
       if ((cache & SLOT_CHECKED) != 0) {
         return translateSlotFlagsToEntryFlags(cache);
       }
     }
     Entry entry = readEntry(offset, null, null, false);
+    Objects.requireNonNull(entry, "readEntry returned null for flag read");
     return entry.flag;
   }
 
-  private boolean isFree(long offset) throws IOException {
-    if ((!slotFilterDisabled) && USE_SLOT_FILTER) {
-      int cache = slotFilter.get((int) offset);
-      if ((cache & SLOT_CHECKED) != 0) {
-        return slotCacheIsFree(cache);
-      }
-    }
-    Entry entry = readEntry(offset, null, null, false);
-    return entry.isFree();
-  }
-
-  private byte[] getDigestedKeyFromOffset(long offset) throws IOException {
-    Entry entry = readEntry(offset, null, null, false);
-    return entry.getDigestedRoutingKey();
-  }
-
   /**
-   * Write entry to disk.
+   * Writes an entry to disk at a specific slot and updates the slot filter.
    *
-   * <p>Before calling this function, you should:
+   * <p>Preconditions: caller holds the necessary slot locks and the entry's {@code storeSize}
+   * reflects the current store. The method encrypts the header/data, writes metadata and payload,
+   * and sets {@code entry.curOffset}.
    *
-   * <ul>
-   *   <li>acquire all required locks
-   *   <li>update the entry with latest store size
-   * </ul>
+   * @param entry entry to persist
+   * @param digestedRoutingKey salted/digested key for computing the slot-filter prefix
+   * @param offset slot index; must be less than {@link Integer#MAX_VALUE}
+   * @throws IOException on I/O errors
    */
   private void writeEntry(Entry entry, byte[] digestedRoutingKey, long offset) throws IOException {
     if (offset >= Integer.MAX_VALUE) throw new IllegalArgumentException();
@@ -1109,18 +1540,20 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   }
 
   private void flushAndClose(boolean abort) {
-    Logger.normal(this, "Flush and closing this store: " + name);
+    LOG.info("Flush and closing this store: {}", name);
     try {
+      releaseLockQuietly(metaLock, "meta file");
       metaFC.force(true);
       metaFC.close();
     } catch (Exception e) {
-      Logger.error(this, "error flusing store", e);
+      LOG.error("error flushing store metadata file", e);
     }
     try {
+      releaseLockQuietly(hdLock, "data file");
       hdFC.force(true);
       hdFC.close();
     } catch (Exception e) {
-      Logger.error(this, "error flusing store", e);
+      LOG.error("error flushing store data file", e);
     }
     if (!slotFilterDisabled) {
       if (!abort) slotFilter.shutdown();
@@ -1128,19 +1561,32 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  private void releaseLockQuietly(FileLock lock, String name) {
+    if (lock == null || !lock.isValid()) return;
+    try {
+      lock.release();
+    } catch (IOException e) {
+      LOG.warn("Failed to release {} lock", name, e);
+    }
+  }
+
   /**
-   * Set preallocate storage space
+   * Enables or disables preallocation of the backing files to the target size during resizes.
    *
-   * @param preallocate
+   * @param preallocate {@code true} to preallocate disk space; {@code false} to grow lazily
    */
   public void setPreallocate(boolean preallocate) {
     this.preallocate = preallocate;
   }
 
   /**
-   * Change on disk store file size
+   * Grows or shrinks the metadata and data files to match a target number of entries.
    *
-   * @param storeMaxEntries
+   * <p>Uses {@link Fallocate} to efficiently preallocate when enabled. Aligns the data file to
+   * {@code headerBlockLength + dataBlockLength + hdPadding} and the metadata file to {@code
+   * Entry.METADATA_LENGTH}.
+   *
+   * @param storeMaxEntries target number of entries (slots)
    */
   private void setStoreFileSize(long storeMaxEntries) {
     try {
@@ -1154,7 +1600,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         try (WrapperKeepalive wrapperKeepalive = new WrapperKeepalive()) {
           wrapperKeepalive.start();
           if (oldMetaLen < newMetaLen) {
-            // freenet-mobile-changed: Passing file descriptor to avoid using reflection
+            // freenet-mobile-changed: Passing a file descriptor to avoid using reflection
             Fallocate.forChannel(metaFC, metaRAF.getFD(), newMetaLen)
                 .fromOffset(oldMetaLen)
                 .execute();
@@ -1169,7 +1615,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       metaRAF.setLength(newMetaLen);
       hdRAF.setLength(newHdLen);
     } catch (IOException e) {
-      Logger.error(this, "error resizing store file", e);
+      LOG.error("error resizing store file", e);
     }
   }
 
@@ -1201,123 +1647,132 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private final File configFile;
 
   /**
-   * Load config file
+   * Loads the store configuration, creating a new one when missing.
    *
-   * @param masterKey
-   * @return <code>true</code> iff this is a new datastore
+   * <p>Initializes the cipher manager from the stored salt (optionally protected by {@code
+   * masterKey}). When the config file does not exist, a new salt is generated and persisted.
+   *
+   * @param masterKey optional master key used to encrypt/decrypt the on-disk salt
+   * @return {@code true} if a new configuration was created; {@code false} when an existing one was
+   *     loaded
    */
   private boolean loadConfigFile(byte[] masterKey) throws IOException {
     assert cipherManager == null; // never load the configuration twice
 
     if (!configFile.exists()) {
-      // create new
-      byte[] newsalt = new byte[0x10];
-      random.nextBytes(newsalt);
-      byte[] diskSalt = newsalt;
-      if (masterKey != null) {
-        BlockCipher cipher;
-        try {
-          cipher = new Rijndael(256, 128);
-        } catch (UnsupportedCipherException e) {
-          throw new Error("Impossible: no Rijndael(256,128): " + e, e);
-        }
-        cipher.initialize(masterKey);
-        diskSalt = new byte[0x10];
-        cipher.encipher(newsalt, diskSalt);
-        if (logDEBUG)
-          Logger.debug(
-              this,
-              "Encrypting with "
-                  + HexUtil.bytesToHex(newsalt)
-                  + " from "
-                  + HexUtil.bytesToHex(diskSalt));
-      }
-      cipherManager = new CipherManager(newsalt, diskSalt);
-
-      writeConfigFile();
-      return true;
+      return createNewConfig(masterKey);
     } else {
-      try {
-        // try to load
-        try (RandomAccessFile raf = new RandomAccessFile(configFile, "r")) {
-          byte[] salt = new byte[0x10];
-          raf.readFully(salt);
-
-          byte[] diskSalt = salt;
-          if (masterKey != null) {
-            BlockCipher cipher;
-            try {
-              cipher = new Rijndael(256, 128);
-            } catch (UnsupportedCipherException e) {
-              throw new Error("Impossible: no Rijndael(256,128): " + e, e);
-            }
-            cipher.initialize(masterKey);
-            salt = new byte[0x10];
-            cipher.decipher(diskSalt, salt);
-            if (logDEBUG)
-              Logger.debug(
-                  this,
-                  "Encrypting (new) with "
-                      + HexUtil.bytesToHex(salt)
-                      + " from "
-                      + HexUtil.bytesToHex(diskSalt));
-          }
-
-          cipherManager = new CipherManager(salt, diskSalt);
-
-          storeSize = raf.readLong();
-          if (storeSize <= 0) throw new IOException("Bogus datastore size");
-          prevStoreSize = raf.readLong();
-          keyCount.set(raf.readLong());
-          generation = raf.readInt();
-          flags = raf.readInt();
-
-          if (((flags & FLAG_DIRTY) != 0)
-              &&
-              // FIXME figure out a way to do this consistently!
-              // Not critical as a few blocks wrong is something we can handle.
-              ResizablePersistentIntBuffer.getPersistenceTime() != -1) flags |= FLAG_REBUILD_BLOOM;
-
-          try {
-            raf.readInt(); // bloomFilterK
-            raf.readInt(); // reserved
-            raf.readLong(); // reserved
-            long w = raf.readLong();
-            writes.set(w);
-            initialWrites = w;
-            Logger.normal(this, "Set writes to saved value " + w);
-            hits.set(raf.readLong());
-            initialHits = hits.get();
-            misses.set(raf.readLong());
-            initialMisses = misses.get();
-            bloomFalsePos.set(raf.readLong());
-            initialBloomFalsePos = bloomFalsePos.get();
-          } catch (EOFException e) {
-            // Ignore, back compatibility.
-          }
-
-          return false;
-        }
-      } catch (IOException e) {
-        // corrupted? delete it and try again
-        Logger.error(this, "config file corrupted, trying to create a new store: " + name, e);
-        System.err.println("config file corrupted, trying to create a new store: " + name);
-        if (configFile.exists() && configFile.delete()) {
-          File metaFile = new File(baseDir, name + ".metadata");
-          metaFile.delete();
-          return loadConfigFile(masterKey);
-        }
-
-        // last restore
-        Logger.error(
-            this, "can't delete config file, please delete the store manually: " + name, e);
-        System.err.println("can't delete config file, please delete the store manually: " + name);
-        throw e;
-      }
+      return loadExistingConfig(masterKey);
     }
   }
 
-  /** Write config file */
+  private boolean createNewConfig(byte[] masterKey) {
+    byte[] newsalt = new byte[0x10];
+    random.nextBytes(newsalt);
+    byte[] diskSalt = newsalt;
+    if (masterKey != null) {
+      BlockCipher cipher = newRijndael();
+      cipher.initialize(masterKey);
+      diskSalt = new byte[0x10];
+      cipher.encipher(newsalt, diskSalt);
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "Encrypting with {}" + STR_FROM + "{}",
+            HexUtil.bytesToHex(newsalt),
+            HexUtil.bytesToHex(diskSalt));
+    }
+    cipherManager = new CipherManager(newsalt, diskSalt);
+    writeConfigFile();
+    return true;
+  }
+
+  private boolean loadExistingConfig(byte[] masterKey) throws IOException {
+    try (RandomAccessFile raf = new RandomAccessFile(configFile, "r")) {
+      byte[] salt = new byte[0x10];
+      raf.readFully(salt);
+
+      byte[] diskSalt = salt;
+      if (masterKey != null) {
+        BlockCipher cipher = newRijndael();
+        cipher.initialize(masterKey);
+        salt = new byte[0x10];
+        cipher.decipher(diskSalt, salt);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Encrypting (new) with {}" + STR_FROM + "{}",
+              HexUtil.bytesToHex(salt),
+              HexUtil.bytesToHex(diskSalt));
+      }
+
+      cipherManager = new CipherManager(salt, diskSalt);
+
+      storeSize = raf.readLong();
+      if (storeSize <= 0) throw new IOException("Bogus datastore size");
+      prevStoreSize = raf.readLong();
+      keyCount.set(raf.readLong());
+      generation = raf.readInt();
+      flags = raf.readInt();
+
+      if (((flags & FLAG_DIRTY) != 0)
+          &&
+          // Note: When slot-filter persistence is enabled, we conservatively request a rebuild.
+          ResizablePersistentIntBuffer.getPersistenceTime() != -1) flags |= FLAG_REBUILD_BLOOM;
+
+      readOptionalTrailingCounters(raf);
+
+      return false;
+    } catch (IOException e) {
+      // Corrupted? Delete it and try again. Do not log-and-throw; rethrow with context if
+      // unrecoverable.
+      if (deleteCorruptedConfigAndMeta()) {
+        return loadConfigFile(masterKey);
+      }
+      throw new IOException(
+          "Failed to load config for store '"
+              + name
+              + "' ("
+              + configFile
+              + ") — file appears corrupt and could not be deleted; "
+              + "please delete the store manually.",
+          e);
+    }
+  }
+
+  /** Reads optional trailing counters from the config file; tolerates EOF for compatibility. */
+  private void readOptionalTrailingCounters(RandomAccessFile raf) throws IOException {
+    try {
+      raf.readInt(); // bloomFilterK
+      raf.readInt(); // reserved
+      raf.readLong(); // reserved
+      long w = raf.readLong();
+      writes.set(w);
+      initialWrites = w;
+      LOG.info("Set writes to saved value {}", w);
+      hits.set(raf.readLong());
+      initialHits = hits.get();
+      misses.set(raf.readLong());
+      initialMisses = misses.get();
+      bloomFalsePos.set(raf.readLong());
+      initialBloomFalsePos = bloomFalsePos.get();
+    } catch (EOFException _) {
+      // Ignore, back compatibility.
+    }
+  }
+
+  private BlockCipher newRijndael() {
+    try {
+      return new Rijndael(256, 128);
+    } catch (UnsupportedCipherException e) {
+      throw new IllegalStateException("Impossible: no Rijndael(256,128): " + e, e);
+    }
+  }
+
+  /**
+   * Writes the configuration file atomically.
+   *
+   * <p>Serializes salts, sizing, generation, flags, and counters to a temporary file and then moves
+   * it into place. Guarded by {@link #configLock}.
+   */
   private void writeConfigFile() {
     configLock.writeLock().lock();
     try {
@@ -1345,7 +1800,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       FileUtil.moveTo(tempConfig, configFile);
     } catch (IOException ioe) {
-      Logger.error(this, "error writing config file for " + name, ioe);
+      LOG.error("error writing config file for {}", name, ioe);
     } finally {
       configLock.writeLock().unlock();
     }
@@ -1359,7 +1814,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private final Cleaner cleanerThread;
   private final CleanerStatusUserAlert cleanerStatusUserAlert;
 
-  private final Entry NOT_MODIFIED = new Entry();
+  private final Entry notModified = new Entry();
 
   private interface BatchProcessor<T extends StorableBlock> {
     // initialize
@@ -1369,13 +1824,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     // return false to abort
     boolean batch(long entriesLeft);
 
-    // call this on abort (e.g. node shutdown)
+    // call this on abort (e.g., node shutdown)
     void abort();
 
     void finish();
 
     // return <code>null</code> to free the entry
-    // return NOT_MODIFIED to keep the old entry
+    // return notModified to keep the old entry
     SaltedHashFreenetStore<T>.Entry process(SaltedHashFreenetStore<T>.Entry entry);
 
     /** Does this batch processor want to see free entries? */
@@ -1391,292 +1846,371 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     public Cleaner() {
       super("Store-" + name + "-Cleaner", NativeThread.PriorityLevel.LOW_PRIORITY.value, false);
-      setPriority(NativeThread.PriorityLevel.MIN_PRIORITY.value);
       setDaemon(true);
     }
 
     @Override
     public void realRun() {
 
-      if (!NO_CLEANER_SLEEP) {
+      if (!noCleanerSleep) {
         try {
-          Thread.sleep((int) ((double) CLEANER_PERIOD / 2 + CLEANER_PERIOD * random.nextDouble()));
-        } catch (InterruptedException e) {
+          int sleepMillis = (CLEANER_PERIOD / 2) + random.nextInt(CLEANER_PERIOD + 1);
+          Thread.sleep(sleepMillis);
+        } catch (InterruptedException _) {
+          Thread.currentThread().interrupt();
+          return;
         }
       }
 
       if (shutdown) return;
 
       while (!shutdown) {
-        cleanerLock.lock();
+        runCleanerIteration();
+      }
+    }
+
+    private void runCleanerIteration() {
+      cleanerLock.lock();
+      try {
+        long prevSize;
+        configLock.readLock().lock();
         try {
-          long _prevStoreSize;
-          configLock.readLock().lock();
-          try {
-            _prevStoreSize = prevStoreSize;
-          } finally {
-            configLock.readLock().unlock();
-          }
-
-          if (_prevStoreSize != 0 && cleanerGlobalLock.tryLock()) {
-            try {
-              isResizing = true;
-              resizeStore(_prevStoreSize, true);
-            } finally {
-              isResizing = false;
-              cleanerGlobalLock.unlock();
-            }
-          }
-
-          boolean _rebuildBloom;
-          configLock.readLock().lock();
-          try {
-            _rebuildBloom = ((flags & FLAG_REBUILD_BLOOM) != 0);
-          } finally {
-            configLock.readLock().unlock();
-          }
-          if (_rebuildBloom && prevStoreSize == 0 && cleanerGlobalLock.tryLock()) {
-            try {
-              isRebuilding = true;
-              rebuildBloom(false);
-            } finally {
-              isRebuilding = false;
-              cleanerGlobalLock.unlock();
-            }
-          }
-
-          writeConfigFile();
-
-          try {
-            cleanerCondition.await(CLEANER_PERIOD, TimeUnit.MILLISECONDS);
-          } catch (InterruptedException e) {
-            Logger.debug(this, "interrupted", e);
-          }
+          prevSize = prevStoreSize;
         } finally {
-          cleanerLock.unlock();
+          configLock.readLock().unlock();
         }
+
+        if (prevSize != 0 && cleanerGlobalLock.tryLock()) {
+          try {
+            isResizing = true;
+            resizeStore(prevSize, true);
+          } finally {
+            isResizing = false;
+            cleanerGlobalLock.unlock();
+          }
+        }
+
+        boolean rebuildBloomRequested;
+        configLock.readLock().lock();
+        try {
+          rebuildBloomRequested = ((flags & FLAG_REBUILD_BLOOM) != 0);
+        } finally {
+          configLock.readLock().unlock();
+        }
+        if (rebuildBloomRequested && prevStoreSize == 0 && cleanerGlobalLock.tryLock()) {
+          try {
+            isRebuilding = true;
+            rebuildBloom();
+          } finally {
+            isRebuilding = false;
+            cleanerGlobalLock.unlock();
+          }
+        }
+
+        writeConfigFile();
+
+        try {
+          long deadline = System.currentTimeMillis() + CLEANER_PERIOD;
+          while (!shutdown) {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) break;
+            boolean awaited = cleanerCondition.await(remaining, TimeUnit.MILLISECONDS);
+            if (!awaited && LOG.isTraceEnabled()) LOG.trace("Cleaner await timed out");
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOG.trace("interrupted", e);
+        }
+      } finally {
+        cleanerLock.unlock();
       }
     }
 
     private static final int RESIZE_MEMORY_ENTRIES =
         128; // temporary memory store size (in # of entries)
 
-    /** Move old entries to new location and resize store */
+    /** Move old entries to a new location and resize the store */
     private void resizeStore(final long _prevStoreSize, final boolean sleep) {
-      Logger.normal(this, "Starting datastore resize");
-      System.out.println("Resizing datastore " + name);
+      LOG.info("Starting datastore resize for {}", name);
 
-      BatchProcessor<T> resizeProcesser =
-          new BatchProcessor<>() {
-            final Deque<Entry> oldEntryList = new LinkedList<>();
-
-            @Override
-            public void init() {
-              if (storeSize > _prevStoreSize) {
-                setStoreFileSize(storeSize);
-              }
-
-              configLock.writeLock().lock();
-              try {
-                generation++;
-                keyCount.set(0);
-              } finally {
-                configLock.writeLock().unlock();
-              }
-
-              WrapperManager.signalStarting(
-                  (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(30) + SECONDS.toMillis(1)));
-            }
-
-            @Override
-            public Entry process(Entry entry) {
-              int oldGeneration = entry.generation;
-              if (oldGeneration != generation) {
-                entry.generation = generation;
-                keyCount.incrementAndGet();
-              }
-
-              if (entry.storeSize == storeSize) {
-                // new size, don't have to relocate
-                if (entry.generation != generation) {
-                  return entry;
-                } else {
-                  return NOT_MODIFIED;
-                }
-              }
-
-              // remove from store, prepare for relocation
-              if (oldGeneration == generation) {
-                // should be impossible
-                Logger.error(
-                    this, //
-                    "new generation object with wrong storeSize. DigestedRoutingKey=" //
-                        + HexUtil.bytesToHex(entry.getDigestedRoutingKey()) //
-                        + ", Offset="
-                        + entry.curOffset);
-              }
-              try {
-                entry.setHD(readHD(entry.curOffset));
-                oldEntryList.add(entry);
-                if (oldEntryList.size() > RESIZE_MEMORY_ENTRIES) {
-                  oldEntryList.poll();
-                }
-              } catch (IOException e) {
-                Logger.error(this, "error reading entry (offset=" + entry.curOffset + ")", e);
-              }
-              return null;
-            }
-
-            int i = 0;
-
-            @Override
-            public boolean batch(long entriesLeft) {
-              WrapperManager.signalStarting(
-                  (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(30) + SECONDS.toMillis(1)));
-
-              if (i++ % 16 == 0) {
-                writeConfigFile();
-              }
-
-              // shrink data file to current size
-              if (storeSize < _prevStoreSize) {
-                setStoreFileSize(Math.max(storeSize, entriesLeft));
-              }
-
-              // try to resolve the list
-              Iterator<Entry> it = oldEntryList.iterator();
-              while (it.hasNext()) {
-                if (resolveOldEntry(it.next())) {
-                  it.remove();
-                }
-              }
-
-              return _prevStoreSize == prevStoreSize;
-            }
-
-            @Override
-            public void abort() {
-              // Do nothing
-            }
-
-            @Override
-            public void finish() {
-              configLock.writeLock().lock();
-              try {
-                if (_prevStoreSize != prevStoreSize) {
-                  return;
-                }
-                prevStoreSize = 0;
-                if (!slotFilterDisabled) {
-                  if (slotFilter.size() != (int) storeSize) {
-                    slotFilter.resize((int) storeSize);
-                  } else {
-                    slotFilter.forceWrite();
-                  }
-                }
-
-                flags &= ~FLAG_REBUILD_BLOOM;
-                resizeCompleteCondition.signalAll();
-              } finally {
-                configLock.writeLock().unlock();
-              }
-
-              Logger.normal(this, "Finish resizing (" + name + ")");
-            }
-
-            public boolean wantFreeEntries() {
-              return false;
-            }
-          };
+      BatchProcessor<T> resizeProcesser = createResizeProcessor(_prevStoreSize);
 
       batchProcessEntries(resizeProcesser, _prevStoreSize, true, sleep);
     }
 
-    /** Rebuild bloom filter */
-    private void rebuildBloom(boolean sleep) {
-      if (slotFilterDisabled) return;
-      Logger.normal(this, "Start rebuilding slot filter (" + name + ")");
+    private BatchProcessor<T> createResizeProcessor(final long _prevStoreSize) {
+      return new ResizeProcessor(_prevStoreSize);
+    }
 
-      BatchProcessor<T> rebuildBloomProcessor =
-          new BatchProcessor<>() {
-            @Override
-            public void init() {
-              configLock.writeLock().lock();
-              try {
-                keyCount.set(0);
-              } finally {
-                configLock.writeLock().unlock();
-              }
+    private final class ResizeProcessor implements BatchProcessor<T> {
+      private final long previousStoreSize;
 
-              WrapperManager.signalStarting(
-                  (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(5) + SECONDS.toMillis(1)));
-            }
+      private final Deque<Entry> oldEntryList = new ArrayDeque<>(RESIZE_MEMORY_ENTRIES);
 
-            @Override
-            public Entry process(Entry entry) {
-              if (!slotFilterDisabled) {
-                int cache = entry.getSlotFilterEntry();
-                try {
-                  slotFilter.put((int) entry.curOffset, cache, true);
-                } catch (IOException e) {
-                  Logger.error(this, "Unable to update slot filter in bloom rebuild: " + e, e);
-                }
-              }
-              if (!entry.isFree()) {
-                keyCount.incrementAndGet();
+      private int i = 0;
 
-                if (entry.generation != generation) {
-                  entry.generation = generation;
-                  return entry;
-                }
-              }
-              return NOT_MODIFIED;
-            }
+      ResizeProcessor(long previousStoreSize) {
+        this.previousStoreSize = previousStoreSize;
+      }
 
-            int i = 0;
+      @Override
+      public void init() {
+        if (storeSize > previousStoreSize) {
+          setStoreFileSize(storeSize);
+        }
 
-            @Override
-            public boolean batch(long entriesLeft) {
-              WrapperManager.signalStarting(
-                  (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(5) + SECONDS.toMillis(1)));
+        configLock.writeLock().lock();
+        try {
+          generation++;
+          keyCount.set(0);
+        } finally {
+          configLock.writeLock().unlock();
+        }
 
-              if (i++ % 16 == 0) {
-                writeConfigFile();
-              }
-              if (i++ % 1024 == 0) {
-                if (!slotFilterDisabled) {
-                  slotFilter.forceWrite();
-                }
-              }
+        WrapperManager.signalStarting(
+            (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(30) + SECONDS.toMillis(1)));
+      }
 
-              return prevStoreSize == 0;
-            }
+      @Override
+      public Entry process(Entry entry) {
+        int oldGeneration = entry.generation;
+        if (oldGeneration != generation) {
+          entry.generation = generation;
+          keyCount.incrementAndGet();
+        }
 
-            @Override
-            public void abort() {
-              // Do nothing
-            }
+        if (entry.storeSize == storeSize) {
+          // new size, don't have to relocate
+          if (entry.generation != generation) {
+            return entry;
+          } else {
+            return notModified;
+          }
+        }
 
-            @Override
-            public void finish() {
+        // remove from the store, prepare for relocation
+        if (oldGeneration == generation) {
+          // should be impossible
+          LOG.atError()
+              .addArgument(HexUtil.bytesToHex(entry.getDigestedRoutingKey()))
+              .addArgument(entry.curOffset)
+              .log("new generation object with wrong storeSize. DigestedRoutingKey={}, Offset={}");
+        }
+        try {
+          entry.setHD(readHD(entry.curOffset));
+          oldEntryList.add(entry);
+          if (oldEntryList.size() > RESIZE_MEMORY_ENTRIES) {
+            oldEntryList.poll();
+          }
+        } catch (IOException e) {
+          LOG.error("error reading entry (offset={})", entry.curOffset, e);
+        }
+        return null;
+      }
+
+      @Override
+      public boolean batch(long entriesLeft) {
+        WrapperManager.signalStarting(
+            (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(30) + SECONDS.toMillis(1)));
+
+        if (i++ % 16 == 0) {
+          writeConfigFile();
+        }
+
+        // shrink data file to the current size
+        if (storeSize < previousStoreSize) {
+          setStoreFileSize(Math.max(storeSize, entriesLeft));
+        }
+
+        // try to resolve the list
+        oldEntryList.removeIf(this::resolveOldEntry);
+
+        return previousStoreSize == prevStoreSize;
+      }
+
+      @Override
+      public void abort() {
+        // Do nothing
+      }
+
+      @Override
+      public void finish() {
+        configLock.writeLock().lock();
+        try {
+          if (previousStoreSize != prevStoreSize) {
+            return;
+          }
+          prevStoreSize = 0;
+          if (!slotFilterDisabled && slotFilter != null) {
+            if (slotFilter.size() != (int) storeSize) {
+              slotFilter.resize((int) storeSize);
+            } else {
               slotFilter.forceWrite();
-              configLock.writeLock().lock();
-              try {
-                flags &= ~FLAG_REBUILD_BLOOM;
-                writeConfigFile();
-              } finally {
-                configLock.writeLock().unlock();
+            }
+          }
+
+          flags &= ~FLAG_REBUILD_BLOOM;
+          resizeCompleteCondition.signalAll();
+        } finally {
+          configLock.writeLock().unlock();
+        }
+
+        LOG.info("Finish resizing ({})", name);
+      }
+
+      @Override
+      public boolean wantFreeEntries() {
+        return false;
+      }
+
+      // Helpers used only by ResizeProcessor
+      private boolean isFree(long offset) throws IOException {
+        if (!slotFilterDisabled && slotFilter != null && USE_SLOT_FILTER) {
+          int cache = slotFilter.get((int) offset);
+          if ((cache & SLOT_CHECKED) != 0) {
+            return slotCacheIsFree(cache);
+          }
+        }
+        Entry entry = readEntry(offset, null, null, false);
+        Objects.requireNonNull(entry, "readEntry returned null for isFree");
+        return entry.isFree();
+      }
+
+      private byte[] getDigestedKeyFromOffset(long offset) throws IOException {
+        Entry entry = readEntry(offset, null, null, false);
+        Objects.requireNonNull(entry, "readEntry returned null for digestedKey");
+        return entry.getDigestedRoutingKey();
+      }
+
+      private boolean resolveOldEntry(Entry entry) {
+        Map<Long, Condition> lockMap = lockDigestedKey(entry.getDigestedRoutingKey(), false);
+        if (lockMap.isEmpty()) return false;
+        try {
+          entry.storeSize = storeSize;
+          long[] offsets = entry.getOffset();
+
+          // Check for occupied entry with the same key
+          for (long offset : offsets) {
+            try {
+              if (!isFree(offset)
+                  && Arrays.equals(
+                      getDigestedKeyFromOffset(offset), entry.getDigestedRoutingKey())) {
+                // do nothing
+                return true;
               }
-              System.out.println(name + " cleaner finished successfully.");
-              Logger.normal(this, "Finish rebuilding bloom filter (" + name + ")");
+            } catch (IOException e) {
+              LOG.trace("IOException while checking existing entry in resolveOldEntry", e);
             }
+          }
 
-            public boolean wantFreeEntries() {
-              return true;
+          // Check for free entry
+          for (long offset : offsets) {
+            try {
+              if (isFree(offset)) {
+                byte[] digestedKey = entry.getDigestedRoutingKey();
+                writeEntry(entry, digestedKey, offset);
+                keyCount.incrementAndGet();
+                return true;
+              }
+            } catch (IOException e) {
+              LOG.trace("IOException while looking for free slot in resolveOldEntry", e);
             }
-          };
+          }
+          return false;
+        } finally {
+          unlockDigestedKey(entry.getDigestedRoutingKey(), false, lockMap);
+        }
+      }
+    }
 
-      batchProcessEntries(rebuildBloomProcessor, storeSize, false, sleep);
+    /** Rebuild bloom filter */
+    private void rebuildBloom() {
+      if (slotFilterDisabled) return;
+      LOG.info("Start rebuilding slot filter ({})", name);
+
+      BatchProcessor<T> rebuildBloomProcessor = new RebuildBloomProcessor();
+
+      // In regular cleaner iterations, we do not sleep between batches.
+      batchProcessEntries(rebuildBloomProcessor, storeSize, false, false);
+    }
+
+    private final class RebuildBloomProcessor implements BatchProcessor<T> {
+      int i = 0;
+
+      @Override
+      public void init() {
+        configLock.writeLock().lock();
+        try {
+          keyCount.set(0);
+        } finally {
+          configLock.writeLock().unlock();
+        }
+
+        WrapperManager.signalStarting(
+            (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(5) + SECONDS.toMillis(1)));
+      }
+
+      @Override
+      public Entry process(Entry entry) {
+        if (!slotFilterDisabled && slotFilter != null) {
+          int cache = entry.getSlotFilterEntry();
+          try {
+            slotFilter.put((int) entry.curOffset, cache, true);
+          } catch (IOException e) {
+            LOG.error("Unable to update slot filter in bloom rebuild: {}", e, e);
+          }
+        }
+        if (!entry.isFree()) {
+          keyCount.incrementAndGet();
+
+          if (entry.generation != generation) {
+            entry.generation = generation;
+            return entry;
+          }
+        }
+        return notModified;
+      }
+
+      @Override
+      public boolean batch(long entriesLeft) {
+        WrapperManager.signalStarting(
+            (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(5) + SECONDS.toMillis(1)));
+
+        if (i++ % 16 == 0) {
+          writeConfigFile();
+        }
+        if (i++ % 1024 == 0 && !slotFilterDisabled && slotFilter != null) {
+          slotFilter.forceWrite();
+        }
+
+        return prevStoreSize == 0;
+      }
+
+      @Override
+      public void abort() {
+        // Do nothing
+      }
+
+      @Override
+      public void finish() {
+        if (!slotFilterDisabled && slotFilter != null) {
+          slotFilter.forceWrite();
+        }
+        configLock.writeLock().lock();
+        try {
+          flags &= ~FLAG_REBUILD_BLOOM;
+          writeConfigFile();
+        } finally {
+          configLock.writeLock().unlock();
+        }
+        LOG.info("{} cleaner finished successfully.", name);
+        LOG.info("Finish rebuilding bloom filter ({})", name);
+      }
+
+      @Override
+      public boolean wantFreeEntries() {
+        return true;
+      }
     }
 
     private volatile long entriesLeft;
@@ -1687,7 +2221,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       entriesLeft = entriesTotal = storeSize;
 
-      long startOffset, step;
+      long startOffset;
+      long step;
       if (!reverse) {
         startOffset = 0;
         step = RESIZE_MEMORY_ENTRIES;
@@ -1702,192 +2237,185 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         for (long curOffset = startOffset;
             curOffset >= 0 && curOffset < storeSize;
             curOffset += step) {
-          if (shutdown) {
-            processor.abort();
-            return;
-          }
+          if (abortIfShuttingDown(processor)) return;
 
-          if (i++ % 64 == 0)
-            System.err.println(
-                name
-                    + " cleaner in progress: "
-                    + (entriesTotal - entriesLeft)
-                    + "/"
-                    + entriesTotal);
+          if (i++ % 64 == 0) printCleanerProgress();
 
-          batchProcessEntries(curOffset, RESIZE_MEMORY_ENTRIES, processor);
-          entriesLeft =
-              reverse ? curOffset : Math.max(storeSize - curOffset - RESIZE_MEMORY_ENTRIES, 0);
-          if (!processor.batch(entriesLeft)) {
-            processor.abort();
-            return;
-          }
+          if (!processBatchWindow(curOffset, storeSize, reverse, processor)) return;
 
-          try {
-            if (sleep) Thread.sleep(100);
-          } catch (InterruptedException e) {
-            processor.abort();
-            return;
-          }
+          if (!sleepAfterBatch(sleep, processor)) return;
         }
         processor.finish();
       } catch (Exception e) {
-        Logger.error(this, "Caught: " + e + " while shrinking", e);
+        LOG.error("Caught: {} while shrinking", e, e);
         processor.abort();
       }
     }
 
+    private boolean abortIfShuttingDown(BatchProcessor<T> processor) {
+      if (shutdown) {
+        processor.abort();
+        return true;
+      }
+      return false;
+    }
+
+    private void printCleanerProgress() {
+      LOG.info("{} cleaner in progress: {}/{}", name, (entriesTotal - entriesLeft), entriesTotal);
+    }
+
+    private boolean processBatchWindow(
+        long curOffset, long storeSize, boolean reverse, BatchProcessor<T> processor) {
+      boolean ok = batchProcessEntries(curOffset, processor);
+      if (!ok) {
+        processor.abort();
+        return false;
+      }
+      entriesLeft =
+          reverse ? curOffset : Math.max(storeSize - curOffset - RESIZE_MEMORY_ENTRIES, 0);
+      if (!processor.batch(entriesLeft)) {
+        processor.abort();
+        return false;
+      }
+      return true;
+    }
+
+    private boolean sleepAfterBatch(boolean sleep, BatchProcessor<T> processor) {
+      try {
+        if (sleep) Thread.sleep(100);
+      } catch (InterruptedException _) {
+        Thread.currentThread().interrupt();
+        processor.abort();
+        return false;
+      }
+      return true;
+    }
+
+    // (moved helpers isFree(...) and getDigestedKeyFromOffset(...) into ResizeProcessor)
+
     /**
-     * Read a list of items from store.
+     * Processes a fixed-size window of entries starting at {@code offset}.
      *
-     * @param offset start offset, must be multiple of {@link FILE_SPLIT}
-     * @param length number of items to read, must be multiple of {@link FILE_SPLIT}. If this excess
-     *     store size, read as much as possible.
+     * <p>Acquires per-entry locks for a window of {@code RESIZE_MEMORY_ENTRIES} entries, reads the
+     * metadata into a buffer, lets the processor decide on modifications, and writes back if
+     * needed. Returns {@code false} when locking fails or shutdown is requested.
+     *
+     * @param offset start slot index for the window
      * @param processor batch processor
-     * @return <code>true</code> if operation complete successfully; <code>false</code> otherwise
-     *     (e.g. can't acquire locks, node shutting down)
+     * @return {@code true} on success; {@code false} if processing was aborted
      */
-    private boolean batchProcessEntries(long offset, int length, BatchProcessor<T> processor) {
+    private boolean batchProcessEntries(long offset, BatchProcessor<T> processor) {
+      final int length = RESIZE_MEMORY_ENTRIES;
       boolean wantFreeEntries = processor.wantFreeEntries();
       Condition[] locked = new Condition[length];
       try {
-        // acquire all locks in the region, will unlock in the finally block
-        for (int i = 0; i < length; i++) {
-          locked[i] = lockManager.lockEntry(offset + i);
-          if (locked[i] == null) return false;
-        }
+        if (!acquireRegionLocks(locked, offset)) return false;
 
         long startFileOffset = offset * Entry.METADATA_LENGTH;
         long bufLen = Entry.METADATA_LENGTH * (long) length;
-
         ByteBuffer buf = ByteBuffer.allocate((int) bufLen);
-        boolean dirty = false;
-        try {
-          while (buf.hasRemaining()) {
-            int status = metaFC.read(buf, startFileOffset + buf.position());
-            if (status == -1) break;
-          }
-        } catch (IOException ioe) {
-          if (shutdown) return false;
-          Logger.error(this, "unexpected IOException", ioe);
-        }
+
+        readRegionBuffer(startFileOffset, buf);
         buf.flip();
 
-        try {
-          for (int j = 0; !shutdown && buf.limit() > j * Entry.METADATA_LENGTH; j++) {
-            buf.position(j * Entry.METADATA_LENGTH);
-            if (buf.remaining() < Entry.METADATA_LENGTH) // EOF
-            break;
-
-            ByteBuffer enBuf = buf.slice();
-            enBuf.limit(Entry.METADATA_LENGTH);
-
-            Entry entry = new Entry(enBuf, null);
-            entry.curOffset = offset + j;
-
-            if (entry.isFree() && !wantFreeEntries) continue; // not occupied
-
-            Entry newEntry = processor.process(entry);
-            if (newEntry == null) { // free the offset
-              buf.position(j * Entry.METADATA_LENGTH);
-              buf.put(ByteBuffer.allocate(Entry.METADATA_LENGTH));
-              keyCount.decrementAndGet();
-              if (!slotFilterDisabled)
-                try {
-                  slotFilter.put((int) (offset + j), SLOT_CHECKED);
-                } catch (IOException e) {
-                  Logger.error(this, "Unable to update slot filter: " + e, e);
-                }
-
-              dirty = true;
-            } else if (newEntry == NOT_MODIFIED) {
-            } else {
-              // write back
-              buf.position(j * Entry.METADATA_LENGTH);
-              buf.put(newEntry.toMetaDataBuffer());
-
-              assert newEntry.header == null; // not supported
-              assert newEntry.data == null; // not supported
-
-              dirty = true;
-              if (!slotFilterDisabled) {
-                int newVal = newEntry.getSlotFilterEntry();
-                if (slotFilter.get((int) (offset + j)) != newVal) {
-                  try {
-                    slotFilter.put((int) (offset + j), newVal);
-                  } catch (IOException e) {
-                    Logger.error(this, "Unable to update slot filter: " + e, e);
-                  }
-                }
-              }
-              dirty = true;
-            }
-          }
-        } finally {
-          // write back.
-          if (dirty) {
-            buf.flip();
-
-            try {
-              while (buf.hasRemaining()) {
-                metaFC.write(buf, startFileOffset + buf.position());
-              }
-            } catch (IOException ioe) {
-              Logger.error(this, "unexpected IOException", ioe);
-            }
-          }
-        }
-
+        boolean dirty = processBufferAndMark(buf, offset, processor, wantFreeEntries);
+        writeBackIfDirty(startFileOffset, buf, dirty);
         return true;
       } finally {
         // unlock
-        for (int i = 0; i < length; i++)
+        for (int i = 0; i < locked.length; i++)
           if (locked[i] != null) lockManager.unlockEntry(offset + i, locked[i]);
       }
     }
 
-    /**
-     * Put back an old entry to store file
-     *
-     * @param entry
-     * @return <code>true</code> if the entry have put back successfully.
-     */
-    private boolean resolveOldEntry(Entry entry) {
-      Map<Long, Condition> lockMap = lockDigestedKey(entry.getDigestedRoutingKey(), false);
-      if (lockMap == null) return false;
+    private boolean acquireRegionLocks(Condition[] locked, long offset) {
+      for (int i = 0; i < locked.length; i++) {
+        locked[i] = lockManager.lockEntry(offset + i);
+        if (locked[i] == null) return false;
+      }
+      return true;
+    }
+
+    private void readRegionBuffer(long startFileOffset, ByteBuffer buf) {
       try {
-        entry.storeSize = storeSize;
-        long[] offsets = entry.getOffset();
+        while (buf.hasRemaining()) {
+          int status = metaFC.read(buf, startFileOffset + buf.position());
+          if (status == -1) break;
+        }
+      } catch (IOException ioe) {
+        if (shutdown) return;
+        LOG.error("unexpected IOException while reading batch metadata", ioe);
+      }
+    }
 
-        // Check for occupied entry with same key
-        for (long offset : offsets) {
+    private boolean processBufferAndMark(
+        ByteBuffer buf, long offset, BatchProcessor<T> processor, boolean wantFreeEntries) {
+      boolean dirty = false;
+      int limitEntries = buf.limit() / Entry.METADATA_LENGTH;
+      for (int j = 0; !shutdown && j < limitEntries; j++) {
+        buf.position(j * Entry.METADATA_LENGTH);
+
+        ByteBuffer enBuf = buf.slice();
+        enBuf.limit(Entry.METADATA_LENGTH);
+
+        Entry entry = new Entry(enBuf, null);
+        entry.curOffset = offset + j;
+
+        if (!(entry.isFree() && !wantFreeEntries)) {
+          Entry newEntry = processor.process(entry);
+          if (newEntry == null) {
+            dirty |= handleFreeEntry(buf, offset, j);
+          } else if (newEntry != notModified) {
+            dirty |= handleModifiedEntry(buf, offset, j, newEntry);
+          } // else: no changes
+        }
+      }
+      return dirty;
+    }
+
+    private boolean handleFreeEntry(ByteBuffer buf, long offset, int j) {
+      buf.position(j * Entry.METADATA_LENGTH);
+      buf.put(ByteBuffer.allocate(Entry.METADATA_LENGTH));
+      keyCount.decrementAndGet();
+      if (!slotFilterDisabled) {
+        try {
+          slotFilter.put((int) (offset + j), SLOT_CHECKED);
+        } catch (IOException e) {
+          LOG.error("Slot filter update failed for freed entry: {}", e, e);
+        }
+      }
+      return true;
+    }
+
+    private boolean handleModifiedEntry(ByteBuffer buf, long offset, int j, Entry newEntry) {
+      buf.position(j * Entry.METADATA_LENGTH);
+      buf.put(newEntry.toMetaDataBuffer());
+
+      assert newEntry.header == null; // not supported
+      assert newEntry.data == null; // not supported
+
+      if (!slotFilterDisabled) {
+        int newVal = newEntry.getSlotFilterEntry();
+        if (slotFilter.get((int) (offset + j)) != newVal) {
           try {
-            if (!isFree(offset)
-                && Arrays.equals(getDigestedKeyFromOffset(offset), entry.getDigestedRoutingKey())) {
-              // do nothing
-              return true;
-            }
+            slotFilter.put((int) (offset + j), newVal);
           } catch (IOException e) {
-            Logger.debug(this, "IOExcception on resolveOldEntry", e);
+            LOG.error("Slot filter update failed for modified entry: {}", e, e);
           }
         }
+      }
+      return true;
+    }
 
-        // Check for free entry
-        for (long offset : offsets) {
-          try {
-            if (isFree(offset)) {
-              byte[] digestedKey = entry.getDigestedRoutingKey();
-              writeEntry(entry, digestedKey, offset);
-              keyCount.incrementAndGet();
-              return true;
-            }
-          } catch (IOException e) {
-            Logger.debug(this, "IOExcception on resolveOldEntry", e);
-          }
+    private void writeBackIfDirty(long startFileOffset, ByteBuffer buf, boolean dirty) {
+      if (!dirty) return;
+      buf.flip();
+      try {
+        while (buf.hasRemaining()) {
+          metaFC.write(buf, startFileOffset + buf.position());
         }
-        return false;
-      } finally {
-        unlockDigestedKey(entry.getDigestedRoutingKey(), false, lockMap);
+      } catch (IOException ioe) {
+        LOG.error("unexpected IOException while writing batch metadata", ioe);
       }
     }
   }
@@ -1925,7 +2453,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         return NodeL10n.getBase()
             .getString(
                 "SaltedHashCryptaStore.shortResizeProgress", //
-                new String[] {"name", "processed", "total"}, //
+                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
                 new String[] {
                   name,
                   String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
@@ -1934,8 +2462,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       else
         return NodeL10n.getBase()
             .getString(
-                "SaltedHashCryptaStore.shortRebuildProgress" + (slotFilter.isNew() ? "New" : ""),
-                new String[] {"name", "processed", "total"}, //
+                "SaltedHashCryptaStore.shortRebuildProgress"
+                    + ((slotFilter != null && slotFilter.isNew()) ? "New" : ""),
+                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
                 new String[] {
                   name,
                   String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
@@ -1949,7 +2478,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         return NodeL10n.getBase()
             .getString(
                 "SaltedHashCryptaStore.longResizeProgress", //
-                new String[] {"name", "processed", "total"}, //
+                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
                 new String[] {
                   name,
                   String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
@@ -1958,8 +2487,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       else
         return NodeL10n.getBase()
             .getString(
-                "SaltedHashCryptaStore.longRebuildProgress" + (slotFilter.isNew() ? "New" : ""),
-                new String[] {"name", "processed", "total"},
+                "SaltedHashCryptaStore.longRebuildProgress"
+                    + ((slotFilter != null && slotFilter.isNew()) ? "New" : ""),
+                new String[] {"name", KEY_PROCESSED, KEY_TOTAL},
                 new String[] {
                   name,
                   String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
@@ -2002,26 +2532,44 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  /**
+   * Registers the cleaner status alert with the provided manager so progress appears in the UI.
+   *
+   * @param userAlertManager destination manager; must not be {@code null}
+   */
+  @Override
   public void setUserAlertManager(UserAlertManager userAlertManager) {
     if (cleanerStatusUserAlert != null) userAlertManager.register(cleanerStatusUserAlert);
   }
 
+  /**
+   * Requests the store be resized to a new capacity.
+   *
+   * <p>When {@code shrinkNow} is {@code false}, the cleaner performs the work asynchronously. When
+   * {@code shrinkNow} is {@code true}, the method attempts to complete the resize inline when it
+   * can acquire the global cleaner lock; otherwise it waits for the cleaner to finish. The slot
+   * filter is resized to the larger of old/new sizes to preserve information during migration.
+   *
+   * @param newStoreSize desired number of slots; must be ≤ {@link Integer#MAX_VALUE}
+   * @param shrinkNow whether to complete the resize synchronously when possible
+   * @throws IllegalArgumentException when {@code newStoreSize} exceeds the supported maximum
+   */
   @Override
-  public void setMaxKeys(long newStoreSize, boolean shrinkNow) throws IOException {
-    Logger.normal(
-        this, "[" + name + "] Resize newStoreSize=" + newStoreSize + ", shinkNow=" + shrinkNow);
+  public void setMaxKeys(long newStoreSize, boolean shrinkNow) {
+    LOG.info("[{}] Resize newStoreSize={}, shinkNow={}", name, newStoreSize, shrinkNow);
 
-    if (newStoreSize > Integer.MAX_VALUE) // FIXME 64-bit.
-    throw new IllegalArgumentException(
+    if (newStoreSize > Integer.MAX_VALUE) { // 32-bit limit due to ResizablePersistentIntBuffer.
+      throw new IllegalArgumentException(
           "Store size over MAXINT not supported due to ResizablePersistentIntBuffer limitations.");
+    }
 
-    configLock.writeLock().lock();
     long old;
+    configLock.writeLock().lock();
     try {
       if (newStoreSize == this.storeSize) return;
 
       if (prevStoreSize != 0) {
-        Logger.normal(this, "[" + name + "] resize already in progress, ignore resize request");
+        LOG.info("[{}] resize already in progress, ignore resize request", name);
         return;
       }
 
@@ -2040,24 +2588,41 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     if (shrinkNow) {
-      configLock.writeLock().lock();
-      try {
-        System.err.println("Waiting for resize to complete...");
-        while (prevStoreSize == old) {
-          resizeCompleteCondition.awaitUninterruptibly();
+      boolean resizedInline = false;
+      // If possible, complete the resize synchronously. This covers tests that mock the Ticker
+      // and therefore never start the cleaner thread.
+      if (cleanerGlobalLock.tryLock()) {
+        try {
+          cleanerThread.resizeStore(old, /*sleep*/ false);
+          resizedInline = true;
+        } finally {
+          cleanerGlobalLock.unlock();
         }
-        System.err.println(
-            "Completed shrink, old size was "
-                + old
-                + " new size was "
-                + newStoreSize
-                + " size is now "
-                + storeSize
-                + " (prev="
-                + prevStoreSize
-                + ")");
-      } finally {
-        configLock.writeLock().unlock();
+      }
+
+      if (!resizedInline) {
+        configLock.writeLock().lock();
+        try {
+          LOG.info("Waiting for resize to complete...");
+          while (prevStoreSize == old) {
+            resizeCompleteCondition.awaitUninterruptibly();
+          }
+          LOG.info(
+              "Completed shrink, old size was {} new size was {} size is now {} (prev={})",
+              old,
+              newStoreSize,
+              storeSize,
+              prevStoreSize);
+        } finally {
+          configLock.writeLock().unlock();
+        }
+      } else {
+        // Inline path already finished and updated state.
+        LOG.info(
+            "Completed shrink synchronously, old size was {} new size was {} size is now {}",
+            old,
+            newStoreSize,
+            storeSize);
       }
     }
   }
@@ -2069,11 +2634,22 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private final Condition resizeCompleteCondition = configLock.writeLock().newCondition();
 
   /**
-   * Lock all possible offsets of a key. This method would release the locks if any locking
-   * operation failed.
+   * Acquires entry locks for all candidate slot offsets of the given digested key.
    *
-   * @param digestedKey
-   * @return <code>true</code> if all the offsets are locked.
+   * <p>Offsets are computed for the current store size and, when {@code usePrevStoreSize} is {@code
+   * true} and a resize is in progress, also for {@code prevStoreSize}. Offsets are sorted and
+   * locked in ascending order to avoid deadlocks. If any lock cannot be acquired (e.g., another
+   * thread holds it or the store is shutting down), all already-acquired locks are released and an
+   * empty map is returned.
+   *
+   * <p>The caller must release the returned locks by calling {@link #unlockDigestedKey(byte[],
+   * boolean, Map)} with the exact map returned by this method.
+   *
+   * @param digestedKey salted/digested routing key
+   * @param usePrevStoreSize whether to include offsets computed against {@code prevStoreSize} to
+   *     cover in‑progress resizes
+   * @return a map of {@code offset → Condition} for each acquired lock; empty when acquisition did
+   *     not get all required locks
    */
   private Map<Long, Condition> lockDigestedKey(byte[] digestedKey, boolean usePrevStoreSize) {
     // use a set to prevent duplicated offsets,
@@ -2095,12 +2671,12 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     if (locked.size() == offsets.size()) {
       return locked;
-    } else {
-      // failed, remove the locks
-      for (Map.Entry<Long, Condition> e : locked.entrySet())
-        lockManager.unlockEntry(e.getKey(), e.getValue());
-      return null;
     }
+    // failed, remove the locks
+    for (Map.Entry<Long, Condition> e : locked.entrySet())
+      lockManager.unlockEntry(e.getKey(), e.getValue());
+    locked.clear();
+    return locked;
   }
 
   private void unlockDigestedKey(
@@ -2120,6 +2696,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  /** Runnable that closes the store during an application shutdown. */
   public class ShutdownDB implements Runnable {
     @Override
     public void run() {
@@ -2130,21 +2707,22 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   // ------------- Hashing
   private CipherManager cipherManager;
 
+  // Plain-key mapping is implemented via CipherManager; see getOffsetFromDigestedKey() for details
   /**
-   * Get offset in the hash table, given a plain routing key.
-   *
-   * @param plainKey
-   * @param storeSize
-   * @return
+   * Closes the store with a clean shutdown. Equivalent to {@link #close(boolean)} with {@code
+   * false}.
    */
-  private long[] getOffsetFromPlainKey(byte[] plainKey, long storeSize) {
-    return getOffsetFromDigestedKey(cipherManager.getDigestedKey(plainKey), storeSize);
-  }
-
+  @Override
   public void close() {
     close(false);
   }
 
+  /**
+   * Closes the store gracefully.
+   *
+   * <p>Stops the cleaner, flushes and closes files, clears the dirty flag, and writes the config
+   * file. Safe to call more than once.
+   */
   public void close(boolean abort) {
     if (closeCalled.compareAndSet(false, true)) {
       shutdown = true;
@@ -2167,18 +2745,18 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         configLock.writeLock().unlock();
       }
       cipherManager.shutdown();
-      Logger.normal(this, "Successfully closed store: " + name);
+      LOG.info("Successfully closed store: {}", name);
     } else {
-      Logger.normal(this, "Store already closed: " + name);
+      LOG.info("Store already closed: {}", name);
     }
   }
 
   /**
-   * Get offset in the hash table, given a digested routing key.
+   * Computes candidate slot offsets for a digested routing key using quadratic probing.
    *
-   * @param digestedKey
-   * @param storeSize
-   * @return
+   * @param digestedKey salted/digested routing key
+   * @param storeSize current number of slots
+   * @return up to {@link #OPTION_MAX_PROBE} unique offsets in probe order
    */
   private long[] getOffsetFromDigestedKey(byte[] digestedKey, long storeSize) {
     long keyValue = Fields.bytesToLong(digestedKey);
@@ -2186,9 +2764,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     for (int i = 0; i < OPTION_MAX_PROBE; i++) {
       // h + 141 i^2 + 13 i
-      offsets[i] = ((keyValue + 141 * (i * i) + 13 * i) & Long.MAX_VALUE) % storeSize;
+      offsets[i] = ((keyValue + 141L * i * i + 13L * i) & Long.MAX_VALUE) % storeSize;
       // Make sure the slots are all unique.
-      // Important for very small stores e.g. in unit tests.
+      // Important for very small stores e.g., in unit tests.
       while (true) {
         boolean clear = true;
         for (int j = 0; j < i; j++) {
@@ -2216,39 +2794,54 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private long initialWrites;
   private long initialBloomFalsePos;
 
+  /** Total number of successful lookups since counters were last reset/persisted. */
   @Override
   public long hits() {
     return hits.get();
   }
 
+  /** Total number of misses since counters were last reset/persisted. */
   @Override
   public long misses() {
     return misses.get();
   }
 
+  /** Total number of writes since counters were last reset/persisted. */
   @Override
   public long writes() {
     return writes.get();
   }
 
+  /** Current number of keys known in the store (the best effort during resizes). */
   @Override
   public long keyCount() {
     return keyCount.get();
   }
 
+  /** Configured maximum number of slots in the current generation. */
   @Override
   public long getMaxKeys() {
     configLock.readLock().lock();
-    long _storeSize = storeSize;
-    configLock.readLock().unlock();
-    return _storeSize;
+    try {
+      return storeSize;
+    } finally {
+      configLock.readLock().unlock();
+    }
   }
 
+  /** Number of false positives reported by the slot filter (historically “bloom”). */
   @Override
   public long getBloomFalsePositive() {
     return bloomFalsePos.get();
   }
 
+  /**
+   * Returns whether a key is probably present based on the slot filter only.
+   *
+   * <p>Used to avoid I/O when the filter indicates a definite non-match. Returns {@code true} when
+   * any candidate slot is a likely match or when insufficient information is available (unknown
+   * slots), {@code false} only when all checked slots definitively do not match.
+   */
   @Override
   public boolean probablyInStore(byte[] routingKey) {
     configLock.readLock().lock();
@@ -2261,36 +2854,15 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       boolean anyNotValid = false;
 
-      for (long offset : offsets) {
-        if (offset > Integer.MAX_VALUE) return true; // FIXME!
-        int cache = 0;
-        boolean validCache = false;
-        boolean likelyMatch = false;
-        cache = slotFilter.get((int) offset);
-        validCache = (cache & SLOT_CHECKED) != 0;
-        if (!validCache) {
-          anyNotValid = true;
-          continue;
-        }
-        likelyMatch = slotCacheLikelyMatch(cache, digestedKey);
-        if (validCache && likelyMatch) return true;
-      }
+      MatchCheck mc1 = checkOffsetsLikelyMatch(digestedKey, offsets);
+      if (mc1.found()) return true;
+      anyNotValid |= mc1.anyNotValid();
 
-      if (prevStoreSize != 0) offsets = getOffsetFromDigestedKey(digestedKey, prevStoreSize);
-
-      for (long offset : offsets) {
-        if (offset > Integer.MAX_VALUE) return true; // FIXME!
-        int cache = 0;
-        boolean validCache = false;
-        boolean likelyMatch = false;
-        cache = slotFilter.get((int) offset);
-        validCache = (cache & SLOT_CHECKED) != 0;
-        if (!validCache) {
-          anyNotValid = true;
-          continue;
-        }
-        likelyMatch = slotCacheLikelyMatch(cache, digestedKey);
-        if (validCache && likelyMatch) return true;
+      if (prevStoreSize != 0) {
+        long[] prevOffsets = getOffsetFromDigestedKey(digestedKey, prevStoreSize);
+        MatchCheck mc2 = checkOffsetsLikelyMatch(digestedKey, prevOffsets);
+        if (mc2.found()) return true;
+        anyNotValid |= mc2.anyNotValid();
       }
 
       return anyNotValid;
@@ -2299,11 +2871,47 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  private record MatchCheck(boolean found, boolean anyNotValid) {}
+
+  private MatchCheck checkOffsetsLikelyMatch(byte[] digestedKey, long[] offsets) {
+    boolean anyNotValid = false;
+    for (long offset : offsets) {
+      if (offset > Integer.MAX_VALUE)
+        return new MatchCheck(true, anyNotValid); // overflow guard for 32-bit index
+      int cache = slotFilter.get((int) offset);
+      boolean validCache = (cache & SLOT_CHECKED) != 0;
+      if (!validCache) {
+        anyNotValid = true;
+        continue;
+      }
+      boolean likelyMatch = slotCacheLikelyMatch(cache, digestedKey);
+      if (likelyMatch) return new MatchCheck(true, anyNotValid);
+    }
+    return new MatchCheck(false, anyNotValid);
+  }
+
+  /** Deletes on-disk files for this store. Intended for test cleanup. */
   public void destruct() {
-    metaFile.delete();
-    hdFile.delete();
-    configFile.delete();
-    bloomFile.delete();
+    try {
+      Files.deleteIfExists(metaFile.toPath());
+    } catch (IOException ioe) {
+      LOG.warn("Failed to delete metadata file {}", metaFile, ioe);
+    }
+    try {
+      Files.deleteIfExists(hdFile.toPath());
+    } catch (IOException ioe) {
+      LOG.warn("Failed to delete data file {}", hdFile, ioe);
+    }
+    try {
+      Files.deleteIfExists(configFile.toPath());
+    } catch (IOException ioe) {
+      LOG.warn("Failed to delete config file {}", configFile, ioe);
+    }
+    try {
+      Files.deleteIfExists(bloomFile.toPath());
+    } catch (IOException ioe) {
+      LOG.warn("Failed to delete bloom file {}", bloomFile, ioe);
+    }
   }
 
   @Override
@@ -2311,8 +2919,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     return super.toString() + ":" + name;
   }
 
+  /** Returns per-session (since process start) access statistics. */
   @Override
   public StoreAccessStats getSessionAccessStats() {
+    /*
+     * Returns counters for accesses during the current process session.
+     * The session starts when the store is created and ends when it is closed.
+     */
     return new StoreAccessStats() {
 
       @Override
@@ -2337,8 +2950,10 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     };
   }
 
+  /** Returns cumulative access statistics since the store was created. */
   @Override
   public StoreAccessStats getTotalAccessStats() {
+    /* Returns cumulative counters persisted in the config file across restarts. */
     return new StoreAccessStats() {
 
       @Override
@@ -2368,26 +2983,52 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     slotFilter.replaceAllEntries(0, SLOT_CHECKED);
   }
 
+  /** Returns the underlying store (this instance). */
   @Override
   public FreenetStore<T> getUnderlyingStore() {
     return this;
   }
 
   /**
-   * Only for testing (crude!)
-   *
-   * @throws InterruptedException
+   * Only for testing (crude!) — waits for the cleaner to complete rebuild/resize. Uses default poll
+   * delay/count tuned for unit tests.
    */
-  void testingWaitForCleanerDone(int delay, int count) throws InterruptedException {
+  void testingWaitForCleanerDone() throws InterruptedException {
+    final int delay = 50;
+    final int count = 100;
+    boolean done = false;
     for (int i = 0; i < count; i++) {
       configLock.readLock().lock();
       try {
-        if ((flags & FLAG_REBUILD_BLOOM) == 0) return;
+        done = (flags & FLAG_REBUILD_BLOOM) == 0;
       } finally {
         configLock.readLock().unlock();
       }
+      if (done) {
+        break;
+      }
       Thread.sleep(delay);
     }
-    throw new AssertionError();
+    if (!done) {
+      throw new AssertionError();
+    }
+  }
+
+  private boolean deleteCorruptedConfigAndMeta() {
+    boolean deleted = false;
+    try {
+      deleted = Files.deleteIfExists(configFile.toPath());
+    } catch (IOException ioe) {
+      LOG.warn("Failed deleting config file after corruption: {}", configFile, ioe);
+    }
+    if (deleted) {
+      File metaFileLocal = new File(baseDir, name + META_EXT);
+      try {
+        Files.deleteIfExists(metaFileLocal.toPath());
+      } catch (IOException ioe) {
+        LOG.warn("Failed deleting meta file after config corruption: {}", metaFileLocal, ioe);
+      }
+    }
+    return deleted;
   }
 }

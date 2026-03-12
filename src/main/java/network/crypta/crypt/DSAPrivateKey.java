@@ -10,32 +10,29 @@ import network.crypta.support.HexUtil;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.SimpleFieldSet;
 
-public class DSAPrivateKey extends CryptoKey {
+public final class DSAPrivateKey extends CryptoKey {
   @Serial private static final long serialVersionUID = -1;
 
   private final BigInteger x;
 
   public DSAPrivateKey(BigInteger x, DSAGroup g) {
     this.x = x;
-    if (x.signum() != 1 || x.compareTo(g.getQ()) > -1 || x.compareTo(BigInteger.ZERO) < 1)
+    if (x.signum() != 1 || x.compareTo(g.getQ()) >= 0 || x.compareTo(BigInteger.ZERO) <= 0)
       throw new IllegalArgumentException();
   }
 
-  // this is dangerous...  better to force people to construct the
-  // BigInteger themselves so they know what is going on with the sign
-  // public DSAPrivateKey(byte[] x) {
-  //    this.x = new BigInteger(1, x);
-  // }
+  // Intentionally no byte[] constructor to avoid sign confusions with BigInteger.
 
   public DSAPrivateKey(DSAGroup g, Random r) {
     BigInteger tempX;
     do {
       tempX = new BigInteger(256, r);
-    } while (tempX.compareTo(g.getQ()) > -1 || tempX.compareTo(BigInteger.ZERO) < 1);
+    } while (tempX.compareTo(g.getQ()) >= 0 || tempX.compareTo(BigInteger.ZERO) <= 0);
     this.x = tempX;
   }
 
-  protected DSAPrivateKey() {
+  @SuppressWarnings("unused")
+  DSAPrivateKey() {
     // For serialization.
     x = null;
   }
@@ -58,15 +55,11 @@ public class DSAPrivateKey extends CryptoKey {
     return "x=" + HexUtil.biToHex(x);
   }
 
-  // what?  why is DSAGroup passed in?
-  // public static CryptoKey readFromField(DSAGroup group, String field) {
-  //    //BigInteger x=Util.byteArrayToMPI(Util.hexToBytes(field));
-  //    return new DSAPrivateKey(new BigInteger(field, 16));
-  // }
+  // No readFromField() variant retained; callers should use read(InputStream, DSAGroup).
 
   @Override
   public byte[] asBytes() {
-    return Util.MPIbytes(x);
+    return Util.mpiBytes(x);
   }
 
   @Override
@@ -82,8 +75,8 @@ public class DSAPrivateKey extends CryptoKey {
 
   public static DSAPrivateKey create(SimpleFieldSet fs, DSAGroup group)
       throws IllegalBase64Exception {
-    BigInteger y = new BigInteger(1, Base64.decode(fs.get("x")));
-    if (y.bitLength() > 512) throw new IllegalBase64Exception("Probably a pubkey");
-    return new DSAPrivateKey(y, group);
+    BigInteger xDecoded = new BigInteger(1, Base64.decode(fs.get("x")));
+    if (xDecoded.bitLength() > 512) throw new IllegalBase64Exception("Probably a pubkey");
+    return new DSAPrivateKey(xDecoded, group);
   }
 }

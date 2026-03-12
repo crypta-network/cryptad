@@ -8,224 +8,264 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import network.crypta.io.AddressIdentifier;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.InetAddressIpv6FirstComparator;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import network.crypta.support.transport.ip.HostnameUtil;
 import network.crypta.support.transport.ip.IPUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Long-term InetAddress. If created with an IP address, then the IP address is primary. If created
- * with a name, then the name is primary, and the IP address can change. Most code ripped from Peer.
+ * Immutable-or-lazy network endpoint reference that can be backed by a hostname or a resolved IP
+ * address.
  *
- * <p>Propagates the IP address on equals() but not the hostname. This does not change hashCode()
- * because it only happens if hostname is set, and in that case, hashCode() is based on the hostname
- * and not on the IP address. So it is safe to put FreenetInetAddress's into hashtables: neither
- * equals() nor getAddress() will change its hashCode.
+ * <p>When constructed from an {@link InetAddress}, the address is primary and immutable; when
+ * constructed from a hostname, the hostname is primary and DNS resolution occurs lazily on first
+ * access (or explicitly via handshake). This design helps nodes that use dynamic DNS.
  *
- * <p>BUT a FreenetInetAddress with IP 1.2.3.4 and no hostname is *NOT* equal to one with the IP
- * address and no name. So if you want to match on only the IP address, you need to either call
- * dropHostname() first (after which neither propagation nor getAddress() will change the hashcode),
- * or just use InetAddress's.
+ * <p>Equality propagates the resolved IP between instances when the primary hostname matches
+ * (case-insensitive). Hostname never propagates. The hash code depends solely on the primary
+ * identity: hostname if present, otherwise the IP address. As a result, inserting instances into
+ * hashed collections is safe: neither {@link #equals(Object)} nor {@link #getAddress()} will change
+ * the hash code of an existing instance.
  *
- * <p>FIXME reconsider whether we need this. The lazy lookup is useful but not THAT useful, and we
- * have a regular lookup task now anyway. Over-complex, could lead to odd bugs, although not if used
- * correctly as explained above.
+ * <p>Important behavior: an instance that has only an IP (no hostname) is not equal to another
+ * instance that has a hostname, even when both resolve to the same numeric address. Call {@link
+ * #dropHostname()} to compare by IP only, or compare the underlying {@link InetAddress} values
+ * directly when appropriate.
  *
- * @author amphibian
+ * <p>DNS lookups are performed using the platform caches (as configured in the JVM). This class
+ * does not implement its own caching policy beyond storing the last resolved address when helpful
+ * for handshakes.
  */
-public class FreenetInetAddress {
+public final class FreenetInetAddress {
+  private static final Logger LOG = LoggerFactory.getLogger(FreenetInetAddress.class);
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // no static initialization required
 
   // hostname - only set if we were created with a hostname
   // and not an address
   private final String hostname;
-  private InetAddress _address;
+  private InetAddress address;
 
-  /** Create from serialized form on a DataInputStream. */
+  /**
+   * Constructs an instance by reading from a binary stream produced by {@link
+   * #writeToDataOutputStream(DataOutputStream)}.
+   *
+   * <p>Format: one type byte ({@code 0} for IPv4, {@code 255} for IPv6), followed by the raw IP
+   * bytes (4 or 16), then a UTF string containing the hostname or the empty string when absent.
+   *
+   * @param dis data source to read from
+   * @throws IOException if the input cannot be read or the type byte is unknown
+   */
   public FreenetInetAddress(DataInput dis) throws IOException {
     int firstByte = dis.readUnsignedByte();
     byte[] ba;
-    if (firstByte == 255) {
-      if (logMINOR) Logger.minor(this, "New format IPv6 address");
-      // New format IPv6 address
-      ba = new byte[16];
-      dis.readFully(ba);
-    } else if (firstByte == 0) {
-      if (logMINOR) Logger.minor(this, "New format IPv4 address");
-      // New format IPv4 address
-      ba = new byte[4];
-      dis.readFully(ba);
-    } else {
-      throw new IOException(
-          "Unknown type byte (old form? corrupt stream? too short/long prev field?): " + firstByte);
+    switch (firstByte) {
+      case 255 -> {
+        if (LOG.isDebugEnabled()) LOG.debug("event=read_stream_ip type=ipv6 format=new");
+        ba = new byte[16];
+        dis.readFully(ba);
+      }
+      case 0 -> {
+        if (LOG.isDebugEnabled()) LOG.debug("event=read_stream_ip type=ipv4 format=new");
+        ba = new byte[4];
+        dis.readFully(ba);
+      }
+      default ->
+          throw new IOException(
+              "Unknown type byte (old form? corrupt stream? too short/long prev field?): "
+                  + firstByte);
     }
-    _address = InetAddress.getByAddress(ba);
+    address = InetAddress.getByAddress(ba);
     String name = null;
     String s = dis.readUTF();
     if (!s.isEmpty()) name = s;
     hostname = name;
   }
 
-  /** Create from serialized form on a DataInputStream. */
+  /**
+   * Constructs an instance by reading from a binary stream and optionally validating hostname
+   * syntax.
+   *
+   * <p>This constructor also accepts the legacy IPv4 format where the first byte is part of the
+   * address (no leading type byte). Newer encodings use a leading type byte as described for {@link
+   * #FreenetInetAddress(DataInput)}.
+   *
+   * @param dis data source to read from
+   * @param checkHostnameOrIPSyntax when {@code true}, validates the parsed hostname using {@link
+   *     HostnameUtil#isValidHostname(String, boolean)}
+   * @throws HostnameSyntaxException if validation is requested and the hostname is not valid
+   * @throws IOException if the input cannot be read
+   */
   public FreenetInetAddress(DataInput dis, boolean checkHostnameOrIPSyntax)
       throws HostnameSyntaxException, IOException {
     int firstByte = dis.readUnsignedByte();
     byte[] ba;
-    if (firstByte == 255) {
-      if (logMINOR) Logger.minor(this, "New format IPv6 address");
-      // New format IPv6 address
-      ba = new byte[16];
-      dis.readFully(ba);
-    } else if (firstByte == 0) {
-      if (logMINOR) Logger.minor(this, "New format IPv4 address");
-      // New format IPv4 address
-      ba = new byte[4];
-      dis.readFully(ba);
-    } else {
-      // Old format IPv4 address
-      ba = new byte[4];
-      ba[0] = (byte) firstByte;
-      dis.readFully(ba, 1, 3);
+    switch (firstByte) {
+      case 255 -> {
+        if (LOG.isDebugEnabled())
+          LOG.debug("event=read_stream_ip_with_validation type=ipv6 format=new");
+        ba = new byte[16];
+        dis.readFully(ba);
+      }
+      case 0 -> {
+        if (LOG.isDebugEnabled())
+          LOG.debug("event=read_stream_ip_with_validation type=ipv4 format=new");
+        ba = new byte[4];
+        dis.readFully(ba);
+      }
+      default -> {
+        // Old format IPv4 address
+        ba = new byte[4];
+        ba[0] = (byte) firstByte;
+        dis.readFully(ba, 1, 3);
+      }
     }
-    _address = InetAddress.getByAddress(ba);
+    address = InetAddress.getByAddress(ba);
     String name = null;
     String s = dis.readUTF();
     if (!s.isEmpty()) name = s;
     hostname = name;
-    if (checkHostnameOrIPSyntax && null != hostname) {
-      if (!HostnameUtil.isValidHostname(hostname, true)) throw new HostnameSyntaxException();
-    }
+    if (checkHostnameOrIPSyntax
+        && hostname != null
+        && !HostnameUtil.isValidHostname(hostname, true)) throw new HostnameSyntaxException();
   }
 
   /**
-   * Create from an InetAddress. The IP address is primary i.e. fixed. The hostname either doesn't
-   * exist, or is looked up.
+   * Constructs an instance from a resolved IP address.
+   *
+   * <p>The IP address becomes the primary identity. No hostname is stored or looked up.
+   *
+   * @param address resolved IP address; must not be {@code null}
    */
   public FreenetInetAddress(InetAddress address) {
-    _address = address;
+    this.address = address;
     hostname = null;
   }
 
+  /**
+   * Constructs an instance from a textual host, which may be a DNS name or a literal IP address.
+   *
+   * <p>If {@code host} parses as an IP address, the instance is IP-primary. Otherwise, the instance
+   * is hostname-primary and resolution is deferred until required.
+   *
+   * @param host DNS name or literal IP; leading slashes are trimmed (e.g., {@code "/1.2.3.4"})
+   * @param allowUnknown reserved for compatibility; does not alter behavior here
+   * @throws UnknownHostException if the literal address cannot be parsed
+   */
   public FreenetInetAddress(String host, boolean allowUnknown) throws UnknownHostException {
-    InetAddress addr = null;
-    if (host != null) {
-      if (host.startsWith("/")) host = host.substring(1);
-      host = host.trim();
-    }
-    // if we were created with an explicit IP address, use it as such
-    // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
-    // correctly, such as "fe80::204:1234:dead:beef"
-    AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (logDEBUG)
-      Logger.debug(this, "Address type of '" + host + "' appears to be '" + addressType + '\'');
-    if (addressType != AddressIdentifier.AddressType.OTHER) {
-      // Is an IP address
-      addr = InetAddress.getByName(host);
-      // Don't catch UnknownHostException here, if it happens there's a bug in AddressIdentifier.
-      if (logDEBUG)
-        Logger.debug(
-            this,
-            "host is '" + host + "' and addr.getHostAddress() is '" + addr.getHostAddress() + '\'');
-      if (addr != null) {
-        host = null;
-      } else {
-        addr = null;
-      }
-    }
-    if (addr == null) {
-      if (logDEBUG) Logger.debug(this, '\'' + host + "' does not look like an IP address");
-    }
-    this._address = addr;
-    this.hostname = host;
+    InitResult r = computeInitFromHost(host, allowUnknown);
+    this.address = r.addr;
+    this.hostname = r.host;
     // we're created with a hostname so delay the lookup of the address
-    // until it's needed to work better with dynamic DNS hostnames
+    // until it's necessary to work better with dynamic DNS hostnames
   }
 
+  /**
+   * Constructs an instance from a textual host with optional hostname syntax validation.
+   *
+   * @param host DNS name or literal IP; leading slashes are trimmed
+   * @param allowUnknown reserved for compatibility; does not alter behavior here
+   * @param checkHostnameOrIPSyntax when {@code true}, validates {@code host} if it is a hostname
+   * @throws HostnameSyntaxException if validation is requested and the hostname is not valid
+   * @throws UnknownHostException if the literal address cannot be parsed
+   */
   public FreenetInetAddress(String host, boolean allowUnknown, boolean checkHostnameOrIPSyntax)
       throws HostnameSyntaxException, UnknownHostException {
-    InetAddress addr = null;
-    if (host != null) {
-      if (host.startsWith("/")) host = host.substring(1);
-      host = host.trim();
-    }
-    // if we were created with an explicit IP address, use it as such
-    // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
-    // correctly, such as "fe80::204:1234:dead:beef"
-    AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (logDEBUG)
-      Logger.debug(this, "Address type of '" + host + "' appears to be '" + addressType + '\'');
-    if (addressType != AddressIdentifier.AddressType.OTHER) {
-      try {
-        addr = InetAddress.getByName(host);
-      } catch (UnknownHostException e) {
-        if (!allowUnknown) throw e;
-        addr = null;
-      }
-      if (logDEBUG)
-        Logger.debug(
-            this,
-            "host is '"
-                + host
-                + "' and addr.getHostAddress() is '"
-                + (addr != null ? addr.getHostAddress() + '\'' : ""));
-      if (addr != null && addr.getHostAddress().equals(host)) {
-        if (logDEBUG) Logger.debug(this, '\'' + host + "' looks like an IP address");
-        host = null;
-      } else {
-        addr = null;
-      }
-    }
-    if (addr == null) {
-      if (logDEBUG) Logger.debug(this, '\'' + host + "' does not look like an IP address");
-    }
-    this._address = addr;
-    this.hostname = host;
-    if (checkHostnameOrIPSyntax && null != this.hostname) {
-      if (!HostnameUtil.isValidHostname(this.hostname, true)) throw new HostnameSyntaxException();
-    }
+    InitResult r = computeInitFromHost(host, allowUnknown);
+    this.address = r.addr;
+    this.hostname = r.host;
+    if (checkHostnameOrIPSyntax
+        && this.hostname != null
+        && !HostnameUtil.isValidHostname(this.hostname, true)) throw new HostnameSyntaxException();
     // we're created with a hostname so delay the lookup of the address
-    // until it's needed to work better with dynamic DNS hostnames
+    // until it's necessary to work better with dynamic DNS hostnames
   }
 
-  public boolean laxEquals(FreenetInetAddress addr) {
-    if (hostname != null) {
-      if (addr.hostname == null) {
-        if (_address == null) return false; // No basis for comparison.
-        if (addr._address != null) {
-          return _address.equals(addr._address);
-        }
-      } else {
-        if (!hostname.equalsIgnoreCase(addr.hostname)) {
-          return false;
-        }
-        // Now that we know we have the same hostname, we can propagate the IP.
-        if ((_address != null) && (addr._address == null)) addr._address = _address;
-        if ((addr._address != null) && (_address == null)) _address = addr._address;
-        // Except if we actually do have two different looked-up IPs!
-        return (addr._address == null) || (_address == null) || addr._address.equals(_address);
-        // Equal.
+  private record InitResult(InetAddress addr, String host) {}
+
+  private InitResult computeInitFromHost(String host, boolean allowUnknown)
+      throws UnknownHostException {
+    InetAddress addr = null;
+    String h = host;
+    if (h != null) {
+      if (h.startsWith("/")) h = h.substring(1);
+      h = h.trim();
+    }
+    AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(h);
+    if (LOG.isTraceEnabled())
+      LOG.trace(
+          "Address type of '{}' appears to be '{}' (allowUnknown={})",
+          h,
+          addressType,
+          allowUnknown);
+    if (addressType != AddressIdentifier.AddressType.OTHER) {
+      // Is an IP address
+      addr = InetAddress.getByName(h);
+      if (LOG.isDebugEnabled())
+        LOG.debug("host is '{}' and addr.getHostAddress() is '{}'", h, addr.getHostAddress());
+      if (addr != null) {
+        h = null;
       }
     }
-    // His hostname might not be null. Not a problem.
-    return _address.equals(addr._address);
+    if (addr == null && LOG.isTraceEnabled()) LOG.trace("'{}' does not look like an IP address", h);
+    return new InitResult(addr, h);
   }
 
+  /**
+   * Compares for equality using relaxed rules.
+   *
+   * <p>Behavior: - When this instance is hostname-primary, hostnames must match the ignoring case.
+   * If either side has a resolved IP, it is propagated to the other. If both have addresses, they
+   * must match. - When this instance is IP-primary, only the numeric addresses are compared.
+   *
+   * @param other address to compare
+   * @return {@code true} when considered equal under the relaxed rules
+   */
+  public boolean laxEquals(FreenetInetAddress other) {
+    if (hostname != null) {
+      return laxEqualsWhenThisHasHostname(other);
+    }
+    return addressesEqual(address, other.address);
+  }
+
+  private boolean laxEqualsWhenThisHasHostname(FreenetInetAddress other) {
+    if (other.hostname == null) {
+      return addressBasedComparisonWhenOtherHasNoHostname(other);
+    }
+    if (!hostname.equalsIgnoreCase(other.hostname)) {
+      return false;
+    }
+    propagateAddresses(other);
+    return (other.address == null) || (address == null) || other.address.equals(address);
+  }
+
+  private boolean addressBasedComparisonWhenOtherHasNoHostname(FreenetInetAddress other) {
+    if (address == null) return false; // No basis for comparison.
+    if (other.address != null) {
+      return address.equals(other.address);
+    }
+    return false;
+  }
+
+  private void propagateAddresses(FreenetInetAddress other) {
+    if (address != null && other.address == null) other.address = address;
+    if (other.address != null && address == null) address = other.address;
+  }
+
+  private static boolean addressesEqual(InetAddress a, InetAddress b) {
+    return a != null && a.equals(b);
+  }
+
+  /**
+   * Compares for equality consistent with the propagation semantics described in the class
+   * documentation.
+   *
+   * <p>When hostnames are present on both sides, they must match the ignoring case; the resolved IP
+   * may be propagated between instances. When neither side has a hostname, equality falls back to
+   * the numeric IP address.
+   */
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof FreenetInetAddress addr)) {
@@ -237,18 +277,28 @@ public class FreenetInetAddress {
         return false;
       }
       // Now that we know we have the same hostname, we can propagate the IP.
-      if ((_address != null) && (addr._address == null)) addr._address = _address;
-      if ((addr._address != null) && (_address == null)) _address = addr._address;
+      if ((address != null) && (addr.address == null)) addr.address = address;
+      if ((addr.address != null) && (address == null)) address = addr.address;
       // Except if we actually do have two different looked-up IPs!
-      return (addr._address == null) || (_address == null) || addr._address.equals(_address);
+      return addr.address == null || addr.address.equals(address);
       // Equal.
     }
     if (addr.hostname != null) return false;
 
     // No hostname, go by address.
-    return _address.equals(addr._address);
+    return address.equals(addr.address);
   }
 
+  /**
+   * Compares for equality using strict rules useful for peer identity checks.
+   *
+   * <p>When hostnames are present on both sides, the behavior matches {@link #equals(Object)}. When
+   * neither side has a hostname, strict comparison requires the reverse hostnames derived from the
+   * numeric IPs to match the ignoring case (see {@link #getHostName(InetAddress)}).
+   *
+   * @param addr address to compare
+   * @return {@code true} if equal under strict comparison
+   */
   public boolean strictEquals(FreenetInetAddress addr) {
     if (hostname != null) {
       if (addr.hostname == null) return false;
@@ -256,120 +306,164 @@ public class FreenetInetAddress {
         return false;
       }
       // Now that we know we have the same hostname, we can propagate the IP.
-      if ((_address != null) && (addr._address == null)) addr._address = _address;
-      if ((addr._address != null) && (_address == null)) _address = addr._address;
+      if ((address != null) && (addr.address == null)) addr.address = address;
+      if ((addr.address != null) && (address == null)) address = addr.address;
       // Except if we actually do have two different looked-up IPs!
-      return (addr._address == null) || (_address == null) || addr._address.equals(_address);
+      return addr.address == null || addr.address.equals(address);
       // Equal.
     } else if (addr.hostname != null /* && hostname == null */) {
       return false;
     }
 
     // No hostname, go by address.
-    String reverseHostNameISee = getHostName(_address);
-    String reverseHostNameTheySee = getHostName(addr._address);
-    // Logger.minor(this, "Addresses do not match: mine="+getHostName(_address)+"
-    // his="+getHostName(addr._address));
+    String reverseHostNameISee = getHostName(address);
+    String reverseHostNameTheySee = getHostName(addr.address);
     return reverseHostNameISee != null
         && reverseHostNameISee.equalsIgnoreCase(reverseHostNameTheySee);
   }
 
   /**
-   * Get the IP address. Look it up if necessary, but return the last value if it has ever been
-   * looked up before; will not trigger a new lookup if it has been looked up before.
+   * Returns the resolved IP address, performing a DNS lookup if needed.
+   *
+   * <p>If an address was resolved previously, it is returned without issuing a new lookup.
+   *
+   * @return resolved address or {@code null} if resolution fails
    */
   public InetAddress getAddress() {
     return getAddress(true);
   }
 
   /**
-   * Get the IP address. Look it up only if allowed to, but return the last value if it has ever
-   * been looked up before; will not trigger a new lookup if it has been looked up before.
+   * Returns the resolved IP address and optionally performs DNS resolution.
+   *
+   * @param doDNSRequest when {@code true}, resolve the hostname if not yet resolved; when {@code
+   *     false}, return the cached value or {@code null}
+   * @return resolved address or {@code null} when not cached and lookups are disabled
    */
   public InetAddress getAddress(boolean doDNSRequest) {
-    if (_address != null) {
-      return _address;
+    if (address != null) {
+      return address;
     } else {
       if (!doDNSRequest) return null;
       InetAddress addr = getHandshakeAddress();
       if (addr != null) {
-        this._address = addr;
+        this.address = addr;
       }
       return addr;
     }
   }
 
   /**
-   * Get the IP address, looking up the hostname if the hostname is primary, even if it has been
-   * looked up before. Typically called on a reconnect attempt, when the dyndns address may have
-   * changed.
+   * Returns the IP used for handshakes, forcing a fresh DNS resolution when hostname-primary.
+   *
+   * <p>This method bypasses a previously cached value if a hostname is present so that dynamic DNS
+   * updates are observed during connection attempts.
+   *
+   * @return the latest resolved address or {@code null} if the hostname cannot be resolved
    */
   public InetAddress getHandshakeAddress() {
-    // Since we're handshaking, hostname-to-IP may have changed
-    if ((_address != null) && (hostname == null)) {
-      if (logMINOR) Logger.minor(this, "hostname is null, returning " + _address);
-      return _address;
-    } else {
-      if (logMINOR)
-        Logger.minor(this, "Looking up '" + hostname + "' in DNS", new Exception("debug"));
-      /*
-       * Peers are constructed from an address once a
-       * handshake has been completed, so this lookup
-       * will only be performed during a handshake
-       * (this method should normally only be called
-       * from PeerNode.getHandshakeIPs() and once
-       * each connection from this.getAddress()
-       * otherwise) - it doesn't mean we perform a
-       * DNS lookup with every packet we send.
-       */
-      try {
-        InetAddress[] addresses = InetAddress.getAllByName(hostname);
-        if (logMINOR) Logger.minor(this, "Look up got '" + addresses + '\'');
-        if (addresses.length > 1) {
-          /* sort by IPv6 first */
-          Arrays.sort(addresses, InetAddressIpv6FirstComparator.COMPARATOR);
-          /*
-           * cache the answer since getHandshakeAddress()
-           * doesn't use the cached value, thus
-           * getHandshakeIPs() should always get the
-           * latest value from DNS (minus Java's caching)
-           */
-          this._address = InetAddress.getByAddress(addresses[0].getAddress());
-          if (logMINOR) Logger.minor(this, "Setting address to " + _address);
-        }
-        return addresses[0];
-      } catch (UnknownHostException e) {
-        if (logMINOR)
-          Logger.minor(
-              this, "DNS said hostname '" + hostname + "' is an unknown host, returning null");
-        return null;
-      }
+    if (shouldReturnCachedAddress()) {
+      if (LOG.isDebugEnabled()) LOG.debug("hostname is null, returning {}", address);
+      return address;
+    }
+    return lookupHandshakeAddress();
+  }
+
+  private boolean shouldReturnCachedAddress() {
+    // During handshakes only return the cached value when IP is primary; a hostname may have
+    // changed due to dynamic DNS.
+    return (address != null) && (hostname == null);
+  }
+
+  private InetAddress lookupHandshakeAddress() {
+    if (LOG.isDebugEnabled()) LOG.debug("Looking up '{}' in DNS", hostname);
+    /*
+     * Peers are constructed from an address once a
+     * handshake has been completed, so this lookup
+     * will only be performed during a handshake.
+     * This method should normally only be called
+     * from PeerNode.getHandshakeIPs() and once
+     * each connection from this.getAddress().
+     * It does not mean we perform a DNS lookup
+     * with every packet we send.
+     */
+    InetAddress[] addresses = resolveAllByName(hostname);
+    if (addresses.length == 0) return null;
+    if (addresses.length > 1) cacheFirstSortedAddress(addresses);
+    return addresses[0];
+  }
+
+  private InetAddress[] resolveAllByName(String host) {
+    try {
+      return InetAddress.getAllByName(host);
+    } catch (UnknownHostException _) {
+      if (LOG.isDebugEnabled())
+        LOG.debug("DNS said hostname '{}' is an unknown host, returning null", host);
+      return new InetAddress[0];
     }
   }
 
+  private void cacheFirstSortedAddress(InetAddress[] addresses) {
+    /* Prefer IPv6 when multiple answers exist to encourage IPv6 connectivity. */
+    Arrays.sort(addresses, InetAddressIpv6FirstComparator.COMPARATOR);
+    /* Cache the first answer to avoid immediate re-resolution on later calls. */
+    try {
+      this.address = InetAddress.getByAddress(addresses[0].getAddress());
+      if (LOG.isDebugEnabled()) LOG.debug("Setting address to {}", address);
+    } catch (UnknownHostException e) {
+      // Should not happen for valid IPv4/IPv6 byte arrays; skip caching if it does.
+      if (LOG.isWarnEnabled())
+        LOG.warn(
+            "Failed to cache first sorted address for hostname '{}': {}", hostname, e.toString());
+    }
+  }
+
+  /**
+   * Computes a hash code consistent with the equality contract.
+   *
+   * <p>When a hostname is present, it is the sole contributor; otherwise the numeric address is
+   * used.
+   */
   @Override
   public int hashCode() {
     if (hostname != null) {
       return hostname.hashCode(); // Was set at creation, so it can safely be used here.
     } else {
-      return _address.hashCode(); // Can be null, but if so, hostname will be non-null.
+      return address.hashCode(); // Can be null, but if so, the hostname will be non-null.
     }
   }
 
+  /**
+   * Returns a human-friendly representation: hostname when present, otherwise the numeric address.
+   */
   @Override
   public String toString() {
     if (hostname != null) {
       return hostname;
     } else {
-      return _address.getHostAddress();
+      return address.getHostAddress();
     }
   }
 
+  /**
+   * Returns a string favoring the numeric address when available, otherwise the hostname.
+   *
+   * @return numeric address or hostname; may be {@code null} when neither is available
+   */
   public String toStringPrefNumeric() {
-    if (_address != null) return _address.getHostAddress();
+    if (address != null) return address.getHostAddress();
     else return hostname;
   }
 
+  /**
+   * Writes this instance to a {@link DataOutputStream} using the current binary encoding.
+   *
+   * <p>Format: one type byte ({@code 0} for IPv4, {@code 255} for IPv6), followed by the raw IP
+   * bytes, then a UTF string of the hostname or the empty string when absent.
+   *
+   * @param dos destination stream
+   * @throws IOException if writing fails or the address cannot be encoded
+   */
   public void writeToDataOutputStream(DataOutputStream dos) throws IOException {
     InetAddress addr = this.getAddress();
     if (addr == null) throw new UnknownHostException();
@@ -382,8 +476,13 @@ public class FreenetInetAddress {
   }
 
   /**
-   * Return the hostname or the IP address of the given InetAddress. Does not attempt to do a
-   * reverse lookup; if the hostname is known, return it, otherwise return the textual IP address.
+   * Returns the name component of an {@link InetAddress} without performing reverse DNS.
+   *
+   * <p>Parses the {@code toString()} form ({@code name/address}) and returns the left-hand side. If
+   * no name is present, returns {@link InetAddress#getHostAddress()}.
+   *
+   * @param primaryIPAddress address to read; may be {@code null}
+   * @return hostname or numeric address; {@code null} when the input is {@code null}
    */
   public static String getHostName(InetAddress primaryIPAddress) {
     if (primaryIPAddress == null) return null;
@@ -393,10 +492,22 @@ public class FreenetInetAddress {
     else return addr;
   }
 
+  /**
+   * Determines whether the address appears routable on the public Internet.
+   *
+   * <p>If a resolved address is available, the decision delegates to {@link
+   * IPUtil#isValidAddress(InetAddress, boolean)}. Otherwise, when {@code lookup} is {@code true}, a
+   * resolution attempt is made; when {@code false}, {@code defaultVal} is returned.
+   *
+   * @param lookup whether to resolve the hostname when no cached address is available
+   * @param defaultVal value to return when not resolved and lookups are disabled
+   * @param allowLocalAddresses whether RFC 1918/unique-local addresses are considered valid
+   * @return {@code true} if the address is considered publicly routable (or allowed locally)
+   */
   public boolean isRealInternetAddress(
       boolean lookup, boolean defaultVal, boolean allowLocalAddresses) {
-    if (_address != null) {
-      return IPUtil.isValidAddress(_address, allowLocalAddresses);
+    if (address != null) {
+      return IPUtil.isValidAddress(address, allowLocalAddresses);
     } else {
       if (lookup) {
         InetAddress a = getAddress();
@@ -407,32 +518,42 @@ public class FreenetInetAddress {
   }
 
   /**
-   * Get a new <code>FreenetInetAddress</code> with host name removed.
+   * Returns a new instance with the hostname removed, preserving only the resolved IP address.
    *
-   * @return a new <code>FreenetInetAddress</code> with host name removed; or {@code null} if no
-   *     known ip address is associated with this object. You may want to do a <code>
-   *     getAddress(true)</code> before calling this.
+   * <p>If no address is currently resolved, returns {@code null}. Call {@link #getAddress(boolean)}
+   * with {@code true} first when the hostname is primary and resolution is desired.
+   *
+   * @return a new IP-primary instance, {@code null} when no address is known, or {@code this} when
+   *     already IP-primary
    */
   public FreenetInetAddress dropHostname() {
-    if (_address == null) {
-      Logger.error(this, "Can't dropHostname() if no address!");
+    if (address == null) {
+      LOG.debug("dropHostname() called without a resolved address; hostname='{}'", hostname);
       return null;
     }
     if (hostname != null) {
-      return new FreenetInetAddress(_address);
+      return new FreenetInetAddress(address);
     } else return this;
   }
 
+  /** Returns whether a non-empty hostname is present. */
   public boolean hasHostname() {
     return hostname != null && !hostname.isEmpty();
   }
 
+  /** Returns whether a hostname is present but no address has been resolved yet. */
   public boolean hasHostnameNoIP() {
-    return hasHostname() && _address == null;
+    return hasHostname() && address == null;
   }
 
+  /**
+   * Returns whether the resolved address is IPv6.
+   *
+   * @param defaultValue value to return when the address has not been resolved yet
+   * @return {@code true} for IPv6, {@code false} for IPv4, or {@code defaultValue} when unknown
+   */
   public boolean isIPv6(boolean defaultValue) {
-    if (_address == null) return defaultValue;
-    else return (_address instanceof Inet6Address);
+    if (address == null) return defaultValue;
+    else return (address instanceof Inet6Address);
   }
 }

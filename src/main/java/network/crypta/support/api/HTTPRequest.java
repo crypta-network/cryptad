@@ -5,164 +5,291 @@ import java.util.NoSuchElementException;
 import javax.naming.SizeLimitExceededException;
 
 /**
- * A parsed HTTP request (GET or POST). Request parameters are parameters encoded into the URI, or
- * part of a POST form which is encoded as application/x-www-form-urlencoded. Parts are parameters
- * (including files) uploaded in a POST in multipart/form-data. Use of the former encoding for POSTs
- * is strongly discouraged as it has character set issues. We do support methods other than GET and
- * POST for e.g. WebDAV, but they are not common.
+ * Represents a parsed HTTP request.
+ *
+ * <p>This interface provides access to the request path, method, headers, parameters, and
+ * optionally submitted body data. Parameters originate either from the query string or from a POST
+ * body encoded as {@code application/x-www-form-urlencoded}. Parts refer to items submitted via
+ * {@code multipart/form-data} (including uploaded files) and are exposed as buckets.
+ *
+ * <p>Unless otherwise noted, methods prefer returning empty values (for example, an empty {@code
+ * String} or empty array) over {@code null}. Callers should explicitly check return values and use
+ * the "throwing" variants where they need strict failure signaling.
+ *
+ * <p>Resource management: implementations may spool multipart parts to the disk. Call {@link
+ * #freeParts()} when finished to release any associated resources; after freeing, part accessors
+ * may throw {@link IllegalStateException}.
+ *
+ * <p>Thread-safety: implementations are not required to be thread-safe. Treat a given instance as
+ * request-local and confine it to a single thread.
  */
 public interface HTTPRequest {
 
   /**
-   * The path of this request, where the part of the path the specified the plugin has already been
-   * removed..
+   * Returns the request path.
+   *
+   * <p>The segment identifying the dispatched toadlet is already removed from this path.
+   *
+   * @return the normalized path component of the request URI
    */
   String getPath();
 
   /**
-   * @return false if the query string was totally empty
+   * Indicates whether any parameters are present.
+   *
+   * <p>The result reflects the presence of parameters parsed from the URI (and, depending on the
+   * implementation, potentially from {@code application/x-www-form-urlencoded} request bodies).
+   *
+   * @return {@code false} if no parameters were parsed, {@code true} otherwise
    */
   boolean hasParameters();
 
   /**
-   * Check if a parameter was set in the request at all, either with or without a value.
+   * Tests whether a parameter is present, regardless of its value.
    *
-   * @param name the name of the parameter to check
-   * @return true if the parameter was set in the request, not regarding if the value is empty
+   * @param name the parameter name
+   * @return {@code true} if the parameter exists (even if its value is empty)
    */
   boolean isParameterSet(String name);
 
   /**
-   * Get the value of a request parameter, using an empty string as default value if the parameter
-   * was not set. This method will never return null, so its safe to do things like
+   * Returns the value of a parameter or an empty string if absent.
+   *
+   * <p>This method never returns {@code null}. If multiple values exist, the first value is
+   * returned.
    *
    * <p><code>
    *   if (request.getParam(&quot;abc&quot;).equals(&quot;def&quot;))
    * </code>
    *
-   * @param name the name of the parameter to get
-   * @return the parameter value as String, or an empty String if the value was missing or empty
+   * @param name the parameter name
+   * @return the value or {@code ""} when missing or empty
    */
   String getParam(String name);
 
   /**
-   * Get the value of a request parameter, using the specified default value if the parameter was
-   * not set or has an empty value.
+   * Returns the value of a parameter or the provided default when absent or empty.
    *
-   * @param name the name of the parameter to get
-   * @param defaultValue the default value to be returned if the parameter is missing or empty
-   * @return either the parameter value as String, or the default value
+   * <p>If multiple values exist, the first value is returned.
+   *
+   * @param name the parameter name
+   * @param defaultValue the value to return when missing or empty
+   * @return the parameter value or {@code defaultValue}
    */
   String getParam(String name, String defaultValue);
 
   /**
-   * Get the value of a request parameter converted to an int, using 0 as default value. If there
-   * are multiple values for this parameter, the first value is used.
+   * Returns a parameter parsed as an {@code int}, defaulting to {@code 0} when absent or invalid.
    *
-   * @param name the name of the parameter to get
-   * @return either the parameter value as int, or 0 if the parameter is missing, empty or invalid
+   * <p>If multiple values exist, the first value is used.
+   *
+   * @param name the parameter name
+   * @return the parsed value or {@code 0} if missing, empty, or not an integer
    */
+  @SuppressWarnings("unused")
   int getIntParam(String name);
 
   /**
-   * Get the value of a request parameter converted to an <code>int</code>, using the specified
-   * default value. If there are multiple values for this parameter, the first value is used.
+   * Returns a parameter parsed as an {@code int}, defaulting to the provided value when absent or
+   * invalid.
    *
-   * @param name the name of the parameter to get
-   * @param defaultValue the default value to be returned if the parameter is missing, empty or
-   *     invalid
-   * @return either the parameter value as int, or the default value
+   * <p>If multiple values exist, the first value is used.
+   *
+   * @param name the parameter name
+   * @param defaultValue the value to return when missing, empty, or not an integer
+   * @return the parsed value or {@code defaultValue}
    */
   int getIntParam(String name, int defaultValue);
 
-  /** Get a part as an integer with a default value if it is not set. */
+  /**
+   * Returns a part parsed as an {@code int}, defaulting when absent or invalid.
+   *
+   * <p>The part is read as UTF-8 text and parsed as a decimal integer.
+   *
+   * @param name the part name
+   * @param defaultValue the value to return when missing or not an integer
+   * @return the parsed value or {@code defaultValue}
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
+   */
   int getIntPart(String name, int defaultValue);
 
   /**
-   * Get all values of a request parameter as a string array. If the parameter was not set at all,
-   * an empty array is returned, so this method will never return <code>null</code>.
+   * Returns all values of a parameter.
    *
-   * @param name the name of the parameter to get
-   * @return an array of all parameter values that might include empty values
+   * <p>The returned array is never {@code null}. If the parameter is absent, the array is empty.
+   *
+   * @param name the parameter name
+   * @return all values, which may include empty strings
    */
+  @SuppressWarnings("unused")
   String[] getMultipleParam(String name);
 
   /**
-   * Get all values of a request parameter as int array, ignoring all values that can not be parsed.
-   * If the parameter was not set at all, an empty array is returned, so this method will never
-   * return <code>null</code>.
+   * Returns all values of a parameter parsed as {@code int}s.
    *
-   * @param name the name of the parameter to get
-   * @return an int array of all parameter values that could be parsed as int
+   * <p>Any values that cannot be parsed are ignored. The returned array is never {@code null}; when
+   * no values are present the array is empty.
+   *
+   * @param name the parameter name
+   * @return all successfully parsed integer values
    */
+  @SuppressWarnings("unused")
   int[] getMultipleIntParam(String name);
 
-  /** Get a file uploaded in the HTTP request. */
+  /**
+   * Returns metadata for an uploaded file.
+   *
+   * <p>Only applicable to {@code multipart/form-data} requests. The returned object exposes the
+   * original filename, content type, and a {@link Bucket} containing the file data.
+   *
+   * @param name the form field name
+   * @return the uploaded file, or {@code null} if not present or no filename was supplied
+   */
   HTTPUploadedFile getUploadedFile(String name);
 
   /**
-   * Get a part as a Bucket. Parts can be very large, as they are POST data from multipart/form-data
-   * and can include uploaded files.
+   * Returns a multipart part as a {@link RandomAccessBucket}.
+   *
+   * <p>Parts may be large (for example, file uploads) and may be spooled to disk by the
+   * implementation.
+   *
+   * @param name the part name
+   * @return the part bucket, or {@code null} if not present
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
    */
   RandomAccessBucket getPart(String name);
 
-  /** Is a part set with the given name? */
+  /**
+   * Tests whether a multipart part with the given name exists.
+   *
+   * @param name the part name
+   * @return {@code true} if present, otherwise {@code false}
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
+   */
   boolean isPartSet(String name);
 
   /**
-   * Get a request part as a String. Parts are passed in through attached data in a POST in
-   * multipart/form-data encoding; parameters are passed in through the URI. Returns an empty String
-   * if the length limit is exceeded and therefore is deprecated.
+   * Returns a multipart part as a UTF-8 {@code String} with a maximum length.
+   *
+   * <p>If the named part is missing a {@link NoSuchElementException} is thrown. If its size exceeds
+   * {@code maxlength} a {@link SizeLimitExceededException} is thrown. Implementations may throw
+   * {@link IllegalStateException} if parts were freed via {@link #freeParts()}.
+   *
+   * @param name the part name
+   * @param maxlength maximum number of characters to read
+   * @return the content as text (possibly truncated to {@code maxlength})
+   * @throws NoSuchElementException if the part is not present
+   * @throws SizeLimitExceededException if the part exceeds {@code maxlength}
+   * @throws IllegalStateException if parts were freed
    */
-  @Deprecated
-  String getPartAsString(String name, int maxlength);
-
   String getPartAsStringThrowing(String name, int maxlength)
       throws NoSuchElementException, SizeLimitExceededException;
 
   /**
-   * Gets up to maxLength characters from the part, ignores any characters after the limit. If no
-   * such part exists, an empty String is returned.
+   * Returns up to {@code maxlength} characters from a part without throwing.
+   *
+   * <p>Characters beyond the limit are ignored. If the part is missing, an empty string is
+   * returned.
+   *
+   * @param name the part name
+   * @param maxlength maximum number of characters to read
+   * @return the content as text, possibly truncated, or {@code ""} when missing
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
    */
   String getPartAsStringFailsafe(String name, int maxlength);
 
   /**
-   * Get a request part as bytes. Returns an empty array if the length limit is exceeded and
-   * therefore is deprecated.
+   * Returns a multipart part as a {@code byte[]} with a maximum length.
+   *
+   * <p>If the named part is missing a {@link NoSuchElementException} is thrown. If its size exceeds
+   * {@code maxlength} a {@link SizeLimitExceededException} is thrown. Implementations may throw
+   * {@link IllegalStateException} if parts were freed via {@link #freeParts()}.
+   *
+   * @param name the part name
+   * @param maxlength maximum number of bytes to read
+   * @return the content as bytes (possibly truncated to {@code maxlength})
+   * @throws NoSuchElementException if the part is not present
+   * @throws SizeLimitExceededException if the part exceeds {@code maxlength}
+   * @throws IllegalStateException if parts were freed
    */
-  @Deprecated
-  byte[] getPartAsBytes(String name, int maxlength);
-
+  @SuppressWarnings("UnusedReturnValue")
   byte[] getPartAsBytesThrowing(String name, int maxlength)
       throws NoSuchElementException, SizeLimitExceededException;
 
   /**
-   * Gets up to maxLength bytes from the part, ignores any bytes after the limit. If no such part
-   * exists, a byte[] with size 0 is returned.
+   * Returns up to {@code maxlength} bytes from a part without throwing.
+   *
+   * <p>Bytes beyond the limit are ignored. If the part is missing, an empty array is returned.
+   *
+   * @param name the part name
+   * @param maxlength maximum number of bytes to read
+   * @return the content as bytes, possibly truncated, or an empty array when missing
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
    */
+  @SuppressWarnings("unused")
   byte[] getPartAsBytesFailsafe(String name, int maxlength);
 
   /**
-   * Free all the parts. They may be stored on disk so it is important that this be called at some
-   * point.
+   * Releases resources associated with multipart parts.
+   *
+   * <p>Implementations may store parts on disk or in temporary buffers. After this call, methods
+   * that access parts may throw {@link IllegalStateException}.
    */
   void freeParts();
 
-  /** Get a part as a long, with a default value if it is not set. */
+  /**
+   * Returns a parameter parsed as a {@code long}, defaulting when absent or invalid.
+   *
+   * @param name the parameter name
+   * @param defaultValue the value to return when missing or unparsable
+   * @return the parsed value or {@code defaultValue}
+   */
   long getLongParam(String name, long defaultValue);
 
-  /** Get the HTTP method, typically GET or POST. */
+  /**
+   * Returns the HTTP method of the request (for example, {@code GET} or {@code POST}).
+   *
+   * @return the request method
+   */
   String getMethod();
 
-  /** Get the original uploaded raw data for a POST. */
+  /**
+   * Returns the original request body as a {@link Bucket}.
+   *
+   * <p>For methods without an entity body (for example, {@code GET}) this may be {@code null}.
+   *
+   * @return the raw body bucket, or {@code null} if none
+   */
   Bucket getRawData();
 
-  /** Get the value of a specific header on the request. */
+  /**
+   * Returns the value of a specific request header.
+   *
+   * <p>Callers should pass header names in lower case; some implementations enforce this and may
+   * reject mixed-case names.
+   *
+   * @param name the lower-case header name (for example, {@code "content-type"})
+   * @return the first header value, or {@code null} if not present
+   */
   String getHeader(String name);
 
-  /** Get the length of the original uploaded raw data for a POST. */
+  /**
+   * Returns the {@code Content-Length} of the request, if known.
+   *
+   * @return the content length in bytes, or {@code -1} if unknown or not provided
+   */
+  @SuppressWarnings("unused")
   int getContentLength();
 
+  /**
+   * Returns the names of all multipart parts included with the request.
+   *
+   * <p>The returned array is never {@code null}. After {@link #freeParts()}, calling this method
+   * may throw {@link IllegalStateException}.
+   *
+   * @return the part field names, possibly empty
+   * @throws IllegalStateException if parts were freed via {@link #freeParts()}
+   */
   String[] getParts();
 
   /**
@@ -173,11 +300,21 @@ public interface HTTPRequest {
   Collection<String> getParameterNames();
 
   /**
-   * Is the incognito=true boolean set? Sadly this does not prove that it is actually running
-   * incognito mode...
+   * Indicates whether {@code incognito=true} is present as a parameter.
+   *
+   * <p>This checks only the presence and boolean value of the parameter and does not validate any
+   * broader runtime mode.
+   *
+   * @return {@code true} if {@code incognito} is present and set to {@code true}
    */
   boolean isIncognito();
 
-  /** Is the browser Chrome according to User-Agent? */
+  /**
+   * Indicates whether the client appears to be Chrome based on the {@code User-Agent} header.
+   *
+   * <p>This is a best-effort heuristic.
+   *
+   * @return {@code true} if the {@code User-Agent} contains {@code "Chrome"}
+   */
   boolean isChrome();
 }

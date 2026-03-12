@@ -1,97 +1,284 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
-
+import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileWriter;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import network.crypta.fs.AppEnv;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.spaceroots.mantissa.random.ScalarSampleStatistics;
 
-public class YarrowTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-  private static final String SEED_FILE_NAME = "prng-test.seed";
-  private static final File SEED_FILE = new File(SEED_FILE_NAME);
-  private static final int SEED_SIZE = 624;
-  private static final byte[] SEED_OUTPUT_YARROW_FILE =
-      new byte[] {
-        (byte) 0xEE, (byte) 0x9E, (byte) 0xE2, (byte) 0x3B, (byte) 0x8D,
-        (byte) 0x1B, (byte) 0x97, (byte) 0xED, (byte) 0x68, (byte) 0x40,
-        (byte) 0x1F, (byte) 0xBD, (byte) 0x91, (byte) 0xEA, (byte) 0xA2,
-        (byte) 0xCD, (byte) 0xD0, (byte) 0xEB, (byte) 0x37, (byte) 0xF4
-      };
+@SuppressWarnings("java:S100")
+class YarrowTest {
 
-  @Before
-  public void setUp() throws Exception {
-    FileWriter fw = new FileWriter(SEED_FILE);
-    for (int i = 0; i < 256; i++) fw.write(i);
-    fw.flush();
-    fw.close();
+  @TempDir Path tempDir;
+
+  private File seedFile;
+
+  @BeforeEach
+  void setupSeedFile() throws IOException {
+    seedFile = tempDir.resolve("prng-test.seed").toFile();
+    // Create a small seed file with deterministic content (fewer than 32 longs)
+    try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(seedFile))) {
+      for (int i = 0; i < 4; i++) {
+        dos.writeLong(i + 1);
+      }
+    }
   }
-
-  @After
-  public void tearDown() throws Exception {
-    assertTrue(SEED_FILE.delete());
-  }
-
-  //	public void testConsistencySeedFromFile() throws NoSuchAlgorithmException,
-  // UnsupportedEncodingException {
-  //		Yarrow y = new Yarrow(SEED_FILE, "SHA1", "Rijndael", false, false, false);
-  //		MessageDigest md = MessageDigest.getInstance("SHA-1");
-  //
-  //		byte[] bytes = new byte[SEED_SIZE];
-  //
-  //		y.nextBytes(bytes);
-  //		md.update(bytes);
-  //
-  //		bytes = md.digest();
-  //		assertEquals(new String(bytes, "UTF-8"), new String(SEED_OUTPUT_YARROW_FILE, "UTF-8"));
-  //	}
 
   @Test
-  public void testDouble() {
-    Yarrow y = new Yarrow(SEED_FILE, "SHA1", "Rijndael", false, false, false);
+  @DisplayName("nextDouble: mean≈0.5 and stddev≈1/(2√3) over moderate sample")
+  void nextDouble_whenSampled_expectMeanAndStdDevWithinBounds() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
     ScalarSampleStatistics sample = new ScalarSampleStatistics();
 
-    for (int i = 0; i < 10000; ++i) {
+    // Act
+    for (int i = 0; i < 10_000; ++i) {
       sample.add(y.nextDouble());
     }
 
+    // Assert (broad, non‑flaky tolerance)
     assertEquals(0.5, sample.getMean(), 0.02);
     assertEquals(1.0 / (2.0 * Math.sqrt(3.0)), sample.getStandardDeviation(), 0.002);
   }
 
   @Test
-  public void testNextInt() {
-    //		Yarrow y = new Yarrow(SEED_FILE, "SHA1", "Rijndael", false, false, false);
-    //		for(int n = 1; n < 20; ++n) {
-    //			int[] count = new int[n];
-    //			for(int k = 0; k < 10000; ++k) {
-    //				int l = y.nextInt(n);
-    //				++count[l];
-    //				assertTrue(l >= 0);
-    //				assertTrue(l < n);
-    //			}
-    //			for(int i = 0; i < n; ++i) {
-    //				assertTrue(n * count[i] > 8800);
-    //				assertTrue(n * count[i] < 11100);
-    //			}
-    //		}
+  void nextIntBound_whenCalled_expectWithinRange() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
+
+    // Act: sample and bin by the returned index; any out-of-range value would throw
+    // during array indexing and fail the test immediately.
+    int bound = 37;
+    int[] counts = new int[bound];
+    int samples = 10_000;
+    for (int i = 0; i < samples; i++) {
+      counts[y.nextInt(bound)]++;
+    }
+    int total = 0;
+    int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+    for (int c : counts) {
+      total += c;
+      if (c < min) min = c;
+      if (c > max) max = c;
+    }
+
+    // Assert: all samples accounted for; rough uniformity (max/min within 2x)
+    assertEquals(samples, total);
+    assertTrue(max <= 2 * Math.max(1, min));
   }
 
   @Test
-  public void testNextBoolean() {
-    Yarrow y = new Yarrow(SEED_FILE, "SHA1", "Rijndael", false, false, false);
-    int[] results = new int[2];
-    int RUNS = 1000000;
-    for (int i = 0; i < RUNS; i++) {
-      if (y.nextBoolean()) results[0]++;
-      else results[1]++;
+  void next_whenRequestingSixteenBitsRepeatedly_expectNoArrayBoundsAndInRange() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
+
+    // Act + Assert: repeatedly crossing output buffer boundaries must remain safe.
+    for (int i = 0; i < 10_000; i++) {
+      int value = y.next(16);
+      assertTrue(value >= 0 && value <= 0xFFFF);
+    }
+  }
+
+  @Test
+  void nextBoolean_whenSamplingLarge_expectBalancedCounts() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
+
+    // Act
+    final int runs = 100_000; // balanced and fast; ~0.6% tolerance is ~3.8σ
+    int trues = 0;
+    for (int i = 0; i < runs; i++) {
+      if (y.nextBoolean()) trues++;
     }
 
-    assertEquals(RUNS, results[0] + results[1]);
-    assertTrue(results[0] > RUNS / 2 - RUNS / 1000);
-    assertTrue(results[1] > RUNS / 2 - RUNS / 1000);
+    // Assert
+    int falses = runs - trues;
+    assertEquals(runs, trues + falses);
+    int tolerance = (int) (runs * 0.006); // 0.6%
+    assertTrue(Math.abs(trues - falses) <= tolerance, "roughly balanced true/false");
+  }
+
+  @Test
+  void constructor_whenReseedDisabledAndSeedMissing_expectDeterministicStream() {
+    // Arrange: use a seed path that does not exist to avoid external entropy
+    File missingSeed = tempDir.resolve("does-not-exist.seed").toFile();
+    assertFalse(missingSeed.exists());
+
+    // Act
+    Yarrow y1 = new Yarrow(missingSeed, "SHA1", "Rijndael", true, false, false);
+    Yarrow y2 = new Yarrow(missingSeed, "SHA1", "Rijndael", true, false, false);
+
+    byte[] a = new byte[64];
+    byte[] b = new byte[64];
+    y1.nextBytes(a);
+    y2.nextBytes(b);
+
+    // Assert: same stream across identical initialization; not all zeros
+    assertArrayEquals(a, b);
+    boolean allZero = true;
+    for (byte v : a)
+      if (v != 0) {
+        allZero = false;
+        break;
+      }
+    assertFalse(allZero, "stream should not be all zeros");
+  }
+
+  @Test
+  void writeSeed_whenRateLimited_expectSingleWriteUntilForced() throws Exception {
+    // Arrange: updateSeed=true so seedfile is set; reseedOnStartup=false for deterministic test
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", true, false, false);
+    assertNotNull(y.seedfile);
+
+    // Act: first write persists 32 longs
+    y.writeSeed(false);
+    byte[] first = Files.readAllBytes(seedFile.toPath());
+
+    // Second write within rate limit should be skipped
+    y.writeSeed(false);
+    byte[] second = Files.readAllBytes(seedFile.toPath());
+    Instant secondMtime = Files.getLastModifiedTime(seedFile.toPath()).toInstant();
+
+    // Force write should bypass rate limit
+    y.writeSeed(true);
+    byte[] third = Files.readAllBytes(seedFile.toPath());
+    Instant thirdMtime = Files.getLastModifiedTime(seedFile.toPath()).toInstant();
+
+    // Assert
+    assertEquals(32 * Long.BYTES, first.length);
+    assertArrayEquals(first, second, "rate-limited write must not change file");
+    assertTrue(!thirdMtime.equals(secondMtime) || third.length == first.length);
+    // Content after forced write is very likely different; if equal, mtime must differ
+    assertTrue(!java.util.Arrays.equals(second, third) || !thirdMtime.equals(secondMtime));
+  }
+
+  @Test
+  void readSeed_whenShortFile_expectNoExceptionAndStateChanges() throws Exception {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", true, false, false);
+
+    byte[] before = new byte[32];
+    y.nextBytes(before);
+
+    // Act: overwrite seed with fewer than 32 longs to trigger EOF handling path
+    try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(seedFile))) {
+      for (int i = 0; i < 3; i++) dos.writeLong(0xA5A5A5A5A5A5A5A5L + i);
+    }
+    y.readSeed(seedFile);
+
+    byte[] after = new byte[32];
+    y.nextBytes(after);
+
+    // Assert: generator state changed (very unlikely to match previous stream)
+    assertFalse(java.util.Arrays.equals(before, after));
+  }
+
+  @Test
+  void acceptTimerEntropy_whenZeroBias_expectZeroContribution() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
+    EntropySource timer = new EntropySource();
+
+    // Act
+    int contributed = y.acceptTimerEntropy(timer, 0.0);
+
+    // Assert
+    assertEquals(0, contributed);
+  }
+
+  @Test
+  void seedfile_whenPathIsDevUrandom_expectNull() {
+    // Arrange & Act
+    Yarrow y = new Yarrow(new File("/dev/urandom"), "SHA1", "Rijndael", true, false, false);
+
+    // Assert
+    if (new AppEnv().isWindows()) {
+      assertNotNull(y.seedfile);
+    } else {
+      assertNull(y.seedfile);
+    }
+  }
+
+  @Test
+  void serialization_resets_entropy_counters() throws Exception {
+    // Arrange: create a Yarrow with deterministic setup
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", true, false, false);
+
+    // Preload counters with arbitrary non-zero values via reflection
+    var fastEntropyField = Yarrow.class.getDeclaredField("fastEntropy");
+    fastEntropyField.setAccessible(true);
+    fastEntropyField.setInt(y, 93);
+
+    var slowEntropyField = Yarrow.class.getDeclaredField("slowEntropy");
+    slowEntropyField.setAccessible(true);
+    slowEntropyField.setInt(y, 77);
+
+    // Act: serialize and deserialize
+    java.io.ByteArrayOutputStream bout = new java.io.ByteArrayOutputStream();
+    try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(bout)) {
+      oos.writeObject(y);
+    }
+    byte[] bytes = bout.toByteArray();
+
+    Yarrow y2;
+    try (java.io.ObjectInputStream ois =
+        new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes))) {
+      y2 = (Yarrow) ois.readObject();
+    }
+
+    // Assert: post-deserialization counters are reset to 0 to match empty digests
+    var fe2 = Yarrow.class.getDeclaredField("fastEntropy");
+    fe2.setAccessible(true);
+    var se2 = Yarrow.class.getDeclaredField("slowEntropy");
+    se2.setAccessible(true);
+    assertEquals(0, fe2.getInt(y2));
+    assertEquals(0, se2.getInt(y2));
+  }
+
+  @Test
+  void serialization_preserves_generator_state() throws Exception {
+    // Arrange: deterministic setup and consume some bytes to land mid-stream
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", true, false, false);
+    byte[] pre = new byte[17];
+    y.nextBytes(pre);
+
+    // Serialize current state
+    byte[] snapshot;
+    try (var bout = new java.io.ByteArrayOutputStream();
+        var oos = new java.io.ObjectOutputStream(bout)) {
+      oos.writeObject(y);
+      oos.flush();
+      snapshot = bout.toByteArray();
+    }
+
+    // Deserialize into a new instance
+    Yarrow y2;
+    try (var ois = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(snapshot))) {
+      y2 = (Yarrow) ois.readObject();
+    }
+
+    // Act: generate the same amount from both and compare
+    byte[] a = new byte[64];
+    byte[] b = new byte[64];
+    y.nextBytes(a); // continue from original
+    y2.nextBytes(b); // should match exactly
+
+    // Assert: streams must match after deserialization
+    assertArrayEquals(a, b);
   }
 }

@@ -1,33 +1,76 @@
 package network.crypta.client.async;
 
-import network.crypta.keys.USK;
-
 /**
- * Callback interface for USK fetches. If you submit a USK fetch via USKManager.getFetcher, then
- * register yourself on it as a listener, then you must implement these callback methods.
+ * Callback interface used by the asynchronous USK fetch machinery.
+ *
+ * <p>This interface is notified by a fetcher created for a specific Updateable Subspace Key (USK)
+ * request when progress reaches a terminal state for that one-off fetch operation. Typical usage is
+ * to get a fetcher from a manager, register an instance of this callback, and then react to one of
+ * the lifecycle events defined here. Unlike long-lived USK subscriptions that continue to receive
+ * updates, a {@code USKFetcherCallback} is expected to be invoked at most once per fetch attempt
+ * and then considered complete by the caller.
+ *
+ * <p>Implementations should be lightweight and non-blocking. Callbacks are generally invoked from
+ * the client framework’s worker threads; heavy work should be dispatched elsewhere to avoid
+ * starving the scheduler. Implementations must also tolerate reentrancy and cancellation, because
+ * fetches may be abandoned due to shut down or superseded by newer attempts when higher editions
+ * are discovered.
+ *
+ * <ul>
+ *   <li>Failure: no suitable edition found at or above a given hint.
+ *   <li>Canceled: fetch aborted before a definitive result could be produced.
+ *   <li>Found: the latest known-good edition has been retrieved for this fetch.
+ * </ul>
  */
 public interface USKFetcherCallback extends USKCallback {
 
-  /** Failed to find any edition at all (later than or equal to the specified hint) */
+  /**
+   * Reports that the fetch failed to locate any valid edition.
+   *
+   * <p>This outcome indicates that no edition at or above the requested hint could be retrieved or
+   * validated during this attempt. Implementations may record the failure, adjust scheduling
+   * policies, or trigger retries using separate logic. This method is terminal for the associated
+   * fetch operation and will not be followed by {@code onFoundEdition} for the same attempt.
+   *
+   * @param context the client execution context supplying shared services and state; never {@code
+   *     null} when the callback is invoked
+   */
   void onFailure(ClientContext context);
 
+  /**
+   * Signals that the fetch was canceled before it completed.
+   *
+   * <p>Cancellation can be explicit (requested by the caller) or implicit (triggered by shutdown,
+   * superseding operations, or time budgeting). No guarantees are made about partial progress: the
+   * implementation should treat this as a non-result and clean up any resources associated solely
+   * with this attempt. This method is terminal for the attempt and is not followed by other
+   * terminal callbacks.
+   *
+   * @param context the client execution context associated with the attempt; provided to enable any
+   *     necessary cleanup or logging within the broader client subsystem
+   */
   void onCancelled(ClientContext context);
 
   /**
-   * Found the latest edition. **This is terminal for a USKFetcherCallback**. It isn't for a
-   * USKCallback subscription.
+   * Reports that the latest applicable edition for the requested USK has been found.
    *
-   * @param l The edition number.
-   * @param key The key.
+   * <p>This is terminal for a {@code USKFetcherCallback} (a single-shot fetch) but not for a
+   * long-lived {@code USKCallback} subscription. The provided data represents the content for the
+   * resolved edition along with metadata flags describing the payload. Implementations typically
+   * persist or forward the result, update any local caches, and record the "known good" status for
+   * later resolution and validation decisions.
+   *
+   * <pre>{@code
+   * // Example: record the resolved edition then hand off for processing
+   * callback.onFoundEdition(
+   *     new USKFoundEdition(
+   *         new USKFoundEditionPayload(edition, usk, false, codec, bytes),
+   *         ctx,
+   *         new USKFoundEditionProgress(true, false)));
+   * }</pre>
+   *
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo);
+  void onFoundEdition(USKFoundEdition foundEdition);
 }

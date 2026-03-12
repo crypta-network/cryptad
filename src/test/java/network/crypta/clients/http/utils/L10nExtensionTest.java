@@ -1,63 +1,165 @@
 package network.crypta.clients.http.utils;
 
-import static java.util.Collections.emptyMap;
-import static java.util.Collections.singletonMap;
-import static network.crypta.l10n.BaseL10n.LANGUAGE.ENGLISH;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-
 import io.pebbletemplates.pebble.extension.Function;
 import io.pebbletemplates.pebble.template.EvaluationContext;
-import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import network.crypta.l10n.BaseL10n;
-import network.crypta.l10n.BaseL10nTest;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-public class L10nExtensionTest {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100")
+class L10nExtensionTest {
+
+  private static final String L10N_PREFIX_VARIABLE = "l10nPrefix";
+  private static final String LOCALIZED_VALUE = "localized";
+
+  @Mock private BaseL10n l10n;
+  @Mock private EvaluationContext context;
 
   @Test
-  public void l10nExtensionExposesAnL10nFunction() {
-    assertThat(l10nExtension.getFunctions().keySet(), contains("l10n"));
+  void getFunctions_whenCalled_returnsNewMapContainingL10nFunction() {
+    L10nExtension extension = new L10nExtension(l10n);
+
+    Map<String, Function> first = extension.getFunctions();
+    Map<String, Function> second = extension.getFunctions();
+
+    assertNotNull(first.get("l10n"));
+    assertNotNull(second.get("l10n"));
+    assertNotSame(first, second);
+    assertSame(first.get("l10n"), second.get("l10n"));
   }
 
   @Test
-  public void l10nFunctionDoesNotHaveArguments() {
-    assertThat(l10nFunction.getArgumentNames(), nullValue());
+  void getArgumentNames_whenCalled_returnsSinglePositionalArgumentNameZero() {
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    assertEquals(List.of("0"), function.getArgumentNames());
+  }
+
+  @ParameterizedTest
+  @MethodSource("nullOrEmptyArgs")
+  void execute_whenArgsNullOrEmpty_returnsLiteralNull(Map<String, Object> args) {
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Object result = function.execute(args, null, null, 0);
+
+    assertEquals("null", result);
+  }
+
+  static Stream<Arguments> nullOrEmptyArgs() {
+    return Stream.of(Arguments.of((Map<String, Object>) null), Arguments.of(Map.of()));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "0,posKey",
+    "key,namedKey",
+  })
+  void execute_whenKeyProvidedWithoutPrefix_resolvesUsingBaseL10n(String argName, String key) {
+    when(l10n.getString(key)).thenReturn(LOCALIZED_VALUE);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Object result = function.execute(Map.of(argName, key), null, null, 0);
+
+    assertEquals(LOCALIZED_VALUE, result);
+    verify(l10n).getString(key);
   }
 
   @Test
-  public void l10nFunctionReturnStringNullIfNotArgumentsAreGiven() {
-    assertThat(l10nFunction.execute(emptyMap(), null, null, 0), equalTo("null"));
+  void execute_whenContextPrefixProvided_prependsPrefixBeforeLookup() {
+    when(context.getVariable(L10N_PREFIX_VARIABLE)).thenReturn("test.");
+    when(l10n.getString("test.some.key")).thenReturn(LOCALIZED_VALUE);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Object result = function.execute(Map.of("0", "some.key"), null, context, 0);
+
+    assertEquals(LOCALIZED_VALUE, result);
+    verify(l10n).getString("test.some.key");
   }
 
   @Test
-  public void l10nFunctionRetrievesGivenArgumentWithPrefixFromContextToNodeL10n() {
-    Map<String, Object> arguments = singletonMap("0", "l10nFunctionTest");
-    EvaluationContext context = createEvaluationContext();
-    assertThat(l10nFunction.execute(arguments, null, context, 0), equalTo("Localized Value"));
+  void execute_whenContextPrefixIsNonString_usesToStringValue() {
+    Object prefix = 123;
+    when(context.getVariable(L10N_PREFIX_VARIABLE)).thenReturn(prefix);
+    when(l10n.getString("123some.key")).thenReturn(LOCALIZED_VALUE);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Object result = function.execute(Map.of("0", "some.key"), null, context, 0);
+
+    assertEquals(LOCALIZED_VALUE, result);
+    verify(l10n).getString("123some.key");
   }
 
-  private static EvaluationContext createEvaluationContext() {
-    return new EvaluationContext() {
-      @Override
-      public boolean isStrictVariables() {
-        return false;
-      }
+  @Test
+  void execute_whenArgsContainBothPositionalAndNamed_usesPositional() {
+    when(context.getVariable(L10N_PREFIX_VARIABLE)).thenReturn("p.");
+    when(l10n.getString("p.positional")).thenReturn(LOCALIZED_VALUE);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
 
-      @Override
-      public Locale getLocale() {
-        return null;
-      }
+    Object result = function.execute(Map.of("0", "positional", "key", "named"), null, context, 0);
 
-      @Override
-      public Object getVariable(String key) {
-        return key.equals("l10nPrefix") ? "test." : null;
-      }
-    };
+    assertEquals(LOCALIZED_VALUE, result);
+    verify(l10n).getString("p.positional");
   }
 
-  private final BaseL10n l10n = BaseL10nTest.createTestL10n(ENGLISH);
-  private final L10nExtension l10nExtension = new L10nExtension(l10n);
-  private final Function l10nFunction = l10nExtension.getFunctions().get("l10n");
+  @Test
+  void execute_whenArgsHaveNoRecognizedKey_usesFirstValueDeterministically() {
+    when(context.getVariable(L10N_PREFIX_VARIABLE)).thenReturn("p.");
+    when(l10n.getString("p.first")).thenReturn(LOCALIZED_VALUE);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("unexpected", "first");
+    args.put("another", "second");
+
+    Object result = function.execute(args, null, context, 0);
+
+    assertEquals(LOCALIZED_VALUE, result);
+    verify(l10n).getString("p.first");
+  }
+
+  @Test
+  void execute_whenProvidedKeyIsExplicitlyNull_returnsLiteralNull() {
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("0", null);
+
+    Object result = function.execute(args, null, context, 0);
+
+    assertEquals("null", result);
+  }
+
+  @Test
+  void execute_whenBaseL10nThrows_propagatesException() {
+    when(context.getVariable(L10N_PREFIX_VARIABLE)).thenReturn("p.");
+    IllegalArgumentException failure = new IllegalArgumentException("bad key");
+    when(l10n.getString("p.bad")).thenThrow(failure);
+    L10nExtension.L10nFunction function = new L10nExtension.L10nFunction(l10n);
+    Map<String, Object> args = Map.of("0", "bad");
+
+    IllegalArgumentException thrown =
+        assertThrows(
+            IllegalArgumentException.class, () -> function.execute(args, null, context, 0));
+
+    assertSame(failure, thrown);
+  }
 }

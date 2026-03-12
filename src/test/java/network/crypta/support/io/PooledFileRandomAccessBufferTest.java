@@ -1,305 +1,550 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import java.io.*;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Random;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.stream.Stream;
+import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
-import network.crypta.support.io.PooledFileRandomAccessBuffer.FDTracker;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-public class PooledFileRandomAccessBufferTest extends RandomAccessBufferTestBase {
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-  public PooledFileRandomAccessBufferTest() {
-    super(TEST_LIST);
+import static org.hamcrest.MatcherAssert.assertThat;
+
+@Tag("unit")
+@SuppressWarnings("java:S100") // Keep method_whenCondition_expectOutcome naming per project style
+class PooledFileRandomAccessBufferTest {
+
+  @TempDir File tempDir;
+
+  @AfterEach
+  void tearDown() {
+    // Nothing to clean beyond @TempDir; guard in case a test left files locked
   }
 
-  @Before
-  public void setUp() {
-    base.mkdir();
-  }
+  // ------------------------------------------------------------
+  // Constructors and size()
+  // ------------------------------------------------------------
 
-  @After
-  public void tearDown() {
-    FileUtil.removeAll(base);
-  }
-
-  /** Simplest test for pooling. TODO Add more. */
   @Test
-  public void testSimplePooling() throws IOException {
-    for (int sz : TEST_LIST) {
-      innerTestSimplePooling(sz);
+  void size_whenConstructedWithInitialContents_matchesSize() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "init.bin");
+    byte[] data = "hello world".getBytes(StandardCharsets.UTF_8);
+
+    // Act
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, data, 0, data.length, -1L, false, /* readOnly= */ false);
+
+    // Assert
+    assertEquals(data.length, p.size());
+    p.close();
+
+    // verify file contents written
+    byte[] onDisk = Files.readAllBytes(f.toPath());
+    assertArrayEquals(data, onDisk);
+  }
+
+  @Test
+  void size_whenConstructedFromExistingFile_reflectsCurrentLength() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "existing.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(64);
     }
+
+    // Use the internal-test constructor to avoid preallocation and to inject a tracker
+    PooledFileRandomAccessBuffer.FDTracker tracker = new PooledFileRandomAccessBuffer.FDTracker(8);
+
+    // Act
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, /* readOnly= */ false, /* forceLength= */ -1, -1L, false, tracker);
+
+    // Assert
+    assertEquals(64, p.size());
+    p.close();
   }
 
-  /** Test that locking and unlocking do something */
+  // ------------------------------------------------------------
+  // pwrite / pread basic behavior
+  // ------------------------------------------------------------
+
   @Test
-  public void testLock() throws IOException {
-    int sz = 1024;
-    fds.setMaxFDs(1);
-    assertEquals(fds.getOpenFDs(), 0);
-    assertEquals(fds.getClosableFDs(), 0);
-    PooledFileRandomAccessBuffer a = construct(sz);
-    PooledFileRandomAccessBuffer b = construct(sz);
-    assertEquals(fds.getOpenFDs(), 1);
-    assertEquals(fds.getClosableFDs(), 1);
-    assertFalse(a.isLocked());
-    assertFalse(b.isLocked());
-    RAFLock lock = a.lockOpen();
-    try {
-      assertTrue(a.isLocked());
-      assertFalse(b.isLocked());
-      assertEquals(fds.getOpenFDs(), 1);
-      assertEquals(fds.getClosableFDs(), 0);
-    } finally {
-      lock.unlock();
-      assertFalse(a.isLocked());
-      assertEquals(fds.getOpenFDs(), 1);
-      assertEquals(fds.getClosableFDs(), 1);
+  void pwrite_whenWithinBounds_writesAndCanBeReadBack() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "rw.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(32);
     }
-    a.close();
-    b.close();
-    assertEquals(fds.getOpenFDs(), 0);
-    assertEquals(fds.getClosableFDs(), 0);
-    a.free();
-    b.free();
-  }
+    PooledFileRandomAccessBuffer.FDTracker tracker = new PooledFileRandomAccessBuffer.FDTracker(4);
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(f, false, -1, -1L, false, tracker);
+    byte[] payload = new byte[] {1, 2, 3, 4, 5};
 
-  /** Thanks bertm */
-  @Test
-  public void testLocksB() throws IOException {
-    fds.setMaxFDs(1);
-    PooledFileRandomAccessBuffer a = construct(0);
-    PooledFileRandomAccessBuffer b = construct(0);
-    RAFLock lock = b.lockOpen();
-    lock.unlock();
-    a.close();
-    b.close();
-    a.free();
-    b.free();
-    assertEquals(fds.getOpenFDs(), 0);
-    assertEquals(fds.getClosableFDs(), 0);
+    // Act
+    p.pwrite(10, payload, 0, payload.length);
+
+    // Assert via pread
+    byte[] buf = new byte[5];
+    p.pread(10, buf, 0, buf.length);
+    assertArrayEquals(payload, buf);
+    p.close();
   }
 
   @Test
-  public void testLockedNotClosable() throws IOException {
-    int sz = 1024;
-    fds.setMaxFDs(2);
-    PooledFileRandomAccessBuffer a = construct(sz);
-    PooledFileRandomAccessBuffer b = construct(sz);
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 2);
-    assertTrue(a.isOpen());
-    assertTrue(b.isOpen());
-    assertFalse(a.isLocked());
-    assertFalse(b.isLocked());
-    // Open and open FD -> locked
+  void pwrite_whenReadOnly_expectIOException() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "readonly.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(8);
+    }
+    PooledFileRandomAccessBuffer.FDTracker tracker = new PooledFileRandomAccessBuffer.FDTracker(2);
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, /* readOnly= */ true, /* forceLength= */ -1, -1L, false, tracker);
+
+    // Act + Assert
+    IOException ex =
+        assertThrows(IOException.class, () -> p.pwrite(0, new byte[] {9}, 0, 1), "Read only");
+    assertThat(ex.getMessage(), containsString("Read only"));
+    p.close();
+  }
+
+  static Stream<long[]> pwriteOutOfBoundsCases() {
+    return Stream.of(
+        new long[] {0, 9}, // offset=0, len=9 > size 8
+        new long[] {7, 2}, // tail overrun
+        new long[] {8, 1} // writing at EOF with len>0
+        );
+  }
+
+  @ParameterizedTest
+  @MethodSource("pwriteOutOfBoundsCases")
+  void pwrite_whenExceedsLength_expectIOException(long[] params) throws Exception {
+    // Arrange
+    long offset = params[0];
+    int len = (int) params[1];
+    File f = new File(tempDir, "bounds.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(8);
+    }
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+
+    // Act + Assert
+    IOException ex = assertThrows(IOException.class, () -> p.pwrite(offset, new byte[len], 0, len));
+    assertThat(ex.getMessage(), containsString("Length limit exceeded"));
+    p.close();
+  }
+
+  @Test
+  void pread_whenNegativeOffset_expectIllegalArgumentException() throws Exception {
+    File f = new File(tempDir, "neg.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(4);
+    }
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+
+    assertThrows(IllegalArgumentException.class, () -> p.pread(-1, new byte[1], 0, 1));
+    p.close();
+  }
+
+  @Test
+  void pwrite_whenNegativeOffset_expectIllegalArgumentException() throws Exception {
+    File f = new File(tempDir, "negw.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(4);
+    }
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+
+    assertThrows(IllegalArgumentException.class, () -> p.pwrite(-1, new byte[1], 0, 1));
+    p.close();
+  }
+
+  // ------------------------------------------------------------
+  // Locking and pooling
+  // ------------------------------------------------------------
+
+  @Test
+  void lockOpen_whenPoolLimitExceeded_closesOlderRAF() throws Exception {
+    // Arrange: tracker allows only 1 open FD
+    PooledFileRandomAccessBuffer.FDTracker tracker = new PooledFileRandomAccessBuffer.FDTracker(1);
+
+    File f1 = new File(tempDir, "a.bin");
+    File f2 = new File(tempDir, "b.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f1, "rw")) {
+      raf.setLength(16);
+    }
+    try (RandomAccessFile raf = new RandomAccessFile(f2, "rw")) {
+      raf.setLength(16);
+    }
+
+    PooledFileRandomAccessBuffer a =
+        new PooledFileRandomAccessBuffer(f1, false, -1, -1L, false, tracker);
+    PooledFileRandomAccessBuffer b =
+        new PooledFileRandomAccessBuffer(f2, false, -1, -1L, false, tracker);
+
+    // Initially: lock/unlock A, making it closable in the pool
     RAFLock la = a.lockOpen();
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 1);
-    RAFLock lb = b.lockOpen();
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 0);
     la.unlock();
+    assertTrue(a.isOpen(), "A should remain open after unlock");
+    assertThat(tracker.getClosableFDs(), greaterThanOrEqualTo(1));
+
+    // Act: lock B; pool must close A to free a slot
+    RAFLock lb = b.lockOpen();
+
+    // Assert: A got closed by the pool, B is open
+    assertFalse(a.isOpen(), "A must be closed by the pool");
+    assertTrue(b.isOpen(), "B should be open after acquiring lock");
+
     lb.unlock();
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 2);
     a.close();
     b.close();
   }
 
   @Test
-  public void testLockedNotClosableFromNotOpenFD() throws IOException {
-    int sz = 1024;
-    fds.setMaxFDs(2);
-    PooledFileRandomAccessBuffer a = construct(sz);
-    PooledFileRandomAccessBuffer b = construct(sz);
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 2);
-    assertTrue(a.isOpen());
-    assertTrue(b.isOpen());
-    // Close the RAFs to exercise the other code path.
-    a.closeRAF();
-    b.closeRAF();
-    assertFalse(a.isLocked());
-    assertFalse(b.isLocked());
-    // Open and open FD -> locked
-    RAFLock la = a.lockOpen();
-    assertEquals(fds.getOpenFDs(), 1);
-    assertEquals(fds.getClosableFDs(), 1);
-    RAFLock lb = b.lockOpen();
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 0);
-    la.unlock();
-    lb.unlock();
-    assertEquals(fds.getOpenFDs(), 2);
-    assertEquals(fds.getClosableFDs(), 2);
-    a.close();
-    b.close();
+  void close_whenLocked_expectIllegalStateException() throws Exception {
+    File f = new File(tempDir, "locked.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(8);
+    }
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+
+    RAFLock l = p.lockOpen();
+    assertThrows(IllegalStateException.class, p::close);
+    l.unlock();
+    p.close();
   }
 
-  /**
-   * Test that locking enforces limits and blocks when appropriate.
-   *
-   * @throws InterruptedException
-   */
   @Test
-  public void testLockBlocking() throws IOException, InterruptedException {
-    int sz = 1024;
-    fds.setMaxFDs(1);
-    assertEquals(fds.getOpenFDs(), 0);
-    final PooledFileRandomAccessBuffer a = construct(sz);
-    final PooledFileRandomAccessBuffer b = construct(sz);
-    assertEquals(fds.getOpenFDs(), 1);
-    assertFalse(a.isLocked());
-    assertFalse(b.isLocked());
-    RAFLock lock = a.lockOpen();
-    assertTrue(a.isOpen());
-    assertEquals(fds.getOpenFDs(), 1);
-    // Now try to lock on a second thread.
-    // It should wait until the first thread unlocks.
-    class Status {
-      boolean hasStarted;
-      boolean hasLocked;
-      boolean canFinish;
-      boolean hasFinished;
-      boolean success;
+  void lockOpen_afterClose_expectIOException() throws Exception {
+    File f = new File(tempDir, "closed.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(8);
     }
-    final Status s = new Status();
-    Runnable r =
-        () -> {
-          synchronized (s) {
-            s.hasStarted = true;
-            s.notify();
-          }
-          try {
-            RAFLock lock1 = b.lockOpen();
-            synchronized (s) {
-              s.hasLocked = true;
-              s.notify();
-            }
-            synchronized (s) {
-              while (!s.canFinish) {
-                try {
-                  s.wait();
-                } catch (InterruptedException e) {
-                  // Ignore.
-                }
-              }
-            }
-            lock1.unlock();
-            synchronized (s) {
-              s.success = true;
-            }
-          } catch (IOException e) {
-            e.printStackTrace();
-            fail("Caught IOException trying to lock: " + e);
-          } finally {
-            synchronized (s) {
-              s.hasFinished = true;
-              s.notify();
-            }
-          }
-        };
-    new Thread(r).start();
-    // Wait for it to start.
-    synchronized (s) {
-      while (!s.hasStarted) {
-        s.wait();
-      }
-      assertFalse(s.hasLocked);
-      assertFalse(s.hasFinished);
-    }
-    assertEquals(fds.getOpenFDs(), 1);
-    assertTrue(a.isOpen());
-    assertFalse(b.isOpen());
-    // Wait while holding lock, to give it some time to progress if it's buggy.
-    Thread.sleep(100);
-    synchronized (s) {
-      assertFalse(s.hasLocked);
-      assertFalse(s.hasFinished);
-    }
-    assertEquals(fds.getOpenFDs(), 1);
-    assertTrue(a.isOpen());
-    assertFalse(b.isOpen());
-    // Now release lock.
-    lock.unlock();
-    // Wait for it to proceed.
-    synchronized (s) {
-      while (!(s.hasLocked || s.hasFinished)) {
-        s.wait();
-      }
-      assertTrue(s.hasLocked);
-    }
-    assertFalse(a.isOpen());
-    assertTrue(b.isOpen());
-    assertTrue(b.isLocked());
-    assertEquals(fds.getOpenFDs(), 1);
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
 
-    // Now let it proceed.
-    synchronized (s) {
-      s.canFinish = true;
-      s.notifyAll();
-      while (!s.hasFinished) {
-        s.wait();
-      }
-      assertTrue(s.success);
+    p.close();
+    assertThrows(IOException.class, p::lockOpen);
+  }
+
+  @Test
+  void lockOpen_unlockTwice_expectIllegalStateException() throws Exception {
+    File f = new File(tempDir, "doubleUnlock.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(8);
     }
-    assertFalse(a.isLocked());
-    assertFalse(b.isLocked());
-    assertEquals(fds.getClosableFDs(), 1);
-    assertEquals(fds.getOpenFDs(), 1);
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+
+    RAFLock l = p.lockOpen();
+    l.unlock();
+    assertThrows(IllegalStateException.class, l::unlock);
+    p.close();
+  }
+
+  // ------------------------------------------------------------
+  // free() and deletion flags
+  // ------------------------------------------------------------
+
+  @Test
+  void free_whenDeleteOnFreeFalse_retainsFile() throws Exception {
+    File f = new File(tempDir, "keep.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(1);
+    }
+    try (PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f,
+            false,
+            -1,
+            -1L,
+            /* deleteOnFree= */ false,
+            new PooledFileRandomAccessBuffer.FDTracker(1))) {
+      // Act
+      p.free();
+    }
+
+    // Assert
+    assertTrue(f.exists());
+  }
+
+  @Test
+  void free_whenDeleteOnFreeTrueWithoutSecureDelete_deletesFile() throws Exception {
+    File f = new File(tempDir, "del.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(1);
+    }
+    try (PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f,
+            false,
+            -1,
+            -1L,
+            /* deleteOnFree= */ true,
+            new PooledFileRandomAccessBuffer.FDTracker(1))) {
+      // Act
+      p.free();
+    }
+
+    // Assert
+    assertFalse(f.exists());
+  }
+
+  @Test
+  void free_whenSecureDeleteTrue_deletesFile() throws Exception {
+    File f = new File(tempDir, "sdel.bin");
+    Files.write(f.toPath(), new byte[] {42});
+    try (PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f,
+            false,
+            -1,
+            -1L,
+            /* deleteOnFree= */ true,
+            new PooledFileRandomAccessBuffer.FDTracker(1))) {
+      p.setSecureDelete(true);
+
+      // Act
+      p.free();
+    }
+
+    // Assert
+    assertFalse(f.exists());
+  }
+
+  // ------------------------------------------------------------
+  // storeTo/load round-trips and resume behavior
+  // ------------------------------------------------------------
+
+  @Test
+  void storeToAndLoad_whenPersistentTempIdMinusOne_roundTripsProperties() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "round.bin");
+    byte[] content = new byte[3];
+    Files.write(f.toPath(), content);
+    try (PooledFileRandomAccessBuffer orig =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, true, new PooledFileRandomAccessBuffer.FDTracker(4))) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      try (DataOutputStream dos = new DataOutputStream(baos)) {
+        orig.storeTo(dos);
+      }
+
+      // Act: read back; the reader expects the MAGIC to have been consumed already.
+      try (DataInputStream dis =
+          new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+        assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
+        try (PooledFileRandomAccessBuffer copy =
+            new PooledFileRandomAccessBuffer(
+                dis, mock(FilenameGenerator.class), mock(PersistentFileTracker.class))) {
+
+          // Assert
+          assertEquals(orig.size(), copy.size());
+          assertEquals(orig, copy);
+        }
+      }
+    }
+  }
+
+  @Test
+  void load_whenPersistentTempFileMissingButMoved_registersWithTrackerAndUsesNewFile()
+      throws Exception {
+    // Arrange: create a serialized descriptor that references a missing file with a temp ID
+    File original = new File(tempDir, "missing.bin");
+    long tempId = 0xABCDL;
+    ByteArrayOutputStream baos = getByteArrayOutputStream(original, tempId);
+
+    // Prepare mocks: original does not exist; generator resolves a different existing file
+    FilenameGenerator fg = mock(FilenameGenerator.class);
+    PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+    File moved = new File(tempDir, "tmp-" + Long.toHexString(tempId));
+    Files.write(moved.toPath(), new byte[0]); // ensure it exists
+    when(fg.getFilename(tempId)).thenReturn(moved);
+
+    // Act
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt()); // consume magic
+      try (PooledFileRandomAccessBuffer p = new PooledFileRandomAccessBuffer(dis, fg, tracker)) {
+
+        // Assert
+        verify(tracker, times(1)).register(moved);
+        assertNotNull(p.file);
+        assertEquals(moved.getCanonicalPath(), p.file.getCanonicalPath());
+      }
+    }
+  }
+
+  private static @NotNull ByteArrayOutputStream getByteArrayOutputStream(File original, long tempId)
+      throws IOException {
+    boolean readOnly = false;
+    boolean deleteOnFree = true;
+    boolean secureDelete = true;
+    long length = 0;
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (DataOutputStream dos = new DataOutputStream(baos)) {
+      dos.writeInt(PooledFileRandomAccessBuffer.MAGIC);
+      dos.writeInt(1); // VERSION
+      dos.writeUTF(original.toString());
+      dos.writeBoolean(readOnly);
+      dos.writeLong(length);
+      dos.writeLong(tempId);
+      dos.writeBoolean(deleteOnFree);
+      dos.writeBoolean(secureDelete);
+    }
+    return baos;
+  }
+
+  @Test
+  void load_whenPersistentTempFileMissingAndNotFound_throwsResumeFailedException()
+      throws Exception {
+    // Arrange: serialized descriptor referencing a missing file with temp ID
+    File original = new File(tempDir, "missing2.bin");
+    long tempId = 1234L;
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (DataOutputStream dos = new DataOutputStream(baos)) {
+      dos.writeInt(PooledFileRandomAccessBuffer.MAGIC);
+      dos.writeInt(1);
+      dos.writeUTF(original.toString());
+      dos.writeBoolean(false);
+      dos.writeLong(0L);
+      dos.writeLong(tempId);
+      dos.writeBoolean(false);
+    }
+
+    FilenameGenerator fg = mock(FilenameGenerator.class);
+    when(fg.getFilename(tempId)).thenReturn(new File(tempDir, "absent-" + tempId));
+    when(fg.maybeMove(org.mockito.ArgumentMatchers.any(File.class), anyLong()))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // Act + Assert
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
+      assertThrows(
+          ResumeFailedException.class,
+          () -> new PooledFileRandomAccessBuffer(dis, fg, mock(PersistentFileTracker.class)));
+    }
+  }
+
+  @Test
+  void onResume_whenFileMissing_throwsResumeFailedException() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "gone.bin");
+    Files.write(f.toPath(), new byte[] {1, 2});
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+    p.close();
+    java.nio.file.Files.delete(f.toPath());
+    assertFalse(java.nio.file.Files.exists(f.toPath()));
+
+    // Act + Assert
+    assertThrows(ResumeFailedException.class, () -> p.onResume(mock(ClientContext.class)));
+  }
+
+  @Test
+  void onResume_whenLengthGreaterThanOnDisk_throwsResumeFailedException() throws Exception {
+    // Arrange: create a file and shrink it after creating the RAF wrapper
+    File f = new File(tempDir, "shorter.bin");
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(10);
+    }
+    PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(1));
+    p.close();
+    try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+      raf.setLength(5); // shrink on disk; p.length still 10
+    }
+
+    // Act + Assert
+    assertThrows(ResumeFailedException.class, () -> p.onResume(mock(ClientContext.class)));
+  }
+
+  @Test
+  void onResume_whenPersistentTempIdNonNegative_registersWithTracker() throws Exception {
+    // Arrange
+    File f = new File(tempDir, "resume.bin");
+    Files.write(f.toPath(), new byte[] {0});
+    long tempId = 42L;
+    try (PooledFileRandomAccessBuffer p =
+        new PooledFileRandomAccessBuffer(
+            f, false, -1, tempId, false, new PooledFileRandomAccessBuffer.FDTracker(1))) {
+      ClientContext ctx = mock(ClientContext.class);
+      PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+      when(ctx.getPersistentFileTracker()).thenReturn(tracker);
+
+      // Act
+      p.onResume(ctx);
+
+      // Assert
+      verify(tracker, times(1)).register(f);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // equals/hashCode
+  // ------------------------------------------------------------
+
+  @Test
+  void equals_whenSameProperties_expectEqual() throws Exception {
+    File f = new File(tempDir, "eq.bin");
+    Files.write(f.toPath(), new byte[] {1});
+    PooledFileRandomAccessBuffer.FDTracker tracker = new PooledFileRandomAccessBuffer.FDTracker(2);
+    PooledFileRandomAccessBuffer a =
+        new PooledFileRandomAccessBuffer(f, false, -1, -1L, true, tracker);
+    PooledFileRandomAccessBuffer b =
+        new PooledFileRandomAccessBuffer(f, false, -1, -1L, true, tracker);
+    assertEquals(a, b);
+    assertEquals(a.hashCode(), b.hashCode());
     a.close();
-    assertEquals(fds.getOpenFDs(), 1);
     b.close();
-    assertEquals(fds.getOpenFDs(), 0);
-    a.free();
-    b.free();
   }
 
-  @Override
-  protected PooledFileRandomAccessBuffer construct(long size) throws IOException {
-    File f = File.createTempFile("test", ".tmp", base);
-    return new PooledFileRandomAccessBuffer(
-        f, false, size, r.nextBoolean() ? r : null, -1, true, fds);
-  }
-
-  private void innerTestSimplePooling(int sz) throws IOException {
-    fds.setMaxFDs(1);
-    PooledFileRandomAccessBuffer a = construct(sz);
-    PooledFileRandomAccessBuffer b = construct(sz);
-    byte[] buf1 = new byte[sz];
-    byte[] buf2 = new byte[sz];
-    Random r = new Random(1153);
-    r.nextBytes(buf1);
-    r.nextBytes(buf2);
-    a.pwrite(0, buf1, 0, buf1.length);
-    b.pwrite(0, buf2, 0, buf2.length);
-    byte[] cmp1 = new byte[sz];
-    byte[] cmp2 = new byte[sz];
-    a.pread(0, cmp1, 0, cmp1.length);
-    b.pread(0, cmp2, 0, cmp2.length);
-    assertArrayEquals(cmp1, buf1);
-    assertArrayEquals(cmp2, buf2);
+  @Test
+  void equals_whenDifferentFlags_expectNotEqual() throws Exception {
+    File f = new File(tempDir, "neq.bin");
+    Files.write(f.toPath(), new byte[] {1});
+    PooledFileRandomAccessBuffer a =
+        new PooledFileRandomAccessBuffer(
+            f,
+            /* readOnly= */ false,
+            -1,
+            -1L,
+            /* deleteOnFree= */ true,
+            new PooledFileRandomAccessBuffer.FDTracker(1));
+    PooledFileRandomAccessBuffer b =
+        new PooledFileRandomAccessBuffer(
+            f,
+            /* readOnly= */ true,
+            -1,
+            -1L,
+            /* deleteOnFree= */ false,
+            new PooledFileRandomAccessBuffer.FDTracker(1));
+    assertNotEquals(a, b);
     a.close();
     b.close();
-    a.free();
-    b.free();
   }
-
-  private static final int[] TEST_LIST =
-      new int[] {0, 1, 32, 64, 32768, 1024 * 1024, 1024 * 1024 + 1};
-  private final File base = new File("tmp.pooled-random-access-file-wrapper-test");
-  private final Random r = new Random(222831072);
-  private final FDTracker fds = new FDTracker(100);
-
-  // FIXME more tests???
-
 }

@@ -4,20 +4,30 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 /**
- * This class provides encoding of byte arrays into Base64-encoded strings, and decoding the other
- * way.
+ * Base64 utilities for encoding bytes/strings and decoding Base64 text.
  *
- * <p>NOTE! This is modified Base64 with slightly different characters than usual, so it won't
- * require escaping when used in URLs.
+ * <p>This class supports two alphabets:
  *
- * <p>NOTE! This class only does the padding that's normal in Base64 if the 'true' flag is given to
- * the encode() method. This is because Base64 requires that the length of the encoded text be a
- * multiple of four characters, padded with '='. Without the 'true' flag, we don't add these '='
- * characters.
+ * <ul>
+ *   <li>A modified, URL‑friendly alphabet using {@code '~'} and {@code '-'} for indices 62 and 63;
+ *       this is <strong>not</strong> RFC&nbsp;4648 nor the common URL‑safe variant.
+ *   <li>The standard Base64 alphabet using {@code '+'} and {@code '/'}, compatible with
+ *       RFC&nbsp;4648.
+ * </ul>
+ *
+ * <p>Padding: The standard alphabet encoders always pad with {@code '='} to a length that is a
+ * multiple of four characters. Modified alphabet encoders allow the caller to request padding; the
+ * unpadded form omits trailing {@code '='}. Decoders accept both padded and unpadded input and
+ * ignore trailing {@code '='}.
+ *
+ * <p>All methods are {@code static} and thread‑safe. Passing {@code null} to any method results in
+ * a {@link NullPointerException}. Encoding/decoding runs in O(n) time.
  *
  * @author Stephen Blackheath
  */
 public class Base64 {
+  private Base64() {}
+
   static final Charset UTF8 = StandardCharsets.UTF_8;
 
   private static final char[] base64Alphabet =
@@ -26,18 +36,17 @@ public class Base64 {
   private static final char[] base64StandardAlphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".toCharArray();
 
-  /** A reverse lookup table to convert base64 letters back into the a 6-bit sequence. */
+  /** A reverse lookup table to convert Base64 characters back into 6‑bit values. */
   private static final byte[] base64Reverse;
 
   private static final byte[] base64StandardReverse;
 
-  // Populate the base64Reverse lookup table from the base64Alphabet table.
+  // Populate reverse lookup tables from both alphabets.
   static {
     base64Reverse = new byte[128];
     base64StandardReverse = new byte[base64Reverse.length];
 
-    // Set all entries to 0xFF, which means that that particular letter
-    // is not a legal base64 letter.
+    // Initialize entries to 0xFF to mark illegal Base64 characters.
     for (int i = 0; i < base64Reverse.length; i++) {
       base64Reverse[i] = (byte) 0xFF;
       base64StandardReverse[i] = (byte) 0xFF;
@@ -48,64 +57,80 @@ public class Base64 {
     }
   }
 
-  /** Encode to our shortened (non-standards-compliant) format. */
+  /**
+   * Encodes bytes using the modified (non‑standard) Base64 alphabet without padding.
+   *
+   * @param in source bytes; must not be {@code null}
+   * @return Base64 text using the modified alphabet with no trailing {@code '='}
+   */
   public static String encode(byte[] in) {
     return encode(in, false);
   }
 
-  /* FIXME: Figure out where this function is used and maybe remove it if its not
-   * used. Its old javadoc which has been here for a while fools the user into believing
-   * that the format is standard compliant */
-
+  /* Overload that allows callers to request '=' padding when using the modified alphabet. */
   /**
-   * Caller should specify equalsPad=true if they want a standards compliant padding, but not
-   * standard compliant encoding.
+   * Encodes bytes using the modified (non‑standard) Base64 alphabet with optional padding.
+   *
+   * <p>When {@code equalsPad} is {@code true}, the result is padded to a length that is a multiple
+   * of four characters. When {@code false}, no padding is added and the length may not be a
+   * multiple of four.
+   *
+   * @param in source bytes; must not be {@code null}
+   * @param equalsPad whether to append {@code '='} padding
+   * @return Base64 text using the modified alphabet
    */
   public static String encode(byte[] in, boolean equalsPad) {
     return encode(in, equalsPad, base64Alphabet);
   }
 
   /**
-   * Convenience method to encode a string, in our shortened format.
+   * Encodes a UTF‑8 {@link String} using the modified alphabet without padding.
    *
-   * <p>Please use this to encode a string, rather than trying to encode the string yourself using
-   * the 0-arg String.getBytes() which is not deterministic.
+   * @param in text to encode; must not be {@code null}
+   * @return Base64 text using the modified alphabet with no trailing {@code '='}
    */
   public static String encodeUTF8(String in) {
     return encodeUTF8(in, false);
   }
 
   /**
-   * Convenience method to encode a string.
+   * Encodes a UTF‑8 {@link String} using the modified alphabet with optional padding.
    *
-   * <p>Please use this to encode a string, rather than trying to encode the string yourself using
-   * the 0-arg String.getBytes() which is not deterministic.
+   * @param in text to encode; must not be {@code null}
+   * @param equalsPad whether to append {@code '='} padding
+   * @return Base64 text using the modified alphabet
    */
   public static String encodeUTF8(String in, boolean equalsPad) {
     return encode(in.getBytes(UTF8), equalsPad, base64Alphabet);
   }
 
   /**
-   * Convenience method to encode a string.
+   * Encodes a UTF‑8 {@link String} using the standard Base64 alphabet with padding.
    *
-   * <p>Please use this to encode a string, rather than trying to encode the string yourself using
-   * the 0-arg String.getBytes() which is not deterministic.
+   * @param in text to encode; must not be {@code null}
+   * @return Base64 text using the standard alphabet padded with {@code '='}
    */
   public static String encodeStandardUTF8(String in) {
     return encodeStandard(in.getBytes(UTF8));
   }
 
-  /** Standard compliant encoding. */
+  /**
+   * Encodes bytes using the standard Base64 alphabet with padding.
+   *
+   * @param in source bytes; must not be {@code null}
+   * @return Base64 text using the standard alphabet padded with {@code '='}
+   */
   public static String encodeStandard(byte[] in) {
     return encode(in, true, base64StandardAlphabet);
   }
 
-  /** Caller should specify equalsPad=true if they want a standards compliant encoding. */
+  /* Core encoder used by both alphabets. {@code equalsPad} toggles '=' padding. */
   private static String encode(byte[] in, boolean equalsPad, char[] alphabet) {
     char[] out = new char[((in.length + 2) / 3) * 4];
     int rem = in.length % 3;
     int o = 0;
-    for (int i = 0; i < in.length; ) {
+    int i = 0;
+    while (i < in.length) {
       int val = (in[i++] & 0xFF) << 16;
       if (i < in.length) val |= (in[i++] & 0xFF) << 8;
       if (i < in.length) val |= (in[i++] & 0xFF);
@@ -114,76 +139,88 @@ public class Base64 {
       out[o++] = alphabet[(val >> 6) & 0x3F];
       out[o++] = alphabet[val & 0x3F];
     }
-    int outLen = out.length;
-    switch (rem) {
-      case 1:
-        outLen -= 2;
-        break;
-      case 2:
-        outLen -= 1;
-        break;
-    }
+    int outLen =
+        switch (rem) {
+          case 1 -> out.length - 2;
+          case 2 -> out.length - 1;
+          default -> out.length;
+        };
     // Pad with '=' signs up to a multiple of four if requested.
     if (equalsPad) while (outLen < out.length) out[outLen++] = '=';
     return new String(out, 0, outLen);
   }
 
   /**
-   * Handles the standards-compliant padding (padded with '=' signs) as well as our shortened form.
+   * Decodes Base64 text using the modified alphabet.
    *
-   * @throws IllegalBase64Exception
+   * <p>Accepts both padded and unpadded input. Trailing {@code '='} is ignored.
+   *
+   * @param inStr Base64 text using the modified alphabet; must not be {@code null}
+   * @return decoded bytes
+   * @throws IllegalBase64Exception if the input contains illegal characters or the effective length
+   *     (after trimming trailing {@code '='}) is invalid (length mod 4 == 1)
    */
   public static byte[] decode(String inStr) throws IllegalBase64Exception {
     return decode(inStr, base64Reverse);
   }
 
   /**
-   * Convenience method to decode into a string, in our shortened format.
+   * Decodes Base64 text (modified alphabet) and returns a UTF‑8 {@link String}.
    *
-   * <p>Please use this to decode into a string, rather than trying to decode the string yourself
-   * using new String(bytes[]) which is not deterministic.
+   * @param inStr Base64 text using the modified alphabet; must not be {@code null}
+   * @return decoded text as UTF‑8
+   * @throws IllegalBase64Exception if the input is not valid Base64 in the modified alphabet
    */
   public static String decodeUTF8(String inStr) throws IllegalBase64Exception {
     return new String(decode(inStr), UTF8);
   }
 
-  /** Handles the standards-compliant base64 encoding. */
+  /**
+   * Decodes Base64 text using the standard alphabet.
+   *
+   * <p>Accepts both padded and unpadded input. Trailing {@code '='} is ignored.
+   *
+   * @param inStr Base64 text using the standard alphabet; must not be {@code null}
+   * @return decoded bytes
+   * @throws IllegalBase64Exception if the input contains illegal characters or the effective length
+   *     (after trimming trailing {@code '='}) is invalid (length mod 4 == 1)
+   */
   public static byte[] decodeStandard(String inStr) throws IllegalBase64Exception {
     return decode(inStr, base64StandardReverse);
   }
 
-  /** Handles the standards-compliant (padded with '=' signs) as well as our shortened form. */
+  /*
+   * Core decoder shared by both alphabets.
+   *
+   * Implementation detail: Trims trailing '=' padding, then processes full 4‑character blocks. The
+   * remainder determines how many output bytes follow. Any character that does not map to a 6‑bit
+   * value in the selected alphabet yields an IllegalBase64Exception. When the (unpadded) length
+   * mod 4 == 1, the length is illegal and an exception is thrown.
+   */
   private static byte[] decode(String inStr, byte[] reverseAlphabet) throws IllegalBase64Exception {
     try {
       char[] in = inStr.toCharArray();
       int inLength = in.length;
 
-      // Strip trailing equals signs.
+      // Strip trailing '=' padding ignored by the decoder.
       while ((inLength > 0) && (in[inLength - 1] == '=')) inLength--;
 
       int blocks = inLength / 4;
       int remainder = inLength & 3;
-      // wholeInLen and wholeOutLen are the the length of the input and output
-      // sequences respectively, not including any partial block at the end.
+      // wholeInLen/wholeOutLen exclude any partial block at the end.
       int wholeInLen = blocks * 4;
       int wholeOutLen = blocks * 3;
-      int outLen = wholeOutLen;
-      switch (remainder) {
-        case 1:
-          throw new IllegalBase64Exception("illegal Base64 length");
-        case 2:
-          outLen = wholeOutLen + 1;
-          break;
-        case 3:
-          outLen = wholeOutLen + 2;
-          break;
-        default:
-          outLen = wholeOutLen;
-      }
+      int outLen =
+          switch (remainder) {
+            case 1 -> throw new IllegalBase64Exception("illegal Base64 length");
+            case 2 -> wholeOutLen + 1;
+            case 3 -> wholeOutLen + 2;
+            default -> wholeOutLen;
+          };
       byte[] out = new byte[outLen];
       int o = 0;
-      int i;
-      for (i = 0; i < wholeInLen; ) {
+      int i = 0;
+      while (i < wholeInLen) {
         int in1 = reverseAlphabet[in[i]];
         int in2 = reverseAlphabet[in[i + 1]];
         int in3 = reverseAlphabet[in[i + 2]];
@@ -197,38 +234,32 @@ public class Base64 {
         i += 4;
         o += 3;
       }
-      int orValue;
-      switch (remainder) {
-        case 2:
-          {
-            int in1 = reverseAlphabet[in[i]];
-            int in2 = reverseAlphabet[in[i + 1]];
-            orValue = in1 | in2;
-            int outVal = (in1 << 18) | (in2 << 12);
-            out[o] = (byte) (outVal >> 16);
-          }
-          break;
-        case 3:
-          {
-            int in1 = reverseAlphabet[in[i]];
-            int in2 = reverseAlphabet[in[i + 1]];
-            int in3 = reverseAlphabet[in[i + 2]];
-            orValue = in1 | in2 | in3;
-            int outVal = (in1 << 18) | (in2 << 12) | (in3 << 6);
-            out[o] = (byte) (outVal >> 16);
-            out[o + 1] = (byte) (outVal >> 8);
-          }
-          break;
-        default:
-          // Keep compiler happy
-          orValue = 0;
-      }
+      int orValue =
+          switch (remainder) {
+            case 2 -> {
+              int in1 = reverseAlphabet[in[i]];
+              int in2 = reverseAlphabet[in[i + 1]];
+              int outVal = (in1 << 18) | (in2 << 12);
+              out[o] = (byte) (outVal >> 16);
+              yield in1 | in2;
+            }
+            case 3 -> {
+              int in1 = reverseAlphabet[in[i]];
+              int in2 = reverseAlphabet[in[i + 1]];
+              int in3 = reverseAlphabet[in[i + 2]];
+              int outVal = (in1 << 18) | (in2 << 12) | (in3 << 6);
+              out[o] = (byte) (outVal >> 16);
+              out[o + 1] = (byte) (outVal >> 8);
+              yield in1 | in2 | in3;
+            }
+            default -> 0;
+          };
       if ((orValue & 0x80) != 0) throw new IllegalBase64Exception("illegal Base64 character");
       return out;
     }
     // Illegal characters can cause an ArrayIndexOutOfBoundsException when
     // looking up reverseAlphabet.
-    catch (ArrayIndexOutOfBoundsException e) {
+    catch (ArrayIndexOutOfBoundsException _) {
       throw new IllegalBase64Exception("illegal Base64 character");
     }
   }

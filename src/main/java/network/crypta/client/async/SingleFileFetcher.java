@@ -4,16 +4,20 @@ import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.ArchiveContext;
 import network.crypta.client.ArchiveExtractCallback;
 import network.crypta.client.ArchiveFailureException;
@@ -22,8 +26,8 @@ import network.crypta.client.ArchiveManager;
 import network.crypta.client.ArchiveRestartException;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata;
@@ -36,46 +40,70 @@ import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.ClientSSK;
 import network.crypta.keys.FreenetURI;
+import network.crypta.keys.KeyDecodeException;
+import network.crypta.keys.TooBigException;
 import network.crypta.keys.USK;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import network.crypta.node.LowLevelGetException;
+import network.crypta.node.SendableGet;
+import network.crypta.node.SendableRequestItem;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.InsufficientDiskSpaceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Does most of the complicated metadata handling for fetching single files.
+ * Performs single-file fetches including redirects, manifests, splitfiles, and archive entries.
+ *
+ * <p>This state object drives the full life cycle of fetching a single logical file from the
+ * network. It decodes the first retrieved block, parses {@link Metadata}, follows any redirects or
+ * manifests, and transitions to other states (for example {@link SplitFileFetcher}) when the
+ * content is a splitfile. When the target is inside a container, it cooperates with an {@link
+ * ArchiveHandler} to read metadata or extract data. Callers typically construct a SingleFileFetcher
+ * from a {@link ClientGetter} or via {@link #create(ClientRequester, GetCompletionCallback,
+ * FreenetURI, FetchContext, ArchiveContext, CreationPolicy, CreationRuntime)} and then schedule it.
+ *
+ * <p>State and invariants: instances are created for one logical request; after a terminal callback
+ * (success or failure), the instance is considered finished. The object is not intended to be
+ * reused or shared across concurrent fetches. Some fields are persisted for long‑lived requests;
+ * changing non‑transient members of serializable classes can cause restarts of queued work.
+ *
+ * <p>Concurrency: callbacks can execute on worker threads, and archive extraction may use helper
+ * threads. The class coordinates transitions carefully, but callers should treat it as not
+ * thread‑safe beyond the documented callback contract.
+ *
+ * <ul>
+ *   <li>Parses and interprets metadata, including simple and archive manifests.
+ *   <li>Follows internal/external redirects and enforces path component limits.
+ *   <li>Builds a decompressor chain when the target is compressed.
+ *   <li>Streams large files through buckets to avoid excessive memory overhead.
+ * </ul>
  *
  * <p>WARNING: Changing non-transient members on classes that are Serializable can result in
  * restarting downloads or losing uploads.
  *
  * @author toad
+ * @see ClientGetter
+ * @see SplitFileFetcher
+ * @see ArchiveManager
+ * @see Metadata
+ * @see FetchResult
  */
-public class SingleFileFetcher extends SimpleSingleFileFetcher {
+public final class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGetState {
+  private static final Logger LOG = LoggerFactory.getLogger(SingleFileFetcher.class);
+  private static final String LOG_META_LABEL = " meta=";
+  private static final String LOG_FOR_LABEL = " for ";
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
 
   /** Original URI */
   final FreenetURI uri;
 
   /** Meta-strings. (Path elements that aren't part of a key type) */
-  private final ArrayList<String> metaStrings;
+  private final List<String> metaStrings;
 
   /**
    * Number of metaStrings which were added by redirects etc. They are added to the start, so this
@@ -83,20 +111,54 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
    */
   private int addedMetaStrings;
 
+  /**
+   * Client-provided or derived metadata associated with the current fetch. Carries MIME type and
+   * other hints that are forwarded to callbacks and used for policy checks.
+   */
   final ClientMetadata clientMetadata;
+
+  /**
+   * Working metadata for the current step. It may be a manifest, redirect, or splitfile descriptor
+   * depending on progress through the state machine.
+   */
   private Metadata metadata;
+
+  private transient AtomicReference<Metadata> metadataRef = new AtomicReference<>();
+
+  /**
+   * Metadata for the enclosing archive when the requested item lives inside a container. Populated
+   * when entering archive flows so later steps can proceed without re-fetching.
+   */
   private Metadata archiveMetadata;
+
+  /**
+   * Archive processing context (loop detection, handler configuration) shared across archive steps
+   * in the current request.
+   */
   final ArchiveContext actx;
 
   /** Archive handler. We can only have one archive handler at a time. */
-  private ArchiveHandler ah;
+  private transient ArchiveHandler ah;
 
+  /**
+   * Guard against unbounded traversal through redirects/containers. Each transition increases the
+   * recursion level, and failures occur once the configured maximum is exceeded.
+   */
   private final int recursionLevel;
 
   /** The URI of the currently-being-processed data, for archives etc. */
   private FreenetURI thisKey;
 
-  private final LinkedList<COMPRESSOR_TYPE> decompressors;
+  /**
+   * Stack of decompressors to apply to the eventual data stream. Elements are appended as metadata
+   * indicates compression layers and consumed when streaming to the client.
+   */
+  private final List<COMPRESSOR_TYPE> decompressors;
+
+  /**
+   * When {@code true}, suppresses certain notifications to {@code ClientGet} during transitions to
+   * keep higher-level progress reporting stable.
+   */
   private final boolean dontTellClientGet;
 
   /**
@@ -105,130 +167,267 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
    */
   private final boolean isFinal;
 
-  private final SnoopMetadata metaSnoop;
-  private final SnoopBucket bucketSnoop;
+  private final transient SnoopMetadata metaSnoop;
+  private final transient SnoopBucket bucketSnoop;
 
   /**
-   * Create a new SingleFileFetcher and register self. Called when following a redirect, or direct
-   * from ClientGet. FIXME: Many times where this is called internally we might be better off using
-   * a copy constructor?
+   * Bundle of constructor inputs for {@link SingleFileFetcher}.
    *
-   * @param parent The parent ClientRequester
-   * @param cb The completion callback
-   * @param metadata Client metadata for the fetch
-   * @param key The client key to fetch
-   * @param metaStrings List of metadata strings
-   * @param origURI The original URI
-   * @param addedMetaStrings Number of added metadata strings
-   * @param ctx The fetch context
-   * @param deleteFetchContext Whether to delete the fetch context
-   * @param realTimeFlag Whether this is a real-time fetch
-   * @param actx The archive context
-   * @param ah The archive handler
-   * @param archiveMetadata Archive metadata
-   * @param maxRetries Maximum number of retries
-   * @param recursionLevel Current recursion level
-   * @param dontTellClientGet Whether to tell the client getter
-   * @param l Length parameter
-   * @param isEssential Whether this fetch is essential
-   * @param isFinal Whether this is the final fetch
-   * @param topDontCompress Whether to avoid compression
-   * @param topCompatibilityMode The compatibility mode
-   * @param context The client context
-   * @param hasInitialMetadata Whether initial metadata is available
+   * <p>Callers should populate the required fields directly before constructing a new fetcher. This
+   * type mirrors the {@code InitParams} pattern used across the async fetch classes to avoid
+   * excessively long parameter lists.
    */
-  public SingleFileFetcher(
-      ClientRequester parent,
-      GetCompletionCallback cb,
-      ClientMetadata metadata,
-      ClientKey key,
-      List<String> metaStrings,
-      FreenetURI origURI,
-      int addedMetaStrings,
-      FetchContext ctx,
-      boolean deleteFetchContext,
-      boolean realTimeFlag,
-      ArchiveContext actx,
-      ArchiveHandler ah,
-      Metadata archiveMetadata,
-      int maxRetries,
-      int recursionLevel,
-      boolean dontTellClientGet,
-      long l,
-      boolean isEssential,
-      boolean isFinal,
-      boolean topDontCompress,
-      short topCompatibilityMode,
-      ClientContext context,
-      boolean hasInitialMetadata)
-      throws FetchException {
-    super(
-        key,
-        maxRetries,
-        ctx,
-        parent,
-        cb,
-        isEssential,
-        false,
-        l,
-        context,
-        deleteFetchContext,
-        realTimeFlag);
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Creating SingleFileFetcher for "
-              + key
-              + " from "
-              + origURI
-              + " meta="
-              + metaStrings.toString()
-              + " persistent="
-              + persistent,
-          new Exception("debug"));
-    this.isFinal = isFinal;
-    this.cancelled = false;
-    this.dontTellClientGet = dontTellClientGet;
-    if (persistent && ah != null) ah = ah.cloneHandler();
-    this.ah = ah;
-    this.archiveMetadata = archiveMetadata;
-    // this.uri = uri;
-    // this.key = ClientKey.getBaseKey(uri);
-    // metaStrings = uri.listMetaStrings();
-    if (metaStrings instanceof ArrayList && !persistent)
-      this.metaStrings = (ArrayList<String>) metaStrings;
-    else
-      // Always copy if persistent
-      this.metaStrings = new ArrayList<>(metaStrings);
-    this.addedMetaStrings = addedMetaStrings;
-    if (logMINOR) Logger.minor(this, "Metadata: " + metadata);
-    this.clientMetadata = (metadata != null ? metadata.clone() : new ClientMetadata());
-    if (hasInitialMetadata) thisKey = FreenetURI.EMPTY_CHK_URI;
-    else thisKey = key.getURI();
-    if (origURI == null) throw new NullPointerException();
-    this.uri = persistent ? origURI.clone() : origURI;
-    this.actx = actx;
-    this.recursionLevel = recursionLevel + 1;
-    if (recursionLevel > ctx.maxRecursionLevel)
-      throw new FetchException(
-          FetchExceptionMode.TOO_MUCH_RECURSION,
-          "Too much recursion: " + recursionLevel + " > " + ctx.maxRecursionLevel);
-    this.decompressors = new LinkedList<>();
-    this.topDontCompress = topDontCompress;
-    this.topCompatibilityMode = topCompatibilityMode;
-    if (parent instanceof ClientGetter getter) {
-      metaSnoop = getter.getMetaSnoop();
-      bucketSnoop = getter.getBucketSnoop();
-    } else {
-      metaSnoop = null;
-      bucketSnoop = null;
-    }
+  public static final class InitParams {
+    ClientRequester parent;
+    GetCompletionCallback cb;
+    ClientMetadata metadata;
+    ClientKey key;
+    List<String> metaStrings;
+    FreenetURI origURI;
+    int addedMetaStrings;
+    FetchContext ctx;
+    boolean deleteFetchContext;
+    ArchiveContext actx;
+    ArchiveHandler ah;
+    Metadata archiveMetadata;
+    CreationPolicy policy;
+    CreationRuntime runtime;
+    boolean topDontCompress;
+    short topCompatibilityMode;
   }
 
   /**
-   * Copy constructor, modifies a few given fields, don't call schedule(). Used for things like
-   * slave fetchers for MultiLevelMetadata, therefore does not remember returnBucket, metaStrings
-   * etc.
+   * Create a new SingleFileFetcher and register self. Called when following a redirect, or direct
+   * from ClientGet. Note: Many times when this is called internally, we might be better off using a
+   * copy constructor?
+   *
+   * @param params initialization bundle containing request inputs, policy, and runtime values
+   * @throws FetchException if recursion limits are exceeded or policy checks fail during setup
+   */
+  public SingleFileFetcher(InitParams params) throws FetchException {
+    super(
+        params.key,
+        params.policy.maxRetries,
+        params.ctx,
+        params.parent,
+        params.deleteFetchContext,
+        params.runtime.realTimeFlag);
+    // Completion callback + token as used by SimpleSingleFileFetcher
+    this.rcb = params.cb;
+    this.token = params.runtime.token;
+    // Mirror SimpleSingleFileFetcher constructor side effects (dontAdd == false)
+    if (params.policy.isEssential) params.parent.addMustSucceedBlocks(1);
+    else params.parent.addBlock();
+    params.parent.notifyClients(params.runtime.context);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Creating SingleFileFetcher (init)"
+              + LOG_FOR_LABEL
+              + "{} from {}"
+              + LOG_META_LABEL
+              + "{} persistent={}",
+          params.key,
+          params.origURI,
+          params.metaStrings.toString(),
+          persistent,
+          new Exception("debug"));
+    this.isFinal = params.policy.isFinal;
+    this.cancelled = false;
+    this.dontTellClientGet = params.policy.dontTellClientGet;
+    // Archive handler
+    this.ah = selectArchiveHandler(params.ah);
+    this.archiveMetadata = params.archiveMetadata;
+
+    // Meta strings
+    this.metaStrings = prepareMetaStrings(params.metaStrings);
+    this.addedMetaStrings = params.addedMetaStrings;
+    if (LOG.isDebugEnabled()) LOG.debug("Metadata: {}", params.metadata);
+    this.clientMetadata =
+        (params.metadata != null ? ClientMetadata.copyOf(params.metadata) : new ClientMetadata());
+    thisKey = params.policy.hasInitialMetadata ? FreenetURI.EMPTY_CHK_URI : params.key.getURI();
+    if (params.origURI == null) throw new NullPointerException();
+    this.uri = persistent ? new FreenetURI(params.origURI) : params.origURI;
+    this.actx = params.actx;
+    this.recursionLevel = params.policy.recursionLevel + 1;
+    if (params.policy.recursionLevel > params.ctx.getMaxRecursionLevel())
+      throw new FetchException(
+          FetchExceptionMode.TOO_MUCH_RECURSION,
+          "Too much recursion: "
+              + params.policy.recursionLevel
+              + " > "
+              + params.ctx.getMaxRecursionLevel());
+    this.decompressors = new ArrayList<>();
+    this.topDontCompress = params.topDontCompress;
+    this.topCompatibilityMode = params.topCompatibilityMode;
+    metaSnoop = metaSnoopFrom(params.parent);
+    bucketSnoop = bucketSnoopFrom(params.parent);
+  }
+
+  private ArchiveHandler selectArchiveHandler(ArchiveHandler handler) {
+    return (persistent && handler != null) ? handler.cloneHandler() : handler;
+  }
+
+  private List<String> prepareMetaStrings(List<String> strings) {
+    // Always copy if persistent
+    return (strings instanceof ArrayList && !persistent) ? strings : new ArrayList<>(strings);
+  }
+
+  // this.uri is final and must be assigned in the constructor
+
+  private static SnoopMetadata metaSnoopFrom(ClientRequester parent) {
+    return (parent instanceof ClientGetter getter) ? getter.getMetaSnoop() : null;
+  }
+
+  private static SnoopBucket bucketSnoopFrom(ClientRequester parent) {
+    return (parent instanceof ClientGetter getter) ? getter.getBucketSnoop() : null;
+  }
+
+  private static FetchException wrapToFetchException(Exception e) {
+    if (e instanceof ArchiveFailureException afe) {
+      return new FetchException(afe);
+    }
+    if (e instanceof ArchiveRestartException are) {
+      return new FetchException(are);
+    }
+    if (e instanceof MetadataParseException mpe) {
+      return new FetchException(mpe);
+    }
+    // Fallback: should not happen for declared multi-catch types
+    return new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
+  }
+
+  // Methods required after switching to BaseSingleFileFetcher
+  @Override
+  public void onFailure(
+      LowLevelGetException e, SendableRequestItem reqTokenIgnored, ClientContext context) {
+    onFailure(SendableGet.translateException(e), false, context);
+  }
+
+  /**
+   * Handle a failure from this state, deciding whether to retry or surface the error.
+   *
+   * <p>When {@code forceFatal} is {@code true} or the exception is inherently fatal, the request is
+   * finalized and the completion callback is notified. Otherwise, a retry is attempted subject to
+   * the configured policy. If the parent has already been canceled, the error is converted to
+   * {@link FetchExceptionMode#CANCELLED} and treated as fatal.
+   *
+   * @param e the failure that occurred while processing this state
+   * @param forceFatal set to {@code true} to bypass retry and finalize immediately
+   * @param context client context for unregistering and scheduling follow‑up work
+   */
+  void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure( {} , {})", e, forceFatal, e);
+    if (parent.isCancelled() || isCancelled()) {
+      if (LOG.isDebugEnabled()) LOG.debug("Failing: cancelled");
+      e = new FetchException(FetchExceptionMode.CANCELLED);
+      forceFatal = true;
+    }
+    if (!(e.isFatal() || forceFatal) && retry(context)) {
+      if (LOG.isDebugEnabled()) LOG.debug("Retrying");
+      return;
+    }
+    unregisterAll(context);
+    synchronized (this) {
+      finished = true;
+    }
+    if (e.isFatal() || forceFatal) parent.fatallyFailedBlock(context);
+    else parent.failedBlock(context);
+    rcb.onFailure(e, this, context);
+  }
+
+  @Override
+  public long getToken() {
+    return token;
+  }
+
+  @Override
+  public void cancel(ClientContext context) {
+    super.cancel(context);
+    rcb.onFailure(new FetchException(FetchExceptionMode.CANCELLED), this, context);
+  }
+
+  @Override
+  protected void notFoundInStore(ClientContext context) {
+    this.onFailure(new FetchException(FetchExceptionMode.DATA_NOT_FOUND), true, context);
+  }
+
+  @Override
+  protected void onBlockDecodeError(SendableRequestItem token, ClientContext context) {
+    onFailure(
+        new FetchException(
+            FetchExceptionMode.BLOCK_DECODE_ERROR,
+            "Could not decode block with the URI given, probably invalid as inserted, possible the"
+                + " URI is wrong"),
+        true,
+        context);
+  }
+
+  @Override
+  public void onShutdown(ClientContext context) {
+    // Do nothing.
+  }
+
+  @Override
+  protected ClientGetState getClientGetState() {
+    return this;
+  }
+
+  /**
+   * Decode the provided client key block into a {@link Bucket} for downstream processing.
+   *
+   * <p>The returned bucket contains either plaintext data or metadata depending on the block type.
+   * If any decoding or resource error occurs, this method reports the failure via {@link
+   * #onFailure(FetchException, boolean, ClientContext)} and returns {@code null}. Callers must free
+   * the bucket when no longer needed.
+   *
+   * @param block the decoded block from the network; must not be {@code null}
+   * @param context client context providing factories and disk limits; must not be {@code null}
+   * @return a newly allocated bucket with the decoded contents, or {@code null} on failure
+   */
+  Bucket extract(ClientKeyBlock block, ClientContext context) {
+    Bucket data;
+    try {
+      data =
+          block.decode(
+              context.getBucketFactory(parent.persistent()),
+              (int) Math.min(ctx.getMaxOutputLength(), Integer.MAX_VALUE),
+              false);
+    } catch (KeyDecodeException e1) {
+      if (LOG.isDebugEnabled()) LOG.debug("Decode failure: {}", e1, e1);
+      onFailure(
+          new FetchException(FetchExceptionMode.BLOCK_DECODE_ERROR, e1.getMessage()),
+          false,
+          context);
+      return null;
+    } catch (TooBigException e) {
+      onFailure(new FetchException(FetchExceptionMode.TOO_BIG, e), false, context);
+      return null;
+    } catch (InsufficientDiskSpaceException _) {
+      onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
+      return null;
+    } catch (IOException e) {
+      LOG.error("Could not capture data - disk full?: {}", e, e);
+      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), false, context);
+      return null;
+    }
+    return data;
+  }
+
+  /**
+   * Copy constructor for continuing processing with a different metadata focus. Do not call {@code
+   * schedule()} on the original instance after creating a copy.
+   *
+   * <p>This form is used for scenarios such as handling multi‑level metadata where the data has
+   * already been obtained but needs to be interpreted in a separate state object. The new fetcher
+   * intentionally does not duplicate transient state like path components.
+   *
+   * @param fetcher the original fetcher whose state seeds this instance; must not be {@code null}
+   * @param persistent whether this instance should persist across restarts like the parent
+   * @param deleteFetchContext whether to delete the fetch context after completion
+   * @param newMeta metadata to process as the starting point of this copy
+   * @param callback completion callback that receives results and failures
+   * @param ctx2 fetch context to use for resource limits and policy decisions
+   * @throws FetchException if recursion limits are exceeded or setup fails for policy reasons
    */
   public SingleFileFetcher(
       SingleFileFetcher fetcher,
@@ -236,8 +435,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       boolean deleteFetchContext,
       Metadata newMeta,
       GetCompletionCallback callback,
-      FetchContext ctx2,
-      ClientContext context)
+      FetchContext ctx2)
       throws FetchException {
     // Don't add a block, we have already fetched the data, we are just handling the metadata in a
     // different fetcher.
@@ -246,20 +444,15 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         fetcher.maxRetries,
         ctx2,
         fetcher.parent,
-        callback,
-        false,
-        true,
-        fetcher.token,
-        context,
         deleteFetchContext,
         fetcher.realTimeFlag);
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Creating SingleFileFetcher for "
-              + fetcher.key
-              + " meta="
-              + fetcher.metaStrings.toString(),
+    this.rcb = callback;
+    this.token = fetcher.token;
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Creating SingleFileFetcher (copy)" + LOG_FOR_LABEL + "{}" + LOG_META_LABEL + "{}",
+          fetcher.key,
+          fetcher.metaStrings.toString(),
           new Exception("debug"));
     // We expect significant further processing in the parent
     this.isFinal = false;
@@ -269,24 +462,53 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     if (persistent && ah != null) ah = ah.cloneHandler();
     this.archiveMetadata = null;
     this.clientMetadata =
-        (fetcher.clientMetadata != null ? fetcher.clientMetadata.clone() : new ClientMetadata());
-    this.metadata = newMeta;
+        (fetcher.clientMetadata != null
+            ? ClientMetadata.copyOf(fetcher.clientMetadata)
+            : new ClientMetadata());
+    updateMetadata(newMeta);
     this.metaStrings = new ArrayList<>();
     this.addedMetaStrings = 0;
     this.recursionLevel = fetcher.recursionLevel + 1;
-    if (recursionLevel > ctx.maxRecursionLevel)
+    if (recursionLevel > ctx.getMaxRecursionLevel())
       throw new FetchException(FetchExceptionMode.TOO_MUCH_RECURSION);
     this.thisKey = fetcher.thisKey;
     // Do not copy the decompressors. Whether the metadata/container is compressed
-    // is independant of whether the final data is; when we find the data we will
+    // is independent of whether the final data is; when we find the data, we will
     // call back into the original fetcher.
-    this.decompressors = new LinkedList<>();
+    this.decompressors = new ArrayList<>();
     if (fetcher.uri == null) throw new NullPointerException();
-    this.uri = persistent ? fetcher.uri.clone() : fetcher.uri;
+    this.uri = persistent ? new FreenetURI(fetcher.uri) : fetcher.uri;
     this.metaSnoop = fetcher.metaSnoop;
     this.bucketSnoop = fetcher.bucketSnoop;
     this.topDontCompress = fetcher.topDontCompress;
     this.topCompatibilityMode = fetcher.topCompatibilityMode;
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    metadataRef = new AtomicReference<>(metadata);
+    this.ah = null;
+  }
+
+  // Completion callback + token (needed now that we don't extend SimpleSingleFileFetcher)
+  /** Completion callback used to surface success, failure, and progress to the requester. */
+  @SuppressWarnings("java:S1948")
+  final GetCompletionCallback rcb;
+
+  /**
+   * Opaque token supplied by the caller and echoed in callbacks so clients can correlate events
+   * with higher‑level requests or UI elements.
+   */
+  final long token;
+
+  private Metadata currentMetadata() {
+    return metadataRef.get();
+  }
+
+  private void updateMetadata(Metadata newMetadata) {
+    metadata = newMetadata;
+    metadataRef.set(newMetadata);
   }
 
   // Process the completed data. May result in us going to a
@@ -299,10 +521,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     // Extract data
 
     if (block == null) {
-      Logger.error(
-          this,
-          "block is null! fromStore=" + fromStore + ", token=" + token,
-          new Exception("error"));
+      LOG.error("block is null! fromStore={}, token={}", fromStore, token, new Exception("error"));
       return;
     }
     Bucket data = extract(block, context);
@@ -310,25 +529,21 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       context.uskManager.checkUSK(uri, persistent, data != null && !block.isMetadata());
     }
     if (data == null) {
-      if (logMINOR) Logger.minor(this, "No data");
+      if (LOG.isDebugEnabled()) LOG.debug("No data");
       // Already failed: if extract returns null it will call onFailure first.
       return;
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Block " + (block.isMetadata() ? "is metadata" : "is not metadata") + " on " + this);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Block {} on {}", (block.isMetadata() ? "is metadata" : "is not metadata"), this);
 
-    if (bucketSnoop != null) {
-      if (bucketSnoop.snoopBucket(data, block.isMetadata(), context)) {
-        cancel(context);
-        data.free();
-        return;
-      }
+    if (bucketSnoop != null && bucketSnoop.snoopBucket(data, block.isMetadata(), context)) {
+      cancel(context);
+      data.free();
+      return;
     }
 
     if (!block.isMetadata()) {
-      onSuccess(new FetchResult(clientMetadata, data), context);
+      onSuccess(FetchResult.create(clientMetadata, data), context);
     } else {
       handleMetadata(data, context);
     }
@@ -341,7 +556,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
   }
 
   private void handleMetadata(Bucket data, ClientContext context) {
-    if (!ctx.followRedirects) {
+    if (!ctx.getFollowRedirects()) {
       onFailure(
           new FetchException(
               FetchExceptionMode.INVALID_METADATA,
@@ -356,21 +571,21 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       data.free();
       return;
     }
-    if (data.size() > ctx.maxMetadataSize) {
+    if (data.size() > ctx.getMaxMetadataSize()) {
       onFailure(new FetchException(FetchExceptionMode.TOO_BIG_METADATA), false, context);
       data.free();
       return;
     }
     // Parse metadata
     try {
-      metadata = Metadata.construct(data);
+      updateMetadata(Metadata.construct(data));
       data.free();
       data = null;
       innerWrapHandleMetadata(false, context);
     } catch (MetadataParseException | EOFException e) {
       // EOFException is also a metadata error
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
     } catch (IOException e) {
       // Bucket error?
@@ -380,109 +595,178 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     }
   }
 
-  @Override
-  protected void onSuccess(final FetchResult result, final ClientContext context) {
+  /**
+   * Finalize a successful fetch by enforcing policy and delivering the data to the callback.
+   *
+   * <p>This method validates path component rules and size limits, converts any violations into a
+   * {@link FetchException}, and otherwise streams the data to the requester. This method always
+   * closes the underlying bucket regardless of the outcome to prevent resource leaks.
+   *
+   * @param result the completed result bundle containing client metadata and a data bucket
+   * @param context client context used for scheduling and follow‑up transitions
+   */
+  void onSuccess(final FetchResult result, final ClientContext context) {
     synchronized (this) {
       // So a SingleKeyListener isn't created.
       finished = true;
     }
     if (parent.isCancelled()) {
-      if (logMINOR) Logger.minor(this, "Parent is cancelled");
-      result.asBucket().free();
+      if (LOG.isDebugEnabled()) LOG.debug("Parent is cancelled");
+      closeResultBucket(result);
       onFailure(new FetchException(FetchExceptionMode.CANCELLED), false, context);
       return;
     }
-    if ((!ctx.ignoreTooManyPathComponents) && (!metaStrings.isEmpty()) && isFinal) {
-      // Some meta-strings left
-      if (addedMetaStrings > 0) {
-        // Should this be an error?
-        // It would be useful to be able to fetch the data ...
-        // On the other hand such inserts could cause unpredictable results?
-        // Would be useful to make a redirect to the key we actually fetched.
-        rcb.onFailure(
-            new FetchException(
-                FetchExceptionMode.INVALID_METADATA,
-                "Invalid metadata: too many path components in redirects",
-                thisKey),
-            this,
-            context);
-      } else {
-        // TOO_MANY_PATH_COMPONENTS
-        // report to user
-        if (logMINOR) {
-          Logger.minor(this, "Too many path components: for " + uri + " meta=" + metaStrings);
-        }
-        FreenetURI tryURI = uri;
-        tryURI = tryURI.dropLastMetaStrings(metaStrings.size());
-        rcb.onFailure(
-            new FetchException(
-                FetchExceptionMode.TOO_MANY_PATH_COMPONENTS,
-                result.size(),
-                (rcb == parent),
-                result.getMimeType(),
-                tryURI),
-            this,
-            context);
-      }
-      result.asBucket().free();
-    } else if (result.size() > ctx.maxOutputLength) {
+    if (isTooManyPathComponentsFinal()) {
+      handleTooManyPathComponentsResult(result, context);
+      closeResultBucket(result);
+      return;
+    }
+    if (isResultTooBig(result)) {
+      failTooBig(result, context);
+      closeResultBucket(result);
+      return;
+    }
+    copyToJobRunnerAndFree(result, context);
+  }
+
+  private boolean isTooManyPathComponentsFinal() {
+    return !ctx.ignoreTooManyPathComponents && !metaStrings.isEmpty() && isFinal;
+  }
+
+  private void handleTooManyPathComponentsResult(FetchResult result, ClientContext context) {
+    if (addedMetaStrings > 0) {
       rcb.onFailure(
           new FetchException(
-              FetchExceptionMode.TOO_BIG, result.size(), (rcb == parent), result.getMimeType()),
+              FetchExceptionMode.INVALID_METADATA,
+              "Invalid metadata: too many path components in redirects",
+              thisKey),
           this,
           context);
-      result.asBucket().free();
-    } else {
-      // Break locks, don't run filtering on FEC thread etc etc.
-      // Create a defensive copy of the bucket to prevent "Already freed" race condition
-      Bucket originalBucket = result.asBucket();
-      Bucket bucketCopy;
-      try {
-        bucketCopy = context.getBucketFactory(persistent()).makeBucket(originalBucket.size());
-        BucketTools.copy(originalBucket, bucketCopy);
-      } catch (IOException e) {
-        Logger.error(this, "Failed to create defensive copy of bucket: " + e, e);
-        originalBucket.free();
-        rcb.onFailure(
-            new FetchException(FetchExceptionMode.BUCKET_ERROR, "Failed to copy bucket", e),
-            this,
-            context);
-        return;
-      }
+      return;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Too many path components:" + LOG_FOR_LABEL + "{}" + LOG_META_LABEL + "{}",
+          uri,
+          metaStrings);
+    }
+    FreenetURI tryURI = uri.dropLastMetaStrings(metaStrings.size());
+    rcb.onFailure(
+        new FetchException(
+            FetchExceptionMode.TOO_MANY_PATH_COMPONENTS,
+            result.size(),
+            (rcb == parent),
+            result.getMimeType(),
+            tryURI),
+        this,
+        context);
+  }
 
-      context
-          .getJobRunner(persistent())
-          .queueInternal(
-              context1 -> {
-                rcb.onSuccess(
-                    new SingleFileStreamGenerator(bucketCopy, persistent),
-                    result.getMetadata(),
-                    decompressors,
-                    SingleFileFetcher.this,
-                    context1);
-                return true;
-              });
+  private boolean isResultTooBig(FetchResult result) {
+    return result.size() > ctx.getMaxOutputLength();
+  }
 
-      // Free the original bucket now that we have a copy
+  private void failTooBig(FetchResult result, ClientContext context) {
+    rcb.onFailure(
+        new FetchException(
+            FetchExceptionMode.TOO_BIG, result.size(), (rcb == parent), result.getMimeType()),
+        this,
+        context);
+  }
+
+  private void copyToJobRunnerAndFree(FetchResult result, ClientContext context) {
+    // Break locks, don't run filtering on FEC thread etc.
+    // Create a defensive copy of the bucket to prevent the "Already freed" race condition
+    Bucket originalBucket = result.asBucket();
+    Bucket bucketCopy;
+    try {
+      bucketCopy = context.getBucketFactory(persistent()).makeBucket(originalBucket.size());
+      BucketTools.copy(originalBucket, bucketCopy);
+    } catch (IOException e) {
+      LOG.error("Failed to create defensive copy of bucket: {}", e, e);
       originalBucket.free();
+      rcb.onFailure(
+          new FetchException(FetchExceptionMode.BUCKET_ERROR, "Failed to copy bucket", e),
+          this,
+          context);
+      return;
+    }
+
+    context
+        .getJobRunner(persistent())
+        .queueInternal(
+            context1 -> {
+              rcb.onSuccess(
+                  new SingleFileStreamGenerator(bucketCopy, persistent),
+                  result.getMetadata(),
+                  decompressors,
+                  SingleFileFetcher.this,
+                  context1);
+              return true;
+            });
+
+    // Free the original bucket now that we have a copy
+    originalBucket.free();
+  }
+
+  private void closeResultBucket(FetchResult result) {
+    try (Bucket b = result.asBucket()) {
+      if (LOG.isDebugEnabled()) LOG.debug("Discarding result bucket {}", b.getName());
+      // Explicitly free to satisfy tests that verify free() is invoked on the bucket
+      b.free();
     }
   }
 
-  private boolean topDontCompress = false;
-  private short topCompatibilityMode = 0;
+  private ClientGetWorkerThread makeAndStartWorker(
+      InputStream input, OutputStream output, ClientContext context) {
+    try {
+      ClientGetWorkerThread worker =
+          new ClientGetWorkerThread(
+              new BufferedInputStream(input),
+              output,
+              null,
+              null,
+              new ClientGetWorkerThread.Options(
+                  null,
+                  ctx.getSchemeHostAndPort(),
+                  false,
+                  null,
+                  null,
+                  null,
+                  context.linkFilterExceptionProvider));
+      worker.start();
+      return worker;
+    } catch (URISyntaxException e) {
+      throw new IllegalArgumentException(e);
+    }
+  }
 
   /**
-   * Handle the current metadata. I.e. do something with it: transition to a splitfile, look up a
+   * Whether the top layer of a splitfile should avoid compression when reassembled. Propagated to
+   * the client when the top block provides this hint.
+   */
+  private boolean topDontCompress;
+
+  /**
+   * Compatibility mode derived from the top block, used to negotiate splitfile decoding details
+   * between writer and reader.
+   */
+  private short topCompatibilityMode;
+
+  /**
+   * Handle the current metadata. I.e., do something with it: transition to a splitfile, look up a
    * manifest, etc. LOCKING: Synchronized as it changes so many variables; if we want to write the
-   * structure to disk, we don't want this running at the same time. LOCKING: Therefore it should
-   * not directly call e.g. onFailed, innerWrapHandleMetadata, other stuff that might cause lots of
+   * structure to disk, we don't want this running at the same time. LOCKING: Therefore, it should
+   * not directly call e.g., onFailed, innerWrapHandleMetadata, other stuff that might cause lots of
    * stuff to happen on other objects, eventually ClientRequestScheduler gets locked -> deadlock.
-   * This is irrelevant for persistent requests however, as they are single thread.
+   * This is irrelevant for persistent requests, however, as they are single thread.
    *
-   * @throws FetchException
-   * @throws MetadataParseException
-   * @throws ArchiveFailureException
-   * @throws ArchiveRestartException
+   * @throws FetchException if policy or size checks fail, resources are not enough, or decoding and
+   *     I/O produce a non‑recoverable fetch error during planning.
+   * @throws MetadataParseException if metadata bytes cannot be parsed into a valid structure.
+   * @throws ArchiveFailureException if container access or extraction fails with a permanent,
+   *     non‑retryable error.
+   * @throws ArchiveRestartException if container processing requires a restart before continuing.
    */
   private synchronized void handleMetadata(final ClientContext context)
       throws FetchException,
@@ -490,7 +774,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           ArchiveFailureException,
           ArchiveRestartException {
     if (uri == null) {
-      throw new NullPointerException("uri = null on SFI?? " + this);
+      throw new NullPointerException(
+          "uri = null on SFI?? " + java.util.Objects.toIdentityString(this));
     }
     synchronized (this) {
       if (cancelled) return;
@@ -498,616 +783,139 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       finished = true;
     }
     while (true) {
-      if (metaSnoop != null) {
-        if (metaSnoop.snoopMetadata(metadata, context)) {
-          cancel(context);
+      if (snoopAndMaybeCancel(context)) return;
+      handleTopDataAndHashesIfNoMetaStrings(context);
+      StepDecision step = processNextMetadataStep(context);
+      switch (step) {
+        case RETURN -> {
           return;
         }
-      }
-      if (metaStrings.isEmpty()) {
-        if (metadata.hasTopData()) {
-          if ((metadata.topSize > ctx.maxOutputLength)
-              || (metadata.topCompressedSize > ctx.maxTempLength)) {
-            // Just in case...
-            if (metadata.isSimpleRedirect() || metadata.isSplitfile())
-              clientMetadata.mergeNoOverwrite(
-                  metadata.getClientMetadata()); // even splitfiles can have mime types!
-            throw new FetchException(
-                FetchExceptionMode.TOO_BIG, metadata.topSize, true, clientMetadata.getMIMEType());
-          }
-          rcb.onExpectedTopSize(
-              metadata.topSize,
-              metadata.topCompressedSize,
-              metadata.topBlocksRequired,
-              metadata.topBlocksTotal,
-              context);
-          topCompatibilityMode = metadata.getTopCompatibilityCode();
-          topDontCompress = metadata.getTopDontCompress();
+        case CONTINUE -> {
+          // no-op, continue loop
         }
-        HashResult[] hashes = metadata.getHashes();
-        if (hashes != null) {
-          rcb.onHashes(hashes, context);
+        case UNKNOWN -> {
+          LOG.error("Don't know what to do with metadata: {}", currentMetadata());
+          throw new FetchException(FetchExceptionMode.UNKNOWN_METADATA);
         }
-      }
-      if (metadata.isSimpleManifest()) {
-        if (logMINOR) Logger.minor(this, "Is simple manifest");
-        String name;
-        if (metadata.countDocuments() == 1
-            && metadata.getDocument("") != null
-            && metadata.getDocument("").isSimpleManifest()) {
-          Logger.error(this, "Manifest is called \"\" for " + this, new Exception("error"));
-          name = "";
-        } else if (metaStrings.isEmpty()) {
-          FreenetURI u = uri;
-          String last = u.lastMetaString();
-          if (last == null || !last.isEmpty()) u = u.addMetaStrings(new String[] {""});
-          else u = null;
-          throw new FetchException(
-              FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS, -1, false, null, u);
-        } else name = removeMetaString();
-        // Since metadata is a document, we just replace metadata here
-        if (logMINOR)
-          Logger.minor(
-              this, "Next meta-string: " + name + " length " + name.length() + " for " + this);
-        if (name == null) {
-          if (!persistent) {
-            metadata = metadata.getDefaultDocument();
-          } else {
-            metadata = metadata.grabDefaultDocument();
-          }
-          if (metadata == null)
-            throw new FetchException(
-                FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS,
-                -1,
-                false,
-                null,
-                uri.addMetaStrings(new String[] {""}));
-        } else {
-          if (!persistent) {
-            Metadata origMd = metadata;
-            metadata = origMd.getDocument(name);
-            if (metadata != null && metadata.isSymbolicShortlink()) {
-              String oldName = name;
-              name = metadata.getSymbolicShortlinkTargetName();
-              if (oldName.equals(name))
-                throw new FetchException(
-                    FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
-              metadata = origMd.getDocument(name);
-            }
-            thisKey = thisKey.pushMetaString(name);
-          } else {
-            Metadata newMeta = metadata.grabDocument(name);
-            if (newMeta != null && newMeta.isSymbolicShortlink()) {
-              String oldName = name;
-              name = newMeta.getSymbolicShortlinkTargetName();
-              if (oldName.equals(name))
-                throw new FetchException(
-                    FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
-              newMeta = metadata.getDocument(name);
-            }
-            metadata = newMeta;
-            thisKey = thisKey.pushMetaString(name);
-          }
-          if (metadata == null)
-            throw new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE, "can't find " + name);
-        }
-        // loop
-      } else if (metadata.isArchiveManifest()) {
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Is archive manifest (type="
-                  + metadata.getArchiveType()
-                  + " codec="
-                  + metadata.getCompressionCodec()
-                  + ')');
-        if (metaStrings.isEmpty() && ctx.returnZIPManifests) {
-          // Just return the archive, whole.
-          metadata.setSimpleRedirect();
-          continue;
-        }
-        // First we need the archive metadata.
-        // Then parse it. Then we may need to fetch something from inside the archive.
-        // It's more efficient to keep the existing ah if we can, and it is vital in
-        // the case of binary blobs.
-        if (ah == null || !ah.getKey().equals(thisKey)) {
-          // Do loop detection on the archive that we are about to fetch.
-          actx.doLoopDetection(thisKey);
-          ah =
-              context.archiveManager.makeHandler(
-                  thisKey,
-                  metadata.getArchiveType(),
-                  metadata.getCompressionCodec(),
-                  (parent instanceof ClientGetter cg && cg.collectingBinaryBlob()),
-                  persistent);
-        }
-        archiveMetadata = metadata;
-        metadata = null; // Copied to archiveMetadata, so do not need to clear it
-        // ah is set. This means we are currently handling an archive.
-        Bucket metadataBucket;
-        metadataBucket = ah.getMetadata(actx, context.archiveManager);
-        if (metadataBucket != null) {
-          try {
-            metadata = Metadata.construct(metadataBucket);
-            metadataBucket.free();
-          } catch (InsufficientDiskSpaceException e) {
-            throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-          } catch (IOException e) {
-            // Bucket error?
-            throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
-          }
-        } else {
-          final boolean persistent = this.persistent;
-          fetchArchive(
-              false,
-              archiveMetadata,
-              ArchiveManager.METADATA_NAME,
-              new ArchiveExtractCallback() {
-                @Serial private static final long serialVersionUID = 1L;
-
-                @Override
-                public void gotBucket(Bucket data, ClientContext context) {
-                  if (logMINOR)
-                    Logger.minor(
-                        this,
-                        "gotBucket on " + SingleFileFetcher.this + " persistent=" + persistent);
-                  try {
-                    metadata = Metadata.construct(data);
-                    innerWrapHandleMetadata(true, context);
-                  } catch (MetadataParseException e) {
-                    // Invalid metadata
-                    onFailure(
-                        new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-                  } catch (IOException e) {
-                    // Bucket error?
-                    onFailure(
-                        new FetchException(FetchExceptionMode.BUCKET_ERROR, e), false, context);
-                  } finally {
-                    data.free();
-                  }
-                }
-
-                @Override
-                public void notInArchive(ClientContext context) {
-                  onFailure(
-                      new FetchException(
-                          FetchExceptionMode.INTERNAL_ERROR,
-                          "No metadata in container! Cannot happen as ArchiveManager should"
-                              + " synthesise some!"),
-                      false,
-                      context);
-                }
-
-                @Override
-                public void onFailed(ArchiveRestartException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-
-                @Override
-                public void onFailed(ArchiveFailureException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-              },
-              context); // will result in this function being called again
-          return;
-        }
-        metadataBucket.free();
-      } else if (metadata.isArchiveMetadataRedirect()) {
-        if (logMINOR) Logger.minor(this, "Is archive-metadata");
-        // Fetch it from the archive
-        if (ah == null)
-          throw new FetchException(
-              FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
-        String filename = metadata.getArchiveInternalName();
-        if (logMINOR) Logger.minor(this, "Fetching " + filename);
-        Bucket dataBucket = ah.get(filename, actx, context.archiveManager);
-        if (dataBucket != null) {
-          if (logMINOR) Logger.minor(this, "Returning data");
-          final Metadata newMetadata;
-          try {
-
-            newMetadata = Metadata.construct(dataBucket);
-            dataBucket.free();
-          } catch (InsufficientDiskSpaceException e) {
-            throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-          } catch (IOException e) {
-            throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
-          }
-          synchronized (this) {
-            metadata = newMetadata;
-          }
-        } else {
-          if (logMINOR) Logger.minor(this, "Fetching archive (thisKey=" + thisKey + ')');
-          // Metadata cannot contain pointers to files which don't exist.
-          // We enforce this in ArchiveHandler.
-          // Therefore, the archive needs to be fetched.
-          fetchArchive(
-              true,
-              archiveMetadata,
-              filename,
-              new ArchiveExtractCallback() {
-                @Serial private static final long serialVersionUID = 1L;
-
-                @Override
-                public void gotBucket(Bucket data, ClientContext context) {
-                  if (logMINOR) Logger.minor(this, "Returning data");
-                  final Metadata newMetadata;
-                  try {
-                    newMetadata = Metadata.construct(data);
-                    synchronized (SingleFileFetcher.this) {
-                      metadata = newMetadata;
-                    }
-                    innerWrapHandleMetadata(true, context);
-                  } catch (IOException e) {
-                    onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR), false, context);
-                  } catch (MetadataParseException e) {
-                    onFailure(
-                        new FetchException(FetchExceptionMode.INVALID_METADATA), false, context);
-                  } finally {
-                    data.free();
-                  }
-                }
-
-                @Override
-                public void notInArchive(ClientContext context) {
-                  onFailure(new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE), false, context);
-                }
-
-                @Override
-                public void onFailed(ArchiveRestartException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-
-                @Override
-                public void onFailed(ArchiveFailureException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-              },
-              context);
-          // Will call back into this function when it has been fetched.
-          return;
-        }
-      } else if (metadata.isArchiveInternalRedirect()) {
-        if (logMINOR) Logger.minor(this, "Is archive-internal redirect");
-        clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
-        String mime = clientMetadata.getMIMEType();
-        if (mime != null) rcb.onExpectedMIME(clientMetadata, context);
-        if (metaStrings.isEmpty()
-            && isFinal
-            && clientMetadata.getMIMETypeNoParams() != null
-            && ctx.allowedMIMETypes != null
-            && !ctx.allowedMIMETypes.contains(clientMetadata.getMIMETypeNoParams())) {
-          throw new FetchException(
-              FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
-        }
-        // Fetch it from the archive
-        if (ah == null)
-          throw new FetchException(
-              FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
-        String filename = metadata.getArchiveInternalName();
-        if (logMINOR) Logger.minor(this, "Fetching " + filename);
-        Bucket dataBucket = ah.get(filename, actx, context.archiveManager);
-        if (dataBucket != null) {
-          if (logMINOR) Logger.minor(this, "Returning data");
-          final Bucket out;
-          try {
-            // Data will not be freed until client is finished with it.
-            if (persistent) {
-              out = context.persistentBucketFactory.makeBucket(dataBucket.size());
-              BucketTools.copy(dataBucket, out);
-              dataBucket.free();
-            } else {
-              out = dataBucket;
-            }
-          } catch (InsufficientDiskSpaceException e) {
-            throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-          } catch (IOException e) {
-            throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
-          }
-          // Return the data
-          onSuccess(new FetchResult(clientMetadata, out), context);
-
-          return;
-        } else {
-          if (logMINOR) Logger.minor(this, "Fetching archive (thisKey=" + thisKey + ')');
-          // Metadata cannot contain pointers to files which don't exist.
-          // We enforce this in ArchiveHandler.
-          // Therefore, the archive needs to be fetched.
-          fetchArchive(
-              true,
-              archiveMetadata,
-              filename,
-              new ArchiveExtractCallback() {
-                @Serial private static final long serialVersionUID = 1L;
-
-                @Override
-                public void gotBucket(Bucket data, ClientContext context) {
-                  if (logMINOR) Logger.minor(this, "Returning data");
-                  // Because this will be processed immediately, and because the callback uses a
-                  // StreamGenerator,
-                  // we can simply pass in the output bucket, even if it is not persistent.
-                  // If we ever change it so a StreamGenerator can be saved, we'll have to copy
-                  // here.
-                  // Transient buckets should throw if attempted to store.
-                  onSuccess(new FetchResult(clientMetadata, data), context);
-                }
-
-                @Override
-                public void notInArchive(ClientContext context) {
-                  onFailure(new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE), false, context);
-                }
-
-                @Override
-                public void onFailed(ArchiveRestartException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-
-                @Override
-                public void onFailed(ArchiveFailureException e, ClientContext context) {
-                  SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-                }
-              },
-              context);
-          // Will call back into this function when it has been fetched.
-          return;
-        }
-      } else if (metadata.isMultiLevelMetadata()) {
-        if (logMINOR) Logger.minor(this, "Is multi-level metadata");
-        // Fetch on a second SingleFileFetcher, like with archives.
-        metadata.setSimpleRedirect();
-        final SingleFileFetcher f =
-            new SingleFileFetcher(
-                this, persistent, false, metadata, new MultiLevelMetadataCallback(), ctx, context);
-        // Clear our own metadata so it can be garbage collected, it will be replaced by whatever is
-        // fetched.
-        // The new fetcher has our metadata so we don't need to removeMetadata().
-        this.metadata = null;
-        // We must transition to the sub-fetcher so that if the request is cancelled, it will get
-        // deleted.
-        parent.onTransition(this, f, context);
-
-        // Break locks. Must not call onFailure(), etc, from within SFF lock.
-        context
-            .getJobRunner(persistent)
-            .queueInternal(
-                context1 -> {
-                  f.innerWrapHandleMetadata(true, context1);
-                  return true;
-                });
-        return;
-      } else if (metadata.isSingleFileRedirect()) {
-        if (logMINOR) Logger.minor(this, "Is single-file redirect");
-        clientMetadata.mergeNoOverwrite(
-            metadata.getClientMetadata()); // even splitfiles can have mime types!
-        if (clientMetadata != null && !clientMetadata.isTrivial()) {
-          rcb.onExpectedMIME(clientMetadata, context);
-          if (logMINOR) Logger.minor(this, "MIME type is " + clientMetadata);
-        }
-
-        String mimeType = clientMetadata.getMIMETypeNoParams();
-        if (mimeType != null
-            && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
-            && !metaStrings.isEmpty()) {
-          // Looks like an implicit archive, handle as such
-          metadata.setArchiveManifest();
-          // Pick up MIME type from inside archive
-          clientMetadata.clear();
-          if (logMINOR) Logger.minor(this, "Handling implicit container... (redirect)");
-          continue;
-        }
-
-        if (metaStrings.isEmpty()
-            && isFinal
-            && mimeType != null
-            && ctx.allowedMIMETypes != null
-            && !ctx.allowedMIMETypes.contains(mimeType)) {
-          throw new FetchException(
-              FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
-        }
-
-        // Simple redirect
-        // Just create a new SingleFileFetcher
-        // Which will then fetch the target URI, and call the rcd.success
-        // Hopefully!
-        FreenetURI newURI = metadata.getSingleTarget();
-        if (logMINOR) Logger.minor(this, "Redirecting to " + newURI);
-        ClientKey redirectedKey;
-        try {
-          BaseClientKey k = BaseClientKey.getBaseKey(newURI);
-          if (k instanceof ClientKey clientKey) redirectedKey = clientKey;
-          else
-            // FIXME do we want to allow redirects to USKs?
-            // Without redirects to USKs, all SSK and CHKs are static.
-            // This may be a desirable property.
-            throw new FetchException(FetchExceptionMode.UNKNOWN_METADATA, "Redirect to a USK");
-        } catch (MalformedURLException e) {
-          throw new FetchException(FetchExceptionMode.INVALID_URI, e);
-        }
-        ArrayList<String> newMetaStrings = newURI.listMetaStrings();
-
-        // Move any new meta strings to beginning of our list of remaining meta strings
-        while (!newMetaStrings.isEmpty()) {
-          String o = newMetaStrings.removeLast();
-          metaStrings.addFirst(o);
-          addedMetaStrings++;
-        }
-
-        final SingleFileFetcher f =
-            new SingleFileFetcher(
-                parent,
-                rcb,
-                clientMetadata,
-                redirectedKey,
-                metaStrings,
-                this.uri,
-                addedMetaStrings,
-                ctx,
-                deleteFetchContext,
-                realTimeFlag,
-                actx,
-                ah,
-                archiveMetadata,
-                maxRetries,
-                recursionLevel,
-                false,
-                token,
-                true,
-                isFinal,
-                topDontCompress,
-                topCompatibilityMode,
-                context,
-                false);
-        this.deleteFetchContext = false;
-        if ((redirectedKey instanceof ClientCHK hK1) && !hK1.isMetadata()) {
-          rcb.onBlockSetFinished(this, context);
-          byte[] redirectedCryptoKey = hK1.getCryptoKey();
-          if (key instanceof ClientCHK hK && !Arrays.equals(hK.getCryptoKey(), redirectedCryptoKey))
-            redirectedCryptoKey = null;
-          // not splitfile, synthesize CompatibilityMode event
-          rcb.onSplitfileCompatibilityMode(
-              metadata.getMinCompatMode(),
-              metadata.getMaxCompatMode(),
-              redirectedCryptoKey,
-              !hK1.isCompressed(),
-              true,
-              true,
-              context);
-        }
-        if (metadata.isCompressed()) {
-          COMPRESSOR_TYPE codec = metadata.getCompressionCodec();
-          f.addDecompressor(codec);
-        }
-        parent.onTransition(this, f, context);
-        f.schedule(context);
-        // All done! No longer our problem!
-        archiveMetadata = null; // passed on
-        return;
-      } else if (metadata.isSplitfile()) {
-        if (logMINOR) Logger.minor(this, "Fetching splitfile");
-
-        clientMetadata.mergeNoOverwrite(
-            metadata.getClientMetadata()); // even splitfiles can have mime types!
-
-        String mimeType = clientMetadata.getMIMETypeNoParams();
-        if (mimeType != null
-            && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
-            && !metaStrings.isEmpty()) {
-          // Looks like an implicit archive, handle as such
-          metadata.setArchiveManifest();
-          // Pick up MIME type from inside archive
-          clientMetadata.clear();
-          if (logMINOR) Logger.minor(this, "Handling implicit container... (splitfile)");
-          continue;
-        } else {
-          if (clientMetadata != null && !clientMetadata.isTrivial())
-            rcb.onExpectedMIME(clientMetadata, context);
-        }
-
-        if (metaStrings.isEmpty()
-            && isFinal
-            && mimeType != null
-            && ctx.allowedMIMETypes != null
-            && !ctx.allowedMIMETypes.contains(mimeType)) {
-          // Just in case...
-          long len = metadata.uncompressedDataLength();
-          throw new FetchException(
-              FetchExceptionMode.WRONG_MIME_TYPE, len, false, clientMetadata.getMIMEType());
-        }
-
-        // Splitfile (possibly compressed)
-
-        if (metadata.isCompressed()) {
-          COMPRESSOR_TYPE codec = metadata.getCompressionCodec();
-          addDecompressor(codec);
-        }
-
-        if (isFinal && !ctx.ignoreTooManyPathComponents) {
-          if (!metaStrings.isEmpty()) {
-            // Some meta-strings left
-            if (addedMetaStrings > 0) {
-              // Should this be an error?
-              // It would be useful to be able to fetch the data ...
-              // On the other hand such inserts could cause unpredictable results?
-              // Would be useful to make a redirect to the key we actually fetched.
-              rcb.onFailure(
-                  new FetchException(
-                      FetchExceptionMode.INVALID_METADATA,
-                      "Invalid metadata: too many path components in redirects",
-                      thisKey),
-                  this,
-                  context);
-            } else {
-              // TOO_MANY_PATH_COMPONENTS
-              // report to user
-              FreenetURI tryURI = uri;
-              tryURI = tryURI.dropLastMetaStrings(metaStrings.size());
-              rcb.onFailure(
-                  new FetchException(
-                      FetchExceptionMode.TOO_MANY_PATH_COMPONENTS,
-                      metadata.uncompressedDataLength(),
-                      (rcb == parent),
-                      clientMetadata.getMIMEType(),
-                      tryURI),
-                  this,
-                  context);
-            }
-            // Just in case...
-            return;
-          }
-        } else if (logMINOR) Logger.minor(this, "Not finished: rcb=" + rcb + " for " + this);
-
-        final long len = metadata.dataLength();
-        final long uncompressedLen =
-            metadata.isCompressed() ? metadata.uncompressedDataLength() : len;
-
-        if ((uncompressedLen > ctx.maxOutputLength) || (len > ctx.maxTempLength)) {
-          // Just in case...
-          boolean compressed = metadata.isCompressed();
-          throw new FetchException(
-              FetchExceptionMode.TOO_BIG,
-              uncompressedLen,
-              isFinal && decompressors.size() <= (compressed ? 1 : 0),
-              clientMetadata.getMIMEType());
-        }
-
-        ClientGetState sf;
-        boolean reallyFinal = isFinal;
-        if (isFinal && !parent.isCurrentState(this)) {
-          Logger.error(
-              this, "isFinal but not the current state for " + this, new Exception("error"));
-          reallyFinal = false;
-        }
-        sf =
-            new SplitFileFetcher(
-                metadata,
-                rcb,
-                parent,
-                ctx,
-                realTimeFlag,
-                decompressors,
-                clientMetadata,
-                token,
-                topDontCompress,
-                topCompatibilityMode,
-                persistent,
-                thisKey,
-                reallyFinal,
-                context);
-        this.deleteFetchContext = false;
-        parent.onTransition(this, sf, context);
-        sf.schedule(context);
-        rcb.onBlockSetFinished(this, context);
-        // Clear our own metadata, we won't need it any more.
-        // Note that SplitFileFetcher() above will have used the keys from the metadata,
-        // and will have removed them from it so they don't get removed here.
-        // Lack of garbage collection in db4o is a PITA!
-        // For multi-level metadata etc see above.
-        return;
-      } else {
-        Logger.error(this, "Don't know what to do with metadata: " + metadata);
-        throw new FetchException(FetchExceptionMode.UNKNOWN_METADATA);
       }
     }
+  }
+
+  private boolean snoopAndMaybeCancel(ClientContext context) {
+    if (metaSnoop != null && metaSnoop.snoopMetadata(currentMetadata(), context)) {
+      cancel(context);
+      return true;
+    }
+    return false;
+  }
+
+  private void handleTopDataAndHashesIfNoMetaStrings(ClientContext context) throws FetchException {
+    if (!metaStrings.isEmpty()) return;
+    Metadata current = currentMetadata();
+    if (current.hasTopData()) {
+      if ((current.topSize > ctx.getMaxOutputLength())
+          || (current.topCompressedSize > ctx.getMaxTempLength())) {
+        if (current.isSimpleRedirect() || current.isSplitfile())
+          clientMetadata.mergeNoOverwrite(current.getClientMetadata());
+        throw new FetchException(
+            FetchExceptionMode.TOO_BIG, current.topSize, true, clientMetadata.getMIMEType());
+      }
+      rcb.onExpectedTopSize(
+          current.topSize,
+          current.topCompressedSize,
+          current.topBlocksRequired,
+          current.topBlocksTotal,
+          context);
+      topCompatibilityMode = current.getTopCompatibilityCode();
+      topDontCompress = current.getTopDontCompress();
+    }
+    HashResult[] hashes = current.getHashes();
+    if (hashes != null) {
+      rcb.onHashes(hashes, context);
+    }
+  }
+
+  // Metadata kinds to dispatch on
+  private enum MetaKind {
+    SIMPLE_MANIFEST,
+    ARCHIVE_MANIFEST,
+    ARCHIVE_METADATA_REDIRECT,
+    ARCHIVE_INTERNAL_REDIRECT,
+    MULTI_LEVEL_METADATA,
+    SINGLE_FILE_REDIRECT,
+    SPLITFILE,
+    UNKNOWN
+  }
+
+  private MetaKind detectMetaKind() {
+    Metadata current = currentMetadata();
+    if (current.isSimpleManifest()) return MetaKind.SIMPLE_MANIFEST;
+    if (current.isArchiveManifest()) return MetaKind.ARCHIVE_MANIFEST;
+    if (current.isArchiveMetadataRedirect()) return MetaKind.ARCHIVE_METADATA_REDIRECT;
+    if (current.isArchiveInternalRedirect()) return MetaKind.ARCHIVE_INTERNAL_REDIRECT;
+    if (current.isMultiLevelMetadata()) return MetaKind.MULTI_LEVEL_METADATA;
+    if (current.isSingleFileRedirect()) return MetaKind.SINGLE_FILE_REDIRECT;
+    if (current.isSplitfile()) return MetaKind.SPLITFILE;
+    return MetaKind.UNKNOWN;
+  }
+
+  private enum StepDecision {
+    CONTINUE,
+    RETURN,
+    UNKNOWN
+  }
+
+  // Decide the next action: CONTINUE, RETURN, or UNKNOWN
+  private StepDecision processNextMetadataStep(final ClientContext context)
+      throws FetchException,
+          MetadataParseException,
+          ArchiveFailureException,
+          ArchiveRestartException {
+    MetaKind kind = detectMetaKind();
+    if (kind == MetaKind.UNKNOWN) return StepDecision.UNKNOWN;
+    if (isArchiveKind(kind)) return handleArchiveKind(kind, context);
+    return handleOtherKind(kind, context);
+  }
+
+  private boolean isArchiveKind(MetaKind kind) {
+    return kind == MetaKind.ARCHIVE_MANIFEST
+        || kind == MetaKind.ARCHIVE_METADATA_REDIRECT
+        || kind == MetaKind.ARCHIVE_INTERNAL_REDIRECT;
+  }
+
+  private StepDecision handleArchiveKind(MetaKind kind, ClientContext context)
+      throws FetchException,
+          MetadataParseException,
+          ArchiveFailureException,
+          ArchiveRestartException {
+    return switch (kind) {
+      case ARCHIVE_MANIFEST ->
+          processArchiveManifestStep(context) ? StepDecision.RETURN : StepDecision.CONTINUE;
+      case ARCHIVE_METADATA_REDIRECT ->
+          processArchiveMetadataRedirectStep(context) ? StepDecision.RETURN : StepDecision.CONTINUE;
+      case ARCHIVE_INTERNAL_REDIRECT -> {
+        processArchiveInternalRedirectStep(context);
+        yield StepDecision.RETURN;
+      }
+      default -> StepDecision.UNKNOWN;
+    };
+  }
+
+  private StepDecision handleOtherKind(MetaKind kind, ClientContext context) throws FetchException {
+    return switch (kind) {
+      case SIMPLE_MANIFEST -> {
+        processSimpleManifestStep();
+        yield StepDecision.CONTINUE;
+      }
+      case MULTI_LEVEL_METADATA -> {
+        processMultiLevelMetadataStep(context);
+        yield StepDecision.RETURN;
+      }
+      case SINGLE_FILE_REDIRECT ->
+          processSingleFileRedirectStep(context) ? StepDecision.RETURN : StepDecision.CONTINUE;
+      case SPLITFILE -> processSplitfileStep(context) ? StepDecision.RETURN : StepDecision.CONTINUE;
+      default -> StepDecision.UNKNOWN;
+    };
   }
 
   private String removeMetaString() {
@@ -1117,9 +925,595 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
   }
 
   private void addDecompressor(COMPRESSOR_TYPE codec) {
-    if (logMINOR)
-      Logger.minor(this, "Adding decompressor: " + codec + " on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Adding decompressor: {} on {}", codec, this);
     decompressors.add(codec);
+  }
+
+  // Returns true if this method should return to caller; false to continue outer loop
+  private boolean processArchiveManifestStep(final ClientContext context)
+      throws FetchException,
+          ArchiveFailureException,
+          ArchiveRestartException,
+          MetadataParseException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Is archive manifest (type={} codec={})",
+          current.getArchiveType(),
+          current.getCompressionCodec());
+    if (metaStrings.isEmpty() && ctx.getReturnZIPManifests()) {
+      current.setSimpleRedirect();
+      return false; // continue outer loop
+    }
+    ensureArchiveHandler(context);
+    archiveMetadata = current;
+    updateMetadata(null);
+    Bucket metadataBucket = ah.getMetadata(actx, context.archiveManager);
+    return handleArchiveManifestBucketOrSchedule(metadataBucket, context);
+  }
+
+  private void ensureArchiveHandler(ClientContext context) throws ArchiveFailureException {
+    Metadata current = currentMetadata();
+    if (ah == null || !ah.getKey().equals(thisKey)) {
+      actx.doLoopDetection(thisKey);
+      ah =
+          context.archiveManager.makeHandler(
+              thisKey,
+              current.getArchiveType(),
+              current.getCompressionCodec(),
+              (parent instanceof ClientGetter cg && cg.collectingBinaryBlob()),
+              persistent);
+    }
+  }
+
+  private boolean handleArchiveManifestBucketOrSchedule(
+      Bucket metadataBucket, ClientContext context) throws FetchException, MetadataParseException {
+    if (metadataBucket != null) {
+      try {
+        updateMetadata(Metadata.construct(metadataBucket));
+      } catch (InsufficientDiskSpaceException _) {
+        throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
+      } catch (IOException e) {
+        throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
+      } finally {
+        metadataBucket.free();
+      }
+      return false;
+    }
+    final boolean persistentLocal = this.persistent;
+    fetchArchive(
+        false,
+        archiveMetadata,
+        ArchiveManager.METADATA_NAME,
+        new ArchiveExtractCallback() {
+          @Serial private static final long serialVersionUID = 1L;
+
+          @Override
+          public void gotBucket(Bucket data, ClientContext ctx1) {
+            if (LOG.isDebugEnabled())
+              LOG.debug("gotBucket on {} persistent={}", SingleFileFetcher.this, persistentLocal);
+            try {
+              updateMetadata(Metadata.construct(data));
+              innerWrapHandleMetadata(true, ctx1);
+            } catch (MetadataParseException e) {
+              onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, ctx1);
+            } catch (IOException e) {
+              onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), false, ctx1);
+            } finally {
+              data.free();
+            }
+          }
+
+          @Override
+          public void notInArchive(ClientContext ctx1) {
+            onFailure(
+                new FetchException(
+                    FetchExceptionMode.INTERNAL_ERROR,
+                    "No metadata in container! Cannot happen as ArchiveManager should synthesise"
+                        + " some!"),
+                false,
+                ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveRestartException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveFailureException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+        },
+        context);
+    return true;
+  }
+
+  private boolean processArchiveMetadataRedirectStep(final ClientContext context)
+      throws FetchException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled()) LOG.debug("Is archive-metadata");
+    if (ah == null)
+      throw new FetchException(
+          FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
+    String filename = current.getArchiveInternalName();
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-metadata entry {}", filename);
+    Bucket dataBucket;
+    try {
+      dataBucket = ah.get(filename, actx, context.archiveManager);
+    } catch (ArchiveFailureException | ArchiveRestartException | MetadataParseException e) {
+      throw wrapToFetchException(e);
+    }
+    if (dataBucket != null) {
+      handleArchiveMetadataBucket(dataBucket);
+      return false;
+    }
+    scheduleFetchArchiveForMetadata(filename, context);
+    return true;
+  }
+
+  private void handleArchiveMetadataBucket(Bucket dataBucket) throws FetchException {
+    if (LOG.isDebugEnabled()) LOG.debug("Archive metadata bucket ready; returning data");
+    try {
+      Metadata newMetadata = Metadata.construct(dataBucket);
+      synchronized (this) {
+        updateMetadata(newMetadata);
+      }
+    } catch (InsufficientDiskSpaceException _) {
+      throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
+    } catch (MetadataParseException e) {
+      throw new FetchException(FetchExceptionMode.INVALID_METADATA, e);
+    } catch (IOException _) {
+      throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
+    } finally {
+      dataBucket.free();
+    }
+  }
+
+  private void scheduleFetchArchiveForMetadata(String filename, final ClientContext context)
+      throws FetchException {
+    if (LOG.isDebugEnabled())
+      LOG.debug("Scheduling archive fetch for metadata (thisKey={})", thisKey);
+    fetchArchive(
+        true,
+        archiveMetadata,
+        filename,
+        new ArchiveExtractCallback() {
+          @Serial private static final long serialVersionUID = 1L;
+
+          @Override
+          public void gotBucket(Bucket data, ClientContext ctx1) {
+            if (LOG.isDebugEnabled())
+              LOG.debug("Archive metadata fetch returned bucket; returning data");
+            try {
+              Metadata newMetadata = Metadata.construct(data);
+              synchronized (SingleFileFetcher.this) {
+                updateMetadata(newMetadata);
+              }
+              innerWrapHandleMetadata(true, ctx1);
+            } catch (IOException _) {
+              onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR), false, ctx1);
+            } catch (MetadataParseException _) {
+              onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA), false, ctx1);
+            } finally {
+              data.free();
+            }
+          }
+
+          @Override
+          public void notInArchive(ClientContext ctx1) {
+            onFailure(new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE), false, ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveRestartException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveFailureException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+        },
+        context);
+  }
+
+  private void processArchiveInternalRedirectStep(final ClientContext context)
+      throws FetchException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled()) LOG.debug("Is archive-internal redirect");
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
+    String mime = clientMetadata.getMIMEType();
+    if (mime != null) rcb.onExpectedMIME(clientMetadata, context);
+    validateAllowedMimeForArchiveInternal();
+    if (ah == null)
+      throw new FetchException(
+          FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
+    String filename = current.getArchiveInternalName();
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-internal entry {}", filename);
+    Bucket dataBucket;
+    try {
+      dataBucket = ah.get(filename, actx, context.archiveManager);
+    } catch (ArchiveFailureException | ArchiveRestartException | MetadataParseException e) {
+      throw wrapToFetchException(e);
+    }
+    if (dataBucket != null) {
+      if (LOG.isDebugEnabled()) LOG.debug("Archive internal entry ready; returning data");
+      final Bucket out = copyOrAdoptBucketForReturn(dataBucket, context);
+      onSuccess(FetchResult.create(clientMetadata, out), context);
+      return; // returned data, method should return
+    }
+    if (LOG.isDebugEnabled())
+      LOG.debug("Scheduling archive fetch for internal entry (thisKey={})", thisKey);
+    fetchArchive(
+        true,
+        archiveMetadata,
+        filename,
+        new ArchiveExtractCallback() {
+          @Serial private static final long serialVersionUID = 1L;
+
+          @Override
+          public void gotBucket(Bucket data, ClientContext ctx1) {
+            if (LOG.isDebugEnabled())
+              LOG.debug("Archive internal fetch returned bucket; returning data");
+            onSuccess(FetchResult.create(clientMetadata, data), ctx1);
+          }
+
+          @Override
+          public void notInArchive(ClientContext ctx1) {
+            onFailure(new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE), false, ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveRestartException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+
+          @Override
+          public void onFailed(ArchiveFailureException e, ClientContext ctx1) {
+            SingleFileFetcher.this.onFailure(new FetchException(e), false, ctx1);
+          }
+        },
+        context);
+    // scheduled
+  }
+
+  private void validateAllowedMimeForArchiveInternal() throws FetchException {
+    if (metaStrings.isEmpty()
+        && isFinal
+        && clientMetadata.getMIMETypeNoParams() != null
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(clientMetadata.getMIMETypeNoParams())) {
+      throw new FetchException(
+          FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
+    }
+  }
+
+  private Bucket copyOrAdoptBucketForReturn(Bucket dataBucket, ClientContext context)
+      throws FetchException {
+    try {
+      if (persistent) {
+        Bucket out = context.persistentBucketFactory.makeBucket(dataBucket.size());
+        BucketTools.copy(dataBucket, out);
+        dataBucket.free();
+        return out;
+      } else {
+        return dataBucket;
+      }
+    } catch (InsufficientDiskSpaceException _) {
+      throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
+    } catch (IOException _) {
+      throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
+    }
+  }
+
+  private void processMultiLevelMetadataStep(final ClientContext context) throws FetchException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled()) LOG.debug("Is multi-level metadata");
+    current.setSimpleRedirect();
+    final SingleFileFetcher f =
+        new SingleFileFetcher(
+            this, persistent, false, current, new MultiLevelMetadataCallback(), ctx);
+    updateMetadata(null);
+    parent.onTransition(this, f, context);
+    context
+        .getJobRunner(persistent)
+        .queueInternal(
+            context1 -> {
+              f.innerWrapHandleMetadata(true, context1);
+              return true;
+            });
+    // continue outer loop
+  }
+
+  private boolean processSingleFileRedirectStep(final ClientContext context) throws FetchException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled()) LOG.debug("Is single-file redirect");
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
+    emitExpectedMimeIfPresent(context);
+    String mimeType = clientMetadata.getMIMETypeNoParams();
+    if (mimeType != null
+        && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
+        && !metaStrings.isEmpty()) {
+      current.setArchiveManifest();
+      clientMetadata.clear();
+      if (LOG.isDebugEnabled()) LOG.debug("Handling implicit container... (redirect)");
+      return false; // continue loop
+    }
+    validateAllowedMimeForSingleRedirect(mimeType);
+    FreenetURI newURI = current.getSingleTarget();
+    if (LOG.isDebugEnabled()) LOG.debug("Redirecting to {}", newURI);
+    ClientKey redirectedKey = resolveRedirectedKey(newURI);
+    addNewMetaStringsFrom(newURI);
+    final SingleFileFetcher f =
+        new SingleFileFetcher(initParamsForRedirect(redirectedKey, clientMetadata, context));
+    this.deleteFetchContext = false;
+    if ((redirectedKey instanceof ClientCHK hK1) && !hK1.isMetadata()) {
+      rcb.onBlockSetFinished(this, context);
+      byte[] redirectedCryptoKey = hK1.getCryptoKey();
+      if (key instanceof ClientCHK hK && !Arrays.equals(hK.getCryptoKey(), redirectedCryptoKey))
+        redirectedCryptoKey = null;
+      rcb.onSplitfileCompatibilityMode(
+          current.getMinCompatMode(),
+          current.getMaxCompatMode(),
+          redirectedCryptoKey,
+          !hK1.isCompressed(),
+          true,
+          true,
+          context);
+    }
+    if (current.isCompressed()) {
+      COMPRESSOR_TYPE codec = current.getCompressionCodec();
+      f.addDecompressor(codec);
+    }
+    parent.onTransition(this, f, context);
+    f.schedule(context);
+    archiveMetadata = null;
+    return true;
+  }
+
+  private void emitExpectedMimeIfPresent(ClientContext context) throws FetchException {
+    if (clientMetadata != null && !clientMetadata.isTrivial()) {
+      rcb.onExpectedMIME(clientMetadata, context);
+      if (LOG.isDebugEnabled()) LOG.debug("MIME type is {}", clientMetadata);
+    }
+  }
+
+  private void validateAllowedMimeForSingleRedirect(String mimeType) throws FetchException {
+    if (metaStrings.isEmpty()
+        && isFinal
+        && mimeType != null
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(mimeType)) {
+      throw new FetchException(
+          FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
+    }
+  }
+
+  private ClientKey resolveRedirectedKey(FreenetURI newURI) throws FetchException {
+    try {
+      BaseClientKey k = BaseClientKey.getBaseKey(newURI);
+      if (k instanceof ClientKey clientKey) return clientKey;
+      throw new FetchException(FetchExceptionMode.UNKNOWN_METADATA, "Redirect to a USK");
+    } catch (MalformedURLException e) {
+      throw new FetchException(FetchExceptionMode.INVALID_URI, e);
+    }
+  }
+
+  private void addNewMetaStringsFrom(FreenetURI newURI) {
+    List<String> newMetaStrings = newURI.listMetaStrings();
+    while (!newMetaStrings.isEmpty()) {
+      String o = newMetaStrings.removeLast();
+      metaStrings.addFirst(o);
+      addedMetaStrings++;
+    }
+  }
+
+  private InitParams initParamsForRedirect(
+      ClientKey redirectedKey, ClientMetadata metadataForRedirect, ClientContext context) {
+    InitParams p = new InitParams();
+    p.parent = parent;
+    p.cb = rcb;
+    p.metadata = metadataForRedirect;
+    p.key = redirectedKey;
+    p.metaStrings = metaStrings;
+    p.origURI = this.uri;
+    p.addedMetaStrings = addedMetaStrings;
+    p.ctx = ctx;
+    p.deleteFetchContext = deleteFetchContext;
+    p.actx = actx;
+    p.ah = ah;
+    p.archiveMetadata = archiveMetadata;
+    p.policy = new CreationPolicy(maxRetries, recursionLevel, false, true, isFinal, false);
+    p.runtime = new CreationRuntime(context, realTimeFlag, token);
+    p.topDontCompress = topDontCompress;
+    p.topCompatibilityMode = topCompatibilityMode;
+    return p;
+  }
+
+  private boolean processSplitfileStep(final ClientContext context) throws FetchException {
+    Metadata current = currentMetadata();
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching splitfile");
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
+    String mimeType = clientMetadata.getMIMETypeNoParams();
+    if (mimeType != null
+        && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
+        && !metaStrings.isEmpty()) {
+      current.setArchiveManifest();
+      clientMetadata.clear();
+      if (LOG.isDebugEnabled()) LOG.debug("Handling implicit container... (splitfile)");
+      return false; // continue loop
+    } else {
+      emitExpectedMimeIfPresent(context);
+    }
+    validateAllowedMimeForSplitfile(mimeType);
+    applyDecompressorIfCompressed();
+    if (handleTooManyPathComponentsIfNeeded(context)) return true;
+    final long len = current.dataLength();
+    final long uncompressedLen = current.isCompressed() ? current.uncompressedDataLength() : len;
+    if ((uncompressedLen > ctx.getMaxOutputLength()) || (len > ctx.getMaxTempLength())) {
+      boolean compressed = current.isCompressed();
+      throw new FetchException(
+          FetchExceptionMode.TOO_BIG,
+          uncompressedLen,
+          isFinal && decompressors.size() <= (compressed ? 1 : 0),
+          clientMetadata.getMIMEType());
+    }
+    boolean reallyFinal = isFinal;
+    if (isFinal && !parent.isCurrentState(this)) {
+      LOG.error("isFinal but not the current state for {}", this);
+      reallyFinal = false;
+    }
+    SplitFileFetcher.InitParams p = new SplitFileFetcher.InitParams();
+    p.metadata = current;
+    p.rcb = rcb;
+    p.parent = parent;
+    p.fetchContext = ctx;
+    p.realTimeFlag = realTimeFlag;
+    p.decompressors = decompressors;
+    p.clientMetadata = clientMetadata;
+    p.token = token;
+    p.topDontCompress = topDontCompress;
+    p.topCompatibilityMode = topCompatibilityMode;
+    p.persistent = persistent;
+    p.thisKey = thisKey;
+    p.isFinalFetch = reallyFinal;
+    p.context = context;
+    ClientGetState sf = new SplitFileFetcher(p);
+    this.deleteFetchContext = false;
+    parent.onTransition(this, sf, context);
+    sf.schedule(context);
+    rcb.onBlockSetFinished(this, context);
+    return true;
+  }
+
+  private void applyDecompressorIfCompressed() {
+    Metadata current = currentMetadata();
+    if (current.isCompressed()) {
+      COMPRESSOR_TYPE codec = current.getCompressionCodec();
+      addDecompressor(codec);
+    }
+  }
+
+  private void validateAllowedMimeForSplitfile(String mimeType) throws FetchException {
+    if (metaStrings.isEmpty()
+        && isFinal
+        && mimeType != null
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(mimeType)) {
+      long len = currentMetadata().uncompressedDataLength();
+      throw new FetchException(
+          FetchExceptionMode.WRONG_MIME_TYPE, len, false, clientMetadata.getMIMEType());
+    }
+  }
+
+  private boolean handleTooManyPathComponentsIfNeeded(ClientContext context) {
+    if (isFinal && !ctx.ignoreTooManyPathComponents) {
+      if (!metaStrings.isEmpty()) {
+        if (addedMetaStrings > 0) {
+          rcb.onFailure(
+              new FetchException(
+                  FetchExceptionMode.INVALID_METADATA,
+                  "Invalid metadata: too many path components in redirects",
+                  thisKey),
+              this,
+              context);
+        } else {
+          FreenetURI tryURI = uri.dropLastMetaStrings(metaStrings.size());
+          rcb.onFailure(
+              new FetchException(
+                  FetchExceptionMode.TOO_MANY_PATH_COMPONENTS,
+                  currentMetadata().uncompressedDataLength(),
+                  (rcb == parent),
+                  clientMetadata.getMIMEType(),
+                  tryURI),
+              this,
+              context);
+        }
+        return true;
+      }
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Not finished: rcb={}" + LOG_FOR_LABEL + "{}", rcb, this);
+    }
+    return false;
+  }
+
+  // Extracted from handleMetadata() to reduce complexity.
+  // Returns true to indicate the outer loop should continue.
+  private void processSimpleManifestStep() throws FetchException {
+    if (LOG.isDebugEnabled()) LOG.debug("Is simple manifest");
+    String name = resolveManifestName();
+    if (LOG.isDebugEnabled())
+      LOG.debug("Next meta-string: {} length {}" + LOG_FOR_LABEL + "{}", name, name.length(), this);
+    if (name == null) {
+      selectDefaultManifestDocument();
+    } else {
+      selectManifestDocumentByName(name);
+    }
+    // continue outer loop
+  }
+
+  private String resolveManifestName() throws FetchException {
+    Metadata current = currentMetadata();
+    if (current.countDocuments() == 1
+        && current.getDocument("") != null
+        && current.getDocument("").isSimpleManifest()) {
+      LOG.error("Manifest is called \"\" for {}", this);
+      return "";
+    } else if (metaStrings.isEmpty()) {
+      FreenetURI u = uri;
+      String last = u.lastMetaString();
+      if (last == null || !last.isEmpty()) u = u.addMetaStrings(new String[] {""});
+      else u = null;
+      throw new FetchException(FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS, -1, false, null, u);
+    } else {
+      return removeMetaString();
+    }
+  }
+
+  private void selectDefaultManifestDocument() throws FetchException {
+    Metadata current = currentMetadata();
+    if (!persistent) {
+      updateMetadata(current.getDefaultDocument());
+    } else {
+      updateMetadata(current.grabDefaultDocument());
+    }
+    if (currentMetadata() == null)
+      throw new FetchException(
+          FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS,
+          -1,
+          false,
+          null,
+          uri.addMetaStrings(new String[] {""}));
+  }
+
+  private void selectManifestDocumentByName(String name) throws FetchException {
+    Metadata current = currentMetadata();
+    if (!persistent) {
+      Metadata newMetadata = current.getDocument(name);
+      if (newMetadata != null && newMetadata.isSymbolicShortlink()) {
+        String oldName = name;
+        name = newMetadata.getSymbolicShortlinkTargetName();
+        if (oldName.equals(name))
+          throw new FetchException(FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
+        newMetadata = current.getDocument(name);
+      }
+      updateMetadata(newMetadata);
+      thisKey = thisKey.pushMetaString(name);
+    } else {
+      Metadata newMeta = current.grabDocument(name);
+      if (newMeta != null && newMeta.isSymbolicShortlink()) {
+        String oldName = name;
+        name = newMeta.getSymbolicShortlinkTargetName();
+        if (oldName.equals(name))
+          throw new FetchException(FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
+        newMeta = current.getDocument(name);
+      }
+      updateMetadata(newMeta);
+      thisKey = thisKey.pushMetaString(name);
+    }
+    if (currentMetadata() == null)
+      throw new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE, "can't find " + name);
   }
 
   private void fetchArchive(
@@ -1128,21 +1522,18 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       String element,
       ArchiveExtractCallback callback,
       final ClientContext context)
-      throws FetchException,
-          MetadataParseException,
-          ArchiveFailureException,
-          ArchiveRestartException {
-    if (logMINOR) Logger.minor(this, "fetchArchive()");
+      throws FetchException {
+    if (LOG.isDebugEnabled()) LOG.debug("fetchArchive()");
     // Fetch the archive
     // How?
     // Spawn a separate SingleFileFetcher,
     // which fetches the archive, then calls
     // our Callback, which unpacks the archive, then
     // reschedules us.
-    Metadata newMeta = (Metadata) meta.clone();
+    Metadata newMeta = new Metadata(meta);
     newMeta.setSimpleRedirect();
     final SingleFileFetcher f;
-    // FIXME arguable archive data is "temporary", but
+    // Note: arguably archive data is "temporary", but
     // this will use ctx.maxOutputLength
     f =
         new SingleFileFetcher(
@@ -1151,15 +1542,14 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
             true,
             newMeta,
             new ArchiveFetcherCallback(forData, element, callback),
-            new FetchContext(ctx, FetchContext.SET_RETURN_ARCHIVES, true, null),
-            context);
-    if (logMINOR) Logger.minor(this, "fetchArchive(): " + f);
-    // Fetch the archive. The archive fetcher callback will unpack it, and either call the element
-    // callback, or just go back around handleMetadata() on this, which will see that the data is
+            new FetchContext(ctx, FetchContext.SET_RETURN_ARCHIVES, true, null));
+    if (LOG.isDebugEnabled()) LOG.debug("fetchArchive(): {}", f);
+    // Fetch the archive. The archive fetcher callback will unpack it and either call the element
+    // callback or just go back around handleMetadata() on this, which will see that the data is
     // now
     // available.
 
-    // We need to transition here, so that everything gets deleted if we are cancelled during the
+    // We need to transition here so that everything gets deleted if we are canceled during the
     // archive fetch phase.
     parent.onTransition(this, f, context);
 
@@ -1174,18 +1564,30 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
   }
 
   // LOCKING: If transient, DO NOT call this method from within handleMetadata.
-  protected void innerWrapHandleMetadata(boolean notFinalizedSize, ClientContext context) {
+  /**
+   * Invoke {@link #handleMetadata(ClientContext)} and convert errors into {@link FetchException}
+   * callbacks.
+   *
+   * <p>When {@code notFinalizedSize} is {@code true}, any sizes previously reported to the client
+   * are marked as provisional to avoid over‑committing. Archive and parsing failures are wrapped
+   * and forwarded to the completion callback.
+   *
+   * @param notFinalizedSize set to {@code true} to mark reported sizes as provisional
+   * @param context the client context used by nested operations and callbacks
+   */
+  void innerWrapHandleMetadata(boolean notFinalizedSize, ClientContext context) {
     try {
       handleMetadata(context);
     } catch (MetadataParseException e) {
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
     } catch (FetchException e) {
-      if (notFinalizedSize) e.setNotFinalizedSize();
-      onFailure(e, false, context);
-    } catch (ArchiveFailureException e) {
-      onFailure(new FetchException(e), false, context);
-    } catch (ArchiveRestartException e) {
-      onFailure(new FetchException(e), false, context);
+      FetchException failure = e;
+      if (notFinalizedSize) {
+        failure = e.notFinalized();
+      }
+      onFailure(failure, false, context);
+    } catch (ArchiveFailureException | ArchiveRestartException e) {
+      onFailure(wrapToFetchException(e), false, context);
     }
   }
 
@@ -1197,7 +1599,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     private final ArchiveExtractCallback callback;
 
     /**
-     * For activation we need to know whether we are persistent even though the parent may not have
+     * For activation, we need to know whether we are persistent even though the parent may not have
      * been activated yet
      */
     private final boolean persistent;
@@ -1221,10 +1623,10 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         List<? extends Compressor> decompressors,
         ClientGetState state,
         ClientContext context) {
-      Bucket data = null;
-      // FIXME not strictly correct and unnecessary - archive size already checked against
+      Bucket data;
+      // Note: not strictly correct and unnecessary - archive size already checked against
       // ctx.max*Length inside SingleFileFetcher
-      long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
+      long maxLen = Math.min(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
       try {
         data = context.getBucketFactory(persistent).makeBucket(maxLen);
         try (PipedInputStream pipeIn = new PipedInputStream();
@@ -1232,25 +1634,12 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
             OutputStream output = data.getOutputStream()) {
 
           if (decompressors != null) {
-            if (logMINOR) Logger.minor(this, "decompressing...");
+            if (LOG.isDebugEnabled()) LOG.debug("Decompressing archive payload...");
             pipeOut.connect(pipeIn);
             DecompressorThreadManager decompressorManager =
                 new DecompressorThreadManager(pipeIn, decompressors, maxLen);
             try (PipedInputStream newPipeIn = decompressorManager.execute()) {
-              ClientGetWorkerThread worker =
-                  new ClientGetWorkerThread(
-                      new BufferedInputStream(newPipeIn),
-                      output,
-                      null,
-                      null,
-                      ctx.getSchemeHostAndPort(),
-                      null,
-                      false,
-                      null,
-                      null,
-                      null,
-                      context.linkFilterExceptionProvider);
-              worker.start();
+              ClientGetWorkerThread worker = makeAndStartWorker(newPipeIn, output, context);
               streamGenerator.writeTo(pipeOut, context);
               decompressorManager.waitFinished();
               worker.waitFinished();
@@ -1259,8 +1648,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
             streamGenerator.writeTo(output, context);
           }
         }
-      } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+      } catch (Exception t) {
+        LOG.error("Archive fetcher caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
       }
@@ -1276,48 +1665,56 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     }
 
     private void innerSuccess(Bucket data, ClientContext context) {
+      boolean ok = true;
       try {
-        if (hashes != null) {
-          try (InputStream is = data.getInputStream();
-              MultiHashInputStream hasher =
-                  new MultiHashInputStream(is, HashResult.makeBitmask(hashes))) {
-
-            byte[] buf = new byte[32768];
-            while (hasher.read(buf) > 0)
-              ;
-            HashResult[] results = hasher.getResults();
-            if (!HashResult.strictEquals(results, hashes)) {
-              onFailure(
-                  new FetchException(FetchExceptionMode.CONTENT_HASH_FAILED),
-                  SingleFileFetcher.this,
-                  context);
-              return;
-            }
-          } catch (InsufficientDiskSpaceException e) {
-            onFailure(
-                new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE),
-                SingleFileFetcher.this,
-                context);
-          } catch (IOException e) {
-            onFailure(
-                new FetchException(FetchExceptionMode.BUCKET_ERROR, e),
-                SingleFileFetcher.this,
-                context);
-            return;
-          }
+        if (hashes != null) ok = verifyHashes(data, context);
+        if (ok) {
+          ah.extractToCache(data, actx, element, callback, context.archiveManager, context);
         }
-        ah.extractToCache(data, actx, element, callback, context.archiveManager, context);
-      } catch (ArchiveFailureException e) {
-        SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-        return;
-      } catch (ArchiveRestartException e) {
-        SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
-        return;
+      } catch (ArchiveFailureException | ArchiveRestartException e) {
+        SingleFileFetcher.this.onFailure(wrapToFetchException(e), false, context);
+        ok = false;
       } finally {
         data.free();
       }
+      if (!ok) {
+        return;
+      }
       if (callback != null) return;
       innerWrapHandleMetadata(true, context);
+    }
+
+    private boolean verifyHashes(Bucket data, ClientContext context) {
+      try (InputStream is = data.getInputStream();
+          MultiHashInputStream hasher =
+              new MultiHashInputStream(is, HashResult.makeBitmask(hashes))) {
+        byte[] buf = new byte[32768];
+        int read;
+        do {
+          read = hasher.read(buf);
+        } while (read > 0);
+        HashResult[] results = hasher.getResults();
+        if (!HashResult.strictEquals(results, hashes)) {
+          onFailure(
+              new FetchException(FetchExceptionMode.CONTENT_HASH_FAILED),
+              SingleFileFetcher.this,
+              context);
+          return false;
+        }
+        return true;
+      } catch (InsufficientDiskSpaceException _) {
+        onFailure(
+            new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE),
+            SingleFileFetcher.this,
+            context);
+        return false;
+      } catch (IOException e) {
+        onFailure(
+            new FetchException(FetchExceptionMode.BUCKET_ERROR, e),
+            SingleFileFetcher.this,
+            context);
+        return false;
+      }
     }
 
     @Override
@@ -1369,9 +1766,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         boolean bottomLayer,
         boolean definitiveAnyway,
         ClientContext context) {
-      // This is fetching an archive, which may or may not contain the file we are looking for (it
-      // includes metadata).
-      // So we are definitely not the bottom layer nor definitive.
+      // Not the bottom layer nor definitive when fetching container metadata.
       rcb.onSplitfileCompatibilityMode(min, max, splitfileKey, dontCompress, false, false, context);
     }
 
@@ -1399,12 +1794,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         List<? extends Compressor> decompressors,
         ClientGetState state,
         ClientContext context) {
-      Bucket finalData = null;
-      // does matter only on pre-1255 keys (1255 keys have top block sizes)
-      // FIXME would save at most few tics on decompression
-      // and block allocation;
-      // To be effective should try guess minimal possible size earlier by the number of segments
-      long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
+      Bucket finalData;
+      // Pre-1255 keys lack top block sizes; only minor decompression/alloc perf impact.
+      long maxLen = Math.min(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
       try {
         finalData = context.getBucketFactory(persistent).makeBucket(maxLen);
         try (PipedInputStream pipeIn = new PipedInputStream();
@@ -1412,52 +1804,39 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
             OutputStream output = finalData.getOutputStream()) {
 
           if (decompressors != null) {
-            if (logMINOR) Logger.minor(this, "decompressing...");
+            if (LOG.isDebugEnabled()) LOG.debug("Decompressing multilevel metadata...");
             pipeIn.connect(pipeOut);
             DecompressorThreadManager decompressorManager =
                 new DecompressorThreadManager(pipeIn, decompressors, maxLen);
             try (PipedInputStream newPipeIn = decompressorManager.execute()) {
-              ClientGetWorkerThread worker =
-                  new ClientGetWorkerThread(
-                      new BufferedInputStream(newPipeIn),
-                      output,
-                      null,
-                      null,
-                      ctx.getSchemeHostAndPort(),
-                      null,
-                      false,
-                      null,
-                      null,
-                      null,
-                      context.linkFilterExceptionProvider);
-              worker.start();
+              ClientGetWorkerThread worker = makeAndStartWorker(newPipeIn, output, context);
               streamGenerator.writeTo(pipeOut, context);
               decompressorManager.waitFinished();
               worker.waitFinished();
-              // ClientGetWorkerThread will close output.
+              // ClientGetWorkerThread will close the output.
             }
           } else {
             streamGenerator.writeTo(output, context);
           }
         }
-      } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+      } catch (Exception t) {
+        LOG.error("Multi-level metadata fetcher caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
       }
 
       try {
         parent.onTransition(state, SingleFileFetcher.this, context);
-        // FIXME: Pass an InputStream here, and save ourselves a Bucket
+        // Note: Pass an InputStream here and save ourselves a Bucket
         Metadata meta = Metadata.construct(finalData);
         synchronized (SingleFileFetcher.this) {
-          metadata = meta;
+          updateMetadata(meta);
         }
         innerWrapHandleMetadata(true, context);
       } catch (MetadataParseException e) {
         SingleFileFetcher.this.onFailure(
             new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-      } catch (InsufficientDiskSpaceException e) {
+      } catch (InsufficientDiskSpaceException _) {
         SingleFileFetcher.this.onFailure(
             new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
       } catch (IOException e) {
@@ -1518,7 +1897,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         boolean definitiveAnyway,
         ClientContext context) {
       // Pass through definitiveAnyway as the top block may include the details.
-      // Hence we can get them straight away rather than waiting for the bottom layer.
+      // Hence, we can get them straight away rather than waiting for the bottom layer.
       rcb.onSplitfileCompatibilityMode(
           min, max, splitfileKey, dontCompress, false, definitiveAnyway, context);
     }
@@ -1529,225 +1908,249 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     }
   }
 
-  /** Create a fetcher for a key. */
+  /** Encapsulates policy and limits for creation. */
+  public static final class CreationPolicy {
+    final int maxRetries;
+    final int recursionLevel;
+    final boolean dontTellClientGet;
+    final boolean isEssential;
+    final boolean isFinal;
+    final boolean hasInitialMetadata;
+
+    /**
+     * Create a new {@code CreationPolicy} describing retry, recursion, and reporting behavior.
+     *
+     * @param maxRetries maximum number of retries permitted before surfacing failure
+     * @param recursionLevel current recursion depth used to guard against cycles
+     * @param dontTellClientGet whether to suppress some ClientGetter notifications
+     * @param isEssential whether this request should count toward must‑succeed accounting
+     * @param isFinal whether this leg is final with respect to path component checks
+     * @param hasInitialMetadata whether the caller already holds initial metadata
+     */
+    public CreationPolicy(
+        int maxRetries,
+        int recursionLevel,
+        boolean dontTellClientGet,
+        boolean isEssential,
+        boolean isFinal,
+        boolean hasInitialMetadata) {
+      this.maxRetries = maxRetries;
+      this.recursionLevel = recursionLevel;
+      this.dontTellClientGet = dontTellClientGet;
+      this.isEssential = isEssential;
+      this.isFinal = isFinal;
+      this.hasInitialMetadata = hasInitialMetadata;
+    }
+  }
+
+  /** Encapsulates runtime parameters for creation. */
+  public static final class CreationRuntime {
+    final ClientContext context;
+    final boolean realTimeFlag;
+    final long token;
+
+    /**
+     * Create a new {@code CreationRuntime} that carries per-run values.
+     *
+     * @param context runtime client context providing factories, caches, and schedulers
+     * @param realTimeFlag whether this request prefers real‑time scheduling and timeouts
+     * @param token opaque token propagated to callbacks so clients can correlate events
+     */
+    public CreationRuntime(ClientContext context, boolean realTimeFlag, long token) {
+      this.context = context;
+      this.realTimeFlag = realTimeFlag;
+      this.token = token;
+    }
+  }
+
+  /** Compact arguments holder for USK create helpers and callback construction. */
+  static final class UskCreateArgs {
+    ClientRequester requester;
+    GetCompletionCallback cb;
+    USK usk;
+    List<String> metaStrings;
+    FetchContext ctx;
+    ArchiveContext actx;
+    CreationPolicy policy;
+    CreationRuntime runtime;
+  }
+
+  /**
+   * Create a fetch state for a URI.
+   *
+   * <p>This helper inspects the URI and context to choose an efficient path: it may create a {@link
+   * SimpleSingleFileFetcher} when redirects and splitfiles are disabled, return a {@link
+   * SingleFileFetcher} for regular cases, or initiate a USK flow when the URI resolves to a USK.
+   * The decision is based solely on the provided inputs and does not perform network I/O.
+   *
+   * @param requester parent requester that owns accounting and notifies clients
+   * @param cb completion callback receiving progress, success, or failure signals
+   * @param uri the original request URI including any meta‑strings
+   * @param ctx fetch context governing limits, policy, and allowed MIME types
+   * @param actx archive context used when the target lives inside a container
+   * @param policy creation policy including retries, recursion, and notifications
+   * @param runtime runtime parameters such as real‑time flag and opaque token
+   * @return a new {@link ClientGetState} appropriate for the URI and policy
+   * @throws MalformedURLException if {@code uri} cannot be parsed into a client key
+   * @throws FetchException if recursion limits or policy checks fail during planning
+   */
   public static ClientGetState create(
       ClientRequester requester,
       GetCompletionCallback cb,
       FreenetURI uri,
       FetchContext ctx,
       ArchiveContext actx,
-      int maxRetries,
-      int recursionLevel,
-      boolean dontTellClientGet,
-      long l,
-      boolean isEssential,
-      boolean isFinal,
-      ClientContext context,
-      boolean realTimeFlag,
-      boolean hasInitialMetadata)
+      CreationPolicy policy,
+      CreationRuntime runtime)
       throws MalformedURLException, FetchException {
     BaseClientKey key = null;
-    if (!hasInitialMetadata) key = BaseClientKey.getBaseKey(uri);
-    if ((!uri.hasMetaStrings())
-        && !ctx.allowSplitfiles
-        && !ctx.followRedirects
-        && key instanceof ClientKey clientKey
-        && (!hasInitialMetadata))
+    if (!policy.hasInitialMetadata) key = BaseClientKey.getBaseKey(uri);
+    if (!uri.hasMetaStrings()
+        && !ctx.getAllowSplitfiles()
+        && !ctx.getFollowRedirects()
+        && key instanceof ClientKey clientKey) {
       return new SimpleSingleFileFetcher(
-          clientKey,
-          maxRetries,
-          ctx,
-          requester,
-          cb,
-          isEssential,
-          false,
-          l,
-          context,
-          false,
-          realTimeFlag);
-    if (key instanceof ClientKey || hasInitialMetadata)
-      return new SingleFileFetcher(
-          requester,
-          cb,
-          null,
-          (ClientKey) key,
-          new ArrayList<>(uri.listMetaStrings()),
-          uri,
-          0,
-          ctx,
-          false,
-          realTimeFlag,
-          actx,
-          null,
-          null,
-          maxRetries,
-          recursionLevel,
-          dontTellClientGet,
-          l,
-          isEssential,
-          isFinal,
-          false,
-          (short) 0,
-          context,
-          hasInitialMetadata);
-    else {
-      return uskCreate(
-          requester,
-          realTimeFlag,
-          cb,
-          (USK) key,
-          new ArrayList<>(uri.listMetaStrings()),
-          ctx,
-          actx,
-          maxRetries,
-          recursionLevel,
-          dontTellClientGet,
-          l,
-          isEssential,
-          isFinal,
-          context);
+          SimpleSingleFileFetcher.Cfg.create(
+                  clientKey, policy.maxRetries, ctx, requester, cb, runtime.token, runtime.context)
+              .essential(policy.isEssential)
+              .dontAdd(false)
+              .deleteFetchContext(false)
+              .realTime(runtime.realTimeFlag));
+    }
+    if (key instanceof ClientKey || policy.hasInitialMetadata) {
+      InitParams p = new InitParams();
+      p.parent = requester;
+      p.cb = cb;
+      p.metadata = null;
+      p.key = (ClientKey) key;
+      p.metaStrings = new ArrayList<>(uri.listMetaStrings());
+      p.origURI = uri;
+      p.addedMetaStrings = 0;
+      p.ctx = ctx;
+      p.deleteFetchContext = false;
+      p.actx = actx;
+      p.ah = null;
+      p.archiveMetadata = null;
+      p.policy = policy;
+      p.runtime = runtime;
+      p.topDontCompress = false;
+      p.topCompatibilityMode = (short) 0;
+      return new SingleFileFetcher(p);
+    } else {
+      UskCreateArgs a = new UskCreateArgs();
+      a.requester = requester;
+      a.cb = cb;
+      a.usk = (USK) key;
+      a.metaStrings = new ArrayList<>(uri.listMetaStrings());
+      a.ctx = ctx;
+      a.actx = actx;
+      a.policy = policy;
+      a.runtime = runtime;
+      return uskCreate(a);
     }
   }
 
-  private static ClientGetState uskCreate(
-      ClientRequester requester,
-      boolean realTimeFlag,
-      GetCompletionCallback cb,
-      USK usk,
-      ArrayList<String> metaStrings,
-      FetchContext ctx,
-      ArchiveContext actx,
-      int maxRetries,
-      int recursionLevel,
-      boolean dontTellClientGet,
-      long l,
-      boolean isEssential,
-      boolean isFinal,
-      ClientContext context)
-      throws FetchException {
-    if (usk.suggestedEdition >= 0) {
-      // Return the latest known version but at least suggestedEdition.
-      long edition = context.uskManager.lookupKnownGood(usk);
-      if (edition <= usk.suggestedEdition) {
-        context.uskManager.startTemporaryBackgroundFetcher(usk, context, ctx, true, realTimeFlag);
-        edition = context.uskManager.lookupKnownGood(usk);
-        if (edition > usk.suggestedEdition) {
-          if (logMINOR) Logger.minor(SingleFileFetcher.class, "Redirecting to edition " + edition);
-          cb.onFailure(
-              new FetchException(
-                  FetchExceptionMode.PERMANENT_REDIRECT,
-                  usk.copy(edition).getURI().addMetaStrings(metaStrings)),
-              null,
-              context);
-          return null;
-        } else if (edition == -1
-            && context.uskManager.lookupLatestSlot(usk)
-                == -1) { // We do not want to be going round and round here!
-          // Check the datastore first.
-          USKFetcherTag tag =
-              context.uskManager.getFetcher(
-                  usk.copy(usk.suggestedEdition),
-                  ctx,
-                  false,
-                  requester.persistent(),
-                  realTimeFlag,
-                  new MyUSKFetcherCallback(
-                      requester,
-                      cb,
-                      usk,
-                      metaStrings,
-                      ctx,
-                      actx,
-                      realTimeFlag,
-                      maxRetries,
-                      recursionLevel,
-                      dontTellClientGet,
-                      l,
-                      requester.persistent(),
-                      true),
-                  false,
-                  context,
-                  true);
-          if (isEssential) requester.addMustSucceedBlocks(1);
-          return tag;
-
-        } else {
-          // Transition to SingleFileFetcher
-          GetCompletionCallback myCB =
-              new USKProxyCompletionCallback(usk, cb, requester.persistent());
-          // Want to update the latest known good iff the fetch succeeds.
-          return new SingleFileFetcher(
-              requester,
-              myCB,
-              null,
-              usk.getSSK(),
-              metaStrings,
-              usk.getURI().addMetaStrings(metaStrings),
-              0,
-              ctx,
-              false,
-              realTimeFlag,
-              actx,
-              null,
-              null,
-              maxRetries,
-              recursionLevel,
-              dontTellClientGet,
-              l,
-              isEssential,
-              isFinal,
-              false,
-              (short) 0,
-              context,
-              false);
-        }
-      } else {
-        cb.onFailure(
-            new FetchException(
-                FetchExceptionMode.PERMANENT_REDIRECT,
-                usk.copy(edition).getURI().addMetaStrings(metaStrings)),
-            null,
-            context);
-        return null;
-      }
+  private static ClientGetState uskCreate(UskCreateArgs a) throws FetchException {
+    if (a.usk.suggestedEdition >= 0) {
+      return uskCreateKnownGood(a);
     } else {
-      // Do a thorough, blocking search
+      return uskCreateThoroughSearch(a);
+    }
+  }
+
+  private static ClientGetState uskCreateKnownGood(UskCreateArgs a) throws FetchException {
+    long edition = a.runtime.context.uskManager.lookupKnownGood(a.usk);
+    if (edition > a.usk.suggestedEdition) {
+      if (LOG.isDebugEnabled()) LOG.debug("USK known-good redirect to edition {}", edition);
+      a.cb.onFailure(
+          new FetchException(
+              FetchExceptionMode.PERMANENT_REDIRECT,
+              a.usk.copy(edition).getURI().addMetaStrings(a.metaStrings)),
+          null,
+          a.runtime.context);
+      return null;
+    }
+    a.runtime.context.uskManager.startTemporaryBackgroundFetcher(
+        a.usk, a.runtime.context, a.ctx, true, a.runtime.realTimeFlag);
+    edition = a.runtime.context.uskManager.lookupKnownGood(a.usk);
+    return decideAfterBackgroundFetcher(a, edition);
+  }
+
+  private static ClientGetState decideAfterBackgroundFetcher(UskCreateArgs a, long edition)
+      throws FetchException {
+    if (edition > a.usk.suggestedEdition) {
+      if (LOG.isDebugEnabled()) LOG.debug("USK background redirect to edition {}", edition);
+      a.cb.onFailure(
+          new FetchException(
+              FetchExceptionMode.PERMANENT_REDIRECT,
+              a.usk.copy(edition).getURI().addMetaStrings(a.metaStrings)),
+          null,
+          a.runtime.context);
+      return null;
+    }
+    if (edition == -1 && a.runtime.context.uskManager.lookupLatestSlot(a.usk) == -1) {
       USKFetcherTag tag =
-          context.uskManager.getFetcher(
-              usk.copy(-usk.suggestedEdition),
-              ctx,
-              false,
-              requester.persistent(),
-              realTimeFlag,
-              new MyUSKFetcherCallback(
-                  requester,
-                  cb,
-                  usk,
-                  metaStrings,
-                  ctx,
-                  actx,
-                  realTimeFlag,
-                  maxRetries,
-                  recursionLevel,
-                  dontTellClientGet,
-                  l,
-                  requester.persistent(),
-                  false),
-              false,
-              context,
-              false);
-      if (isEssential) requester.addMustSucceedBlocks(1);
+          a.runtime.context.uskManager.getFetcher(
+              a.usk.copy(a.usk.suggestedEdition),
+              a.ctx,
+              new MyUSKFetcherCallback(a, true),
+              new USKFetcherTagOptions(
+                  false,
+                  a.requester.persistent(),
+                  a.runtime.realTimeFlag,
+                  false,
+                  a.runtime.context,
+                  true));
+      if (a.policy.isEssential) a.requester.addMustSucceedBlocks(1);
       return tag;
     }
+    GetCompletionCallback myCB =
+        new USKProxyCompletionCallback(a.usk, a.cb, a.requester.persistent());
+    InitParams p = new InitParams();
+    p.parent = a.requester;
+    p.cb = myCB;
+    p.metadata = null;
+    p.key = a.usk.getSSK();
+    p.metaStrings = a.metaStrings;
+    p.origURI = a.usk.getURI().addMetaStrings(a.metaStrings);
+    p.addedMetaStrings = 0;
+    p.ctx = a.ctx;
+    p.deleteFetchContext = false;
+    p.actx = a.actx;
+    p.ah = null;
+    p.archiveMetadata = null;
+    p.policy = a.policy;
+    p.runtime = a.runtime;
+    p.topDontCompress = false;
+    p.topCompatibilityMode = (short) 0;
+    return new SingleFileFetcher(p);
   }
 
-  public static class MyUSKFetcherCallback implements USKFetcherTagCallback, Serializable {
+  private static ClientGetState uskCreateThoroughSearch(UskCreateArgs a) {
+    USKFetcherTag tag =
+        a.runtime.context.uskManager.getFetcher(
+            a.usk.copy(-a.usk.suggestedEdition),
+            a.ctx,
+            new MyUSKFetcherCallback(a, false),
+            new USKFetcherTagOptions(
+                false,
+                a.requester.persistent(),
+                a.runtime.realTimeFlag,
+                false,
+                a.runtime.context,
+                false));
+    if (a.policy.isEssential) a.requester.addMustSucceedBlocks(1);
+    return tag;
+  }
+
+  static class MyUSKFetcherCallback implements USKFetcherTagCallback, Serializable {
 
     @Serial private static final long serialVersionUID = 1L;
     final ClientRequester parent;
+    // Must be serializable to preserve persistent USK fetch completion after restart
     final GetCompletionCallback cb;
     final USK usk;
-    final ArrayList<String> metaStrings;
+    private final List<String> metaStrings;
     final FetchContext ctx;
     final ArchiveContext actx;
     final int maxRetries;
@@ -1765,45 +2168,42 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       this.tag = tag;
     }
 
-    public MyUSKFetcherCallback(
-        ClientRequester requester,
-        GetCompletionCallback cb,
-        USK usk,
-        ArrayList<String> metaStrings,
-        FetchContext ctx,
-        ArchiveContext actx,
-        boolean realTimeFlag,
-        int maxRetries,
-        int recursionLevel,
-        boolean dontTellClientGet,
-        long l,
-        boolean persistent,
-        boolean datastoreOnly) {
-      this.parent = requester;
-      this.cb = cb;
-      this.usk = usk;
-      this.metaStrings = metaStrings;
-      this.ctx = ctx;
-      this.actx = actx;
-      this.maxRetries = maxRetries;
-      this.recursionLevel = recursionLevel;
-      this.dontTellClientGet = dontTellClientGet;
-      this.token = l;
-      this.persistent = persistent;
+    public MyUSKFetcherCallback(UskCreateArgs args, boolean datastoreOnly) {
+      this.parent = args.requester;
+      this.cb = args.cb;
+      this.usk = args.usk;
+      this.metaStrings = args.metaStrings;
+      this.ctx = args.ctx;
+      this.actx = args.actx;
+      this.maxRetries = args.policy.maxRetries;
+      this.recursionLevel = args.policy.recursionLevel;
+      this.dontTellClientGet = args.policy.dontTellClientGet;
+      this.token = args.runtime.token;
+      this.persistent = args.requester.persistent();
       this.datastoreOnly = datastoreOnly;
-      this.hashCode = super.hashCode();
-      this.realTimeFlag = realTimeFlag;
-      if (logMINOR)
-        Logger.minor(
+      this.hashCode = System.identityHashCode(this);
+      this.realTimeFlag = args.runtime.realTimeFlag;
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "Created {}" + LOG_FOR_LABEL + "{} and {} datastore only = {}",
             this,
-            "Created "
-                + this
-                + " for "
-                + usk
-                + " and "
-                + cb
-                + " datastore only = "
-                + datastoreOnly);
+            this.usk,
+            this.cb,
+            datastoreOnly);
+    }
+
+    @Serial
+    private void writeObject(ObjectOutputStream out) throws IOException {
+      if (cb != null && !(cb instanceof Serializable)) {
+        throw new NotSerializableException(
+            "GetCompletionCallback must be Serializable: " + cb.getClass().getName());
+      }
+      out.defaultWriteObject();
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
     }
 
     @Override
@@ -1812,46 +2212,42 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     }
 
     @Override
-    public void onFoundEdition(
-        long l,
-        USK newUSK,
-        ClientContext context,
-        boolean metadata,
-        short codec,
-        byte[] data,
-        boolean newKnownGood,
-        boolean newSlotToo) {
-      if (l < usk.suggestedEdition && datastoreOnly) {
-        l = usk.suggestedEdition;
+    @SuppressWarnings("RedundantMethodOverride")
+    public boolean equals(Object obj) {
+      return this == obj;
+    }
+
+    @Override
+    public void onFoundEdition(USKFoundEdition foundEdition) {
+      long edition = foundEdition.edition();
+      USK newUSK = foundEdition.key();
+      ClientContext context = foundEdition.context();
+      if (edition < usk.suggestedEdition && datastoreOnly) {
+        edition = usk.suggestedEdition;
       }
-      ClientSSK key = usk.getSSK(l);
+      ClientSSK key = usk.getSSK(edition);
       try {
-        if (l == usk.suggestedEdition || (l == 0 && usk.suggestedEdition == 1)) {
-          SingleFileFetcher sf =
-              new SingleFileFetcher(
-                  parent,
-                  cb,
-                  null,
-                  key,
-                  metaStrings,
-                  key.getURI().addMetaStrings(metaStrings),
-                  0,
-                  ctx,
-                  false,
-                  realTimeFlag,
-                  actx,
-                  null,
-                  null,
-                  maxRetries,
-                  recursionLevel + 1,
-                  dontTellClientGet,
-                  token,
-                  false,
-                  true,
-                  false,
-                  (short) 0,
-                  context,
-                  false);
+        if (edition == usk.suggestedEdition || (edition == 0 && usk.suggestedEdition == 1)) {
+          InitParams p = new InitParams();
+          p.parent = parent;
+          p.cb = cb;
+          p.metadata = null;
+          p.key = key;
+          p.metaStrings = metaStrings;
+          p.origURI = key.getURI().addMetaStrings(metaStrings);
+          p.addedMetaStrings = 0;
+          p.ctx = ctx;
+          p.deleteFetchContext = false;
+          p.actx = actx;
+          p.ah = null;
+          p.archiveMetadata = null;
+          p.policy =
+              new CreationPolicy(
+                  maxRetries, recursionLevel + 1, dontTellClientGet, false, true, false);
+          p.runtime = new CreationRuntime(context, realTimeFlag, token);
+          p.topDontCompress = false;
+          p.topCompatibilityMode = (short) 0;
+          SingleFileFetcher sf = new SingleFileFetcher(p);
           if (tag != null) {
             cb.onTransition(tag, sf, context);
           }
@@ -1874,14 +2270,18 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       FetchException e = null;
       if (datastoreOnly) {
         try {
-          onFoundEdition(usk.suggestedEdition, usk, context, false, (short) -1, null, false, false);
+          onFoundEdition(
+              new USKFoundEdition(
+                  new USKFoundEditionPayload(usk.suggestedEdition, usk, false, (short) -1, null),
+                  context,
+                  new USKFoundEditionProgress(false, false)));
           return;
-        } catch (Throwable t) {
+        } catch (Exception t) {
           e = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
         }
       }
       if (e == null) e = new FetchException(FetchExceptionMode.DATA_NOT_FOUND, "No USK found");
-      if (logMINOR) Logger.minor(this, "Failing USK with " + e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Failing USK with {}", e, e);
       if (cb == null)
         throw new NullPointerException(
             "Callback is null in "

@@ -11,39 +11,54 @@ import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.NoSuchElementException;
+import java.util.StringTokenizer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import network.crypta.clients.http.TranslationToadlet;
-import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * This is the core of all the localization stuff. This method can get localized strings from any
- * SimpleFieldSet file, and can, if necessary, use a custom ClassLoader. The language can be changed
- * at anytime.
+ * Core localization utility for loading translated strings from {@link SimpleFieldSet} resources.
+ * Supports explicit language selection, lookup with a fallback language, and on-disk overrides.
  *
- * <p>Note : do not use this class *as is*, use NodeL10n.getBase() or PluginL10n.getBase().
+ * <p>Resolution order for a key:
  *
- * <p>Note : this class also supports using/saving/editing overridden translations.
+ * <ol>
+ *   <li>Override file for the selected language, if present
+ *   <li>Translation for the selected language
+ *   <li>Translation in the fallback language ({@link LANGUAGE#getDefault()}; currently English)
+ *   <li>The key itself if no translation is available
+ * </ol>
+ *
+ * <p>Instances are stateful (selected language and overrides). Only {@link #loadFallback()} is
+ * synchronized; coordinate externally if sharing an instance across threads.
+ *
+ * <p>Do not use this class directly in most application code; prefer {@code NodeL10n.getBase()}.
+ *
+ * <p>This class also supports reading, saving, and editing overridden translations on disk.
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  * @author Artefact2
  */
-public class BaseL10n {
+public final class BaseL10n {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseL10n.class);
+
+  // Sonar: deduplicate common literals used in this class
+  private static final String L10N_VAR_PREFIX = "\\$\\{"; // matches "${"
+  private static final String L10N_VAR_SUFFIX = "}"; // matches "}"
+  private static final String UNLISTED_LITERAL = "unlisted";
 
   /**
-   * Central list of languages and the codes to identify them. When adding new ones, use ISO639-2 or
-   * 3 if there is a code for the desired language available there. If not, fall back to RFC5646 (=
-   * "IETF language tags").
+   * Registry of supported languages. Each enum constant defines a short code (RFC 5646 or ISO 639),
+   * a display name, an installer {@code isoCode}, and optional Windows locale aliases.
    *
-   * <p>TODO: Code quality: Switch from this manually maintained list to a predefined one. Use
-   * standard Java class {@link Locale}. Discussion at https://github.com/freenet/fred/pull/500 has
-   * shown that the IETF list is the best choice. It is a combination of ISO639-3 codes (for which
-   * we already have class {@link ISO639_3}) and a standard country list. And most importantly: It
-   * is understood by standard Java class {@link Locale}. Bugtracker entry for this:
-   * https://bugs.freenetproject.org/view.php?id=6857
+   * <p>Note: This list is manually maintained. If it is ever replaced, prefer a standards-based
+   * source backed by {@link Locale}. The preferred target is IETF language tags (RFC 5646), which
+   * combine ISO 639-3 with standard region tags and are natively understood by {@link Locale}.
    *
    * @see "http://www.omniglot.com/language/names.htm"
    * @see "http://loc.gov/standards/iso639-2/php/code_list.php"
@@ -54,126 +69,134 @@ public class BaseL10n {
     // Windows language codes must be preceded with WINDOWS and be in upper case hex, 4 digits.
     // See http://www.autohotkey.com/docs/misc/Languages.htm
 
-    CROATIAN("hr", "Hrvatski", "hrv", new String[] {"WINDOWS041A"}),
+    CROATIAN("hr", "Hrvatski", "hrv", aliases("WINDOWS041A")),
     ENGLISH(
         "en",
         "English",
         "eng",
-        new String[] {
-          "WINDOWS0409",
-          "WINDOWS0809",
-          "WINDOWS0C09",
-          "WINDOWS1009",
-          "WINDOWS1409",
-          "WINDOWS1809",
-          "WINDOWS1C09",
-          "WINDOWS2009",
-          "WINDOWS2409",
-          "WINDOWS2809",
-          "WINDOWS2C09",
-          "WINDOWS3009",
-          "WINDOWS3409"
-        }),
-    HUNGARIAN("hu", "magyar", "hun", new String[] {"WINDOWS040E"}),
+        aliases(
+            "WINDOWS0409",
+            "WINDOWS0809",
+            "WINDOWS0C09",
+            "WINDOWS1009",
+            "WINDOWS1409",
+            "WINDOWS1809",
+            "WINDOWS1C09",
+            "WINDOWS2009",
+            "WINDOWS2409",
+            "WINDOWS2809",
+            "WINDOWS2C09",
+            "WINDOWS3009",
+            "WINDOWS3409")),
+    HUNGARIAN("hu", "magyar", "hun", aliases("WINDOWS040E")),
     SPANISH(
         "es",
         "Español",
         "spa",
-        new String[] {
-          "WINDOWS040A",
-          "WINDOWS080A",
-          "WINDOWS0C0A",
-          "WINDOWS100A",
-          "WINDOWS140A",
-          "WINDOWS180A",
-          "WINDOWS1C0A",
-          "WINDOWS200A",
-          "WINDOWS240A",
-          "WINDOWS280A",
-          "WINDOWS2C0A",
-          "WINDOWS300A",
-          "WINDOWS340A",
-          "WINDOWS380A",
-          "WINDOWS3C0A",
-          "WINDOWS400A",
-          "WINDOWS440A",
-          "WINDOWS480A",
-          "WINDOWS4C0A",
-          "WINDOWS500A"
-        }),
-    DANISH("da", "Dansk", "dan", new String[] {"WINDOWS0406"}),
-    DUTCH("nl", "Nederlands", "nld", new String[] {"WINDOWS0413", "WINDOWS0813"}),
+        aliases(
+            "WINDOWS040A",
+            "WINDOWS080A",
+            "WINDOWS0C0A",
+            "WINDOWS100A",
+            "WINDOWS140A",
+            "WINDOWS180A",
+            "WINDOWS1C0A",
+            "WINDOWS200A",
+            "WINDOWS240A",
+            "WINDOWS280A",
+            "WINDOWS2C0A",
+            "WINDOWS300A",
+            "WINDOWS340A",
+            "WINDOWS380A",
+            "WINDOWS3C0A",
+            "WINDOWS400A",
+            "WINDOWS440A",
+            "WINDOWS480A",
+            "WINDOWS4C0A",
+            "WINDOWS500A")),
+    DANISH("da", "Dansk", "dan", aliases("WINDOWS0406")),
+    DUTCH("nl", "Nederlands", "nld", aliases("WINDOWS0413", "WINDOWS0813")),
     GERMAN(
         "de",
         "Deutsch",
         "deu",
-        new String[] {"WINDOWS0407", "WINDOWS0807", "WINDOWS0C07", "WINDOWS1007", "WINDOWS1407"}),
-    FINNISH("fi", "Suomi", "fin", new String[] {"WINDOWS040B"}),
+        aliases("WINDOWS0407", "WINDOWS0807", "WINDOWS0C07", "WINDOWS1007", "WINDOWS1407")),
+    FINNISH("fi", "Suomi", "fin", aliases("WINDOWS040B")),
     FRENCH(
         "fr",
         "Français",
         "fra",
-        new String[] {
-          "WINDOWS040C", "WINDOWS080C", "WINDOWS0C0C", "WINDOWS100C", "WINDOWS140C", "WINDOWS180C"
-        }),
-    ITALIAN("it", "Italiano", "ita", new String[] {"WINDOWS0410", "WINDOWS0810"}),
-    // TODO: This does not adhere to RFC5646. Fix it as part of changing the whole list to
-    // RFC5646. Find a way to rename this without breaking the language in all plugins.
-    NORWEGIAN("nb-no", "Bokmål", "nob", new String[] {"WINDOWS0414", "WINDOWS0814"}),
-    POLISH("pl", "Polski", "pol", new String[] {"WINDOWS0415"}),
-    SWEDISH("sv", "Svenska", "swe", new String[] {"WINDOWS041D", "WINDOWS081D"}),
-    // TODO: This does not adhere to RFC5646. Fix it as part of changing the whole list to
-    // RFC5646. Find a way to rename this without breaking the language in all plugins.
-    CHINESE("zh-cn", "中文(简体)", "chn", new String[] {"WINDOWS0804", "WINDOWS1004"}),
-    // simplified chinese, used on mainland, Singapore and Malaysia
-    // TODO: This does not adhere to RFC5646. Fix it as part of changing the whole list to
-    // RFC5646. Find a way to rename this without breaking the language in all plugins.
+        aliases(
+            "WINDOWS040C",
+            "WINDOWS080C",
+            "WINDOWS0C0C",
+            "WINDOWS100C",
+            "WINDOWS140C",
+            "WINDOWS180C")),
+    ITALIAN("it", "Italiano", "ita", aliases("WINDOWS0410", "WINDOWS0810")),
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking external identifiers.
+    NORWEGIAN("nb-no", "Bokmål", "nob", aliases("WINDOWS0414", "WINDOWS0814")),
+    POLISH("pl", "Polski", "pol", aliases("WINDOWS0415")),
+    SWEDISH("sv", "Svenska", "swe", aliases("WINDOWS041D", "WINDOWS081D")),
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking external identifiers.
+    CHINESE("zh-cn", "中文(简体)", "chn", aliases("WINDOWS0804", "WINDOWS1004")),
+    // simplified chinese, used on the mainland, Singapore and Malaysia
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking external identifiers.
     CHINESE_TAIWAN(
-        "zh-tw", "中文(繁體)", "zh-tw", new String[] {"WINDOWS0404", "WINDOWS0C04", "WINDOWS1404"}),
-    // traditional chinese, used in Taiwan, Hong Kong and Macau
+        "zh-tw", "中文(繁體)", "zh-tw", aliases("WINDOWS0404", "WINDOWS0C04", "WINDOWS1404")),
+    // traditional Chinese, used in Taiwan, Hong Kong and Macau
     RUSSIAN(
         "ru",
         "Русский",
         "rus",
-        new String[] {
-          "WINDOWS0419"
-        }), // Just one variant for russian. Belorussian is separate, code page 423, speakers may or
-    // may not speak russian, I'm not including it.
-    JAPANESE("ja", "日本語", "jpn", new String[] {"WINDOWS0411"}),
-    PORTUGUESE("pt-PT", "Português do Portugal", "pt", new String[] {"WINDOWS0816"}),
-    // TODO: This does not adhere to RFC5646. Fix it as part of changing the whole list to
-    // RFC5646. Find a way to rename this without breaking the language in all plugins.
-    BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", new String[] {"WINDOWS0416"}),
-    GREEK("el", "Ελληνικά", "ell", new String[] {"WINDOWS0408"}),
-    UNLISTED("unlisted", "unlisted", "unlisted", new String[] {});
+        aliases(
+            "WINDOWS0419")), // Just one variant for Russian. Belorussian is a separate, code page
+    // 423, speakers may or
+    // may not speak Russian, I'm not including it.
+    JAPANESE("ja", "日本語", "jpn", aliases("WINDOWS0411")),
+    PORTUGUESE("pt-PT", "Português do Portugal", "pt", aliases("WINDOWS0816")),
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking external identifiers.
+    BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", aliases("WINDOWS0416")),
+    GREEK("el", "Ελληνικά", "ell", aliases("WINDOWS0408")),
+    UNLISTED(UNLISTED_LITERAL, UNLISTED_LITERAL, UNLISTED_LITERAL, "");
 
-    /** The identifier we use internally : MUST BE UNIQUE! */
+    /** Internal identifier; must be unique. */
     public final String shortCode;
 
-    /** The identifier shown to the user */
+    /** Display name shown to users. */
     public final String fullName;
 
-    /** The mapping with the installer's l10n (@see bug #2424); MUST BE UNIQUE! */
+    /** Installer-facing language identifier; must be unique (see bug #2424). */
     public final String isoCode;
 
-    public final String[] aliases;
+    private final String aliases;
 
-    LANGUAGE(String shortCode, String fullName, String isoCode, String[] aliases) {
+    LANGUAGE(String shortCode, String fullName, String isoCode, String aliases) {
       this.shortCode = shortCode;
       this.fullName = fullName;
       this.isoCode = isoCode;
       this.aliases = aliases;
     }
 
-    LANGUAGE(LANGUAGE l) {
-      this(l.shortCode, l.fullName, l.isoCode, l.aliases);
+    private static String aliases(String... values) {
+      if (values.length == 0) {
+        return "";
+      }
+      return String.join(",", values);
     }
 
+    // No copy-constructor; enum constants are fixed.
+
     /**
-     * Create a new LANGUAGE object from either its short code, its full name or its ISO code.
+     * Map a string to a {@link LANGUAGE} by matching short code, display name, ISO code, enum name
+     * (case-insensitive), or platform-specific aliases.
      *
-     * @param whatever Short code, full name or ISO code.
-     * @return LANGUAGE
+     * @param whatever Short code, full name, ISO code, enum name, or alias.
+     * @return The matching language, or {@code null} if none matches.
      */
     public static LANGUAGE mapToLanguage(String whatever) {
       for (LANGUAGE currentLanguage : LANGUAGE.values()) {
@@ -183,22 +206,31 @@ public class BaseL10n {
             || currentLanguage.toString().equalsIgnoreCase(whatever)) {
           return currentLanguage;
         }
-        if (currentLanguage.aliases != null) {
-          for (String s : currentLanguage.aliases)
+        if (!currentLanguage.aliases.isEmpty()) {
+          StringTokenizer tokenizer = new StringTokenizer(currentLanguage.aliases, ",");
+          while (tokenizer.hasMoreTokens()) {
+            String s = tokenizer.nextToken();
             if (whatever.equalsIgnoreCase(s)) return currentLanguage;
+          }
         }
       }
       return null;
     }
 
+    /**
+     * Return all display names in alphabetical order, with the special {@code UNLISTED} entry
+     * appended at the end.
+     *
+     * @return Sorted array of display names ending with {@code "unlisted"}.
+     */
     public static String[] valuesWithFullNames() {
       LANGUAGE[] allValues = values();
       ArrayList<String> result = new ArrayList<>(allValues.length);
-      for (int i = 0; i < allValues.length; i++) {
+      for (LANGUAGE allValue : allValues) {
         // We will return the full names sorted alphabetically. To ensure that the user
         // notices the special "UNLISTED" language code, we add it to the end of the list
         // after sorting, so now we skip it.
-        if (allValues[i] != UNLISTED) result.add(allValues[i].fullName);
+        if (allValue != UNLISTED) result.add(allValue.fullName);
       }
 
       Collections.sort(result);
@@ -207,6 +239,11 @@ public class BaseL10n {
       return result.toArray(new String[0]);
     }
 
+    /**
+     * Default language used as fallback for missing translations.
+     *
+     * @return Default language constant.
+     */
     public static LANGUAGE getDefault() {
       return ENGLISH;
     }
@@ -271,6 +308,16 @@ public class BaseL10n {
     public void remove() {
       throw new UnsupportedOperationException();
     }
+
+    private String getFallbackString(String key) {
+      BaseL10n.this.loadFallback();
+      SimpleFieldSet fallback = BaseL10n.this.fallbackTranslation.get();
+      String result = fallback == null ? null : fallback.get(key);
+      if (result == null) {
+        LOG.error("The default translation for {} hasn't been found!", key);
+      }
+      return result;
+    }
   }
 
   private LANGUAGE lang;
@@ -278,18 +325,22 @@ public class BaseL10n {
   private final String l10nFilesMask;
   private final String l10nOverrideFilesMask;
   private SimpleFieldSet currentTranslation = null;
-  private SimpleFieldSet fallbackTranslation = null;
+  private final AtomicReference<SimpleFieldSet> fallbackTranslation = new AtomicReference<>();
   private SimpleFieldSet translationOverride;
   private final ClassLoader cl;
 
+  /**
+   * Resolve a class loader for resource lookups. Falls back to the system class loader when the
+   * defining loader is {@code null} (e.g., boot class loader).
+   */
   private static ClassLoader getClassLoaderFallback() {
-    ClassLoader _cl;
+    ClassLoader loader;
     // getClassLoader() can return null on some implementations if the boot classloader was used.
-    _cl = BaseL10n.class.getClassLoader();
-    if (_cl == null) {
-      _cl = ClassLoader.getSystemClassLoader();
+    loader = BaseL10n.class.getClassLoader();
+    if (loader == null) {
+      loader = ClassLoader.getSystemClassLoader();
     }
-    return _cl;
+    return loader;
   }
 
   public BaseL10n(String l10nFilesBasePath, String l10nFilesMask, String l10nOverrideFilesMask) {
@@ -305,15 +356,17 @@ public class BaseL10n {
   }
 
   /**
-   * Create a new BaseL10n object.
+   * Create a new instance.
    *
-   * <p>Note : you shouldn't have to run this yourself. Use PluginL10n or NodeL10n.
+   * <p>Prefer using higher-level helpers in application code (typically {@code NodeL10n}).
    *
-   * @param l10nFilesBasePath Base path of the l10n files, ex. "com/mycorp/myproject/l10n"
-   * @param l10nFilesMask Mask of the l10n files, ex. "messages_${lang}.l10n"
-   * @param l10nOverrideFilesMask Same as l10nFilesMask, but for overridden messages.
-   * @param lang Language to use.
-   * @param cl ClassLoader to use.
+   * @param l10nFilesBasePath Base path under which l10n resources live, for example {@code
+   *     "com/mycorp/myproject/l10n"}. A trailing slash is added if missing.
+   * @param l10nFilesMask File mask for the language resources, for example {@code
+   *     "messages_${lang}.l10n"} where {@code ${lang}} is replaced by the language short code.
+   * @param l10nOverrideFilesMask File path for on-disk overrides for the selected language.
+   * @param lang Language to select initially.
+   * @param cl Class loader used to resolve bundled l10n resources.
    */
   public BaseL10n(
       String l10nFilesBasePath,
@@ -333,28 +386,34 @@ public class BaseL10n {
   }
 
   /**
-   * Get the full base name of the L10n file used by the current language.
+   * Build the resource path for the specified language using the configured mask.
    *
-   * @return String
+   * @param lang Language whose resource path should be generated.
+   * @return Resource path constructed from {@code l10nFilesBasePath} and {@code l10nFilesMask}.
    */
   public String getL10nFileName(LANGUAGE lang) {
     return this.l10nFilesBasePath + this.l10nFilesMask.replace("${lang}", lang.shortCode);
   }
 
   /**
-   * Get the full base name of the L10n override file used by the current language.
+   * Build the on-disk override file path for the specified language using the configured mask.
    *
-   * @return String
+   * @param lang Language whose override path should be generated.
+   * @return File path constructed from {@code l10nOverrideFilesMask}.
    */
   public String getL10nOverrideFileName(LANGUAGE lang) {
     return this.l10nOverrideFilesMask.replace("${lang}", lang.shortCode);
   }
 
   /**
-   * Use a new language, and load the SimpleFieldSets accordingly.
+   * Select a new language and load its translation and overrides.
    *
-   * @param selectedLanguage New language to use.
-   * @throws MissingResourceException If the l10n file could not be found.
+   * <p>If no bundled translation exists for the language, the instance keeps an empty translation
+   * set and will fall back to the default language at lookup time. Override files (or their backup)
+   * are also loaded when present.
+   *
+   * @param selectedLanguage New language to use (must not be {@code null}).
+   * @throws MissingResourceException If {@code selectedLanguage} is {@code null}.
    */
   public void setLanguage(final LANGUAGE selectedLanguage) throws MissingResourceException {
     if (selectedLanguage == null) {
@@ -363,41 +422,39 @@ public class BaseL10n {
 
     this.lang = selectedLanguage;
 
-    Logger.normal(this.getClass(), "Changing the current language to : " + this.lang);
+    LOG.info("Changing the current language to : {}", this.lang);
 
     try {
       this.loadOverrideFileOrBackup();
     } catch (IOException e) {
       this.translationOverride = null;
-      Logger.error(this, "IOError while accessing the file!" + e.getMessage(), e);
+      LOG.error("IOError while accessing the file!{}", e.getMessage(), e);
     }
 
     this.currentTranslation = this.loadTranslation(lang);
     if (this.currentTranslation == null) {
-      Logger.error(
-          this,
-          "The translation file for "
-              + lang
-              + " is invalid. The node will load an empty template.");
+      LOG.error(
+          "The translation file for {} is invalid. The node will load an empty template.", lang);
       this.currentTranslation = null;
     }
   }
 
   /**
-   * Try loading the override file, or the backup override file if it exists.
+   * Load the override file for the current language, or its {@code .bak} backup if necessary. Sets
+   * {@link #translationOverride} accordingly.
    *
-   * @throws IOException
+   * @throws IOException If reading either file fails.
    */
   private void loadOverrideFileOrBackup() throws IOException {
     final File tmpFile = new File(this.getL10nOverrideFileName(this.lang));
     if (tmpFile.exists() && tmpFile.canRead() && tmpFile.length() > 0) {
-      Logger.normal(this, "Override file detected : let's try to load it");
+      LOG.info("Override file detected : let's try to load it");
       this.translationOverride = SimpleFieldSet.readFrom(tmpFile, false, false);
     } else {
       // try to restore a backup
       final File backup = new File(tmpFile.getParentFile(), tmpFile.getName() + ".bak");
       if (backup.exists() && backup.length() > 0) {
-        Logger.normal(this, "Override-backup file detected : let's try to load it");
+        LOG.info("Override-backup file detected : let's try to load it");
         this.translationOverride = SimpleFieldSet.readFrom(backup, false, false);
       } else {
         this.translationOverride = null;
@@ -406,10 +463,10 @@ public class BaseL10n {
   }
 
   /**
-   * Load the l10n file for a custom language and return its parsed SimpleFieldSet.
+   * Load and parse the bundled l10n resource for a language.
    *
    * @param lang Language to use.
-   * @return SimpleFieldSet
+   * @return Parsed {@link SimpleFieldSet}, or {@code null} when the resource is missing or invalid.
    */
   private SimpleFieldSet loadTranslation(LANGUAGE lang) {
     SimpleFieldSet result = null;
@@ -419,43 +476,47 @@ public class BaseL10n {
       if (in != null) {
         result = SimpleFieldSet.readFrom(in, false, false);
       } else {
-        System.err.println("Could not get resource : " + this.getL10nFileName(lang));
+        if (LOG.isWarnEnabled()) {
+          LOG.warn("Could not get resource: {}", this.getL10nFileName(lang));
+        }
       }
     } catch (Exception e) {
-      System.err.println(
-          "Error while loading the l10n file from "
-              + this.getL10nFileName(lang)
-              + " :"
-              + e.getMessage());
-      e.printStackTrace();
+      if (LOG.isErrorEnabled()) {
+        LOG.error(
+            "Error while loading the l10n file from {}: {}",
+            this.getL10nFileName(lang),
+            e.getMessage(),
+            e);
+      }
       result = null;
     }
 
     return result;
   }
 
-  /** Load the fallback translation. Synchronized. */
+  /** Ensure the fallback (default) translation is loaded; synchronized for safe init. */
   private synchronized void loadFallback() {
-    if (this.fallbackTranslation == null) {
-      this.fallbackTranslation = loadTranslation(LANGUAGE.getDefault());
-      if (fallbackTranslation == null) fallbackTranslation = new SimpleFieldSet(true);
+    if (this.fallbackTranslation.get() == null) {
+      SimpleFieldSet loaded = loadTranslation(LANGUAGE.getDefault());
+      if (loaded == null) loaded = new SimpleFieldSet(true);
+      this.fallbackTranslation.set(loaded);
     }
   }
 
   /**
-   * Get the language currently used by this BaseL10n.
+   * Return the currently selected language.
    *
-   * @return LANGUAGE
+   * @return Selected {@link LANGUAGE}; never {@code null} after construction.
    */
   public LANGUAGE getSelectedLanguage() {
     return this.lang;
   }
 
   /**
-   * Returns true if a key is overridden.
+   * Determine whether a key has an explicit override for the selected language.
    *
-   * @param key Key to check override status
-   * @return boolean
+   * @param key Key to check (case-sensitive).
+   * @return {@code true} if an override exists; {@code false} otherwise.
    */
   public boolean isOverridden(String key) {
     if (this.translationOverride == null) {
@@ -465,102 +526,113 @@ public class BaseL10n {
   }
 
   /**
-   * Override a custom key with a new value.
+   * Write or remove an on-disk override for a key in the selected language.
+   *
+   * <p>Whitespace surrounding the key and value is trimmed. When the value is empty or equals the
+   * bundled translation for the current language, the override is removed. Otherwise, the value is
+   * normalized by stripping CR/LF/TAB characters and then saved.
+   *
+   * <p>Persists changes immediately by writing the override file.
    *
    * @param key Key to override.
-   * @param value New value of that key.
+   * @param value New value for the key.
    */
   public void setOverride(String key, String value) {
     key = key.trim();
     value = value.trim();
-    // Is the override already declared ? if not, create it.
+    // If no override exists yet, create the container.
     if (this.translationOverride == null) {
       this.translationOverride = new SimpleFieldSet(false);
     }
 
-    // If there is no need to keep it in the override, remove it...
-    // unless the original/default is the same as the translation
+    // Remove the override when empty or redundant with the bundled translation.
     if (value.isEmpty()
         || (currentTranslation != null && value.equals(this.currentTranslation.get(key)))) {
       this.translationOverride.removeValue(key);
     } else {
-      value = value.replaceAll("(\r|\n|\t)+", "");
+      value = value.replaceAll("[\r\n\t]+", "");
 
-      // Set the value of the override
+      // Set the override value.
       this.translationOverride.putOverwrite(key, value);
-      Logger.normal(this.getClass(), "Got a new translation key: set the Override!");
+      LOG.info("Got a new translation key: set the Override!");
     }
 
-    // Save the file to disk
+    // Persist overrides to disk.
     saveTranslationFile();
   }
 
-  /** Save the SimpleFieldSet of overridden keys in a file. */
+  /**
+   * Persist overrides to disk using a temporary file and atomic move.
+   *
+   * <p>Writes {@code <final>.bak} in the same directory and then moves it into place. If the save
+   * fails, the temporary file remains as a backup.
+   */
   private void saveTranslationFile() {
     File finalFile = new File(this.getL10nOverrideFileName(this.lang));
 
     try {
-      // We don't set deleteOnExit on it : if the save operation fails, we want a backup
+      // We don't set deleteOnExit on it: if the save operation fails, we want a backup
       File tempFile = File.createTempFile(finalFile.getName(), ".bak", finalFile.getParentFile());
-      Logger.minor(this.getClass(), "The temporary filename is : " + tempFile);
+      LOG.debug("The temporary filename is : {}", tempFile);
 
       try (FileOutputStream fos = new FileOutputStream(tempFile)) {
         this.translationOverride.writeToBigBuffer(fos);
       }
 
       FileUtil.moveTo(tempFile, finalFile);
-      Logger.normal(this.getClass(), "Override file saved successfully!");
+      LOG.info("Override file saved successfully!");
     } catch (IOException e) {
-      Logger.error(
-          this.getClass(), "Error while saving the translation override: " + e.getMessage(), e);
+      LOG.error("Error while saving the translation override: {}", e.getMessage(), e);
     }
   }
 
   /**
-   * Get a copy of the currently used SimpleFieldSet.
+   * Return a defensive copy of the current language's translation set.
    *
-   * @return SimpleFieldSet
+   * @return Copy of the current translation, or {@code null} if none is loaded.
    */
   public SimpleFieldSet getCurrentLanguageTranslation() {
     return (this.currentTranslation == null ? null : new SimpleFieldSet(currentTranslation));
   }
 
   /**
-   * Get a copy of the currently used SimpleFieldSet (overridden messages).
+   * Return a defensive copy of the on-disk overrides for the current language.
    *
-   * @return SimpleFieldSet
+   * @return Copy of the overrides, or {@code null} if no overrides exist.
    */
   public SimpleFieldSet getOverrideForCurrentLanguageTranslation() {
     return (this.translationOverride == null ? null : new SimpleFieldSet(translationOverride));
   }
 
   /**
-   * Get the SimpleFieldSet of the default language (should be english).
+   * Return a defensive copy of the fallback language translation set (default: English).
    *
-   * @return SimpleFieldSet
+   * @return Copy of the fallback translation; never {@code null}.
    */
   public SimpleFieldSet getDefaultLanguageTranslation() {
     this.loadFallback();
 
-    return new SimpleFieldSet(this.fallbackTranslation);
+    return new SimpleFieldSet(this.fallbackTranslation.get());
   }
 
   /**
-   * Get a localized string. Return "" (empty string) if it doesn't exist.
+   * Look up a localized string using the resolution order described at the class level.
    *
    * @param key Key to search for.
-   * @return String
+   * @return The resolved string; if no translation exists, returns the key itself.
    */
   public String getString(String key) {
     return getStrings(key).iterator().next();
   }
 
   /**
-   * Get a localized string. Return "" (empty string) if it doesn't exist.
+   * Look up a localized string and replace each occurrence of {@code ${...}} with a single
+   * replacement value.
    *
    * @param key Key to search for.
-   * @param replacementValue Replacement value for all ${*}.
-   * @return String
+   * @param replacementValue Replacement value for all patterns of the form {@code ${...}}.
+   * @return The resolved and substituted string; if no translation exists, returns the key with
+   *     substitutions applied.
    */
   public String getString(String key, String replacementValue) {
     String string = getStrings(key).iterator().next();
@@ -568,11 +640,13 @@ public class BaseL10n {
   }
 
   /**
-   * Get a localized string.
+   * Look up a localized string with optional {@code null} when not found.
    *
    * @param key Key to search for.
-   * @param returnNullIfNotFound If this is true, will return null if the key is not found.
-   * @return String
+   * @param returnNullIfNotFound When {@code true}, returns {@code null} if no translation exists in
+   *     either the selected or fallback language; when {@code false}, behaves like {@link
+   *     #getString(String)} and returns the key as a last resort.
+   * @return The resolved string, or {@code null} depending on {@code returnNullIfNotFound}.
    */
   public String getString(String key, boolean returnNullIfNotFound) {
     if (!returnNullIfNotFound) {
@@ -593,46 +667,43 @@ public class BaseL10n {
     }
 
     if (result == null) {
-      Logger.normal(
-          this.getClass(),
-          "The translation for "
-              + key
-              + " hasn't been found ("
-              + this.getSelectedLanguage()
-              + ")! please tell the maintainer.");
+      LOG.info(
+          "The translation for {} hasn't been found ({})! please tell the maintainer.",
+          key,
+          this.getSelectedLanguage());
     }
     return result;
   }
 
-  /** Enumerate strings associated with a key in order of preference. */
+  /** List strings associated with a key in order of preference. */
   private Iterable<String> getStrings(final String key) {
     return getStrings(key, FallbackState.CURRENT_LANG);
   }
 
-  /**
-   * Enumerate strings associated with a key in order of preference, starting with a specified one.
-   */
+  /** List strings associated with a key in order of preference, starting with a specified one. */
   private Iterable<String> getStrings(final String key, final FallbackState initialState) {
     return () -> new L10nStringIterator(key, initialState);
   }
 
   /**
-   * Get a localized string and put it in a HTMLNode for the translation page.
+   * Wrap a localized string in an {@link HTMLNode} for display on the translation page.
    *
    * @param key Key to search for.
-   * @return HTMLNode
+   * @return Text node with the resolved value; if the key is missing, returns a node prompting
+   *     translation with a link to {@link TranslationToadlet}.
    */
   public HTMLNode getHTMLNode(String key) {
     return getHTMLNode(key, null, null);
   }
 
   /**
-   * Get a localized string and put it in a HTMLNode for the translation page.
+   * Wrap a localized string in an {@link HTMLNode}, optionally performing pattern substitution.
    *
    * @param key Key to search for.
-   * @param patterns Patterns to replace. May be null, if so values must also be null.
-   * @param values Values to replace patterns with.
-   * @return HTMLNode
+   * @param patterns Patterns to replace. May be {@code null}; if so, {@code values} must also be
+   *     {@code null}.
+   * @param values Values to replace patterns with; aligned by index with {@code patterns}.
+   * @return Text node with substitutions, or a prompt-to-translate node when the key is missing.
    */
   public HTMLNode getHTMLNode(String key, String[] patterns, String[] values) {
     String value = this.getString(key, true);
@@ -650,40 +721,28 @@ public class BaseL10n {
     return translationField;
   }
 
-  /** Get the value for a key in the fallback translation, or null. */
-  private String getFallbackString(String key) {
-    this.loadFallback();
-
-    String result = this.fallbackTranslation.get(key);
-
-    if (result == null) {
-      Logger.error(this.getClass(), "The default translation for " + key + " hasn't been found!");
-      System.err.println("The default translation for " + key + " hasn't been found!");
-      new Exception().printStackTrace();
-    }
-    return result;
-  }
-
   /**
-   * Get the default value for a key.
+   * Resolve a key strictly in the fallback language.
    *
    * @param key Key to search for.
-   * @return the matching string in the fallback language (English); the raw key if there is no
-   *     entry for it in the fallback language.
+   * @return The matching string in the fallback language (English); the raw key if absent there as
+   *     well.
    */
   public String getDefaultString(String key) {
     return getStrings(key, FallbackState.FALLBACK_LANG).iterator().next();
   }
 
   /**
-   * Get the default value for a key.
+   * Resolve a key in the fallback language and perform pattern substitution.
    *
    * @param key Key to search for.
-   * @return the matching string in the fallback language (English); the raw key if there is no
-   *     entry for it in the fallback language. Patterns are replaced by the matching values.
+   * @return Fallback string with substitutions applied; the raw key if absent in the fallback
+   *     language.
    */
   public String getDefaultString(String key, String[] patterns, String[] values) {
-    assert (patterns.length == values.length);
+    if (patterns.length != values.length) {
+      throw new IllegalArgumentException("patterns and values must have same length");
+    }
     String result = getDefaultString(key);
 
     for (int i = 0; i < patterns.length; i++) {
@@ -692,22 +751,26 @@ public class BaseL10n {
         continue;
       }
       result =
-          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
+          result.replaceAll(
+              L10N_VAR_PREFIX + Pattern.quote(pattern) + L10N_VAR_SUFFIX,
+              quoteReplacement(values[i]));
     }
 
     return result;
   }
 
   /**
-   * Get a localized string, and replace on-the-fly some values.
+   * Resolve a key and perform pattern substitution using {@code ${name}} placeholders.
    *
    * @param key Key to search for.
-   * @param patterns Patterns to replace, ${ and } are not included.
-   * @param values Replacement values.
-   * @return String
+   * @param patterns Patterns to replace; do not include the {@code ${}} delimiters.
+   * @param values Replacement values aligned by index with {@code patterns}.
+   * @return Resolved and substituted string.
    */
   public String getString(String key, String[] patterns, String[] values) {
-    assert (patterns.length == values.length);
+    if (patterns.length != values.length) {
+      throw new IllegalArgumentException("patterns and values must have same length");
+    }
     String result = getString(key);
 
     for (int i = 0; i < patterns.length; i++) {
@@ -716,29 +779,36 @@ public class BaseL10n {
         continue;
       }
       result =
-          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
+          result.replaceAll(
+              L10N_VAR_PREFIX + Pattern.quote(pattern) + L10N_VAR_SUFFIX,
+              quoteReplacement(values[i]));
     }
 
     return result;
   }
 
   /**
-   * Get a localized string, and replace on-the-fly a value.
+   * Resolve a key and replace a single {@code ${name}} pattern.
    *
    * @param key Key to search for.
-   * @param pattern Pattern to replace, ${ and } not included.
+   * @param pattern Pattern to replace; do not include the {@code ${}} delimiters.
    * @param value Replacement value.
-   * @return String
+   * @return Resolved and substituted string.
    */
   public String getString(String key, String pattern, String value) {
-    return getString(key, new String[] {pattern}, new String[] {value}); // FIXME code efficiently!
+    String base = getString(key);
+    if (pattern == null) {
+      return base;
+    }
+    return base.replaceAll(
+        L10N_VAR_PREFIX + Pattern.quote(pattern) + L10N_VAR_SUFFIX, quoteReplacement(value));
   }
 
   /**
-   * Escape null, $ and \.
+   * Escape null, $, and \.
    *
-   * @param s String to parse
-   * @return String
+   * @param s Replacement string.
+   * @return Escaped replacement string.
    */
   private String quoteReplacement(String s) {
     if (s == null) {
@@ -764,80 +834,46 @@ public class BaseL10n {
   }
 
   /**
-   * Parse a localized string and put the result in a HTMLNode.
+   * Load a l10n string, replace variables such as {@code ${link}} or {@code ${bold}} with {@link
+   * HTMLNode}s, and append the result to {@code node}.
    *
-   * @param node The result will be put in this HTMLNode.
-   * @param key Key to search for.
-   * @param patterns Patterns to replace, ${ and } are not included.
-   * @param values Replacement values.
-   * @deprecated Use {@link #addL10nSubstitution(HTMLNode, String, String[], HTMLNode[])} instead.
-   */
-  @Deprecated
-  public void addL10nSubstitution(HTMLNode node, String key, String[] patterns, String[] values) {
-    String result = HTMLEncoder.encode(getString(key));
-    assert (patterns.length == values.length);
-    for (int i = 0; i < patterns.length; i++) {
-      String pattern = patterns[i];
-      if (pattern == null) {
-        continue;
-      }
-      result =
-          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
-    }
-    node.addChild("%", result);
-  }
-
-  /**
-   * Loads an L10n string, replaces variables such as ${link} or ${bold} in it with {@link
-   * HTMLNode}s and adds the result to the given HTMLNode.
-   *
-   * <p>This is *much* safer than the deprecated {@link #addL10nSubstitution(HTMLNode, String,
-   * String[], String[])}. Callers won't accidentally pass in unencoded strings and cause
-   * vulnerabilities. Callers should try to reuse parameters if possible. We automatically close
-   * each tag: When a pattern ${name} is matched, we search for ${/name}. If we find it, we make the
-   * tag enclose everything between the two; if we can't find it, we just add it with no children.
-   * It is not possible to create an HTMLNode representing a tag closure, so callers will need to
-   * change their code to not pass in /link or similar, and in some cases will need to change the
-   * l10n strings themselves to always close the tag properly, rather than using a generic /link for
-   * multiple links as we use in some places.
+   * <p>This avoids unencoded string concatenation by requiring callers to provide structured nodes.
+   * For each {@code ${name}} we search for {@code ${/name}}. If found, the created node will
+   * enclose the content between them; otherwise a standalone node is added. Closing tags cannot be
+   * represented directly as {@link HTMLNode}s.
    *
    * <p><b>Examples</b>:
    *
-   * <p>TranslationLookup.string=This is a ${link}link${/link} about ${text}.
+   * <p>TranslationLookup.string=This is a {@code ${link}}link{@code ${/link}} about {@code
+   * ${text}}.
    *
-   * <p><code>addL10nSubstitution(html, "TranslationLookup.string", new String[] { "link", "text" },
-   *   new HTMLNode[] { HTMLNode.link("/KSK@gpl.txt"), HTMLNode.text("blah") });</code> <br>
+   * <p><code>addL10nSubstitution(html, "TranslationLookup.string",
+   *   new String[] { "link", "text" },
+   *   new HTMLNode[] { HTMLNode.link("/KSK@gpl.txt"), HTMLNode.text("blah") });</code>
    *
-   * <p>TranslationLookup.string=${bold}This${/bold} is a bold text.
+   * <p>TranslationLookup.string={@code ${bold}}This{@code ${/bold}} is a bold text.
    *
-   * <p><code>addL10nSubstitution(html, "TranslationLookup.string", new String[] { "bold" },
-   *   new HTMLNode[] { HTMLNode.STRONG });</code>
+   * <p><code>addL10nSubstitution(html, "TranslationLookup.string",
+   *   new String[] { "bold" }, new HTMLNode[] { HTMLNode.STRONG });</code>
    *
-   * @param node The {@link HTMLNode} to which the L10n should be added after substitution was done.
-   * @param key The key of the L10n string which shall be used.
-   * @param patterns Specifies things such as ${link} which shall be replaced in the L10n string
-   *     with {@link HTMLNode}s.
-   * @param values For each entry in the previous array parameter, this array specifies the {@link
-   *     HTMLNode} with which it shall be replaced.
+   * @param node Destination container to receive text and nodes.
+   * @param key Key of the l10n string to use.
+   * @param patterns Placeholders (e.g., {@code link}) to replace.
+   * @param values Replacement nodes aligned by index with {@code patterns}.
    */
   public void addL10nSubstitution(HTMLNode node, String key, String[] patterns, HTMLNode[] values) {
     List<HTMLNode> newContent = getHTMLWithSubstitutions(key, patterns, values);
     node.addChildren(newContent);
   }
 
-  /**
-   * Attempt to parse any substitution variables found in a l10n string. Intended for use in tests.
-   */
+  /** Attempt to parse all substitution variables in a l10n string (test utility). */
   void attemptParse(String value) throws L10nParseException {
     String[] patterns = new String[0];
     HTMLNode[] values = new HTMLNode[0];
     performHTMLSubstitutions(value, patterns, values);
   }
 
-  /**
-   * Look up a l10n string and replace substitution variables to generate a list of {@link
-   * HTMLNode}s.
-   */
+  /** Look up a l10n string and produce a list of {@link HTMLNode}s with substitutions applied. */
   private List<HTMLNode> getHTMLWithSubstitutions(
       String key, String[] patterns, HTMLNode[] values) {
     for (String value : getStrings(key)) {
@@ -845,7 +881,7 @@ public class BaseL10n {
       try {
         return performHTMLSubstitutions(value, patterns, values);
       } catch (L10nParseException e) {
-        Logger.error(this, "Error in l10n value \"" + value + "\" for " + key, e);
+        LOG.error("Error in l10n value \"{}\" for {}", value, key, e);
       }
     }
     // this should never happen, because the last item from getStrings() will be the key itself
@@ -853,8 +889,9 @@ public class BaseL10n {
   }
 
   /**
-   * Convert a string to a list of {@link HTMLNode}s, replacing substitution variables found in
-   * {@code patterns} with corresponding nodes from {@code values}.
+   * Convert a string to a list of {@link HTMLNode}s, replacing placeholders with nodes.
+   *
+   * @throws L10nParseException If the placeholder syntax is malformed.
    */
   private List<HTMLNode> performHTMLSubstitutions(
       String value, String[] patterns, HTMLNode[] values) throws L10nParseException {
@@ -864,65 +901,112 @@ public class BaseL10n {
   }
 
   /**
-   * Adds a string to an {@link HTMLNode}, replacing substitution variables found in {@code
-   * patterns} with corresponding nodes from {@code values}.
+   * Append text to {@code node}, replacing placeholders with nodes and handling nested ranges.
+   *
+   * @throws L10nParseException If the placeholder syntax is malformed.
    */
   private void addHTMLSubstitutions(
       HTMLNode node, String value, String[] patterns, HTMLNode[] values) throws L10nParseException {
-    int x;
-    while (!value.isEmpty() && (x = value.indexOf("${")) != -1) {
-      String before = value.substring(0, x);
-      if (!before.isEmpty()) node.addChild("#", before);
-      value = value.substring(x);
-      int y = value.indexOf('}');
-      if (y == -1) {
-        throw new L10nParseException("Unclosed braces");
+    int start;
+    while (!value.isEmpty() && (start = value.indexOf("${")) != -1) {
+      String before = value.substring(0, start);
+      if (!before.isEmpty()) {
+        node.addChild("#", before);
       }
-      String lookup = value.substring(2, y);
-      value = value.substring(y + 1);
-      if (lookup.startsWith("/")) {
-        throw new L10nParseException("Starts with /");
+      value = value.substring(start);
+
+      VarInfo parsed = parseVar(value);
+      String lookup = parsed.name;
+      value = value.substring(parsed.endIndex + 1);
+
+      HTMLNode subnode = findSubstitutionNode(lookup, patterns, values);
+      int closeIdx = findClosingIndex(value, lookup);
+
+      if (closeIdx == -1) {
+        addCopyIfNotNull(node, subnode);
+        continue;
       }
 
-      HTMLNode subnode = null;
-
-      for (int i = 0; i < patterns.length; i++) {
-        if (patterns[i].equals(lookup)) {
-          subnode = values[i];
-          break;
-        }
-      }
-
-      String searchFor = "${/" + lookup + "}";
-      x = value.indexOf(searchFor);
-      if (x == -1) {
-        // It goes up to the end of the tag. It has no contents.
-        if (subnode != null) {
-          node.addChild(subnode.clone());
-        }
-      } else {
-        // It has contents. Must recurse.
-        String inner = value.substring(0, x);
-        String rest = value.substring(x + searchFor.length());
-        if (subnode != null) {
-          subnode = subnode.clone();
-          node.addChild(subnode);
-        } else {
-          subnode = node;
-        }
-        addHTMLSubstitutions(subnode, inner, patterns, values);
-        value = rest;
-      }
+      value = processWithClosing(node, value, lookup, closeIdx, subnode, patterns, values);
     }
-    if (!value.isEmpty()) node.addChild("#", value);
+    if (!value.isEmpty()) {
+      node.addChild("#", value);
+    }
   }
 
+  private void addCopyIfNotNull(HTMLNode node, HTMLNode candidate) {
+    if (candidate != null) {
+      node.addChild(candidate.copy());
+    }
+  }
+
+  private String processWithClosing(
+      HTMLNode node,
+      String value,
+      String lookup,
+      int closeIdx,
+      HTMLNode subnode,
+      String[] patterns,
+      HTMLNode[] values)
+      throws L10nParseException {
+    String inner = value.substring(0, closeIdx);
+    String rest = value.substring(closeIdx + (4 + lookup.length()));
+
+    if (subnode != null) {
+      subnode = subnode.copy();
+      node.addChild(subnode);
+    } else {
+      subnode = node;
+    }
+    addHTMLSubstitutions(subnode, inner, patterns, values);
+    return rest;
+  }
+
+  /**
+   * @param endIndex index of closing '}' within the input slice starting at "${"
+   */
+  private record VarInfo(String name, int endIndex) {}
+
+  /** Parse a {@code ${name}} opening token at the start of {@code value}. */
+  private VarInfo parseVar(String value) throws L10nParseException {
+    int end = value.indexOf('}');
+    if (end == -1) {
+      throw new L10nParseException("Unclosed braces");
+    }
+    String lookup = value.substring(2, end);
+    if (lookup.startsWith("/")) {
+      throw new L10nParseException("Starts with /");
+    }
+    return new VarInfo(lookup, end);
+  }
+
+  private HTMLNode findSubstitutionNode(String lookup, String[] patterns, HTMLNode[] values) {
+    for (int i = 0; i < patterns.length; i++) {
+      if (patterns[i].equals(lookup)) {
+        return values[i];
+      }
+    }
+    return null;
+  }
+
+  private int findClosingIndex(String value, String lookup) {
+    String searchFor = "${/" + lookup + "}";
+    return value.indexOf(searchFor);
+  }
+
+  /**
+   * Return all keys in the fallback translation that start with {@code prefix}.
+   *
+   * @param prefix Key prefix to match.
+   * @return Array of matching keys; empty when the fallback set is not loaded or no match exists.
+   */
   public String[] getAllNamesWithPrefix(String prefix) {
-    if (fallbackTranslation == null) {
+    SimpleFieldSet fallback = fallbackTranslation.get();
+    if (fallback == null) {
       return new String[] {};
     }
     List<String> toReturn = new ArrayList<>();
-    Iterator<String> it = fallbackTranslation.keyIterator();
+    Iterator<String> it = fallback.keyIterator();
     while (it.hasNext()) {
       String key = it.next();
       if (key.startsWith(prefix)) {

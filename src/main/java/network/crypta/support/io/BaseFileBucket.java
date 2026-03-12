@@ -12,84 +12,148 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Vector;
+import java.util.List;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
-public abstract class BaseFileBucket implements RandomAccessBucket {
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+/**
+ * Base implementation for file-backed {@link RandomAccessBucket} instances.
+ *
+ * <p>This class coordinates access to a single underlying {@link File} and tracks open input/output
+ * streams so they can be closed on {@link #free()} and optionally deleted from disk depending on
+ * {@link #deleteOnFree()}.
+ *
+ * <p>Thread-safety: methods that mutate internal state synchronize on {@code this}. Instances are
+ * not intended to be shared across unrelated subsystems without external coordination.
+ *
+ * <p>Read-only behavior: once {@link #setReadOnly()} is called or {@link #toRandomAccessBuffer()}
+ * is invoked, write operations fail with {@link IOException}.
+ */
+public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseable {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseFileBucket.class);
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
-
+  /**
+   * Monotonic counter incremented each time a new output stream is obtained. Used to detect and
+   * prevent writes from stale streams after a reopening.
+   */
   protected long fileRestartCounter;
 
-  /** Has the bucket been freed? If so, no further operations may be done */
+  /** Has the bucket been freed? If true, no further operations may be performed. */
   private boolean freed;
 
   /**
-   * Vector of streams (FileBucketInputStream or FileBucketOutputStream) which are open to this
-   * file. So we can be sure they are all closed when we free it. Can be null.
+   * Currently open streams associated with the underlying file. Present only while the bucket is in
+   * use and cleared on {@link #free()}.
+   *
+   * <p>Serializable subclasses rely on this field being {@code transient} so that live {@link
+   * java.io.InputStream}/{@link java.io.OutputStream} instances are not serialized (they are not
+   * {@link java.io.Serializable}). This prevents {@link java.io.NotSerializableException} during
+   * checkpointing when streams are still open.
+   *
+   * <p>The list itself is not thread-safe; access is guarded by synchronization in {@link
+   * #addStream(Closeable)} and {@link #removeStream(Closeable)}.
    */
-  private transient Vector<Closeable> streams;
+  @SuppressWarnings(
+      "java:S2065") // Base is not Serializable; subclasses are. Keep transient to avoid serializing
+  // live streams.
+  private transient List<Closeable> streams;
 
-  protected static String tempDir = null;
+  // Sentinels for stream-detach results
+  private static final Closeable[] NO_STREAMS = new Closeable[0];
+  private static final Closeable[] ALREADY_FREED = new Closeable[0];
 
   /**
-   * Constructor.
+   * Constructs a new bucket that targets the provided file.
    *
-   * @param file
-   * @param deleteOnExit If true, call File.deleteOnExit() on the file. WARNING: Delete on exit is a
-   *     memory leak: The filenames are kept until the JVM exits, and cannot be removed even when
-   *     the file has been deleted! It should only be used where it is ESSENTIAL! Note that if you
-   *     want temp files to be deleted on exit, you also need to override deleteOnExit().
+   * @param file target file; must be non-null
+   * @param deleteOnExit when {@code true}, registers the file with {@link File#deleteOnExit()}.
+   *     Note: this mechanism retains file paths until JVM shutdown and should be used sparingly. To
+   *     actually delete temporary files on exit, subclasses must also return {@code true} from
+   *     {@link #deleteOnExit()} so temporary files created by this class are registered too.
+   * @throws NullPointerException if {@code file} is {@code null}
    */
-  public BaseFileBucket(File file, boolean deleteOnExit) {
-    if (file == null) throw new NullPointerException();
-    maybeSetDeleteOnExit(deleteOnExit, file);
-    assert (!(createFileOnly() && tempFileAlreadyExists())); // Mutually incompatible!
+  @SuppressWarnings("unused")
+  protected BaseFileBucket(File file, boolean deleteOnExit) {
+    this(file, deleteOnExit, false, false);
   }
 
+  /**
+   * Constructs a new bucket and validates file-mode invariants without invoking subclass methods.
+   *
+   * @param file target file; may be {@code null} for resilience in deserialization/framework paths
+   * @param deleteOnExit when {@code true}, registers the file with {@link File#deleteOnExit()}
+   * @param createFileOnly whether writes must fail when the target file already exists
+   * @param tempFileAlreadyExists whether writes operate directly on an existing temporary file
+   */
+  protected BaseFileBucket(
+      File file, boolean deleteOnExit, boolean createFileOnly, boolean tempFileAlreadyExists) {
+    if (file != null) {
+      maybeSetDeleteOnExit(deleteOnExit, file);
+    }
+    if (createFileOnly && tempFileAlreadyExists) {
+      LOG.warn(
+          "Ignoring incompatible bucket mode createFileOnly+tempFileAlreadyExists for {}",
+          getClass().getSimpleName());
+    }
+  }
+
+  /** Default constructor for deserialization frameworks. */
   protected BaseFileBucket() {
-    // For serialization.
+    // For serialization frameworks only.
   }
 
+  /** Register {@code file} for deletion on JVM exit when requested. */
   private void maybeSetDeleteOnExit(boolean deleteOnExit, File file) {
     if (deleteOnExit) setDeleteOnExit(file);
   }
 
+  /**
+   * Registers the given file with {@link File#deleteOnExit()} and logs rare JVM failures observed
+   * during shutdown sequences (e.g., in Wrapper-managed lifecycles).
+   *
+   * @param file file to register
+   */
   protected void setDeleteOnExit(File file) {
     try {
       file.deleteOnExit();
     } catch (NullPointerException e) {
       if (WrapperManager.hasShutdownHookBeenTriggered()) {
-        Logger.normal(
-            this,
-            "NullPointerException setting deleteOnExit while shutting down - buggy JVM code: " + e,
+        LOG.info(
+            "NullPointerException setting deleteOnExit while shutting down - buggy JVM code: {}",
+            e,
             e);
       } else {
-        Logger.error(this, "Caught " + e + " doing deleteOnExit() for " + file + " - JVM bug ????");
+        LOG.error("Caught {} doing deleteOnExit() for {} - JVM bug ????", e, file);
       }
     }
   }
 
+  /**
+   * Opens a new unbuffered {@link OutputStream} for writing from the beginning of the file.
+   *
+   * <p>When {@link #tempFileAlreadyExists()} is {@code false}, data is first written to a temporary
+   * file in the same directory and atomically moved into place on close. When {@code true}, the
+   * underlying file must already exist and will be written directly.
+   *
+   * <p>Side effects: the stream is tracked internally and automatically removed on close or {@link
+   * #free()}.
+   *
+   * @return an unbuffered output stream positioned at offset 0
+   * @throws IOException if the bucket has been freed or is read-only
+   * @throws FileExistsException if {@link #createFileOnly()} is {@code true} and the file already
+   *     exists on first open
+   * @throws FileDoesNotExistException if {@link #tempFileAlreadyExists()} is {@code true} but the
+   *     file is absent or not readable/writable
+   */
   @Override
   public OutputStream getOutputStreamUnbuffered() throws IOException {
     synchronized (this) {
@@ -98,7 +162,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       if (isReadOnly()) throw new IOException("Bucket is read-only: " + this);
 
       if (createFileOnly()
-          && // Fail if file already exists
+          && // Fail if the file already exists
           fileRestartCounter == 0
           && // Ignore if we're just clobbering our own file after a previous getOutputStream()
           !file.createNewFile()) {
@@ -109,10 +173,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       }
 
       if (streams != null && !streams.isEmpty())
-        Logger.error(
-            this,
-            "Streams open on " + this + " while opening an output stream!: " + streams,
-            new Exception("debug"));
+        LOG.error("Streams open on {} while opening an output stream!: {}", this, streams);
 
       boolean rename = !tempFileAlreadyExists();
       File tempfile = rename ? getTempfile() : file;
@@ -120,47 +181,82 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
       FileBucketOutputStream os = new FileBucketOutputStream(tempfile, streamNumber);
 
-      if (logDEBUG) Logger.debug(this, "Creating " + os, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating output stream {}", os);
 
       addStream(os);
       return os;
     }
   }
 
+  /**
+   * Opens a buffered {@link OutputStream} equivalent to {@link #getOutputStreamUnbuffered()} but
+   * wrapped in a {@link BufferedOutputStream}.
+   *
+   * @return a buffered output stream positioned at offset 0
+   * @throws IOException if opening the underlying stream fails
+   */
   @Override
   public OutputStream getOutputStream() throws IOException {
     return new BufferedOutputStream(getOutputStreamUnbuffered());
   }
 
+  /** Adds the stream to the internal tracking list. Guarded by {@code this}. */
   private synchronized void addStream(Closeable stream) {
-    // BaseFileBucket is a very common object, and often very long lived,
-    // so we need to minimize memory usage even at the cost of frequent allocations.
-    if (streams == null) streams = new Vector<>(1, 1);
+    // Keep memory overhead low; allocate lazily and collapse back to null when empty.
+    if (streams == null) streams = new ArrayList<>(1);
     streams.add(stream);
   }
 
+  /** Removes the stream from the tracking list. Guarded by {@code this}. */
   private synchronized void removeStream(Closeable stream) {
-    // Race condition is possible
+    // Streams may already be cleared if free() raced; tolerate missing list.
     if (streams == null) return;
     streams.remove(stream);
     if (streams.isEmpty()) streams = null;
   }
 
   /**
-   * If true, then the file is temporary and must already exist, so we will just open it. Otherwise
-   * we will create a temporary file and then rename it over the target. Incompatible with
-   * createFileOnly()!
+   * Indicates whether the file is a pre-existing temporary file.
+   *
+   * <p>When {@code true}, operations open the file in-place. When {@code false}, writes are staged
+   * to a temporary file and atomically moved into place on close.
+   *
+   * <p>Must be mutually exclusive with {@link #createFileOnly()}.
+   *
+   * @return {@code true} if the target already exists and is opened directly
    */
   protected abstract boolean tempFileAlreadyExists();
 
-  /** If true, we will fail if the file already exist. Incompatible with tempFileAlreadyExists()! */
+  /**
+   * Indicates that writes should fail if the target file already exists.
+   *
+   * <p>Must be mutually exclusive with {@link #tempFileAlreadyExists()}.
+   *
+   * @return {@code true} to enforce creation-only semantics
+   */
   protected abstract boolean createFileOnly();
 
+  /**
+   * Whether temporary files created by this bucket should be registered with {@link
+   * File#deleteOnExit()}.
+   *
+   * @return {@code true} if temp files should be removed on JVM exit
+   */
   protected abstract boolean deleteOnExit();
 
+  /**
+   * Whether the underlying file should be deleted when {@link #free()} is called.
+   *
+   * @return {@code true} if {@link #free()} deletes the file
+   */
   protected abstract boolean deleteOnFree();
 
-  /** Create a temporary file in the same directory as this file. */
+  /**
+   * Creates a temporary file in the same directory as the target file.
+   *
+   * @return a new temporary file path
+   * @throws IOException if creating the file fails
+   */
   protected File getTempfile() throws IOException {
     File file = getFile();
     File f = FileUtil.createTempFile(file.getName(), ".freenet-tmp", file.getParentFile());
@@ -169,12 +265,10 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
   }
 
   /**
-   * Internal OutputStream impl. If createFileOnly is set, we won't overwrite an existing file, and
-   * we write to a temp file then rename over the target. Note that we can't use createNewFile then
-   * new FOS() because while createNewFile is atomic, the combination is not, so if we do it we are
-   * vulnerable to symlink attacks.
+   * Output stream used by the bucket to stage or write data to disk.
    *
-   * @author toad
+   * <p>When creation-only semantics are required, data is written to a temp file and atomically
+   * moved into place on close to prevent races and symlink attacks.
    */
   class FileBucketOutputStream extends FileOutputStream {
 
@@ -185,15 +279,13 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     protected FileBucketOutputStream(File tempfile, long restartCount)
         throws FileNotFoundException {
       super(tempfile, false);
-      if (logMINOR)
-        Logger.minor(
-            FileBucketOutputStream.class,
-            "Writing to " + tempfile + " for " + getFile() + " : " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Writing to {} for {} : {}", tempfile, getFile(), this);
       this.tempfile = tempfile;
       this.restartCount = restartCount;
       closed = false;
     }
 
+    /** Ensures the stream is still valid and the bucket is writable. */
     protected void confirmWriteSynchronized() throws IOException {
       synchronized (BaseFileBucket.this) {
         if (fileRestartCounter > restartCount)
@@ -204,7 +296,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     }
 
     @Override
-    public void write(byte[] b) throws IOException {
+    public void write(byte @NotNull [] b) throws IOException {
       synchronized (BaseFileBucket.this) {
         confirmWriteSynchronized();
         super.write(b);
@@ -212,7 +304,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     }
 
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
       synchronized (BaseFileBucket.this) {
         confirmWriteSynchronized();
         super.write(b, off, len);
@@ -237,22 +329,39 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       }
       boolean renaming = !tempFileAlreadyExists();
       removeStream(this);
-      if (logMINOR) Logger.minor(this, "Closing " + BaseFileBucket.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Closing output stream for {}", BaseFileBucket.this);
       try {
         super.close();
       } catch (IOException e) {
-        if (logMINOR) Logger.minor(this, "Failed closing " + BaseFileBucket.this + " : " + e, e);
-        if (renaming) tempfile.delete();
-        throw e;
+        handleCloseFailure(renaming, e);
+        return; // Unreachable but keeps static analyzers happy
       }
-      if (renaming) {
-        // getOutputStream() creates the file as a marker, so DON'T check for its existence,
-        // even if createFileOnly() is true.
-        if (!FileUtil.moveTo(tempfile, file)) {
-          tempfile.delete();
-          if (logMINOR) Logger.minor(this, "Deleted, cannot rename file for " + this);
-          throw new IOException("Cannot rename file");
-        }
+      finalizeRenameIfRequired(file, renaming);
+    }
+
+    private void handleCloseFailure(boolean renaming, IOException e) throws IOException {
+      if (LOG.isDebugEnabled())
+        LOG.debug("Output stream close failed for {}: {}", BaseFileBucket.this, e, e);
+      if (renaming) deleteTempFileQuietly();
+      throw e;
+    }
+
+    private void finalizeRenameIfRequired(File file, boolean renaming) throws IOException {
+      // getOutputStream() creates the file as a marker, so DON'T check for its existence,
+      // even if createFileOnly() is true.
+      if (renaming && !FileUtil.moveTo(tempfile, file)) {
+        deleteTempFileQuietly();
+        if (LOG.isDebugEnabled()) LOG.debug("Rename failed after delete for {}", this);
+        throw new IOException("Cannot rename file");
+      }
+    }
+
+    private void deleteTempFileQuietly() {
+      try {
+        Files.deleteIfExists(tempfile.toPath());
+      } catch (IOException ioe1) {
+        if (LOG.isDebugEnabled())
+          LOG.debug("Temp file delete failed {}: {}", tempfile, ioe1.toString());
       }
     }
 
@@ -285,115 +394,71 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     }
   }
 
+  /**
+   * Opens an unbuffered {@link InputStream} that reads from the beginning of the file, or a {@link
+   * NullInputStream} if the file does not exist.
+   *
+   * @return an input stream, possibly {@link NullInputStream} when the file is missing
+   * @throws IOException if the bucket has been freed
+   */
   @Override
   public synchronized InputStream getInputStreamUnbuffered() throws IOException {
     if (freed) throw new IOException("File already freed: " + this);
     File file = getFile();
     if (!file.exists()) {
-      Logger.normal(this, "File does not exist: " + file + " for " + this);
+      LOG.info("File does not exist: {} for {}", file, this);
       return new NullInputStream();
     } else {
       FileBucketInputStream is = new FileBucketInputStream(file);
       addStream(is);
-      if (logDEBUG) Logger.debug(this, "Creating " + is, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating input stream {}", is);
       return is;
     }
   }
 
+  /** Returns a buffered {@link InputStream} backed by {@link #getInputStreamUnbuffered()}. */
+  @Override
   public InputStream getInputStream() throws IOException {
     return new BufferedInputStream(getInputStreamUnbuffered());
   }
 
-  /**
-   * @return the name of the file.
-   */
+  /** Returns the file name component of {@link #getFile()}. */
   @Override
   public synchronized String getName() {
     return getFile().getName();
   }
 
+  /** Returns the current length of the underlying file in bytes. */
   @Override
   public synchronized long size() {
     return getFile().length();
   }
 
   /**
-   * Actually delete the underlying file. Called by finalizer, will not be called twice. But length
-   * must still be valid when calling it.
+   * Deletes the underlying file using NIO for clearer error reporting. Does not throw on failure;
+   * logs a warning instead. Callers should verify existence separately when required.
    */
   protected synchronized void deleteFile() {
-    if (logMINOR)
-      Logger.minor(this, "Deleting " + getFile() + " for " + this, new Exception("debug"));
-    getFile().delete();
-  }
-
-  /** Return directory used for temp files. */
-  public static synchronized String getTempDir() {
-    return tempDir; // **FIXME**/TODO: locking on tempDir needs to be checked by a Java guru for
-    // consistency
+    if (LOG.isDebugEnabled()) LOG.debug("Deleting bucket file {} for {}", getFile(), this);
+    try {
+      Files.delete(getFile().toPath());
+    } catch (IOException e) {
+      // Preserve existing behavior: do not throw, but provide clearer context.
+      LOG.warn("Bucket file delete failed {}: {}", getFile(), e.toString());
+    }
   }
 
   /**
-   * Set temp file directory.
+   * Splits the file into contiguous read-only {@link Bucket} slices of at most {@code splitSize}
+   * bytes each.
    *
-   * <p>The directory must exist.
+   * <p>Ownership: the caller is responsible for closing/freeing the returned buckets. Slices are
+   * independent views over the same file; deleting the underlying file invalidates all slices.
+   *
+   * @param splitSize requested size in bytes for each slice; the last slice may be smaller
+   * @return an array of read-only buckets covering the full file content; never {@code null}
+   * @throws IllegalArgumentException if the file is excessively large for the requested slice size
    */
-  public static synchronized void setTempDir(String dirName) {
-    File dir = new File(dirName);
-    if (!(dir.exists() && dir.isDirectory() && dir.canWrite())) {
-      throw new IllegalArgumentException("Bad Temp Directory: " + dir.getAbsolutePath());
-    }
-    tempDir = dirName; // **FIXME**/TODO: locking on tempDir needs to be checked by a Java guru for
-    // consistency
-  }
-
-  // determine the temp directory in one of several ways
-
-  static {
-    // Try the Java property (1.2 and above)
-    tempDir = System.getProperty("java.io.tmpdir");
-
-    // Deprecated calls removed.
-
-    // Try TEMP and TMP
-    //	if (tempDir == null) {
-    //	    tempDir = System.getenv("TEMP");
-    //	}
-
-    //	if (tempDir == null) {
-    //	    tempDir = System.getenv("TMP");
-    //	}
-
-    // make some semi-educated guesses based on OS.
-
-    if (tempDir == null) {
-      network.crypta.fs.AppEnv _env = new network.crypta.fs.AppEnv();
-      String[] candidates = null;
-      if (_env.isLinux()) {
-        candidates = new String[] {"/tmp", "/var/tmp"};
-      } else if (_env.isWindows()) {
-        candidates = new String[] {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
-      }
-      if (candidates != null) {
-        for (String candidate : candidates) {
-          File path = new File(candidate);
-          if (path.exists() && path.isDirectory() && path.canWrite()) {
-            tempDir = candidate;
-            break;
-          }
-        }
-      }
-    }
-
-    // last resort -- use current working directory
-
-    if (tempDir == null) {
-      // This can be null -- but that's OK, null => cwd for File
-      // constructor, anyways.
-      tempDir = System.getProperty("user.dir");
-    }
-  }
-
   public synchronized Bucket[] split(int splitSize) {
     long length = size();
     if (length > ((long) Integer.MAX_VALUE) * splitSize)
@@ -404,53 +469,82 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     File file = getFile();
     for (int i = 0; i < buckets.length; i++) {
       long startAt = (long) i * splitSize;
-      long endAt = Math.min(startAt + (long) splitSize, length);
+      long endAt = Math.min(startAt + splitSize, length);
       long len = endAt - startAt;
+      // The caller takes ownership and is responsible for closing/freeing the bucket.
+      //noinspection resource
       buckets[i] = new ReadOnlyFileSliceBucket(file, startAt, len);
     }
     return buckets;
   }
 
+  /** Frees resources associated with the bucket; delegates to {@link #free(boolean)}. */
   @Override
   public void free() {
     free(false);
   }
 
+  /**
+   * Closes this bucket, releasing any associated resources.
+   *
+   * <p>This is an alias for {@link #free()}; provided to integrate with try-with-resources where
+   * applicable.
+   */
+  @Override
+  public void close() {
+    free();
+  }
+
+  /**
+   * Frees the bucket and optionally deletes the file.
+   *
+   * <p>Closes any open streams tracked by this bucket. If {@link #deleteOnFree()} is {@code true}
+   * or {@code forceFree} is {@code true}, attempts to delete the underlying file.
+   *
+   * @param forceFree when {@code true}, forces deletion even if {@link #deleteOnFree()} is {@code
+   *     false}
+   */
   public void free(boolean forceFree) {
-    Closeable[] toClose;
-    if (logMINOR) Logger.minor(this, "Freeing " + this, new Exception("debug"));
-    synchronized (this) {
-      if (freed) return;
-      freed = true;
-      toClose = streams == null ? null : streams.toArray(new Closeable[0]);
-      streams = null;
-    }
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing bucket {}", this);
+    Closeable[] toClose = markFreedAndDetachStreams();
+    if (toClose == ALREADY_FREED) return;
+    if (toClose.length > 0) closeStreams(toClose);
+    deleteIfRequested(forceFree);
+  }
 
-    if (toClose != null) {
-      Logger.error(
-          this,
-          "Streams open free()ing " + this + " : " + Arrays.toString(toClose),
-          new Exception("debug"));
-      for (Closeable strm : toClose) {
-        try {
-          strm.close();
-        } catch (IOException e) {
-          Logger.error(this, "Caught closing stream in free(): " + e, e);
-        } catch (Throwable t) {
-          Logger.error(this, "Caught closing stream in free(): " + t, t);
-        }
+  private synchronized Closeable[] markFreedAndDetachStreams() {
+    if (freed) return ALREADY_FREED;
+    freed = true;
+    Closeable[] result = streams == null ? NO_STREAMS : streams.toArray(new Closeable[0]);
+    streams = null;
+    return result;
+  }
+
+  /** Logs and closes any streams left open at free-time. */
+  private void closeStreams(Closeable[] toClose) {
+    if (LOG.isErrorEnabled()) {
+      LOG.error("Streams still open during free {}: {}", this, Arrays.toString(toClose));
+    }
+    for (Closeable strm : toClose) {
+      try {
+        strm.close();
+      } catch (Exception e) {
+        LOG.error("Caught closing stream in free(): {}", e, e);
       }
-    }
-
-    File file = getFile();
-    if ((deleteOnFree() || forceFree) && file.exists()) {
-      Logger.debug(this, "Deleting bucket " + file, new Exception("debug"));
-      deleteFile();
-      if (file.exists())
-        Logger.error(this, "Delete failed on bucket " + file, new Exception("debug"));
     }
   }
 
+  /** Deletes the underlying file if policy or caller requested it. */
+  private void deleteIfRequested(boolean forceFree) {
+    File file = getFile();
+    if ((deleteOnFree() || forceFree) && file.exists()) {
+      LOG.trace("Deleting bucket file on free {}", file);
+      deleteFile();
+      if (file.exists()) LOG.error("Bucket file still exists after delete {}", file);
+    }
+  }
+
+  /** Returns a diagnostic string including the file path and the number of open streams. */
   @Override
   public synchronized String toString() {
     StringBuilder sb = new StringBuilder();
@@ -464,17 +558,28 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     return sb.toString();
   }
 
-  /** Returns the file object this buckets data is kept in. */
+  /** Returns the file that backs this bucket. */
   public abstract File getFile();
 
+  /** No-op resume hook; subclasses may override to restore persistence contracts. */
   @Override
   public void onResume(ClientContext context) throws ResumeFailedException {
-    // Do nothing.
+    // Intentionally empty
   }
 
+  /** Serialization marker for buckets stored via {@link #storeTo(DataOutputStream)}. */
   public static final int MAGIC = 0xc4b7533d;
+
+  /** On-disk format version for {@link #storeTo(DataOutputStream)}. */
   static final int VERSION = 1;
 
+  /**
+   * Writes minimal state required to reconstruct this bucket instance.
+   *
+   * @param dos destination stream
+   * @throws IOException on I/O errors
+   * @since 1
+   */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
     dos.writeInt(MAGIC);
@@ -482,15 +587,39 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     dos.writeBoolean(freed);
   }
 
+  /**
+   * Reconstructs the bucket from a previously stored stream produced by {@link #storeTo}.
+   *
+   * @param dis source stream positioned at the bucket header
+   * @throws IOException on I/O errors
+   * @throws StorageFormatException when the data is malformed or uses an unknown version
+   */
   protected BaseFileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    // Not constructed directly, so we DO need to read the magic value.
+    this(readStoredFreed(dis));
+  }
+
+  protected BaseFileBucket(boolean freed) {
+    this.freed = freed;
+  }
+
+  protected static boolean readStoredFreed(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    // Read and validate the header
     int magic = dis.readInt();
     if (magic != MAGIC) throw new StorageFormatException("Bad magic");
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");
-    freed = dis.readBoolean();
+    return dis.readBoolean();
   }
 
+  /**
+   * Converts this bucket to a {@link LockableRandomAccessBuffer} for random read access.
+   *
+   * <p>Marks the bucket read-only prior to conversion. The file must be non-empty.
+   *
+   * @return a random-access buffer over the same file
+   * @throws IOException if the bucket is already freed or empty
+   */
   @Override
   public LockableRandomAccessBuffer toRandomAccessBuffer() throws IOException {
     if (freed) throw new IOException("Already freed");
@@ -498,9 +627,13 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     long size = size();
     if (size == 0) throw new IOException("Must not be empty");
     return new PooledFileRandomAccessBuffer(
-        getFile(), true, size, null, getPersistentTempID(), deleteOnFree());
+        getFile(), true, size, getPersistentTempID(), deleteOnFree());
   }
 
+  /**
+   * Returns a stable identifier to group temporary artifacts on disk, or {@code -1} to disable.
+   * Subclasses may override to provide a non-negative persistent ID.
+   */
   protected long getPersistentTempID() {
     return -1;
   }

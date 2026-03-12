@@ -4,19 +4,66 @@ import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
+/**
+ * Toadlet that renders the landing page for community chat and forum resources.
+ *
+ * <p>This handler produces a simple informational page that points new users to curated discussion
+ * tools such as FSNG, FMS, and Sone. It relies solely on localization strings and static USK/SSK
+ * links, so responses are deterministic and do not depend on the mutable node state. Because it
+ * subclasses {@link Toadlet}, it integrates with the node's HTTP routing and inherits common
+ * behaviors such as alert rendering and response framing.
+ *
+ * <p>Typical usage registers the toadlet during node startup so the page appears at {@code /chat/}.
+ * The page is intentionally lightweight: it does not initiate background lookups and performs no
+ * outbound network access itself; instead, it advertises entry points that users can fetch on
+ * demand.
+ *
+ * <ul>
+ *   <li>Provides a localized headline and summary of chat ecosystem options.
+ *   <li>Lists stable USK/SSK links for bundled or recommended chat tools.
+ * </ul>
+ */
 public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
 
-  private final PluginManager plugins;
-
-  protected ChatForumsToadlet(HighLevelSimpleClient client, PluginManager plugins) {
+  /**
+   * Creates a toadlet that can render the chat/forums landing page using the provided dependencies.
+   *
+   * <p>The constructor passes the {@link HighLevelSimpleClient} to the {@link Toadlet} base class.
+   * No network operations occur here; the instance is ready for registration immediately after
+   * construction and may be reused across requests because it contains no per-request state.
+   *
+   * @param client high-level client used by the superclass to perform standard toadlet duties; must
+   *     be non-null and already initialized for HTTP routing.
+   */
+  protected ChatForumsToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.plugins = plugins;
   }
 
+  /**
+   * Handles an HTTP GET by emitting a localized list of chat and forum entry points.
+   *
+   * <p>The method builds a standard page via the {@link network.crypta.clients.http.PageMaker}
+   * obtained from the supplied context, adds the node's alert summary, and appends an infobox that
+   * links to well-known chat/forum resources. All links are static USK/SSK targets, so the handler
+   * avoids additional lookups or background work. The response is written immediately to the
+   * provided context and finishes with a 200 status code when successful. The method does not
+   * mutate shared state and is idempotent for the same inputs.
+   *
+   * @param uri the original request URI, preserved for compatibility with the Toadlet contract, may
+   *     include query parameters but is not modified.
+   * @param req parsed HTTP request carrying headers and form data; the handler reads only to
+   *     satisfy interface expectations and does not alter it.
+   * @param ctx active toadlet context that supplies page-making utilities and the output stream;
+   *     must be open for writing throughout the call.
+   * @throws ToadletContextClosedException if the context is closed before the HTML reply is fully
+   *     emitted or the client disconnects mid-response.
+   * @throws IOException if writing the generated page to the response stream fails for any I/O
+   *     reason, including downstream transport errors.
+   */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("title"), ctx);
@@ -70,13 +117,31 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
     return NodeL10n.getBase().getString("ChatForumsToadlet." + string);
   }
 
+  /**
+   * Returns the mount path under which this toadlet is exposed to HTTP clients.
+   *
+   * <p>The value is constant and ends with a trailing slash, so relative links on the rendered page
+   * resolve correctly. Consumers typically register the toadlet with the HTTP server using this
+   * path verbatim.
+   *
+   * @return canonical path segment {@code "/chat/"} identifying the chat landing page endpoint.
+   */
   @Override
   public String path() {
     return "/chat/";
   }
 
+  /**
+   * Reports whether this toadlet should be reachable.
+   *
+   * <p>Plugin runtime support has been removed, so this endpoint is always enabled.
+   *
+   * @param ctx current toadlet context, unused but available for future environment checks; may be
+   *     {@code null} depending on caller conventions.
+   * @return always {@code true}.
+   */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return !plugins.isPluginLoaded("plugins.Freetalk.Freetalk");
+    return true;
   }
 }

@@ -1,188 +1,301 @@
 package network.crypta.support.io;
 
-import static network.crypta.test.Asserts.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Arrays;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-public class HeaderStreamsTest {
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-  public static final String strHeader = "TEST";
-  public static final String strString = "testing testing 1 2 3";
+/**
+ * Unit tests for {@link HeaderStreams} using JUnit 6 and Mockito.
+ *
+ * <p>Tests follow AAA style and cover normal and error paths for both augInput and dimOutput.
+ */
+class HeaderStreamsTest {
 
-  public static final byte[] bHeader = strHeader.getBytes();
-  public static final byte[] bString = strString.getBytes();
-  public static final byte[] bJoined = (strHeader + strString).getBytes();
-
-  @Before
-  public void setUp() throws Exception {
-    InputStream testStream = new ByteArrayInputStream(bString);
-    augStream = HeaderStreams.augInput(bHeader, testStream);
-    origStream = new ByteArrayOutputStream();
-    dimStream = HeaderStreams.dimOutput(bHeader, origStream);
-  }
-
-  @After
-  public void tearDown() throws Exception {}
+  // ----------------------- augInput (InputStream) -----------------------
 
   @Test
-  public void testAugInputRead1() throws IOException {
-    int size = augStream.available();
-    assertEquals(size, bHeader.length + bString.length);
-    byte[] buffer = new byte[size];
-    for (int i = 0; i < bJoined.length; i++) {
-      int data = augStream.read();
-      assertEquals(size - i - 1, augStream.available());
-      assertEquals((char) data, bJoined[i]);
-      buffer[i] = (byte) data;
-    }
-    assertArrayEquals(bJoined, buffer);
+  @DisplayName("augInput_read_whenHeaderThenPayload_expectHeaderThenPayloadThenEOF")
+  void augInput_read_whenHeaderThenPayload_expectHeaderThenEOF() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {1, 2, 3};
+    byte[] payload = new byte[] {10, 20};
+    InputStream underlying = new ByteArrayInputStream(payload);
+    InputStream in = HeaderStreams.augInput(header, underlying);
+
+    // Act + Assert
+    assertEquals(1, in.read());
+    assertEquals(2, in.read());
+    assertEquals(3, in.read());
+    assertEquals(10, in.read());
+    assertEquals(20, in.read());
+    assertEquals(-1, in.read());
   }
 
   @Test
-  public void testAugInputReadM() throws IOException {
-    _testAugInputRead(-bHeader.length);
+  @DisplayName("augInput_available_whenPartiallyThroughHeader_expectHeaderRemainingPlusUnderlying")
+  void augInput_available_whenPartiallyThroughHeader_expectHeaderRemainingPlusUnderlying()
+      throws Exception {
+    // Arrange
+    byte[] header = new byte[] {9, 9, 9, 9};
+    InputStream underlying = mock(InputStream.class);
+    when(underlying.available()).thenReturn(5);
+    InputStream in = HeaderStreams.augInput(header, underlying);
+
+    // Act + Assert
+    // Initially: 4 header bytes + 5 available from underlying
+    assertEquals(9, in.available());
+
+    // Consume two header bytes
+    assertEquals(9, in.read());
+    assertEquals(9, in.read());
+
+    // Now: 2 header bytes left + 5 underlying
+    assertEquals(7, in.available());
   }
 
   @Test
-  public void testAugInputReadI() throws IOException {
-    _testAugInputRead(-1);
+  @DisplayName("augInput_readBuffer_whenBufferSmallerThanHeader_expectOnlyHeaderCopied")
+  void augInput_readBuffer_whenBufferSmallerThanHeader_expectOnlyHeaderCopied() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {0x01, 0x7F, (byte) 0x80, (byte) 0xFF};
+    byte[] payload = new byte[] {5};
+    InputStream underlying = new ByteArrayInputStream(payload);
+    InputStream in = HeaderStreams.augInput(header, underlying);
+    byte[] buf = new byte[4];
+
+    // Act
+    int n1 = in.read(buf, 0, 2);
+    int n2 = in.read(buf, 2, 2);
+    // Assert header fully copied first
+    assertEquals(2, n1);
+    assertEquals(2, n2);
+    assertArrayEquals(header, buf);
+
+    // Act: now consume payload and EOF
+    int n3 = in.read(buf, 0, 1);
+    int n4 = in.read(buf, 0, 1);
+
+    // Assert payload and EOF
+    assertEquals(1, n3);
+    assertEquals(5, buf[0]);
+    assertEquals(-1, n4);
   }
 
   @Test
-  public void testAugInputRead0() throws IOException {
-    _testAugInputRead(0);
+  @DisplayName("augInput_skip_whenHeaderAndUnderlying_expectCorrectCountAndPosition")
+  void augInput_skip_whenHeaderAndUnderlying_expectCorrectCountAndPosition() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {1, 2, 3};
+    byte[] payload = new byte[] {10, 20, 30, 40};
+    InputStream underlying = new ByteArrayInputStream(payload);
+    InputStream in = HeaderStreams.augInput(header, underlying);
+
+    // Act
+    long skipped = in.skip(5); // 3 from header + 2 from payload
+
+    // Assert
+    assertEquals(5, skipped);
+    assertEquals(30, in.read());
+    assertEquals(40, in.read());
+    assertEquals(-1, in.read());
   }
 
   @Test
-  public void testAugInputReadP() throws IOException {
-    _testAugInputRead(1);
+  @DisplayName("augInput_markReset_whenCalled_expectUnsupported")
+  void augInput_markReset_whenCalled_expectUnsupported() {
+    // Arrange
+    byte[] header = new byte[] {1};
+    InputStream underlying = new ByteArrayInputStream(new byte[] {42});
+    InputStream in = HeaderStreams.augInput(header, underlying);
+
+    // Act + Assert
+    assertFalse(in.markSupported());
+    assertThrows(IOException.class, in::reset);
   }
 
   @Test
-  public void testAugInputReadZ() throws IOException {
-    _testAugInputRead(bString.length);
-  }
+  @DisplayName("augInput_read_whenHeaderContainsNegativeBytes_expectUnsignedReturnValues")
+  void augInput_read_whenHeaderContainsNegativeBytes_expectUnsignedReturnValues() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {(byte) 0xFF, (byte) 0x80};
+    InputStream underlying = new ByteArrayInputStream(new byte[0]);
+    InputStream in = HeaderStreams.augInput(header, underlying);
 
-  public void _testAugInputRead(int m) throws IOException {
-    int i = bHeader.length + m;
-    int size = augStream.available();
-    byte[] buffer = new byte[size];
-    augStream.read(buffer, 0, i);
-    assertArrayEquals(Arrays.copyOfRange(Arrays.copyOfRange(bJoined, 0, i), 0, size), buffer);
-    augStream.read(buffer, i, size - i);
-    assertArrayEquals(bJoined, buffer);
-  }
-
-  @Test
-  public void testAugInputSkipAndReadM() throws IOException {
-    _testAugInputSkipAndRead(-bHeader.length);
+    // Act + Assert
+    assertEquals(255, in.read());
+    assertEquals(128, in.read());
+    assertEquals(-1, in.read());
   }
 
   @Test
-  public void testAugInputSkipAndReadI() throws IOException {
-    _testAugInputSkipAndRead(-1);
+  @DisplayName("augInput_nullHeader_whenRead_expectNullPointerException")
+  void augInput_nullHeader_whenRead_expectNullPointerException() {
+    // Arrange
+    InputStream underlying = new ByteArrayInputStream(new byte[] {1});
+    InputStream in = HeaderStreams.augInput(null, underlying);
+
+    // Act + Assert
+    assertThrows(NullPointerException.class, in::read);
+  }
+
+  // ----------------------- dimOutput (OutputStream) -----------------------
+
+  @Test
+  @DisplayName("dimOutput_writeInt_whenHeaderMatches_expectForwardOnlyAfterHeader")
+  void dimOutput_writeInt_whenHeaderMatches_expectForwardOnlyAfterHeader() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {1, 2, 3};
+    OutputStream underlying = mock(OutputStream.class);
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+
+    // Act
+    out.write(1);
+    out.write(2);
+    out.write(3);
+    out.write(99);
+
+    // Assert
+    verify(underlying, times(1)).write(99);
+    verifyNoMoreInteractions(underlying);
   }
 
   @Test
-  public void testAugInputSkipAndRead0() throws IOException {
-    _testAugInputSkipAndRead(0);
+  @DisplayName("dimOutput_writeArray_whenHeaderAndPayloadSameCall_expectPayloadForwarded")
+  void dimOutput_writeArray_whenHeaderAndPayloadSameCall_expectPayloadForwarded() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {10, 11};
+    ByteArrayOutputStream underlying = new ByteArrayOutputStream();
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+    byte[] buf = new byte[] {10, 11, 12, 13};
+
+    // Act
+    out.write(buf, 0, buf.length);
+
+    // Assert
+    assertArrayEquals(new byte[] {12, 13}, underlying.toByteArray());
   }
 
   @Test
-  public void testAugInputSkipAndReadP() throws IOException {
-    _testAugInputSkipAndRead(1);
+  @DisplayName("dimOutput_writeArray_whenMismatchWithinHeader_expectIOExceptionAndNoWrites")
+  void dimOutput_writeArray_whenMismatchWithinHeader_expectIOExceptionAndNoWrites() {
+    // Arrange
+    byte[] header = new byte[] {1, 2, 3};
+    OutputStream underlying = mock(OutputStream.class);
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+
+    // Act + Assert
+    IOException ex = assertThrows(IOException.class, () -> out.write(new byte[] {1, 9}, 0, 2));
+    assertTrue(
+        ex.getMessage().contains("byte 1: expected '2'; got '9'."),
+        () -> "Unexpected message: " + ex.getMessage());
+    verifyNoInteractions(underlying);
   }
 
   @Test
-  public void testAugInputSkipAndReadZ() throws IOException {
-    _testAugInputSkipAndRead(bString.length);
-  }
+  @DisplayName("dimOutput_writeArray_whenPartialHeaderThenFinish_expectPayloadAfterHeader")
+  void dimOutput_writeArray_whenPartialHeaderThenFinish_expectPayloadAfterHeader()
+      throws Exception {
+    // Arrange
+    byte[] header = new byte[] {1, 2, 3};
+    ByteArrayOutputStream underlying = new ByteArrayOutputStream();
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
 
-  public void _testAugInputSkipAndRead(int m) throws IOException {
-    int i = bHeader.length + m;
-    augStream.skip(i);
-    int size = augStream.available();
-    assertEquals(size, bJoined.length - i);
-    byte[] buffer = new byte[size];
-    int read = augStream.read(buffer);
-    assertEquals(read, size > 0 ? size : -1);
-    assertArrayEquals(Arrays.copyOfRange(bJoined, i, bJoined.length), buffer);
-  }
+    // Act
+    out.write(new byte[] {1}, 0, 1); // nothing forwarded yet
+    out.write(new byte[] {2, 3, 88, 89}, 0, 4); // 88, 89 should be forwarded
 
-  @Test
-  public void testDimOutputWrite1() throws IOException {
-    for (int i = 0; i < bJoined.length; i++) {
-      assertArrayEquals(
-          origStream.toByteArray(),
-          (i < bHeader.length) ? new byte[0] : Arrays.copyOfRange(bString, 0, i - bHeader.length));
-      dimStream.write(bJoined[i]);
-    }
-    assertArrayEquals(bString, origStream.toByteArray());
+    // Assert
+    assertArrayEquals(new byte[] {88, 89}, underlying.toByteArray());
   }
 
   @Test
-  public void testDimOutputWriteM() throws IOException {
-    _testDimOutputWrite(-bHeader.length);
+  @DisplayName("dimOutput_writeInt_whenAfterHeader_expectWriteDelegated")
+  void dimOutput_writeInt_whenAfterHeader_expectWriteDelegated() throws Exception {
+    // Arrange
+    byte[] header = new byte[] {7};
+    OutputStream underlying = mock(OutputStream.class);
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+
+    // Act
+    out.write(7); // consumes header
+    out.write(55); // forwarded
+
+    // Assert
+    verify(underlying, times(1)).write(55);
+    verifyNoMoreInteractions(underlying);
   }
 
   @Test
-  public void testDimOutputWriteI() throws IOException {
-    _testDimOutputWrite(-1);
+  @DisplayName("dimOutput_writeArray_whenZeroLengthHeader_expectAllForwarded")
+  void dimOutput_writeArray_whenZeroLengthHeader_expectAllForwarded() throws Exception {
+    // Arrange
+    byte[] header = new byte[0];
+    ByteArrayOutputStream underlying = new ByteArrayOutputStream();
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+    byte[] buf = new byte[] {8, 9};
+
+    // Act
+    out.write(buf, 0, buf.length);
+
+    // Assert
+    assertArrayEquals(buf, underlying.toByteArray());
   }
 
   @Test
-  public void testDimOutputWrite0() throws IOException {
-    _testDimOutputWrite(0);
+  @DisplayName("dimOutput_writeInt_whenHeaderMismatch_expectIOExceptionAndNoWrites")
+  void dimOutput_writeInt_whenHeaderMismatch_expectIOExceptionAndNoWrites() {
+    // Arrange
+    byte[] header = new byte[] {1, 2};
+    OutputStream underlying = mock(OutputStream.class);
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+
+    // Act + Assert
+    IOException ex = assertThrows(IOException.class, () -> out.write(9));
+    assertTrue(ex.getMessage().contains("byte 0: expected '1'; got '9'."));
+    verifyNoInteractions(underlying);
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, 1, 2, 3})
+  @DisplayName("dimOutput_writeArray_param_headerLengths_expectPayloadForwarded")
+  void dimOutput_writeArray_param_headerLengths_expectPayloadForwarded(int headerLen)
+      throws Exception {
+    // Arrange
+    byte[] header = new byte[headerLen];
+    for (int i = 0; i < headerLen; i++) header[i] = (byte) (i + 1);
+    byte[] payload = new byte[] {88, 89};
+    byte[] combined = Arrays.copyOf(header, headerLen + payload.length);
+    System.arraycopy(payload, 0, combined, headerLen, payload.length);
+
+    ByteArrayOutputStream underlying = new ByteArrayOutputStream();
+    OutputStream out = HeaderStreams.dimOutput(header, underlying);
+
+    // Act
+    out.write(combined, 0, combined.length);
+
+    // Assert
+    assertArrayEquals(payload, underlying.toByteArray());
   }
 
   @Test
-  public void testDimOutputWriteP() throws IOException {
-    _testDimOutputWrite(1);
-  }
+  @DisplayName("dimOutput_nullHeader_whenWrite_expectNullPointerException")
+  void dimOutput_nullHeader_whenWrite_expectNullPointerException() {
+    // Arrange
+    OutputStream underlying = mock(OutputStream.class);
+    OutputStream out = HeaderStreams.dimOutput(null, underlying);
 
-  @Test
-  public void testDimOutputWriteZ() throws IOException {
-    _testDimOutputWrite(bString.length);
+    // Act + Assert
+    assertThrows(NullPointerException.class, () -> out.write(1));
+    verifyNoInteractions(underlying);
   }
-
-  public void _testDimOutputWrite(int m) throws IOException {
-    int i = bHeader.length + m;
-    dimStream.write(Arrays.copyOfRange(bJoined, 0, i));
-    assertArrayEquals(
-        origStream.toByteArray(),
-        (i < bHeader.length) ? new byte[0] : Arrays.copyOfRange(bString, 0, i - bHeader.length));
-    dimStream.write(Arrays.copyOfRange(bJoined, i, bJoined.length));
-    assertArrayEquals(bString, origStream.toByteArray());
-  }
-
-  @Test
-  public void testDimOutputThrow0() throws IOException {
-    assertArrayEquals(new byte[0], origStream.toByteArray());
-    try {
-      dimStream.write('!');
-      fail("failed to throw IOException");
-    } catch (IOException expected) {
-    }
-  }
-
-  @Test
-  public void testDimOutputThrow1() throws IOException {
-    dimStream.write('T');
-    assertArrayEquals(new byte[0], origStream.toByteArray());
-    try {
-      dimStream.write("!!!".getBytes());
-      fail("failed to throw IOException");
-    } catch (IOException expected) {
-    }
-  }
-
-  InputStream augStream;
-  ByteArrayOutputStream origStream;
-  OutputStream dimStream;
 }

@@ -1,64 +1,50 @@
 package org.spaceroots.mantissa.geometry;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * This class implements rotations in a three-dimensional space.
+ * Represents an immutable three-dimensional rotation backed by a unit quaternion.
  *
- * <p>Rotations can be represented by several different mathematical entities (matrices, axe and
- * angle, Cardan or Euler angles, quaternions). This class is an higher level abstraction, more
- * user-oriented and hiding this implementation details. Well, for the curious, we use quaternions
- * for the internal representation. The user can build a rotation from any of these representations,
- * and any of these representations can be retrieved from a <code>Rotation</code> instance (see the
- * various constructors and getters). In addition, a rotation can also be built implicitely from a
- * set of vectors before and after it has been applied. This means that this class can be used to
- * convert from one representation to another one. For example, extracting a set of Cardan angles
- * from a rotation matrix can be done using one single line of code:
+ * <p>Rotations convert coordinates between frames or reorient vectors without changing their norms.
+ * Instances can be created from common mathematical forms (axis-angle, rotation matrices,
+ * Cardan/Euler angles, or raw quaternion components) and the same instance can emit any of these
+ * views when needed. The internal quaternion representation favors numerical stability, supports
+ * inexpensive composition, and avoids gimbal singularities present in some angle systems.
  *
- * <pre>
- * double[] angles = new Rotation(matrix, 1.0e-10).getAngles(RotationOrder.XYZ);
- * </pre>
+ * <p>Typical usage patterns include: building a rotation from sensor- or ephemeris-provided axes,
+ * chaining successive rotations to model attitude changes, and applying the result to {@link
+ * Vector3D vectors} or to other {@link Rotation rotations}. The class intentionally avoids
+ * prescribing frame semantics; callers decide whether vectors are directions, coordinates, or basis
+ * axes.
  *
- * <p>Focus is more oriented on what a rotation <em>do</em>. Once it has been built, and regardless
- * of its representation, a rotation is an <em>operator</em> which basically transforms three
- * dimensional {@link Vector3D vectors} into other three dimensional {@link Vector3D vectors}.
- * Depending on the application, the meaning of these vectors can vary. For example in an attitude
- * simulation tool, you will often consider the vector is fixed and you transform its coordinates in
- * one frame into its coordinates in another frame. In this case, the rotation implicitely defines
- * the relation between the two frames. Another example could be a telescope control application,
- * where the rotation would transform the sighting direction at rest into the desired observing
- * direction. In this case the frame is the same (probably a topocentric one) and the raw and
- * transformed vectors are different. In many case, both approaches will be combined, in our
- * telescope example, we will probably also need to transform the observing direction in the
- * topocentric frame into the observing direction in inertial frame taking into account the
- * observatory location and the earth rotation.
- *
- * <p>These examples show that a rotation is what the user wants it to be, so this class does not
- * push the user towards one specific definition. Hence the class does <em>not</em> provide methods
- * like <code>projectVectorIntoDestinationFrame</code> or <code>computeTransformedDirection</code>.
- * It provides simpler and more generic methods: {@link #applyTo(Vector3D) applyTo(Vector3D)} and
- * {@link #applyInverseTo(Vector3D) applyInverseTo(Vector3D)}.
- *
- * <p>Since a rotation is basically a vectorial operator, several rotations can be composed together
- * to produce new rotations. The composition operation <code>r = r<sub>1</sub> o r<sub>2</sub>
- * </code> means that for each vector <code>u</code>, <code>r(u) =
- * r<sub>1</sub>(r<sub>2</sub>(u))</code>. Hence we can consider that in addition to vectors, a
- * rotation can be applied to other rotations (or to itself). With our previous notations, we would
- * say we can apply <code>r<sub>1</sub></code> to <code>r<sub>2</sub></code> and the result we get
- * is <code>r = r<sub>1</sub> o r<sub>2</sub></code>. For this purpose, the class provides the
- * methods: {@link #applyTo(Rotation) applyTo(Rotation)} and {@link #applyInverseTo(Rotation)
- * applyInverseTo(Rotation)}.
- *
- * <p>Instances of this class are guaranteed to be immutable.
+ * <ul>
+ *   <li>Immutability: every operation returns a new instance; thread-safe by construction.
+ *   <li>Composition: {@link #applyTo(Rotation)} and {@link #applyInverseTo(Rotation)} follow
+ *       mathematical function composition.
+ *   <li>Interoperability: constructors and getters bridge between quaternion, matrix, and angle
+ *       representations.
+ * </ul>
  *
  * @version $Id: Rotation.java 1714 2006-12-13 22:37:12Z luc $
  * @author L. Maisonobe
  * @see Vector3D
  * @see RotationOrder
  */
-public class Rotation implements Serializable {
+public final class Rotation implements Serializable {
 
-  /** Build the identity rotation. */
+  private static final double ANGLES_SMALL = 1.0e-10;
+  private static final double ANGLES_MAX_THRESHOLD = 1.0 - ANGLES_SMALL;
+  private static final double ANGLES_MIN_THRESHOLD = -ANGLES_MAX_THRESHOLD;
+
+  /**
+   * Build the identity rotation (zero angle, axis undefined).
+   *
+   * <p>The constructed instance keeps quaternion coordinates (1, 0, 0, 0), so applying it leaves
+   * any {@link Vector3D} unchanged. Because the class is immutable, this constructor is cheap and
+   * side-effect free and can be reused whenever a neutral element is required in composition
+   * chains.
+   */
   public Rotation() {
     q0 = 1;
     q1 = 0;
@@ -67,41 +53,37 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Build a rotation from the quaternion coordinates.
+   * Create a rotation from raw quaternion components.
    *
-   * @param q0 scalar part of the quaternion
-   * @param q1 first coordinate of the vectorial part of the quaternion
-   * @param q2 second coordinate of the vectorial part of the quaternion
-   * @param q3 third coordinate of the vectorial part of the quaternion
-   * @deprecated since Mantissa 6.3, this method as been deprecated as it does not properly handles
-   *     non-normalized quaternions, it should be replaced by {@link #Rotation(double, double,
-   *     double, double, boolean)}
+   * <p>The supplied coordinates are normalized to a unit quaternion before storage, ensuring the
+   * resulting rotation preserves vector lengths. Use this overload when upstream code provides
+   * approximate quaternion components but does not guarantee unit length.
+   *
+   * @param q0 scalar part of the quaternion; any finite value is accepted prior to normalization
+   * @param q1 first coordinate of the vectorial part, expressed in the same units as {@code q0}
+   * @param q2 second coordinate of the vectorial part, expressed in the same units as {@code q0}
+   * @param q3 third coordinate of the vectorial part, expressed in the same units as {@code q0}
    */
-  @Deprecated
+  @SuppressWarnings("unused")
   public Rotation(double q0, double q1, double q2, double q3) {
-    this.q0 = q0;
-    this.q1 = q1;
-    this.q2 = q2;
-    this.q3 = q3;
+    this(q0, q1, q2, q3, true);
   }
 
   /**
-   * Build a rotation from the quaternion coordinates.
+   * Create a rotation from quaternion coordinates with optional preprocessing.
    *
-   * <p>A rotation can be built from a <em>normalized</em> quaternion, i.e. a quaternion for which
-   * q<sub>0</sub><sup>2</sup> + q<sub>1</sub><sup>2</sup> + q<sub>2</sub><sup>2</sup> +
-   * q<sub>3</sub><sup>2</sup> = 1. If the quaternion is not normalized, the constructor can
-   * normalize it in a preprocessing step.
+   * <p>A rotation is represented by a normalized quaternion: q0<sup>2</sup> + q1<sup>2</sup> +
+   * q2<sup>2</sup> + q3<sup>2</sup> = 1. When {@code needsNormalization} is {@code true}, the
+   * constructor renormalizes the inputs defensively to avoid drift from rounding errors. When it is
+   * {@code false}, the caller promises the inputs already form a unit quaternion and no extra work
+   * is performed.
    *
-   * <p>This method replaces the {@link #Rotation(double, double, double, double) constructor using
-   * only 4 doubles} which was deprecated as of version 6.3 of Mantissa.
-   *
-   * @param q0 scalar part of the quaternion
-   * @param q1 first coordinate of the vectorial part of the quaternion
-   * @param q2 second coordinate of the vectorial part of the quaternion
-   * @param q3 third coordinate of the vectorial part of the quaternion
-   * @param needsNormalization if true, the coordinates are considered not to be normalized, a
-   *     normalization preprocessing step is performed before using them
+   * @param q0 scalar part of the quaternion, typically the cosine of half the rotation angle
+   * @param q1 first vector component aligned with the x-axis of the rotation representation
+   * @param q2 second vector component aligned with the y-axis of the rotation representation
+   * @param q3 third vector component aligned with the z-axis of the rotation representation
+   * @param needsNormalization set to {@code true} when the components may not form a unit
+   *     quaternion and should be normalized before use
    */
   public Rotation(double q0, double q1, double q2, double q3, boolean needsNormalization) {
 
@@ -121,16 +103,16 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Build a rotation from an axis and an angle.
+   * Create a rotation from an axis and an angle.
    *
-   * <p>We use the convention that angles are oriented according to the effect of the rotation on
-   * vectors around the axis. That means that if (i, j, k) is a direct frame and if we first provide
-   * +k as the axis and PI/2 as the angle to this constructor, and then {@link #applyTo(Vector3D)
-   * apply} the instance to +i, we will get +j.
+   * <p>The rotation follows the right-hand rule: with a direct frame (i, j, k), supplying +k as the
+   * axis and {@code PI/2} as the angle maps +i onto +j when {@link #applyTo(Vector3D)} is invoked.
+   * The axis does not need to be normalized beforehand; its direction is used and its norm scaled
+   * away.
    *
-   * @param axis axis around which to rotate
-   * @param angle rotation angle.
-   * @exception ArithmeticException if the axis norm is null
+   * @param axis axis around which to rotate; zero-length vectors are rejected
+   * @param angle rotation angle in radians; positive values produce right-handed rotations
+   * @throws ArithmeticException if the axis norm is zero and a direction cannot be established
    */
   public Rotation(Vector3D axis, double angle) {
 
@@ -149,29 +131,18 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Build a rotation from a 3X3 matrix.
+   * Create a rotation from a 3x3 matrix, with optional orthogonalization.
    *
-   * <p>Rotation matrices are orthogonal matrices, i.e. unit matrices (which are matrices for which
-   * m.mT = I) with real coefficients. The module of the determinant of unit matrices is 1, among
-   * the orthogonal 3X3 matrices, only the ones having a positive determinant (+1) are rotation
-   * matrices.
+   * <p>Rotation matrices are orthogonal with determinant +1. When the provided matrix is affected
+   * by truncation or measurement noise, this constructor iteratively projects a copy onto the space
+   * of orthogonal matrices. If convergence fails or produces a negative determinant, an exception
+   * is raised and no instance is created.
    *
-   * <p>When a rotation is defined by a matrix with truncated values (typically when it is extracted
-   * from a technical sheet where only four to five significant digits are available), the matrix is
-   * not orthogonal anymore. This constructor handles this case transparently by using a copy of the
-   * given matrix and applying a correction to the copy in order to perfect its orthogonality. If
-   * the Frobenius norm of the correction needed is above the given threshold, then the matrix is
-   * considered to be too far from a true rotation matrix and an exception is thrown.
-   *
-   * <p>
-   *
-   * @param m rotation matrix
-   * @param threshold convergence threshold for the iterative orthogonality correction (convergence
-   *     is reached when the difference between two steps of the Frobenius norm of the correction is
-   *     below this threshold)
-   * @exception NotARotationMatrixException if the matrix is not a 3X3 matrix, or if it cannot be
-   *     transformed into an orthogonal matrix with the given threshold, or if the determinant of
-   *     the resulting orthogonal matrix is negative
+   * @param m rotation matrix; must be 3x3 but need not be perfectly orthogonal on input
+   * @param threshold convergence threshold for iterative orthogonality correction using the
+   *     Frobenius norm of the update between steps
+   * @throws NotARotationMatrixException if the matrix is not 3x3, cannot be orthogonalized within
+   *     the threshold, or yields a negative determinant after correction
    */
   public Rotation(double[][] m, double threshold) throws NotARotationMatrixException {
 
@@ -249,17 +220,16 @@ public class Rotation implements Serializable {
   /**
    * Build the rotation that transforms a pair of vector into another pair.
    *
-   * <p>Except for possible scale factors, if the instance were applied to the pair (u1, u2) it will
-   * produce the pair (v1, v2).
+   * <p>Applying the resulting instance to the pair (u1, u2) produces the pair (v1, v2) up to scale
+   * factors. If the angular separation of the source vectors differs from that of the target
+   * vectors, the constructor computes an adjusted v2′ that lies in the (v1, v2) plane while
+   * preserving the original inner products. This makes it suitable for frame alignment where input
+   * data may be noisy but a smooth best-fit rotation is desired.
    *
-   * <p>If the angular separation between u1 and u2 is not the same as the angular separation
-   * between v1 and v2, then a corrected v2' will be used rather than v2, the corrected vector will
-   * be in the (v1, v2) plane.
-   *
-   * @param u1 first vector of the origin pair
-   * @param u2 second vector of the origin pair
-   * @param v1 desired image of u1 by the rotation
-   * @param v2 desired image of u2 by the rotation
+   * @param u1 first vector of the origin pair; must have non-zero norm for orientation to be valid
+   * @param u2 second vector of the origin pair; independent from {@code u1} to define a plane
+   * @param v1 desired image of {@code u1} after rotation, rescaled internally to match its norm
+   * @param v2 desired image of {@code u2}; may be adjusted in-plane to equalize angular separations
    */
   public Rotation(Vector3D u1, Vector3D u2, Vector3D v1, Vector3D v2) {
 
@@ -382,14 +352,14 @@ public class Rotation implements Serializable {
   /**
    * Build one of the rotations that transform one vector into another one.
    *
-   * <p>Except for a possible scale factor, if the instance were applied to the vector u it will
-   * produce the vector v. There is an infinite number of such rotations, this constructor choose
-   * the one with the smallest associated angle (i.e. the one whose axis is orthogonal to the (u, v)
-   * plane). If u and v are colinear, an arbitrary rotation axis is chosen.
+   * <p>Except for a possible scale factor, applying the rotation to {@code u} yields {@code v}.
+   * Among the infinitely many solutions, this constructor selects the rotation with the smallest
+   * angle, whose axis is orthogonal to the ({@code u}, {@code v}) plane. If the vectors are
+   * colinear, it falls back to a half-turn around an arbitrary orthogonal axis.
    *
-   * @param u origin vector
-   * @param v desired image of u by the rotation
-   * @exception ArithmeticException if the norm of one of the vectors is null
+   * @param u origin vector; must have non-zero norm to define an input direction
+   * @param v desired image of {@code u}; must have non-zero norm to define an output direction
+   * @throws ArithmeticException if either vector has zero norm and a direction cannot be derived
    */
   public Rotation(Vector3D u, Vector3D v) {
 
@@ -422,19 +392,18 @@ public class Rotation implements Serializable {
   /**
    * Build a rotation from three Cardan or Euler elementary rotations.
    *
-   * <p>Cardan rotations are three successive rotations around the canonical axes X, Y and Z, each
-   * axis beeing used once. There are 6 such sets of rotations (XYZ, XZY, YXZ, YZX, ZXY and ZYX).
-   * Euler rotations are three successive rotations around the canonical axes X, Y and Z, the first
-   * and last rotations beeing around the same axis. There are 6 such sets of rotations (XYX, XZX,
-   * YXY, YZY, ZXZ and ZYZ), the most popular one being ZXZ. Beware that many people routinely use
-   * the term Euler angles even for what really are Cardan angles (this confusion is especially
-   * widespread in the aerospace business where Roll, Pitch and Yaw angles are often wrongly tagged
-   * as Euler angles).
+   * <p>Cardan rotations use each canonical axis (X, Y, Z) once; Euler rotations repeat the first
+   * axis on the third step. Both families offer six valid orders. This constructor applies the
+   * supplied elementary rotations in the chosen order and composes the result into a single
+   * quaternion-based rotation.
    *
-   * @param order order of rotations to use
-   * @param alpha1 angle of the first elementary rotation
-   * @param alpha2 angle of the second elementary rotation
-   * @param alpha3 angle of the third elementary rotation
+   * @param order order of elementary rotations; must match one of the supported {@link
+   *     RotationOrder} constants
+   * @param alpha1 angle of the first elementary rotation in radians; positive uses right-hand rule
+   * @param alpha2 angle of the second elementary rotation in radians; may encounter singularities
+   *     depending on {@code order}
+   * @param alpha3 angle of the third elementary rotation in radians; direction follows {@code
+   *     order}
    */
   public Rotation(RotationOrder order, double alpha1, double alpha2, double alpha3) {
     Rotation r1 = new Rotation(order.getA1(), alpha1);
@@ -448,46 +417,50 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Revert a rotation. Build a rotation which reverse the effect of another rotation. This means
-   * that is r(u) = v, then r.revert (v) = u. The instance is not changed.
+   * Return a rotation that reverses the effect of this instance.
    *
-   * @return a new rotation whose effect is the reverse of the effect of the instance
+   * <p>If {@code r(u) = v}, then {@code r.revert().applyTo(v)} yields {@code u}. The current
+   * instance remains unchanged; the returned rotation is its mathematical inverse and can be used
+   * safely in composition chains.
+   *
+   * @return a new rotation that is the exact inverse of this rotation while leaving this instance
+   *     untouched
    */
   public Rotation revert() {
     return new Rotation(-q0, q1, q2, q3, false);
   }
 
   /**
-   * Get the scalar coordinate of the quaternion.
+   * Get the scalar (real) coordinate of the underlying unit quaternion.
    *
-   * @return scalar coordinate of the quaternion
+   * @return scalar component {@code q0}; value remains in [-1, 1] for normalized rotations
    */
   public double getQ0() {
     return q0;
   }
 
   /**
-   * Get the first coordinate of the vectorial part of the quaternion.
+   * Get the first coordinate of the quaternion vector part.
    *
-   * @return first coordinate of the vectorial part of the quaternion
+   * @return component {@code q1}, representing the x-axis contribution to the rotation vector
    */
   public double getQ1() {
     return q1;
   }
 
   /**
-   * Get the second coordinate of the vectorial part of the quaternion.
+   * Get the second coordinate of the quaternion vector part.
    *
-   * @return second coordinate of the vectorial part of the quaternion
+   * @return component {@code q2}, representing the y-axis contribution to the rotation vector
    */
   public double getQ2() {
     return q2;
   }
 
   /**
-   * Get the third coordinate of the vectorial part of the quaternion.
+   * Get the third coordinate of the quaternion vector part.
    *
-   * @return third coordinate of the vectorial part of the quaternion
+   * @return component {@code q3}, representing the z-axis contribution to the rotation vector
    */
   public double getQ3() {
     return q3;
@@ -496,7 +469,12 @@ public class Rotation implements Serializable {
   /**
    * Get the normalized axis of the rotation.
    *
-   * @return normalized axis of the rotation
+   * <p>For angles near zero, the direction defaults to the positive x-axis because all axes are
+   * equivalent in that limit. For non-zero angles, the axis is oriented so that {@link #getAngle()}
+   * remains within [0, {@code PI}] while respecting the quaternion sign convention.
+   *
+   * @return unit {@link Vector3D} pointing along the rotation axis; may default to +X for tiny
+   *     angles
    */
   public Vector3D getAxis() {
     double squaredSine = q1 * q1 + q2 * q2 + q3 * q3;
@@ -512,9 +490,13 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Get the angle of the rotation.
+   * Get the unsigned rotation angle in radians.
    *
-   * @return angle of the rotation (between 0 and PI)
+   * <p>The value is always between 0 and {@code PI}. For very small angles, the implementation
+   * selects numerically stable formulations to avoid loss of precision caused by limited floating
+   * point resolution.
+   *
+   * @return rotation angle in radians, constrained to the principal interval [0, {@code PI}]
    */
   public double getAngle() {
     if ((q0 < -0.1) || (q0 > 0.1)) {
@@ -529,238 +511,257 @@ public class Rotation implements Serializable {
   /**
    * Get the Cardan or Euler angles corresponding to the instance.
    *
-   * <p>The equations show that each rotation can be defined by two different values of the Cardan
-   * or Euler angles set. For example if Cardan angles are used, the rotation defined by the angles
-   * a1, a2 and a3 is the same as the rotation defined by the angles PI + a1, PI - a2 and PI + a3.
-   * This method implements the following arbitrary choices. For Cardan angles, the chosen set is
-   * the one for which the second angle is between -PI/2 and PI/2 (i.e its cosine is positive). For
-   * Euler angles, the chosen set is the one for which the second angle is between 0 and PI (i.e its
-   * sine is positive).
+   * <p>Every rotation maps to two equivalent angle triplets; this method chooses the convention
+   * where the middle angle has a positive cosine for Cardan orders and a positive sine for Euler
+   * orders. The output is therefore unique and stable except near the representation’s intrinsic
+   * singularities.
    *
-   * <p>Cardan and Euler angle have a very disappointing drawback: all of them have singularities.
-   * This means that if the instance is too close to the singularities corresponding to the given
-   * rotation order, it will be impossible to retrieve the angles. For Cardan angles, this is often
-   * called gimbal lock. There is <em>nothing</em> to do to prevent this, it is an intrisic problem
-   * of Cardan and Euler representation (but not a problem with the rotation itself, which is
-   * perfectly well defined). For Cardan angles, singularities occur when the second angle is close
-   * to -PI/2 or +PI/2, for Euler angle singularities occur when the second angle is close to 0 or
-   * PI, this means that the identity rotation is always singular for Euler angles !
+   * <p>Cardan and Euler decompositions suffer from gimbal lock: when the second angle approaches
+   * ±{@code PI/2} for Cardan or 0/ {@code PI} for Euler, the mapping is not invertible and the
+   * method raises an exception rather than returning unreliable values.
    *
-   * @param order rotation order to use
-   * @return an array of three angles, in the order specified by the set
-   * @exception CardanEulerSingularityException if the rotation is singular with respect to the
-   *     angles set specified
+   * @param order rotation order to use; determines axis sequence and singularity locations
+   * @return array of three angles in radians, ordered according to {@code order}, representing this
+   *     rotation under the selected convention
+   * @throws CardanEulerSingularityException if the rotation lies within the singular zone of the
+   *     requested order and the angles would be undefined
    */
   public double[] getAngles(RotationOrder order) throws CardanEulerSingularityException {
 
-    double small = 1.0e-10;
-    double maxThreshold = 1.0 - small;
-    double minThreshold = -maxThreshold;
-
-    double[] angles = new double[3];
-    Vector3D v1 = null;
-    Vector3D v2 = null;
-
     if (order == RotationOrder.XYZ) {
-
-      // r (Vector3D.plusK) coordinates are :
-      //  sin (theta), -cos (theta) sin (phi), cos (theta) cos (phi)
-      // (-r) (Vector3D.plusI) coordinates are :
-      // cos (psi) cos (theta), -sin (psi) cos (theta), sin (theta)
-      // and we can choose to have theta in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusK);
-      v2 = applyInverseTo(Vector3D.plusI);
-      if ((v2.getZ() < minThreshold) || (v2.getZ() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(-(v1.getY()), v1.getZ());
-      angles[1] = Math.asin(v2.getZ());
-      angles[2] = Math.atan2(-(v2.getY()), v2.getX());
-
-    } else if (order == RotationOrder.XZY) {
-
-      // r (Vector3D.plusJ) coordinates are :
-      // -sin (psi), cos (psi) cos (phi), cos (psi) sin (phi)
-      // (-r) (Vector3D.plusI) coordinates are :
-      // cos (theta) cos (psi), -sin (psi), sin (theta) cos (psi)
-      // and we can choose to have psi in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusJ);
-      v2 = applyInverseTo(Vector3D.plusI);
-      if ((v2.getY() < minThreshold) || (v2.getY() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(v1.getZ(), v1.getY());
-      angles[1] = -Math.asin(v2.getY());
-      angles[2] = Math.atan2(v2.getZ(), v2.getX());
-
-    } else if (order == RotationOrder.YXZ) {
-
-      // r (Vector3D.plusK) coordinates are :
-      //  cos (phi) sin (theta), -sin (phi), cos (phi) cos (theta)
-      // (-r) (Vector3D.plusJ) coordinates are :
-      // sin (psi) cos (phi), cos (psi) cos (phi), -sin (phi)
-      // and we can choose to have phi in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusK);
-      v2 = applyInverseTo(Vector3D.plusJ);
-      if ((v2.getZ() < minThreshold) || (v2.getZ() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(v1.getX(), v1.getZ());
-      angles[1] = -Math.asin(v2.getZ());
-      angles[2] = Math.atan2(v2.getX(), v2.getY());
-
-    } else if (order == RotationOrder.YZX) {
-
-      // r (Vector3D.plusI) coordinates are :
-      // cos (psi) cos (theta), sin (psi), -cos (psi) sin (theta)
-      // (-r) (Vector3D.plusJ) coordinates are :
-      // sin (psi), cos (phi) cos (psi), -sin (phi) cos (psi)
-      // and we can choose to have psi in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusI);
-      v2 = applyInverseTo(Vector3D.plusJ);
-      if ((v2.getX() < minThreshold) || (v2.getX() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(-(v1.getZ()), v1.getX());
-      angles[1] = Math.asin(v2.getX());
-      angles[2] = Math.atan2(-(v2.getZ()), v2.getY());
-
-    } else if (order == RotationOrder.ZXY) {
-
-      // r (Vector3D.plusJ) coordinates are :
-      // -cos (phi) sin (psi), cos (phi) cos (psi), sin (phi)
-      // (-r) (Vector3D.plusK) coordinates are :
-      // -sin (theta) cos (phi), sin (phi), cos (theta) cos (phi)
-      // and we can choose to have phi in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusJ);
-      v2 = applyInverseTo(Vector3D.plusK);
-      if ((v2.getY() < minThreshold) || (v2.getY() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(-(v1.getX()), v1.getY());
-      angles[1] = Math.asin(v2.getY());
-      angles[2] = Math.atan2(-(v2.getX()), v2.getZ());
-
-    } else if (order == RotationOrder.ZYX) {
-
-      // r (Vector3D.plusI) coordinates are :
-      //  cos (theta) cos (psi), cos (theta) sin (psi), -sin (theta)
-      // (-r) (Vector3D.plusK) coordinates are :
-      // -sin (theta), sin (phi) cos (theta), cos (phi) cos (theta)
-      // and we can choose to have theta in the interval [-PI/2 ; +PI/2]
-      v1 = applyTo(Vector3D.plusI);
-      v2 = applyInverseTo(Vector3D.plusK);
-      if ((v2.getX() < minThreshold) || (v2.getX() > maxThreshold)) {
-        throw new CardanEulerSingularityException(true);
-      }
-      angles[0] = Math.atan2(v1.getY(), v1.getX());
-      angles[1] = -Math.asin(v2.getX());
-      angles[2] = Math.atan2(v2.getY(), v2.getZ());
-
-    } else if (order == RotationOrder.XYX) {
-
-      // r (Vector3D.plusI) coordinates are :
-      //  cos (theta), sin (phi1) sin (theta), -cos (phi1) sin (theta)
-      // (-r) (Vector3D.plusI) coordinates are :
-      // cos (theta), sin (theta) sin (phi2), sin (theta) cos (phi2)
-      // and we can choose to have theta in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusI);
-      v2 = applyInverseTo(Vector3D.plusI);
-      if ((v2.getX() < minThreshold) || (v2.getX() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getY(), -v1.getZ());
-      angles[1] = Math.acos(v2.getX());
-      angles[2] = Math.atan2(v2.getY(), v2.getZ());
-
-    } else if (order == RotationOrder.XZX) {
-
-      // r (Vector3D.plusI) coordinates are :
-      //  cos (psi), cos (phi1) sin (psi), sin (phi1) sin (psi)
-      // (-r) (Vector3D.plusI) coordinates are :
-      // cos (psi), -sin (psi) cos (phi2), sin (psi) sin (phi2)
-      // and we can choose to have psi in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusI);
-      v2 = applyInverseTo(Vector3D.plusI);
-      if ((v2.getX() < minThreshold) || (v2.getX() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getZ(), v1.getY());
-      angles[1] = Math.acos(v2.getX());
-      angles[2] = Math.atan2(v2.getZ(), -v2.getY());
-
-    } else if (order == RotationOrder.YXY) {
-
-      // r (Vector3D.plusJ) coordinates are :
-      //  sin (theta1) sin (phi), cos (phi), cos (theta1) sin (phi)
-      // (-r) (Vector3D.plusJ) coordinates are :
-      // sin (phi) sin (theta2), cos (phi), -sin (phi) cos (theta2)
-      // and we can choose to have phi in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusJ);
-      v2 = applyInverseTo(Vector3D.plusJ);
-      if ((v2.getY() < minThreshold) || (v2.getY() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getX(), v1.getZ());
-      angles[1] = Math.acos(v2.getY());
-      angles[2] = Math.atan2(v2.getX(), -v2.getZ());
-
-    } else if (order == RotationOrder.YZY) {
-
-      // r (Vector3D.plusJ) coordinates are :
-      //  -cos (theta1) sin (psi), cos (psi), sin (theta1) sin (psi)
-      // (-r) (Vector3D.plusJ) coordinates are :
-      // sin (psi) cos (theta2), cos (psi), sin (psi) sin (theta2)
-      // and we can choose to have psi in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusJ);
-      v2 = applyInverseTo(Vector3D.plusJ);
-      if ((v2.getY() < minThreshold) || (v2.getY() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getZ(), -v1.getX());
-      angles[1] = Math.acos(v2.getY());
-      angles[2] = Math.atan2(v2.getZ(), v2.getX());
-
-    } else if (order == RotationOrder.ZXZ) {
-
-      // r (Vector3D.plusK) coordinates are :
-      //  sin (psi1) sin (phi), -cos (psi1) sin (phi), cos (phi)
-      // (-r) (Vector3D.plusK) coordinates are :
-      // sin (phi) sin (psi2), sin (phi) cos (psi2), cos (phi)
-      // and we can choose to have phi in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusK);
-      v2 = applyInverseTo(Vector3D.plusK);
-      if ((v2.getZ() < minThreshold) || (v2.getZ() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getX(), -v1.getY());
-      angles[1] = Math.acos(v2.getZ());
-      angles[2] = Math.atan2(v2.getX(), v2.getY());
-
-    } else { // last possibility is ZYZ
-
-      // r (Vector3D.plusK) coordinates are :
-      //  cos (psi1) sin (theta), sin (psi1) sin (theta), cos (theta)
-      // (-r) (Vector3D.plusK) coordinates are :
-      // -sin (theta) cos (psi2), sin (theta) sin (psi2), cos (theta)
-      // and we can choose to have theta in the interval [0 ; PI]
-      v1 = applyTo(Vector3D.plusK);
-      v2 = applyInverseTo(Vector3D.plusK);
-      if ((v2.getZ() < minThreshold) || (v2.getZ() > maxThreshold)) {
-        throw new CardanEulerSingularityException(false);
-      }
-      angles[0] = Math.atan2(v1.getY(), v1.getX());
-      angles[1] = Math.acos(v2.getZ());
-      angles[2] = Math.atan2(v2.getY(), -v2.getX());
+      return getAnglesXYZ();
     }
+    if (order == RotationOrder.XZY) {
+      return getAnglesXZY();
+    }
+    if (order == RotationOrder.YXZ) {
+      return getAnglesYXZ();
+    }
+    if (order == RotationOrder.YZX) {
+      return getAnglesYZX();
+    }
+    if (order == RotationOrder.ZXY) {
+      return getAnglesZXY();
+    }
+    if (order == RotationOrder.ZYX) {
+      return getAnglesZYX();
+    }
+    if (order == RotationOrder.XYX) {
+      return getAnglesXYX();
+    }
+    if (order == RotationOrder.XZX) {
+      return getAnglesXZX();
+    }
+    if (order == RotationOrder.YXY) {
+      return getAnglesYXY();
+    }
+    if (order == RotationOrder.YZY) {
+      return getAnglesYZY();
+    }
+    if (order == RotationOrder.ZXZ) {
+      return getAnglesZXZ();
+    }
+    if (order == RotationOrder.ZYZ) {
+      return getAnglesZYZ();
+    }
+    throw new IllegalStateException("Unknown rotation order: " + order);
+  }
 
-    return angles;
+  private double[] getAnglesXYZ() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusK) coordinates are :
+    //  sin (theta), -cos (theta) sin (phi), cos (theta) cos (phi)
+    // (-r) (Vector3D.plusI) coordinates are :
+    // cos (psi) cos (theta), -sin (psi) cos (theta), sin (theta)
+    // and we can choose to have theta in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusK);
+    Vector3D v2 = applyInverseTo(Vector3D.plusI);
+    checkAngleBounds(v2.getZ(), true);
+    return new double[] {
+      Math.atan2(-v1.getY(), v1.getZ()), Math.asin(v2.getZ()), Math.atan2(-v2.getY(), v2.getX())
+    };
+  }
+
+  private double[] getAnglesXZY() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusJ) coordinates are :
+    // -sin (psi), cos (psi) cos (phi), cos (psi) sin (phi)
+    // (-r) (Vector3D.plusI) coordinates are :
+    // cos (theta) cos (psi), -sin (psi), sin (theta) cos (psi)
+    // and we can choose to have psi in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusJ);
+    Vector3D v2 = applyInverseTo(Vector3D.plusI);
+    checkAngleBounds(v2.getY(), true);
+    return new double[] {
+      Math.atan2(v1.getZ(), v1.getY()), -Math.asin(v2.getY()), Math.atan2(v2.getZ(), v2.getX())
+    };
+  }
+
+  private double[] getAnglesYXZ() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusK) coordinates are :
+    //  cos (phi) sin (theta), -sin (phi), cos (phi) cos (theta)
+    // (-r) (Vector3D.plusJ) coordinates are :
+    // sin (psi) cos (phi), cos (psi) cos (phi), -sin (phi)
+    // and we can choose to have phi in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusK);
+    Vector3D v2 = applyInverseTo(Vector3D.plusJ);
+    checkAngleBounds(v2.getZ(), true);
+    return new double[] {
+      Math.atan2(v1.getX(), v1.getZ()), -Math.asin(v2.getZ()), Math.atan2(v2.getX(), v2.getY())
+    };
+  }
+
+  private double[] getAnglesYZX() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusI) coordinates are :
+    // cos (psi) cos (theta), sin (psi), -cos (psi) sin (theta)
+    // (-r) (Vector3D.plusJ) coordinates are :
+    // sin (psi), cos (phi) cos (psi), -sin (phi) cos (psi)
+    // and we can choose to have psi in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusI);
+    Vector3D v2 = applyInverseTo(Vector3D.plusJ);
+    checkAngleBounds(v2.getX(), true);
+    return new double[] {
+      Math.atan2(-v1.getZ(), v1.getX()), Math.asin(v2.getX()), Math.atan2(-v2.getZ(), v2.getY())
+    };
+  }
+
+  private double[] getAnglesZXY() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusJ) coordinates are :
+    // -cos (phi) sin (psi), cos (phi) cos (psi), sin (phi)
+    // (-r) (Vector3D.plusK) coordinates are :
+    // -sin (theta) cos (phi), sin (phi), cos (theta) cos (phi)
+    // and we can choose to have phi in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusJ);
+    Vector3D v2 = applyInverseTo(Vector3D.plusK);
+    checkAngleBounds(v2.getY(), true);
+    return new double[] {
+      Math.atan2(-v1.getX(), v1.getY()), Math.asin(v2.getY()), Math.atan2(-v2.getX(), v2.getZ())
+    };
+  }
+
+  private double[] getAnglesZYX() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusI) coordinates are :
+    //  cos (theta) cos (psi), cos (theta) sin (psi), -sin (theta)
+    // (-r) (Vector3D.plusK) coordinates are :
+    // -sin (theta), sin (phi) cos (theta), cos (phi) cos (theta)
+    // and we can choose to have theta in the interval [-PI/2 ; +PI/2]
+    Vector3D v1 = applyTo(Vector3D.plusI);
+    Vector3D v2 = applyInverseTo(Vector3D.plusK);
+    checkAngleBounds(v2.getX(), true);
+    return new double[] {
+      Math.atan2(v1.getY(), v1.getX()), -Math.asin(v2.getX()), Math.atan2(v2.getY(), v2.getZ())
+    };
+  }
+
+  private double[] getAnglesXYX() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusI) coordinates are :
+    //  cos (theta), sin (phi1) sin (theta), -cos (phi1) sin (theta)
+    // (-r) (Vector3D.plusI) coordinates are :
+    // cos (theta), sin (theta) sin (phi2), sin (theta) cos (phi2)
+    // and we can choose to have theta in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusI);
+    Vector3D v2 = applyInverseTo(Vector3D.plusI);
+    checkAngleBounds(v2.getX(), false);
+    return new double[] {
+      Math.atan2(v1.getY(), -v1.getZ()), Math.acos(v2.getX()), Math.atan2(v2.getY(), v2.getZ())
+    };
+  }
+
+  private double[] getAnglesXZX() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusI) coordinates are :
+    //  cos (psi), cos (phi1) sin (psi), sin (phi1) sin (psi)
+    // (-r) (Vector3D.plusI) coordinates are :
+    // cos (psi), -sin (psi) cos (phi2), sin (psi) sin (phi2)
+    // and we can choose to have psi in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusI);
+    Vector3D v2 = applyInverseTo(Vector3D.plusI);
+    checkAngleBounds(v2.getX(), false);
+    return new double[] {
+      Math.atan2(v1.getZ(), v1.getY()), Math.acos(v2.getX()), Math.atan2(v2.getZ(), -v2.getY())
+    };
+  }
+
+  private double[] getAnglesYXY() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusJ) coordinates are :
+    //  sin (theta1) sin (phi), cos (phi), cos (theta1) sin (phi)
+    // (-r) (Vector3D.plusJ) coordinates are :
+    // sin (phi) sin (theta2), cos (phi), -sin (phi) cos (theta2)
+    // and we can choose to have phi in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusJ);
+    Vector3D v2 = applyInverseTo(Vector3D.plusJ);
+    checkAngleBounds(v2.getY(), false);
+    return new double[] {
+      Math.atan2(v1.getX(), v1.getZ()), Math.acos(v2.getY()), Math.atan2(v2.getX(), -v2.getZ())
+    };
+  }
+
+  private double[] getAnglesYZY() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusJ) coordinates are :
+    //  -cos (theta1) sin (psi), cos (psi), sin (theta1) sin (psi)
+    // (-r) (Vector3D.plusJ) coordinates are :
+    // sin (psi) cos (theta2), cos (psi), sin (psi) sin (theta2)
+    // and we can choose to have psi in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusJ);
+    Vector3D v2 = applyInverseTo(Vector3D.plusJ);
+    checkAngleBounds(v2.getY(), false);
+    return new double[] {
+      Math.atan2(v1.getZ(), -v1.getX()), Math.acos(v2.getY()), Math.atan2(v2.getZ(), v2.getX())
+    };
+  }
+
+  private double[] getAnglesZXZ() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusK) coordinates are :
+    //  sin (psi1) sin (phi), -cos (psi1) sin (phi), cos (phi)
+    // (-r) (Vector3D.plusK) coordinates are :
+    // sin (phi) sin (psi2), sin (phi) cos (psi2), cos (phi)
+    // and we can choose to have phi in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusK);
+    Vector3D v2 = applyInverseTo(Vector3D.plusK);
+    checkAngleBounds(v2.getZ(), false);
+    return new double[] {
+      Math.atan2(v1.getX(), -v1.getY()), Math.acos(v2.getZ()), Math.atan2(v2.getX(), v2.getY())
+    };
+  }
+
+  private double[] getAnglesZYZ() throws CardanEulerSingularityException {
+
+    // r (Vector3D.plusK) coordinates are :
+    //  cos (psi1) sin (theta), sin (psi1) sin (theta), cos (theta)
+    // (-r) (Vector3D.plusK) coordinates are :
+    // -sin (theta) cos (psi2), sin (theta) sin (psi2), cos (theta)
+    // and we can choose to have theta in the interval [0 ; PI]
+    Vector3D v1 = applyTo(Vector3D.plusK);
+    Vector3D v2 = applyInverseTo(Vector3D.plusK);
+    checkAngleBounds(v2.getZ(), false);
+    return new double[] {
+      Math.atan2(v1.getY(), v1.getX()), Math.acos(v2.getZ()), Math.atan2(v2.getY(), -v2.getX())
+    };
+  }
+
+  private void checkAngleBounds(double value, boolean isCardan)
+      throws CardanEulerSingularityException {
+    if ((value < ANGLES_MIN_THRESHOLD) || (value > ANGLES_MAX_THRESHOLD)) {
+      throw new CardanEulerSingularityException(isCardan);
+    }
   }
 
   /**
-   * Get the 3X3 matrix corresponding to the instance
+   * Get the 3x3 matrix corresponding to this rotation.
    *
-   * @return the matrix corresponding to the instance
+   * <p>The returned matrix is guaranteed to be orthogonal with determinant +1, consistent with the
+   * quaternion stored in this instance. A fresh array is created on each call so callers can modify
+   * the matrix safely without affecting the rotation.
+   *
+   * @return new 3x3 double array representing the rotation in row-major order
    */
   public double[][] getMatrix() {
 
@@ -800,8 +801,12 @@ public class Rotation implements Serializable {
   /**
    * Apply the rotation to a vector.
    *
-   * @param u vector to apply the rotation to
-   * @return a new vector which is the image of u by the rotation
+   * <p>The input vector is not modified; a new {@link Vector3D} containing the rotated coordinates
+   * is returned. The operation preserves norms and is equivalent to multiplying by the 3x3 rotation
+   * matrix that {@link #getMatrix()} would produce.
+   *
+   * @param u vector to apply the rotation to; accepted even if not normalized, but must be finite
+   * @return a new vector equal to {@code u} expressed in the rotated frame defined by this instance
    */
   public Vector3D applyTo(Vector3D u) {
 
@@ -820,8 +825,12 @@ public class Rotation implements Serializable {
   /**
    * Apply the inverse of the rotation to a vector.
    *
-   * @param u vector to apply the inverse of the rotation to
-   * @return a new vector which such that u is its image by the rotation
+   * <p>This is equivalent to applying {@link #revert()} then {@link #applyTo(Vector3D)}, but avoids
+   * creating an intermediate rotation. Use it when you need to express a vector from the rotated
+   * frame back into the original frame.
+   *
+   * @param u vector to transform by the inverse rotation; components must be finite
+   * @return a new vector that, when this rotation is applied, yields the original {@code u}
    */
   public Vector3D applyInverseTo(Vector3D u) {
 
@@ -839,13 +848,15 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Apply the instance to another rotation. Applying the instance to a rotation is computing the
-   * composition in an order compliant with the following rule : let u be any vector and v its image
-   * by r (i.e. r.applyTo(u) = v), let w be the image of v by the instance (i.e. applyTo(v) = w),
-   * then w = comp.applyTo(u), where comp = applyTo(r).
+   * Apply this rotation to another rotation.
    *
-   * @param r rotation to apply the rotation to
-   * @return a new rotation which is the composition of r by the instance
+   * <p>The result follows function composition: if {@code v = r.applyTo(u)} and {@code w =
+   * applyTo(v)}, then {@code w} also equals {@code comp.applyTo(u)} where {@code comp} is the
+   * rotation returned by this method. This is the standard way to chain two rotations while
+   * preserving numerical stability.
+   *
+   * @param r rotation to be applied first in the composition; treated as immutable input
+   * @return a new rotation equivalent to {@code this ∘ r} (apply {@code r}, then this rotation)
    */
   public Rotation applyTo(Rotation r) {
     return new Rotation(
@@ -857,15 +868,17 @@ public class Rotation implements Serializable {
   }
 
   /**
-   * Apply the inverse of the instance to another rotation. Applying the inverse of the instance to
-   * a rotation is computing the composition in an order compliant with the following rule : let u
-   * be any vector and v its image by r (i.e. r.applyTo(u) = v), let w be the inverse image of v by
-   * the instance (i.e. applyInverseTo(v) = w), then w = comp.applyTo(u), where comp =
-   * applyInverseTo(r).
+   * Apply the inverse of this rotation to another rotation.
    *
-   * @param r rotation to apply the rotation to
-   * @return a new rotation which is the composition of r by the inverse of the instance
+   * <p>The returned rotation satisfies {@code applyInverseTo(r).applyTo(u) = applyInverseTo(r
+   * applyTo(u))} for any vector {@code u}. Use it to undo a rotation in a composition chain without
+   * explicitly creating the inverse rotation instance.
+   *
+   * @param r rotation to be adjusted by the inverse of this rotation; remains unchanged itself
+   * @return a new rotation equivalent to {@code this^{-1} ∘ r} (apply {@code r}, then undo {@code
+   *     this})
    */
+  @SuppressWarnings("unused")
   public Rotation applyInverseTo(Rotation r) {
     return new Rotation(
         -r.q0 * q0 - (r.q1 * q1 + r.q2 * q2 + r.q3 * q3),
@@ -931,7 +944,7 @@ public class Rotation implements Serializable {
       o[2][1] = x21 - 0.5 * (x20 * mx01 + x21 * mx11 + x22 * mx21 - m[2][1]);
       o[2][2] = x22 - 0.5 * (x20 * mx02 + x21 * mx12 + x22 * mx22 - m[2][2]);
 
-      // correction on each elements
+      // correction on each element
       double corr00 = o[0][0] - m[0][0];
       double corr01 = o[0][1] - m[0][1];
       double corr02 = o[0][2] - m[0][2];
@@ -988,5 +1001,5 @@ public class Rotation implements Serializable {
   /** Third coordinate of the vectorial part of the quaternion. */
   private final double q3;
 
-  private static final long serialVersionUID = -2112458726544145775L;
+  @Serial private static final long serialVersionUID = -2112458726544145775L;
 }

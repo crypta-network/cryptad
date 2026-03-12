@@ -1,347 +1,289 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import java.util.Comparator;
+import java.util.Iterator;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.util.Enumeration;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Test case for {@link LRUMap} class.
- *
- * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
+ * Unit tests for {@link LRUMap}. Covers push/get/remove, LRU ordering, peeking/popping,
+ * enumerations, array export, clearing, and safe-map factory methods.
  */
-public class LRUMapTest {
+@SuppressWarnings("java:S100") // Allow method names with underscores for readability
+class LRUMapTest {
 
-  private static final int sampleElemsNumber = 100;
+  private static final int SAMPLE_ELEMS = 5;
 
-  /**
-   * Creates a double array of objects with a specified size where Object[i][0] is the key, and is
-   * an Integer, and Object[i][1] is the value
-   *
-   * @param size the array size
-   * @return the objects double array
-   */
   private Object[][] createSampleKeyVal(int size) {
-    Object[][] sampleObjects = new Object[size][2];
-    for (int i = 0; i < sampleObjects.length; i++) {
-      // key
-      sampleObjects[i][0] = i;
-      // value
-      sampleObjects[i][1] = new Object();
+    Object[][] arr = new Object[size][2];
+    for (int i = 0; i < size; i++) {
+      arr[i][0] = i; // key
+      arr[i][1] = "V" + i; // value for easier assertions
     }
-    return sampleObjects;
+    return arr;
   }
 
-  /**
-   * Creates a LRUMap filled with the specified objects number
-   *
-   * @param size HashTable size
-   * @return the created LRUMap
-   */
-  private LRUMap<Object, Object> createSampleHashTable(int size) {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(size);
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    return methodLRUht;
+  private LRUMap<Object, Object> createSampleMap(int size) {
+    LRUMap<Object, Object> map = new LRUMap<>();
+    Object[][] kv = createSampleKeyVal(size);
+    for (Object[] objects : kv) map.push(objects[0], objects[1]);
+    return map;
   }
 
-  /**
-   * It verifies if a key-value pair is present in a LRUMap
-   *
-   * @param aLRUht a LRUMap to check in
-   * @param aKey a key to find
-   * @param aValue the correspondent value
-   * @return true if the key is present and returned value is the same as in the argument
-   */
-  private boolean verifyKeyValPresence(LRUMap<Object, Object> aLRUht, Object aKey, Object aValue) {
-    if (aLRUht.containsKey(aKey)) return aLRUht.get(aKey).equals(aValue);
-    return false;
-  }
-
-  /**
-   * Tests push(Object,Object) method providing null object as arguments (after setting up a sample
-   * HashTable) and verifying if the correct exception is raised
-   */
   @Test
-  public void testPushNull() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    try {
-      // a null value is admitted
-      methodLRUht.push(new Object(), null);
-    } catch (NullPointerException anException) {
-      fail("Not expected exception thrown : " + anException.getMessage());
+  @DisplayName("push with null key throws NPE; null value allowed")
+  void push_whenNullKey_throwsAndNullValueAllowed() {
+    // Arrange
+    LRUMap<String, String> map = new LRUMap<>();
+
+    // Act & Assert: null value is allowed
+    map.push("k", null);
+    assertTrue(map.containsKey("k"));
+    assertNull(map.get("k"));
+
+    // Act & Assert: null key not allowed
+    assertThrows(NullPointerException.class, () -> map.push(null, "x"));
+    assertThrows(NullPointerException.class, () -> map.push(null, null));
+  }
+
+  @Test
+  @DisplayName("push same key returns old value and promotes to MRU")
+  void push_whenKeyExists_returnsOldValueAndPromotes() {
+    // Arrange
+    LRUMap<String, String> map = new LRUMap<>();
+    map.push("a", "A"); // LRU: a
+    map.push("b", "B"); // LRU: a, b
+    map.push("c", "C"); // LRU: a, b, c
+
+    // Act
+    String old = map.push("b", "B2"); // new order LRU: a, c, b (b is MRU)
+
+    // Assert
+    assertEquals("B", old, "push must return the previous value for the key");
+    assertEquals("a", map.popKey());
+    assertEquals("c", map.popKey());
+    assertEquals("b", map.popKey());
+    assertNull(map.popKey());
+  }
+
+  @Test
+  @DisplayName("get returns value without promotion")
+  void get_whenCalled_doesNotPromoteKey() {
+    // Arrange
+    LRUMap<String, String> map = new LRUMap<>();
+    map.push("x", "X"); // LRU: x
+    map.push("y", "Y"); // LRU: x, y
+
+    // Act
+    assertEquals("X", map.get("x")); // does not promote
+
+    // Assert: x is still the least-recently-pushed
+    assertEquals("x", map.peekKey());
+    assertEquals("x", map.popKey());
+    assertEquals("y", map.popKey());
+  }
+
+  @Test
+  @DisplayName("popKey/popValue on empty return null")
+  void pop_whenEmpty_returnsNull() {
+    // Arrange
+    LRUMap<Integer, Integer> map = new LRUMap<>();
+
+    // Act & Assert
+    assertNull(map.popKey());
+    assertNull(map.popValue());
+  }
+
+  @Test
+  @DisplayName("popKey removes and returns least-recently-pushed key")
+  void popKey_whenCalled_returnsLRUKeyAndRemoves() {
+    // Arrange
+    LRUMap<Object, Object> map = createSampleMap(SAMPLE_ELEMS);
+
+    // Act & Assert (order: 0 .. SAMPLE_ELEMS-1)
+    for (int i = 0; i < SAMPLE_ELEMS; i++) {
+      assertEquals(i, map.popKey());
     }
-    try {
-      methodLRUht.push(null, null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
+    assertNull(map.popKey());
+  }
+
+  @Test
+  @DisplayName("popValue removes and returns least-recently-pushed value")
+  void popValue_whenCalled_returnsLRUValueAndRemoves() {
+    // Arrange
+    LRUMap<Object, Object> map = createSampleMap(SAMPLE_ELEMS);
+
+    // Act & Assert (values V0..Vn in LRU->MRU order)
+    for (int i = 0; i < SAMPLE_ELEMS; i++) {
+      assertEquals("V" + i, map.popValue());
     }
-    try {
-      methodLRUht.push(null, new Object());
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
+    assertNull(map.popValue());
+  }
+
+  @Test
+  @DisplayName("peekKey/peekValue return LRU without removing")
+  void peek_whenCalled_returnsLRUWithoutRemoving() {
+    // Arrange
+    LRUMap<Integer, String> map = new LRUMap<>();
+    map.push(1, "one");
+    map.push(2, "two");
+
+    // Act & Assert
+    assertEquals(1, map.peekKey());
+    assertEquals("one", map.peekValue());
+    assertEquals(2, map.size());
+    assertEquals(1, map.popKey()); // still the LRU
+  }
+
+  @Test
+  @DisplayName("containsKey/get/remove throw NPE on null key")
+  void methods_whenNullKey_throwNullPointerException() {
+    // Arrange
+    LRUMap<String, Integer> map = new LRUMap<>();
+
+    // Act & Assert
+    assertThrows(NullPointerException.class, () -> map.containsKey(null));
+    assertThrows(NullPointerException.class, () -> map.get(null));
+    assertThrows(NullPointerException.class, () -> map.removeKey(null));
+  }
+
+  @Test
+  @DisplayName("get on missing key returns null")
+  void get_whenMissingKey_returnsNull() {
+    // Arrange
+    LRUMap<String, Integer> map = new LRUMap<>();
+    map.push("a", 1);
+
+    // Act & Assert
+    assertNull(map.get("b"));
+  }
+
+  @Test
+  @DisplayName("keys() iterates from LRU to MRU")
+  void keys_whenIterated_returnsFromLRUToMRU() {
+    // Arrange
+    LRUMap<Object, Object> map = createSampleMap(SAMPLE_ELEMS);
+
+    // Act
+    Iterator<Object> keys = map.keys();
+
+    // Assert
+    int expected = 0;
+    while (keys.hasNext()) {
+      assertEquals(expected++, keys.next());
     }
+    assertEquals(SAMPLE_ELEMS, expected);
   }
 
-  /**
-   * Tests push(Object,Object) method and verifies the behaviour when pushing the same object more
-   * than one time.
-   */
   @Test
-  public void testPushSameObjTwice() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    Object[][] sampleObj = {
-      {sampleElemsNumber, new Object()},
-      {sampleElemsNumber + 1, new Object()}
-    };
+  @DisplayName("values() iterates from LRU to MRU")
+  void values_whenIterated_returnsFromLRUToMRU() {
+    // Arrange
+    LRUMap<Object, Object> map = createSampleMap(3); // values: V0, V1, V2
 
-    methodLRUht.push(sampleObj[0][0], sampleObj[0][1]);
-    methodLRUht.push(sampleObj[1][0], sampleObj[1][1]);
+    // Act
+    Iterator<Object> vals = map.values();
 
-    // check presence
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[0][0], sampleObj[0][1]));
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[1][0], sampleObj[1][1]));
-    // check size
-    assertEquals(sampleElemsNumber + 2, methodLRUht.size());
-
-    // push the same object another time
-    methodLRUht.push(sampleObj[0][0], sampleObj[0][1]);
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[0][0], sampleObj[0][1]));
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[1][0], sampleObj[1][1]));
-    assertEquals(sampleElemsNumber + 2, methodLRUht.size());
+    // Assert
+    assertTrue(vals.hasNext());
+    assertEquals("V0", vals.next());
+    assertEquals("V1", vals.next());
+    assertEquals("V2", vals.next());
+    assertFalse(vals.hasNext());
   }
 
-  /**
-   * Tests push(Object,Object) method and verifies the behaviour when pushing the same key with two
-   * different values.
-   */
   @Test
-  public void testPushSameKey() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    Object[][] sampleObj = {
-      {sampleElemsNumber, new Object()},
-      {sampleElemsNumber + 1, new Object()}
-    };
+  @DisplayName("valuesToArray fills prefix in LRU->MRU order and leaves remaining null")
+  void valuesToArray_whenArrayLarger_fillsPrefixAndLeavesNulls() {
+    // Arrange
+    LRUMap<Integer, String> map = new LRUMap<>();
+    map.push(1, "A");
+    map.push(2, "B");
+    map.push(3, "C");
+    String[] out = new String[5];
 
-    methodLRUht.push(sampleObj[0][0], sampleObj[0][1]);
-    methodLRUht.push(sampleObj[1][0], sampleObj[1][1]);
+    // Act
+    map.valuesToArray(out);
 
-    // check presence
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[0][0], sampleObj[0][1]));
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[1][0], sampleObj[1][1]));
-    // check size
-    assertEquals(sampleElemsNumber + 2, methodLRUht.size());
-
-    // creating and pushing a different value
-    sampleObj[0][1] = new Object();
-    methodLRUht.push(sampleObj[0][0], sampleObj[0][1]);
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[0][0], sampleObj[0][1]));
-    assertTrue(verifyKeyValPresence(methodLRUht, sampleObj[1][0], sampleObj[1][1]));
-    assertEquals(sampleElemsNumber + 2, methodLRUht.size());
+    // Assert
+    assertArrayEquals(new String[] {"A", "B", "C", null, null}, out);
   }
 
-  /**
-   * Tests popKey() method pushing and popping objects and verifying if their keys are correctly (in
-   * a FIFO manner) fetched and the HashTable entry deleted
-   */
   @Test
-  public void testPopKey() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    // getting keys
-    for (int i = 0; i < sampleObjects.length; i++)
-      assertEquals(sampleObjects[i][0], methodLRUht.popKey());
-    // the HashTable must be empty
-    assertNull(methodLRUht.popKey());
+  @DisplayName("clear empties map and resets size")
+  void clear_whenCalled_mapBecomesEmpty() {
+    // Arrange
+    LRUMap<Integer, Integer> map = new LRUMap<>();
+    map.push(1, 10);
+    map.push(2, 20);
+
+    // Act
+    map.clear();
+
+    // Assert
+    assertTrue(map.isEmpty());
+    assertEquals(0, map.size());
+    assertNull(map.popKey());
   }
 
-  /**
-   * Tests popValue() method pushing and popping objects and verifying if their values are correctly
-   * (in a FIFO manner) fetched and the HashTable entry deleted
-   */
   @Test
-  public void testPopValue() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    // getting values
-    for (int i = 0; i < sampleObjects.length; i++)
-      assertEquals(sampleObjects[i][1], methodLRUht.popValue());
-    // the HashTable must be empty
-    assertNull(methodLRUht.popKey());
+  @DisplayName("createSafeMap() with Comparable keys behaves correctly")
+  void createSafeMap_whenComparableKey_works() {
+    // Arrange
+    LRUMap<Integer, String> map = LRUMap.createSafeMap();
+    map.push(1, "A");
+    map.push(2, "B");
+
+    // Act & Assert
+    assertEquals(1, map.popKey());
+    assertEquals(2, map.popKey());
+    assertNull(map.popKey());
   }
 
-  /** Tests popValue() method popping a value from an empty LRUMap. */
-  @Test
-  public void testPopValueFromEmpty() {
-    LRUMap<?, ?> methodLRUht = new LRUMap<>();
-    assertNull(methodLRUht.popValue());
+  private record NCKey(int id) { // Non-Comparable key for comparator-based safe map
   }
 
-  /**
-   * Tests peekValue() method pushing and popping objects and verifying if their peekValue is
-   * correct
-   */
   @Test
-  public void testPeekValue() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    // getting values
-    for (int i = 0; i < sampleObjects.length; i++) {
-      assertEquals(sampleObjects[i][1], methodLRUht.peekValue());
-      methodLRUht.popKey();
-    }
-    // the HashTable must be empty
-    assertNull(methodLRUht.peekValue());
-    // insert and fetch a null value
-    methodLRUht.push(new Object(), null);
-    assertNull(methodLRUht.peekValue());
+  @DisplayName("createSafeMap(Comparator) accepts non-comparable keys")
+  void createSafeMap_withComparator_acceptsNonComparableKey() {
+    // Arrange
+    LRUMap<NCKey, String> map = LRUMap.createSafeMap(Comparator.comparingInt(k -> k.id));
+    NCKey k1 = new NCKey(1);
+    NCKey k2 = new NCKey(2);
+    map.push(k1, "one");
+    map.push(k2, "two");
+
+    // Act & Assert
+    assertEquals("one", map.get(k1));
+    assertEquals("two", map.get(k2));
+    assertEquals(k1, map.popKey());
+    assertEquals(k2, map.popKey());
   }
 
-  /** Tests size() method pushing and popping elements into the LRUMap */
   @Test
-  public void testSize() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    assertTrue(methodLRUht.isEmpty());
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) {
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-      assertEquals(methodLRUht.size(), i + 1);
-    }
-    // popping keys
-    for (int i = sampleObjects.length - 1; i >= 0; i--) {
-      methodLRUht.popKey();
-      assertEquals(methodLRUht.size(), i);
-    }
-  }
+  @DisplayName("size reflects pushes and pops; isEmpty tracks emptiness")
+  void size_and_isEmpty_reflectState() {
+    // Arrange
+    LRUMap<Integer, String> map = new LRUMap<>();
+    assertTrue(map.isEmpty());
 
-  /**
-   * Tests removeKey(Object) method verifies if all elements are correctly removed checking the
-   * method return value, if the element is still contained and the HashTable size.
-   */
-  @Test
-  public void testRemoveKey() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    // popping keys
-    for (int i = sampleObjects.length - 1; i >= 0; i--) {
-      assertTrue(methodLRUht.removeKey(sampleObjects[i][0]));
-      assertFalse(methodLRUht.containsKey(sampleObjects[i][0]));
-      assertEquals(methodLRUht.size(), i);
-    }
-  }
-
-  /**
-   * Tests removeKey(Object) providing a null key and trying to remove it after setting up a sample
-   * queue.
-   */
-  @Test
-  public void testRemoveNullKey() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    try {
-      methodLRUht.removeKey(null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
-    }
-  }
-
-  /**
-   * Tests removeKey(Object) method trying to remove a not present key after setting up a sample
-   * LRUMap.
-   */
-  @Test
-  public void testRemoveNotPresent() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    assertFalse(methodLRUht.removeKey(new Object()));
-  }
-
-  /**
-   * Tests containsKey(Object) method trying to find a not present key after setting up a sample
-   * queue. Then it search for a present one.
-   */
-  @Test
-  public void testContainsKey() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    assertFalse(methodLRUht.containsKey(new Object()));
-    Object methodSampleObj = new Object();
-    methodLRUht.push(methodSampleObj, null);
-    assertTrue(methodLRUht.containsKey(methodSampleObj));
-  }
-
-  /**
-   * Tests get(Object) method trying to find a not present key after setting up a sample HashTable,
-   * then it search a present key.
-   */
-  @Test
-  public void testGet() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    assertNull(methodLRUht.get(new Object()));
-    Object methodSampleKey = new Object();
-    Object methodSampleValue = new Object();
-    methodLRUht.push(methodSampleKey, methodSampleValue);
-    assertEquals(methodLRUht.get(methodSampleKey), methodSampleValue);
-  }
-
-  /** Tests get(Object) trying to fetch a null key. */
-  @Test
-  public void testGetNullKey() {
-    LRUMap<Object, Object> methodLRUht = createSampleHashTable(sampleElemsNumber);
-    try {
-      methodLRUht.get(null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
-    }
-  }
-
-  /** Tests keys() method verifying if the Enumeration provided is correct */
-  @Test
-  public void testKeys() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
-    // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
-    Enumeration<Object> methodEnumeration = methodLRUht.keys();
-    int j = 0;
-    while (methodEnumeration.hasMoreElements()) {
-      assertEquals(methodEnumeration.nextElement(), sampleObjects[j][0]);
-      j++;
-    }
-  }
-
-  /**
-   * Tests isEmpty() method trying it with a new generated HashTable and after popping out all keys
-   * in a sample LRUMap
-   */
-  @Test
-  public void testIsEmpty() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
-    assertTrue(methodLRUht.isEmpty());
-    methodLRUht = createSampleHashTable(sampleElemsNumber);
-    // popping keys
-    for (int i = 0; i < sampleElemsNumber; i++) methodLRUht.popKey();
-    assertTrue(methodLRUht.isEmpty());
+    // Act & Assert
+    map.push(1, "A");
+    assertEquals(1, map.size());
+    map.push(2, "B");
+    assertEquals(2, map.size());
+    assertFalse(map.isEmpty());
+    map.popKey();
+    assertEquals(1, map.size());
+    map.popKey();
+    assertEquals(0, map.size());
+    assertTrue(map.isEmpty());
   }
 }

@@ -6,7 +6,6 @@ import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -15,15 +14,14 @@ import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
-import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.client.Metadata;
+import network.crypta.client.InsertException;
 import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.Metadata.SimpleManifestComposer;
+import network.crypta.client.Metadata;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.BaseManifestPutter.PutHandler;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
@@ -31,104 +29,150 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ResumeFailedException;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Insert a bunch of files as single Archive with .metadata pack the container/archive, then hand it
- * off to SimpleFileInserter
+ * Inserts a set of files as a single archive with an embedded {@code .metadata} manifest and hands
+ * it off to {@link SingleFileInserter} for the actual network insertion.
  *
- * <p>TODO persistence TODO add a MAX_SIZE for the final container(file)
+ * <p>This class is a thin coordinator that builds a container (either {@code .tar} or {@code .zip})
+ * containing the provided content plus the metadata entries required by the manifest/redirect
+ * layer. The resulting archive is converted into a single {@link InsertBlock} and then delegated to
+ * a {@link SingleFileInserter}. Typical usage is to construct a {@code ContainerInserter} with a
+ * manifest-like map (values of {@link Metadata}, {@link ManifestElement}, or nested {@link
+ * java.util.Map}) and then schedule it. Persistence is handled via Java serialization; on resume we
+ * reattach transient runtime state where applicable.
  *
+ * <p>Concurrency: instances are not thread-safe. Callers should synchronize externally if multiple
+ * threads may invoke lifecycle methods. Mutability: configuration is fixed at construction time;
+ * internal progress state advances as the inserter prepares the archive and transitions ownership
+ * to the created {@link SingleFileInserter}. Failure paths close streams and report via the
+ * provided callback.
+ *
+ * <ul>
+ *   <li>Builds {@code .metadata} and any additional unresolved metadata parts.
+ *   <li>Packages data and metadata into a TAR or ZIP archive.
+ *   <li>Delegates insertion to {@link SingleFileInserter} and reports transitions.
+ * </ul>
+ *
+ * @see SingleFileInserter
+ * @see Metadata
+ * @see ManifestElement
  * @author saces
  */
 public class ContainerInserter implements ClientPutState, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ContainerInserter.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
 
-  static {
-    Logger.registerClass(ContainerInserter.class);
-  }
+  private record ContainerElement(Bucket data, String targetInArchive) {}
 
-  private static class ContainerElement {
-    private final Bucket data;
-    private final String targetInArchive;
+  /** Items to include in the container archive; populated during metadata resolution. */
+  private transient ArrayList<ContainerElement> containerItems;
 
-    private ContainerElement(Bucket data2, String targetInArchive2) {
-      data = data2;
-      targetInArchive = targetInArchive2;
-    }
-  }
-
-  private final ArrayList<ContainerElement> containerItems;
-
+  /** Owning client putter that created and coordinates this inserter. */
   private final BaseClientPutter parent;
+
+  /** Callback used to report failures, resumes, and state transitions. */
   private final PutCompletionCallback cb;
+
+  /** Indicates that {@link #cancel(ClientContext)} has been invoked. */
   private boolean cancelled;
+
+  /** True once a terminal state has been reached and callbacks have been issued. */
   private boolean finished;
+
+  /** Whether backing buckets should be persistent across restarts. */
   private final boolean persistent;
 
-  /** See ContainerBuilder._rootDir. */
-  private final HashMap<String, Object> origMetadata;
+  /**
+   * Original manifest-like map used to build {@code .metadata} entries. See
+   * ContainerBuilder._rootDir.
+   */
+  private final Map<String, Object> origMetadata;
 
+  /** Archive format to build ({@link ARCHIVE_TYPE#TAR} or {@link ARCHIVE_TYPE#ZIP}). */
   private final ARCHIVE_TYPE archiveType;
+
+  /** Target URI that will be used as the base for the inserted content. */
   private final FreenetURI targetURI;
+
+  /** Application token forwarded to downstream components and callbacks. */
   private final Object token;
+
+  /** Insertion context providing configuration and factories needed at runtime. */
   private final InsertContext ctx;
+
+  /** If set, prepares metadata and stops before starting the network insertion. */
   private final boolean reportMetadataOnly;
+
+  /** When {@code true}, disables compression for the generated archive. */
   private final boolean dontCompress;
+
+  /** Optional explicit encryption key; {@code null} to use default/derived keys. */
   final byte[] forceCryptoKey;
+
+  /** Crypto algorithm identifier used by downstream inserters. */
   final byte cryptoAlgorithm;
+
+  /** Requests real-time insertion behavior when {@code true}. */
   private final boolean realTimeFlag;
 
   /**
-   * Insert a bunch of files as single Archive with .metadata
+   * Creates a new {@link ContainerInserter} that will package the provided manifest-like map and
+   * data into an archive and delegate its insertion to a {@link SingleFileInserter}.
    *
-   * @param parent2
-   * @param cb2
-   * @param metadata2
-   * @param targetURI2 The caller need to clone it for persistance
-   * @param ctx2
-   * @param dontCompress2
-   * @param reportMetadataOnly2
-   * @param token2
-   * @param archiveType2
-   * @param freeData
-   * @param forceCryptoKey
-   * @param cryptoAlgorithm
-   * @param realTimeFlag
+   * <p>The constructor records the configuration and performs no I/O. Call {@link #schedule} to
+   * build the metadata, package the archive, and initiate the downstream insertion. The {@code
+   * metadata2} map may contain nested maps, {@link Metadata} instances, or {@link ManifestElement}
+   * entries, which are converted into {@code .metadata} and redirected paths within the container.
+   *
+   * @param parent2 parent putter that owns this inserter and provides persistence scope
+   * @param cb2 completion callback invoked for transitions, failures, and resume notifications; may
+   *     be the same instance as {@code parent2}
+   * @param metadata2 manifest structure (mutable map) describing the tree to embed; values can be
+   *     nested maps, {@link Metadata}, or {@link ManifestElement}
+   * @param targetURI2 target URI; callers should provide a cloned, persistent instance suitable for
+   *     serialization
+   * @param ctx2 insert context supplying bucket factories and operational settings
+   * @param options execution options configuring compression, report-only mode, archive type, and
+   *     crypto settings
+   * @param token application correlation token echoed through callbacks; may be {@code null}
    */
   public ContainerInserter(
       BaseClientPutter parent2,
       PutCompletionCallback cb2,
-      HashMap<String, Object> metadata2,
+      Map<String, Object> metadata2,
       FreenetURI targetURI2,
       InsertContext ctx2,
-      boolean dontCompress2,
-      boolean reportMetadataOnly2,
-      Object token2,
-      ARCHIVE_TYPE archiveType2,
-      boolean freeData,
-      byte[] forceCryptoKey,
-      byte cryptoAlgorithm,
-      boolean realTimeFlag) {
+      InsertExecutionOptions options,
+      Object token) {
     parent = parent2;
     cb = cb2;
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     persistent = parent.persistent();
-    origMetadata = metadata2;
-    archiveType = archiveType2;
+    origMetadata = Metadata.forceMap(metadata2);
+    archiveType = options.archiveType();
     targetURI = targetURI2;
-    token = token2;
+    this.token = token;
     ctx = ctx2;
-    dontCompress = dontCompress2;
-    reportMetadataOnly = reportMetadataOnly2;
+    dontCompress = options.dontCompress();
+    reportMetadataOnly = options.reportMetadataOnly();
     containerItems = new ArrayList<>();
-    this.forceCryptoKey = forceCryptoKey;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.realTimeFlag = realTimeFlag;
+    this.forceCryptoKey = options.forceCryptoKey();
+    this.cryptoAlgorithm = options.cryptoAlgorithm();
+    this.realTimeFlag = options.realTimeFlag();
   }
 
+  /**
+   * Cancels the insertion before delegation to the downstream inserter or during preparation.
+   *
+   * <p>After cancellation, a failure is reported to the callback using {@link
+   * InsertExceptionMode#CANCELLED}. This method is idempotent and thread-safe.
+   *
+   * @param context client context used for callback notification
+   */
   @Override
   public void cancel(ClientContext context) {
     synchronized (this) {
@@ -139,24 +183,35 @@ public class ContainerInserter implements ClientPutState, Serializable {
     cb.onFailure(new InsertException(InsertExceptionMode.CANCELLED), this, context);
   }
 
+  /** Returns the owning {@link BaseClientPutter}. */
   @Override
   public BaseClientPutter getParent() {
     return parent;
   }
 
+  /** Returns the application-supplied correlation token, which may be {@code null}. */
   @Override
   public Object getToken() {
     return token;
   }
 
+  /**
+   * Schedules the preparation and delegation of the container insertion.
+   *
+   * <p>Creates the {@code .metadata} manifest, packages data and metadata into the configured
+   * archive type, and then constructs a {@link SingleFileInserter}. The downstream inserter is
+   * returned via {@link PutCompletionCallback#onTransition} and scheduled immediately.
+   *
+   * @param context insertion context used to obtain buckets and configuration
+   * @throws InsertException when preparation fails (e.g., bucket errors or metadata resolution)
+   */
   @Override
   public void schedule(ClientContext context) throws InsertException {
     start(context);
   }
 
   private void start(ClientContext context) {
-    if (logDEBUG)
-      Logger.debug(this, "Atempt to start a container inserter", new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Attempt to start a container inserter");
 
     makeMetadata(context);
 
@@ -172,9 +227,9 @@ public class ContainerInserter implements ClientPutState, Serializable {
         mimeType = (archiveType == ARCHIVE_TYPE.TAR ? createTarBucket(os) : createZipBucket(os));
         // create*Bucket closes os through try-with-resources
       }
-      if (logMINOR) Logger.minor(this, "Archive size is " + outputBucket.size());
+      if (LOG.isDebugEnabled()) LOG.debug("Archive size is {}", outputBucket.size());
 
-      if (logMINOR) Logger.minor(this, "We are using " + archiveType);
+      if (LOG.isDebugEnabled()) LOG.debug("We are using {}", archiveType);
 
       // Now we have to insert the Archive we have generated.
 
@@ -187,35 +242,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
       return;
     }
 
-    boolean dc = dontCompress;
-    if (!dontCompress) {
-      dc = (archiveType == ARCHIVE_TYPE.ZIP);
-    }
-
-    // Treat it as a splitfile for purposes of determining reinsert count.
-    SingleFileInserter sfi =
-        new SingleFileInserter(
-            parent,
-            cb,
-            block,
-            false,
-            ctx,
-            realTimeFlag,
-            dc,
-            reportMetadataOnly,
-            token,
-            archiveType,
-            true,
-            null,
-            true,
-            persistent,
-            0,
-            0,
-            null,
-            cryptoAlgorithm,
-            forceCryptoKey,
-            -1);
-    if (logMINOR) Logger.minor(this, "Inserting container: " + sfi + " for " + this);
+    SingleFileInserter sfi = buildSingleFileInserter(block);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserting container: {} for {}", sfi, this);
     cb.onTransition(this, sfi, context);
     try {
       sfi.schedule(context);
@@ -224,9 +252,46 @@ public class ContainerInserter implements ClientPutState, Serializable {
     }
   }
 
+  /**
+   * Builds the {@link SingleFileInserter} for the prepared archive {@link InsertBlock}.
+   *
+   * <p>Computes the effective compression flag for the archive type and returns a fully configured
+   * inserter. The returned instance is not scheduled; the caller is responsible for lifecycle
+   * management (logging, transition callback, and scheduling).
+   */
+  private SingleFileInserter buildSingleFileInserter(InsertBlock block) {
+    boolean dc = dontCompress;
+    if (!dontCompress) {
+      dc = (archiveType == ARCHIVE_TYPE.ZIP);
+    }
+
+    // Treat it as a splitfile for purposes of determining reinsert count.
+    InsertExecutionOptions execOptions =
+        new InsertExecutionOptions(
+            dc, reportMetadataOnly, archiveType, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+    SingleFileInserterParams params =
+        new SingleFileInserterParams()
+            .withParent(parent)
+            .withCallback(cb)
+            .withBlock(block)
+            .withMetadata(false)
+            .withCtx(ctx)
+            .withExecutionOptions(execOptions)
+            .withToken(token)
+            .withFreeData(true)
+            .withTargetFilename(null)
+            .withForSplitfile(true)
+            .withPersistent(persistent)
+            .withOrigDataLength(0)
+            .withOrigCompressedDataLength(0)
+            .withOrigHashes(null)
+            .withMetadataThreshold(-1);
+    return new SingleFileInserter(params);
+  }
+
   private void makeMetadata(ClientContext context) {
 
-    Bucket bucket = null;
+    Bucket bucket;
     int x = 0;
 
     Metadata md = makeManifest(origMetadata, "");
@@ -238,8 +303,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
         return;
       } catch (MetadataUnresolvedException e) {
         try {
-          x = resolve(e, x, null, null, context);
-        } catch (IOException e1) {
+          x = resolve(e, x, context);
+        } catch (IOException _) {
           fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR, e, null), context);
           return;
         }
@@ -250,18 +315,17 @@ public class ContainerInserter implements ClientPutState, Serializable {
     }
   }
 
-  private int resolve(
-      MetadataUnresolvedException e, int x, FreenetURI key, String element2, ClientContext context)
+  private int resolve(MetadataUnresolvedException e, int x, ClientContext context)
       throws IOException {
     Metadata[] metas = e.mustResolve;
     for (Metadata m : metas) {
       try {
         Bucket bucket = m.toBucket(context.getBucketFactory(persistent));
-        String nameInArchive = ".metadata-" + (x++);
+        String nameInArchive = ".metadata-" + x++;
         containerItems.add(new ContainerElement(bucket, nameInArchive));
         m.resolve(nameInArchive);
-      } catch (MetadataUnresolvedException e1) {
-        x = resolve(e, x, key, element2, context);
+      } catch (MetadataUnresolvedException _) {
+        x = resolve(e, x, context);
       }
     }
     return x;
@@ -277,34 +341,47 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   // A persistent hashCode is helpful in debugging, and also means we can put
-  // these objects into sets etc when we need to.
+  // these objects into sets etc. when we need to.
 
+  /** Stable hash code captured at construction time to aid persistence and debugging. */
   private final int hashCode;
 
+  /**
+   * Returns the stable hash code captured at construction. The value does not change during the
+   * lifetime of the instance so it can be used in sets or as a persistent identifier.
+   */
   @Override
   public int hashCode() {
     return hashCode;
   }
 
+  /**
+   * Identity-based equality. Two {@code ContainerInserter} instances are equal only when they are
+   * the same object reference.
+   *
+   * @param obj another object reference to compare
+   * @return {@code true} if and only if {@code this == obj}
+   */
+  @Override
+  public boolean equals(Object obj) {
+    return this == obj;
+  }
+
   /** * OutputStream os will be close()d if this method returns successfully. */
   private String createTarBucket(OutputStream os) throws IOException {
-    if (logMINOR) Logger.minor(this, "Create a TAR Bucket");
+    if (LOG.isDebugEnabled()) LOG.debug("Create a TAR Bucket");
 
-    TarArchiveOutputStream tarOS = new TarArchiveOutputStream(os);
-    try {
+    try (TarArchiveOutputStream tarOS = new TarArchiveOutputStream(os)) {
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
       TarArchiveEntry ze;
 
       for (ContainerElement ph : containerItems) {
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Putting into tar: "
-                  + ph
-                  + " data length "
-                  + ph.data.size()
-                  + " name "
-                  + ph.targetInArchive);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Putting into tar: {} data length {} name {}",
+              ph,
+              ph.data.size(),
+              ph.targetInArchive);
         ze = new TarArchiveEntry(ph.targetInArchive);
         ze.setModTime(0);
         long size = ph.data.size();
@@ -313,18 +390,15 @@ public class ContainerInserter implements ClientPutState, Serializable {
         BucketTools.copyTo(ph.data, tarOS, size);
         tarOS.closeArchiveEntry();
       }
-    } finally {
-      tarOS.close();
     }
 
-    return ARCHIVE_TYPE.TAR.mimeTypes[0];
+    return ARCHIVE_TYPE.TAR.defaultMimeType();
   }
 
   private String createZipBucket(OutputStream os) throws IOException {
-    if (logMINOR) Logger.minor(this, "Create a ZIP Bucket");
+    if (LOG.isDebugEnabled()) LOG.debug("Create a ZIP Bucket");
 
-    ZipOutputStream zos = new ZipOutputStream(os);
-    try {
+    try (ZipOutputStream zos = new ZipOutputStream(os)) {
       ZipEntry ze;
 
       for (ContainerElement ph : containerItems) {
@@ -334,53 +408,51 @@ public class ContainerInserter implements ClientPutState, Serializable {
         BucketTools.copyTo(ph.data, zos, ph.data.size());
         zos.closeEntry();
       }
-    } finally {
-      zos.close();
     }
 
-    return ARCHIVE_TYPE.ZIP.mimeTypes[0];
+    return ARCHIVE_TYPE.ZIP.defaultMimeType();
   }
 
-  private Metadata makeManifest(HashMap<String, Object> manifestElements, String archivePrefix) {
+  private Metadata makeManifest(Map<String, Object> manifestElements, String archivePrefix) {
     SimpleManifestComposer smc = new Metadata.SimpleManifestComposer();
     for (Map.Entry<String, Object> me : manifestElements.entrySet()) {
-      String name = me.getKey();
-      Object o = me.getValue();
-      if (o instanceof HashMap) {
-        @SuppressWarnings("unchecked")
-        HashMap<String, Object> hm = (HashMap<String, Object>) o;
-        // System.out.println("Decompose: "+name+" (SubDir)");
-        smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
-        if (logDEBUG) Logger.debug(this, "Sub map for " + name + " : " + hm.size() + " elements");
-      } else if (o instanceof Metadata metadata) {
-        // already Metadata, take it as is
-        // System.out.println("Decompose: "+name+" (Metadata)");
-        smc.addItem(name, metadata);
-      } else {
-        ManifestElement element = (ManifestElement) o;
-        String mimeType = element.getMimeType();
-        ClientMetadata cm;
-        if (mimeType == null || mimeType.equals(DefaultMIMETypes.DEFAULT_MIME_TYPE)) cm = null;
-        else cm = new ClientMetadata(mimeType);
-        Metadata m;
-        if (element.targetURI != null) {
-          // System.out.println("Decompose: "+name+" (ManifestElement, Redirect)");
-          m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, element.targetURI, cm);
-        } else {
-          // System.out.println("Decompose: "+name+" (ManifestElement, Data)");
-          containerItems.add(new ContainerElement(element.getData(), archivePrefix + name));
-          m =
-              new Metadata(
-                  DocumentType.ARCHIVE_INTERNAL_REDIRECT,
-                  null,
-                  null,
-                  archivePrefix + element.fullName,
-                  cm);
-        }
-        smc.addItem(name, m);
-      }
+      addEntryToComposer(smc, me.getKey(), me.getValue(), archivePrefix);
     }
     return smc.getMetadata();
+  }
+
+  private void addEntryToComposer(
+      SimpleManifestComposer smc, String name, Object value, String archivePrefix) {
+    if (value instanceof Map<?, ?>) {
+      Map<String, Object> hm = Metadata.forceMap(value);
+      if (LOG.isTraceEnabled()) LOG.trace("Sub map for {} : {} elements", name, hm.size());
+      smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
+      return;
+    }
+    if (value instanceof Metadata metadata) {
+      smc.addItem(name, metadata);
+      return;
+    }
+    ManifestElement element = (ManifestElement) value;
+    String mimeType = element.getMimeType();
+    ClientMetadata cm =
+        (mimeType == null || mimeType.equals(DefaultMIMETypes.DEFAULT_MIME_TYPE))
+            ? null
+            : new ClientMetadata(mimeType);
+    Metadata m;
+    if (element.targetURI != null) {
+      m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, element.targetURI, cm);
+    } else {
+      containerItems.add(new ContainerElement(element.getData(), archivePrefix + name));
+      m =
+          new Metadata(
+              DocumentType.ARCHIVE_INTERNAL_REDIRECT,
+              null,
+              null,
+              archivePrefix + element.fullName,
+              cm);
+    }
+    smc.addItem(name, m);
   }
 
   private transient boolean resumed = false;
@@ -401,14 +473,26 @@ public class ContainerInserter implements ClientPutState, Serializable {
     // Do not call start(). start() immediately transitions to another state.
   }
 
-  @SuppressWarnings("unchecked")
+  /**
+   * Recursively calls {@code onResume} on all resumable elements inside the manifest-like map.
+   *
+   * <p>The method walks nested maps, {@link ManifestElement} values, and {@link Metadata} entries
+   * (which are ignored because they hold no resumable state), and invokes {@link
+   * PutHandler#onResume} where present. Unknown value types cause an {@link
+   * IllegalArgumentException}.
+   *
+   * @param map manifest-like map containing nested maps, {@link Metadata}, {@link ManifestElement},
+   *     or {@link PutHandler} instances
+   * @param context resume context propagated to resumable elements
+   * @throws ResumeFailedException if any element signals that resuming state failed
+   */
   public static void resumeMetadata(Map<String, Object> map, ClientContext context)
       throws ResumeFailedException {
     for (Object o : map.values()) {
       switch (o) {
-        case HashMap hashMap -> resumeMetadata((Map<String, Object>) o, context);
+        case Map<?, ?> sub -> resumeMetadata(Metadata.forceMap(sub), context);
         case ManifestElement e -> e.onResume(context);
-        case Metadata metadata -> {
+        case Metadata _ -> {
           // Ignore
         }
         case PutHandler handler -> handler.onResume(context);
@@ -417,8 +501,37 @@ public class ContainerInserter implements ClientPutState, Serializable {
     }
   }
 
+  /** Called during shutdown; this implementation performs no action. */
   @Override
   public void onShutdown(ClientContext context) {
     // Ignore.
+  }
+
+  /* ===== Java serialization support ===== */
+
+  /**
+   * Custom Java serialization hook. Writes the default serial form; transient fields are skipped
+   * and reinitialized during {@link #readObject}.
+   *
+   * @param out stream to which the object state is written; must be open and writable
+   * @throws IOException if an I/O error occurs while writing the serial form
+   */
+  @Serial
+  private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+    out.defaultWriteObject();
+  }
+
+  /**
+   * Custom Java deserialization hook. Reads the default serial form and restores transient runtime
+   * fields to a safe initial state for later resume.
+   *
+   * @param in stream from which the object state is read; must be open and readable
+   * @throws IOException if an I/O error occurs while reading the serial form
+   * @throws ClassNotFoundException if a class required to restore the state cannot be found
+   */
+  @Serial
+  private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    if (containerItems == null) containerItems = new ArrayList<>();
   }
 }

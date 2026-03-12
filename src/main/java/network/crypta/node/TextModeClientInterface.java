@@ -1,9 +1,9 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -17,6 +17,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.MalformedURLException;
 import java.net.SocketException;
 import java.net.URI;
@@ -25,24 +27,31 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.FetchWaiter;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
-import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
+import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.DumperSnoopMetadata;
 import network.crypta.client.events.EventDumper;
 import network.crypta.client.filter.ContentFilter;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.clients.fcp.AddPeer;
 import network.crypta.crypt.RandomSource;
+import network.crypta.fs.AppEnv;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
@@ -51,22 +60,63 @@ import network.crypta.keys.InsertableClientSSK;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
+ * Text‑mode console interface for interacting with a running node.
+ *
+ * <p>This component reads line‑oriented commands from an {@code InputStream}, executes them using
+ * the node's high‑level client APIs, and writes human‑readable results to an {@code OutputStream}.
+ * It is intended for scripting, quick diagnostics, and environments where a graphical UI is not
+ * available. The interface supports fetching and inserting content, managing peers, and inspecting
+ * memory and system information. Commands are deliberately conservative: operations that might
+ * affect the terminal (for example, output containing escape sequences) are guarded to reduce the
+ * risk of unintended terminal control.
+ *
+ * <p>Lifecycle and concurrency: instances are designed to be used by a single thread. The class
+ * implements {@code Runnable}; typical usage creates an instance and executes it on a background
+ * thread while the caller feeds input and consumes output. The object maintains a minimal mutable
+ * state; most operations delegate to existing node services which perform the actual work and I/O.
+ * Log statements are emitted for visibility but do not alter behavior.
+ *
+ * <ul>
+ *   <li>Responsibilities: parse commands, invoke node/client operations, and format responses.
+ *   <li>Notable behaviors: avoids printing large payloads to the terminal and warns on content that
+ *       appears to contain terminal control characters.
+ *   <li>Typical pattern: prompt → read command → execute → writing result → continue until QUIT.
+ * </ul>
+ *
  * @author amphibian
- *     <p>Read commands to fetch or put from stdin.
- *     <p>Execute them.
+ * @see Runnable
  */
 public class TextModeClientInterface implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(TextModeClientInterface.class);
+
+  private static final String PEER_IDENTITY_SUFFIX = " identity\r\n";
+  private static final String PEER_IP_NAME_IDENTITY_SUFFIX = " ip+port, name, or identity\r\n";
+  private static final String MALFORMED_URI_LITERAL = "Malformed URI: ";
+  private static final String CONTENT_MIME_LITERAL = "Content MIME type: ";
+  private static final String ESCAPE_WARNING_SUFFIX =
+      " commands! Save it to a file if you must with GETFILE:";
+  private static final String ERROR_PREFIX = "Error: ";
+  private static final String REDIRECT_PREFIX = "Permanent redirect: ";
+  private static final String ESCAPE_WARNING_PREFIX =
+      "Data may contain escape codes which could cause the terminal to run arbitrary";
+  private static final String URI_WOULD_HAVE_BEEN = "URI would have been: ";
+  private static final String URI_PREFIX = "URI: ";
+  private static final String FINISHED_INSERT_BUT = "Finished insert but: ";
+  private static final String NO_PEER_FOR_PREFIX = "no peer for ";
+  private static final String PEER_DETAILS_FAIL_PREFIX =
+      "n.network().getPeerNode() failed to get peer details for ";
+  private static final String CRLF2 = "\r\n\r\n";
+  private static final String FILTER_BASE_URL = "http://127.0.0.1:8888/";
 
   final RandomSource r;
   final Node n;
@@ -77,23 +127,54 @@ public class TextModeClientInterface implements Runnable {
   final Writer w;
   private static final Charset ENCODING = StandardCharsets.UTF_8;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
+  @FunctionalInterface
+  private interface CommandHandler {
+    boolean handle(String line, String uline, BufferedReader reader, StringBuilder outsb)
+        throws IOException;
   }
 
+  private final HashMap<String, CommandHandler> handlers = new HashMap<>();
+
+  private static final Set<String> ALLOW_BARE_TOKENS =
+      Set.of(
+          "HELP",
+          "STATUS",
+          "MEMSTAT",
+          "SHUTDOWN",
+          "RESTART",
+          "QUIT",
+          "PEERS",
+          "BLOW",
+          "UPDATE",
+          "MAKESSK",
+          "ANNOUNCE");
+
+  private static String commandToken(String uline) {
+    int idx = uline.indexOf(':');
+    if (idx >= 0) return uline.substring(0, idx);
+    String bare = uline.trim();
+    return ALLOW_BARE_TOKENS.contains(bare) ? bare : "";
+  }
+
+  /**
+   * Create a text‑mode interface bound to a server context.
+   *
+   * <p>This convenience constructor extracts the required node services from the provided server
+   * and wires a client with interactive priority. It attaches an event dumper to the supplied
+   * output so that asynchronous client events are visible to the user while commands are processed.
+   * The instance reads commands from {@code in} and writes responses to {@code out} using UTF‑8.
+   *
+   * @param server the server wrapper providing the node, client core, randomness, and download
+   *     directory; must be non‑null and fully initialized before invocation.
+   * @param in the byte stream to read TMCI commands from; the caller owns its lifecycle and must
+   *     provide data in UTF‑8 compatible encoding.
+   * @param out the byte stream to write human‑readable responses to; remains open after the method
+   *     returns and is not closed by the constructor.
+   */
   public TextModeClientInterface(
       TextModeClientInterfaceServer server, InputStream in, OutputStream out) {
     this.n = server.n;
-    this.core = server.n.getClientCore();
+    this.core = server.n.services().clientCore();
     this.r = server.r;
     client = core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, false);
     this.downloadsDir = server.downloadsDir;
@@ -101,8 +182,27 @@ public class TextModeClientInterface implements Runnable {
     this.w = new OutputStreamWriter(out, ENCODING);
     client.addEventHook(
         new EventDumper(new BufferedWriter(new OutputStreamWriter(out, ENCODING)), false));
+    initHandlers();
   }
 
+  /**
+   * Create a text‑mode interface from explicit node components.
+   *
+   * <p>Use this form when the caller already holds references to the node, its client core, and a
+   * preconfigured high‑level client. The instance streams commands from {@code in} and results to
+   * {@code out}. The provided {@code downloadDir} is used when commands persist fetched content to
+   * disk. No threads are started by the constructor; the caller should invoke {@link #run()} or
+   * {@link #realRun()} on an appropriate thread to begin processing.
+   *
+   * @param n the running node instance backing all operations; must not be {@code null}.
+   * @param core the client core associated with the node; used for request context and storage.
+   * @param c a high‑level simple client to perform fetch/insert operations; expected to be
+   *     configured for interactive use.
+   * @param downloadDir directory to place files written by commands; must be writable by the
+   *     process and may be relative or absolute.
+   * @param in the input stream supplying commands; read using UTF‑8 compatible bytes.
+   * @param out the output stream receiving responses and event logs; left open by this instance.
+   */
   public TextModeClientInterface(
       Node n,
       NodeClientCore core,
@@ -111,7 +211,7 @@ public class TextModeClientInterface implements Runnable {
       InputStream in,
       OutputStream out) {
     this.n = n;
-    this.r = n.getRandom();
+    this.r = n.bootstrap().random();
     this.core = core;
     this.client = c;
     this.downloadsDir = downloadDir;
@@ -119,6 +219,45 @@ public class TextModeClientInterface implements Runnable {
     this.w = new OutputStreamWriter(out, ENCODING);
     client.addEventHook(
         new EventDumper(new BufferedWriter(new OutputStreamWriter(out, ENCODING)), false));
+    initHandlers();
+  }
+
+  private void initHandlers() {
+    handlers.put("GET", this::handleGet);
+    handlers.put("DUMP", this::handleDump);
+    handlers.put("GETFILE", this::handleGetFile);
+    handlers.put("UPDATE", this::handleUpdate);
+    handlers.put("FILTER", this::handleFilter);
+    handlers.put("BLOW", this::handleBlow);
+    handlers.put("SHUTDOWN", this::handleShutdown);
+    handlers.put("RESTART", this::handleRestart);
+    handlers.put("QUIT", this::handleQuit);
+    handlers.put("MEMSTAT", this::handleMemstat);
+    handlers.put("HELP", this::handleHelp);
+    handlers.put("PUT", this::handlePutOrGetChk);
+    handlers.put("GETCHK", this::handlePutOrGetChk);
+    handlers.put("PUTDIR", this::handlePutDirOrPutSSKDirOrGetCHKDir);
+    handlers.put("PUTSSKDIR", this::handlePutDirOrPutSSKDirOrGetCHKDir);
+    handlers.put("GETCHKDIR", this::handlePutDirOrPutSSKDirOrGetCHKDir);
+    handlers.put("PUTFILE", this::handlePutFileOrGetCHKFile);
+    handlers.put("GETCHKFILE", this::handlePutFileOrGetCHKFile);
+    handlers.put("MAKESSK", this::handleMakeSSK);
+    handlers.put("PUTSSK", this::handlePutSSK);
+    handlers.put("STATUS", this::handleStatus);
+    handlers.put("ADDPEER", this::handleAddPeerOrConnect);
+    handlers.put("CONNECT", this::handleAddPeerOrConnect);
+    handlers.put("NAME", this::handleName);
+    handlers.put("DISABLEPEER", this::handleDisablePeerCmd);
+    handlers.put("ENABLEPEER", this::handleEnablePeerCmd);
+    handlers.put("SETPEERLISTENONLY", this::handleSetPeerListenOnly);
+    handlers.put("UNSETPEERLISTENONLY", this::handleUnsetPeerListenOnly);
+    handlers.put("HAVEPEER", this::handleHavePeerCmd);
+    handlers.put("REMOVEPEER", this::handleRemovePeerOrDisconnect);
+    handlers.put("DISCONNECT", this::handleRemovePeerOrDisconnect);
+    handlers.put("PEER", this::handlePeer);
+    handlers.put("PEERWMD", this::handlePeerWmd);
+    handlers.put("PEERS", this::handlePeers);
+    handlers.put("ANNOUNCE", this::handleAnnounce);
   }
 
   @Override
@@ -126,12 +265,24 @@ public class TextModeClientInterface implements Runnable {
     try {
       realRun();
     } catch (IOException e) {
-      if (logMINOR) Logger.minor(this, "Caught " + e, e);
-    } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      if (LOG.isDebugEnabled()) LOG.debug("TMCI run loop caught IO exception: {}", e, e);
+    } catch (Exception t) {
+      LOG.error("TMCI run loop failed with unexpected exception: {}", t, t);
     }
   }
 
+  /**
+   * Execute the TMCI read–execute–print loop until termination.
+   *
+   * <p>Writes an initial header, then repeatedly prompts, reads a single command, dispatches it to
+   * the appropriate handler, and writes the response. The session ends when the input stream
+   * closes, when a handler explicitly signals closure (for example, {@code QUIT}), or when an I/O
+   * error occurs on the output stream. The method is blocking and intended to be called on a
+   * dedicated thread.
+   *
+   * @throws IOException if writing the initial header fails, or the prompt cannot be written due to
+   *     an underlying I/O error on the output stream.
+   */
   public void realRun() throws IOException {
     printHeader(w);
 
@@ -145,17 +296,16 @@ public class TextModeClientInterface implements Runnable {
           return;
         }
       } catch (SocketException e) {
-        Logger.error(this, "Socket error: " + e, e);
+        LOG.error("TMCI socket error while reading command: {}", e, e);
         return;
-      } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
-        System.out.println("Caught: " + t);
+      } catch (Exception t) {
+        LOG.error("TMCI command loop threw unexpected exception: {}", t, t);
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         try {
           w.write(sw.toString());
         } catch (IOException e) {
-          Logger.error(this, "Socket error: " + e, e);
+          LOG.error("TMCI socket error while writing exception output: {}", e, e);
           return;
         }
       }
@@ -204,15 +354,6 @@ public class TextModeClientInterface implements Runnable {
     sb.append(
         "PUTSSKDIR:<insert uri>#<path>[#<defaultfile>] - Insert an entire directory to an"
             + " SSK.\r\n");
-    sb.append("PLUGLOAD: - Load plugin. (use \"PLUGLOAD:?\" for more info)\r\n");
-    // sb.append("PLUGLOAD: <pkg.classname>[(@<URI to jarfile.jar>|<<URI to file containing real
-    // URI>|* (will load from freenets pluginpool))] - Load plugin.\r\n");
-    sb.append("PLUGLIST - List all loaded plugins.\r\n");
-    sb.append("PLUGKILL:<pluginID> - Unload the plugin with the given ID (see PLUGLIST).\r\n");
-    //        sb.append("PUBLISH:<name> - create a publish/subscribe stream called <name>\r\n");
-    //        sb.append("PUSH:<name>:<text> - publish a single line of text to the stream
-    // named\r\n");
-    //        sb.append("SUBSCRIBE:<key> - subscribe to a publish/subscribe stream by key\r\n");
     sb.append("CONNECT:<filename|URL> - see ADDPEER:<filename|URL> below\r\n");
     sb.append("CONNECT:\\r\\n<noderef> - see ADDPEER:\\r\\n<noderef> below\r\n");
     sb.append("DISCONNECT:<ip:port|name> - see REMOVEPEER:<ip:port|name|identity> below\r\n");
@@ -224,22 +365,22 @@ public class TextModeClientInterface implements Runnable {
             + " directly.\r\n");
     sb.append(
         "DISABLEPEER:<ip:port|name|identity> - disable a peer by providing its ip+port, name, or"
-            + " identity\r\n");
+            + PEER_IDENTITY_SUFFIX);
     sb.append(
         "ENABLEPEER:<ip:port|name|identity> - enable a peer by providing its ip+port, name, or"
-            + " identity\r\n");
+            + PEER_IDENTITY_SUFFIX);
     sb.append(
         "SETPEERLISTENONLY:<ip:port|name|identity> - set ListenOnly on a peer by providing its"
-            + " ip+port, name, or identity\r\n");
+            + PEER_IP_NAME_IDENTITY_SUFFIX);
     sb.append(
         "UNSETPEERLISTENONLY:<ip:port|name|identity> - unset ListenOnly on a peer by providing its"
-            + " ip+port, name, or identity\r\n");
+            + PEER_IP_NAME_IDENTITY_SUFFIX);
     sb.append(
         "HAVEPEER:<ip:port|name|identity> - report true/false on having a peer by providing its"
-            + " ip+port, name, or identity\r\n");
+            + PEER_IP_NAME_IDENTITY_SUFFIX);
     sb.append(
         "REMOVEPEER:<ip:port|name|identity> - remove a peer by providing its ip+port, name, or"
-            + " identity\r\n");
+            + PEER_IDENTITY_SUFFIX);
     sb.append(
         "PEER:<ip:port|name|identity> - report the noderef of a peer (without metadata) by"
             + " providing its ip+port, name, or identity\r\n");
@@ -256,9 +397,6 @@ public class TextModeClientInterface implements Runnable {
             + "\\n"
             + "<text, until a . on a line by itself> - output the content as it returns from the"
             + " content filter\r\n");
-    //        sb.append("SUBFILE:<filename> - append all data received from subscriptions to a file,
-    // rather than sending it to stdout.\r\n");
-    //        sb.append("SAY:<text> - send text to the last created/pushed stream\r\n");
     sb.append(
         "STATUS - display some status information on the node including its reference and"
             + " connections.\r\n");
@@ -266,7 +404,7 @@ public class TextModeClientInterface implements Runnable {
     sb.append("SHUTDOWN - exit the program\r\n");
     sb.append("ANNOUNCE[:<location>] - announce to the specified location\r\n");
     if (n.isUsingWrapper()) sb.append("RESTART - restart the program\r\n");
-    if (core != null && core.getDirectTMCI() != this) {
+    if (core != null && core.getEndpoints().getDirectTMCI() != this) {
       sb.append("QUIT - close the socket\r\n");
     }
     if (Node.isTestnetEnabled()) {
@@ -276,10 +414,28 @@ public class TextModeClientInterface implements Runnable {
   }
 
   /**
-   * Process a single command.
+   * Parse a URL string into a {@code URL} instance using {@code URI} rules.
    *
-   * @throws IOException If we could not write the data to stdout.
+   * <p>This helper first creates a {@code URI} from the supplied specification to take advantage of
+   * its stricter validation, then converts it to a {@code URL}. Invalid syntactic forms are wrapped
+   * as {@code MalformedURLException} to match common caller expectations.
+   *
+   * @param spec the textual URL/URI specification to parse; leading and trailing whitespace are not
+   *     trimmed and should be removed by the caller if unacceptable.
+   * @return a {@code URL} representing the same location as the parsed {@code URI} value.
+   * @throws MalformedURLException if the input cannot be parsed into a well‑formed URL or contains
+   *     characters not permitted by the URL syntax.
    */
+  private static URL parseUrl(String spec) throws MalformedURLException {
+    try {
+      return URI.create(spec).toURL();
+    } catch (IllegalArgumentException e) {
+      MalformedURLException malformed = new MalformedURLException("Invalid URL: " + spec);
+      malformed.initCause(e);
+      throw malformed;
+    }
+  }
+
   private boolean processLine(BufferedReader reader) throws IOException {
     String line;
     StringBuilder outsb = new StringBuilder();
@@ -287,860 +443,1097 @@ public class TextModeClientInterface implements Runnable {
       line = reader.readLine();
     } catch (IOException e) {
       outsb.append("Bye... (").append(e).append(')');
-      System.err.println("Bye... (" + e + ')');
+      LOG.warn("TMCI input closed while reading command: {}", e, e);
       return true;
     }
-    boolean getCHKOnly = false;
     if (line == null) return true;
-    String uline = line.toUpperCase();
-    if (logMINOR) Logger.minor(this, "Command: " + line);
-    if (uline.startsWith("GET:")) {
-      // Should have a key next
-      String key = line.substring("GET:".length()).trim();
-      Logger.normal(this, "Key: " + key);
-      FreenetURI uri;
-      try {
-        uri = new FreenetURI(key);
-        Logger.normal(this, "Key: " + uri);
-      } catch (MalformedURLException e2) {
-        outsb.append("Malformed URI: ").append(key).append(" : ").append(e2);
+    String uline = line.toUpperCase(Locale.ROOT);
+    if (LOG.isDebugEnabled()) LOG.debug("Command: {}", line);
+    String token = commandToken(uline);
+    CommandHandler handler = handlers.get(token);
+    if (handler != null) {
+      boolean shouldClose = handler.handle(line, uline, reader, outsb);
+      if (!outsb.isEmpty()) {
         outsb.append("\r\n");
         w.write(outsb.toString());
         w.flush();
-        return false;
       }
-      try {
-        FetchResult result = client.fetch(uri);
-        ClientMetadata cm = result.getMetadata();
-        outsb.append("Content MIME type: ").append(cm.getMIMEType());
-        Bucket data = result.asBucket();
-        // FIXME limit it above
-        if (data.size() > 32 * 1024) {
-          System.err.println("Data is more than 32K: " + data.size());
-          outsb.append("Data is more than 32K: ").append(data.size());
-          outsb.append("\r\n");
-          w.write(outsb.toString());
-          w.flush();
-          return false;
-        }
-        byte[] dataBytes = BucketTools.toByteArray(data);
-        boolean evil = false;
-        for (byte b : dataBytes) {
-          // Look for escape codes
-          if (b == '\n') continue;
-          if (b == '\r') continue;
-          if (b < 32) {
-            evil = true;
-            break;
-          }
-        }
-        if (evil) {
-          System.err.println(
-              "Data may contain escape codes which could cause the terminal to run arbitrary"
-                  + " commands! Save it to a file if you must with GETFILE:");
-          outsb.append(
-              "Data may contain escape codes which could cause the terminal to run arbitrary"
-                  + " commands! Save it to a file if you must with GETFILE:");
-          outsb.append("\r\n");
-          w.write(outsb.toString());
-          w.flush();
-          return false;
-        }
-        outsb.append("Data:\r\n");
-        outsb.append(new String(dataBytes, ENCODING));
-      } catch (FetchException e) {
-        outsb.append("Error: ").append(e.getMessage()).append("\r\n");
-        if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
-          outsb.append(e.errorCodes.toVerboseString());
-        }
-        if (e.newURI != null) outsb.append("Permanent redirect: ").append(e.newURI).append("\r\n");
-      }
-    } else if (uline.startsWith("DUMP:")) {
-      // Should have a key next
-      String key = line.substring("DUMP:".length()).trim();
-      Logger.normal(this, "Key: " + key);
-      FreenetURI uri;
-      try {
-        uri = new FreenetURI(key);
-        Logger.normal(this, "Key: " + uri);
-      } catch (MalformedURLException e2) {
-        outsb.append("Malformed URI: ").append(key).append(" : ").append(e2);
-        outsb.append("\r\n");
-        w.write(outsb.toString());
-        w.flush();
-        return false;
-      }
-      try {
-        FetchContext context = client.getFetchContext();
-        FetchWaiter fw = new FetchWaiter((RequestClient) client);
-        ClientGetter get =
-            new ClientGetter(
-                fw, uri, context, RequestStarter.INTERACTIVE_PRIORITY_CLASS, null, null, null);
-        get.setMetaSnoop(new DumperSnoopMetadata());
-        get.start(n.getClientCore().getClientContext());
-        FetchResult result = fw.waitForCompletion();
-        ClientMetadata cm = result.getMetadata();
-        outsb.append("Content MIME type: ").append(cm.getMIMEType());
-        Bucket data = result.asBucket();
-        // FIXME limit it above
-        if (data.size() > 32 * 1024) {
-          System.err.println("Data is more than 32K: " + data.size());
-          outsb.append("Data is more than 32K: ").append(data.size());
-          outsb.append("\r\n");
-          w.write(outsb.toString());
-          w.flush();
-          return false;
-        }
-        byte[] dataBytes = BucketTools.toByteArray(data);
-        boolean evil = false;
-        for (byte b : dataBytes) {
-          // Look for escape codes
-          if (b == '\n') continue;
-          if (b == '\r') continue;
-          if (b < 32) {
-            evil = true;
-            break;
-          }
-        }
-        if (evil) {
-          System.err.println(
-              "Data may contain escape codes which could cause the terminal to run arbitrary"
-                  + " commands! Save it to a file if you must with GETFILE:");
-          outsb.append(
-              "Data may contain escape codes which could cause the terminal to run arbitrary"
-                  + " commands! Save it to a file if you must with GETFILE:");
-          outsb.append("\r\n");
-          w.write(outsb.toString());
-          w.flush();
-          return false;
-        }
-        outsb.append("Data:\r\n");
-        outsb.append(new String(dataBytes, ENCODING));
-      } catch (FetchException e) {
-        outsb.append("Error: ").append(e.getMessage()).append("\r\n");
-        if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
-          outsb.append(e.errorCodes.toVerboseString());
-        }
-        if (e.newURI != null) outsb.append("Permanent redirect: ").append(e.newURI).append("\r\n");
-      }
-    } else if (uline.startsWith("GETFILE:")) {
-      // Should have a key next
-      String key = line.substring("GETFILE:".length()).trim();
-      Logger.normal(this, "Key: " + key);
-      FreenetURI uri;
-      try {
-        uri = new FreenetURI(key);
-      } catch (MalformedURLException e2) {
-        outsb.append("Malformed URI: ").append(key).append(" : ").append(e2);
-        outsb.append("\r\n");
-        w.write(outsb.toString());
-        w.flush();
-        return false;
-      }
-      try {
-        long startTime = System.currentTimeMillis();
-        FetchResult result = client.fetch(uri);
-        ClientMetadata cm = result.getMetadata();
-        outsb.append("Content MIME type: ").append(cm.getMIMEType());
-        Bucket data = result.asBucket();
-        // Now calculate filename
-        String fnam = uri.getDocName();
-        fnam = sanitize(fnam);
-        if (fnam.isEmpty()) {
-          fnam = "freenet-download-" + HexUtil.bytesToHex(BucketTools.hash(data), 0, 10);
-          String ext = DefaultMIMETypes.getExtension(cm.getMIMEType());
-          if ((ext != null) && !ext.isEmpty()) fnam += '.' + ext;
-        }
-        File f = new File(downloadsDir, fnam);
-        if (f.exists()) {
-          outsb.append("File exists already: ").append(fnam);
-          fnam = "freenet-" + System.currentTimeMillis() + '-' + fnam;
-        }
-        try (FileOutputStream fos = new FileOutputStream(f)) {
-          BucketTools.copyTo(data, fos, Long.MAX_VALUE);
-          outsb.append("Written to ").append(fnam);
-        } catch (IOException e) {
-          outsb.append("Could not write file: caught ").append(e);
-          e.printStackTrace();
-        }
-        long endTime = System.currentTimeMillis();
-        long sz = data.size();
-        double rate = 1000.0 * sz / (endTime - startTime);
-        outsb.append("Download rate: ").append(rate).append(" bytes / second");
-      } catch (FetchException e) {
-        outsb.append("Error: ").append(e.getMessage());
-        if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
-          outsb.append(e.errorCodes.toVerboseString());
-        }
-        if (e.newURI != null) outsb.append("Permanent redirect: ").append(e.newURI).append("\r\n");
-      }
-    } else if (uline.startsWith("UPDATE")) {
-      outsb.append("starting the update process");
-      // FIXME run on separate thread
-      n.getTicker().queueTimedJob(() -> n.getNodeUpdater().arm(), 0);
-      outsb.append("\r\n");
-      w.write(outsb.toString());
-      w.flush();
-      return false;
-    } else if (uline.startsWith("FILTER:")) {
-      line = line.substring("FILTER:".length()).trim();
-      outsb.append("Here is the result:\r\n");
-
-      final String content = readLines(reader, false);
-      final Bucket input = new ArrayBucket(content.getBytes(StandardCharsets.UTF_8));
-      final Bucket output = new ArrayBucket();
-
-      try (InputStream inputStream = input.getInputStream();
-          OutputStream outputStream = output.getOutputStream()) {
-
-        ContentFilter.filter(
-            inputStream,
-            outputStream,
-            "text/html",
-            new URI("http://127.0.0.1:8888/"),
-            null,
-            null,
-            null,
-            null,
-            core.getLinkFilterExceptionProvider());
-
-        try (InputStream bis = output.getInputStream()) {
-          while (bis.available() > 0) {
-            outsb.append((char) bis.read());
-          }
-        }
-      } catch (IOException e) {
-        outsb.append("Bucket error?: ").append(e.getMessage());
-        Logger.error(this, "Bucket error?: " + e, e);
-      } catch (URISyntaxException e) {
-        outsb.append("Internal error: ").append(e.getMessage());
-        Logger.error(this, "Internal error: " + e, e);
-      } finally {
-        input.free();
-        output.free();
-      }
-      outsb.append("\r\n");
-    } else if (uline.startsWith("BLOW")) {
-      n.getNodeUpdater().blow("caught an  IOException : (Incompetent Operator) :p", true);
-      outsb.append("\r\n");
-      w.write(outsb.toString());
-      w.flush();
-      return false;
-    } else if (uline.startsWith("SHUTDOWN")) {
-      w.write("Shutting node down.\r\n");
-      w.flush();
-      n.exit("Shutdown from console");
-    } else if (uline.startsWith("RESTART")) {
-      w.write("Restarting the node.\r\n");
-      w.flush();
-      n.getNodeStarter().restart();
-    } else if (uline.startsWith("QUIT") && (core.getDirectTMCI() == this)) {
-      w.write("QUIT command not available in console mode.\r\n");
-      w.flush();
-      return false;
-    } else if (uline.startsWith("QUIT")) {
-      w.write("Closing connection.\r\n");
-      w.flush();
-      return true;
-    } else if (uline.startsWith("MEMSTAT")) {
-      Runtime rt = Runtime.getRuntime();
-      float freeMemory = rt.freeMemory();
-      float totalMemory = rt.totalMemory();
-      float maxMemory = rt.maxMemory();
-
-      long usedJavaMem = (long) (totalMemory - freeMemory);
-      long allocatedJavaMem = (long) totalMemory;
-      long maxJavaMem = (long) maxMemory;
-      int availableCpus = rt.availableProcessors();
-      NumberFormat thousendPoint = NumberFormat.getInstance();
-
-      ThreadGroup tg = Thread.currentThread().getThreadGroup();
-      while (tg.getParent() != null) tg = tg.getParent();
-      int threadCount = tg.activeCount();
-
-      String sb =
-          "Used Java memory:\u00a0"
-              + SizeUtil.formatSize(usedJavaMem, true)
-              + "\r\n"
-              + "Allocated Java memory:\u00a0"
-              + SizeUtil.formatSize(allocatedJavaMem, true)
-              + "\r\n"
-              + "Maximum Java memory:\u00a0"
-              + SizeUtil.formatSize(maxJavaMem, true)
-              + "\r\n"
-              + "Running threads:\u00a0"
-              + thousendPoint.format(threadCount)
-              + "\r\n"
-              + "Available CPUs:\u00a0"
-              + availableCpus
-              + "\r\n"
-              + "Java Version:\u00a0"
-              + System.getProperty("java.version")
-              + "\r\n"
-              + "JVM Vendor:\u00a0"
-              + System.getProperty("java.vendor")
-              + "\r\n"
-              + "JVM Version:\u00a0"
-              + System.getProperty("java.version")
-              + "\r\n"
-              + "OS Name:\u00a0"
-              + new network.crypta.fs.AppEnv().osNameRaw()
-              + "\r\n"
-              + "OS Version:\u00a0"
-              + System.getProperty("os.version")
-              + "\r\n"
-              + "OS Architecture:\u00a0"
-              + System.getProperty("os.arch")
-              + "\r\n";
-      w.write(sb);
-      w.flush();
-      return false;
-    } else if (uline.startsWith("HELP")) {
-      printHeader(w);
-      outsb.append("\r\n");
-      w.write(outsb.toString());
-      w.flush();
-      return false;
-    } else if (uline.startsWith("PUT:") || (getCHKOnly = uline.startsWith("GETCHK:"))) {
-      if (getCHKOnly) line = line.substring(("GETCHK:").length()).trim();
-      else line = line.substring("PUT:".length()).trim();
-      String content;
-      if (!line.isEmpty()) {
-        // Single line insert
-        content = line;
-      } else {
-        // Multiple line insert
-        content = readLines(reader, false);
-      }
-      // Insert
-      byte[] data = content.getBytes(ENCODING);
-
-      InsertBlock block = new InsertBlock(new ArrayBucket(data), null, FreenetURI.EMPTY_CHK_URI);
-
-      FreenetURI uri;
-      try {
-        uri = client.insert(block, getCHKOnly, null);
-      } catch (InsertException e) {
-        outsb.append("Error: ").append(e.getMessage());
-        if (e.uri != null) outsb.append("URI would have been: ").append(e.uri);
-        InsertExceptionMode mode = e.getMode();
-        if ((mode == InsertExceptionMode.FATAL_ERRORS_IN_BLOCKS)
-            || (mode == InsertExceptionMode.TOO_MANY_RETRIES_IN_BLOCKS)) {
-          outsb.append("Splitfile-specific error:\n").append(e.errorCodes.toVerboseString());
-        }
-        outsb.append("\r\n");
-        w.write(outsb.toString());
-        w.flush();
-        return false;
-      }
-
-      outsb.append("URI: ").append(uri);
-      ////////////////////////////////////////////////////////////////////////////////
-    } else if (uline.startsWith("PUTDIR:")
-        || (uline.startsWith("PUTSSKDIR"))
-        || (getCHKOnly = uline.startsWith("GETCHKDIR:"))) {
-      // TODO: Check for errors?
-      boolean ssk = false;
-      if (uline.startsWith("PUTDIR:")) line = line.substring("PUTDIR:".length());
-      else if (uline.startsWith("PUTSSKDIR:")) {
-        line = line.substring("PUTSSKDIR:".length());
-        ssk = true;
-      } else if (uline.startsWith("GETCHKDIR:")) line = line.substring(("GETCHKDIR:").length());
-      else {
-        System.err.println("Impossible");
-        outsb.append("Impossible");
-      }
-
-      line = line.trim();
-
-      if (line.isEmpty()) {
-        printHeader(w);
-        outsb.append("\r\n");
-        w.write(outsb.toString());
-        w.flush();
-        return false;
-      }
-
-      String defaultFile = null;
-
-      FreenetURI insertURI = FreenetURI.EMPTY_CHK_URI;
-
-      // set default file?
-      if (line.matches("^.*#.*$")) {
-        String[] split = line.split("#");
-        if (ssk) {
-          insertURI = new FreenetURI(split[0]);
-          line = split[1];
-          if (split.length > 2) defaultFile = split[2];
-        } else {
-          defaultFile = split[1];
-          line = split[0];
-        }
-      }
-
-      HashMap<String, Object> bucketsByName = makeBucketsByName(line);
-
-      if (defaultFile == null) {
-        String[] defaultFiles =
-            new String[] {"index.html", "index.htm", "default.html", "default.htm"};
-        for (String file : defaultFiles) {
-          if (bucketsByName.containsKey(file)) {
-            defaultFile = file;
-            break;
-          }
-        }
-      }
-
-      FreenetURI uri;
-      try {
-        uri = client.insertManifest(insertURI, bucketsByName, defaultFile);
-        uri = uri.addMetaStrings(new String[] {""});
-        outsb.append("=======================================================");
-        outsb.append("URI: ").append(uri);
-        outsb.append("=======================================================");
-      } catch (InsertException e) {
-        outsb.append("Finished insert but: ").append(e.getMessage());
-        if (e.uri != null) {
-          uri = e.uri;
-          uri = uri.addMetaStrings(new String[] {""});
-          outsb.append("URI would have been: ").append(uri);
-        }
-        if (e.errorCodes != null) {
-          outsb.append("Splitfile errors breakdown:");
-          outsb.append(e.errorCodes.toVerboseString());
-        }
-        Logger.error(this, "Caught " + e, e);
-      }
-
-    } else if (uline.startsWith("PUTFILE:") || (getCHKOnly = uline.startsWith("GETCHKFILE:"))) {
-      // Just insert to local store
-      if (getCHKOnly) {
-        line = line.substring(("GETCHKFILE:").length()).trim();
-      } else {
-        line = line.substring("PUTFILE:".length()).trim();
-      }
-      String mimeType = DefaultMIMETypes.guessMIMEType(line, false);
-      if (line.indexOf('#') > -1) {
-        String[] splittedLine = line.split("#");
-        line = splittedLine[0];
-        mimeType = splittedLine[1];
-      }
-      File f = new File(line);
-      outsb.append("Attempting to read file ").append(line);
-      long startTime = System.currentTimeMillis();
-      try {
-        if (!(f.exists() && f.canRead())) {
-          throw new FileNotFoundException();
-        }
-
-        // Guess MIME type
-        outsb.append(" using MIME type: ").append(mimeType).append("\r\n");
-        if (mimeType.equals(DefaultMIMETypes.DEFAULT_MIME_TYPE))
-          mimeType = ""; // don't need to override it
-
-        FileBucket fb = new FileBucket(f, true, false, false, false);
-        InsertBlock block =
-            new InsertBlock(fb, new ClientMetadata(mimeType), FreenetURI.EMPTY_CHK_URI);
-
-        startTime = System.currentTimeMillis();
-        FreenetURI uri = client.insert(block, getCHKOnly, f.getName());
-
-        // FIXME depends on CHK's still being renamable
-        // uri = uri.setDocName(f.getName());
-
-        outsb.append("URI: ").append(uri).append("\r\n");
-        long endTime = System.currentTimeMillis();
-        long sz = f.length();
-        double rate = 1000.0 * sz / (endTime - startTime);
-        outsb.append("Upload rate: ").append(rate).append(" bytes / second\r\n");
-      } catch (FileNotFoundException e1) {
-        outsb.append("File not found");
-      } catch (InsertException e) {
-        outsb.append("Finished insert but: ").append(e.getMessage());
-        if (e.uri != null) {
-          outsb.append("URI would have been: ").append(e.uri);
-          long endTime = System.currentTimeMillis();
-          long sz = f.length();
-          double rate = 1000.0 * sz / (endTime - startTime);
-          outsb.append("Upload rate: ").append(rate).append(" bytes / second");
-        }
-        if (e.errorCodes != null) {
-          outsb.append("Splitfile errors breakdown:");
-          outsb.append(e.errorCodes.toVerboseString());
-        }
-      } catch (Throwable t) {
-        outsb.append("Insert threw: ").append(t);
-        t.printStackTrace();
-      }
-    } else if (uline.startsWith("MAKESSK")) {
-      InsertableClientSSK key = InsertableClientSSK.createRandom(r, "");
-      outsb.append("Insert URI: ").append(key.getInsertURI().toString(false, false)).append("\r\n");
-      outsb.append("Request URI: ").append(key.getURI().toString(false, false)).append("\r\n");
-      FreenetURI insertURI = key.getInsertURI().setDocName("testsite");
-      String fixedInsertURI = insertURI.toString(false, false);
-      outsb
-          .append("Note that you MUST add a filename to the end of the above URLs e.g.:\r\n")
-          .append(fixedInsertURI)
-          .append("\r\n");
-      outsb
-          .append(
-              "Normally you will then do PUTSSKDIR:<insert URI>#<directory to upload>, for"
-                  + " example:\r\n"
-                  + "PUTSSKDIR:")
-          .append(fixedInsertURI)
-          .append("#directoryToUpload/\r\n");
-      outsb
-          .append(
-              "This will then produce a manifest site containing all the files, the default"
-                  + " document can be accessed at\r\n")
-          .append(key.getURI().toString(false, false))
-          .append("testsite/");
-    } else if (uline.startsWith("PUTSSK:")) {
-      String cmd = line.substring("PUTSSK:".length());
-      cmd = cmd.trim();
-      if (cmd.indexOf(';') <= 0) {
-        outsb.append("No target URI provided.");
-        outsb.append("PUTSSK:<insert uri>;<url to redirect to>");
-        outsb.append("\r\n");
-        w.write(outsb.toString());
-        w.flush();
-        return false;
-      }
-      String[] split = cmd.split(";");
-      String insertURI = split[0];
-      String targetURI = split[1];
-      outsb.append("Insert URI: ").append(insertURI);
-      outsb.append("Target URI: ").append(targetURI);
-      FreenetURI insert = new FreenetURI(insertURI);
-      FreenetURI target = new FreenetURI(targetURI);
-      try {
-        FreenetURI result = client.insertRedirect(insert, target);
-        outsb.append("Successfully inserted to fetch URI: ").append(result);
-      } catch (InsertException e) {
-        outsb.append("Finished insert but: ").append(e.getMessage());
-        Logger.normal(this, "Error: " + e, e);
-        if (e.uri != null) {
-          outsb.append("URI would have been: ").append(e.uri);
-        }
-      }
-
-    } else if (uline.startsWith("STATUS")) {
-      outsb.append("DARKNET:\n");
-      SimpleFieldSet fs = n.exportDarknetPublicFieldSet();
-      outsb.append(fs.toString());
-      if (n.isOpennetEnabled()) {
-        outsb.append("OPENNET:\n");
-        fs = n.exportOpennetPublicFieldSet();
-        outsb.append(fs.toString());
-      }
-      outsb.append(n.getStatus());
-      if (Version.currentBuildNumber() < Version.getHighestSeenBuild()) {
-        outsb.append("The latest version is : ").append(Version.getHighestSeenBuild());
-      }
-    } else if (uline.startsWith("ADDPEER:") || uline.startsWith("CONNECT:")) {
-      String key = null;
-      if (uline.startsWith("CONNECT:")) {
-        key = line.substring("CONNECT:".length()).trim();
-      } else {
-        key = line.substring("ADDPEER:".length()).trim();
-      }
-
-      String content = null;
-      if (!key.isEmpty()) {
-        // Filename
-        outsb.append("Trying to add peer to node by noderef in ").append(key).append("\r\n");
-        File f = new File(key);
-        if (f.isFile()) {
-          outsb.append("Given string seems to be a file, loading...\r\n");
-          try (BufferedReader fileReader =
-              new BufferedReader(new InputStreamReader(new FileInputStream(f), ENCODING))) {
-            content = readLines(fileReader, true);
-          }
-        } else {
-          outsb.append("Given string seems to be an URL, loading...\r\n");
-          URL url = new URL(key);
-          content = AddPeer.getReferenceFromURL(url).toString();
-        }
-      } else {
-        content = readLines(reader, true);
-      }
-      if (content == null) return false;
-      if (content.isEmpty()) return false;
-      addPeer(content);
-
-    } else if (uline.startsWith("NAME:")) {
-      outsb.append("Node name currently: ").append(n.getMyName());
-      String key = line.substring("NAME:".length()).trim();
-      outsb.append("New name: ").append(key);
-
-      try {
-        n.setName(key);
-        if (logMINOR) Logger.minor(this, "Setting node.name to " + key);
-      } catch (Exception e) {
-        Logger.error(this, "Error setting node's name", e);
-      }
-      core.storeConfig();
-    } else if (uline.startsWith("DISABLEPEER:")) {
-      String nodeIdentifier = (line.substring("DISABLEPEER:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      if (disablePeer(nodeIdentifier)) {
-        outsb.append("disable succeeded for ").append(nodeIdentifier);
-      } else {
-        outsb.append("disable failed for ").append(nodeIdentifier);
-      }
-      outsb.append("\r\n");
-    } else if (uline.startsWith("ENABLEPEER:")) {
-      String nodeIdentifier = (line.substring("ENABLEPEER:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      if (enablePeer(nodeIdentifier)) {
-        outsb.append("enable succeeded for ").append(nodeIdentifier);
-      } else {
-        outsb.append("enable failed for ").append(nodeIdentifier);
-      }
-      outsb.append("\r\n");
-    } else if (uline.startsWith("SETPEERLISTENONLY:")) {
-      String nodeIdentifier = (line.substring("SETPEERLISTENONLY:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      PeerNode pn = n.getPeerNode(nodeIdentifier);
-      if (pn == null) {
-        w.write(("n.getPeerNode() failed to get peer details for " + nodeIdentifier + "\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      if (!(pn instanceof DarknetPeerNode dpn)) {
-        w.write(
-            ("Error: "
-                + nodeIdentifier
-                + " identifies a non-darknet peer and this command is only available for darknet"
-                + " peers\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      dpn.setListenOnly(true);
-      outsb.append("set ListenOnly suceeded for ").append(nodeIdentifier).append("\r\n");
-    } else if (uline.startsWith("UNSETPEERLISTENONLY:")) {
-      String nodeIdentifier = (line.substring("UNSETPEERLISTENONLY:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      PeerNode pn = n.getPeerNode(nodeIdentifier);
-      if (pn == null) {
-        w.write(("n.getPeerNode() failed to get peer details for " + nodeIdentifier + "\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      if (!(pn instanceof DarknetPeerNode dpn)) {
-        w.write(
-            ("Error: "
-                + nodeIdentifier
-                + " identifies a non-darknet peer and this command is only available for darknet"
-                + " peers\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      dpn.setListenOnly(false);
-      outsb.append("unset ListenOnly suceeded for ").append(nodeIdentifier).append("\r\n");
-    } else if (uline.startsWith("HAVEPEER:")) {
-      String nodeIdentifier = (line.substring("HAVEPEER:".length())).trim();
-      if (havePeer(nodeIdentifier)) {
-        outsb.append("true for ").append(nodeIdentifier);
-      } else {
-        outsb.append("false for ").append(nodeIdentifier);
-      }
-      outsb.append("\r\n");
-    } else if (uline.startsWith("REMOVEPEER:") || uline.startsWith("DISCONNECT:")) {
-      String nodeIdentifier = null;
-      if (uline.startsWith("DISCONNECT:")) {
-        nodeIdentifier = line.substring("DISCONNECT:".length());
-      } else {
-        nodeIdentifier = line.substring("REMOVEPEER:".length());
-      }
-      if (removePeer(nodeIdentifier)) {
-        outsb.append("peer removed for ").append(nodeIdentifier);
-      } else {
-        outsb.append("peer removal failed for ").append(nodeIdentifier);
-      }
-      outsb.append("\r\n");
-    } else if (uline.startsWith("PEER:")) {
-      String nodeIdentifier = (line.substring("PEER:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      PeerNode pn = n.getPeerNode(nodeIdentifier);
-      if (pn == null) {
-        w.write(("n.getPeerNode() failed to get peer details for " + nodeIdentifier + "\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      SimpleFieldSet fs = pn.exportFieldSet();
-      outsb.append(fs.toString());
-    } else if (uline.startsWith("PEERWMD:")) {
-      String nodeIdentifier = (line.substring("PEERWMD:".length())).trim();
-      if (!havePeer(nodeIdentifier)) {
-        w.write(("no peer for " + nodeIdentifier + "\r\n"));
-        w.flush();
-        return false;
-      }
-      PeerNode pn = n.getPeerNode(nodeIdentifier);
-      if (pn == null) {
-        w.write(("n.getPeerNode() failed to get peer details for " + nodeIdentifier + "\r\n\r\n"));
-        w.flush();
-        return false;
-      }
-      SimpleFieldSet fs = pn.exportFieldSet();
-      SimpleFieldSet meta = pn.exportMetadataFieldSet(System.currentTimeMillis());
-      if (!meta.isEmpty()) fs.put("metadata", meta);
-      outsb.append(fs.toString());
-    } else if (uline.startsWith("PEERS")) {
-      outsb.append(n.getTMCIPeerList());
-      outsb.append("PEERS done.\r\n");
-    } else if (uline.startsWith("PLUGLOAD")) {
-      if (uline.startsWith("PLUGLOAD:O:")) {
-        String name = line.substring("PLUGLOAD:O:".length()).trim();
-        n.getPluginManager().startPluginOfficial(name, true);
-      } else if (uline.startsWith("PLUGLOAD:F:")) {
-        String name = line.substring("PLUGLOAD:F:".length()).trim();
-        n.getPluginManager().startPluginFile(name, true);
-      } else if (uline.startsWith("PLUGLOAD:U:")) {
-        String name = line.substring("PLUGLOAD:U:".length()).trim();
-        n.getPluginManager().startPluginURL(name, true);
-      } else if (uline.startsWith("PLUGLOAD:K:")) {
-        String name = line.substring("PLUGLOAD:K:".length()).trim();
-        n.getPluginManager().startPluginFreenet(name, true);
-      } else {
-        outsb.append(
-            "  PLUGLOAD:O: pluginName         - Load official plugin from freenetproject.org\r\n");
-        outsb.append("  PLUGLOAD:F: file://<filename>  - Load plugin from file\r\n");
-        outsb.append("  PLUGLOAD:U: http://...         - Load plugin from online file\r\n");
-        outsb.append("  PLUGLOAD:K: freenet key        - Load plugin from freenet uri\r\n");
-      }
-    } else if (uline.startsWith("PLUGLIST")) {
-      outsb.append(n.getPluginManager().dumpPlugins());
-    } else if (uline.startsWith("PLUGKILL:")) {
-      n.getPluginManager()
-          .killPlugin(line.substring("PLUGKILL:".length()).trim(), MINUTES.toMillis(1), false);
-    } else if (uline.startsWith("ANNOUNCE")) {
-      OpennetManager om = n.getOpennet();
-      if (om == null) {
-        outsb.append("OPENNET DISABLED, cannot announce.");
-        return false;
-      }
-      uline = uline.substring("ANNOUNCE".length());
-      final double target;
-      if (uline.charAt(0) == ':') {
-        target = Double.parseDouble(uline.substring(1));
-      } else {
-        target = n.getRandom().nextDouble();
-      }
-      om.announce(
-          target,
-          new AnnouncementCallback() {
-            private void write(String msg) {
-              try {
-                w.write(("ANNOUNCE:" + target + ":" + msg + "\r\n"));
-                w.flush();
-              } catch (IOException e) {
-                // Ignore
-              }
-            }
-
-            @Override
-            public void addedNode(PeerNode pn) {
-              write("Added node " + pn.shortToString());
-            }
-
-            @Override
-            public void bogusNoderef(String reason) {
-              write("Bogus noderef: " + reason);
-            }
-
-            @Override
-            public void completed() {
-              write("Completed announcement.");
-            }
-
-            @Override
-            public void nodeFailed(PeerNode pn, String reason) {
-              write("Node failed: " + pn + " " + reason);
-            }
-
-            @Override
-            public void noMoreNodes() {
-              write("Route Not Found");
-            }
-
-            @Override
-            public void nodeNotWanted() {
-              write("Hop doesn't want me.");
-            }
-
-            @Override
-            public void nodeNotAdded() {
-              write("Node not added as we don't want it for some reason.");
-            }
-
-            @Override
-            public void acceptedSomewhere() {
-              write("Announcement accepted by some node.");
-            }
-
-            @Override
-            public void relayedNoderef() {
-              write(
-                  "Announcement returned a noderef that we relayed downstream. THIS SHOULD NOT"
-                      + " HAPPEN!");
-            }
-          });
-    } else {
-      if (!uline.isEmpty()) printHeader(w);
+      return shouldClose;
     }
+    if (!uline.isEmpty()) {
+      printHeader(w);
+      w.write("\r\n");
+      w.flush();
+    }
+    return false;
+  }
+
+  // Command handlers
+  /**
+   * Handle the GET command.
+   *
+   * <p>The boolean return value in all handlers indicates whether the TMCI session should close
+   * after processing the command. GET never closes the session, so this handler always returns
+   * {@code false}. The annotation suppresses the static analysis warning about constant returns
+   * because that behavior is intentional.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleGet(String line, String uline, BufferedReader reader, StringBuilder outsb)
+      throws IOException {
+    String key = line.substring("GET:".length()).trim();
+    LOG.info("TMCI GET request key: {}", key);
+    FreenetURI uri;
+    try {
+      uri = new FreenetURI(key);
+      LOG.info("TMCI GET parsed URI: {}", uri);
+    } catch (MalformedURLException e2) {
+      outsb.append(MALFORMED_URI_LITERAL).append(key).append(" : ").append(e2);
+      return false;
+    }
+    try {
+      FetchResult result = client.fetch(uri);
+      ClientMetadata cm = result.getMetadata();
+      outsb.append(CONTENT_MIME_LITERAL).append(cm.getMIMEType());
+      Bucket data = result.asBucket();
+      if (data.size() > 32 * 1024) {
+        LOG.warn("TMCI GET response too large (>32K): {}", data.size());
+        outsb.append("Data is more than 32K: ").append(data.size());
+        return false;
+      }
+      byte[] dataBytes = BucketTools.toByteArray(data);
+      boolean evil = containsTerminalControlChars(dataBytes);
+      if (evil) {
+        LOG.warn("TMCI GET response contains terminal control bytes; blocking output");
+        outsb.append(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
+        return false;
+      }
+      outsb.append("Data:\r\n");
+      outsb.append(new String(dataBytes, ENCODING));
+    } catch (FetchException e) {
+      outsb.append(ERROR_PREFIX).append(e.getMessage()).append("\r\n");
+      if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
+        outsb.append(e.errorCodes.toVerboseString());
+      }
+      if (e.newURI != null) outsb.append(REDIRECT_PREFIX).append(e.newURI).append("\r\n");
+    }
+    return false;
+  }
+
+  private static boolean containsTerminalControlChars(byte[] dataBytes) {
+    // Restrict to sequences known to manipulate terminals: ESC (0x1B) and single-byte CSI (0x9B).
+    for (byte b : dataBytes) {
+      int ub = b & 0xFF;
+      if (ub == 0x1B /* ESC */ || ub == 0x9B /* single-byte CSI */) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void appendResultData(FetchResult result, StringBuilder outsb) throws IOException {
+    ClientMetadata cm = result.getMetadata();
+    outsb.append(CONTENT_MIME_LITERAL).append(cm.getMIMEType());
+    Bucket data = result.asBucket();
+    if (data.size() > 32 * 1024) {
+      LOG.warn("TMCI DUMP response too large (>32K): {}", data.size());
+      outsb.append("Data is more than 32K: ").append(data.size());
+      return;
+    }
+    byte[] dataBytes = BucketTools.toByteArray(data);
+    boolean evil = containsTerminalControlChars(dataBytes);
+    if (evil) {
+      LOG.warn("TMCI DUMP response contains terminal control bytes; blocking output");
+      outsb.append(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
+      return;
+    }
+    outsb.append("Data:\r\n");
+    outsb.append(new String(dataBytes, ENCODING));
+  }
+
+  /**
+   * Handle the DUMP command.
+   *
+   * <p>Like other TMCI handlers, the boolean return indicates whether the session should close
+   * after processing. DUMP never closes the session, so it intentionally always returns {@code
+   * false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleDump(String line, String uline, BufferedReader reader, StringBuilder outsb)
+      throws IOException {
+    String key = line.substring("DUMP:".length()).trim();
+    LOG.info("TMCI DUMP request key: {}", key);
+    FreenetURI uri;
+    try {
+      uri = new FreenetURI(key);
+      LOG.info("TMCI DUMP parsed URI: {}", uri);
+    } catch (MalformedURLException e2) {
+      outsb.append(MALFORMED_URI_LITERAL).append(key).append(" : ").append(e2);
+      return false;
+    }
+    try {
+      FetchContext context = client.getFetchContext();
+      FetchWaiter fw = new FetchWaiter((RequestClient) client);
+      ClientGetter get =
+          new ClientGetter(
+              fw, uri, context, RequestStarter.INTERACTIVE_PRIORITY_CLASS, null, null, null);
+      get.setMetaSnoop(new DumperSnoopMetadata());
+      get.start(n.services().clientCore().getClientContext());
+      FetchResult result = fw.waitForCompletion();
+      appendResultData(result, outsb);
+    } catch (FetchException e) {
+      outsb.append(ERROR_PREFIX).append(e.getMessage()).append("\r\n");
+      if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
+        outsb.append(e.errorCodes.toVerboseString());
+      }
+      if (e.newURI != null) outsb.append(REDIRECT_PREFIX).append(e.newURI).append("\r\n");
+    }
+    return false;
+  }
+
+  /**
+   * Handle the GETFILE command.
+   *
+   * <p>Handlers return whether the connection should close; GETFILE keeps the session open and
+   * therefore always returns {@code false}. This is intentional.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleGetFile(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String key = line.substring("GETFILE:".length()).trim();
+    LOG.info("TMCI GETFILE request key: {}", key);
+    FreenetURI uri;
+    try {
+      uri = new FreenetURI(key);
+    } catch (MalformedURLException e2) {
+      outsb.append(MALFORMED_URI_LITERAL).append(key).append(" : ").append(e2);
+      return false;
+    }
+    try {
+      long startTime = System.currentTimeMillis();
+      FetchResult result = client.fetch(uri);
+      ClientMetadata cm = result.getMetadata();
+      outsb.append(CONTENT_MIME_LITERAL).append(cm.getMIMEType());
+      Bucket data = result.asBucket();
+      String fnam = uri.getDocName();
+      fnam = sanitize(fnam);
+      if (fnam.isEmpty()) {
+        fnam = "freenet-download-" + HexUtil.bytesToHex(BucketTools.hash(data), 0, 10);
+        String ext = DefaultMIMETypes.getExtension(cm.getMIMEType());
+        if ((ext != null) && !ext.isEmpty()) fnam += '.' + ext;
+      }
+      File f = new File(downloadsDir, fnam);
+      if (f.exists()) {
+        outsb.append("File exists already: ").append(fnam);
+        fnam = "freenet-" + System.currentTimeMillis() + '-' + fnam;
+      }
+      writeBucketToFile(data, f, outsb, fnam);
+      long endTime = System.currentTimeMillis();
+      long sz = data.size();
+      double rate = 1000.0 * sz / (endTime - startTime);
+      outsb.append("Download rate: ").append(rate).append(" bytes / second");
+    } catch (FetchException e) {
+      outsb.append(ERROR_PREFIX).append(e.getMessage());
+      if ((e.getMode() == FetchExceptionMode.SPLITFILE_ERROR) && (e.errorCodes != null)) {
+        outsb.append(e.errorCodes.toVerboseString());
+      }
+      if (e.newURI != null) outsb.append(REDIRECT_PREFIX).append(e.newURI).append("\r\n");
+    }
+    return false;
+  }
+
+  /**
+   * Handle the UPDATE command.
+   *
+   * <p>Keeps the TMCI session open; intentionally always returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleUpdate(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    outsb.append("starting the update process");
+    n.network().ticker().queueTimedJob(() -> n.services().nodeUpdater().arm(), 0);
+    return false;
+  }
+
+  /**
+   * Handle the FILTER command.
+   *
+   * <p>Handlers return whether the TMCI session should close after processing. FILTER keeps the
+   * session open and therefore intentionally always returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleFilter(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    outsb.append("Here is the result:\r\n");
+    final String content = readLines(reader, false);
+    if (content == null) {
+      outsb.append("Error: Unexpected end of input");
+      return false;
+    }
+    byte[] inBytes = content.getBytes(StandardCharsets.UTF_8);
+    try (InputStream inputStream = new ByteArrayInputStream(inBytes);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+      ContentFilterRequest request =
+          new ContentFilterRequest(inputStream, outputStream, "text/html", null, null, null);
+      ContentFilterCallbacks callbacks =
+          new ContentFilterCallbacks(
+              new URI(FILTER_BASE_URL), null, null, core.getEndpoints().getToadletContainer());
+      ContentFilter.filter(request, callbacks);
+      outsb.append(outputStream.toString(StandardCharsets.UTF_8));
+    } catch (IOException e) {
+      outsb.append("Bucket error?: ").append(e.getMessage());
+      LOG.error("Bucket error?: {}", e, e);
+    } catch (URISyntaxException e) {
+      outsb.append("Internal error: ").append(e.getMessage());
+      LOG.error("Internal error: {}", e, e);
+    }
+    return false;
+  }
+
+  /**
+   * Handle the BLOW command.
+   *
+   * <p>Keeps the TMCI session open; intentionally always returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleBlow(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    n.services().nodeUpdater().blow("caught an  IOException : (Incompetent Operator) :p", true);
+    return false;
+  }
+
+  /**
+   * Handle the SHUTDOWN command.
+   *
+   * <p>Keeps the TMCI session open from the handler perspective; underlying node begins shutdown.
+   * Intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleShutdown(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    w.write("Shutting node down.\r\n");
+    w.flush();
+    n.exit("Shutdown from console");
+    return false;
+  }
+
+  /**
+   * Handle the RESTART command.
+   *
+   * <p>Keeps the TMCI session open; intentionally always returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleRestart(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    w.write("Restarting the node.\r\n");
+    w.flush();
+    n.getNodeStarter().restart();
+    return false;
+  }
+
+  private boolean handleQuit(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    if (core.getEndpoints().getDirectTMCI() == this) {
+      outsb.append("QUIT command not available in console mode.");
+      return false;
+    }
+    outsb.append("Closing connection.");
+    return true;
+  }
+
+  /**
+   * Handle the MEMSTAT command.
+   *
+   * <p>Displays memory/OS info and keeps the session open; intentionally always returns {@code
+   * false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleMemstat(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    Runtime rt = Runtime.getRuntime();
+    float freeMemory = rt.freeMemory();
+    float totalMemory = rt.totalMemory();
+    float maxMemory = rt.maxMemory();
+    long usedJavaMem = (long) (totalMemory - freeMemory);
+    long allocatedJavaMem = (long) totalMemory;
+    long maxJavaMem = (long) maxMemory;
+    int availableCpus = rt.availableProcessors();
+    NumberFormat thousendPoint = NumberFormat.getInstance();
+    ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
+    int threadCount = tmx.getThreadCount();
+    String sb =
+        "Used Java memory:\u00a0"
+            + SizeUtil.formatSize(usedJavaMem, true)
+            + "\r\n"
+            + "Allocated Java memory:\u00a0"
+            + SizeUtil.formatSize(allocatedJavaMem, true)
+            + "\r\n"
+            + "Maximum Java memory:\u00a0"
+            + SizeUtil.formatSize(maxJavaMem, true)
+            + "\r\n"
+            + "Running threads:\u00a0"
+            + thousendPoint.format(threadCount)
+            + "\r\n"
+            + "Available CPUs:\u00a0"
+            + availableCpus
+            + "\r\n"
+            + "Java Version:\u00a0"
+            + System.getProperty("java.version")
+            + "\r\n"
+            + "JVM Vendor:\u00a0"
+            + System.getProperty("java.vendor")
+            + "\r\n"
+            + "JVM Version:\u00a0"
+            + System.getProperty("java.version")
+            + "\r\n"
+            + "OS Name:\u00a0"
+            + new AppEnv().osNameRaw()
+            + "\r\n"
+            + "OS Version:\u00a0"
+            + System.getProperty("os.version")
+            + "\r\n"
+            + "OS Architecture:\u00a0"
+            + System.getProperty("os.arch")
+            + "\r\n";
+    w.write(sb);
+    w.flush();
+    return false;
+  }
+
+  /**
+   * Handle the HELP command.
+   *
+   * <p>Prints the header and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleHelp(String line, String uline, BufferedReader reader, StringBuilder outsb)
+      throws IOException {
+    printHeader(w);
     outsb.append("\r\n");
     w.write(outsb.toString());
     w.flush();
     return false;
   }
 
+  /**
+   * Handle the PUT/GETCHK command.
+   *
+   * <p>Computes/does insert and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePutOrGetChk(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    boolean getCHKOnly = uline.startsWith("GETCHK:");
+    if (getCHKOnly) line = line.substring("GETCHK:".length()).trim();
+    else line = line.substring("PUT:".length()).trim();
+    String content;
+    if (!line.isEmpty()) {
+      content = line;
+    } else {
+      content = readLines(reader, false);
+    }
+    if (content == null) {
+      outsb.append("Error: Unexpected end of input");
+      return false;
+    }
+    byte[] data = content.getBytes(ENCODING);
+    InsertBlock block = new InsertBlock(new ArrayBucket(data), null, FreenetURI.EMPTY_CHK_URI);
+    FreenetURI uri;
+    try {
+      uri = client.insert(block, getCHKOnly, null);
+    } catch (InsertException e) {
+      outsb.append(ERROR_PREFIX).append(e.getMessage());
+      if (e.getUri() != null) outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
+      InsertExceptionMode mode = e.getMode();
+      if ((mode == InsertExceptionMode.FATAL_ERRORS_IN_BLOCKS)
+          || (mode == InsertExceptionMode.TOO_MANY_RETRIES_IN_BLOCKS)) {
+        outsb.append("Splitfile-specific error:\n").append(e.getErrorCodes().toVerboseString());
+      }
+      return false;
+    }
+    outsb.append(URI_PREFIX).append(uri);
+    return false;
+  }
+
+  /**
+   * Handle the PUTDIR/PUTSSKDIR/GETCHKDIR commands.
+   *
+   * <p>Performs manifest operations and keeps the session open; intentionally returns {@code
+   * false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePutDirOrPutSSKDirOrGetCHKDir(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    DirInsertParams params;
+    try {
+      params = parseDirInsertParams(uline, line);
+    } catch (MalformedURLException e) {
+      outsb.append(MALFORMED_URI_LITERAL).append(line).append(" : ").append(e);
+      return false;
+    }
+    String linePath = params.path.trim();
+    if (linePath.isEmpty()) {
+      printHeader(w);
+      return false;
+    }
+    String defaultFile = params.defaultFile;
+    FreenetURI insertURI = params.insertURI;
+    // parameters already parsed by parseDirInsertParams
+    Map<String, Object> bucketsByName = makeBucketsByName(linePath);
+    if (defaultFile == null) {
+      defaultFile =
+          detectDefaultFile(
+              bucketsByName, "index.html", "index.htm", "default.html", "default.htm");
+    }
+    FreenetURI uri;
+    try {
+      uri = client.insertManifest(insertURI, bucketsByName, defaultFile);
+      uri = uri.addMetaStrings(new String[] {""});
+      outsb.append("=======================================================");
+      outsb.append(URI_PREFIX).append(uri);
+      outsb.append("=======================================================");
+    } catch (InsertException e) {
+      outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
+      if (e.getUri() != null) {
+        uri = e.getUri();
+        uri = uri.addMetaStrings(new String[] {""});
+        outsb.append(URI_WOULD_HAVE_BEEN).append(uri);
+      }
+      if (e.getErrorCodes() != null) {
+        outsb.append("Splitfile errors breakdown:");
+        outsb.append(e.getErrorCodes().toVerboseString());
+      }
+      LOG.error("TMCI insert manifest failed with exception: {}", e, e);
+    }
+    return false;
+  }
+
+  private static String detectDefaultFile(
+      Map<String, Object> bucketsByName,
+      @SuppressWarnings("SameParameterValue") String... candidates) {
+    for (String file : candidates) {
+      if (bucketsByName.containsKey(file)) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  private static String[] splitOnChar(String value, char delimiter) {
+    int segments = 1;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        segments++;
+      }
+    }
+    String[] parts = new String[segments];
+    int start = 0;
+    int partIndex = 0;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        parts[partIndex++] = value.substring(start, i);
+        start = i + 1;
+      }
+    }
+    parts[partIndex] = value.substring(start);
+
+    int end = parts.length;
+    while (end > 0 && parts[end - 1].isEmpty()) {
+      end--;
+    }
+    if (end == parts.length) {
+      return parts;
+    }
+    return Arrays.copyOf(parts, end);
+  }
+
+  private record DirInsertParams(
+      boolean ssk, FreenetURI insertURI, String path, String defaultFile) {}
+
+  private DirInsertParams parseDirInsertParams(String uline, String line)
+      throws MalformedURLException {
+    boolean ssk = false;
+    if (uline.startsWith("PUTDIR:")) line = line.substring("PUTDIR:".length());
+    else if (uline.startsWith("PUTSSKDIR:")) {
+      line = line.substring("PUTSSKDIR:".length());
+      ssk = true;
+    } else if (uline.startsWith("GETCHKDIR:")) {
+      line = line.substring("GETCHKDIR:".length());
+    } else {
+      LOG.warn("Impossible");
+    }
+    line = line.trim();
+    String defaultFile = null;
+    FreenetURI insertURI = FreenetURI.EMPTY_CHK_URI;
+    if (line.indexOf('#') >= 0) {
+      String[] split = splitOnChar(line, '#');
+      if (ssk) {
+        insertURI = new FreenetURI(split[0]);
+        line = split[1];
+        if (split.length > 2) defaultFile = split[2];
+      } else {
+        defaultFile = split[1];
+        line = split[0];
+      }
+    }
+    return new DirInsertParams(ssk, insertURI, line, defaultFile);
+  }
+
+  /**
+   * Handle the PUTFILE/GETCHKFILE commands.
+   *
+   * <p>Operates on local files and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "java:S1181", "SameReturnValue"})
+  private boolean handlePutFileOrGetCHKFile(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    boolean getCHKOnly = uline.startsWith("GETCHKFILE:");
+    if (getCHKOnly) {
+      line = line.substring("GETCHKFILE:".length()).trim();
+    } else {
+      line = line.substring("PUTFILE:".length()).trim();
+    }
+    String mimeType = DefaultMIMETypes.guessMIMEType(line, false);
+    if (line.indexOf('#') > -1) {
+      String[] splittedLine = splitOnChar(line, '#');
+      line = splittedLine[0];
+      mimeType = splittedLine[1];
+    }
+    File f = new File(line);
+    outsb.append("Attempting to read file ").append(line);
+    long startTime = System.currentTimeMillis();
+    try (FileBucket fb = new FileBucket(f, true, false, false, false)) {
+      if (!(f.exists() && f.canRead())) {
+        throw new FileNotFoundException();
+      }
+      outsb.append(" using MIME type: ").append(mimeType).append("\r\n");
+      if (DefaultMIMETypes.DEFAULT_MIME_TYPE.equals(mimeType)) mimeType = "";
+      InsertBlock block =
+          new InsertBlock(fb, new ClientMetadata(mimeType), FreenetURI.EMPTY_CHK_URI);
+      startTime = System.currentTimeMillis();
+      FreenetURI uri = client.insert(block, getCHKOnly, f.getName());
+      outsb.append(URI_PREFIX).append(uri).append("\r\n");
+      long endTime = System.currentTimeMillis();
+      long sz = f.length();
+      double rate = 1000.0 * sz / (endTime - startTime);
+      outsb.append("Upload rate: ").append(rate).append(" bytes / second\r\n");
+    } catch (FileNotFoundException _) {
+      outsb.append("File not found");
+    } catch (InsertException e) {
+      outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
+      if (e.getUri() != null) {
+        outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
+        long endTime = System.currentTimeMillis();
+        long sz = f.length();
+        double rate = 1000.0 * sz / (endTime - startTime);
+        outsb.append("Upload rate: ").append(rate).append(" bytes / second");
+      }
+      if (e.getErrorCodes() != null) {
+        outsb.append("Splitfile errors breakdown:");
+        outsb.append(e.getErrorCodes().toVerboseString());
+      }
+    } catch (Throwable t) {
+      outsb.append("Insert threw: ").append(t);
+      LOG.debug("Insert threw", t);
+    }
+    return false;
+  }
+
+  /**
+   * Handle the MAKESSK command.
+   *
+   * <p>Generates keys and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleMakeSSK(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    InsertableClientSSK key = InsertableClientSSK.createRandom(r, "");
+    outsb.append("Insert URI: ").append(key.getInsertURI().toString(false, false)).append("\r\n");
+    outsb.append("Request URI: ").append(key.getURI().toString(false, false)).append("\r\n");
+    FreenetURI insertURI = key.getInsertURI().setDocName("testsite");
+    String fixedInsertURI = insertURI.toString(false, false);
+    outsb
+        .append("Note that you MUST add a filename to the end of the above URLs e.g.:\r\n")
+        .append(fixedInsertURI)
+        .append("\r\n");
+    outsb
+        .append(
+            "Normally you will then do PUTSSKDIR:<insert URI>#<directory to upload>, for"
+                + " example:\r\n"
+                + "PUTSSKDIR:")
+        .append(fixedInsertURI)
+        .append("#directoryToUpload/\r\n");
+    outsb
+        .append(
+            "This will then produce a manifest site containing all the files, the default"
+                + " document can be accessed at\r\n")
+        .append(key.getURI().toString(false, false))
+        .append("testsite/");
+    return false;
+  }
+
+  /**
+   * Handle the PUTSSK command.
+   *
+   * <p>Inserts a redirect and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePutSSK(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String cmd = line.substring("PUTSSK:".length());
+    cmd = cmd.trim();
+    if (cmd.indexOf(';') <= 0) {
+      outsb.append("No target URI provided.");
+      outsb.append("PUTSSK:<insert uri>;<url to redirect to>");
+      return false;
+    }
+    String[] split = splitOnChar(cmd, ';');
+    String insertURI = split[0];
+    String targetURI = split[1];
+    outsb.append("Insert URI: ").append(insertURI);
+    outsb.append("Target URI: ").append(targetURI);
+    FreenetURI insert = new FreenetURI(insertURI);
+    FreenetURI target = new FreenetURI(targetURI);
+    try {
+      FreenetURI result = client.insertRedirect(insert, target);
+      outsb.append("Successfully inserted to fetch URI: ").append(result);
+    } catch (InsertException e) {
+      outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
+      LOG.info("Error: {}", e, e);
+      if (e.getUri() != null) {
+        outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Handle the STATUS command.
+   *
+   * <p>Reports status and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleStatus(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    outsb.append("DARKNET:\n");
+    SimpleFieldSet fs = n.network().exportDarknetPublicFieldSet();
+    outsb.append(fs);
+    if (n.network().isOpennetEnabled()) {
+      outsb.append("OPENNET:\n");
+      fs = n.network().exportOpennetPublicFieldSet();
+      outsb.append(fs);
+    }
+    outsb.append(n.getStatus());
+    if (Version.currentBuildNumber() < Version.getHighestSeenBuild()) {
+      outsb.append("The latest version is : ").append(Version.getHighestSeenBuild());
+    }
+    return false;
+  }
+
+  /**
+   * Handle the ADDPEER/CONNECT commands.
+   *
+   * <p>Adds a peer and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleAddPeerOrConnect(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String key;
+    if (uline.startsWith("CONNECT:")) {
+      key = line.substring("CONNECT:".length()).trim();
+    } else {
+      key = line.substring("ADDPEER:".length()).trim();
+    }
+    String content;
+    if (!key.isEmpty()) {
+      outsb.append("Trying to add peer to node by noderef in ").append(key).append("\r\n");
+      File f = new File(key);
+      if (f.isFile()) {
+        outsb.append("Given string seems to be a file, loading...\r\n");
+        try (BufferedReader fileReader =
+            new BufferedReader(new InputStreamReader(new FileInputStream(f), ENCODING))) {
+          content = readLines(fileReader, true);
+        }
+      } else {
+        outsb.append("Given string seems to be an URL, loading...\r\n");
+        URL url = parseUrl(key);
+        content = AddPeer.getReferenceFromURL(url).toString();
+      }
+    } else {
+      content = readLines(reader, true);
+    }
+    if (content == null) return false;
+    if (content.isEmpty()) return false;
+    addPeer(content, outsb);
+    return false;
+  }
+
+  /**
+   * Handle the NAME command.
+   *
+   * <p>Updates node name and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleName(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    outsb.append("Node name currently: ").append(n.getMyName());
+    String key = line.substring("NAME:".length()).trim();
+    outsb.append("New name: ").append(key);
+    try {
+      n.setName(key);
+      if (LOG.isDebugEnabled()) LOG.debug("Setting node.name to {}", key);
+    } catch (Exception e) {
+      LOG.error("Error setting node's name", e);
+    }
+    core.storeConfig();
+    return false;
+  }
+
+  /**
+   * Handle the DISABLEPEER command.
+   *
+   * <p>Updates peer state and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleDisablePeerCmd(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String nodeIdentifier = line.substring("DISABLEPEER:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    if (disablePeer(nodeIdentifier)) {
+      outsb.append("disable succeeded for ").append(nodeIdentifier);
+    } else {
+      outsb.append("disable failed for ").append(nodeIdentifier);
+    }
+    outsb.append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the ENABLEPEER command.
+   *
+   * <p>Updates peer state and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleEnablePeerCmd(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String nodeIdentifier = line.substring("ENABLEPEER:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    if (enablePeer(nodeIdentifier)) {
+      outsb.append("enable succeeded for ").append(nodeIdentifier);
+    } else {
+      outsb.append("enable failed for ").append(nodeIdentifier);
+    }
+    outsb.append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the SETPEERLISTENONLY command.
+   *
+   * <p>Updates peer state and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleSetPeerListenOnly(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String nodeIdentifier = line.substring("SETPEERLISTENONLY:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
+    if (pn == null) {
+      w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
+      w.flush();
+      return false;
+    }
+    if (!(pn instanceof DarknetPeerNode dpn)) {
+      w.write(
+          (ERROR_PREFIX
+              + nodeIdentifier
+              + " identifies a non-darknet peer and this command is only available for darknet"
+              + " peers\r\n\r\n"));
+      w.flush();
+      return false;
+    }
+    dpn.setListenOnly(true);
+    outsb.append("set ListenOnly suceeded for ").append(nodeIdentifier).append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the UNSETPEERLISTENONLY command.
+   *
+   * <p>Updates peer state and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleUnsetPeerListenOnly(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String nodeIdentifier = line.substring("UNSETPEERLISTENONLY:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
+    if (pn == null) {
+      w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
+      w.flush();
+      return false;
+    }
+    if (!(pn instanceof DarknetPeerNode dpn)) {
+      w.write(
+          (ERROR_PREFIX
+              + nodeIdentifier
+              + " identifies a non-darknet peer and this command is only available for darknet"
+              + " peers\r\n\r\n"));
+      w.flush();
+      return false;
+    }
+    dpn.setListenOnly(false);
+    outsb.append("unset ListenOnly suceeded for ").append(nodeIdentifier).append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the HAVEPEER command.
+   *
+   * <p>Reports existence and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleHavePeerCmd(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    String nodeIdentifier = line.substring("HAVEPEER:".length()).trim();
+    if (havePeer(nodeIdentifier)) {
+      outsb.append("true for ").append(nodeIdentifier);
+    } else {
+      outsb.append("false for ").append(nodeIdentifier);
+    }
+    outsb.append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the REMOVEPEER/DISCONNECT commands.
+   *
+   * <p>Removes a peer and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleRemovePeerOrDisconnect(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    String nodeIdentifier;
+    if (uline.startsWith("DISCONNECT:")) {
+      nodeIdentifier = line.substring("DISCONNECT:".length());
+    } else {
+      nodeIdentifier = line.substring("REMOVEPEER:".length());
+    }
+    if (removePeer(nodeIdentifier)) {
+      outsb.append("peer removed for ").append(nodeIdentifier);
+    } else {
+      outsb.append("peer removal failed for ").append(nodeIdentifier);
+    }
+    outsb.append("\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the PEER command.
+   *
+   * <p>Prints peer noderef and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePeer(String line, String uline, BufferedReader reader, StringBuilder outsb)
+      throws IOException {
+    String nodeIdentifier = line.substring("PEER:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
+    if (pn == null) {
+      w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
+      w.flush();
+      return false;
+    }
+    SimpleFieldSet fs = pn.exportFieldSet();
+    outsb.append(fs.toString());
+    return false;
+  }
+
+  /**
+   * Handle the PEERWMD command.
+   *
+   * <p>Prints peer noderef + metadata and keeps the session open; intentionally returns {@code
+   * false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePeerWmd(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
+    String nodeIdentifier = line.substring("PEERWMD:".length()).trim();
+    if (!havePeer(nodeIdentifier)) {
+      w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
+      w.flush();
+      return false;
+    }
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
+    if (pn == null) {
+      w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
+      w.flush();
+      return false;
+    }
+    SimpleFieldSet fs = pn.exportFieldSet();
+    SimpleFieldSet meta = pn.exportMetadataFieldSet(System.currentTimeMillis());
+    if (!meta.isEmpty()) fs.put("metadata", meta);
+    outsb.append(fs.toString());
+    return false;
+  }
+
+  /**
+   * Handle the PEERS command.
+   *
+   * <p>Lists peers and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handlePeers(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    outsb.append(n.getTMCIPeerList());
+    outsb.append("PEERS done.\r\n");
+    return false;
+  }
+
+  /**
+   * Handle the ANNOUNCE command.
+   *
+   * <p>Runs an announcement and keeps the session open; intentionally returns {@code false}.
+   */
+  @SuppressWarnings({"java:S3516", "SameReturnValue"})
+  private boolean handleAnnounce(
+      String line, String uline, BufferedReader reader, StringBuilder outsb) {
+    // Guard when opennet is disabled
+    var om = n.network().opennet();
+    if (om == null) {
+      outsb.append("OPENNET DISABLED, cannot announce.");
+      return false;
+    }
+
+    double target;
+    if (line.contains(":")) {
+      String locStr = line.substring(line.indexOf(':') + 1).trim();
+      try {
+        target = Double.parseDouble(locStr);
+      } catch (NumberFormatException _) {
+        outsb.append("Bad location: ").append(locStr);
+        return false;
+      }
+    } else {
+      // Legacy behavior: pick a fresh random target when none is provided
+      target = n.bootstrap().random().nextDouble();
+    }
+    outsb.append("Announcing to ").append(target);
+    om.announce(
+        target,
+        new AnnouncementCallback() {
+          private void write(String s) {
+            try {
+              w.write("ANNOUNCE:" + target + ":" + s + "\r\n");
+              w.flush();
+            } catch (IOException _) {
+              // Ignore
+            }
+          }
+
+          @Override
+          public void addedNode(PeerNode pn) {
+            write("Added node " + pn.shortToString());
+          }
+
+          @Override
+          public void bogusNoderef(String reason) {
+            write("Bogus noderef: " + reason);
+          }
+
+          @Override
+          public void completed() {
+            write("Completed announcement.");
+          }
+
+          @Override
+          public void nodeFailed(PeerNode pn, String reason) {
+            write("Node failed: " + pn + " " + reason);
+          }
+
+          @Override
+          public void noMoreNodes() {
+            write("Route Not Found");
+          }
+
+          @Override
+          public void nodeNotWanted() {
+            write("Hop doesn't want me.");
+          }
+
+          @Override
+          public void nodeNotAdded() {
+            write("Node not added as we don't want it for some reason.");
+          }
+
+          @Override
+          public void acceptedSomewhere() {
+            write("Announcement accepted by some node.");
+          }
+
+          @Override
+          public void relayedNoderef() {
+            write(
+                "Announcement returned a noderef that we relayed downstream. THIS SHOULD NOT"
+                    + " HAPPEN!");
+          }
+        });
+    return false;
+  }
+
+  private void writeBucketToFile(Bucket data, File target, StringBuilder outsb, String name) {
+    try (FileOutputStream fos = new FileOutputStream(target)) {
+      BucketTools.copyTo(data, fos, Long.MAX_VALUE);
+      outsb.append("Written to ").append(name);
+    } catch (IOException e) {
+      outsb.append("Could not write file: caught ").append(e);
+      LOG.debug("Could not write file", e);
+    }
+  }
+
   /** Create a map of String -> Bucket for every file in a directory and its subdirs. */
-  private HashMap<String, Object> makeBucketsByName(String directory) {
+  private Map<String, Object> makeBucketsByName(String directory) {
 
     if (!directory.endsWith("/")) directory = directory + '/';
     File thisdir = new File(directory);
 
-    System.out.println("Listing dir: " + thisdir);
+    LOG.info("Listing dir: {}", thisdir);
 
     HashMap<String, Object> ret = new HashMap<>();
 
     File[] filelist = thisdir.listFiles();
     if (filelist == null) throw new IllegalArgumentException("No such directory");
-    for (int i = 0; i < filelist.length; i++) {
+    for (File file : filelist) {
       //   Skip unreadable files and dirs
       //   Skip files nonexistant (dangling symlinks) - check last
-      if (filelist[i].canRead() && filelist[i].exists()) {
-        if (filelist[i].isFile()) {
-          File f = filelist[i];
+      if (file.canRead() && file.exists()) {
+        if (file.isFile()) {
 
-          FileBucket bucket = new FileBucket(f, true, false, false, false);
+          FileBucket bucket = new FileBucket(file, true, false, false, false);
 
-          ret.put(f.getName(), bucket);
-        } else if (filelist[i].isDirectory()) {
-          HashMap<String, Object> subdir = makeBucketsByName(directory + filelist[i].getName());
-          ret.put(filelist[i].getName(), subdir);
+          ret.put(file.getName(), bucket);
+        } else if (file.isDirectory()) {
+          Map<String, Object> subdir = makeBucketsByName(directory + file.getName());
+          ret.put(file.getName(), subdir);
         }
       }
     }
@@ -1153,100 +1546,101 @@ public class TextModeClientInterface implements Runnable {
    */
   private String readLines(BufferedReader reader, boolean isFieldSet) {
     StringBuilder sb = new StringBuilder(1000);
-    boolean breakflag = false;
     while (true) {
-      String line;
-      try {
-        line = reader.readLine();
-        if (line == null) throw new EOFException();
-      } catch (IOException e1) {
-        System.err.println("Bye... (" + e1 + ')');
-        return null;
+      String line = safeReadLine(reader);
+      if (line == null) return null;
+      boolean shouldBreak = false;
+      boolean append = true;
+      if (!isFieldSet && ".".equals(line)) {
+        shouldBreak = true;
+        append = false;
       }
-      if ((!isFieldSet) && line.equals(".")) break;
       if (isFieldSet) {
-        // Mangling
-        // First trim
-        line = line.trim();
-        if (line.equals("End")) {
-          breakflag = true;
-        } else {
-          if (line.endsWith("End")
-              && Character.isWhitespace(line.charAt(line.length() - ("End".length() + 1)))) {
-            line = "End";
-            breakflag = true;
-          } else {
-            int idx = line.indexOf('=');
-            if (idx < 0) {
-              System.err.println("No = and no End in line: " + line);
-              return "";
-            } else {
-              if (idx > 0) {
-                String after;
-                if (idx == line.length() - 1) after = "";
-                else after = line.substring(idx + 1);
-                String before = line.substring(0, idx);
-                before = before.trim();
-                int x = 0;
-                for (int j = before.length() - 1; j >= 0; j--) {
-                  char c = before.charAt(j);
-                  if ((c == '.') || Character.isLetterOrDigit(c)) {
-                    // Valid character for field
-                  } else {
-                    x = j + 1;
-                    break;
-                  }
-                }
-                before = before.substring(x);
-                line = before + '=' + after;
-                // System.out.println(line);
-              } else {
-                System.err.println("Invalid empty field name");
-                breakflag = true;
-              }
-            }
-          }
+        LineResult result = processFieldSetLine(line);
+        line = result.line;
+        if (result.shouldBreak) {
+          shouldBreak = true;
         }
       }
-      sb.append(line).append("\r\n");
-      if (breakflag) break;
+      if (append) sb.append(line).append("\r\n");
+      if (shouldBreak) break;
     }
     return sb.toString();
   }
 
-  /** Add a peer to the node, given its reference. */
-  private void addPeer(String content) {
+  private String safeReadLine(BufferedReader reader) {
+    try {
+      String line = reader.readLine();
+      if (line == null) throw new EOFException();
+      return line;
+    } catch (IOException e1) {
+      LOG.warn("TMCI input read failed in multiline block: {}", e1, e1);
+      return null;
+    }
+  }
+
+  private record LineResult(String line, boolean shouldBreak) {}
+
+  private LineResult processFieldSetLine(String input) {
+    String line = input.trim();
+    if (line.equals("End")) {
+      return new LineResult("End", true);
+    }
+    if (line.endsWith("End")
+        && line.length() > "End".length()
+        && Character.isWhitespace(line.charAt(line.length() - ("End".length() + 1)))) {
+      return new LineResult("End", true);
+    }
+    int idx = line.indexOf('=');
+    if (idx < 0) {
+      LOG.warn("No = and no End in line: {}", line);
+      return new LineResult("", false);
+    }
+    if (idx == 0) {
+      LOG.warn("Invalid empty field name");
+      return new LineResult(line, true);
+    }
+    String after = (idx == line.length() - 1) ? "" : line.substring(idx + 1);
+    String before = line.substring(0, idx).trim();
+    int x = 0;
+    for (int j = before.length() - 1; j >= 0; j--) {
+      char c = before.charAt(j);
+      if ((c != '.') && !Character.isLetterOrDigit(c)) {
+        x = j + 1;
+        break;
+      }
+    }
+    before = before.substring(x);
+    return new LineResult(before + '=' + after, false);
+  }
+
+  /** Add a peer to the node, given its reference, and emit user-visible feedback. */
+  private void addPeer(String content, StringBuilder outsb) {
     SimpleFieldSet fs;
-    System.out.println("Connecting to:\r\n" + content);
+    LOG.info("Connecting to:\r\n{}", content);
     try {
       fs = new SimpleFieldSet(content, false, true, false);
     } catch (IOException e) {
-      System.err.println("Did not parse: " + e);
-      e.printStackTrace();
+      LOG.error("Failed to parse peer reference input: {}", e, e);
+      outsb.append("Did not parse: ").append(e).append("\r\n");
       return;
     }
     PeerNode pn;
     try {
-      pn = n.createNewDarknetNode(fs, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
-    } catch (FSParseException e1) {
-      System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
-      return;
-    } catch (PeerParseException e1) {
-      System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
-      return;
-    } catch (ReferenceSignatureVerificationException e1) {
-      System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
-      return;
-    } catch (PeerTooOldException e1) {
-      System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
+      pn = n.network().createNewDarknetNode(fs, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
+    } catch (FSParseException
+        | PeerTooOldException
+        | ReferenceSignatureVerificationException
+        | PeerParseException e1) {
+      LOG.error("Failed to validate peer reference: {}", e1, e1);
+      outsb.append("Did not parse: ").append(e1).append("\r\n");
       return;
     }
-    if (n.getPeers().addPeer(pn)) System.out.println("Added peer: " + pn);
-    n.getPeers().writePeersDarknetUrgent();
+    if (n.network().peers().addPeer(pn)) {
+      LOG.info("Added peer: {}", pn);
+      outsb.append("Added peer: ").append(pn).append("\r\n");
+    }
+    n.network().peers().writePeersDarknetUrgent();
   }
 
   /**
@@ -1254,7 +1648,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean disablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1277,7 +1671,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean enablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1300,7 +1694,7 @@ public class TextModeClientInterface implements Runnable {
    * existence as boolean
    */
   private boolean havePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1322,8 +1716,8 @@ public class TextModeClientInterface implements Runnable {
    * removal successfulness as boolean
    */
   private boolean removePeer(String nodeIdentifier) {
-    System.out.println("Removing peer from node for: " + nodeIdentifier);
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    LOG.info("Removing peer from node for: {}", nodeIdentifier);
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1334,11 +1728,11 @@ public class TextModeClientInterface implements Runnable {
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
           || name.equals(nodeIdentifier)) {
-        n.removePeerConnection(pn);
+        n.network().removePeerConnection(pn);
         return true;
       }
     }
-    System.out.println("No node in peers list for: " + nodeIdentifier);
+    LOG.info("No node in peers list for: {}", nodeIdentifier);
     return false;
   }
 

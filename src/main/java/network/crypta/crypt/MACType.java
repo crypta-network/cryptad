@@ -4,30 +4,49 @@ import java.security.NoSuchAlgorithmException;
 import javax.crypto.Mac;
 
 /**
- * Keeps track of properties of different Message Authentication Code algorithms available to
- * Freenet including key type, name of the algorithm, and iv length if required.
+ * Enumerates Message Authentication Code (MAC) algorithms used in Crypta and exposes the properties
+ * needed to configure them with the Java Cryptography Architecture (JCA).
+ *
+ * <p>Each constant records the JCA algorithm name, the associated {@link KeyType} family, and the
+ * required IV/nonce length in bytes when applicable. Algorithms that do not use an IV/nonce set
+ * {@link #ivlen} to {@code -1}.
+ *
+ * <p>This enum provides a convenience method, {@link #get()}, that returns a ready-to-use {@link
+ * javax.crypto.Mac} instance for the selected algorithm. Callers remain responsible for
+ * initializing it with the appropriate key (and IV/nonce when required).
  *
  * @author unixninja92
  */
 public enum MACType {
-  HMACSHA256(1, "HmacSHA256", KeyType.HMACSHA256),
-  HMACSHA384(2, "HmacSHA384", KeyType.HMACSHA384),
-  HMACSHA512(2, "HmacSHA512", KeyType.HMACSHA512),
-  Poly1305AES(2, "POLY1305-AES", 16, KeyType.POLY1305AES);
+  HMAC_SHA256(1, "HmacSHA256", KeyType.HMAC_SHA256),
+  HMAC_SHA384(2, "HmacSHA384", KeyType.HMAC_SHA384),
+  HMAC_SHA512(2, "HmacSHA512", KeyType.HMAC_SHA512),
+  POLY1305_AES(2, "POLY1305-AES", 16, KeyType.POLY1305_AES);
 
-  /** Bitmask for aggregation. */
+  /**
+   * Version/feature bitmask for consumers that combine cryptographic selections. The specific
+   * meaning of individual bits is defined by the calling code that persists or interprets it.
+   */
   public final int bitmask;
 
+  /** JCA standard algorithm name passed to {@link Mac#getInstance(String)}. */
   public final String mac;
+
+  /**
+   * IV/nonce length in bytes. A value of {@code -1} indicates that the algorithm does not use an
+   * IV/nonce (e.g., HMAC variants).
+   */
   public final int ivlen;
+
+  /** Key family used to derive or validate compatible secret keys. */
   public final KeyType keyType;
 
   /**
-   * Creates the HMACSHA256 enum. Sets the ivlen as -1.
+   * Creates an enum constant for MAC algorithms that do not require an IV/nonce.
    *
-   * @param bitmask
-   * @param mac Name of the algorithm that java uses.
-   * @param type The type of key the alg requires
+   * @param bitmask version/feature bitmask for aggregation or serialization
+   * @param mac JCA algorithm name (for example, {@code "HmacSHA256"})
+   * @param type key family required by the algorithm
    */
   MACType(int bitmask, String mac, KeyType type) {
     this.bitmask = bitmask;
@@ -37,12 +56,12 @@ public enum MACType {
   }
 
   /**
-   * Creates the Poly1305 enum.
+   * Creates an enum constant for MAC algorithms that require an IV/nonce.
    *
-   * @param bitmask
-   * @param mac Name of the algorithm that java uses.
-   * @param ivlen Length of the IV
-   * @param type The type of key the alg requires
+   * @param bitmask version/feature bitmask for aggregation or serialization
+   * @param mac JCA algorithm name
+   * @param ivlen IV/nonce length in bytes
+   * @param type key family required by the algorithm
    */
   MACType(int bitmask, String mac, int ivlen, KeyType type) {
     this.bitmask = bitmask;
@@ -52,15 +71,19 @@ public enum MACType {
   }
 
   /**
-   * Gets an instance of Mac using the specified algorithm.
+   * Obtains a new {@link Mac} instance configured for this algorithm.
    *
-   * @return Returns an instance of Mac
+   * <p>The instance is not initialized. Callers must initialize it with a compatible key (and IV/
+   * nonce when required by {@link #ivlen}).
+   *
+   * @return a new {@link Mac} instance
+   * @throws IllegalStateException if the algorithm is unavailable in the current JCA providers
    */
   public final Mac get() {
     try {
       return Mac.getInstance(mac);
     } catch (NoSuchAlgorithmException e) {
-      throw new Error(e); // Definitely a bug...
+      throw new IllegalStateException(e); // Definitely a bug...
     }
   }
 }

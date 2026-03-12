@@ -6,38 +6,46 @@ import java.util.Map;
 import java.util.TreeMap;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.NewPacketFormat.SentPacket;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SentTimeCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * NewPacketFormat's context for each SessionKey. Specifically, packet numbers are unique to a
- * SessionKey, because the packet number is used in encrypting the packet. Hence this class has
- * everything to do with packet numbers - which to use next, which we've sent packets on and are
- * waiting for acks, which we've received and should ack etc.
+ * Context for sequence numbers and acknowledgments for a single session key.
+ *
+ * <p>Each {@code SessionKey} maintains its own sequence number space. Sequence numbers are used as
+ * part of packet encryption, so they must be unique per key. This class tracks which sequence
+ * number to allocate next, which outgoing packets are in flight and awaiting acknowledgment, and
+ * which incoming sequence numbers have been observed so that acks can be generated.
+ *
+ * <p>Thread safety: methods synchronize on internal locks for sequence number allocation and for
+ * the ack/sent-packet maps ({@code sequenceNumberLock}, {@code acks}, and {@code sentPackets}).
+ * Instances may be shared across threads as long as callers respect these synchronization points.
+ *
+ * <p>Time units are milliseconds unless stated otherwise.
  *
  * @author toad
  */
 public class NewPacketFormatKeyContext {
+  private static final Logger LOG = LoggerFactory.getLogger(NewPacketFormatKeyContext.class);
 
-  public int firstSeqNumUsed = -1;
-  public int nextSeqNum;
-  public int highestReceivedSeqNum;
+  int firstSeqNumUsed = -1;
+  int nextSeqNum;
+  int highestReceivedSeqNum;
 
-  public byte[][] seqNumWatchList = null;
+  byte[][] seqNumWatchList = null;
 
-  /** Index of the packet with the lowest sequence number */
-  public int watchListPointer = 0;
+  /** Index of the packet with the lowest sequence number. */
+  int watchListPointer = 0;
 
-  public int watchListOffset = 0;
+  int watchListOffset;
 
   private final TreeMap<Integer, Long> acks = new TreeMap<>();
   private final HashMap<Integer, SentPacket> sentPackets = new HashMap<>();
 
   /**
-   * Keep this many sent times for lost packets, so we can compute an accurate round trip time if
-   * they are acked after we had decided they were lost.
+   * Capacity of the cache of sent-times for packets later deemed lost. Retaining recent sent-times
+   * allows computing an accurate RTT if an ack arrives after the packet was considered lost.
    */
   private static final int MAX_LOST_SENT_TIMES = 128;
 
@@ -48,7 +56,7 @@ public class NewPacketFormatKeyContext {
 
   private static final int REKEY_THRESHOLD = 100;
 
-  /** All acks must be sent within 200ms */
+  /** All acks must be sent within 200 ms. */
   static final int MAX_ACK_DELAY = 200;
 
   /**
@@ -58,20 +66,6 @@ public class NewPacketFormatKeyContext {
   private static final int MIN_RTT_FOR_RETRANSMIT = 250;
 
   private int maxSeenInFlight;
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
 
   NewPacketFormatKeyContext(int ourFirstSeqNum, int theirFirstSeqNum) {
     ourFirstSeqNum &= 0x7FFFFFFF;
@@ -84,30 +78,44 @@ public class NewPacketFormatKeyContext {
     if (this.highestReceivedSeqNum == -1) this.highestReceivedSeqNum = Integer.MAX_VALUE;
   }
 
+  /**
+   * Returns whether a new sequence number can be allocated without rekeying.
+   *
+   * @return {@code true} if {@link #allocateSequenceNumber(BasePeerNode)} would return a valid
+   *     sequence number; {@code false} if allocation would wrap to the first used number and a
+   *     rekey is required.
+   */
   boolean canAllocateSeqNum() {
     synchronized (sequenceNumberLock) {
       return nextSeqNum != firstSeqNumUsed;
     }
   }
 
+  /**
+   * Allocates the next sequence number for an outgoing packet.
+   *
+   * <p>When the sequence number would wrap to {@code firstSeqNumUsed}, the method requests rekeying
+   * on the provided peer and returns {@code -1}.
+   *
+   * @param pn the peer used to trigger rekeying when needed; must not be {@code null} when rekeying
+   *     is possible.
+   * @return the allocated sequence number, or {@code -1} if allocation is blocked pending rekey.
+   */
   int allocateSequenceNumber(BasePeerNode pn) {
     synchronized (sequenceNumberLock) {
       if (firstSeqNumUsed == -1) {
         firstSeqNumUsed = nextSeqNum;
-        if (logMINOR)
-          Logger.minor(this, "First seqnum used for " + this + " is " + firstSeqNumUsed);
+        if (LOG.isDebugEnabled())
+          LOG.debug("First sequence number for {} is {}", this, firstSeqNumUsed);
       } else {
         if (nextSeqNum == firstSeqNumUsed) {
-          Logger.error(this, "Blocked because we haven't rekeyed yet");
+          LOG.error("Sequence number allocation blocked; rekey pending");
           pn.startRekeying();
           return -1;
         }
 
-        if (firstSeqNumUsed > nextSeqNum) {
-          if (firstSeqNumUsed - nextSeqNum < REKEY_THRESHOLD) pn.startRekeying();
-        } else {
-          if ((NewPacketFormat.NUM_SEQNUMS - nextSeqNum) + firstSeqNumUsed < REKEY_THRESHOLD)
-            pn.startRekeying();
+        if (shouldStartRekeying(firstSeqNumUsed, nextSeqNum)) {
+          pn.startRekeying();
         }
       }
       int seqNum = nextSeqNum++;
@@ -118,13 +126,31 @@ public class NewPacketFormatKeyContext {
     }
   }
 
-  /** One of our outgoing packets has been acknowledged. */
+  private static boolean shouldStartRekeying(int firstUsed, int next) {
+    if (firstUsed > next) {
+      return firstUsed - next < REKEY_THRESHOLD;
+    }
+    return (NewPacketFormat.NUM_SEQNUMS - next) + firstUsed < REKEY_THRESHOLD;
+  }
+
+  /**
+   * Processes an acknowledgment for one of our outgoing packets.
+   *
+   * <p>The method computes an RTT sample, updates the peer's throttle and ping statistics, and
+   * removes the corresponding in-flight entry. If the ack refers to a packet already marked as
+   * lost, a saved sent-time is used to compute RTT when available. Duplicate acks are ignored.
+   *
+   * @param ack the acknowledged sequence number.
+   * @param pn the peer associated with the packet; may be {@code null} when peer state is not
+   *     available.
+   * @param key the session key used to finalize the ack handling.
+   */
   public void ack(int ack, BasePeerNode pn, SessionKey key) {
     long rtt;
     int maxSize;
     boolean validAck = false;
     long ackReceived = System.currentTimeMillis();
-    if (logDEBUG) Logger.debug(this, "Acknowledging packet " + ack + " from " + pn);
+    if (LOG.isTraceEnabled()) LOG.trace("Ack received for packet {} from {}", ack, pn);
     SentPacket sent;
     synchronized (sentPackets) {
       sent = sentPackets.remove(ack);
@@ -134,10 +160,10 @@ public class NewPacketFormatKeyContext {
       rtt = sent.acked(key);
       validAck = true;
     } else {
-      if (logDEBUG) Logger.debug(this, "Already acked or lost " + ack);
+      if (LOG.isTraceEnabled()) LOG.trace("Packet {} already acknowledged or marked lost", ack);
       long packetSent = lostSentTimes.queryAndRemove(ack);
       if (packetSent < 0) {
-        if (logDEBUG) Logger.debug(this, "No time for " + ack + " - maybe acked twice?");
+        if (LOG.isTraceEnabled()) LOG.trace("Missing sent time for {}; duplicate ack likely", ack);
         return;
       }
       rtt = ackReceived - packetSent;
@@ -147,16 +173,17 @@ public class NewPacketFormatKeyContext {
     int rt = (int) Math.min(rtt, Integer.MAX_VALUE);
     pn.reportPing(rt);
     if (validAck) pn.receivedAck(ackReceived);
-    PacketThrottle throttle = pn.getThrottle();
+    PacketThrottle throttle = pn.transport().getThrottle();
     if (throttle == null) return;
     throttle.setRoundTripTime(rt);
     if (validAck) throttle.notifyOfPacketAcknowledged(maxSize);
   }
 
   /**
-   * Queue an ack.
+   * Queues an acknowledgment for transmission.
    *
-   * @return -1 If the ack was already queued, or the total number queued.
+   * @param seqno the sequence number to acknowledge.
+   * @return {@code -1} if the ack is already queued; otherwise the total count of queued acks.
    */
   public int queueAck(int seqno) {
     synchronized (acks) {
@@ -167,6 +194,12 @@ public class NewPacketFormatKeyContext {
     }
   }
 
+  /**
+   * Records that a packet with the given sequence number and length was sent.
+   *
+   * @param sequenceNumber the packet sequence number.
+   * @param length the number of bytes sent.
+   */
   public void sent(int sequenceNumber, int length) {
     synchronized (sentPackets) {
       SentPacket sentPacket = sentPackets.get(sequenceNumber);
@@ -178,9 +211,9 @@ public class NewPacketFormatKeyContext {
     /** Are there any urgent acks? */
     final boolean anyUrgentAcks;
 
-    private final HashMap<Integer, Long> moved;
+    private final Map<Integer, Long> moved;
 
-    public AddedAcks(boolean mustSend, HashMap<Integer, Long> moved) {
+    public AddedAcks(boolean mustSend, Map<Integer, Long> moved) {
       this.anyUrgentAcks = mustSend;
       this.moved = moved;
     }
@@ -193,30 +226,30 @@ public class NewPacketFormatKeyContext {
   }
 
   /**
-   * Add as many acks as possible to the packet.
+   * Adds as many queued acks as fit into the given packet.
    *
-   * @return True if there are any old acks i.e. acks that will force us to send a packet even if
-   *     there isn't anything else in it.
+   * @return a handle for restoring moved acks on abort, or {@code null} if none were added. The
+   *     handle indicates whether any acks are urgent and should force a send.
    */
-  public AddedAcks addAcks(NPFPacket packet, int maxPacketSize, long now) {
+  AddedAcks addAcks(NPFPacket packet, int maxPacketSize, long now) {
     boolean mustSend = false;
-    HashMap<Integer, Long> moved = null;
+    Map<Integer, Long> moved = null;
     int numAcks = 0;
     synchronized (acks) {
       Iterator<Map.Entry<Integer, Long>> it = acks.entrySet().iterator();
       while (it.hasNext() && packet.getLength() < maxPacketSize) {
         Map.Entry<Integer, Long> entry = it.next();
         int ack = entry.getKey();
-        // All acks must be sent within 200ms.
-        if (logDEBUG) Logger.debug(this, "Trying to ack " + ack);
+        // All acks must be sent within MAX_ACK_DELAY (200 ms).
+        if (LOG.isTraceEnabled()) LOG.trace("Attempting to add ack {} to packet", ack);
         if (!packet.addAck(ack, maxPacketSize)) {
-          if (logDEBUG) Logger.debug(this, "Can't add ack " + ack);
+          if (LOG.isTraceEnabled()) LOG.trace("Cannot add ack {} to packet", ack);
           break;
         }
         if (entry.getValue() + MAX_ACK_DELAY < now) mustSend = true;
         if (moved == null) {
-          // FIXME some more memory efficient representation, since this will normally be very
-          // small?
+          // Use a temporary map to stage moved acks so they can be restored on abort.
+          // Overhead is small because it only holds the acks added to this packet.
           moved = new HashMap<>();
         }
         moved.put(ack, entry.getValue());
@@ -234,24 +267,31 @@ public class NewPacketFormatKeyContext {
     }
   }
 
-  public void sent(SentPacket sentPacket, int seqNum, int length) {
+  void sent(SentPacket sentPacket, int seqNum, int length) {
     sentPacket.sent(length);
     synchronized (sentPackets) {
       sentPackets.put(seqNum, sentPacket);
       int inFlight = sentPackets.size();
       if (inFlight > maxSeenInFlight) {
         maxSeenInFlight = inFlight;
-        if (logDEBUG) {
-          Logger.debug(this, "Max seen in flight new record: " + maxSeenInFlight + " for " + this);
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("Max in-flight packets updated to {} for {}", maxSeenInFlight, this);
         }
       }
     }
   }
 
+  /**
+   * Computes the next time to check for lost packets.
+   *
+   * @param averageRTT the peer's average RTT in milliseconds.
+   * @return an absolute timestamp (ms since epoch) when the next loss check should occur, or {@link
+   *     Long#MAX_VALUE} if there are no in-flight packets.
+   */
   public long timeCheckForLostPackets(double averageRTT) {
     long timeCheck = Long.MAX_VALUE;
-    // Because MIN_RTT_FOR_RETRANSMIT > MAX_ACK_DELAY, and because averageRTT() includes the
-    // actual ack delay, we don't need to add it on here.
+    // Because MIN_RTT_FOR_RETRANSMIT > MAX_ACK_DELAY and averageRTT includes the ack delay,
+    // there is no need to add the ack delay here.
     double avgRtt = Math.max(MIN_RTT_FOR_RETRANSMIT, averageRTT);
     long maxDelay = (long) (avgRtt + MAX_ACK_DELAY * 1.1);
     synchronized (sentPackets) {
@@ -265,13 +305,20 @@ public class NewPacketFormatKeyContext {
     return timeCheck;
   }
 
+  /**
+   * Marks overdue in-flight packets as lost and updates backoff.
+   *
+   * @param averageRTT the peer's average RTT in milliseconds.
+   * @param curTime the current time in milliseconds.
+   * @param pn the peer whose throttle/backoff should be updated; may be {@code null}.
+   */
   public void checkForLostPackets(double averageRTT, long curTime, BasePeerNode pn) {
-    // Mark packets as lost
+    // Mark overdue packets as lost.
     int bigLostCount = 0;
     int count = 0;
 
-    // Because MIN_RTT_FOR_RETRANSMIT > MAX_ACK_DELAY, and because averageRTT() includes the
-    // actual ack delay, we don't need to add it on here.
+    // Because MIN_RTT_FOR_RETRANSMIT > MAX_ACK_DELAY and averageRTT includes the ack delay,
+    // there is no need to add the ack delay here.
     double avgRtt = Math.max(MIN_RTT_FOR_RETRANSMIT, averageRTT);
     long maxDelay = (long) (avgRtt + MAX_ACK_DELAY * 1.1);
     long threshold = curTime - maxDelay;
@@ -282,26 +329,7 @@ public class NewPacketFormatKeyContext {
         Map.Entry<Integer, SentPacket> e = it.next();
         SentPacket s = e.getValue();
         if (s.getSentTime() < threshold) {
-          if (logMINOR) {
-            Logger.minor(
-                this,
-                "Assuming packet "
-                    + e.getKey()
-                    + " has been lost. "
-                    + "Delay "
-                    + (curTime - s.getSentTime())
-                    + "ms, "
-                    + "threshold "
-                    + threshold
-                    + "ms");
-          }
-          // Store the packet sentTime in our lost sent times cache, so we can calculate
-          // RTT if an ack may surface later on.
-          if (!s.messages.isEmpty()) {
-            lostSentTimes.report(e.getKey(), s.getSentTime());
-          }
-          // Mark the packet as lost and remove it from our active packets.
-          s.lost();
+          markPacketAsLost(e, s, curTime, threshold);
           it.remove();
           bigLostCount++;
         } else {
@@ -309,10 +337,10 @@ public class NewPacketFormatKeyContext {
         }
       }
     }
-    if (count > 0 && logMINOR)
-      Logger.minor(this, count + " packets in flight with threshold " + maxDelay + "ms");
+    if (count > 0 && LOG.isDebugEnabled())
+      LOG.debug("In-flight packets={}, retransmit threshold={} ms", count, maxDelay);
     if (bigLostCount != 0 && pn != null) {
-      PacketThrottle throttle = pn.getThrottle();
+      PacketThrottle throttle = pn.transport().getThrottle();
       if (throttle != null) {
         throttle.notifyOfPacketsLost(bigLostCount);
       }
@@ -320,6 +348,27 @@ public class NewPacketFormatKeyContext {
     }
   }
 
+  private void markPacketAsLost(
+      Map.Entry<Integer, SentPacket> entry, SentPacket packet, long curTime, long threshold) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Mark packet {} as lost; delay {} ms, threshold {} ms",
+          entry.getKey(),
+          curTime - packet.getSentTime(),
+          threshold);
+    }
+    if (!packet.messages.isEmpty()) {
+      lostSentTimes.report(entry.getKey(), packet.getSentTime());
+    }
+    packet.lost();
+  }
+
+  /**
+   * Computes the next deadline to flush queued acks.
+   *
+   * @return an absolute timestamp (ms since epoch) for the earliest ack deadline, or {@link
+   *     Long#MAX_VALUE} if there are no queued acks.
+   */
   public long timeCheckForAcks() {
     long ret = Long.MAX_VALUE;
     synchronized (acks) {
@@ -331,6 +380,7 @@ public class NewPacketFormatKeyContext {
     return ret;
   }
 
+  /** Treats all in-flight packets as lost and clears state on disconnect. */
   public void disconnected() {
     synchronized (sentPackets) {
       for (SentPacket s : sentPackets.values()) {

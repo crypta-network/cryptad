@@ -5,32 +5,48 @@ import java.net.InetAddress;
 import java.util.StringTokenizer;
 
 /**
- * Matcher for IPv4 network addresses. It works like the regex matcher in {@link
- * java.util.regex.Matcher}, i.e. you create a new Inet4AddressMatcher with the IP address pattern
- * and can then match IP addresses to it. The Inet4AddressMatcher can match the following kinds of
- * IP addresses or address ranges:
+ * Matches IPv4 addresses against a rule consisting of an address and optional mask.
+ *
+ * <p>The matcher behaves similarly to a regular-expression matcher in spirit: construct an instance
+ * with a rule, then call {@link #matches(InetAddress)} to test addresses. Supported rule forms are:
  *
  * <ul>
- *   <li>IP address only (<code>192.168.1.2</code>)
- *   <li>IP address and network mask (<code>192.168.1.2/255.255.255.0</code>)
- *   <li>IP address and network mask bits (<code>192.168.1.2/24</code>)
+ *   <li>Single address: {@code 192.168.1.2}
+ *   <li>Dotted decimal mask: {@code 192.168.1.2/255.255.255.0}
+ *   <li>CIDR mask length (bits): {@code 192.168.1.2/24}
  * </ul>
+ *
+ * <p>Non-contiguous masks are supported when provided in dotted form. Matching is purely bitwise
+ * and performs no DNS lookups. Instances are effectively immutable after construction and are
+ * thread-safe for concurrent use. Match evaluation runs in constant time.
  *
  * @author David Roden &lt;droden@gmail.com&gt;
  * @version $Id$
  */
-public class Inet4AddressMatcher implements AddressMatcher {
-  /** The address of this matcher */
+public final class Inet4AddressMatcher implements AddressMatcher {
+  /**
+   * Packed IPv4 address of the rule in big-endian order (octet 1 in bits 24–31, octet 4 in 0–7).
+   */
   private final int address;
 
-  /** The network mask of this matcher */
+  /**
+   * Packed IPv4 network mask. A full mask ({@code 0xffffffff}) denotes an exact address match; a
+   * zero mask ({@code 0x00000000}) matches any IPv4 address.
+   */
   private int networkMask;
 
   /**
-   * Creates a new address matcher that matches InetAddress objects to the address specification
-   * given by <code>cidrHostname</code>.
+   * Creates a matcher from an IPv4 rule.
    *
-   * @param cidrHostname The address range this matcher matches
+   * <p>The rule may be a single address, an address with CIDR mask length (e.g., {@code /24}), or
+   * an address with a dotted mask (e.g., {@code /255.255.255.0}).
+   *
+   * @param cidrHostname address rule to apply; must be in dotted-decimal IPv4 form. The part after
+   *     {@code '/'} is either a decimal mask length (0–32) or a dotted mask.
+   * @throws IllegalArgumentException if a mask length is provided and is outside {@code 0..32}.
+   * @throws NumberFormatException if any decimal component cannot be parsed.
+   * @throws java.util.NoSuchElementException if the address or dotted mask does not contain four
+   *     dot-separated components.
    */
   public Inet4AddressMatcher(String cidrHostname) throws IllegalArgumentException {
     int slashPosition = cidrHostname.indexOf('/');
@@ -45,6 +61,9 @@ public class Inet4AddressMatcher implements AddressMatcher {
         if (bits > 32 || bits < 0)
           throw new IllegalArgumentException(
               "Mask bits out of range: " + bits + " (" + maskPart + ")");
+        // Build a contiguous mask from the length. Special-case zero to avoid relying on Java's
+        // shift semantics on 32-bit ints (shifts are masked to 0..31), which would otherwise keep
+        // 0xffffffff unchanged when shifting by 32.
         networkMask = 0xffffffff << (32 - bits);
         if (Integer.parseInt(maskPart) == 0) {
           networkMask = 0;
@@ -56,14 +75,14 @@ public class Inet4AddressMatcher implements AddressMatcher {
   }
 
   /**
-   * Converts a dotted IP address (a.b.c.d) to a 32-bit value. The first octet will be in bits 24 to
-   * 31, the second in bits 16 to 23, the third in bits 8 to 15, and the fourth in bits 0 to 7.
+   * Converts {@code a.b.c.d} to a packed 32-bit integer.
    *
-   * @param address The address to convert
-   * @return The IP address as 32-bit value
-   * @throws NumberFormatException if a part of the string can not be parsed using {@link
-   *     Integer#parseInt(String)}
-   * @throws java.util.NoSuchElementException if <code>address</code> contains less than 3 dots
+   * <p>Octet positions are: 1 → bits 24–31, 2 → 16–23, 3 → 8–15, 4 → 0–7.
+   *
+   * @param address dotted-decimal IPv4 literal.
+   * @return packed IPv4 address in big-endian order.
+   * @throws NumberFormatException if any component cannot be parsed by {@link Integer#parseInt}.
+   * @throws java.util.NoSuchElementException if the input does not contain exactly four components.
    */
   public static int convertToBytes(String address) {
     StringTokenizer addressTokens = new StringTokenizer(address, ".");
@@ -74,11 +93,13 @@ public class Inet4AddressMatcher implements AddressMatcher {
   }
 
   /**
-   * Checks whether the given address matches this matcher's address.
+   * Tests whether the provided address satisfies this rule.
    *
-   * @param inetAddress The address to match to this matcher
-   * @return <code>true</code> if <code>inetAddress</code> matches the specification of this
-   *     matcher, <code>false</code> otherwise
+   * <p>Only IPv4 addresses are considered; non-IPv4 inputs (e.g., IPv6) return {@code false}. The
+   * check is a bitwise comparison under the configured mask and performs no I/O.
+   *
+   * @param inetAddress address to test; must not be {@code null}.
+   * @return {@code true} if the address matches; {@code false} otherwise.
    */
   @Override
   public boolean matches(InetAddress inetAddress) {
@@ -88,12 +109,14 @@ public class Inet4AddressMatcher implements AddressMatcher {
   }
 
   /**
-   * Shortcut method for creating a new Inet4AddressMatcher and matching <code>address</code> to it.
+   * Convenience method that constructs a matcher and tests the given address.
    *
-   * @param cidrHostname The host specification to match
-   * @param address The address to match
-   * @return <code>true</code> if <code>address</code> matches the specification in <code>
-   *     cidrHostname</code>, <code>false</code> otherwise
+   * @param cidrHostname rule in the forms described in the constructor.
+   * @param address address to test.
+   * @return {@code true} if the address matches; {@code false} otherwise.
+   * @throws IllegalArgumentException if the rule contains an out-of-range mask length.
+   * @throws NumberFormatException if any decimal component cannot be parsed.
+   * @throws java.util.NoSuchElementException if the address or dotted mask is malformed.
    * @see #Inet4AddressMatcher(String)
    * @see #matches(InetAddress)
    */
@@ -107,6 +130,7 @@ public class Inet4AddressMatcher implements AddressMatcher {
     else return convertToString(address) + '/' + convertToString(networkMask);
   }
 
+  // Render an int-packed address/mask back to dotted decimal without allocations per octet.
   private String convertToString(int addr) {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < 4; i++) {

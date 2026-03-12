@@ -20,7 +20,7 @@ val gitrev: String =
 
 val buildJar by
   tasks.registering(Jar::class) {
-    dependsOn(tasks.processResources, tasks.compileJava, tasks.named("compileKotlin"))
+    dependsOn(tasks.processResources, tasks.compileJava)
     // Include compiled classes and PROCESSED resources (from processResources)
     // Using sourceSets.main.output ensures generated resources under build/resources/** are
     // packaged

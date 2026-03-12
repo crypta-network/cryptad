@@ -1,161 +1,272 @@
 package network.crypta.support.compress;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Random;
+import java.util.stream.Stream;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.ArrayBucket;
-import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.NullBucket;
-import org.junit.Test;
+import network.crypta.support.api.RandomAccessBucket;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-/** Test case for {@link Bzip2Compressor} class. */
-public class Bzip2CompressorTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-  /** test BZIP2 compressor's identity and functionality */
+/**
+ * Unit tests for {@link Bzip2Compressor} in AAA style.
+ *
+ * <p>Notes: - Uses deterministic Random seeds to avoid flakiness. - Mocks external I/O
+ * (BucketFactory/Bucket and InputStream error cases) with Mockito.
+ */
+class Bzip2CompressorTest {
+
+  private static final Bzip2Compressor compressor = new Bzip2Compressor();
+
+  // ------------------ Helpers ------------------
+
+  private static byte[] repeat(byte value, int n) {
+    byte[] arr = new byte[n];
+    Arrays.fill(arr, value);
+    return arr;
+  }
+
+  private static byte[] randomBytes(int n, long seed) {
+    byte[] arr = new byte[n];
+    new Random(seed).nextBytes(arr);
+    return arr;
+  }
+
+  private static byte[] compressHeaderless(byte[] data) throws IOException {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    // Use 4-arg overload (no ratio check) for simplicity
+    compressor.compress(new ByteArrayInputStream(data), out, data.length, Long.MAX_VALUE);
+    return out.toByteArray();
+  }
+
+  private static Stream<Arguments> roundTripInputs() {
+    return Stream.of(
+        Arguments.of((Object) new byte[0]),
+        Arguments.of((Object) "hello world".getBytes(StandardCharsets.UTF_8)),
+        Arguments.of((Object) repeat((byte) 'A', 10_000)),
+        Arguments.of((Object) randomBytes(1_000, 42L)),
+        Arguments.of((Object) repeat((byte) 'Z', 32_768)),
+        Arguments.of((Object) repeat((byte) 'Y', 32_769)));
+  }
+
+  // ------------------ Round-trip ------------------
+
+  @ParameterizedTest(name = "roundTrip[{index}]")
+  @MethodSource("roundTripInputs")
+  void compressAndDecompress_roundTrip_success(byte[] original) throws Exception {
+    // Arrange
+    ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+
+    // Act
+    long written =
+        compressor.compress(
+            new ByteArrayInputStream(original),
+            compressed,
+            Math.max(1, original.length),
+            Long.MAX_VALUE);
+
+    // Assert
+    assertTrue(written > 0, "Compressed size should be > 0");
+
+    ByteArrayInputStream in = new ByteArrayInputStream(compressed.toByteArray());
+    ByteArrayOutputStream out = new ByteArrayOutputStream(original.length);
+    long decompressed = compressor.decompress(in, out, original.length, -1);
+    assertEquals(original.length, decompressed, "Decompressed length");
+    assertArrayEquals(original, out.toByteArray(), "Round-trip content equality");
+  }
+
+  // ------------------ compress(InputStream,OutputStream,...) error cases ------------------
+
   @Test
-  public void testBzip2Compressor() throws IOException {
-    Compressor.COMPRESSOR_TYPE bz2compressor = Compressor.COMPRESSOR_TYPE.BZIP2;
-    Compressor compressorZero = Compressor.COMPRESSOR_TYPE.getCompressorByMetadataID((short) 1);
+  void compress_withZeroMaxReadLength_expectIllegalArgumentException() {
+    // Arrange
+    ByteArrayInputStream in = new ByteArrayInputStream(new byte[0]);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    // check BZIP2 is the second compressor
-    assertEquals(bz2compressor, compressorZero);
+    // Act + Assert
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> compressor.compress(in, out, 0, Long.MAX_VALUE, Long.MAX_VALUE, 0));
   }
 
   @Test
-  public void testCompress() throws IOException {
+  void compress_withNullInputStream_expectNullPointerException() {
+    // Arrange
+    OutputStream out = new ByteArrayOutputStream();
 
-    // do bzip2 compression
-    byte[] compressedData = doCompress(UNCOMPRESSED_DATA_1.getBytes());
-
-    // output size same as expected?
-    // assertEquals(compressedData.length, COMPRESSED_DATA_1.length);
-
-    // check each byte is exactly as expected
-    for (int i = 0; i < compressedData.length; i++) {
-      assertEquals(COMPRESSED_DATA_1[i], compressedData[i]);
-    }
+    // Act + Assert
+    assertThrows(
+        NullPointerException.class, () -> compressor.compress(null, out, 16, Long.MAX_VALUE, 0, 0));
   }
 
   @Test
-  public void testBucketDecompress() throws IOException {
+  void compress_whenOutputExceedsMaxWriteLength_expectCompressionOutputSizeException() {
+    // Arrange
+    byte[] data = repeat((byte) 'A', 2_000);
+    ByteArrayInputStream in = new ByteArrayInputStream(data);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    // do bzip2 decompression with buckets
-    byte[] uncompressedData = doBucketDecompress(COMPRESSED_DATA_1);
-
-    // is the (round-tripped) uncompressed string the same as the original?
-    String uncompressedString = new String(uncompressedData);
-    assertEquals(uncompressedString, UNCOMPRESSED_DATA_1);
+    // Act + Assert
+    assertThrows(
+        CompressionOutputSizeException.class, () -> compressor.compress(in, out, data.length, 1));
   }
 
   @Test
-  public void testByteArrayDecompress() throws IOException {
+  void compress_whenInputReadReturnsZero_expectIOException() throws IOException {
+    // Arrange
+    //noinspection resource
+    InputStream in = mock(InputStream.class);
+    when(in.read(any(byte[].class), anyInt(), anyInt())).thenReturn(0); // force zero-length read
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    // build 5k array
-    byte[] originalUncompressedData = new byte[5 * 1024];
-    Arrays.fill(originalUncompressedData, (byte) 1);
-
-    byte[] compressedData = doCompress(originalUncompressedData);
-    byte[] outUncompressedData = new byte[5 * 1024];
-
-    int writtenBytes = 0;
-
-    writtenBytes =
-        Compressor.COMPRESSOR_TYPE.BZIP2.decompress(
-            compressedData, 0, compressedData.length, outUncompressedData);
-
-    assertEquals(originalUncompressedData.length, writtenBytes);
-    assertEquals(originalUncompressedData.length, outUncompressedData.length);
-
-    // check each byte is exactly as expected
-    for (int i = 0; i < outUncompressedData.length; i++) {
-      assertEquals(originalUncompressedData[i], outUncompressedData[i]);
-    }
+    // Act + Assert
+    IOException ex =
+        assertThrows(
+            IOException.class, () -> compressor.compress(in, out, 1024, Long.MAX_VALUE, 0, 0));
+    assertTrue(ex.getMessage().contains("Returned zero from read"));
   }
 
   @Test
-  public void testCompressException() throws IOException {
+  void compress_whenMinCompressionRequirementTooHigh_expectCompressionRatioException() {
+    // Arrange: random data is effectively incompressible
+    byte[] data = randomBytes(65_536, 1234L);
+    ByteArrayInputStream in = new ByteArrayInputStream(data);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    long amountToCheckAfter = 32_768; // equals internal buffer size to trigger exactly once
+    int minCompressionPercent = 101; // impossible requirement → must fail deterministically
 
-    byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes();
-    Bucket inBucket = new ArrayBucket(uncompressedData);
-    BucketFactory factory = new ArrayBucketFactory();
+    // Act + Assert
+    assertThrows(
+        CompressionRatioException.class,
+        () ->
+            compressor.compress(
+                in, out, data.length, Long.MAX_VALUE, amountToCheckAfter, minCompressionPercent));
+  }
 
-    try {
-      Compressor.COMPRESSOR_TYPE.BZIP2.compress(inBucket, factory, 32, 32);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
-    }
-    // TODO LOW codec doesn't actually enforce size limit
-    // fail("did not throw expected CompressionOutputSizeException");
+  // ------------------ decompress(InputStream,OutputStream,...) error cases ------------------
 
+  @Test
+  void decompress_whenExceedsMaxLength_noEstimate_expectCompressionOutputSizeException()
+      throws Exception {
+    // Arrange
+    byte[] original = repeat((byte) 'B', 50_000);
+    byte[] compressed = compressHeaderless(original);
+    ByteArrayInputStream in = new ByteArrayInputStream(compressed);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    // Act + Assert
+    CompressionOutputSizeException ex =
+        assertThrows(
+            CompressionOutputSizeException.class, () -> compressor.decompress(in, out, 1_024, 0));
+    assertEquals(-1, ex.estimatedSize, "No estimate when maxCheckSizeBytes == 0");
   }
 
   @Test
-  public void testDecompressException() throws IOException {
-    // build 5k array
-    byte[] uncompressedData = new byte[5 * 1024];
-    Arrays.fill(uncompressedData, (byte) 1);
+  void decompress_whenExceedsMaxLength_withEstimate_expectCompressionOutputSize() throws Exception {
+    // Arrange
+    byte[] original = repeat((byte) 'C', 50_000);
+    byte[] compressed = compressHeaderless(original);
+    ByteArrayInputStream in = new ByteArrayInputStream(compressed);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    byte[] compressedData = doCompress(uncompressedData);
-
-    try (Bucket inBucket = new ArrayBucket(compressedData);
-        NullBucket outBucket = new NullBucket();
-        InputStream decompressorInput = inBucket.getInputStream();
-        OutputStream decompressorOutput = outBucket.getOutputStream()) {
-
-      Compressor.COMPRESSOR_TYPE.BZIP2.decompress(
-          decompressorInput, decompressorOutput, 4096 + 10, 4096 + 20);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
-      return;
-    }
-    fail("did not throw expected CompressionOutputSizeException");
+    // Act + Assert
+    CompressionOutputSizeException ex =
+        assertThrows(
+            CompressionOutputSizeException.class,
+            () -> compressor.decompress(in, out, 1_024, 200_000));
+    assertEquals(
+        50_000, ex.estimatedSize, "Estimated size should reflect actual decompressed length");
   }
 
-  private byte[] doBucketDecompress(byte[] compressedData) throws IOException {
-    try (ByteArrayInputStream decompressorInput = new ByteArrayInputStream(compressedData);
-        ByteArrayOutputStream decompressorOutput = new ByteArrayOutputStream()) {
+  // ------------------ decompress(byte[], ..) ------------------
 
-      Compressor.COMPRESSOR_TYPE.BZIP2.decompress(
-          decompressorInput, decompressorOutput, 32768, 32768 * 2);
-      return decompressorOutput.toByteArray();
-    }
+  @Test
+  void decompressByteArray_whenExactSize_expectCorrectData() throws Exception {
+    // Arrange
+    byte[] original = repeat((byte) 'Q', 8_000);
+    byte[] compressed = compressHeaderless(original);
+    byte[] out = new byte[original.length];
+
+    // Act
+    int written = compressor.decompress(compressed, 0, compressed.length, out);
+
+    // Assert
+    assertEquals(original.length, written);
+    assertArrayEquals(original, out);
   }
 
-  private byte[] doCompress(byte[] uncompressedData) throws IOException {
-    Bucket inBucket = new ArrayBucket(uncompressedData);
-    BucketFactory factory = new ArrayBucketFactory();
-    Bucket outBucket = null;
+  @Test
+  void decompressByteArray_whenOutputBufferTooSmall_expectCompressionOutputSizeException()
+      throws Exception {
+    // Arrange
+    byte[] original = repeat((byte) 'R', 9_000);
+    byte[] compressed = compressHeaderless(original);
+    byte[] out = new byte[1_000];
 
-    outBucket = Compressor.COMPRESSOR_TYPE.BZIP2.compress(inBucket, factory, 32768, 32768);
-
-    InputStream in = null;
-    in = outBucket.getInputStream();
-    long size = outBucket.size();
-    byte[] outBuf = new byte[(int) size];
-
-    in.read(outBuf);
-
-    return outBuf;
+    // Act + Assert
+    assertThrows(
+        CompressionOutputSizeException.class,
+        () -> compressor.decompress(compressed, 0, compressed.length, out));
   }
 
-  private static final String UNCOMPRESSED_DATA_1 = GzipCompressorTest.UNCOMPRESSED_DATA_1;
-  private static final byte[] COMPRESSED_DATA_1 = {
-    104, 57, 49, 65, 89, 38, 83, 89, -18, -87, -99, -74, 0, 0, 33, -39, -128, 0, 8, 16, 0, 58, 64,
-    52, -7, -86, 0, 48, 0, -69, 65, 76, 38, -102, 3, 76, 65, -92, -12, -43, 61, 71, -88, -51, 35,
-    76, 37, 52, 32, 19, -44, 67, 74, -46, -9, 17, 14, -35, 55, 100, -10, 73, -75, 121, -34, 83, 56,
-    -125, 15, 32, -118, 35, 66, 124, -120, -39, 119, -104, -108, 66, 101, -56, 94, -71, -41, -43,
-    68, 51, 65, 19, -44, -118, 4, -36, -117, 33, -101, -120, -49, -10, 17, -51, -19, 28, 76, -57,
-    -112, -68, -50, -66, -60, -43, -81, 127, -51, -10, 58, -92, 38, 18, 45, 102, 117, -31, -116,
-    -114, -6, -87, -59, -43, -106, 41, -30, -63, -34, -39, -117, -104, -114, 100, -115, 36, -112,
-    23, 104, -110, 71, -45, -116, -23, -85, -36, -24, -61, 14, 32, 105, 55, -105, -31, -4, 93, -55,
-    20, -31, 66, 67, -70, -90, 118, -40
-  };
+  // ------------------ compress(Bucket, BucketFactory, ...) ------------------
+
+  @Test
+  void compressBucket_whenValidStreams_expectBucketWithCompressedData() throws Exception {
+    // Arrange
+    byte[] original = "bucket-data-hello".getBytes(StandardCharsets.UTF_8);
+
+    Bucket dataBucket = mock(Bucket.class);
+    when(dataBucket.getInputStream()).thenReturn(new ByteArrayInputStream(original));
+
+    RandomAccessBucket outputBucket = mock(RandomAccessBucket.class);
+    ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
+    // Provide a OutputStream to collect compressed bytes
+    when(outputBucket.getOutputStream()).thenReturn(capturedOut);
+    // Allow test to later read what was written
+    when(outputBucket.getInputStream())
+        .thenAnswer(_ -> new ByteArrayInputStream(capturedOut.toByteArray()));
+
+    BucketFactory bf = mock(BucketFactory.class);
+    when(bf.makeBucket(anyLong())).thenReturn(outputBucket);
+
+    // Act
+    Bucket result = compressor.compress(dataBucket, bf, original.length, Long.MAX_VALUE);
+
+    // Assert
+    assertSame(outputBucket, result, "Should return the bucket created by the factory");
+    // Verify factory interaction
+    //noinspection resource
+    verify(bf).makeBucket(Long.MAX_VALUE);
+    verify(dataBucket).getInputStream();
+    verify(outputBucket).getOutputStream();
+
+    // Decompress to verify content
+    ByteArrayInputStream in = new ByteArrayInputStream(capturedOut.toByteArray());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    long decompressed = compressor.decompress(in, out, original.length, -1);
+    assertEquals(original.length, decompressed);
+    assertArrayEquals(original, out.toByteArray());
+  }
 }

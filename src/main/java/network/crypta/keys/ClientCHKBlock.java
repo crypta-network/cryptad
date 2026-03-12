@@ -7,7 +7,6 @@ import java.security.Provider;
 import java.util.Arrays;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
-import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import network.crypta.crypt.BlockCipher;
@@ -20,7 +19,6 @@ import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -28,28 +26,105 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
+ * Holds a client-side CHK block and provides encode/decode helpers for CHK content.
+ *
+ * <p>This class wraps a {@link CHKBlock} together with the corresponding {@link ClientCHK} and
+ * exposes decoding into a {@link Bucket} or in-memory, plus static encoders for both the legacy
+ * AES/PCFB and the current AES/CTR variants. Instances reference the underlying encoded data and
+ * headers; no I/O is performed until a decode method is invoked. Decoding performs integrity checks
+ * and optional decompression depending on the key metadata.
+ *
+ * <p>For AES/CTR, the 16-byte counter-nonce is derived deterministically from an HMAC of the
+ * plaintext (plus length bytes) under the encryption key. This preserves CHK determinism: identical
+ * plaintext with the same key yields identical ciphertext and key material.
+ *
  * @author amphibian
- *     <p>Client CHKBlock - provides functions for decoding, holds a client-key.
  */
 public class ClientCHKBlock implements ClientKeyBlock {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientCHKBlock.class);
+  private static final String HMAC_SHA256 = "HmacSHA256";
+
+  private static Mac selectPreferredHmac(Mac base, Provider sun, SecretKeySpec dummyKey)
+      throws GeneralSecurityException {
+    if (sun == null) return base;
+    final String algo = base.getAlgorithm();
+    Mac sunHmac = Mac.getInstance(algo, sun);
+    sunHmac.init(dummyKey);
+    if (base.getProvider().equals(sunHmac.getProvider())) return base;
+    long timeDef = benchmark(base);
+    long timeSun = benchmark(sunHmac);
+    LOG.debug("{}/{}: {}ns", algo, base.getProvider(), timeDef);
+    LOG.debug("{}/{}: {}ns", algo, sunHmac.getProvider(), timeSun);
+    return (timeSun < timeDef) ? sunHmac : base;
+  }
+
+  private static Mac safeSelectPreferredHmac(Mac base, Provider sun, SecretKeySpec dummyKey) {
+    try {
+      return selectPreferredHmac(base, sun, dummyKey);
+    } catch (GeneralSecurityException | RuntimeException e) {
+      String algo = base.getAlgorithm();
+      LOG.warn("{}@{} benchmark failed", algo, sun, e);
+      return base;
+    }
+  }
+
+  private static ClientCHKBlock newClientCHKBlockUnchecked(
+      byte[] data, byte[] header, ClientCHK key) {
+    // Helper that asserts construction-time verification never fails when called from trusted
+    // encode paths. Throws an unchecked exception if it ever does.
+    try {
+      return new ClientCHKBlock(data, header, key, false);
+    } catch (CHKVerifyException e) {
+      throw new IllegalStateException("Verification failed unexpectedly", e);
+    }
+  }
+
+  private static Rijndael newRijndael256x128ForEncode() throws CHKEncodeException {
+    // Creates a Rijndael instance with a 256-bit key and 128-bit block size for CTR mode.
+    try {
+      return new Rijndael(256, 128);
+    } catch (UnsupportedCipherException e) {
+      throw new CHKEncodeException("Unsupported cipher", e);
+    }
+  }
+
+  private static Rijndael newRijndael256x256ForEncode() {
+    // Creates a Rijndael instance with a 256-bit key and 256-bit block size for PCFB mode.
+    try {
+      return new Rijndael(256, 256);
+    } catch (UnsupportedCipherException e) {
+      throw new IllegalStateException("Unsupported cipher", e);
+    }
+  }
 
   final ClientCHK key;
   private final CHKBlock block;
 
+  /**
+   * Returns a concise representation for debugging that includes the associated client key.
+   *
+   * @return a string containing the implementation identity and key summary.
+   */
   @Override
   public String toString() {
     return super.toString() + ",key=" + key;
   }
 
   /**
-   * Construct from data retrieved, and a key. Do not do full decode. Verify what can be verified
-   * without doing a full decode.
+   * Constructs an instance from raw block bytes and a client key.
    *
-   * @param key2 The client key.
-   * @param header The header.
-   * @param data The data.
+   * <p>When {@code verify} is {@code true}, lightweight integrity checks are performed by {@link
+   * CHKBlock} without fully decoding the content.
+   *
+   * @param data the encrypted payload as stored on disk or received over the network.
+   * @param header the block header bytes (algorithm marker, HMAC, and length encoding).
+   * @param key2 the client key associated with the block.
+   * @param verify whether to verify invariants available without a full decoding.
+   * @throws CHKVerifyException if the header or overall hash check fails during verification.
    */
   public ClientCHKBlock(byte[] data, byte[] header, ClientCHK key2, boolean verify)
       throws CHKVerifyException {
@@ -57,31 +132,49 @@ public class ClientCHKBlock implements ClientKeyBlock {
     this.key = key2;
   }
 
-  /** Construct from a CHKBlock and a key. */
+  /**
+   * Constructs an instance from an existing {@link CHKBlock} and client key.
+   *
+   * <p>Performs the same verification as the raw-bytes constructor with {@code verify=true}.
+   *
+   * @param block the encoded block (data plus headers).
+   * @param key2 the client key associated with the block.
+   * @throws CHKVerifyException if verification fails.
+   */
   public ClientCHKBlock(CHKBlock block, ClientCHK key2) throws CHKVerifyException {
     this(block.getData(), block.getHeaders(), key2, true);
   }
 
   /**
-   * Decode into RAM, if short.
+   * Decodes the block entirely into memory.
    *
-   * @throws CHKDecodeException
+   * <p>Intended for small payloads (up to a single CHK block). Applies decompression when the key
+   * indicates that the content was compressed.
+   *
+   * @return the decoded bytes.
+   * @throws CHKDecodeException if decryption, integrity validation, or decompression fails.
    */
   @Override
   public byte[] memoryDecode() throws CHKDecodeException {
     try {
       ArrayBucket a = (ArrayBucket) decode(new ArrayBucketFactory(), 32 * 1024, false);
-      return BucketTools.toByteArray(a); // FIXME
+      return BucketTools.toByteArray(a);
     } catch (IOException e) {
-      throw new Error(e);
+      throw new CHKDecodeException("I/O error during decode", e);
     }
   }
 
   /**
-   * Decode the CHK and recover the original data
+   * Decodes the CHK and writes the original data to a {@link Bucket}.
    *
-   * @return the original data
-   * @throws IOException If there is a bucket error.
+   * @param bf factory used to allocate the destination bucket.
+   * @param maxLength maximum number of bytes allowed in the decoded output.
+   * @param dontCompress when {@code true}, skips decompression even if the key marks the data as
+   *     compressed.
+   * @return a bucket containing the decoded bytes. The caller is responsible for closing it.
+   * @throws CHKDecodeException if integrity checks fail, decryption fails, or the output would
+   *     exceed {@code maxLength}.
+   * @throws IOException if allocating or writing the output bucket fails.
    */
   @Override
   public Bucket decode(BucketFactory bf, int maxLength, boolean dontCompress)
@@ -95,47 +188,57 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (key.cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
       return decodeOld(bf, maxLength, dontCompress);
     else if (key.cryptoAlgorithm == Key.ALGO_AES_CTR_256_SHA256) {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
+      if (Rijndael.getAesCtrProvider() == null || forceNoJCA)
         return decodeNewNoJCA(bf, maxLength, dontCompress);
       else return decodeNew(bf, maxLength, dontCompress);
     } else throw new UnsupportedOperationException();
   }
 
   /**
-   * Decode the CHK and recover the original data
+   * Decodes a block that uses the legacy AES/PCFB + SHA-256 format.
    *
-   * @return the original data
-   * @throws IOException If there is a bucket error.
+   * <p>Only valid when {@link ClientCHK#cryptoAlgorithm} is {@link Key#ALGO_AES_PCFB_256_SHA256}.
+   * The method decrypts the header (which functions as an IV), validates that the decrypted IV
+   * equals {@code SHA-256(cryptokey)}, and then decrypts the data.
+   *
+   * @param bf factory used to allocate the destination bucket.
+   * @param maxLength maximum number of bytes allowed in the decoded output.
+   * @param dontCompress when {@code true}, skips decompression even if the key marks the data as
+   *     compressed.
+   * @return a bucket containing the decoded bytes.
+   * @throws CHKDecodeException if the crypto key is invalid, integrity checks fail, or the output
+   *     would exceed {@code maxLength}.
+   * @throws IOException if allocating or writing the output bucket fails.
+   * @throws UnsupportedOperationException if the block does not use the legacy algorithm.
    */
-  @SuppressWarnings(
-      "deprecation") // FIXME Back compatibility, using dubious ciphers; remove eventually.
   public Bucket decodeOld(BucketFactory bf, int maxLength, boolean dontCompress)
       throws CHKDecodeException, IOException {
-    // Overall hash already verified, so first job is to decrypt.
+    // Overall hash already verified, so the first job is to decrypt.
     if (key.cryptoAlgorithm != Key.ALGO_AES_PCFB_256_SHA256)
       throw new UnsupportedOperationException();
     BlockCipher cipher;
     try {
       cipher = new Rijndael(256, 256);
     } catch (UnsupportedCipherException e) {
-      // FIXME - log this properly
-      throw new Error(e);
+      // Should be impossible with bundled cipher
+      throw new CHKDecodeException("Unsupported cipher", e);
     }
     byte[] cryptoKey = key.cryptoKey;
     if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
       throw new CHKDecodeException("Crypto key too short");
     cipher.initialize(key.cryptoKey);
-    PCFBMode pcfb = PCFBMode.create(cipher);
+    byte[] zeroIv = new byte[PCFBMode.lengthIV(cipher)];
+    PCFBMode pcfb = PCFBMode.create(cipher, zeroIv);
     byte[] headers = block.headers;
     byte[] data = block.data;
     byte[] hbuf = Arrays.copyOfRange(headers, 2, headers.length);
     byte[] dbuf = Arrays.copyOf(data, data.length);
-    // Decipher header first - functions as IV
+    // Decrypt the header first: it acts as the IV for PCFB.
     pcfb.blockDecipher(hbuf, 0, hbuf.length);
     pcfb.blockDecipher(dbuf, 0, dbuf.length);
     MessageDigest md256 = SHA256.getMessageDigest();
     byte[] dkey = key.cryptoKey;
-    // Check: IV == hash of decryption key
+    // Invariant: IV must equal SHA-256 of the decryption key.
     byte[] predIV = md256.digest(dkey);
     // Extract the IV
     byte[] iv = Arrays.copyOf(hbuf, 32);
@@ -143,17 +246,18 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throw new CHKDecodeException("Check failed: Decrypted IV == H(decryption key)");
     // Checks complete
     int size = ((hbuf[32] & 0xff) << 8) + (hbuf[33] & 0xff);
-    if ((size > 32768) || (size < 0)) {
+    if (size > 32768) {
       throw new CHKDecodeException("Invalid size: " + size);
     }
     return Key.decompress(
-        !dontCompress && key.isCompressed(),
-        dbuf,
-        size,
-        bf,
-        Math.min(maxLength, CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION),
-        key.compressionAlgorithm,
-        false);
+        new DecompressionParams(
+            !dontCompress && key.isCompressed(),
+            dbuf,
+            size,
+            bf,
+            maxLength,
+            key.compressionAlgorithm,
+            false));
   }
 
   private static final Provider hmacProvider;
@@ -191,60 +295,49 @@ public class ClientCHKBlock implements ClientKeyBlock {
   }
 
   static {
+    // Resolve and cache the preferred HMAC provider at class initialization for consistent
+    // performance across decode/encode operations. Falls back to the default provider on error.
     try {
-      final Class<ClientCHKBlock> clazz = ClientCHKBlock.class;
-      final String algo = "HmacSHA256";
-      final Provider sun = JceLoader.SunJCE;
+      final String algo = HMAC_SHA256;
+      final Provider sun = JceLoader.getSunJCE();
       SecretKeySpec dummyKey = new SecretKeySpec(new byte[Node.SYMMETRIC_KEY_LENGTH], algo);
       Mac hmac = Mac.getInstance(algo);
       hmac.init(dummyKey); // resolve provider
-      boolean logMINOR = Logger.shouldLog(Logger.LogLevel.MINOR, clazz);
-      if (sun != null) {
-        // SunJCE provider is faster (in some configurations)
-        try {
-          Mac sun_hmac = Mac.getInstance(algo, sun);
-          sun_hmac.init(dummyKey); // resolve provider
-          if (hmac.getProvider() != sun_hmac.getProvider()) {
-            long time_def = benchmark(hmac);
-            long time_sun = benchmark(sun_hmac);
-            System.out.println(algo + " (" + hmac.getProvider() + "): " + time_def + "ns");
-            System.out.println(algo + " (" + sun_hmac.getProvider() + "): " + time_sun + "ns");
-            if (logMINOR) {
-              Logger.minor(clazz, algo + "/" + hmac.getProvider() + ": " + time_def + "ns");
-              Logger.minor(clazz, algo + "/" + sun_hmac.getProvider() + ": " + time_sun + "ns");
-            }
-            if (time_sun < time_def) {
-              hmac = sun_hmac;
-            }
-          }
-        } catch (GeneralSecurityException e) {
-          Logger.warning(clazz, algo + "@" + sun + " benchmark failed", e);
-          // ignore
-
-        } catch (Throwable e) {
-          Logger.error(clazz, algo + "@" + sun + " benchmark failed", e);
-          // ignore
-        }
-      }
+      hmac = safeSelectPreferredHmac(hmac, sun, dummyKey);
       hmacProvider = hmac.getProvider();
-      System.out.println(algo + ": using " + hmacProvider);
-      Logger.normal(clazz, algo + ": using " + hmacProvider);
+      LOG.info("{}: using {}", algo, hmacProvider);
     } catch (GeneralSecurityException e) {
       // impossible
-      throw new Error(e);
+      throw new ExceptionInInitializerError(e);
     }
   }
 
   /**
-   * Decode the CHK and recover the original data
+   * Decodes a block that uses the AES/CTR + HMAC-SHA-256 format via JCA/JCE.
    *
-   * @return the original data
-   * @throws IOException If there is a bucket error.
+   * <p>The 16-byte CTR nonce (IV) is derived from the first 16 bytes of {@code
+   * HMAC-SHA-256(cryptokey, plaintext || lengthBytes)}, which is deterministic per content to
+   * preserve CHK determinism. The HMAC of the plaintext (including the 2 length bytes) is stored in
+   * the header and verified during decoding.
+   *
+   * @param bf factory used to allocate the destination bucket.
+   * @param maxLength maximum number of bytes allowed in the decoded output.
+   * @param dontCompress when {@code true}, skips decompression even if the key marks the data as
+   *     compressed.
+   * @return a bucket containing the decoded bytes.
+   * @throws CHKDecodeException if integrity checks fail, the crypto key is invalid, or the output
+   *     would exceed {@code maxLength}.
+   * @throws IOException if allocating or writing the output bucket fails.
+   * @throws UnsupportedOperationException if the block does not use the AES/CTR algorithm.
    */
   public Bucket decodeNew(BucketFactory bf, int maxLength, boolean dontCompress)
       throws CHKDecodeException, IOException {
     if (key.cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new UnsupportedOperationException();
+    if (Rijndael.getAesCtrProvider() == null) {
+      // Fallback for direct calls when no JCA provider is available.
+      return decodeNewNoJCA(bf, maxLength, dontCompress);
+    }
     byte[] headers = block.headers;
     byte[] data = block.data;
     byte[] hash = Arrays.copyOfRange(headers, 2, 2 + 32);
@@ -252,45 +345,56 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
       throw new CHKDecodeException("Crypto key too short");
     try {
-      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
       cipher.init(
           Cipher.ENCRYPT_MODE,
           new SecretKeySpec(cryptoKey, "AES"),
-          new IvParameterSpec(hash, 0, 16));
+          new IvParameterSpec(hash, 0, 16)); // NOSONAR: CTR requires a unique nonce; we derive
+      // it deterministically from HMAC(cryptokey, plaintext||len) to preserve CHK determinism.
       byte[] plaintext = new byte[data.length + 2];
       int moved = cipher.update(data, 0, data.length, plaintext);
       cipher.doFinal(headers, hash.length + 2, 2, plaintext, moved);
       int size = ((plaintext[data.length] & 0xff) << 8) + (plaintext[data.length + 1] & 0xff);
-      if ((size > 32768) || (size < 0)) {
+      if (size > 32768) {
         throw new CHKDecodeException("Invalid size: " + size);
       }
-      // Check the hash.
-      Mac hmac = Mac.getInstance("HmacSHA256", hmacProvider);
-      hmac.init(new SecretKeySpec(cryptoKey, "HmacSHA256"));
+      // Check the HMAC of plaintext || lengthBytes.
+      Mac hmac = Mac.getInstance(HMAC_SHA256, hmacProvider);
+      hmac.init(new SecretKeySpec(cryptoKey, HMAC_SHA256));
       hmac.update(plaintext); // plaintext includes lengthBytes
       byte[] hashCheck = hmac.doFinal();
       if (!Arrays.equals(hash, hashCheck)) {
         throw new CHKDecodeException("HMAC is wrong, wrong decryption key?");
       }
       return Key.decompress(
-          !dontCompress && key.isCompressed(),
-          plaintext,
-          size,
-          bf,
-          Math.min(maxLength, CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION),
-          key.compressionAlgorithm,
-          false);
+          new DecompressionParams(
+              !dontCompress && key.isCompressed(),
+              plaintext,
+              size,
+              bf,
+              maxLength,
+              key.compressionAlgorithm,
+              false));
     } catch (GeneralSecurityException e) {
       throw new CHKDecodeException("Problem with JCA, should be impossible!", e);
     }
   }
 
   /**
-   * Decode using Freenet's built in crypto. FIXME remove once Java 1.7 is mandatory. Note that we
-   * assume that HMAC SHA256 is available; the problem is AES is limited to 128 bits.
+   * Decodes a block using the built-in AES/CTR implementation when no JCA provider is available.
    *
-   * @return the original data
-   * @throws IOException If there is a bucket error.
+   * <p>Semantics are equivalent to {@link #decodeNew(BucketFactory, int, boolean)}. HMAC-SHA-256 is
+   * used for integrity, and AES uses a 128-bit block size in this pure-Java path.
+   *
+   * @param bf factory used to allocate the destination bucket.
+   * @param maxLength maximum number of bytes allowed in the decoded output.
+   * @param dontCompress when {@code true}, skips decompression even if the key marks the data as
+   *     compressed.
+   * @return a bucket containing the decoded bytes.
+   * @throws CHKDecodeException if integrity checks fail, the crypto key is invalid, or the output
+   *     would exceed {@code maxLength}.
+   * @throws IOException if allocating or writing the output bucket fails.
+   * @throws UnsupportedOperationException if the block does not use the AES/CTR algorithm.
    */
   public Bucket decodeNewNoJCA(BucketFactory bf, int maxLength, boolean dontCompress)
       throws CHKDecodeException, IOException {
@@ -306,24 +410,24 @@ public class ClientCHKBlock implements ClientKeyBlock {
     try {
       aes = new Rijndael(256, 128);
     } catch (UnsupportedCipherException e) {
-      // Impossible.
-      throw new Error(e);
+      // Should be impossible with bundled cipher
+      throw new CHKDecodeException("Unsupported cipher", e);
     }
     aes.initialize(cryptoKey);
     CTRBlockCipher cipher = new CTRBlockCipher(aes);
-    cipher.init(hash, 0, 16);
+    cipher.init(hash, 0, 16); // NOSONAR: deterministic per-content nonce by design (see above).
     byte[] plaintext = new byte[data.length];
     cipher.processBytes(data, 0, data.length, plaintext, 0);
     byte[] lengthBytes = new byte[2];
     cipher.processBytes(headers, hash.length + 2, 2, lengthBytes, 0);
     int size = ((lengthBytes[0] & 0xff) << 8) + (lengthBytes[1] & 0xff);
-    if ((size > 32768) || (size < 0)) {
+    if (size > 32768) {
       throw new CHKDecodeException("Invalid size: " + size);
     }
     try {
-      // Check the hash.
-      Mac hmac = Mac.getInstance("HmacSHA256", hmacProvider);
-      hmac.init(new SecretKeySpec(cryptoKey, "HmacSHA256"));
+      // Check the HMAC of plaintext || lengthBytes.
+      Mac hmac = Mac.getInstance(HMAC_SHA256, hmacProvider);
+      hmac.init(new SecretKeySpec(cryptoKey, HMAC_SHA256));
       hmac.update(plaintext);
       hmac.update(lengthBytes);
       byte[] hashCheck = hmac.doFinal();
@@ -334,21 +438,31 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throw new CHKDecodeException("Problem with JCA, should be impossible!", e);
     }
     return Key.decompress(
-        !dontCompress && key.isCompressed(),
-        plaintext,
-        size,
-        bf,
-        Math.min(maxLength, CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION),
-        key.compressionAlgorithm,
-        false);
+        new DecompressionParams(
+            !dontCompress && key.isCompressed(),
+            plaintext,
+            size,
+            bf,
+            maxLength,
+            key.compressionAlgorithm,
+            false));
   }
 
   /**
-   * Encode a splitfile block.
+   * Encodes a single splitfile block.
    *
-   * @param data The data to encode. Must be exactly DATA_LENGTH bytes.
-   * @param cryptoKey The encryption key. Can be null in which case this is equivalent to a normal
-   *     block encode.
+   * <p>The input must be exactly {@link CHKBlock#DATA_LENGTH} bytes. If {@code cryptoKey} is {@code
+   * null}, the key is derived as {@code SHA-256(data)}. The {@code cryptoAlgorithm} selects between
+   * the legacy AES/PCFB and the current AES/CTR variants.
+   *
+   * @param data the block payload, exactly {@link CHKBlock#DATA_LENGTH} bytes.
+   * @param cryptoKey optional encryption key; when non-null it must be {@link
+   *     Node#SYMMETRIC_KEY_LENGTH} bytes.
+   * @param cryptoAlgorithm algorithm selector; one of {@link Key#ALGO_AES_PCFB_256_SHA256} or
+   *     {@link Key#ALGO_AES_CTR_256_SHA256}.
+   * @return the encoded client block.
+   * @throws CHKEncodeException if encoding fails.
+   * @throws IllegalArgumentException if input sizes or {@code cryptoAlgorithm} are invalid.
    */
   public static ClientCHKBlock encodeSplitfileBlock(
       byte[] data, byte[] cryptoKey, byte cryptoAlgorithm) throws CHKEncodeException {
@@ -359,105 +473,62 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey == null) {
       cryptoKey = md256.digest(data);
     }
-    if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
-      return innerEncode(
-          data, CHKBlock.DATA_LENGTH, md256, cryptoKey, false, (short) -1, cryptoAlgorithm);
+    ClientCHKEncodeParams encodeParams =
+        new ClientCHKEncodeParams(
+            new ClientCHKEncodePayload(data, CHKBlock.DATA_LENGTH, md256, cryptoKey),
+            new ClientCHKEncodeAlgorithms(
+                false, (short) -1, cryptoAlgorithm, KeyBlock.HASH_SHA256));
+    if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256) return innerEncode(encodeParams);
     else if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unknown crypto algorithm: " + cryptoAlgorithm);
-    if (Rijndael.AesCtrProvider == null) {
-      return encodeNewNoJCA(
-          data,
-          CHKBlock.DATA_LENGTH,
-          md256,
-          cryptoKey,
-          false,
-          (short) -1,
-          cryptoAlgorithm,
-          KeyBlock.HASH_SHA256);
+    if (Rijndael.getAesCtrProvider() == null) {
+      return encodeNewNoJCA(encodeParams);
     } else {
-      return encodeNew(
-          data,
-          CHKBlock.DATA_LENGTH,
-          md256,
-          cryptoKey,
-          false,
-          (short) -1,
-          cryptoAlgorithm,
-          KeyBlock.HASH_SHA256);
+      return encodeNew(encodeParams);
     }
   }
 
   /**
-   * Encode a Bucket of data to a CHKBlock.
+   * Encodes data from a {@link Bucket} to a {@link ClientCHKBlock}.
    *
-   * @param sourceData The bucket of data to encode. Can be arbitrarily large.
-   * @param asMetadata Is this a metadata key?
-   * @param dontCompress If set, don't even try to compress.
-   * @param alreadyCompressedCodec If !dontCompress, and this is >=0, then the data is already
-   *     compressed, and this is the algorithm.
-   * @param compressorDescriptor
-   * @param cryptoAlgorithm
-   * @param cryptoKey
-   * @throws CHKEncodeException
-   * @throws IOException If there is an error reading from the Bucket.
-   * @throws InvalidCompressionCodecException
+   * <p>Optionally compresses the input before encrypting, then pads to {@link
+   * CHKBlock#DATA_LENGTH}. The {@code cryptoKey} may be {@code null} to derive a key from the
+   * padded data. The {@code cryptoAlgorithm} selects AES/PCFB or AES/CTR.
+   *
+   * @param params bundle containing the compression inputs
+   * @param cryptoKey optional encryption key (may be {@code null}).
+   * @param cryptoAlgorithm algorithm selector; one of {@link Key#ALGO_AES_PCFB_256_SHA256} or
+   *     {@link Key#ALGO_AES_CTR_256_SHA256}.
+   * @return the encoded client block.
+   * @throws CHKEncodeException on encode failures.
+   * @throws IOException if reading from the bucket fails.
    */
   public static ClientCHKBlock encode(
-      Bucket sourceData,
-      boolean asMetadata,
-      boolean dontCompress,
-      short alreadyCompressedCodec,
-      long sourceLength,
-      String compressorDescriptor,
-      byte[] cryptoKey,
-      byte cryptoAlgorithm)
+      BlockEncodeParams params, byte[] cryptoKey, byte cryptoAlgorithm)
       throws CHKEncodeException, IOException {
-    return encode(
-        sourceData,
-        asMetadata,
-        dontCompress,
-        alreadyCompressedCodec,
-        sourceLength,
-        compressorDescriptor,
-        cryptoKey,
-        cryptoAlgorithm,
-        false);
+    return encode(params, cryptoKey, cryptoAlgorithm, false);
   }
 
-  // forceNoJCA for unit tests.
+  // Unit-test hook: forces use of the pure-Java AES/CTR path.
   static ClientCHKBlock encode(
-      Bucket sourceData,
-      boolean asMetadata,
-      boolean dontCompress,
-      short alreadyCompressedCodec,
-      long sourceLength,
-      String compressorDescriptor,
-      byte[] cryptoKey,
-      byte cryptoAlgorithm,
-      boolean forceNoJCA)
+      BlockEncodeParams params, byte[] cryptoKey, byte cryptoAlgorithm, boolean forceNoJCA)
       throws CHKEncodeException, IOException {
-    byte[] finalData = null;
+    boolean asMetadata = params.asMetadata();
+    byte[] finalData;
     byte[] data;
-    short compressionAlgorithm = -1;
+    short compressionAlgorithm;
     try {
       Compressed comp =
           Key.compress(
-              sourceData,
-              dontCompress,
-              alreadyCompressedCodec,
-              sourceLength,
-              CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION,
-              CHKBlock.DATA_LENGTH,
-              false,
-              compressorDescriptor);
+              params,
+              new CompressionLimits(
+                  CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION, CHKBlock.DATA_LENGTH, false));
       finalData = comp.compressedData;
       compressionAlgorithm = comp.compressionAlgorithm;
-    } catch (KeyEncodeException e2) {
-      throw new CHKEncodeException(e2.getMessage(), e2);
-    } catch (InvalidCompressionCodecException e2) {
+    } catch (KeyEncodeException | InvalidCompressionCodecException e2) {
       throw new CHKEncodeException(e2.getMessage(), e2);
     }
-    // Now do the actual encode
+    // Now do the actual encoding
 
     MessageDigest md256 = SHA256.getMessageDigest();
     // First pad it
@@ -477,173 +548,153 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey != null) encKey = cryptoKey;
     else encKey = md256.digest(data);
     if (cryptoAlgorithm == 0) {
-      // TODO find all such cases and fix them.
-      Logger.error(ClientCHKBlock.class, "Passed in 0 crypto algorithm", new Exception("warning"));
+      // Default to legacy algorithm for backward compatibility.
+      LOG.warn("Passed in 0 crypto algorithm");
       cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     }
-    if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
-      return innerEncode(
-          data, dataLength, md256, encKey, asMetadata, compressionAlgorithm, cryptoAlgorithm);
-    else {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
-        return encodeNewNoJCA(
-            data,
-            dataLength,
-            md256,
-            encKey,
-            asMetadata,
-            compressionAlgorithm,
-            cryptoAlgorithm,
-            KeyBlock.HASH_SHA256);
-      else
-        return encodeNew(
-            data,
-            dataLength,
-            md256,
-            encKey,
-            asMetadata,
-            compressionAlgorithm,
-            cryptoAlgorithm,
-            KeyBlock.HASH_SHA256);
-    }
+    ClientCHKEncodeParams encodeParams =
+        new ClientCHKEncodeParams(
+            new ClientCHKEncodePayload(data, dataLength, md256, encKey),
+            new ClientCHKEncodeAlgorithms(
+                asMetadata, compressionAlgorithm, cryptoAlgorithm, KeyBlock.HASH_SHA256));
+    if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256) return innerEncode(encodeParams);
+    if (Rijndael.getAesCtrProvider() == null || forceNoJCA) return encodeNewNoJCA(encodeParams);
+    return encodeNew(encodeParams);
   }
 
   /**
-   * Format: [0-1]: Block hash algorithm [2-34]: HMAC (with cryptokey) of data + length bytes.
-   * [35-36]: Length bytes. Encryption: CTR with IV = 1st 16 bytes of the hash. (It has to be
-   * deterministic as this is a CHK and we need to be able to reinsert them easily): - Data - Length
-   * bytes.
+   * Encodes one block using the AES/CTR + HMAC-SHA-256 format via JCA/JCE.
    *
-   * @param data Data should already have been padded.
-   * @param dataLength Length of original data. Between 0 and 32768.
-   * @param md256 Convenient reuse of hash object.
-   * @param encKey Encryption key for the data, part of the URI.
-   * @param asMetadata Whether the final CHK is metadata or not.
-   * @param compressionAlgorithm The compression algorithm used.
-   * @param cryptoAlgorithm The encryption algorithm used.
-   * @return
+   * <p>Header layout: {@code [0..1]=blockHashAlg, [2..33]=HMAC(cryptokey, plaintext||len),
+   * [34..35]=lengthBytes}. The CTR IV is the first 16 bytes of the HMAC value, making it
+   * deterministic for identical content and key (required for CHK determinism).
+   *
+   * @param params bundle containing the encoding inputs
+   * @return the encoded client block.
+   * @throws CHKEncodeException if encoding fails.
+   * @throws IllegalArgumentException if an unsupported algorithm is requested.
    */
-  public static ClientCHKBlock encodeNew(
-      byte[] data,
-      int dataLength,
-      MessageDigest md256,
-      byte[] encKey,
-      boolean asMetadata,
-      short compressionAlgorithm,
-      byte cryptoAlgorithm,
-      int blockHashAlgorithm)
-      throws CHKEncodeException {
+  @SuppressWarnings("java:S3329")
+  public static ClientCHKBlock encodeNew(ClientCHKEncodeParams params) throws CHKEncodeException {
+    byte cryptoAlgorithm = params.cryptoAlgorithm();
     if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unsupported crypto algorithm " + cryptoAlgorithm);
+    if (Rijndael.getAesCtrProvider() == null) {
+      // Fallback when no provider is available.
+      return encodeNewNoJCA(params);
+    }
+    byte[] data = params.data();
+    int dataLength = params.dataLength();
+    MessageDigest md256 = params.md256();
+    byte[] encKey = params.encKey();
+    boolean asMetadata = params.asMetadata();
+    short compressionAlgorithm = params.compressionAlgorithm();
+    int blockHashAlgorithm = params.blockHashAlgorithm();
     try {
-      // IV = HMAC<cryptokey>(plaintext).
-      // It's okay that this is the same for 2 blocks with the same key and the same content.
-      // In fact that's the point; this is still a Content Hash Key.
-      // FIXME And yes we should check on insert for multiple identical keys.
-      Mac hmac = Mac.getInstance("HmacSHA256", hmacProvider);
-      hmac.init(new SecretKeySpec(encKey, "HmacSHA256"));
+      // IV = HMAC<cryptokey>(plaintext || lengthBytes).
+      // Deterministic IV preserves CHK determinism across identical content and key.
+      Mac hmac = Mac.getInstance(HMAC_SHA256, hmacProvider);
+      hmac.init(new SecretKeySpec(encKey, HMAC_SHA256));
       byte[] tmpLen = new byte[] {(byte) (dataLength >> 8), (byte) (dataLength & 0xff)};
       hmac.update(data);
       hmac.update(tmpLen);
       byte[] hash = hmac.doFinal();
-      byte[] header = new byte[hash.length + 2 + 2];
-      if (blockHashAlgorithm == 0) cryptoAlgorithm = KeyBlock.HASH_SHA256;
+
+      if (blockHashAlgorithm == 0) blockHashAlgorithm = KeyBlock.HASH_SHA256;
       if (blockHashAlgorithm != KeyBlock.HASH_SHA256)
-        throw new IllegalArgumentException("Unsupported block hash algorithm " + cryptoAlgorithm);
-      header[0] = (byte) (blockHashAlgorithm >> 8);
-      header[1] = (byte) (blockHashAlgorithm & 0xff);
+        throw new IllegalArgumentException(
+            "Unsupported block hash algorithm " + blockHashAlgorithm);
+
+      byte[] header = new byte[hash.length + 2 + 2];
+      header[0] = 0;
+      header[1] = (byte) blockHashAlgorithm;
       System.arraycopy(hash, 0, header, 2, hash.length);
-      SecretKey ckey = new SecretKeySpec(encKey, "AES");
-      // CTR mode IV is only 16 bytes.
-      // That's still plenty though. It will still be unique.
-      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
+      SecretKeySpec ckey = new SecretKeySpec(encKey, "AES");
+      // CTR mode IV is 16 bytes; we derive it deterministically from the HMAC above.
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
       cipher.init(Cipher.ENCRYPT_MODE, ckey, new IvParameterSpec(hash, 0, 16));
       byte[] cdata = new byte[data.length];
-      int moved = cipher.update(data, 0, data.length, cdata);
-      if (moved == data.length) {
-        cipher.doFinal(tmpLen, 0, 2, header, hash.length + 2);
+      // Some providers (e.g., certain SunPKCS11 backends) may defer producing output until
+      // doFinal(). Handle a short write from update() by collecting the remainder from doFinal()
+      // before writing the encrypted length bytes into the header tail.
+      int moved = cipher.update(data, 0, data.length, cdata, 0);
+      if (moved < data.length) {
+        int remaining = data.length - moved;
+        byte[] tail = new byte[remaining + 2];
+        int written = cipher.doFinal(tmpLen, 0, 2, tail, 0);
+        if (written < remaining + 2) {
+          throw new CHKEncodeException(
+              "Cipher produced insufficient output: expected "
+                  + (remaining + 2)
+                  + ", got "
+                  + written);
+        }
+        System.arraycopy(tail, 0, cdata, moved, remaining);
+        header[hash.length + 2] = tail[remaining];
+        header[hash.length + 3] = tail[remaining + 1];
       } else {
-        // FIXME inefficient
-        byte[] tmp = cipher.doFinal(tmpLen, 0, 2);
-        System.arraycopy(tmp, 0, cdata, moved, tmp.length - 2);
-        System.arraycopy(tmp, tmp.length - 2, header, hash.length + 2, 2);
+        // Encrypt length bytes directly into the header tail when no remainder is pending.
+        cipher.doFinal(tmpLen, 0, 2, header, hash.length + 2);
       }
 
-      // Now calculate the final hash
+      // Overall hash covers header then ciphertext bytes.
       md256.update(header);
       byte[] finalHash = md256.digest(cdata);
 
-      // Now convert it into a ClientCHK
       ClientCHK finalKey =
           new ClientCHK(finalHash, encKey, asMetadata, cryptoAlgorithm, compressionAlgorithm);
-
-      try {
-        return new ClientCHKBlock(cdata, header, finalKey, false);
-      } catch (CHKVerifyException e3) {
-        // WTF?
-        throw new Error(e3);
-      }
+      return newClientCHKBlockUnchecked(cdata, header, finalKey);
     } catch (GeneralSecurityException e) {
       throw new CHKEncodeException("Problem with JCA, should be impossible!", e);
     }
   }
 
   /**
-   * Encode using Freenet's built in crypto. FIXME remove once Java 1.7 is mandatory. Note that we
-   * assume that HMAC SHA256 is available; the problem is AES is limited to 128 bits.
+   * Encodes one block using the built-in AES/CTR implementation (no external provider).
    *
-   * @param data Data should already have been padded.
-   * @param dataLength Length of original data. Between 0 and 32768.
-   * @param md256 Convenient reuse of hash object.
-   * @param encKey Encryption key for the data, part of the URI.
-   * @param asMetadata Whether the final CHK is metadata or not.
-   * @param compressionAlgorithm The compression algorithm used.
-   * @param cryptoAlgorithm The encryption algorithm used.
-   * @return
-   * @throws CHKVerifyException
-   * @throws CHKEncodeException
+   * <p>Semantics and header format match {@link #encodeNew(ClientCHKEncodeParams)}. AES uses a
+   * 128-bit block size in this path.
+   *
+   * @param params bundle containing the encoding inputs
+   * @return the encoded client block.
+   * @throws CHKEncodeException if encoding fails.
+   * @throws IllegalArgumentException if an unsupported algorithm is requested.
    */
-  public static ClientCHKBlock encodeNewNoJCA(
-      byte[] data,
-      int dataLength,
-      MessageDigest md256,
-      byte[] encKey,
-      boolean asMetadata,
-      short compressionAlgorithm,
-      byte cryptoAlgorithm,
-      int blockHashAlgorithm)
+  public static ClientCHKBlock encodeNewNoJCA(ClientCHKEncodeParams params)
       throws CHKEncodeException {
+    byte cryptoAlgorithm = params.cryptoAlgorithm();
     if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unsupported crypto algorithm " + cryptoAlgorithm);
+    byte[] data = params.data();
+    int dataLength = params.dataLength();
+    MessageDigest md256 = params.md256();
+    byte[] encKey = params.encKey();
+    boolean asMetadata = params.asMetadata();
+    short compressionAlgorithm = params.compressionAlgorithm();
+    int blockHashAlgorithm = params.blockHashAlgorithm();
     try {
       // IV = HMAC<cryptokey>(plaintext).
       // It's okay that this is the same for 2 blocks with the same key and the same content.
-      // In fact that's the point; this is still a Content Hash Key.
-      // FIXME And yes we should check on insert for multiple identical keys.
-      Mac hmac = Mac.getInstance("HmacSHA256", hmacProvider);
-      hmac.init(new SecretKeySpec(encKey, "HmacSHA256"));
+      // In fact, that's the point; this is still a Content Hash Key.
+      // Note: identical content with the same key yields identical IV by design.
+      Mac hmac = Mac.getInstance(HMAC_SHA256, hmacProvider);
+      hmac.init(new SecretKeySpec(encKey, HMAC_SHA256));
       byte[] tmpLen = new byte[] {(byte) (dataLength >> 8), (byte) (dataLength & 0xff)};
       hmac.update(data);
       hmac.update(tmpLen);
       byte[] hash = hmac.doFinal();
       byte[] header = new byte[hash.length + 2 + 2];
-      if (blockHashAlgorithm == 0) cryptoAlgorithm = KeyBlock.HASH_SHA256;
+      if (blockHashAlgorithm == 0) blockHashAlgorithm = KeyBlock.HASH_SHA256;
       if (blockHashAlgorithm != KeyBlock.HASH_SHA256)
-        throw new IllegalArgumentException("Unsupported block hash algorithm " + cryptoAlgorithm);
-      header[0] = (byte) (blockHashAlgorithm >> 8);
-      header[1] = (byte) (blockHashAlgorithm & 0xff);
-      Rijndael aes;
-      try {
-        aes = new Rijndael(256, 128);
-      } catch (UnsupportedCipherException e) {
-        // Impossible
-        throw new Error(e);
-      }
+        throw new IllegalArgumentException(
+            "Unsupported block hash algorithm " + blockHashAlgorithm);
+      header[0] = 0;
+      header[1] = (byte) blockHashAlgorithm;
+      Rijndael aes = newRijndael256x128ForEncode();
       aes.initialize(encKey);
       CTRBlockCipher ctr = new CTRBlockCipher(aes);
-      // CTR mode IV is only 16 bytes.
-      // That's still plenty though. It will still be unique.
-      ctr.init(hash, 0, 16);
+      // CTR mode uses a 16-byte IV.
+      ctr.init(hash, 0, 16); // NOSONAR: deterministic per-content nonce by design (see above).
       System.arraycopy(hash, 0, header, 2, hash.length);
       byte[] cdata = new byte[data.length];
       ctr.processBytes(data, 0, data.length, cdata, 0);
@@ -657,28 +708,32 @@ public class ClientCHKBlock implements ClientKeyBlock {
       ClientCHK finalKey =
           new ClientCHK(finalHash, encKey, asMetadata, cryptoAlgorithm, compressionAlgorithm);
 
-      try {
-        return new ClientCHKBlock(cdata, header, finalKey, false);
-      } catch (CHKVerifyException e3) {
-        // WTF?
-        throw new Error(e3);
-      }
+      return newClientCHKBlockUnchecked(cdata, header, finalKey);
     } catch (GeneralSecurityException e) {
       throw new CHKEncodeException("Problem with JCA, should be impossible!", e);
     }
   }
 
-  @SuppressWarnings(
-      "deprecation") // FIXME Back compatibility, using dubious ciphers; remove eventually.
-  public static ClientCHKBlock innerEncode(
-      byte[] data,
-      int dataLength,
-      MessageDigest md256,
-      byte[] encKey,
-      boolean asMetadata,
-      short compressionAlgorithm,
-      byte cryptoAlgorithm) {
-    data = data.clone(); // Will overwrite otherwise. Callers expect data not to be clobbered.
+  /**
+   * Encodes one block using the legacy AES/PCFB + SHA-256 format.
+   *
+   * <p>Primarily retained for compatibility with historical content. Callers must pass padded data
+   * and the original content length. The resulting key records the compression and crypto
+   * algorithms used.
+   *
+   * @param params bundle containing the encoding inputs
+   * @return the encoded client block.
+   * @throws IllegalArgumentException if an unsupported algorithm is requested.
+   */
+  public static ClientCHKBlock innerEncode(ClientCHKEncodeParams params) {
+    byte[] data =
+        params.data().clone(); // Will overwrite otherwise. Callers expect data not to be clobbered.
+    int dataLength = params.dataLength();
+    MessageDigest md256 = params.md256();
+    byte[] encKey = params.encKey();
+    boolean asMetadata = params.asMetadata();
+    short compressionAlgorithm = params.compressionAlgorithm();
+    byte cryptoAlgorithm = params.cryptoAlgorithm();
     if (cryptoAlgorithm != Key.ALGO_AES_PCFB_256_SHA256)
       throw new IllegalArgumentException("Unsupported crypto algorithm " + cryptoAlgorithm);
     byte[] header;
@@ -686,63 +741,58 @@ public class ClientCHKBlock implements ClientKeyBlock {
     // IV = E(H(crypto key))
     byte[] plainIV = md256.digest(encKey);
     header = new byte[plainIV.length + 2 + 2];
-    header[0] = (byte) (KeyBlock.HASH_SHA256 >> 8);
-    header[1] = (byte) (KeyBlock.HASH_SHA256 & 0xff);
+    header[0] = 0;
+    header[1] = (byte) KeyBlock.HASH_SHA256;
     System.arraycopy(plainIV, 0, header, 2, plainIV.length);
     header[plainIV.length + 2] = (byte) (dataLength >> 8);
     header[plainIV.length + 3] = (byte) (dataLength & 0xff);
-    // GRRR, java 1.4 does not have any symmetric crypto
-    // despite exposing asymmetric and hashes!
-
-    // Now encrypt the header, then the data, using the same PCFB instance
-    BlockCipher cipher;
-    try {
-      cipher = new Rijndael(256, 256);
-    } catch (UnsupportedCipherException e) {
-      Logger.error(ClientCHKBlock.class, "Impossible: " + e, e);
-      throw new Error(e);
-    }
+    // Encrypt the header and then the data using the same PCFB instance.
+    BlockCipher cipher = newRijndael256x256ForEncode();
     cipher.initialize(encKey);
 
-    // FIXME CRYPTO plainIV, the hash of the crypto key, is encrypted with a null IV.
-    // In other words, it is XORed with E(0).
-    // For splitfiles we reuse the same decryption key for multiple blocks; it is derived from the
-    // overall hash,
-    // or it is set randomly.
-    // So the plaintext *and* ciphertext IV is always the same.
-    // And the following 32 bytes are always XORed with the same value.
-    // Ouch!
-    // Those bytes being 2 bytes for the length, followed by the first 30 bytes of the data.
+    /*
+     * plainIV (SHA-256 of the crypto key) is enciphered with a null IV, i.e. XORed with E(0).
+     * For splitfiles the same decryption key may be reused across blocks (derived from an overall
+     * hash or set randomly). Consequently, the plaintext and ciphertext IVs are constant for that
+     * key, and the next 32 bytes (length[2] + first 30 bytes of data) are XORed with the same
+     * keystream segment on every block.
+     */
 
-    PCFBMode pcfb = PCFBMode.create(cipher);
+    byte[] zeroIv = new byte[PCFBMode.lengthIV(cipher)];
+    PCFBMode pcfb = PCFBMode.create(cipher, zeroIv);
     pcfb.blockEncipher(header, 2, header.length - 2);
     pcfb.blockEncipher(data, 0, data.length);
 
-    // Now calculate the final hash
+    // Compute the final block hash over header || ciphertext.
     md256.update(header);
     byte[] finalHash = md256.digest(data);
 
-    // Now convert it into a ClientCHK
+    // Construct the final client key and block wrapper.
     key = new ClientCHK(finalHash, encKey, asMetadata, cryptoAlgorithm, compressionAlgorithm);
 
     try {
       return new ClientCHKBlock(data, header, key, false);
     } catch (CHKVerifyException e3) {
-      // WTF?
-      throw new Error(e3);
+      throw new IllegalStateException("Verification failed unexpectedly", e3);
     }
   }
 
   /**
-   * Encode a block of data to a CHKBlock.
+   * Convenience overload to encode a byte array as a {@link ClientCHKBlock}.
    *
-   * @param sourceData The data to encode.
-   * @param asMetadata Is this a metadata key?
-   * @param dontCompress If set, don't even try to compress.
-   * @param alreadyCompressedCodec If !dontCompress, and this is >=0, then the data is already
-   *     compressed, and this is the algorithm.
-   * @param compressorDescriptor Should be null, or list of compressors to try.
-   * @throws InvalidCompressionCodecException
+   * <p>Behavior matches {@link #encode(BlockEncodeParams, byte[], byte)}, using the AES/CTR
+   * algorithm and deriving the encryption key from the padded data.
+   *
+   * @param sourceData the input bytes.
+   * @param asMetadata whether the resulting key should be flagged as metadata.
+   * @param dontCompress when {@code true}, disables compression regardless of {@code
+   *     alreadyCompressedCodec}.
+   * @param alreadyCompressedCodec when {@code dontCompress} is {@code false} and this value is
+   *     {@code >= 0}, signals that {@code sourceData} is already compressed using the given codec.
+   * @param sourceLength number of bytes from {@code sourceData} to encode.
+   * @param compressorDescriptor optional compressor selection/hint; implementation specific.
+   * @return the encoded client block.
+   * @throws CHKEncodeException on encode failures.
    */
   public static ClientCHKBlock encode(
       byte[] sourceData,
@@ -751,50 +801,87 @@ public class ClientCHKBlock implements ClientKeyBlock {
       short alreadyCompressedCodec,
       int sourceLength,
       String compressorDescriptor)
-      throws CHKEncodeException, InvalidCompressionCodecException {
+      throws CHKEncodeException {
     try {
       return encode(
-          new ArrayBucket(sourceData),
-          asMetadata,
-          dontCompress,
-          alreadyCompressedCodec,
-          sourceLength,
-          compressorDescriptor,
+          new BlockEncodeParams(
+              new ArrayBucket(sourceData),
+              asMetadata,
+              dontCompress,
+              alreadyCompressedCodec,
+              sourceLength,
+              compressorDescriptor),
           null,
           Key.ALGO_AES_CTR_256_SHA256);
     } catch (IOException e) {
       // Can't happen
-      throw new Error(e);
+      throw new CHKEncodeException("Unexpected I/O", e);
     }
   }
 
+  /**
+   * Returns the client key associated with this block.
+   *
+   * @return the {@link ClientCHK} for this block.
+   */
   @Override
   public ClientCHK getClientKey() {
     return key;
   }
 
+  /**
+   * Indicates whether the key is marked as metadata.
+   *
+   * @return {@code true} when the {@link ClientCHK} represents metadata; otherwise {@code false}.
+   */
   @Override
   public boolean isMetadata() {
     return key.isMetadata();
   }
 
+  /**
+   * Returns a hash code consistent with {@link #equals(Object)}.
+   *
+   * <p>Delegates to the associated {@link ClientCHK} hash, which uniquely identifies the block in
+   * typical usage.
+   */
   @Override
   public int hashCode() {
     return key.hashCode;
   }
 
+  /**
+   * Compares two {@code ClientCHKBlock} instances for structural equality.
+   *
+   * <p>Equality requires both the {@link ClientCHK} and the underlying {@link CHKBlock} to be
+   * equal. This ensures callers do not accidentally conflate different ciphertext or header bytes
+   * that happen to map to the same client key.
+   *
+   * @param o the object to compare.
+   * @return {@code true} if both key and block match; otherwise {@code false}.
+   */
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof ClientCHKBlock block)) return false;
-    if (!key.equals(block.key)) return false;
-    return block.block.equals(this.block);
+    if (!(o instanceof ClientCHKBlock other)) return false;
+    if (!key.equals(other.key)) return false;
+    return other.block.equals(this.block);
   }
 
+  /**
+   * Returns the underlying encoded {@link CHKBlock} (headers and ciphertext).
+   *
+   * @return the stored block.
+   */
   @Override
   public CHKBlock getBlock() {
     return block;
   }
 
+  /**
+   * Returns the {@link Key} view that corresponds to this block's node-visible key material.
+   *
+   * @return the key derived from this block.
+   */
   @Override
   public Key getKey() {
     return block.getKey();

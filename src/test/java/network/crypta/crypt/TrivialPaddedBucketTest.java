@@ -1,19 +1,19 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
-
 import java.io.IOException;
 import java.io.InputStream;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.PaddedBucket;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class TrivialPaddedBucketTest {
+import static org.junit.jupiter.api.Assertions.*;
+
+class TrivialPaddedBucketTest {
 
   @Test
-  public void testSimple() throws IOException {
+  void testSimple() throws IOException {
     checkSimple(4000, 4096);
     checkSimple(1, 1024);
     checkSimple((1 << 17) - 1, 1 << 17);

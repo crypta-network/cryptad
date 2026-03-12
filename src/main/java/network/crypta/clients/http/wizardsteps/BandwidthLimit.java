@@ -3,29 +3,101 @@ package network.crypta.clients.http.wizardsteps;
 import network.crypta.node.Node;
 import network.crypta.support.io.DatastoreUtil;
 
-/** A bandwidth usage rate limit, measured in bytes. */
+/**
+ * Represents a simple, immutable bandwidth limit pair used by the HTTP setup wizard.
+ *
+ * <p>This type models the two rate caps the node enforces for network traffic: an upload limit and
+ * a download limit, each expressed as a number of bytes per second. In the wizard, instances are
+ * used to present fixed presets (with a translation key) as well as to derive a reasonable split
+ * from a single user-provided monthly budget. The computed split is intentionally asymmetric: as
+ * the overall budget grows, download receives a larger share than upload.
+ *
+ * <p>Instances are pure data holders with no internal synchronization. They are safe to share
+ * between threads as long as the surrounding wizard model treats them as read-only (the fields are
+ * final). The constructors perform the full calculation up front; no further state changes occur
+ * after construction.
+ *
+ * <ul>
+ *   <li><b>Presets:</b> Use {@link #BandwidthLimit(long, long, String, boolean)} to provide
+ *       explicit per-second caps and a UI description key.
+ *   <li><b>Derived:</b> Use {@link #BandwidthLimit(long)} to derive per-second caps from a monthly
+ *       budget while respecting the node's minimum bandwidth.
+ * </ul>
+ */
 public class BandwidthLimit {
 
-  /** Seconds in 30 days. Used for limit calculations. */
-  public static final double secondsPerMonth = 2592000d;
+  /**
+   * Number of seconds in a fixed 30-day month, used to convert between monthly and per-second
+   * limits.
+   *
+   * <p>The wizard uses a fixed month length for deterministic calculations and consistent UI. This
+   * intentionally ignores varying calendar months; callers should treat derived limits as heuristic
+   * guidance rather than an accounting guarantee.
+   */
+  public static final double SECONDS_PER_MONTH = 2592000d;
 
   /*
    * Bandwidth used if both the upload and download limit are at the minimum. In GB. Assumes 24/7 uptime.
    * 49.4384765625 GiB
    */
-  public static final Double minMonthlyLimit =
-      2 * Node.getMinimumBandwidth() * secondsPerMonth / DatastoreUtil.oneGiB;
+  /**
+   * Monthly total transfer (in GiB) implied by the minimum upload and download limits.
+   *
+   * <p>This value is derived from {@link Node#getMinimumBandwidth()} for both directions,
+   * multiplied by {@link #SECONDS_PER_MONTH} and converted to GiB using {@link
+   * DatastoreUtil#ONE_GIB}. It is used by the wizard's limit heuristics and UI messaging, and
+   * assumes continuous (24/7) uptime.
+   */
+  public static final Double MIN_MONTHLY_LIMIT =
+      2 * Node.getMinimumBandwidth() * SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
 
-  /** Download limit in bytes. */
+  /**
+   * Download rate limit, expressed as bytes per second.
+   *
+   * <p>This value is intended to be applied as a steady-state cap by the node's bandwidth limiter.
+   * It is computed by {@link #BandwidthLimit(long)} from a monthly budget and otherwise provided
+   * directly by callers constructing presets.
+   */
   public final long downBytes;
 
-  /** Upload limit in bytes. */
+  /**
+   * Upload rate limit, expressed as bytes per second.
+   *
+   * <p>This value is intended to be applied as a steady-state cap by the node's bandwidth limiter.
+   * In derived configurations it may be smaller than {@link #downBytes} to reduce latency impact
+   * from saturated uplinks.
+   */
   public final long upBytes;
 
+  /**
+   * Translation key used by the wizard UI to describe this limit selection.
+   *
+   * <p>For preset values this typically points at a localized string resource. For derived limits,
+   * the current implementation sets a simple English label; callers that require localization
+   * should prefer providing their own key via the explicit constructor.
+   */
   public final String descriptionKey;
 
+  /**
+   * Indicates whether this instance is a plausible default choice in the wizard UI.
+   *
+   * <p>The wizard uses this flag to hint which entry to preselect when presenting multiple presets.
+   * It does not affect runtime enforcement of bandwidth limits and has no side effects.
+   */
   public final boolean maybeDefault;
 
+  /**
+   * Creates a bandwidth limit with explicit per-direction rate caps.
+   *
+   * <p>This constructor is used for wizard presets where the caller already knows the desired
+   * upload and download caps (in bytes per second) and wants to attach a description key and a UI
+   * default hint. The values are stored as-is; no normalization or validation is performed here.
+   *
+   * @param downBytes download rate cap in bytes per second, typically {@code >= 0} for presets
+   * @param upBytes upload rate cap in bytes per second, typically {@code >= 0} for presets
+   * @param descriptionKey translation key or label used to describe this selection in the UI
+   * @param maybeDefault whether the wizard may treat this instance as a default choice
+   */
   public BandwidthLimit(long downBytes, long upBytes, String descriptionKey, boolean maybeDefault) {
     this.downBytes = downBytes;
     this.upBytes = upBytes;
@@ -34,9 +106,14 @@ public class BandwidthLimit {
   }
 
   /**
-   * Calculate download and upload limit
+   * Calculates per-direction rate caps from a monthly transfer budget.
    *
-   * @param bytesPerMonth monthly bandwidth limit
+   * <p>The implementation derives a bytes-per-second budget by dividing {@code bytesPerMonth} by a
+   * fixed 30-day month ({@link #SECONDS_PER_MONTH}). It then reserves at least the node minimum for
+   * both upload and download and splits any remaining budget asymmetrically, favoring download as
+   * the total budget increases. The computed values are rounded up to whole bytes per second.
+   *
+   * @param bytesPerMonth monthly total transfer budget in bytes, used to derive per-second caps
    */
   public BandwidthLimit(long bytesPerMonth) {
     /*
@@ -50,7 +127,7 @@ public class BandwidthLimit {
      * This 50/50 split is consistent with the assumption in the definition of minCap that the upload and
      * download limits are equal.
      */
-    double bytesPerSecond = bytesPerMonth / secondsPerMonth;
+    double bytesPerSecond = bytesPerMonth / SECONDS_PER_MONTH;
     double minBytesPerSecond = Node.getMinimumBandwidth();
     double bwinc = bytesPerSecond - 2 * minBytesPerSecond; // min for up and min for down
     double asymptoticDlFraction = 4. / 5.;

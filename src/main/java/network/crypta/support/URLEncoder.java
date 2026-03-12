@@ -10,64 +10,83 @@ import java.nio.charset.StandardCharsets;
  */
 public class URLEncoder {
   // Moved here from FProxy by amphibian
-  static final String safeURLCharacters =
+  /**
+   * Uppercase-named constant for safe URL characters to satisfy constant naming conventions.
+   *
+   * <p>Keep {@code safeURLCharacters} as a non-final alias for backward source/binary compatibility
+   * across the codebase.
+   */
+  static final String SAFE_URL_CHARACTERS =
       "*-_./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
+
+  // Backward-compatibility alias used widely across the codebase and tests.
+  static String safeURLCharacters = SAFE_URL_CHARACTERS;
 
   public static String getSafeURLCharacters() {
     return safeURLCharacters;
   }
 
-  public static String encode(String URL, String force, boolean ascii) {
-    return encode(URL, force, ascii, "");
+  public static String encode(String url, String force, boolean ascii) {
+    return encode(url, force, ascii, "");
   }
 
   /**
    * Encode a string for inclusion in a URI.
    *
-   * @param URL String to encode
+   * @param url String to encode
    * @param force List of characters (in the form of a string) which must be encoded as well as the
    *     built-in.
    * @param ascii If true, encode all foreign letters, if false, leave them as is. Set to true if
-   *     you are passing to something that needs ASCII (e.g. HTTP headers), set to false if you are
+   *     you are passing to something that needs ASCII (e.g., HTTP headers), set to false if you are
    *     using in an HTML page.
    * @return Encoded version of string
    */
-  public static String encode(String URL, String force, boolean ascii, String extraSafeChars) {
-    StringBuilder enc = new StringBuilder(URL.length());
-    for (int i = 0; i < URL.length(); ++i) {
-      char c = URL.charAt(i);
-      if ((safeURLCharacters.indexOf(c) >= 0
-              || (!ascii
-                  && c >= 128
-                  && Character.isDefined(c)
-                  && !Character.isISOControl(c)
-                  && !Character.isSpaceChar(c))
-              || extraSafeChars.indexOf(c) >= 0)
-          && (force == null || force.indexOf(c) < 0)) {
+  public static String encode(String url, String force, boolean ascii, String extraSafeChars) {
+    StringBuilder enc = new StringBuilder(url.length());
+    for (int i = 0; i < url.length(); ++i) {
+      char c = url.charAt(i);
+      if (isPassThrough(c, force, ascii, extraSafeChars)) {
         enc.append(c);
-
       } else {
-        for (byte b : String.valueOf(c).getBytes(StandardCharsets.UTF_8)) {
-          int x = b & 0xFF;
-          if (x < 16) enc.append("%0");
-          else enc.append('%');
-          enc.append(Integer.toHexString(x));
-        }
+        appendUtf8PercentEncoded(enc, c);
       }
     }
     return enc.toString();
   }
 
+  private static boolean isPassThrough(char c, String force, boolean ascii, String extraSafeChars) {
+    boolean inSafeSet = safeURLCharacters.indexOf(c) >= 0 || extraSafeChars.indexOf(c) >= 0;
+    boolean unicodeAllowed =
+        !ascii
+            && c >= 128
+            && Character.isDefined(c)
+            && !Character.isISOControl(c)
+            && !Character.isSpaceChar(c);
+    boolean notForced = (force == null || force.indexOf(c) < 0);
+    return (inSafeSet || unicodeAllowed) && notForced;
+  }
+
+  private static void appendUtf8PercentEncoded(StringBuilder enc, char c) {
+    for (byte b : String.valueOf(c).getBytes(StandardCharsets.UTF_8)) {
+      int x = b & 0xFF;
+      if (x < 16) enc.append("%0");
+      else enc.append('%');
+      enc.append(Integer.toHexString(x));
+    }
+  }
+
   /**
    * Encode a string for inclusion in a URI.
    *
-   * @param URL String to encode
+   * @param url String to encode
    * @param ascii If true, encode all foreign letters, if false, leave them as is. Set to true if
-   *     you are passing to something that needs ASCII (e.g. HTTP headers), set to false if you are
+   *     you are passing to something that needs ASCII (e.g., HTTP headers), set to false if you are
    *     using in an HTML page.
    * @return Encoded version of string
    */
-  public static String encode(String s, boolean ascii) {
-    return encode(s, null, ascii);
+  public static String encode(String url, boolean ascii) {
+    return encode(url, null, ascii);
   }
+
+  private URLEncoder() {}
 }

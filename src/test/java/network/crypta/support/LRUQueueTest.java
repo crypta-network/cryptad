@@ -1,18 +1,26 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import java.util.Iterator;
+import org.junit.jupiter.api.Test;
 
-import java.util.Enumeration;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test case for {@link LRUQueue} class.
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
-public class LRUQueueTest {
+@SuppressWarnings("java:S100") // test naming uses method_whenCondition_expectOutcome
+class LRUQueueTest {
 
-  private static final int sampleElemsNumber = 100;
+  private static final int SAMPLE_ELEMS_NUMBER = 100;
 
   /**
    * Creates an array of objects with a specified size
@@ -35,7 +43,7 @@ public class LRUQueueTest {
   private LRUQueue<Object> createSampleQueue(int size) {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(size);
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
     return methodLRUQueue;
   }
 
@@ -47,7 +55,7 @@ public class LRUQueueTest {
    * @return true if there is at least one reference to the object
    */
   private boolean isPresent(Object[] anArray, Object aElementToSearch) {
-    for (int i = 0; i < anArray.length; i++) if (anArray[i].equals(aElementToSearch)) return true;
+    for (Object o : anArray) if (o.equals(aElementToSearch)) return true;
     return false;
   }
 
@@ -62,14 +70,14 @@ public class LRUQueueTest {
   private boolean verifyLastElemsOrder(LRUQueue<Object> aLRUQueue, Object nextToLast, Object last) {
     boolean retVal = true;
     int size = aLRUQueue.size();
-    Enumeration<Object> methodEnum = aLRUQueue.elements();
+    Iterator<Object> methodEnum = aLRUQueue.elements();
     int counter = 0;
-    while (methodEnum.hasMoreElements()) {
+    while (methodEnum.hasNext()) {
       // next-to-last object
-      if (counter == size - 2) retVal &= (methodEnum.nextElement()).equals(nextToLast);
+      if (counter == size - 2) retVal &= methodEnum.next().equals(nextToLast);
       // last object
-      else if (counter == size - 1) retVal &= (methodEnum.nextElement()).equals(last);
-      else methodEnum.nextElement();
+      else if (counter == size - 1) retVal &= methodEnum.next().equals(last);
+      else methodEnum.next();
       counter++;
     }
     return retVal;
@@ -80,21 +88,14 @@ public class LRUQueueTest {
    * up a sample queue) and verifying if the correct exception is raised
    */
   @Test
-  public void testPushNull() {
-    LRUQueue<Object> methodLRUQueue = this.createSampleQueue(sampleElemsNumber);
-    try {
-      methodLRUQueue.push(null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
-    }
-
-    try {
-      methodLRUQueue.pushLeast(null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
-    }
+  void push_whenNull_expectNullPointerException() {
+    // Arrange
+    LRUQueue<Object> q = this.createSampleQueue(SAMPLE_ELEMS_NUMBER);
+    // Act + Assert
+    NullPointerException ex1 = assertThrows(NullPointerException.class, () -> q.push(null));
+    assertNotNull(ex1);
+    NullPointerException ex2 = assertThrows(NullPointerException.class, () -> q.pushLeast(null));
+    assertNotNull(ex2);
   }
 
   /**
@@ -102,28 +103,28 @@ public class LRUQueueTest {
    * object more than one time.
    */
   @Test
-  public void testPushSameObjTwice() {
-    LRUQueue<Object> methodLRUQueue = this.createSampleQueue(sampleElemsNumber);
+  void push_whenSameObjectTwice_movesToMostRecentWithoutDuplication() {
+    LRUQueue<Object> methodLRUQueue = this.createSampleQueue(SAMPLE_ELEMS_NUMBER);
     Object[] sampleObj = {new Object(), new Object()};
 
     methodLRUQueue.push(sampleObj[0]);
     methodLRUQueue.push(sampleObj[1]);
 
     // check size
-    assertEquals(sampleElemsNumber + 2, methodLRUQueue.size());
+    assertEquals(SAMPLE_ELEMS_NUMBER + 2, methodLRUQueue.size());
     // check order
     assertTrue(verifyLastElemsOrder(methodLRUQueue, sampleObj[0], sampleObj[1]));
 
     methodLRUQueue.push(sampleObj[0]);
     // check size
-    assertEquals(sampleElemsNumber + 2, methodLRUQueue.size());
+    assertEquals(SAMPLE_ELEMS_NUMBER + 2, methodLRUQueue.size());
     // check order
     assertTrue(verifyLastElemsOrder(methodLRUQueue, sampleObj[1], sampleObj[0]));
   }
 
   /** Tests {@link LRUQueue#pushLeast(Object)} method */
   @Test
-  public void testPushLeast() {
+  void pushLeast_whenCalled_placesAtLeastRecent_andMovesExistingToTail() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObj = {new Object(), new Object()};
 
@@ -145,14 +146,13 @@ public class LRUQueueTest {
    * correctly (in a FIFO manner) fetched and deleted
    */
   @Test
-  public void testPop() {
+  void pop_whenFilled_returnsLeastRecentThenNull() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object object : sampleObjects) methodLRUQueue.push(object);
     // getting objects
-    for (int i = 0; i < sampleObjects.length; i++)
-      assertEquals(sampleObjects[i], methodLRUQueue.pop());
+    for (Object sampleObject : sampleObjects) assertEquals(sampleObject, methodLRUQueue.pop());
     // the queue must be empty
     assertNull(methodLRUQueue.pop());
   }
@@ -162,8 +162,8 @@ public class LRUQueueTest {
    * when popping each object.
    */
   @Test
-  public void testSize() {
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+  void size_whenPushingAndPopping_tracksCount() {
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertEquals(0, methodLRUQueue.size());
     // pushing objects
@@ -184,10 +184,10 @@ public class LRUQueueTest {
    * checking the method return value, if the object is still contained and the queue size.
    */
   @Test
-  public void testRemove() {
+  void remove_whenPresent_removesAndReturnsTrue() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
+    for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
     // removing all objects in the opposite way used by pop() method
     for (int i = sampleObjects.length - 1; i >= 0; i--) {
       assertTrue(methodLRUQueue.remove(sampleObjects[i]));
@@ -201,14 +201,10 @@ public class LRUQueueTest {
    * setting up a sample queue.
    */
   @Test
-  public void testRemoveNull() {
-    LRUQueue<Object> methodLRUQueue = createSampleQueue(sampleElemsNumber);
-    try {
-      methodLRUQueue.remove(null);
-      fail("Expected Exception Error Not Thrown!");
-    } catch (NullPointerException anException) {
-      assertNotNull(anException);
-    }
+  void remove_whenNull_expectNullPointerException() {
+    LRUQueue<Object> q = createSampleQueue(SAMPLE_ELEMS_NUMBER);
+    NullPointerException ex = assertThrows(NullPointerException.class, () -> q.remove(null));
+    assertNotNull(ex);
   }
 
   /**
@@ -216,8 +212,8 @@ public class LRUQueueTest {
    * setting up a sample queue.
    */
   @Test
-  public void testRemoveNotPresent() {
-    LRUQueue<Object> methodLRUQueue = createSampleQueue(sampleElemsNumber);
+  void remove_whenNotPresent_returnsFalse() {
+    LRUQueue<Object> methodLRUQueue = createSampleQueue(SAMPLE_ELEMS_NUMBER);
     assertFalse(methodLRUQueue.remove(new Object()));
   }
 
@@ -226,25 +222,25 @@ public class LRUQueueTest {
    * setting up a sample queue. Then it search a present object.
    */
   @Test
-  public void testContains() {
-    LRUQueue<Object> methodLRUQueue = createSampleQueue(sampleElemsNumber);
+  void contains_whenPresentAndNotPresent_behavesAsExpected() {
+    LRUQueue<Object> methodLRUQueue = createSampleQueue(SAMPLE_ELEMS_NUMBER);
     assertFalse(methodLRUQueue.contains(new Object()));
     Object methodSampleObj = new Object();
     methodLRUQueue.push(methodSampleObj);
     assertTrue(methodLRUQueue.contains(methodSampleObj));
   }
 
-  /** Tests {@link LRUQueue#elements()} method verifying if the Enumeration provided is correct */
+  /** Tests {@link LRUQueue#elements()} method verifying if the iterator provided is correct */
   @Test
-  public void testElements() {
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+  void elements_whenFilled_yieldsLeastToMostRecentOrder() {
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
-    Enumeration<Object> methodEnumeration = methodLRUQueue.elements();
+    for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
+    Iterator<Object> methodEnumeration = methodLRUQueue.elements();
     int j = 0;
-    while (methodEnumeration.hasMoreElements()) {
-      assertEquals(sampleObjects[j], methodEnumeration.nextElement());
+    while (methodEnumeration.hasNext()) {
+      assertEquals(sampleObjects[j], methodEnumeration.next());
       j++;
     }
   }
@@ -254,45 +250,43 @@ public class LRUQueueTest {
    * that are put into the created LRUQueue
    */
   @Test
-  public void testToArray() {
+  void toArray_whenFilled_containsAllElementsInUnspecifiedOrder() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
 
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object object : sampleObjects) methodLRUQueue.push(object);
 
     Object[] resultingArray = methodLRUQueue.toArray();
 
     assertEquals(sampleObjects.length, resultingArray.length);
-    for (int i = 0; i < sampleObjects.length; i++)
-      assertTrue(isPresent(resultingArray, sampleObjects[i]));
+    for (Object sampleObject : sampleObjects) assertTrue(isPresent(resultingArray, sampleObject));
   }
 
   /** Tests {@link LRUQueue#toArray(Object[])} method */
   @Test
-  public void testToArray2() {
+  void toArray_withProvidedArrayExactSize_fillsArray() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
 
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object object : sampleObjects) methodLRUQueue.push(object);
 
     Object[] resultingArray = new Object[sampleObjects.length];
     methodLRUQueue.toArray(resultingArray);
 
     assertEquals(sampleObjects.length, resultingArray.length);
-    for (int i = 0; i < sampleObjects.length; i++)
-      assertTrue(isPresent(resultingArray, sampleObjects[i]));
+    for (Object sampleObject : sampleObjects) assertTrue(isPresent(resultingArray, sampleObject));
   }
 
   /** Tests {@link LRUQueue#toArrayOrdered()} method */
   @Test
-  public void testToArrayOrdered() {
+  void toArrayOrdered_whenFilled_returnsLeastToMostRecent() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
 
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
 
     Object[] resultingArray = methodLRUQueue.toArrayOrdered();
 
@@ -303,12 +297,12 @@ public class LRUQueueTest {
 
   /** Tests <code>toArrayOrdered(Object[])</code> method */
   @Test
-  public void testToArrayOrdered2() {
+  void toArrayOrdered_withProvidedArrayExactSize_fillsInOrder() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
-    Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
+    Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
 
     // pushing objects
-    for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
+    for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
 
     Object[] resultingArray = new Object[sampleObjects.length];
     methodLRUQueue.toArrayOrdered(resultingArray);
@@ -320,20 +314,105 @@ public class LRUQueueTest {
 
   /** Tests toArray() method when the queue is empty */
   @Test
-  public void testToArrayEmptyQueue() {
+  void toArray_whenEmpty_returnsEmptyArray() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertEquals(0, methodLRUQueue.toArray().length);
   }
 
   /** Tests isEmpty() method trying it with an empty queue and then with a sample queue. */
   @Test
-  public void testIsEmpty() {
+  void isEmpty_whenEmptyFilledEmptied_behavesAsExpected() {
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertTrue(methodLRUQueue.isEmpty());
-    methodLRUQueue = createSampleQueue(sampleElemsNumber);
+    methodLRUQueue = createSampleQueue(SAMPLE_ELEMS_NUMBER);
     assertFalse(methodLRUQueue.isEmpty());
     // emptying the queue...
-    for (int i = 0; i < sampleElemsNumber; i++) methodLRUQueue.pop();
+    for (int i = 0; i < SAMPLE_ELEMS_NUMBER; i++) methodLRUQueue.pop();
     assertTrue(methodLRUQueue.isEmpty());
+  }
+
+  // === Additional edge-case and API coverage tests ===
+
+  @Test
+  void contains_whenNull_expectFalse() {
+    // Arrange
+    LRUQueue<Object> q = new LRUQueue<>();
+    // Act + Assert
+    assertFalse(q.contains(null));
+    q.push("x");
+    assertFalse(q.contains(null));
+  }
+
+  @Test
+  void clear_whenNotEmpty_expectEmptyAndSizeZero() {
+    // Arrange
+    LRUQueue<Object> q = createSampleQueue(3);
+    assertFalse(q.isEmpty());
+    assertEquals(3, q.size());
+    // Act
+    q.clear();
+    // Assert
+    assertTrue(q.isEmpty());
+    assertEquals(0, q.size());
+    assertNull(q.pop());
+  }
+
+  @Test
+  void get_whenEqualKeyDifferentInstance_returnsStoredReference() {
+    // Arrange
+    LRUQueue<String> q = new LRUQueue<>();
+    String stored = "key1";
+    q.push(stored);
+    // Act
+    String result = q.get("key1");
+    // Assert
+    assertNotNull(result);
+    assertSame(stored, result, "Expected the same reference stored in the queue");
+  }
+
+  @Test
+  void toArrayOrdered_whenArrayTooSmall_allocatesNewAndPreservesOrder() {
+    // Arrange
+    LRUQueue<String> q = new LRUQueue<>();
+    q.push("c");
+    q.push("b");
+    q.push("a"); // LRU order: c, b, a
+    String[] small = new String[0];
+    // Act
+    String[] out = q.toArrayOrdered(small);
+    // Assert
+    assertEquals(3, out.length);
+    assertArrayEquals(new String[] {"c", "b", "a"}, out);
+  }
+
+  @Test
+  void toArrayOrdered_whenArrayLargerThanSize_throwsIllegalStateException() {
+    // Arrange
+    LRUQueue<String> q = new LRUQueue<>();
+    q.push("y");
+    q.push("x"); // size = 2
+    String[] tooLarge = new String[3];
+    // Act + Assert
+    assertThrows(IllegalStateException.class, () -> q.toArrayOrdered(tooLarge));
+  }
+
+  @Test
+  void toArrayOrdered_whenWrongComponentType_throwsArrayStoreException() {
+    // Arrange
+    LRUQueue<String> q = new LRUQueue<>();
+    q.push("b");
+    q.push("a");
+    Integer[] wrongType = new Integer[2];
+    // Act + Assert
+    assertThrows(ArrayStoreException.class, () -> q.toArrayOrdered(wrongType));
+  }
+
+  @Test
+  void elements_whenEmpty_hasNoElements() {
+    // Arrange
+    LRUQueue<Object> q = new LRUQueue<>();
+    Iterator<Object> e = q.elements();
+    // Assert
+    assertFalse(e.hasNext());
   }
 }

@@ -1,33 +1,55 @@
 package network.crypta.node;
 
 import java.text.DecimalFormat;
-import java.text.FieldPosition;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.math.TrivialRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/** A record of stats during a single hour */
+/**
+ * Aggregates request statistics for a single wall-clock hour.
+ *
+ * <p>This class records outcomes for accepted remote requests grouped in two complementary
+ * dimensions:
+ *
+ * <ul>
+ *   <li>By HTL (hop-to-live) — the array {@code byHTL} stores per-HTL running statistics where the
+ *       measured value is the logarithm base-2 of the routing distance ({@code log2(dist)}).
+ *   <li>By logarithmic routing distance — the array {@code byDist} stores per-distance-bucket
+ *       statistics where the measured value is the HTL observed for that request.
+ * </ul>
+ *
+ * <p>Thread-safety: mutations and string rendering use synchronization on {@code this}. Callers may
+ * invoke {@link #remoteRequest(boolean, boolean, boolean, int, double)} concurrently; the internal
+ * state is protected. Call {@link #markFinal()} to indicate that no more updates should be recorded
+ * for the hour.
+ */
 public class HourlyStatsRecord {
+  private static final Logger LOG = LoggerFactory.getLogger(HourlyStatsRecord.class);
+
+  /** Number of logarithmic distance buckets (0 is closest). */
   private static final int N_DISTANCE_GROUPS = 16;
+
   private final boolean completeHour;
   private boolean finishedReporting;
 
-  /** (Logarithmic) routing distances grouped by HTL */
+  /** Statistics bucketed by HTL; values are {@code log2(distance)}. */
   private final StatsLine[] byHTL;
 
-  /** HTL grouped by (logarithmic) routing distance */
+  /** Statistics bucketed by {@code log2(distance)}; values are HTL. */
   private final StatsLine[] byDist;
 
-  private final Date beginTime;
+  private final Instant beginTime;
   private final Node node;
 
   /**
-   * Public constructor.
+   * Creates a new per-hour aggregator starting at the current time (UTC).
    *
-   * @param completeHour Whether this record began at the start of the hour
+   * @param node Node that provides {@link Node#maxHTL()} and the local routing location.
+   * @param completeHour whether this record starts at the hour boundary; affects only reporting.
    */
   public HourlyStatsRecord(Node node, boolean completeHour) {
     this.node = node;
@@ -38,22 +60,34 @@ public class HourlyStatsRecord {
     byDist = new StatsLine[N_DISTANCE_GROUPS];
     for (int i = 0; i < byDist.length; i++) byDist[i] = new StatsLine();
 
-    beginTime = new Date();
+    beginTime = Instant.now();
   }
 
-  /** Mark this record as complete and stop recording. */
+  /**
+   * Marks the record as complete so no additional observations are accepted.
+   *
+   * <p>Thread-safety: synchronized on {@code this}.
+   */
   public synchronized void markFinal() {
     finishedReporting = true;
   }
 
   /**
-   * Report an incoming accepted remote request.
+   * Records an accepted remote request and updates running statistics.
    *
-   * @param ssk Whether the request was an ssk
-   * @param success Whether the request succeeded
-   * @param local If the request succeeded, whether it succeeded locally
-   * @param htl The htl counter the request had when it arrived
-   * @param location The routing location of the request
+   * <p>The routing distance is computed as the circular location difference in {@code [0,1]}; its
+   * base-2 logarithm ({@code log2(distance)}) is recorded for HTL buckets. For distance buckets,
+   * the HTL value is recorded instead. Very small distances are clamped to {@link Double#MIN_VALUE}
+   * to avoid {@code -Infinity} in {@code log2}.
+   *
+   * @param ssk whether the request type is SSK ({@code true}) or CHK ({@code false})
+   * @param success whether the request succeeded
+   * @param local when {@code success} is {@code true}, whether the success was local
+   * @param htl the observed HTL when the request arrived; negative values are rejected
+   * @param location the request's routing location in {@code [0,1]}
+   * @throws IllegalStateException if the record is marked final
+   * @throws IllegalArgumentException if {@code htl < 0} or {@code location} is outside {@code
+   *     [0,1]}
    */
   public synchronized void remoteRequest(
       boolean ssk, boolean success, boolean local, int htl, double location) {
@@ -62,81 +96,82 @@ public class HourlyStatsRecord {
     if (htl < 0) throw new IllegalArgumentException("Invalid HTL.");
     if (location < 0 || location > 1) throw new IllegalArgumentException("Invalid location.");
     htl = Math.min(htl, node.maxHTL());
-    double rawDist = Location.distance(node.getLocation(), location);
+    double rawDist = Location.distance(node.network().location(), location);
+    // Avoid -Infinity when taking log2(distance) for identical locations.
     if (rawDist <= 0.0) rawDist = Double.MIN_VALUE;
     double logDist = Math.log(rawDist) / Math.log(2.0);
+    // Upper bound: distance in (0, 1] → log2(distance) ≤ 0; epsilon accounts for MIN_NORMAL.
     assert logDist < (-1.0 + 0x1.0p-1022 /* Double.MIN_NORMAL */);
     int distBucket = ((int) Math.floor(-1 * logDist));
     if (distBucket >= byDist.length) distBucket = byDist.length - 1;
 
+    // Record location difference (log2)
     if (ssk) {
       byHTL[htl].locDiffSSK.report(logDist);
     } else {
       byHTL[htl].locDiffCHK.report(logDist);
     }
 
+    StatsLine htlLine = byHTL[htl];
+    StatsLine distLine = byDist[distBucket];
+
     if (success) {
-      if (ssk) {
-        if (local) {
-          byHTL[htl].sskLocalSuccess.report(logDist);
-          byDist[distBucket].sskLocalSuccess.report(htl);
-        } else {
-          byHTL[htl].sskRemoteSuccess.report(logDist);
-          byDist[distBucket].sskRemoteSuccess.report(htl);
-        }
-      } else {
-        if (local) {
-          byHTL[htl].chkLocalSuccess.report(logDist);
-          byDist[distBucket].chkLocalSuccess.report(htl);
-        } else {
-          byHTL[htl].chkRemoteSuccess.report(logDist);
-          byDist[distBucket].chkRemoteSuccess.report(htl);
-        }
-      }
+      reportSuccess(ssk, local, htlLine, distLine, logDist, htl);
     } else {
-      if (ssk) {
-        byHTL[htl].sskFailure.report(logDist);
-        byDist[distBucket].sskFailure.report(htl);
-      } else {
-        byHTL[htl].chkFailure.report(logDist);
-        byDist[distBucket].chkFailure.report(htl);
-      }
+      reportFailure(ssk, htlLine, distLine, logDist, htl);
     }
   }
 
+  /** Emits a multi-line summary at INFO level using {@link #toString()}. */
   public void log() {
-    Logger.normal(this, toString());
+    LOG.atInfo().log(this::toString);
   }
 
-  private static final SimpleDateFormat utcDateTime;
+  private static final DateTimeFormatter UTC_DATE_TIME =
+      DateTimeFormatter.ofPattern("yyyyMMdd HH:mm:ss.SSS").withZone(ZoneOffset.UTC);
 
-  static {
-    utcDateTime = new SimpleDateFormat("yyyyMMdd HH:mm:ss.SSS");
-    utcDateTime.setTimeZone(TimeZone.getTimeZone("UTC"));
-  }
-
+  // Formatting helpers for tables and summaries.
   private static final DecimalFormat fix3p3pct = new DecimalFormat("##0.000%");
   private static final DecimalFormat fix4p = new DecimalFormat("#.0000");
 
-  private static double fixNaN(double d) {
-    if (Double.isNaN(d)) return 0.;
-    return d;
-  }
-
+  /**
+   * Returns a human-readable, multi-line snapshot of the current statistics.
+   *
+   * <p>Layout:
+   *
+   * <ul>
+   *   <li>Header with hour start (UTC), node uptime in milliseconds, build number, and flags
+   *       indicating whether the hour is complete and whether reporting is finished.
+   *   <li>One row per HTL bucket: counts and running averages of {@code log2(distance)} as returned
+   *       by {@link StatsLine#toString()}.
+   *   <li>One row per logarithmic distance bucket: counts and running averages of HTL as returned
+   *       by {@link StatsLine#toString()}.
+   * </ul>
+   */
   @Override
   public synchronized String toString() {
     StringBuilder s = new StringBuilder();
-    s.append("HourlyStats: Report for hour beginning with UTC ");
-    s.append(utcDateTime.format(beginTime, new StringBuffer(), new FieldPosition(0))).append("\n");
-    s.append("HourlyStats: Node uptime (ms):\t").append(node.getUptime()).append("\n");
-    s.append("HourlyStats: build:\t").append(Version.currentBuildNumber()).append("\n");
-    s.append("HourlyStats: CompleteHour: ").append(completeHour);
-    s.append("\tFinished: ").append(finishedReporting).append("\n");
+    s.append("HourlyStats: hour start (UTC) ");
+    s.append(UTC_DATE_TIME.format(beginTime)).append("\n");
+    s.append("HourlyStats: node uptime (ms)\t").append(node.network().uptime()).append("\n");
+    s.append("HourlyStats: build number\t").append(Version.currentBuildNumber()).append("\n");
+    s.append("HourlyStats: completeHour\t").append(completeHour);
+    s.append("\tfinished\t").append(finishedReporting).append("\n");
 
+    // Column guide for HTL-bucket rows: counts then averages of log2(distance).
+    s.append(
+        "HourlyStats: HTL columns\tCHK_local\tCHK_remote\tCHK_fail\tSSK_local\tSSK_remote\tSSK_fail"
+            + "\tavg_CHK_local_log2dist\tavg_CHK_remote_log2dist\tavg_CHK_fail_log2dist"
+            + "\tavg_SSK_local_log2dist\tavg_SSK_remote_log2dist\tavg_SSK_fail_log2dist\n");
     for (int i = byHTL.length - 1; i >= 0; i--) {
       s.append("HourlyStats: HTL\t").append(i).append("\t");
       s.append(byHTL[i].toString()).append("\n");
     }
+    // Column guide for distance-bucket rows: counts then averages of HTL.
+    s.append(
+        "HourlyStats: logDist columns\tCHK_local\tCHK_remote\tCHK_fail\tSSK_local\tSSK_remote"
+            + "\tSSK_fail\tavg_CHK_local_HTL\tavg_CHK_remote_HTL\tavg_CHK_fail_HTL"
+            + "\tavg_SSK_local_HTL\tavg_SSK_remote_HTL\tavg_SSK_fail_HTL\n");
     for (int i = 0; i < byDist.length; i++) {
       s.append("HourlyStats: logDist\t").append(i).append("\t");
       s.append(byDist[i].toString()).append("\n");
@@ -144,6 +179,48 @@ public class HourlyStatsRecord {
     return s.toString();
   }
 
+  private static void reportSuccess(
+      boolean ssk, boolean local, StatsLine htlLine, StatsLine distLine, double logDist, int htl) {
+    TrivialRunningAverage htlAvg;
+    if (ssk) {
+      htlAvg = local ? htlLine.sskLocalSuccess : htlLine.sskRemoteSuccess;
+    } else {
+      htlAvg = local ? htlLine.chkLocalSuccess : htlLine.chkRemoteSuccess;
+    }
+
+    TrivialRunningAverage distAvg;
+    if (ssk) {
+      distAvg = local ? distLine.sskLocalSuccess : distLine.sskRemoteSuccess;
+    } else {
+      distAvg = local ? distLine.chkLocalSuccess : distLine.chkRemoteSuccess;
+    }
+    htlAvg.report(logDist);
+    distAvg.report(htl);
+  }
+
+  private static void reportFailure(
+      boolean ssk, StatsLine htlLine, StatsLine distLine, double logDist, int htl) {
+    if (ssk) {
+      htlLine.sskFailure.report(logDist);
+      distLine.sskFailure.report(htl);
+    } else {
+      htlLine.chkFailure.report(logDist);
+      distLine.chkFailure.report(htl);
+    }
+  }
+
+  /**
+   * Appends a summary table of remote request outcomes grouped by HTL into the provided HTML node.
+   *
+   * <p>Each data row includes, per HTL, the CHK and SSK success rates (in percent with three
+   * decimals), the tuple {@code (localSuccess,remoteSuccess,total)}, and the geometric mean
+   * distance multiplier {@code 2^(avg log2(distance))}. The last row aggregates totals across all
+   * HTLs. Callers must provide a valid parent {@link HTMLNode} to receive the table.
+   *
+   * <p>Thread-safety: reads are performed under {@code synchronized(this)} to snapshot values.
+   *
+   * @param html parent element to which the {@code table} is added; must not be {@code null}
+   */
   public void fillRemoteRequestHTLsBox(HTMLNode html) {
     HTMLNode table = html.addChild("table");
     HTMLNode row = table.addChild("tr");
@@ -171,6 +248,7 @@ public class HourlyStatsRecord {
         int sskF = (int) line.sskFailure.countReports();
         int sskT = sskLS + sskRS + sskF;
 
+        // Convert avg log2(distance) back to multiplicative distance for display.
         double locdiffCHK = line.locDiffCHK.currentValue();
         locdiffCHK = Math.pow(2.0, locdiffCHK);
         double locdiffSSK = line.locDiffSSK.currentValue();
@@ -178,8 +256,8 @@ public class HourlyStatsRecord {
 
         double chkRate = 0.;
         double sskRate = 0.;
-        if (chkT > 0) chkRate = ((double) (chkLS + chkRS)) / (chkT);
-        if (sskT > 0) sskRate = ((double) (sskLS + sskRS)) / (sskT);
+        if (chkT > 0) chkRate = ((double) (chkLS + chkRS)) / chkT;
+        if (sskT > 0) sskRate = ((double) (sskLS + sskRS)) / sskT;
 
         row.addChild(
             "td",
@@ -251,7 +329,8 @@ public class HourlyStatsRecord {
     }
   }
 
-  private class StatsLine {
+  /** Aggregates counts and running averages for one dimension/bucket. */
+  private static class StatsLine {
     TrivialRunningAverage chkLocalSuccess;
     TrivialRunningAverage chkRemoteSuccess;
     TrivialRunningAverage chkFailure;
@@ -274,7 +353,7 @@ public class HourlyStatsRecord {
 
     @Override
     public String toString() {
-
+      // Tab-separated output: 6 counts followed by 6 running averages.
       return chkLocalSuccess.countReports()
           + "\t"
           + chkRemoteSuccess.countReports()
@@ -299,6 +378,12 @@ public class HourlyStatsRecord {
           + "\t"
           + fix4p.format(fixNaN(sskFailure.currentValue()))
           + "\t";
+    }
+
+    /** Returns {@code 0.0} for {@code NaN} to keep summaries readable. */
+    private static double fixNaN(double d) {
+      if (Double.isNaN(d)) return 0.0;
+      return d;
     }
   }
 }

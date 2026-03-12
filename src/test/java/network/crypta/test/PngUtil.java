@@ -1,7 +1,5 @@
 package network.crypta.test;
 
-import static java.util.Collections.emptyList;
-
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
@@ -16,6 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.zip.CRC32;
+
+import static java.util.Collections.emptyList;
 
 /**
  * Utility class for creating PNG files for tests.
@@ -80,12 +80,12 @@ public class PngUtil {
           dataInputStream.readFully(data);
           int crc = dataInputStream.readInt();
           chunks.add(new Chunk(new String(type, StandardCharsets.UTF_8), data, crc));
-        } catch (EOFException e) {
+        } catch (EOFException _) {
           break;
         }
       }
     }
-    return chunks;
+    return List.copyOf(chunks);
   }
 
   /**
@@ -183,10 +183,9 @@ public class PngUtil {
 
     @Override
     public boolean equals(Object o) {
-      if (!(o instanceof Chunk)) {
+      if (!(o instanceof Chunk chunk)) {
         return false;
       }
-      Chunk chunk = (Chunk) o;
       return crc == chunk.crc
           && Objects.equals(type, chunk.type)
           && Objects.deepEquals(data, chunk.data);

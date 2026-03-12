@@ -1,75 +1,218 @@
 package network.crypta.io;
 
-import static org.junit.Assert.*;
-
 import java.net.InetAddress;
-import org.junit.Test;
+import java.net.UnknownHostException;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Test case for the {@link Inet6AddressMatcher} class. Contains some very basic tests. Feel free to
- * add more complicated tests!
+ * Tests for {@link Inet6AddressMatcher} covering parsing, matching, and representation.
  *
- * @author David Roden &lt;droden@gmail.com&gt;
- * @version $Id: Inet6AddressMatcherTest.java 10490 2006-09-20 00:07:46Z toad $
+ * <p>Uses AAA style and parameterized inputs to exercise edge cases deterministically.
  */
-public class Inet6AddressMatcherTest {
+@SuppressWarnings("java:S100") // Allow method_whenCondition_expectOutcome names
+class Inet6AddressMatcherTest {
 
   @Test
-  public void test() throws Exception {
-    Inet6AddressMatcher matcher = new Inet6AddressMatcher("0:0:0:0:0:0:0:0/0");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:203:dff:fe22:420f")));
+  void getAddressType_whenCalled_returnsIPv6() {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("::/0");
 
-    matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/64");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:203:dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0203:0dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0204:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe81:0:0:0:0203:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("0:0:0:0:0:0:0:1")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0:0:0:1")));
+    // Act
+    AddressIdentifier.AddressType type = matcher.getAddressType();
 
-    matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/ffff:ffff:ffff:ffff:0:0:0:0");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:203:dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0203:0dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0204:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe81:0:0:0:0203:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("0:0:0:0:0:0:0:1")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0:0:0:1")));
+    // Assert
+    assertEquals(AddressIdentifier.AddressType.IPV6, type);
+  }
 
-    matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/128");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:203:dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0203:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe80:0:0:0:0204:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe81:0:0:0:0203:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("0:0:0:0:0:0:0:1")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe80:0:0:0:0:0:0:1")));
+  @Test
+  void matches_whenZeroPrefix_acceptsAnyIPv6() throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("::/0");
 
-    matcher = new Inet6AddressMatcher("::/0");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80::203:dff:fe22:420f")));
+    // Act & Assert
+    assertTrue(matcher.matches(addr("fe80::203:dff:fe22:420f")));
+    assertTrue(matcher.matches(addr("::1")));
+  }
 
-    matcher = new Inet6AddressMatcher("fe80::/64");
-    assertTrue(matcher.matches(InetAddress.getByName("fe80::203:dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe80:203::dff:fe22:420f")));
+  @ParameterizedTest
+  @MethodSource("validAddressesForPrefix64")
+  @DisplayName("matches: /64 should accept addresses sharing first 64 bits")
+  void matches_whenPrefix64_sameFirst64Bits_matches(String candidate) throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/64");
 
-    matcher = new Inet6AddressMatcher("1::fe80/64");
-    assertFalse(matcher.matches(InetAddress.getByName("::")));
-    assertFalse(matcher.matches(InetAddress.getByName("1::2:3:4:5:6:7")));
-    assertFalse(matcher.matches(InetAddress.getByName("1::2:3:4:5:6")));
-    assertTrue(matcher.matches(InetAddress.getByName("1::2:3:4:5")));
-    assertTrue(matcher.matches(InetAddress.getByName("1::2:3:4")));
-    assertTrue(matcher.matches(InetAddress.getByName("1::2:3")));
-    assertTrue(matcher.matches(InetAddress.getByName("1::2")));
-    assertTrue(matcher.matches(InetAddress.getByName("1::")));
-    assertFalse(matcher.matches(InetAddress.getByName("1:2::3:4:5:6:7")));
+    // Act
+    boolean result = matcher.matches(addr(candidate));
 
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher("192.168.1.1"));
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher("1::2::3"));
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher("::1::2"));
-    assertThrows(
-        IllegalArgumentException.class, () -> new Inet6AddressMatcher("::1:2:3:4:5:6:7:8"));
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher(":1:2:3:4:5:6:7"));
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher("1:2:3:4:5:6:7:"));
-    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher("123456::789abcde"));
-    assertTrue(Inet6AddressMatcher.matches("::1", InetAddress.getByName("::1")));
-    assertTrue(Inet6AddressMatcher.matches("fe80::", InetAddress.getByName("fe80::")));
+    // Assert
+    assertTrue(result);
+  }
+
+  static Stream<String> validAddressesForPrefix64() {
+    return Stream.of(
+        "fe80:0:0:0:203:dff:fe22:420f",
+        "fe80:0:0:0:0203:0dff:fe22:420f",
+        // different 5th hextet is still allowed for /64
+        "fe80:0:0:0:0204:0dff:fe22:420f",
+        // any tail is fine when first four hextets match
+        "fe80:0:0:0:0:0:0:1");
+  }
+
+  @ParameterizedTest
+  @MethodSource("nonMatchingForPrefix64")
+  @DisplayName("matches: /64 should reject different first 64 bits")
+  void matches_whenPrefix64_differentFirst64Bits_rejects(String candidate) throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/64");
+
+    // Act
+    boolean result = matcher.matches(addr(candidate));
+
+    // Assert
+    assertFalse(result);
+  }
+
+  static Stream<String> nonMatchingForPrefix64() {
+    return Stream.of(
+        // first hextet differs
+        "fe81:0:0:0:0203:0dff:fe22:420f",
+        // entirely different network
+        "0:0:0:0:0:0:0:1");
+  }
+
+  @Test
+  void matches_whenPrefix128_requiresExactMatch() throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/128");
+
+    // Act & Assert
+    assertTrue(matcher.matches(addr("fe80:0:0:0:203:dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe80:0:0:0:0204:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe81:0:0:0:0203:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("0:0:0:0:0:0:0:1")));
+    assertFalse(matcher.matches(addr("fe80:0:0:0:0:0:0:1")));
+  }
+
+  @Test
+  void matches_whenStringNetmask_equivalentToPrefix64() throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher =
+        new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/ffff:ffff:ffff:ffff:0:0:0:0");
+
+    // Act & Assert
+    assertTrue(matcher.matches(addr("fe80:0:0:0:0203:0dff:fe22:420f")));
+    assertTrue(matcher.matches(addr("fe80:0:0:0:0204:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe81:0:0:0:0203:0dff:fe22:420f")));
+  }
+
+  @Test
+  void matches_whenAddressIsIPv4_returnsFalse() throws Exception {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher("::/0");
+
+    // Act
+    boolean result = matcher.matches(addr("127.0.0.1"));
+
+    // Assert
+    assertFalse(result, "IPv4 addresses must not match an IPv6 matcher");
+  }
+
+  @Test
+  void staticMatches_whenPatternAndAddressMatch_returnsTrue() throws Exception {
+    // Arrange
+    InetAddress loopback6 = addr("::1");
+    InetAddress linkLocal = addr("fe80::");
+
+    // Act & Assert
+    assertTrue(Inet6AddressMatcher.matches("::1", loopback6));
+    assertTrue(Inet6AddressMatcher.matches("fe80::", linkLocal));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidPatterns")
+  void constructor_whenInvalidPattern_throws(String pattern) {
+    // Arrange + Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher(pattern));
+  }
+
+  static Stream<String> invalidPatterns() {
+    return Stream.of(
+        // not IPv6
+        "192.168.1.1",
+        // duplicate '::'
+        "1::2::3",
+        "::1::2",
+        // too many hextets
+        "::1:2:3:4:5:6:7:8",
+        // single leading or trailing colon
+        ":1:2:3:4:5:6:7",
+        "1:2:3:4:5:6:7:",
+        // out of range token
+        "123456::789abcde",
+        // triple colon
+        ":::1",
+        // percent scope id is not supported here
+        "fe80::1%1",
+        // invalid hex in string netmask
+        "fe80::/ffff:ffff:ffff:ffff:ffff:ffff:ffff:gggg");
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidBitMasks")
+  void constructor_whenBitMaskOutOfRange_throws(String pattern) {
+    // Arrange + Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> new Inet6AddressMatcher(pattern));
+  }
+
+  static Stream<String> invalidBitMasks() {
+    return Stream.of("::/-1", "::/129");
+  }
+
+  @Test
+  void constructor_whenValidFull8Hextets_parsesSuccessfully() throws Exception {
+    // Arrange
+    String addr = "1:2:3:4:5:6:7:8";
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher(addr);
+
+    // Act & Assert
+    assertTrue(matcher.matches(addr(addr)));
+  }
+
+  @ParameterizedTest
+  @MethodSource("humanRepresentationCases")
+  void getHumanRepresentation_whenValidPatterns_expectCanonicalForm(
+      String pattern, String expected) {
+    // Arrange
+    Inet6AddressMatcher matcher = new Inet6AddressMatcher(pattern);
+
+    // Act
+    String text = matcher.getHumanRepresentation();
+
+    // Assert
+    assertEquals(expected, text);
+  }
+
+  static Stream<Arguments> humanRepresentationCases() {
+    return Stream.of(
+        // /128 collapses to address only
+        Arguments.of("fe80:0:0:0:203:dff:fe22:420f/128", "fe80:0:0:0:203:dff:fe22:420f"),
+        // /0 shows address + netmask string
+        Arguments.of("::/0", "0:0:0:0:0:0:0:0/0:0:0:0:0:0:0:0"),
+        // Uppercase input canonicalizes to lowercase expanded
+        Arguments.of("FE80:0:0:0:0203:0DFF:FE22:420F", "fe80:0:0:0:203:dff:fe22:420f"));
+  }
+
+  private static InetAddress addr(String literal) throws UnknownHostException {
+    return InetAddress.getAllByName(literal)[0];
   }
 }

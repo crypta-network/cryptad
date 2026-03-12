@@ -9,47 +9,78 @@ import network.crypta.node.probe.Type;
 import network.crypta.support.SimpleFieldSet;
 
 /**
- * FCP Message which is received from a client and requests a network probe of a specific type.
+ * Represents an inbound FCP request that initiates a network probe and delivers results back to the
+ * client.
+ *
+ * <p>This message is created from a parsed {@link SimpleFieldSet} and validates the probe type and
+ * optional hop budget before execution. Callers typically obtain it through the FCP dispatch layer
+ * and then invoke {@link #run(FCPConnectionHandler, Node)} to start the probe asynchronously. The
+ * request retains the identifier, type, and hop budget as immutable state; it is not intended to be
+ * reused across unrelated client sessions. A {@code null} identifier is supported and results in
+ * response messages that omit the {@code Identifier} field.
+ *
+ * <p>Execution requires full-access credentials. When authorized, {@link #run(FCPConnectionHandler,
+ * Node)} constructs a {@link Listener} that adapts probe callbacks into concrete {@link FCPMessage}
+ * responses, and delegates to {@code node.network().startProbe(...)}. The method does not block for
+ * completion; responses arrive asynchronously via the handler.
  *
  * <ul>
- *   <li>Identifier: Optional; identifier to match probe request with results.
- *   <li>type: Mandatory; denotes the desired response type. Valid values are:
- *       <ul>
- *         <li>BANDWIDTH - returns outgoing bandwidth limit in KiB per second.
- *         <li>BUILD - returns Freenet build / main version.
- *         <li>IDENTIFIER - returns identifier and integer 7-day uptime percentage.
- *         <li>LINK_LENGTHS - returns link lengths between the endpoint and its connected peers.
- *         <li>LOCATION - returns the endpoint's location.
- *         <li>REJECT_STATS - returns CHK and SSK reject percentage for bulk inserts and bulk
- *             requests.
- *         <li>STORE_SIZE - returns store size in GiB.
- *         <li>UPTIME_48H - returns 48-hour uptime percentage.
- *         <li>UPTIME_7D - returns 7-day uptime percentage.
- *       </ul>
- *   <li>hopsToLive: Optional; approximately how many hops the probe will take before possibly
- *       returning a result. Valid values are [1, Probe.MAX_HTL]. If omitted Probe.MAX_HTL is used.
+ *   <li><strong>Responsibilities:</strong> validate fields, enforce access, and bridge callbacks.
+ *   <li><strong>Notable behaviors:</strong> defaults {@code HopsToLive} to {@link Probe#MAX_HTL}
+ *       and rejects negative values.
+ *   <li><strong>Thread-safety:</strong> immutable after construction; no internal synchronization.
  * </ul>
+ *
+ * @see Probe
+ * @see Type
+ * @see Listener
+ * @see FCPConnectionHandler
  */
-public class ProbeRequest extends FCPMessage {
+public final class ProbeRequest extends FCPMessage {
+
+  /**
+   * Wire-level message name used for serialization and protocol dispatch.
+   *
+   * <p>The value is a stable, human-readable token that must stay consistent with the FCP protocol
+   * identifier clients send on the wire. Keeping it constant preserves interoperability and ensures
+   * the {@link FCPMessage} factory can resolve this request type reliably.
+   */
   public static final String NAME = "ProbeRequest";
 
-  private final String identifier;
-  private final Type type;
-  private final byte htl;
+  private final String requestIdentifier;
+  private final Type probeType;
+  private final byte hopsToLive;
 
+  /**
+   * Parses a probe request from the provided field set and validates required fields.
+   *
+   * <p>The constructor reads the optional {@code Identifier}, the mandatory {@code Type}, and an
+   * optional {@code HopsToLive} value. When the hop budget is missing, it defaults to {@link
+   * Probe#MAX_HTL}; negative values are rejected. Any parsing or validation failure results in a
+   * {@link MessageInvalidException} with {@link ProtocolErrorMessage#INVALID_MESSAGE}, which the
+   * caller should translate into an FCP protocol error response.
+   *
+   * <pre>{@code
+   * SimpleFieldSet fields = ...;
+   * ProbeRequest request = new ProbeRequest(fields);
+   * }</pre>
+   *
+   * @param fs parsed field set containing Identifier, Type, and optional HopsToLive.
+   * @throws MessageInvalidException if the type is invalid or hopsToLive cannot be parsed.
+   */
   public ProbeRequest(SimpleFieldSet fs) throws MessageInvalidException {
     /* If not defined in the field set Identifier will be null. As adding a null value to the field set does
      * not actually add something under the key, it will also be omitted in the response messages.
      */
-    this.identifier = fs.get(IDENTIFIER);
+    this.requestIdentifier = fs.get(IDENTIFIER);
 
     try {
-      this.type = Type.valueOf(fs.get(TYPE));
+      this.probeType = Type.valueOf(fs.get(TYPE));
 
       // If HTL is not specified default to MAX_HTL.
-      this.htl = fs.get(HTL) == null ? Probe.MAX_HTL : fs.getByte(HTL);
+      this.hopsToLive = fs.get(HTL) == null ? Probe.MAX_HTL : fs.getByte(HTL);
 
-      if (this.htl < 0) {
+      if (this.hopsToLive < 0) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_MESSAGE, "hopsToLive cannot be negative.", null, false);
       }
@@ -70,73 +101,111 @@ public class ProbeRequest extends FCPMessage {
     }
   }
 
+  /**
+   * Returns an empty field set for outbound serialization of this request.
+   *
+   * <p>Probe requests are primarily consumed inbound, and this implementation does not serialize
+   * the parsed fields back onto the wire. Each invocation allocates a new {@link SimpleFieldSet}
+   * marked short-lived, leaving the caller free to mutate it if required by higher-level framing.
+   * The returned instance intentionally omits the identifier, type, and hop budget captured at
+   * construction time.
+   *
+   * @return new empty, mutable field set owned by the caller.
+   */
   @Override
   public SimpleFieldSet getFieldSet() {
     return new SimpleFieldSet(true);
   }
 
+  /**
+   * Returns the protocol name token that identifies this request on the wire.
+   *
+   * <p>The name is constant and matches the identifier expected by FCP clients. It is used when
+   * serializing outbound messages and when routing inbound messages to this implementation. The
+   * method is side-effect free and performs no allocation beyond returning the constant string.
+   *
+   * @return stable protocol name token, never null, matching {@link #NAME}.
+   */
   @Override
   public String getName() {
     return NAME;
   }
 
+  /**
+   * Starts the probe execution and forwards results to the provided handler.
+   *
+   * <p>The handler must have full access; otherwise a {@link MessageInvalidException} with {@link
+   * ProtocolErrorMessage#ACCESS_DENIED} is thrown and no probe is started. When authorized, this
+   * method builds a {@link Listener} that maps each callback to the corresponding {@link
+   * FCPResponse} message and then delegates to {@code node.network().startProbe(...)} using the
+   * stored hop budget and a fresh random UID from the node. The call is non-blocking and returns
+   * immediately while responses are emitted asynchronously via {@link
+   * FCPConnectionHandler#send(FCPMessage)}.
+   *
+   * @param handler connection handler used to authorize and send probe responses.
+   * @param node node instance that executes the probe and supplies randomness.
+   * @throws MessageInvalidException if the caller lacks full access for probe execution.
+   */
   @Override
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
-          ProtocolErrorMessage.ACCESS_DENIED, "Probe requires full access.", identifier, false);
+          ProtocolErrorMessage.ACCESS_DENIED,
+          "Probe requires full access.",
+          requestIdentifier,
+          false);
     }
 
     Listener listener =
         new Listener() {
           @Override
           public void onError(Error error, Byte code, boolean local) {
-            handler.send(new ProbeError(identifier, error, code, local));
+            handler.send(new ProbeError(requestIdentifier, error, code, local));
           }
 
           @Override
           public void onRefused() {
-            handler.send(new ProbeRefused(identifier));
+            handler.send(new ProbeRefused(requestIdentifier));
           }
 
           @Override
           public void onOutputBandwidth(float outputBandwidth) {
-            handler.send(new ProbeBandwidth(identifier, outputBandwidth));
+            handler.send(new ProbeBandwidth(requestIdentifier, outputBandwidth));
           }
 
           @Override
           public void onBuild(int build) {
-            handler.send(new ProbeBuild(identifier, build));
+            handler.send(new ProbeBuild(requestIdentifier, build));
           }
 
           @Override
           public void onIdentifier(long probeIdentifier, byte percentageUptime) {
-            handler.send(new ProbeIdentifier(identifier, probeIdentifier, percentageUptime));
+            handler.send(new ProbeIdentifier(requestIdentifier, probeIdentifier, percentageUptime));
           }
 
           @Override
           public void onLinkLengths(float[] linkLengths) {
-            handler.send(new ProbeLinkLengths(identifier, linkLengths));
+            handler.send(new ProbeLinkLengths(requestIdentifier, linkLengths));
           }
 
           @Override
           public void onLocation(float location) {
-            handler.send(new ProbeLocation(identifier, location));
+            handler.send(new ProbeLocation(requestIdentifier, location));
           }
 
           @Override
           public void onStoreSize(float storeSize) {
-            handler.send(new ProbeStoreSize(identifier, storeSize));
+            handler.send(new ProbeStoreSize(requestIdentifier, storeSize));
           }
 
           @Override
           public void onUptime(float uptimePercent) {
-            handler.send(new ProbeUptime(identifier, uptimePercent));
+            handler.send(new ProbeUptime(requestIdentifier, uptimePercent));
           }
 
           @Override
           public void onRejectStats(byte[] stats) {
-            handler.send(new ProbeRejectStats(identifier, stats));
+            handler.send(new ProbeRejectStats(requestIdentifier, stats));
           }
 
           @Override
@@ -144,9 +213,10 @@ public class ProbeRequest extends FCPMessage {
               byte bandwidthClassForCapacityUsage, float capacityUsage) {
             handler.send(
                 new ProbeOverallBulkOutputCapacityUsage(
-                    identifier, bandwidthClassForCapacityUsage, capacityUsage));
+                    requestIdentifier, bandwidthClassForCapacityUsage, capacityUsage));
           }
         };
-    node.startProbe(htl, node.getRandom().nextLong(), type, listener);
+    node.network()
+        .startProbe(hopsToLive, node.bootstrap().random().nextLong(), probeType, listener);
   }
 }

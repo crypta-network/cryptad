@@ -1,25 +1,30 @@
 package network.crypta.clients.fcp;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.nullValue;
-import static org.hamcrest.Matchers.sameInstance;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import network.crypta.support.api.BucketFactory;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.sameInstance;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit test for {@link FCPMessage}.
  *
  * @author <a href="mailto:david.roden@bietr.de">David Roden</a>
  */
-public class FCPMessageTest {
+class FCPMessageTest {
 
   private static final String LIST_REQUEST_IDENTIFIER = "ListRequestIdentifier";
   private static final String IDENTIFIER = "identifier";
@@ -29,25 +34,26 @@ public class FCPMessageTest {
   private final FCPMessage originalMessage = mock(FCPMessage.class);
 
   @Test
-  public void wrappingNullReturnsNull() {
+  void wrappingNullReturnsNull() {
+    //noinspection ConstantValue
     assertThat(FCPMessage.withListRequestIdentifier(null, LIST_REQUEST_IDENTIFIER), nullValue());
   }
 
   @Test
-  public void wrappingMessageAddsIdentifier() {
+  void wrappingMessageAddsIdentifier() {
     when(originalMessage.getFieldSet()).thenReturn(new SimpleFieldSet(true));
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     assertThat(wrappedMessage.getFieldSet().get(LIST_REQUEST_IDENTIFIER), is(IDENTIFIER));
   }
 
   @Test
-  public void messageIsNotWrappedIfListRequestIdentifierIsNull() {
+  void messageIsNotWrappedIfListRequestIdentifierIsNull() {
     assertThat(
         FCPMessage.withListRequestIdentifier(originalMessage, null), sameInstance(originalMessage));
   }
 
   @Test
-  public void wrappedMessageDelegatesName() {
+  void wrappedMessageDelegatesName() {
     when(originalMessage.getName()).thenReturn(MESSAGE_NAME);
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     assertThat(wrappedMessage.getName(), is(MESSAGE_NAME));
@@ -55,16 +61,16 @@ public class FCPMessageTest {
   }
 
   @Test
-  public void wrappedMessageDelegatesRun() throws MessageInvalidException {
+  void wrappedMessageDelegatesRun() throws MessageInvalidException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     FCPConnectionHandler connectionHandler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     wrappedMessage.run(connectionHandler, node);
     verify(originalMessage).run(connectionHandler, node);
   }
 
   @Test
-  public void wrappedMessageDelegatesEndString() {
+  void wrappedMessageDelegatesEndString() {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     when(originalMessage.getEndString()).thenReturn(END_STRING);
     assertThat(wrappedMessage.getEndString(), is(END_STRING));
@@ -72,10 +78,40 @@ public class FCPMessageTest {
   }
 
   @Test
-  public void wrappedMessageDelegatesSend() throws IOException {
+  void wrappedMessageDelegatesSend() throws IOException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     OutputStream outputStream = mock(OutputStream.class);
     wrappedMessage.send(outputStream);
     verify(originalMessage).send(outputStream);
+  }
+
+  @Test
+  void create_whenUnsupportedFcpPluginMessageCarriesData_drainsPayload() throws Exception {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.put("DataLength", 4L);
+    fs.setEndMarker("Data");
+
+    FCPMessage message = FCPMessage.create("FCPPluginMessage", fs, null, null);
+    BaseDataCarryingMessage dataMessage = assertInstanceOf(BaseDataCarryingMessage.class, message);
+    BucketFactory bucketFactory = mock(BucketFactory.class);
+    FCPServer server = mock(FCPServer.class);
+
+    ByteArrayInputStream stream =
+        new ByteArrayInputStream(new byte[] {1, 2, 3, 4, (byte) 'N', (byte) 'e', (byte) 'x'});
+    dataMessage.readFrom(stream, bucketFactory, server);
+
+    assertEquals('N', stream.read());
+  }
+
+  @Test
+  void create_whenNonDataUnsupportedPluginMessageUsesDataFraming_throwsMessageInvalidException() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.put("DataLength", 1L);
+    fs.setEndMarker("Data");
+
+    assertThrows(
+        MessageInvalidException.class, () -> FCPMessage.create("GetPluginInfo", fs, null, null));
   }
 }

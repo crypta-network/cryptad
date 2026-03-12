@@ -3,90 +3,89 @@ package network.crypta.crypt;
 import java.io.Serializable;
 
 /**
- * Keeps track of properties of different symmetric cipher algorithms available to Freenet including
- * key type, name of the algorithm, block size used, and iv length if required.
+ * Describes supported stream/stream-like ciphers used by {@code CryptByteBuffer}.
+ *
+ * <p>Each enum constant defines a concrete cipher family and its operational parameters used by the
+ * codebase when constructing and configuring JCE {@code Cipher} instances and generating keys.
+ * Fields capture the key family ({@link #keyType}), the JCE transformation string ({@link
+ * #algName}), and the IV/nonce length in bytes ({@link #ivSize}).
+ *
+ * <p><strong>Serialization compatibility:</strong> This enum is part of objects that are serialized
+ * to disk (e.g., {@code CryptByteBuffer}). Java serialization records enum constants by name.
+ * Renaming, removing, or reordering constants will cause historical data to fail to deserialize. Do
+ * not change enum constant names without a deliberate, versioned migration strategy that can load
+ * data written with older names.
+ *
+ * <p>Notes on units and terminology:
+ *
+ * <ul>
+ *   <li>{@link #blockSize} stores the key size in <em>bits</em> as provided by {@link
+ *       KeyType#keySize}; despite the field name, it is not the block size of a block cipher.
+ *       AES-CTR uses a block cipher internally, but we treat all entries here as stream/nonce-based
+ *       for configuration purposes.
+ *   <li>{@link #ivSize} is the IV/nonce length in <em>bytes</em> required by the transformation
+ *       identified in {@link #algName}.
+ * </ul>
  *
  * @author unixninja92
  */
 public enum CryptByteBufferType implements Serializable {
-  @Deprecated
-  RijndaelECB(1, KeyType.Rijndael256),
-  @Deprecated
-  RijndaelECB128(2, KeyType.Rijndael256, 128),
-  @Deprecated
-  RijndaelPCFB(8, 32, KeyType.Rijndael256),
-  AESCTR(16, 16, "AES/CTR/NOPADDING", KeyType.AES256),
-  ChaCha128(32, 8, "CHACHA", KeyType.ChaCha128),
-  ChaCha256(64, 8, "CHACHA", KeyType.ChaCha256);
+  /**
+   * AES in CTR mode with no padding.
+   *
+   * <p>Key size is 256 bits (via {@link KeyType#AES_256}); the IV/nonce length is 16 bytes. The JCE
+   * transformation string is {@code AES/CTR/NOPADDING}.
+   */
+  AESCTR(16, 16, "AES/CTR/NOPADDING", KeyType.AES_256),
 
-  /** Bitmask for aggregation. */
+  /**
+   * ChaCha with a 128-bit key and 8-byte nonce.
+   *
+   * <p>The JCE algorithm name is {@code CHACHA}. This entry models the historical configuration
+   * that uses 8-byte nonce; newer variants commonly use larger nonce but must remain compatible
+   * with persisted data in this codebase.
+   */
+  CHACHA_128(32, 8, "CHACHA", KeyType.CHACHA_128),
+
+  /**
+   * ChaCha with a 256-bit key and 8-byte nonce.
+   *
+   * <p>The JCE algorithm name is {@code CHACHA}. See {@link #CHACHA_128} for notes on nonce size
+   * compatibility.
+   */
+  CHACHA_256(64, 8, "CHACHA", KeyType.CHACHA_256);
+
+  /** Bitmask used when aggregating or filtering supported types. */
   public final int bitmask;
 
+  /**
+   * Key size in bits for this configuration as sourced from {@link KeyType#keySize}. Not the block
+   * size of the underlying block cipher (if any).
+   */
   public final int blockSize;
+
+  /** IV/nonce length in bytes expected by the transformation in {@link #algName}. */
   public final Integer ivSize; // in bytes
+
+  /** JCE transformation or algorithm string passed to {@code Cipher.getInstance(...)}. */
   public final String algName;
+
+  /** Algorithm name used by the key generator; typically matches {@link KeyType#alg}. */
   public final String cipherName;
+
+  /** Key family and sizes associated with this cipher configuration. */
   public final KeyType keyType;
+
+  /** True when this entry represents a stream/nonce-based configuration. */
   public final boolean isStreamCipher;
 
   /**
-   * Creates the RijndaelECB enum value. iv is null.
+   * Constructs a cipher descriptor.
    *
-   * @param bitmask
-   * @param keyType The type of key the alg requires
-   */
-  CryptByteBufferType(int bitmask, KeyType keyType) {
-    this.bitmask = bitmask;
-    this.keyType = keyType;
-    this.cipherName = keyType.alg;
-    this.blockSize = keyType.keySize;
-    this.ivSize = null;
-    algName = name();
-    isStreamCipher = false;
-  }
-
-  /**
-   * Creates the RijndaelECB128 enum value. iv is null. and sets the non-standard blocksize.
-   *
-   * @param bitmask
-   * @param keyType The type of key the alg requires
-   * @param blockSize The blocksize the alg uses
-   */
-  CryptByteBufferType(int bitmask, KeyType keyType, int blockSize) {
-    this.bitmask = bitmask;
-    this.ivSize = null;
-    this.keyType = keyType;
-    this.cipherName = keyType.alg;
-    this.blockSize = blockSize;
-    algName = name();
-    isStreamCipher = false;
-  }
-
-  /**
-   * Creates the RijndaelPCFB enum value.
-   *
-   * @param bitmask
-   * @param ivSize Size of the iv
-   * @param keyType The type of key the alg requires
-   */
-  CryptByteBufferType(int bitmask, int ivSize, KeyType keyType) {
-    this.bitmask = bitmask;
-    this.keyType = keyType;
-    this.cipherName = keyType.alg;
-    this.blockSize = keyType.keySize;
-    this.ivSize = ivSize;
-    algName = name();
-    isStreamCipher = true;
-  }
-
-  /**
-   * Creates an enum value for the specified algorithm, keytype, and iv size. Also stores the name
-   * of the alg that java recognizes
-   *
-   * @param bitmask
-   * @param ivSize Size of the iv
-   * @param algName The name the java provider uses for the alg
-   * @param keyType The type of key the alg requires
+   * @param bitmask aggregation bitmask for the type
+   * @param ivSize IV/nonce size in bytes
+   * @param algName JCE transformation or algorithm name
+   * @param keyType key family and sizes used for key generation
    */
   CryptByteBufferType(int bitmask, int ivSize, String algName, KeyType keyType) {
     this.bitmask = bitmask;
@@ -98,8 +97,16 @@ public enum CryptByteBufferType implements Serializable {
     isStreamCipher = true;
   }
 
-  /** Returns true if the algorithm supports/requires an IV, otherwise returns false. */
+  /**
+   * Indicates whether this configuration uses an IV/nonce.
+   *
+   * <p>At present all supported entries are stream/nonce-based and therefore return {@code true}.
+   * If block-cipher modes without nonces are added in the future, this method will differentiate
+   * those types.
+   *
+   * @return {@code true} when an IV/nonce is required
+   */
   public boolean hasIV() {
-    return ivSize != null;
+    return isStreamCipher;
   }
 }

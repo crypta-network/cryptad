@@ -1,5 +1,9 @@
 package org.spaceroots.mantissa.ode;
 
+import java.util.Arrays;
+import java.util.Objects;
+import org.jetbrains.annotations.NotNull;
+
 /**
  * This class implements the common part of all Runge-Kutta-Fehlberg integrators for Ordinary
  * Differential Equations.
@@ -18,14 +22,14 @@ package org.spaceroots.mantissa.ode;
  *       |  b'1  b'2 ...   b's-1 b's
  * </pre>
  *
- * <p>In fact, we rather use the array defined by ej = bj - b'j to compute directly the error rather
+ * <p>In fact, we rather use the array defined by ej = bj - b'j to directly compute the error rather
  * than computing two estimates and then comparing them.
  *
  * <p>Some methods are qualified as <i>fsal</i> (first same as last) methods. This means the last
  * evaluation of the derivatives in one step is the same as the first in the next step. Then, this
- * evaluation can be reused from one step to the next one and the cost of such a method is really
- * s-1 evaluations despite the method still has s stages. This behaviour is true only for successful
- * steps, if the step is rejected after the error estimation phase, no evaluation is saved. For an
+ * evaluation can be reused from one step to the next one, and the cost of such a method is really
+ * s-1 evaluations despite the method still has s stages. This behavior is true only for successful
+ * steps, if the step is rejected after the error estimation phase, no evaluation is saved. For a
  * <i>fsal</i> method, we have cs = 1 and asi = bi for all i.
  *
  * @version $Id: RungeKuttaFehlbergIntegrator.java 1719 2007-09-26 19:46:57Z luc $
@@ -36,11 +40,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
   /**
    * Build a Runge-Kutta integrator with the given Butcher array.
    *
-   * @param fsal indicate that the method is an <i>fsal</i>
-   * @param c time steps from Butcher array (without the first zero)
-   * @param a internal weights from Butcher array (without the first empty row)
-   * @param b external weights for the high order method from Butcher array
-   * @param prototype prototype of the step interpolator to use
+   * @param method Butcher tableau and interpolator prototype
    * @param minStep minimal step (must be positive even for backward integration), the last step can
    *     be smaller than this
    * @param maxStep maximal step (must be positive even for backward integration)
@@ -48,11 +48,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
    * @param scalRelativeTolerance allowed relative error
    */
   protected RungeKuttaFehlbergIntegrator(
-      boolean fsal,
-      double[] c,
-      double[][] a,
-      double[] b,
-      RungeKuttaStepInterpolator prototype,
+      RungeKuttaFehlbergMethod method,
       double minStep,
       double maxStep,
       double scalAbsoluteTolerance,
@@ -60,11 +56,11 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
 
     super(minStep, maxStep, scalAbsoluteTolerance, scalRelativeTolerance);
 
-    this.fsal = fsal;
-    this.c = c;
-    this.a = a;
-    this.b = b;
-    this.prototype = prototype;
+    this.fsal = method.fsal();
+    this.c = method.c();
+    this.a = method.a();
+    this.b = method.b();
+    this.prototype = method.prototype();
 
     exp = -1.0 / getOrder();
 
@@ -78,11 +74,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
   /**
    * Build a Runge-Kutta integrator with the given Butcher array.
    *
-   * @param fsal indicate that the method is an <i>fsal</i>
-   * @param c time steps from Butcher array (without the first zero)
-   * @param a internal weights from Butcher array (without the first empty row)
-   * @param b external weights for the high order method from Butcher array
-   * @param prototype prototype of the step interpolator to use
+   * @param method Butcher tableau and interpolator prototype
    * @param minStep minimal step (must be positive even for backward integration), the last step can
    *     be smaller than this
    * @param maxStep maximal step (must be positive even for backward integration)
@@ -90,11 +82,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
    * @param vecRelativeTolerance allowed relative error
    */
   protected RungeKuttaFehlbergIntegrator(
-      boolean fsal,
-      double[] c,
-      double[][] a,
-      double[] b,
-      RungeKuttaStepInterpolator prototype,
+      RungeKuttaFehlbergMethod method,
       double minStep,
       double maxStep,
       double[] vecAbsoluteTolerance,
@@ -102,11 +90,11 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
 
     super(minStep, maxStep, vecAbsoluteTolerance, vecRelativeTolerance);
 
-    this.fsal = fsal;
-    this.c = c;
-    this.a = a;
-    this.b = b;
-    this.prototype = prototype;
+    this.fsal = method.fsal();
+    this.c = method.c();
+    this.a = method.a();
+    this.b = method.b();
+    this.prototype = method.prototype();
 
     exp = -1.0 / getOrder();
 
@@ -116,13 +104,6 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     setMinReduction(0.2);
     setMaxGrowth(10.0);
   }
-
-  /**
-   * Get the name of the method.
-   *
-   * @return name of the method
-   */
-  public abstract String getName();
 
   /**
    * Get the order of the method.
@@ -149,165 +130,28 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     this.safety = safety;
   }
 
+  @Override
   public void integrate(
       FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
       throws DerivativeException, IntegratorException {
 
-    // sanity check
-    if (equations.getDimension() != y0.length) {
-      throw new IntegratorException(
-          "dimensions mismatch: ODE problem has dimension {0}," + " state vector has dimension {1}",
-          new String[] {Integer.toString(equations.getDimension()), Integer.toString(y0.length)});
-    }
-    if (Math.abs(t - t0) <= 1.0e-12 * Math.max(Math.abs(t0), Math.abs(t))) {
-      throw new IntegratorException(
-          "too small integration interval: length = {0}",
-          new String[] {Double.toString(Math.abs(t - t0))});
-    }
-
+    checkSanity(equations, t0, y0, t);
     boolean forward = (t > t0);
-
-    // create some internal working arrays
     int stages = c.length + 1;
     if (y != y0) {
       System.arraycopy(y0, 0, y, 0, y0.length);
     }
-    double[][] yDotK = new double[stages][];
-    for (int i = 0; i < stages; ++i) {
-      yDotK[i] = new double[y0.length];
-    }
-    double[] yTmp = new double[y0.length];
 
-    // set up an interpolator sharing the integrator arrays
-    AbstractStepInterpolator interpolator;
-    if (handler.requiresDenseOutput() || (!switchesHandler.isEmpty())) {
-      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.clone();
-      rki.reinitialize(equations, yTmp, yDotK, forward);
-      interpolator = rki;
-    } else {
-      interpolator = new DummyStepInterpolator(yTmp, forward);
-    }
+    StepContext context = new StepContext(stages, y0.length);
+    AbstractStepInterpolator interpolator =
+        createInterpolator(equations, context.yTmp, context.yDotK, forward);
     interpolator.storeTime(t0);
 
     stepStart = t0;
-    double hNew = 0;
-    boolean firstTime = true;
-    boolean lastStep;
     handler.reset();
+    boolean lastStep;
     do {
-
-      interpolator.shift();
-
-      double error = 0;
-      for (boolean loop = true; loop; ) {
-
-        if (firstTime || !fsal) {
-          // first stage
-          equations.computeDerivatives(stepStart, y, yDotK[0]);
-        }
-
-        if (firstTime) {
-          double[] scale;
-          if (vecAbsoluteTolerance != null) {
-            scale = vecAbsoluteTolerance;
-          } else {
-            scale = new double[y0.length];
-            for (int i = 0; i < scale.length; ++i) {
-              scale[i] = scalAbsoluteTolerance;
-            }
-          }
-          hNew =
-              initializeStep(
-                  equations, forward, getOrder(), scale, stepStart, y, yDotK[0], yTmp, yDotK[1]);
-          firstTime = false;
-        }
-
-        stepSize = hNew;
-
-        // step adjustment near bounds
-        if ((forward && (stepStart + stepSize > t)) || ((!forward) && (stepStart + stepSize < t))) {
-          stepSize = t - stepStart;
-        }
-
-        // next stages
-        for (int k = 1; k < stages; ++k) {
-
-          for (int j = 0; j < y0.length; ++j) {
-            double sum = a[k - 1][0] * yDotK[0][j];
-            for (int l = 1; l < k; ++l) {
-              sum += a[k - 1][l] * yDotK[l][j];
-            }
-            yTmp[j] = y[j] + stepSize * sum;
-          }
-
-          equations.computeDerivatives(stepStart + c[k - 1] * stepSize, yTmp, yDotK[k]);
-        }
-
-        // estimate the state at the end of the step
-        for (int j = 0; j < y0.length; ++j) {
-          double sum = b[0] * yDotK[0][j];
-          for (int l = 1; l < stages; ++l) {
-            sum += b[l] * yDotK[l][j];
-          }
-          yTmp[j] = y[j] + stepSize * sum;
-        }
-
-        // estimate the error at the end of the step
-        error = estimateError(yDotK, y, yTmp, stepSize);
-        if (error <= 1.0) {
-
-          // Switching functions handling
-          interpolator.storeTime(stepStart + stepSize);
-          if (switchesHandler.evaluateStep(interpolator)) {
-            // reject the step to match exactly the next switch time
-            hNew = switchesHandler.getEventTime() - stepStart;
-          } else {
-            // accept the step
-            loop = false;
-          }
-
-        } else {
-          // reject the step and attempt to reduce error by stepsize control
-          double factor =
-              Math.min(maxGrowth, Math.max(minReduction, safety * Math.pow(error, exp)));
-          hNew = filterStep(stepSize * factor, false);
-        }
-      }
-
-      // the step has been accepted
-      stepStart += stepSize;
-      System.arraycopy(yTmp, 0, y, 0, y0.length);
-      switchesHandler.stepAccepted(stepStart, y);
-      if (switchesHandler.stop()) {
-        lastStep = true;
-      } else {
-        lastStep = forward ? (stepStart >= t) : (stepStart <= t);
-      }
-
-      // provide the step data to the step handler
-      interpolator.storeTime(stepStart);
-      handler.handleStep(interpolator, lastStep);
-
-      if (fsal) {
-        // save the last evaluation for the next step
-        System.arraycopy(yDotK[stages - 1], 0, yDotK[0], 0, y0.length);
-      }
-
-      if (switchesHandler.reset(stepStart, y) && !lastStep) {
-        // some switching function has triggered changes that
-        // invalidate the derivatives, we need to recompute them
-        equations.computeDerivatives(stepStart, y, yDotK[0]);
-      }
-
-      if (!lastStep) {
-        // stepsize control for next step
-        double factor = Math.min(maxGrowth, Math.max(minReduction, safety * Math.pow(error, exp)));
-        double scaledH = stepSize * factor;
-        double nextT = stepStart + scaledH;
-        boolean nextIsLast = forward ? (nextT >= t) : (nextT <= t);
-        hNew = filterStep(scaledH, nextIsLast);
-      }
-
+      lastStep = performStep(equations, t, y, forward, stages, context, interpolator);
     } while (!lastStep);
 
     resetInternalState();
@@ -318,6 +162,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
    *
    * @return minimal reduction factor
    */
+  @SuppressWarnings("unused")
   public double getMinReduction() {
     return minReduction;
   }
@@ -336,6 +181,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
    *
    * @return maximal growth factor
    */
+  @SuppressWarnings("unused")
   public double getMaxGrowth() {
     return maxGrowth;
   }
@@ -356,27 +202,340 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
    * @param y0 estimate of the step at the start of the step
    * @param y1 estimate of the step at the end of the step
    * @param h current step
-   * @return error ratio, greater than 1 if step should be rejected
+   * @return error ratio, greater than 1 if the step should be rejected
    */
   protected abstract double estimateError(double[][] yDotK, double[] y0, double[] y1, double h);
 
+  private void checkSanity(
+      FirstOrderDifferentialEquations equations, double t0, double[] y0, double t)
+      throws IntegratorException {
+
+    if (equations.getDimension() != y0.length) {
+      throw new IntegratorException(
+          "dimensions mismatch: ODE problem has dimension {0}," + " state vector has dimension {1}",
+          new String[] {Integer.toString(equations.getDimension()), Integer.toString(y0.length)});
+    }
+    if (Math.abs(t - t0) <= 1.0e-12 * Math.max(Math.abs(t0), Math.abs(t))) {
+      throw new IntegratorException(
+          "too small integration interval: length = {0}",
+          new String[] {Double.toString(Math.abs(t - t0))});
+    }
+  }
+
+  private AbstractStepInterpolator createInterpolator(
+      FirstOrderDifferentialEquations equations, double[] yTmp, double[][] yDotK, boolean forward) {
+
+    if (handler.requiresDenseOutput() || !switchesHandler.isEmpty()) {
+      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.copy();
+      rki.reinitialize(equations, yTmp, yDotK, forward);
+      return rki;
+    }
+    return new DummyStepInterpolator(yTmp, forward);
+  }
+
+  private boolean performStep(
+      FirstOrderDifferentialEquations equations,
+      double t,
+      double[] y,
+      boolean forward,
+      int stages,
+      StepContext context,
+      AbstractStepInterpolator interpolator)
+      throws DerivativeException, IntegratorException {
+
+    interpolator.shift();
+
+    double error = 0.0;
+    boolean accepted = false;
+    while (!accepted) {
+      computeFirstStageIfNeeded(equations, y, context);
+      initializeStepIfFirstTime(equations, forward, y, context);
+      adjustStepSizeNearTarget(t, forward, context);
+      computeStages(equations, stages, y, context);
+      estimateEndState(y, stages, context);
+      error = estimateError(context.yDotK, y, context.yTmp, stepSize);
+      accepted = evaluateStepAcceptance(interpolator, error, context);
+    }
+
+    updateAfterAcceptance(
+        new StepAcceptanceContext(equations, t, y, forward, stages, context, interpolator), error);
+    return computeLastStepFlag(t, forward);
+  }
+
+  private void computeFirstStageIfNeeded(
+      FirstOrderDifferentialEquations equations, double[] y, StepContext context)
+      throws DerivativeException {
+
+    if (context.firstTime || !fsal) {
+      equations.computeDerivatives(stepStart, y, context.yDotK[0]);
+    }
+  }
+
+  private void initializeStepIfFirstTime(
+      FirstOrderDifferentialEquations equations, boolean forward, double[] y, StepContext context)
+      throws DerivativeException {
+
+    if (!context.firstTime) {
+      return;
+    }
+
+    double[] scale = (vecAbsoluteTolerance != null) ? vecAbsoluteTolerance : buildScalarScale(y);
+    StepInitializationInputs inputs =
+        new StepInitializationInputs(
+            equations, forward, getOrder(), scale, stepStart, y, context.yDotK[0]);
+    StepInitializationWorkspace workspace =
+        new StepInitializationWorkspace(context.yTmp, context.yDotK[1]);
+    context.hNew = initializeStep(new StepInitializationContext(inputs, workspace));
+    context.firstTime = false;
+  }
+
+  private double[] buildScalarScale(double[] y) {
+    double[] scale = new double[y.length];
+    Arrays.fill(scale, scalAbsoluteTolerance);
+    return scale;
+  }
+
+  private void adjustStepSizeNearTarget(double t, boolean forward, StepContext context) {
+    stepSize = context.hNew;
+    boolean beyondTarget =
+        (forward && (stepStart + stepSize > t)) || (!forward && (stepStart + stepSize < t));
+    if (beyondTarget) {
+      stepSize = t - stepStart;
+    }
+  }
+
+  private void computeStages(
+      FirstOrderDifferentialEquations equations, int stages, double[] y, StepContext context)
+      throws DerivativeException {
+
+    for (int k = 1; k < stages; ++k) {
+      for (int j = 0; j < y.length; ++j) {
+        double sum = a[k - 1][0] * context.yDotK[0][j];
+        for (int l = 1; l < k; ++l) {
+          sum += a[k - 1][l] * context.yDotK[l][j];
+        }
+        context.yTmp[j] = y[j] + stepSize * sum;
+      }
+      equations.computeDerivatives(stepStart + c[k - 1] * stepSize, context.yTmp, context.yDotK[k]);
+    }
+  }
+
+  private void estimateEndState(double[] y, int stages, StepContext context) {
+    for (int j = 0; j < y.length; ++j) {
+      double sum = b[0] * context.yDotK[0][j];
+      for (int l = 1; l < stages; ++l) {
+        sum += b[l] * context.yDotK[l][j];
+      }
+      context.yTmp[j] = y[j] + stepSize * sum;
+    }
+  }
+
+  private boolean evaluateStepAcceptance(
+      AbstractStepInterpolator interpolator, double error, StepContext context)
+      throws IntegratorException {
+
+    if (error > 1.0) {
+      double factor = Math.clamp(safety * Math.pow(error, exp), minReduction, maxGrowth);
+      context.hNew = filterStep(stepSize * factor, false);
+      return false;
+    }
+
+    interpolator.storeTime(stepStart + stepSize);
+    if (switchesHandler.evaluateStep((StepInterpolator) interpolator)) {
+      context.hNew = switchesHandler.getEventTime() - stepStart;
+      return false;
+    }
+    return true;
+  }
+
+  private void updateAfterAcceptance(StepAcceptanceContext acceptance, double error)
+      throws DerivativeException, IntegratorException {
+
+    stepStart += stepSize;
+    System.arraycopy(acceptance.context().yTmp, 0, acceptance.y(), 0, acceptance.y().length);
+    switchesHandler.stepAccepted(stepStart, acceptance.y());
+    boolean lastStep = computeLastStepFlag(acceptance.t(), acceptance.forward());
+    acceptance.interpolator().storeTime(stepStart);
+    handler.handleStep((StepInterpolator) acceptance.interpolator(), lastStep);
+
+    if (fsal) {
+      System.arraycopy(
+          acceptance.context().yDotK[acceptance.stages() - 1],
+          0,
+          acceptance.context().yDotK[0],
+          0,
+          acceptance.y().length);
+    }
+
+    if (switchesHandler.reset(stepStart, acceptance.y()) && !lastStep) {
+      acceptance
+          .equations()
+          .computeDerivatives(stepStart, acceptance.y(), acceptance.context().yDotK[0]);
+    }
+
+    if (!lastStep) {
+      double factor = Math.clamp(safety * Math.pow(error, exp), minReduction, maxGrowth);
+      double scaledH = stepSize * factor;
+      double nextT = stepStart + scaledH;
+      boolean nextIsLast =
+          acceptance.forward() ? (nextT >= acceptance.t()) : (nextT <= acceptance.t());
+      acceptance.context().hNew = filterStep(scaledH, nextIsLast);
+    }
+  }
+
+  private boolean computeLastStepFlag(double t, boolean forward) {
+    boolean stop = switchesHandler.stop();
+    if (stop) {
+      return true;
+    }
+    return forward ? (stepStart >= t) : (stepStart <= t);
+  }
+
+  private static final class StepContext {
+    private final double[][] yDotK;
+    private final double[] yTmp;
+    private double hNew;
+    private boolean firstTime = true;
+
+    private StepContext(int stages, int dimension) {
+      yDotK = new double[stages][];
+      for (int i = 0; i < stages; ++i) {
+        yDotK[i] = new double[dimension];
+      }
+      yTmp = new double[dimension];
+    }
+
+    @Override
+    public String toString() {
+      return "StepContext[stages="
+          + yDotK.length
+          + ", dimension="
+          + yTmp.length
+          + ", hNew="
+          + hNew
+          + ", firstTime="
+          + firstTime
+          + "]";
+    }
+  }
+
+  @SuppressWarnings("java:S6206")
+  private static final class StepAcceptanceContext {
+    private final FirstOrderDifferentialEquations equations;
+    private final double t;
+    private final double[] y;
+    private final boolean forward;
+    private final int stages;
+    private final StepContext context;
+    private final AbstractStepInterpolator interpolator;
+
+    private StepAcceptanceContext(
+        FirstOrderDifferentialEquations equations,
+        double t,
+        double[] y,
+        boolean forward,
+        int stages,
+        StepContext context,
+        AbstractStepInterpolator interpolator) {
+      this.equations = equations;
+      this.t = t;
+      this.y = y;
+      this.forward = forward;
+      this.stages = stages;
+      this.context = context;
+      this.interpolator = interpolator;
+    }
+
+    private FirstOrderDifferentialEquations equations() {
+      return equations;
+    }
+
+    private double t() {
+      return t;
+    }
+
+    private double[] y() {
+      return y;
+    }
+
+    private boolean forward() {
+      return forward;
+    }
+
+    private int stages() {
+      return stages;
+    }
+
+    private StepContext context() {
+      return context;
+    }
+
+    private AbstractStepInterpolator interpolator() {
+      return interpolator;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other instanceof StepAcceptanceContext acceptance)) {
+        return false;
+      }
+      return acceptance.forward == forward
+          && acceptance.stages == stages
+          && Double.doubleToLongBits(acceptance.t) == Double.doubleToLongBits(t)
+          && Objects.equals(acceptance.equations, equations)
+          && Objects.equals(acceptance.context, context)
+          && Objects.equals(acceptance.interpolator, interpolator)
+          && Arrays.equals(acceptance.y, y);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(equations, forward, stages, t, context, interpolator);
+      result = 31 * result + Arrays.hashCode(y);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "StepAcceptanceContext["
+          + "equations="
+          + equations
+          + ", t="
+          + t
+          + ", y="
+          + Arrays.toString(y)
+          + ", forward="
+          + forward
+          + ", stages="
+          + stages
+          + ", context="
+          + context
+          + ", interpolator="
+          + interpolator
+          + "]";
+    }
+  }
+
   /** Indicator for <i>fsal</i> methods. */
-  private boolean fsal;
+  private final boolean fsal;
 
-  /** Time steps from Butcher array (without the first zero). */
-  private double[] c;
+  /** Time steps from the Butcher array (without the first zero). */
+  private final double[] c;
 
-  /** Internal weights from Butcher array (without the first empty row). */
-  private double[][] a;
+  /** Internal weights from the Butcher array (without the first empty row). */
+  private final double[][] a;
 
-  /** External weights for the high order method from Butcher array. */
-  private double[] b;
+  /** External weights for the high-order method from the Butcher array. */
+  private final double[] b;
 
   /** Prototype of the step interpolator. */
-  private RungeKuttaStepInterpolator prototype;
+  private final RungeKuttaStepInterpolator prototype;
 
   /** Stepsize control exponent. */
-  private double exp;
+  private final double exp;
 
   /** Safety factor for stepsize control. */
   private double safety;

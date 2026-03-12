@@ -1,46 +1,34 @@
 package org.spaceroots.mantissa.ode;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.List;
 
 /**
- * This class stores all information provided by an ODE integrator during the integration process
- * and build a continuous model of the solution from this.
+ * Collects every accepted integration step and exposes a continuous view of the solution.
  *
- * <p>This class act as a step handler from the integrator point of view. It is called iteratively
- * during the integration process and stores a copy of all steps information in a sorted collection
- * for later use. Once the integration process is over, the user can use the {@link
- * #setInterpolatedTime setInterpolatedTime} and {@link #getInterpolatedState getInterpolatedState}
- * to retrieve this information at any time. It is important to wait for the integration to be over
- * before attempting to call {@link #setInterpolatedTime setInterpolatedTime} because some internal
- * variables are set only once the last step has been handled.
+ * <p>This step handler clones and stores finalized {@link StepInterpolator} instances in time order
+ * so that, after integration finishes, callers can move freely through the trajectory using {@link
+ * #setInterpolatedTime(double)} and {@link #getInterpolatedState()}. The model is intended for
+ * post-processing workflows such as plotting, re-sampling at uniform grids, or comparing numerical
+ * output against analytical benchmarks without rerunning the integrator. It remains mutable until
+ * the last step is marked, then behaves as a read-mostly buffer of frozen step snapshots.
  *
- * <p>This is useful for example if the main loop of the user application should remain independant
- * from the integration process or if one needs to mimic the behaviour of an analytical model
- * despite a numerical model is used (i.e. one needs the ability to get the model value at any time
- * or to navigate through the data).
+ * <p>The handler may be reused across multiple contiguous phases that share the same integration
+ * direction, enabling complex simulations (for example, coast–burn–coast) to appear as a single
+ * continuous record. Memory consumption scales with the number of accepted steps and the state
+ * dimension; tight tolerances or long horizons can therefore require considerable storage.
+ * Instances are not thread-safe and should be confined to the integration thread.
  *
- * <p>If problem modelization is done with several separate integration phases for contiguous
- * intervals, the same ContinuousOutputModel can be used as step handler for all integration phases
- * as long as they are performed in order and in the same direction. As an example, one can
- * extrapolate the trajectory of a satellite with one model (i.e. one set of differential equations)
- * up to the beginning of a maneuver, use another more complex model including thrusters
- * modelization and accurate attitude control during the maneuver, and revert to the first model
- * after the end of the maneuver. If the same continuous output model handles the steps of all
- * integration phases, the user do not need to bother when the maneuver begins or ends, he has all
- * the data available in a transparent manner.
- *
- * <p>An important feature of this class is that it implements the <code>Serializable</code>
- * interface. This means that the result of an integration can be serialized and reused later (if
- * stored into a persistent medium like a filesystem or a database) or elsewhere (if sent to another
- * application). Only the result of the integration is stored, there is no reference to the
- * integrated problem by itself.
- *
- * <p>One should be aware that the amount of data stored in a ContinuousOutputModel instance can be
- * important if the state vector is large, if the integration interval is long or if the steps are
- * small (which can result from small tolerance settings in {@link AdaptiveStepsizeIntegrator
- * adaptive step size integrators}).
+ * <ul>
+ *   <li><strong>Responsibilities:</strong> capture dense-output steps, provide random interpolation
+ *       access, and bridge adjacent integration phases.
+ *   <li><strong>Invariants:</strong> step order is preserved, direction is consistent across
+ *       appended models, and dense output remains available for every stored step.
+ *   <li><strong>Persistence:</strong> implements {@link Serializable}, allowing recorded
+ *       trajectories to be saved or transferred without rerunning the solver.
+ * </ul>
  *
  * @see StepHandler
  * @see StepInterpolator
@@ -49,26 +37,40 @@ import java.util.Iterator;
  */
 public class ContinuousOutputModel implements StepHandler, Serializable {
 
-  /** Simple constructor. Build an empty continuous output model. */
+  /**
+   * Creates an empty continuous output model ready to receive steps.
+   *
+   * <p>The constructor allocates the internal list and immediately calls {@link #reset()} so all
+   * time markers are {@link Double#NaN} and the direction flag is forward. No steps are available
+   * until {@link #handleStep(StepInterpolator, boolean)} is invoked by an integrator, but the
+   * instance can be created early and passed around safely. Constructing multiple transient models
+   * is inexpensive and useful when experimenting with alternative integration settings or when
+   * issuing concurrent dry runs in test harnesses.
+   */
   public ContinuousOutputModel() {
-    steps = new ArrayList();
+    steps = new ArrayList<>();
     reset();
   }
 
   /**
-   * Append another model at the end of the instance.
+   * Appends the steps of another continuous model directly after this one.
    *
-   * @param model model to add at the end of the instance
-   * @exception IllegalArgumentException if the model to append is not compatible with the instance
-   *     (dimension of the state vector, propagation direction, hole between the dates)
+   * <p>The supplied model must describe the same state dimension and integration direction. A gap
+   * larger than a small fraction of the preceding step size is rejected to protect continuity.
+   * Steps are deep-copied, so later changes to the source model do not affect this instance.
+   *
+   * @param model another populated {@code ContinuousOutputModel} whose trajectory follows this one
+   *     in time and uses identical state dimensionality and direction; must not be {@code null}
+   * @throws IllegalArgumentException if vector dimensions differ, integration directions disagree,
+   *     or a detectable hole exists between the last local step and the first appended step
    */
   public void append(ContinuousOutputModel model) {
 
-    if (model.steps.size() == 0) {
+    if (model.steps.isEmpty()) {
       return;
     }
 
-    if (steps.size() == 0) {
+    if (steps.isEmpty()) {
       initialTime = model.initialTime;
       forward = model.forward;
     } else {
@@ -91,31 +93,40 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
       }
     }
 
-    for (Iterator iter = model.steps.iterator(); iter.hasNext(); ) {
-      AbstractStepInterpolator ai = (AbstractStepInterpolator) iter.next();
-      steps.add(ai.clone());
+    for (AbstractStepInterpolator ai : model.steps) {
+      steps.add(ai.copy());
     }
 
     index = steps.size() - 1;
-    finalTime = ((StepInterpolator) steps.get(index)).getCurrentTime();
+    finalTime = steps.get(index).getCurrentTime();
   }
 
   /**
-   * Determines whether this handler needs dense output.
+   * Signals that dense output is mandatory for this handler.
    *
-   * <p>The essence of this class is to provide dense output over all steps, hence it requires the
-   * internal steps to provide themselves dense output. The method therefore returns always true.
+   * <p>The model reconstructs intermediate states from stored interpolators; it therefore requires
+   * every step to provide dense output. Integrators can check this flag when configuring step
+   * handling and enable the extra computations needed to populate dense interpolators. Because the
+   * return value is constant, clients may cache the decision and avoid repeated configuration
+   * checks during long runs.
    *
-   * @return always true
+   * @return {@code true}, indicating dense output is required for every accepted step
    */
+  @Override
   public boolean requiresDenseOutput() {
     return true;
   }
 
   /**
-   * Reset the step handler. Initialize the internal data as required before the first step is
-   * handled.
+   * Clears all stored steps and reinitializes timing metadata.
+   *
+   * <p>After a reset the model contains no interpolators, the current index is zero, and both
+   * boundary times are {@link Double#NaN}. Use this to reuse the same instance for a fresh
+   * integration run without reallocating internal structures. This helps reduce garbage creation
+   * during parameter sweeps or optimization loops that perform many short integrations in rapid
+   * succession.
    */
+  @Override
   public void reset() {
     initialTime = Double.NaN;
     finalTime = Double.NaN;
@@ -125,25 +136,32 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
   }
 
   /**
-   * Handle the last accepted step. A copy of the information provided by the last step is stored in
-   * the instance for later use.
+   * Records an accepted integration step.
    *
-   * @param interpolator interpolator for the last accepted step.
-   * @param isLast true if the step is the last one
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>The supplied interpolator is finalized, deep-copied, and appended. On the first invocation
+   * the model captures the initial time and integration direction from the step metadata. When
+   * {@code isLast} is {@code true}, the method also stores the final time and updates the current
+   * index so callers may immediately query interpolated values.
+   *
+   * @param interpolator dense-output interpolator describing the accepted step; must align with the
+   *     integrator’s state vector and direction and must not be {@code null}
+   * @param isLast {@code true} when this step terminates the integration run; {@code false} when
+   *     more steps will follow
+   * @throws DerivativeException if finalizing or copying the interpolator requires derivative
+   *     evaluations that fail or propagate user exceptions
    */
+  @Override
   public void handleStep(StepInterpolator interpolator, boolean isLast) throws DerivativeException {
 
     AbstractStepInterpolator ai = (AbstractStepInterpolator) interpolator;
 
-    if (steps.size() == 0) {
+    if (steps.isEmpty()) {
       initialTime = interpolator.getPreviousTime();
       forward = interpolator.isForward();
     }
 
     ai.finalizeStep();
-    steps.add(ai.clone());
+    steps.add(ai.copy());
 
     if (isLast) {
       finalTime = ai.getCurrentTime();
@@ -152,145 +170,96 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
   }
 
   /**
-   * Get the initial integration time.
+   * Returns the initial integration time recorded from the first stored step.
    *
-   * @return initial integration time
+   * <p>Before any steps are handled this value is {@link Double#NaN}. Once set, it reflects the
+   * earliest time across all appended models and remains stable.
+   *
+   * @return starting time of the trajectory, or {@code Double.NaN} when no steps are present
    */
   public double getInitialTime() {
     return initialTime;
   }
 
   /**
-   * Get the final integration time.
+   * Returns the final integration time of the latest recorded step.
    *
-   * @return final integration time
+   * <p>The value is updated when {@link #handleStep(StepInterpolator, boolean)} is invoked with the
+   * last-step flag. Prior to that point it remains {@link Double#NaN}.
+   *
+   * @return end time of the most recent integration phase, or {@code Double.NaN} until finalized
    */
+  @SuppressWarnings("unused")
   public double getFinalTime() {
     return finalTime;
   }
 
   /**
-   * Get the time of the interpolated point. If {@link #setInterpolatedTime} has not been called, it
-   * returns the final integration time.
+   * Returns the time associated with the currently selected interpolated state.
    *
-   * @return interpolation point time
+   * <p>Until {@link #setInterpolatedTime(double)} is invoked, this method returns the final
+   * integration time, matching the end of the last recorded step. When callers adjust interpolation
+   * time frequently, this accessor avoids redundant state computations when only the timestamp is
+   * needed, for example while logging event brackets or scanning for zero crossings.
+   *
+   * @return time of the last interpolation request, or the final integration time when unset
    */
+  @SuppressWarnings("unused")
   public double getInterpolatedTime() {
-    return ((StepInterpolator) steps.get(index)).getInterpolatedTime();
+    return steps.get(index).getInterpolatedTime();
   }
 
   /**
-   * Set the time of the interpolated point.
+   * Selects the target time for subsequent interpolation requests.
    *
-   * <p>This method should <strong>not</strong> be called before the integration is over because
-   * some internal variables are set only once the last step has been handled.
+   * <p>The method locates the step that brackets the requested time using a mix of quadratic
+   * estimation and bounded refinement, then delegates to the underlying interpolator to prepare the
+   * state. Calls are intended after integration completes; invoking them earlier can yield
+   * incomplete data. Times outside the stored interval are allowed for cautious extrapolation, but
+   * fidelity decreases as the request moves away from recorded steps.
    *
-   * <p>Setting the time outside of the integration interval is now allowed (it was not allowed up
-   * to version 5.9 of Mantissa), but should be used with care since the accuracy of the
-   * interpolator will probably be very poor far from this interval. This allowance has been added
-   * to simplify implementation of search algorithms near the interval endpoints.
-   *
-   * @param time time of the interpolated point
+   * @param time absolute integration time to evaluate, potentially inside or slightly outside the
+   *     recorded interval; extreme extrapolation may reduce accuracy
    */
   public void setInterpolatedTime(double time) {
 
-    try {
-      // initialize the search with the complete steps table
-      int iMin = 0;
-      StepInterpolator sMin = (StepInterpolator) steps.get(iMin);
-      double tMin = 0.5 * (sMin.getPreviousTime() + sMin.getCurrentTime());
+    int iMin = 0;
+    AbstractStepInterpolator sMin = steps.get(iMin);
+    double tMin = midpoint(sMin);
 
-      int iMax = steps.size() - 1;
-      StepInterpolator sMax = (StepInterpolator) steps.get(iMax);
-      double tMax = 0.5 * (sMax.getPreviousTime() + sMax.getCurrentTime());
+    int iMax = steps.size() - 1;
+    AbstractStepInterpolator sMax = steps.get(iMax);
+    double tMax = midpoint(sMax);
 
-      // handle points outside of the integration interval
-      // or in the first and last step
-      if (locatePoint(time, sMin) <= 0) {
-        index = iMin;
-        sMin.setInterpolatedTime(time);
-        return;
-      }
-      if (locatePoint(time, sMax) >= 0) {
-        index = iMax;
-        sMax.setInterpolatedTime(time);
-        return;
-      }
-
-      // reduction of the table slice size
-      while (iMax - iMin > 5) {
-
-        // use the last estimated index as the splitting index
-        StepInterpolator si = (StepInterpolator) steps.get(index);
-        int location = locatePoint(time, si);
-        if (location < 0) {
-          iMax = index;
-          tMax = 0.5 * (si.getPreviousTime() + si.getCurrentTime());
-        } else if (location > 0) {
-          iMin = index;
-          tMin = 0.5 * (si.getPreviousTime() + si.getCurrentTime());
-        } else {
-          // we have found the target step, no need to continue searching
-          si.setInterpolatedTime(time);
-          return;
-        }
-
-        // compute a new estimate of the index in the reduced table slice
-        int iMed = (iMin + iMax) / 2;
-        StepInterpolator sMed = (StepInterpolator) steps.get(iMed);
-        double tMed = 0.5 * (sMed.getPreviousTime() + sMed.getCurrentTime());
-
-        if ((Math.abs(tMed - tMin) < 1e-6) || (Math.abs(tMax - tMed) < 1e-6)) {
-          // too close to the bounds, we estimate using a simple dichotomy
-          index = iMed;
-        } else {
-          // estimate the index using a reverse quadratic polynom
-          // (reverse means we have i = P(t), thus allowing to simply
-          // compute index = P(time) rather than solving a quadratic equation)
-          double d12 = tMax - tMed;
-          double d23 = tMed - tMin;
-          double d13 = tMax - tMin;
-          double dt1 = time - tMax;
-          double dt2 = time - tMed;
-          double dt3 = time - tMin;
-          double iLagrange =
-              ((dt2 * dt3 * d23) * iMax - (dt1 * dt3 * d13) * iMed + (dt1 * dt2 * d12) * iMin)
-                  / (d12 * d23 * d13);
-          index = (int) Math.rint(iLagrange);
-        }
-
-        // force the next size reduction to be at least one tenth
-        int low = Math.max(iMin + 1, (9 * iMin + iMax) / 10);
-        int high = Math.min(iMax - 1, (iMin + 9 * iMax) / 10);
-        if (index < low) {
-          index = low;
-        } else if (index > high) {
-          index = high;
-        }
-      }
-
-      // now the table slice is very small, we perform an iterative search
+    if (locatePoint(time, sMin) <= 0) {
       index = iMin;
-      while ((index <= iMax) && (locatePoint(time, (StepInterpolator) steps.get(index)) > 0)) {
-        ++index;
-      }
-
-      StepInterpolator si = (StepInterpolator) steps.get(index);
-
-      si.setInterpolatedTime(time);
-
-    } catch (DerivativeException de) {
-      throw new RuntimeException("unexpected DerivativeException caught", de);
+      safeSetInterpolatedTime(sMin, time);
+      return;
     }
+    if (locatePoint(time, sMax) >= 0) {
+      index = iMax;
+      safeSetInterpolatedTime(sMax, time);
+      return;
+    }
+
+    index = findIndex(time, iMin, iMax, tMin, tMax);
+    safeSetInterpolatedTime(steps.get(index), time);
   }
 
   /**
-   * Get the state vector of the interpolated point.
+   * Returns the state vector corresponding to the current interpolated time.
    *
-   * @return state vector at time {@link #getInterpolatedTime}
+   * <p>The returned array may be backed by an internal buffer owned by the underlying interpolator.
+   * Treat it as read-only or make a defensive copy before modification or long-term retention.
+   * Subsequent calls after changing {@link #setInterpolatedTime(double)} will update the contents
+   * of the same backing array, keeping allocations low when sampling many points along the
+   * trajectory.
+   *
+   * @return state components evaluated at {@link #getInterpolatedTime()}, possibly backed by a
+   *     mutable buffer reused between calls
    */
   public double[] getInterpolatedState() {
-    return ((StepInterpolator) steps.get(index)).getInterpolatedState();
+    return steps.get(index).getInterpolatedState();
   }
 
   /**
@@ -301,7 +270,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    * @return -1 if the double is before the interval, 0 if it is in the interval, and +1 if it is
    *     after the interval, according to the interval direction
    */
-  private int locatePoint(double time, StepInterpolator interval) {
+  private int locatePoint(double time, AbstractStepInterpolator interval) {
     if (forward) {
       if (time < interval.getPreviousTime()) {
         return -1;
@@ -333,7 +302,72 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
   private int index;
 
   /** Steps table. */
-  private ArrayList steps;
+  @SuppressWarnings("java:S1948")
+  private final List<AbstractStepInterpolator> steps;
 
-  private static final long serialVersionUID = 2259286184268533249L;
+  private int findIndex(double time, int iMin, int iMax, double tMin, double tMax) {
+
+    while (iMax - iMin > 5) {
+
+      AbstractStepInterpolator si = steps.get(index);
+      int location = locatePoint(time, si);
+      if (location < 0) {
+        iMax = index;
+        tMax = midpoint(si);
+      } else if (location > 0) {
+        iMin = index;
+        tMin = midpoint(si);
+      } else {
+        return index;
+      }
+
+      int iMed = (iMin + iMax) / 2;
+      AbstractStepInterpolator sMed = steps.get(iMed);
+      double tMed = midpoint(sMed);
+
+      if ((Math.abs(tMed - tMin) < 1e-6) || (Math.abs(tMax - tMed) < 1e-6)) {
+        index = iMed;
+      } else {
+        double d12 = tMax - tMed;
+        double d23 = tMed - tMin;
+        double d13 = tMax - tMin;
+        double dt1 = time - tMax;
+        double dt2 = time - tMed;
+        double dt3 = time - tMin;
+        double iLagrange =
+            ((dt2 * dt3 * d23) * iMax - (dt1 * dt3 * d13) * iMed + (dt1 * dt2 * d12) * iMin)
+                / (d12 * d23 * d13);
+        index = (int) Math.rint(iLagrange);
+      }
+
+      int low = Math.max(iMin + 1, (9 * iMin + iMax) / 10);
+      int high = Math.min(iMax - 1, (iMin + 9 * iMax) / 10);
+      if (index < low) {
+        index = low;
+      } else if (index > high) {
+        index = high;
+      }
+    }
+
+    index = iMin;
+    while ((index <= iMax) && (locatePoint(time, steps.get(index)) > 0)) {
+      ++index;
+    }
+
+    return index;
+  }
+
+  private double midpoint(AbstractStepInterpolator interpolator) {
+    return 0.5 * (interpolator.getPreviousTime() + interpolator.getCurrentTime());
+  }
+
+  private void safeSetInterpolatedTime(AbstractStepInterpolator interpolator, double time) {
+    try {
+      interpolator.setInterpolatedTime(time);
+    } catch (DerivativeException e) {
+      throw new IllegalStateException("unexpected DerivativeException caught", e);
+    }
+  }
+
+  @Serial private static final long serialVersionUID = 2259286184268533249L;
 }

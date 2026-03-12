@@ -3,20 +3,26 @@ package network.crypta.crypt;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream.PutField;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.crypto.SecretKey;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
@@ -25,17 +31,43 @@ import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
 
 /**
- * EncryptedRandomAccessBuffer is a encrypted RandomAccessBuffer implementation using a
- * SkippingStreamCipher.
+ * Encrypted wrapper over a {@link LockableRandomAccessBuffer} backed by a BouncyCastle {@link
+ * SkippingStreamCipher}.
  *
- * @author unixninja92 Suggested EncryptedRandomAccessBufferType to use: ChaCha128
+ * <p>The underlying storage is partitioned into two regions:
+ *
+ * <ul>
+ *   <li>a cleartext header at the start of the buffer of length {@code type.headerLen}, and
+ *   <li>a data region that starts immediately after the header and has logical size {@code
+ *       underlying.size() - type.headerLen}.
+ * </ul>
+ *
+ * The header contains: an IV for header encryption, a base key encrypted under a key derived from
+ * the {@code MasterSecret}, a MAC authenticating the header fields and version, a 32-bit version,
+ * and an 8-byte magic value used as a sentinel. The data region is encrypted using a stream cipher
+ * whose key and IV are deterministically derived from the decrypted base key.
+ *
+ * <p>Thread-safety: reads and writes guard cipher state with dedicated locks ({@code
+ * readLock}/{@code writeLock}) so a read and a writing may proceed concurrently. Concurrency of the
+ * actual I/O operations is delegated to the underlying buffer implementation.
+ *
+ * <p>Persistence: instances can be stored and restored via {@link #storeTo(DataOutputStream)} and
+ * {@link #create(DataInputStream, FilenameGenerator, PersistentFileTracker, MasterSecret)}; an
+ * {@link #onResume(ClientContext)} call re-derives transient crypto state from the master secret
+ * and validates the header.
+ *
+ * @author unixninja92 Suggested {@link EncryptedRandomAccessBufferType} to use: ChaCha128
  */
 public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+
   @Serial private static final long serialVersionUID = 1L;
-  private final ReentrantLock readLock = new ReentrantLock();
-  private final ReentrantLock writeLock = new ReentrantLock();
+  private ReentrantLock readLock = new ReentrantLock();
+  private ReentrantLock writeLock = new ReentrantLock();
   private final EncryptedRandomAccessBufferType type;
-  private final LockableRandomAccessBuffer underlyingBuffer;
+  // RandomAccessBuffer implementations are not required to be Serializable. Keep the reference
+  // transient and handle persistence explicitly in writeObject/readObject, mirroring
+  // network.crypta.support.api.ManifestElement.
+  private transient LockableRandomAccessBuffer underlyingBuffer;
 
   private transient SkippingStreamCipher cipherRead;
   private transient SkippingStreamCipher cipherWrite;
@@ -48,25 +80,36 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
   private transient SecretKey headerEncKey;
   private transient byte[] headerEncIV;
-  private int version;
+  private volatile int version;
 
   private static final long END_MAGIC = 0x2c158a6c7772acd3L;
   private static final int VERSION_AND_MAGIC_LENGTH = 12;
+  // Detect whether Java assertions are enabled (-ea). Used to preserve assert semantics
+  // without using the 'assert' keyword in public methods.
+  private static final boolean ASSERTIONS_ENABLED;
+
+  static {
+    ASSERTIONS_ENABLED = EncryptedRandomAccessBuffer.class.desiredAssertionStatus();
+  }
 
   /**
-   * Creates an instance of EncryptedRandomAccessBuffer wrapping underlyingBuffer. Keys for key
-   * encryption and MAC generation are derived from the MasterSecret. If this is a new ERAT then
-   * keys are generated and the footer is written to the end of the underlying RAT. Otherwise the
-   * footer is read from the underlying RAT.
+   * Constructs an encrypted random-access buffer over {@code underlying}.
    *
-   * @param type The algorithms to be used for the ERAT
-   * @param underlyingBuffer The underlying RAT that will be storing the data. Must be larger than
-   *     the footer size specified in type.
-   * @param masterKey The MasterSecret that will be used to derive various keys.
-   * @param newFile If true, treat it as a new file, and writer a header. If false, the ERAT must
-   *     already have been initialised.
-   * @throws IOException
-   * @throws GeneralSecurityException
+   * <p>When {@code newFile} is {@code true}, a fresh base key and IV are generated and a header is
+   * written at offset {@code 0}. When {@code false}, the existing header is read, its MAC is
+   * verified, and cipher state is derived from the decrypted base key. Keys for header encryption
+   * and MAC computation are derived from the supplied {@code MasterSecret}.
+   *
+   * <p>Preconditions: {@code underlying.size() >= type.headerLen}.
+   *
+   * @param type Algorithm suite selecting cipher/MAC and header layout.
+   * @param underlying The backing buffer storing ciphertext and the cleartext header; must be at
+   *     least {@code type.headerLen} bytes long.
+   * @param masterKey Master secret used to derive header and data keys.
+   * @param newFile {@code true} to create a new header; {@code false} to open and verify an
+   *     existing header.
+   * @throws IOException If I/O fails or sizes are invalid.
+   * @throws GeneralSecurityException If header verification or cryptographic initialization fails.
    */
   public EncryptedRandomAccessBuffer(
       EncryptedRandomAccessBufferType type,
@@ -97,7 +140,10 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     byte[] header = new byte[VERSION_AND_MAGIC_LENGTH];
     int offset = 0;
     underlyingBuffer.pread(
-        type.headerLen - VERSION_AND_MAGIC_LENGTH, header, offset, VERSION_AND_MAGIC_LENGTH);
+        ((long) type.headerLen) - VERSION_AND_MAGIC_LENGTH,
+        header,
+        offset,
+        VERSION_AND_MAGIC_LENGTH);
 
     int readVersion = ByteBuffer.wrap(header, offset, 4).getInt();
     offset += 4;
@@ -122,35 +168,52 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
         throw new GeneralSecurityException("MAC is incorrect");
       }
     }
-    ParametersWithIV tempPram = null;
     try {
       KeyParameter cipherKey =
           new KeyParameter(
               KeyGenUtils.deriveSecretKey(
-                      unencryptedBaseKey, getClass(), kdfInput.underlyingKey.input, type.encryptKey)
+                      unencryptedBaseKey, getClass(), KdfInput.underlyingKey.input, type.encryptKey)
                   .getEncoded());
-      tempPram =
+      ParametersWithIV cipherParams =
           new ParametersWithIV(
               cipherKey,
               KeyGenUtils.deriveIvParameterSpec(
-                      unencryptedBaseKey, getClass(), kdfInput.underlyingIV.input, type.encryptKey)
+                      unencryptedBaseKey, getClass(), KdfInput.underlyingIV.input, type.encryptKey)
                   .getIV());
+      Objects.requireNonNull(cipherRead, "cipherRead");
+      Objects.requireNonNull(cipherWrite, "cipherWrite");
+      cipherRead.init(false, cipherParams);
+      cipherWrite.init(true, cipherParams);
     } catch (InvalidKeyException e) {
       throw new IllegalStateException(e); // Must be a bug.
     }
-    // includes key
-    ParametersWithIV cipherParams = tempPram;
-    cipherRead.init(false, cipherParams);
-    cipherWrite.init(true, cipherParams);
   }
 
+  /**
+   * Returns the logical size, in bytes, of the data region that can be addressed by {@link
+   * #pread(long, byte[], int, int)} and {@link #pwrite(long, byte[], int, int)}.
+   *
+   * <p>This equals {@code underlying.size() - type.headerLen}.
+   *
+   * @return number of readable/writable bytes in the data region
+   */
   @Override
   public long size() {
     return underlyingBuffer.size() - type.headerLen;
   }
 
   /**
-   * Reads the specified section of the underlying RAT and decrypts it. Decryption is thread-safe.
+   * Decrypts bytes from the data region into {@code buf}.
+   *
+   * <p>Thread-safety: guarded by an internal read lock; independent of the write lock.
+   *
+   * @param fileOffset Zero-based offset within the logical data region.
+   * @param buf Destination array for plaintext bytes.
+   * @param bufOffset Offset within {@code buf} to start writing.
+   * @param length Number of bytes to read.
+   * @throws IllegalArgumentException If {@code fileOffset} is negative.
+   * @throws IOException If the request crosses the end of the data region, the buffer is closed, or
+   *     the underlying read fails.
    */
   @Override
   public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -175,22 +238,36 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
     readLock.lock();
     try {
-      // cipherRead.seekTo(fileOffset);
-      // seekTo() does reset() and then skip(). So it always skips from 0.
-      // This is ridiculously slow for big tempfiles.
-      // FIXME REVIEW CRYPTO: Is this safe? It should be, we're using the published skip() API...
+      // seekTo() would reset() and then skip() from 0; that is slow for large files.
+      // Uses the published skip() API for positioning.
       long position = cipherRead.getPosition();
       long delta = fileOffset - position;
       cipherRead.skip(delta);
-      assert (cipherRead.getPosition() == fileOffset);
+      if (ASSERTIONS_ENABLED && cipherRead.getPosition() != fileOffset) {
+        throw new AssertionError("Cipher position mismatch before read");
+      }
       cipherRead.processBytes(cipherText, 0, length, buf, bufOffset);
-      assert (cipherRead.getPosition() == fileOffset + length);
+      if (ASSERTIONS_ENABLED && cipherRead.getPosition() != fileOffset + length) {
+        throw new AssertionError("Cipher position mismatch after read");
+      }
     } finally {
       readLock.unlock();
     }
   }
 
-  /** Encrypts the given data and writes it to the underlying RAT. Encryption is thread-safe. */
+  /**
+   * Encrypts {@code length} bytes from {@code buf} and writes them to the data region.
+   *
+   * <p>Thread-safety: guarded by an internal write lock; independent of the read lock.
+   *
+   * @param fileOffset Zero-based offset within the logical data region.
+   * @param buf Source array containing plaintext bytes.
+   * @param bufOffset Offset within {@code buf} to start reading.
+   * @param length Number of bytes to write.
+   * @throws IllegalArgumentException If {@code fileOffset} is negative.
+   * @throws IOException If the request crosses the end of the data region, the buffer is closed, or
+   *     the underlying writing fails.
+   */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
     if (isClosed) {
@@ -213,22 +290,30 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
     writeLock.lock();
     try {
-      // cipherWrite.seekTo(fileOffset)
-      // seekTo() does reset() and then skip(). So it always skips from 0.
-      // This is ridiculously slow for big tempfiles.
-      // FIXME REVIEW CRYPTO: Is this safe? It should be, we're using the published skip() API...
+      // seekTo() would reset() and then skip() from 0; that is slow for large files.
+      // Uses the published skip() API for positioning.
       long position = cipherWrite.getPosition();
       long delta = fileOffset - position;
       cipherWrite.skip(delta);
-      assert (cipherWrite.getPosition() == fileOffset);
+      if (ASSERTIONS_ENABLED && cipherWrite.getPosition() != fileOffset) {
+        throw new AssertionError("Cipher position mismatch before write");
+      }
       cipherWrite.processBytes(buf, bufOffset, length, cipherText, 0);
-      assert (cipherWrite.getPosition() == fileOffset + length);
+      if (ASSERTIONS_ENABLED && cipherWrite.getPosition() != fileOffset + length) {
+        throw new AssertionError("Cipher position mismatch after write");
+      }
     } finally {
       writeLock.unlock();
     }
     underlyingBuffer.pwrite(fileOffset + type.headerLen, cipherText, 0, length);
   }
 
+  /**
+   * Closes this buffer and its underlying storage for later I/O.
+   *
+   * <p>Idempotent. After the first call, further calls to {@link #pread(long, byte[], int, int)}
+   * and {@link #pwrite(long, byte[], int, int)} throw {@link IOException}.
+   */
   @Override
   public void close() {
     if (!isClosed) {
@@ -237,6 +322,10 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     }
   }
 
+  /**
+   * Releases resources. Calls {@link #close()} and delegates to {@link
+   * LockableRandomAccessBuffer#free()} on the underlying buffer.
+   */
   @Override
   public void free() {
     close();
@@ -244,10 +333,10 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   }
 
   /**
-   * Writes the footer to the end of the underlying RAT
+   * Writes the cleartext header at the start of the underlying buffer.
    *
-   * @throws IOException
-   * @throws GeneralSecurityException
+   * @throws IOException If the buffer is closed or I/O fails.
+   * @throws GeneralSecurityException If key derivation or encryption fails.
    */
   private void writeHeader() throws IOException, GeneralSecurityException {
     if (isClosed) {
@@ -261,14 +350,11 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     System.arraycopy(headerEncIV, 0, header, offset, ivLen);
     offset += ivLen;
 
-    byte[] encryptedKey = null;
+    byte[] encryptedKey;
     try {
       CryptByteBuffer crypt = new CryptByteBuffer(type.encryptType, headerEncKey, headerEncIV);
       encryptedKey = crypt.encryptCopy(unencryptedBaseKey.getEncoded());
-    } catch (InvalidKeyException e) {
-      throw new GeneralSecurityException(
-          "Something went wrong with key generation. please " + "report", e.fillInStackTrace());
-    } catch (InvalidAlgorithmParameterException e) {
+    } catch (InvalidKeyException | InvalidAlgorithmParameterException e) {
       throw new GeneralSecurityException(
           "Something went wrong with key generation. please " + "report", e.fillInStackTrace());
     }
@@ -297,12 +383,12 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   }
 
   /**
-   * Reads the iv, the encrypted key and the MAC from the footer. Then decrypts they key and
+   * Reads the IV, the encrypted base key, and the MAC from the header, then decrypts the key, and
    * verifies the MAC.
    *
-   * @return Returns true if the MAC is verified. Otherwise false.
-   * @throws IOException
-   * @throws InvalidKeyException
+   * @return {@code true} if the MAC verifies; {@code false} otherwise.
+   * @throws IOException If I/O fails or the buffer is closed.
+   * @throws InvalidKeyException If the MAC cannot be initialized.
    */
   private boolean verifyHeader() throws IOException, InvalidKeyException {
     if (isClosed) {
@@ -325,9 +411,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
       CryptByteBuffer crypt = new CryptByteBuffer(type.encryptType, headerEncKey, headerEncIV);
       unencryptedBaseKey =
           KeyGenUtils.getSecretKey(type.encryptKey, crypt.decryptCopy(encryptedKey));
-    } catch (InvalidKeyException e) {
-      throw new IOException("Error reading encryption keys from header.");
-    } catch (InvalidAlgorithmParameterException e) {
+    } catch (InvalidKeyException | InvalidAlgorithmParameterException _) {
       throw new IOException("Error reading encryption keys from header.");
     }
 
@@ -339,41 +423,70 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     return authcode.verifyData(mac, headerEncIV, unencryptedBaseKey.getEncoded(), ver);
   }
 
-  /** The Strings used to derive keys and ivs from the unencryptedBaseKey. */
-  enum kdfInput {
-    underlyingKey(),
-    /** For deriving the key that will be used to encrypt the underlying RAT */
-    underlyingIV();
+  /** The inputs used to derive keys and IVs from the {@code unencryptedBaseKey}. */
+  static final class KdfInput {
+    /** For deriving the key that encrypts the underlying data region. */
+    public static final KdfInput underlyingKey = new KdfInput("underlyingKey");
 
-    /** For deriving the iv that will be used to encrypt the underlying RAT */
+    /** For deriving the IV used to encrypt the underlying data region. */
+    public static final KdfInput underlyingIV = new KdfInput("underlyingIV");
+
+    /** The literal input string fed into the KDF. */
     public final String input;
 
-    kdfInput() {
-      this.input = name();
+    private KdfInput(String input) {
+      this.input = input;
     }
   }
 
+  /**
+   * Opens a lock for coordinated access. Delegates to the underlying buffer.
+   *
+   * @return a lock object representing the open lifetime
+   * @throws IOException if the underlying buffer cannot open the lock
+   */
   @Override
   public RAFLock lockOpen() throws IOException {
     return underlyingBuffer.lockOpen();
   }
 
+  /**
+   * Persistence tag written by {@link #storeTo(DataOutputStream)}. The caller that restores a
+   * buffer is expected to check this marker before calling {@link #create(DataInputStream,
+   * FilenameGenerator, PersistentFileTracker, MasterSecret)}.
+   */
   public static final int MAGIC = 0x39ea94c2;
 
+  /**
+   * Recreates transient crypto state after deserialization or process restart.
+   *
+   * <p>Derives keys from the persistent master secret in {@code context}, verifies the header, and
+   * initializes the stream ciphers.
+   *
+   * @throws ResumeFailedException If I/O or cryptographic initialization fails.
+   */
   @Override
   public void onResume(ClientContext context) throws ResumeFailedException {
     underlyingBuffer.onResume(context);
     try {
       setup(context.getPersistentMasterSecret(), false);
     } catch (IOException e) {
-      Logger.error(this, "Disk I/O error resuming: " + e, e);
-      throw new ResumeFailedException(e);
+      throw new ResumeFailedException(
+          new IOException("Disk I/O error resuming EncryptedRandomAccessBuffer", e));
     } catch (GeneralSecurityException e) {
-      Logger.error(this, "Impossible security error resuming - maybe we lost a codec?: " + e, e);
-      throw new ResumeFailedException(e);
+      throw new ResumeFailedException(
+          new GeneralSecurityException(
+              "Security error resuming EncryptedRandomAccessBuffer (maybe missing codec)", e));
     }
   }
 
+  /**
+   * Writes a persistent representation to {@code dos}: {@link #MAGIC}, the algorithm bitmask, and
+   * the underlying buffer via its own persistence format.
+   *
+   * @param dos destination stream
+   * @throws IOException if writing fails
+   */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
     dos.writeInt(MAGIC);
@@ -381,6 +494,80 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     underlyingBuffer.storeTo(dos);
   }
 
+  /* ===== Java serialization support (explicit underlying handling) ===== */
+  private static final String FIELD_TYPE = "type";
+  private static final String FIELD_UNDERLYING = "underlyingBuffer";
+  private static final String FIELD_VERSION = "version";
+
+  @Serial
+  private static final ObjectStreamField[] serialPersistentFields = {
+    new ObjectStreamField(FIELD_TYPE, EncryptedRandomAccessBufferType.class),
+    new ObjectStreamField(FIELD_UNDERLYING, LockableRandomAccessBuffer.class),
+    new ObjectStreamField(FIELD_VERSION, int.class)
+  };
+
+  @Serial
+  private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
+    PutField fields = out.putFields();
+    fields.put(FIELD_TYPE, type);
+    fields.put(FIELD_VERSION, version);
+    if (underlyingBuffer == null) {
+      fields.put(FIELD_UNDERLYING, null);
+      out.writeFields();
+      return;
+    }
+    if (underlyingBuffer instanceof Serializable serializable) {
+      fields.put(FIELD_UNDERLYING, serializable);
+      out.writeFields();
+      // Also, write the underlying as a trailing object for compatibility with intermediary
+      // formats and to allow readObject() to restore transient fields via defaultReadObject().
+      out.writeObject(serializable);
+      return;
+    }
+    out.writeFields();
+    throw new NotSerializableException(underlyingBuffer.getClass().getName());
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    // Restore non-transient fields (locks, type, version) via the default mechanism.
+    in.defaultReadObject();
+    // Recreate locks if they weren't part of the serialized field set.
+    if (this.readLock == null) this.readLock = new ReentrantLock();
+    if (this.writeLock == null) this.writeLock = new ReentrantLock();
+
+    // Compatibility: if the underlying buffer wasn't restored from the default field block
+    // (older/newer streams that omit it there), attempt to read a trailing object written by
+    // intermediary versions. ObjectInputStream bounds class data, so a missing trailing object
+    // results in OptionalDataException with eof=true and does not consume the next top‑level
+    // object in the stream.
+    if (this.underlyingBuffer == null) {
+      try {
+        Object maybeUnderlying = in.readObject();
+        this.underlyingBuffer =
+            (maybeUnderlying == null) ? null : (LockableRandomAccessBuffer) maybeUnderlying;
+      } catch (java.io.OptionalDataException e) {
+        if (!e.eof) throw e; // No trailing object for this class; keep field value (null).
+      }
+    }
+  }
+
+  /**
+   * Restores an instance previously written with {@link #storeTo(DataOutputStream)}.
+   *
+   * <p>Callers are expected to have already read and validated {@link #MAGIC}. The input stream
+   * must be positioned at the type bitmask written by {@link #storeTo(DataOutputStream)}.
+   *
+   * @param dis data input positioned to the algorithm bitmask
+   * @param fg filename generator used while restoring the underlying buffer
+   * @param persistentFileTracker tracker for files used by the underlying buffer
+   * @param masterKey master secret used to derive keys
+   * @return a ready-to-use {@link LockableRandomAccessBuffer}
+   * @throws IOException on I/O errors
+   * @throws StorageFormatException if the algorithm bitmask is unknown
+   * @throws ResumeFailedException if cryptographic initialization fails
+   */
   public static LockableRandomAccessBuffer create(
       DataInputStream dis,
       FilenameGenerator fg,
@@ -392,11 +579,30 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     if (type == null) throw new StorageFormatException("Unknown EncryptedRandomAccessBufferType");
     LockableRandomAccessBuffer underlying =
         BucketTools.restoreRAFFrom(dis, fg, persistentFileTracker, masterKey);
-    try {
-      return new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
+    class UnderlyingCloseGuard implements AutoCloseable {
+      private LockableRandomAccessBuffer buffer;
+
+      private UnderlyingCloseGuard(LockableRandomAccessBuffer buffer) {
+        this.buffer = buffer;
+      }
+
+      private void release() {
+        buffer = null;
+      }
+
+      @Override
+      public void close() {
+        IOUtils.closeQuietly(buffer);
+      }
+    }
+    try (UnderlyingCloseGuard closeGuard = new UnderlyingCloseGuard(underlying)) {
+      EncryptedRandomAccessBuffer restored =
+          new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
+      closeGuard.release();
+      return restored;
     } catch (GeneralSecurityException e) {
-      Logger.error(EncryptedRandomAccessBuffer.class, "Crypto error resuming: " + e, e);
-      throw new ResumeFailedException(e);
+      throw new ResumeFailedException(
+          new GeneralSecurityException("Crypto error resuming EncryptedRandomAccessBuffer", e));
     }
   }
 

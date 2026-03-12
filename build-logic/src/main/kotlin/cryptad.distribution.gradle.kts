@@ -10,31 +10,46 @@ val wrapperDeltaPack = "wrapper-delta-pack-$wrapperVersion.tar.gz"
 val wrapperBaseUrl =
   "https://sourceforge.net/projects/wrapper/files/wrapper/Wrapper_3.6.2_20250605/$wrapperDeltaPack/download"
 
-val wrapperWorkDir = layout.buildDirectory.dir("wrapper")
-val wrapperExtractDir = layout.buildDirectory.dir("wrapper/extracted")
-val wrapperDistDir = layout.buildDirectory.dir("cryptad-dist")
+val wrapperWorkDir: Provider<Directory> = layout.buildDirectory.dir("wrapper")
+val wrapperExtractDir: Provider<Directory> = layout.buildDirectory.dir("wrapper/extracted")
+val wrapperDistDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-dist")
 
 // Windows wrapper binaries are not present in the delta pack. We fetch them from the latest
 // release of crypta-network/wrapper-windows-build.
 val wrapperWindowsRepo = "crypta-network/wrapper-windows-build"
-val wrapperWindowsApiLatest =
+val wrapperWindowsApiLatest: Provider<String> =
   providers
     .gradleProperty("wrapperWinApiUrl")
     .orElse("https://api.github.com/repos/$wrapperWindowsRepo/releases/latest")
-val wrapperWindowsWorkDir = layout.buildDirectory.dir("wrapper/windows")
+val wrapperWindowsWorkDir: Provider<Directory> = layout.buildDirectory.dir("wrapper/windows")
 // We don't assume a specific archive extension from GitHub assets (.zip or .tar.gz).
-// Download to a neutral extension; extraction tasks will auto-detect type by magic bytes.
-val wrapperWindowsAmd64Archive = wrapperWindowsWorkDir.map { it.file("windows-amd64.bin") }
-val wrapperWindowsArm64Archive = wrapperWindowsWorkDir.map { it.file("windows-arm64.bin") }
-val wrapperWindowsAmd64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-amd64") }
-val wrapperWindowsArm64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-arm64") }
+// Download to a neutral extension; extraction tasks will auto-detect the type by magic bytes.
+val wrapperWindowsAmd64Archive: Provider<RegularFile> =
+  wrapperWindowsWorkDir.map { it.file("windows-amd64.bin") }
+val wrapperWindowsArm64Archive: Provider<RegularFile> =
+  wrapperWindowsWorkDir.map { it.file("windows-arm64.bin") }
+val wrapperWindowsAmd64Extract: Provider<Directory> =
+  wrapperWindowsWorkDir.map { it.dir("extracted-amd64") }
+val wrapperWindowsArm64Extract: Provider<Directory> =
+  wrapperWindowsWorkDir.map { it.dir("extracted-arm64") }
 
 // Seednodes generation settings
 val seedrefsZipUrl = "https://codeload.github.com/hyphanet/seedrefs/zip/refs/heads/master"
-val seedrefsWorkDir = layout.buildDirectory.dir("seedrefs")
-val seedrefsZip = seedrefsWorkDir.map { it.file("seedrefs.zip") }
-val seedrefsExtracted = seedrefsWorkDir.map { it.dir("extracted") }
-val seednodesOut = layout.buildDirectory.file("generated/seednodes/seednodes.fref")
+val seedrefsWorkDir: Provider<Directory> = layout.buildDirectory.dir("seedrefs")
+val seedrefsZip: Provider<RegularFile> = seedrefsWorkDir.map { it.file("seedrefs.zip") }
+val seedrefsExtracted: Provider<Directory> = seedrefsWorkDir.map { it.dir("extracted") }
+val seednodesOut: Provider<RegularFile> =
+  layout.buildDirectory.file("generated/seednodes/seednodes.fref")
+
+fun downloadTo(url: String, targetFile: Provider<RegularFile>) {
+  val target = targetFile.get().asFile
+  target.parentFile.mkdirs()
+  val resolvedUrl = URI(url).toURL()
+  println("Downloading $url -> " + target.absolutePath)
+  resolvedUrl.openStream().use { input ->
+    Files.copy(input, target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+  }
+}
 
 // Download the Wrapper delta pack
 val downloadWrapper by
@@ -43,15 +58,7 @@ val downloadWrapper by
     description = "Downloads Tanuki Java Service Wrapper delta pack"
     val outFile = wrapperWorkDir.map { it.file(wrapperDeltaPack) }
     outputs.file(outFile)
-    doLast {
-      val target = outFile.get().asFile
-      target.parentFile.mkdirs()
-      val url = URI(wrapperBaseUrl).toURL()
-      println("Downloading $wrapperBaseUrl -> " + target.absolutePath)
-      url.openStream().use { input ->
-        Files.copy(input, target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-      }
-    }
+    doLast { downloadTo(wrapperBaseUrl, outFile) }
   }
 
 // Extract the delta pack
@@ -71,15 +78,7 @@ val downloadSeedrefs by
     group = "distribution"
     description = "Downloads hyphanet/seedrefs repository as a zip"
     outputs.file(seedrefsZip)
-    doLast {
-      val out = seedrefsZip.get().asFile
-      out.parentFile.mkdirs()
-      val url = URI(seedrefsZipUrl).toURL()
-      println("Downloading $seedrefsZipUrl -> " + out.absolutePath)
-      url.openStream().use { input ->
-        Files.copy(input, out.toPath(), StandardCopyOption.REPLACE_EXISTING)
-      }
-    }
+    doLast { downloadTo(seedrefsZipUrl, seedrefsZip) }
   }
 
 // Extract seedrefs
@@ -140,9 +139,13 @@ val copyWrapperBinaries by
 
 abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
   @get:Input abstract val apiUrl: Property<String>
+
   @get:Input @get:Optional abstract val amd64UrlOverride: Property<String>
+
   @get:Input @get:Optional abstract val arm64UrlOverride: Property<String>
+
   @get:OutputFile abstract val amd64Archive: RegularFileProperty
+
   @get:OutputFile abstract val arm64Archive: RegularFileProperty
 
   @TaskAction
@@ -187,8 +190,9 @@ abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
           l.contains("win") &&
           archHints.any { hint -> l.contains(hint) }
       }
-    if (candidate == null)
+    if (candidate == null) {
       throw GradleException("Could not find Windows asset for $archHints in $apiUrl")
+    }
     return candidate
   }
 
@@ -237,12 +241,19 @@ fun detectArchiveType(file: File): ArchiveType {
   val isZip = magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
   val isGzip = magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte()
   return when {
-    isZip -> ArchiveType.ZIP
-    isGzip -> ArchiveType.TAR_GZ
-    else ->
+    isZip -> {
+      ArchiveType.ZIP
+    }
+
+    isGzip -> {
+      ArchiveType.TAR_GZ
+    }
+
+    else -> {
       throw GradleException(
         "Unsupported or unrecognized archive format for Windows wrapper: ${file.name}"
       )
+    }
   }
 }
 
@@ -252,7 +263,7 @@ fun fileTreeFromArchive(file: File): FileTree =
     ArchiveType.TAR_GZ -> tarTree(resources.gzip(file))
   }
 
-// Helper to detect archive type and configure extraction dynamically at execution time.
+// Helper to detect the archive type and configure extraction dynamically at execution time.
 fun Copy.fromAutoArchive(file: File) {
   when (detectArchiveType(file)) {
     ArchiveType.ZIP -> from(zipTree(file))
@@ -315,6 +326,7 @@ val copyWindowsWrapperBinaries by
       val arm64Archive = wrapperWindowsArm64Archive.get().asFile
 
       println("[dist] copyWindowsWrapperBinaries: starting")
+
       fun humanSize(bytes: Long): String {
         val units = arrayOf("B", "KB", "MB", "GB")
         var b = bytes.toDouble()
@@ -466,7 +478,7 @@ val prepareWrapperLibs by
     }
   }
 
-// Generate conf/wrapper.conf from template
+// Generate conf/wrapper.conf from a template
 val generateWrapperConf by
   tasks.registering {
     group = "distribution"
@@ -474,7 +486,7 @@ val generateWrapperConf by
     dependsOn(prepareWrapperLibs)
     val confDir = wrapperDistDir.map { it.dir("conf") }
     outputs.file(confDir.map { it.file("wrapper.conf") })
-    // Capture template file at configuration time to avoid Task.project access at execution
+    // Capture the template file at configuration time to avoid Task.project access at execution
     val confTemplate = layout.projectDirectory.file("src/main/templates/wrapper.conf.tpl")
     doLast {
       val confDirFile = confDir.get().asFile
@@ -494,7 +506,7 @@ val generateWrapperLaunchers by
     dependsOn(copyWrapperBinaries)
     val binDir = wrapperDistDir.map { it.dir("bin") }
     outputs.files(binDir.map { it.file("cryptad") }, binDir.map { it.file("cryptad.bat") })
-    // Resolve inputs up front (configuration time) to be config-cache friendly
+    // Resolve inputs up front (configuration time) to be config-cache-friendly
     val launcherTemplateUnix =
       layout.projectDirectory.file("src/main/templates/cryptad-launcher.sh.tpl")
     val launcherTemplateBat =
@@ -636,7 +648,7 @@ val dist by
     dependsOn("distTarCryptad", "distZipCryptad")
   }
 
-// Ensure standard build also produces the distribution archives
+// Ensure the standard build also produces the distribution archives
 tasks.named("build") { dependsOn(dist) }
 
 // Make sure jpackage resources exist even if only installer/image is requested later
@@ -673,12 +685,6 @@ val copyResourcesToClasses2 by
         include("network/crypta/l10n/iso-*.tab")
         include("network/crypta/clients/http/staticfiles/**")
         include("network/crypta/clients/http/templates/**")
-        include("../dependencies.properties")
-      }
-      copy {
-        from(projectDir)
-        into(layout.buildDirectory.dir("classes/java/main/"))
-        include("dependencies.properties")
       }
     }
   }

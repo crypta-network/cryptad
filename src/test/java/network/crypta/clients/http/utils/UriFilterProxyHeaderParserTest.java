@@ -1,281 +1,243 @@
 package network.crypta.clients.http.utils;
 
-import static org.junit.Assert.assertEquals;
-
-import network.crypta.config.Config;
-import network.crypta.config.StringOption;
+import java.util.Objects;
+import network.crypta.config.Option;
 import network.crypta.support.MultiValueTable;
-import network.crypta.support.api.StringCallback;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-public class UriFilterProxyHeaderParserTest {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-  // typical arguments
-  @Test
-  public void standardValuesParsedAsStandardPrefix() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888", "127.0.0.1", "", "", new MultiValueTable<>(), "http://127.0.0.1:8888");
-  }
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100")
+class UriFilterProxyHeaderParserTest {
+  private static final String DEFAULT_BIND_TO = "127.0.0.1";
+  private static final String DEFAULT_PORT = "8888";
+  private static final String DEFAULT_HOST_WITH_PORT = "127.0.0.1:8888";
+  private static final String DEFAULT_URL = "http://127.0.0.1:8888";
+  private static final String BIND_TO_LOCAL_AND_FOO = "127.0.0.1,foo";
+  private static final String HTTP_FOO = "http://foo";
 
-  // empty arguments result in plain http:// prefix
-  @Test
-  public void emptyArgumentsParsedAsStandardPrefix() throws Exception {
-    testUriPrefixMatchesExpected("", "", "", "", new MultiValueTable<>(), "http://127.0.0.1:8888");
-  }
-
-  @Test
-  public void nullArgumentsParsedAsStandardPrefix() throws Exception {
-    testUriPrefixMatchesExpected(
-        "", "", null, null, new MultiValueTable<>(), "http://127.0.0.1:8888");
-  }
-
-  // sanity checks for defaults
-  @Test
-  public void defaultPortParsedAsStandardPrefix() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888", "", "", "", new MultiValueTable<>(), "http://127.0.0.1:8888");
-  }
+  private static final String HEADER_HOST = "host";
+  private static final String HEADER_X_FORWARDED_HOST = "x-forwarded-host";
+  private static final String HEADER_X_FORWARDED_PROTO = "x-forwarded-proto";
 
   @Test
-  public void defaultIpParsedAsStandardPrefix() throws Exception {
-    testUriPrefixMatchesExpected(
-        "", "127.0.0.1", "", "", new MultiValueTable<>(), "http://127.0.0.1:8888");
-  }
+  void parse_whenNoHeadersAndNullUriSchemeAndNullUriHost_expectDefaults() {
+    // Arrange
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
 
-  // taking proxy values
-  @Test
-  public void allowedProxyHostIsUsedIfInSecondPositionOfBindTo() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1,foo",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "foo"),
-        "http://foo");
+    // Act
+    String result = parseToString(mockOption(""), mockOption(""), null, null, headers);
+
+    // Assert
+    assertEquals(DEFAULT_URL, result);
   }
 
   @Test
-  public void allowedProxyHostIsUsedIfInFirstPositionOfBindTo() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "foo,127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "foo:8888"),
-        "http://foo:8888");
+  void parse_whenHostHeaderPresentAndAllowed_expectUsesHostHeader() {
+    // Arrange
+    MultiValueTable<String, String> headers = MultiValueTable.from(HEADER_HOST, "foo");
+
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption(BIND_TO_LOCAL_AND_FOO), "", "", headers);
+
+    // Assert
+    assertEquals(HTTP_FOO, result);
   }
 
   @Test
-  public void allowedProxyHostWithNonstandardPortIsUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8889",
-        "127.0.0.1,foo",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "foo:8889"),
-        "http://foo:8889");
+  void parse_whenUriHostProvidedAndAllowed_expectUsesUriHostOverHostHeader() {
+    // Arrange
+    MultiValueTable<String, String> headers =
+        MultiValueTable.from(HEADER_HOST, DEFAULT_HOST_WITH_PORT);
+
+    // Act
+    String result =
+        parseToString(
+            mockOption(DEFAULT_PORT), mockOption(BIND_TO_LOCAL_AND_FOO), "", "foo", headers);
+
+    // Assert
+    assertEquals(HTTP_FOO, result);
   }
 
   @Test
-  public void httpsProtocolFromProxyIsUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-proto", "https"),
-        "https://127.0.0.1:8888");
-  }
+  void parse_whenForwardedHostPresentAndAllowed_expectUsesForwardedHostOverUriAndHostHeader() {
+    // Arrange
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
+    headers.put(HEADER_HOST, DEFAULT_HOST_WITH_PORT);
+    headers.put(HEADER_X_FORWARDED_HOST, "foo:" + DEFAULT_PORT);
 
-  // taking uri values
-  @Test
-  public void allowedUriHostIsUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888", "127.0.0.1,foo", "", "foo", new MultiValueTable<>(), "http://foo");
-  }
+    // Act
+    String result =
+        parseToString(
+            mockOption(DEFAULT_PORT),
+            mockOption(BIND_TO_LOCAL_AND_FOO),
+            "",
+            DEFAULT_BIND_TO,
+            headers);
 
-  @Test
-  public void allowedUriHostWithStandardPortAreUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888", "127.0.0.1,foo", "", "foo:8888", new MultiValueTable<>(), "http://foo:8888");
+    // Assert
+    assertEquals("http://foo:8888", result);
   }
 
   @Test
-  public void allowedUriAndNonstandardPortAreUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8889", "127.0.0.1,foo", "", "foo:8889", new MultiValueTable<>(), "http://foo:8889");
+  void
+      parse_whenForwardedHostPresentButDisallowed_expectFallsBackToFirstBindToWithPortEvenIfUriHostAllowed() {
+    // Arrange
+    MultiValueTable<String, String> headers = MultiValueTable.from(HEADER_X_FORWARDED_HOST, "evil");
+
+    // Act
+    String result =
+        parseToString(
+            mockOption(DEFAULT_PORT), mockOption(BIND_TO_LOCAL_AND_FOO), "", "foo", headers);
+
+    // Assert
+    assertEquals(DEFAULT_URL, result);
   }
 
   @Test
-  public void httpsProtocolFromUriIsUsed() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888", "127.0.0.1", "https", "", new MultiValueTable<>(), "https://127.0.0.1:8888");
-  }
+  void parse_whenForwardedProtoPresentAndAllowed_expectUsesForwardedProto() {
+    // Arrange
+    MultiValueTable<String, String> headers =
+        MultiValueTable.from(HEADER_X_FORWARDED_PROTO, "https");
 
-  // ignored header values
-  @Test
-  public void disallowedProxyHostHeaderIsIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "foo"),
-        "http://127.0.0.1:8888");
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption(DEFAULT_BIND_TO), "", "", headers);
+
+    // Assert
+    assertEquals("https://127.0.0.1:8888", result);
   }
 
   @Test
-  public void disallowedProxyProtocolIsIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-proto", "catchme"),
-        "http://127.0.0.1:8888");
+  void parse_whenForwardedProtoPresentButInvalid_expectFallsBackToHttpEvenIfUriSchemeHttps() {
+    // Arrange
+    MultiValueTable<String, String> headers =
+        MultiValueTable.from(HEADER_X_FORWARDED_PROTO, "gopher");
+
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption(DEFAULT_BIND_TO), "https", "", headers);
+
+    // Assert
+    assertEquals(DEFAULT_URL, result);
   }
 
   @Test
-  public void disallowedProxyHostAndPortAreIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "foo:8888",
-        MultiValueTable.from("x-forwarded-host", "foo:8888"),
-        "http://127.0.0.1:8888");
+  void parse_whenUriSchemeInvalid_expectFallsBackToHttp() {
+    // Arrange
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
+
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption(DEFAULT_BIND_TO), "ftp", "", headers);
+
+    // Assert
+    assertEquals(DEFAULT_URL, result);
   }
 
   @Test
-  public void disallowedProxyWithStandardPortIsIgnoredIfPortIsNotStandardAndHostNotAllowed()
-      throws Exception {
-    testUriPrefixMatchesExpected(
-        "8889",
-        "127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "foo:8888"),
-        "http://127.0.0.1:8889");
+  void parse_whenPortConfigEmpty_expectDefaultPortUsedInFallbackHost() {
+    // Arrange
+    MultiValueTable<String, String> headers = MultiValueTable.from(HEADER_X_FORWARDED_HOST, "evil");
+
+    // Act
+    String result = parseToString(mockOption(""), mockOption(DEFAULT_BIND_TO), "", "", headers);
+
+    // Assert
+    assertEquals(DEFAULT_URL, result);
   }
 
   @Test
-  public void disallowedProxyWithStandardPortIsIgnoredIfPortIsNotStandard() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8889",
-        "127.0.0.1",
-        "",
-        "",
-        MultiValueTable.from("x-forwarded-host", "127.0.0.1:8888"),
-        "http://127.0.0.1:8889");
-  }
+  void parse_whenBindToIpv6Literal_expectAllowsBracketedHostAndPort() {
+    // Arrange
+    MultiValueTable<String, String> headers =
+        MultiValueTable.from(HEADER_X_FORWARDED_HOST, "[2001:db8::1]:" + DEFAULT_PORT);
 
-  // ignored uri values
-  // no such bindToHost
-  @Test
-  public void disallowedUriHostIsIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "foo",
-        MultiValueTable.from("x-forwarded-host", "foo"),
-        "http://127.0.0.1:8888");
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption("2001:db8::1"), "", "", headers);
+
+    // Assert
+    assertEquals("http://[2001:db8::1]:8888", result);
   }
 
   @Test
-  public void disallowedUriHostWithStandardPortIsIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1",
-        "",
-        "foo:8888",
-        MultiValueTable.from("x-forwarded-host", "foo:8888"),
-        "http://127.0.0.1:8888");
+  void parse_whenBindToIpv6LiteralAndHostDisallowed_expectFallsBackToFirstBindToWithPort() {
+    // Arrange
+    MultiValueTable<String, String> headers = MultiValueTable.from(HEADER_X_FORWARDED_HOST, "evil");
+
+    // Act
+    String result =
+        parseToString(mockOption(DEFAULT_PORT), mockOption("2001:db8::1"), "", "", headers);
+
+    // Assert
+    assertEquals("http://[2001:db8::1]:8888", result);
   }
 
-  // port mismatch
   @Test
-  public void disallowedUriWithAllowedHostButDisallowedPortIsIgnored() throws Exception {
-    testUriPrefixMatchesExpected(
-        "8888",
-        "127.0.0.1,foo",
-        "",
-        "foo:8889",
-        MultiValueTable.from("x-forwarded-host", "foo:8889"),
-        "http://127.0.0.1:8888");
+  void parse_whenPortNonStandardAndForwardedHostHasNoPort_expectAllowsHostWithoutPort() {
+    // Arrange
+    MultiValueTable<String, String> headers = MultiValueTable.from(HEADER_X_FORWARDED_HOST, "foo");
+
+    // Act
+    String result =
+        parseToString(mockOption("8889"), mockOption(BIND_TO_LOCAL_AND_FOO), "", "", headers);
+
+    // Assert
+    assertEquals(HTTP_FOO, result);
   }
 
-  private void testUriPrefixMatchesExpected(
-      String fProxyPort,
-      String fProxyBindTo,
+  @Test
+  void parse_whenHeadersNull_expectThrowsNullPointerException() {
+    // Arrange
+    Option<?> port = mockOption(DEFAULT_PORT);
+    Option<?> bindTo = mockOption(DEFAULT_BIND_TO);
+
+    // Act / Assert
+    assertThrows(
+        NullPointerException.class,
+        () -> UriFilterProxyHeaderParser.parse(port, bindTo, "", "", null));
+  }
+
+  @Test
+  void parse_whenBindToOptionNull_expectThrowsNullPointerException() {
+    // Arrange
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
+    Option<?> port = mock(Option.class);
+
+    // Act / Assert
+    //noinspection DataFlowIssue
+    assertThrows(
+        NullPointerException.class,
+        () -> UriFilterProxyHeaderParser.parse(port, null, "", "", headers));
+  }
+
+  private static String parseToString(
+      Option<?> fProxyPortConfig,
+      Option<?> fProxyBindToConfig,
       String uriScheme,
       String uriHost,
-      MultiValueTable<String, String> headers,
-      String resultUriPrefix)
-      throws Exception {
-    String schemeHostAndPort =
+      MultiValueTable<String, String> headers) {
+    UriFilterProxyHeaderParser.SchemeAndHostWithPort result =
         UriFilterProxyHeaderParser.parse(
-                fakePortOption(fProxyPort),
-                fakeBindToOption(fProxyBindTo),
-                uriScheme,
-                uriHost,
-                headers)
-            .toString();
-    assertEquals(
-        "schemeHostAndPort %s does not match expected %s; portConfig=\"%s\", bindTo=\"%s\", uriScheme=\"%s\", uriHost=\"%s\", headers=%s, expected=\"%s\""
-            .formatted(
-                schemeHostAndPort,
-                resultUriPrefix,
-                fProxyPort,
-                fProxyBindTo,
-                uriScheme,
-                uriHost,
-                headers,
-                resultUriPrefix),
-        schemeHostAndPort,
-        resultUriPrefix);
+            Objects.requireNonNull(fProxyPortConfig),
+            Objects.requireNonNull(fProxyBindToConfig),
+            uriScheme,
+            uriHost,
+            Objects.requireNonNull(headers));
+    return result.toString();
   }
 
-  private StringOption fakeBindToOption(String value) throws Exception {
-    StringOption option =
-        new StringOption(
-            new Config().createSubConfig("fake"),
-            "bindTo",
-            "127.0.0.1",
-            0,
-            false,
-            false,
-            "",
-            "",
-            new DummyStringCallback());
-    option.setValue(value);
+  private static Option<?> mockOption(String value) {
+    Option<?> option = mock(Option.class);
+    when(option.getValueString()).thenReturn(value);
     return option;
-  }
-
-  private StringOption fakePortOption(String value) throws Exception {
-    StringOption option =
-        new StringOption(
-            new Config().createSubConfig("fake"),
-            "port",
-            "8888",
-            0,
-            false,
-            false,
-            "",
-            "",
-            new DummyStringCallback());
-    option.setValue(value);
-    return option;
-  }
-
-  private class DummyStringCallback extends StringCallback {
-
-    @Override
-    public String get() {
-      return null;
-    }
-
-    @Override
-    public void set(String val) {}
   }
 }

@@ -11,6 +11,7 @@
 /generator/js/gwt-unitCache/
 /run
 .classpath
+.factorypath
 *.swp
 *.iml
 *.ipr
@@ -27,9 +28,12 @@ debhelper-build-stamp
 *.changes
 *.tar.gz
 *.log
+*.log.gz
+/logs/
 *.substvars
 /debian/freenet/*
 .gradle
+.gradle-home
 gradle
 /.gradle-user-home
 debian/seednodes.fref
@@ -41,12 +45,23 @@ qodana*
 /.claude
 /.gemini
 /.playwright-mcp
+/.opencode/plans
 .kotlin
 .jreleaser
 multipass-client-certificate
 out/jreleaser
 build-logic/build/
+build-logic/bin/
 tmp*
+/changelog*.md
+/changelog*.txt
+
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
 /.vscode
+.project
+.settings
+
+# Local migration helpers
+tools/migrate_logger_slf4j.py
+.codex-system-skills.marker

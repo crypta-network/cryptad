@@ -8,52 +8,78 @@ on:
         default: main
       jdk-version:
         type: string
-        default: '21'
+        default: '25'
     outputs:
       artifact-id:
         description: The artifact-id for built cryptad.jar
         value: ${{ jobs.build.outputs.artifact-id }}
+    secrets:
+      SONAR_TOKEN:
+        description: SonarCloud token forwarded from caller
+        required: false
 jobs:
   build:
 
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write # required for actions/cache to reserve/upload caches
+
+    # Expose selected secrets as env so we can use them in step `if:`
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     outputs:
       artifact-id: ${{ steps.upload-artifact.outputs.artifact-id}}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: crypta-network/cryptad
           ref: ${{ inputs.git-ref }}
+          fetch-depth: 0 # Required for Sonar analysis accuracy
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ inputs.jdk-version }}
           distribution: 'temurin'
 
+      # Cache SonarQube packages to speed up analysis
+      - name: Cache SonarQube packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
       # Configure Gradle for optimal use in GitHub Actions, including caching of downloaded dependencies.
       # See: https://github.com/gradle/actions/blob/main/setup-gradle/README.md
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
 
-      - name: Build with Gradle Wrapper (build)
+      - name: Build and analyze (Gradle)
+        if: ${{ env.SONAR_TOKEN != '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+        run: ./gradlew build sonar --warning-mode all
+
+      - name: Build (no Sonar token)
+        if: ${{ env.SONAR_TOKEN == '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./gradlew build
 
       - name: Upload cryptad.jar
         id: upload-artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cryptad
           path: build/libs/cryptad.jar
 
       - name: Upload jlink tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cryptad-jlink
           path: build/distributions/cryptad-jlink-v*.tar.gz

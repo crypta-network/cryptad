@@ -1,14 +1,14 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests parsing of bandwidth limits optionally specified with some indicator of "(bits) per
  * second."
  */
-public class FieldTrimSecondTest {
+class FieldTrimSecondTest {
 
   /** Bandwidth limit input with and without various "per second" specifiers and SI / IEC units. */
   private static final String[] input = {"50 KiB/s", "1.5 MiB/sec", "128 kbps", "20 KiB", "5800"};
@@ -19,7 +19,7 @@ public class FieldTrimSecondTest {
   };
 
   @Test
-  public void test() {
+  void test() {
     assert input.length == output.length;
 
     int parsed;

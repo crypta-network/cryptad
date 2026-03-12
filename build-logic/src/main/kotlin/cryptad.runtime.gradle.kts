@@ -1,15 +1,15 @@
 import java.io.ByteArrayOutputStream
-import org.gradle.kotlin.dsl.support.serviceOf
+import java.util.concurrent.TimeUnit
 
 plugins { java }
 
 // We keep our existing custom distribution (assembleCryptadDist) intact.
 // This plugin builds a jlink image directly (no external runtime plugin).
 
-val cryptadDistDir = layout.buildDirectory.dir("cryptad-dist")
-val jlinkImageDir = layout.buildDirectory.dir("cryptad-jlink-image")
+val cryptadDistDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-dist")
+val jlinkImageDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-jlink-image")
 
-// No application plugin: launchers below invoke the main class directly
+// No application plugin: the launchers below invoke the main class directly
 
 // jdeps prefers a versioned jar; copy our custom jar to that name
 val syncRuntimeJar by
@@ -31,7 +31,7 @@ val syncRuntimeJar by
 
 // No external runtime plugin configuration; jlink is invoked below
 
-// Our existing bin/cryptad script (Tanuki Wrapper) isn't patched by the plugin.
+// The plugin doesn't patch our existing bin/cryptad script (Tanuki Wrapper).
 // No separate jlink-specific launchers; we reuse dist/bin scripts and wrapper binaries
 
 // Discover Java modules with jdeps for the assembled app classpath
@@ -45,6 +45,7 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
   @get:InputFiles @get:Classpath abstract val classpath: ConfigurableFileCollection
 
   @get:Input abstract val javaLanguageVersion: Property<Int>
+
   // Provide JDK home explicitly to avoid accessing Project services during execution
   @get:Input abstract val javaHomePath: Property<String>
 
@@ -61,8 +62,8 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
     val jdeps =
       javaHome.resolve(
         "bin/jdeps${
-              if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
-          }"
+                        if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+                    }"
       )
 
     val classpathArg =
@@ -89,9 +90,9 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
 
     val baseline = baselineModules.get().toSet()
     val modules: Set<String> =
-      if (exit == 0 && detected.isNotBlank())
+      if (exit == 0 && detected.isNotBlank()) {
         detected.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet() + baseline
-      else
+      } else {
         baseline +
           setOf(
             "java.base",
@@ -106,6 +107,7 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
             "java.sql",
             "java.xml",
           )
+      }
 
     val outFile = modulesFile.get().asFile
     outFile.parentFile.mkdirs()
@@ -134,10 +136,9 @@ val computeJlinkModules by
     modulesFile.set(layout.buildDirectory.file("jlink/modules.list"))
 
     // Toolchain + baseline
-    javaLanguageVersion.set(21)
-    // Resolve toolchain at configuration time and pass JDK home path as input
-    val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    javaLanguageVersion.set(25)
+    // Resolve the toolchain at configuration time and pass JDK home path as input
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     javaHomePath.set(launcher.map { it.metadata.installationPath.asFile.absolutePath })
     baselineModules.set(
       listOf(
@@ -162,18 +163,15 @@ val createJreImage by
     description = "Creates a minimal JRE with jlink into build/jre"
     dependsOn(computeJlinkModules)
     // Resolve toolchain and static inputs at configuration time to avoid Task.project access
-    val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     val javaHomePath = launcher.map { it.metadata.installationPath.asFile.absolutePath }
     val jreDirProvider = layout.buildDirectory.dir("jre")
     val modulesFileProvider = layout.buildDirectory.dir("jlink").map { it.file("modules.list") }
-    val execOps = project.serviceOf<ExecOperations>()
+    val jlinkCompressionProvider = providers.gradleProperty("jlinkCompression")
     doLast {
+      val osName = System.getProperty("os.name").lowercase()
       val javaHome = File(javaHomePath.get())
-      val jlink =
-        javaHome.resolve(
-          "bin/jlink${if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""}"
-        )
+      val jlink = javaHome.resolve("bin/jlink${if (osName.contains("win")) ".exe" else ""}")
       val jmods = javaHome.resolve("jmods")
 
       val jreDir = jreDirProvider.get().asFile
@@ -181,15 +179,13 @@ val createJreImage by
 
       val modulesFile = modulesFileProvider.get().asFile
       val modulesArg = if (modulesFile.isFile) modulesFile.readText().trim() else "java.base"
+      val jlinkCompression =
+        jlinkCompressionProvider.orNull?.trim().takeUnless { it.isNullOrBlank() } ?: "zip-6"
 
       val args =
-        mutableListOf(
-          jlink.absolutePath,
-          "-v",
-          "--strip-debug",
-          // Use non-deprecated compression syntax (replaces numeric level 2)
-          "--compress",
-          "zip-6",
+        mutableListOf(jlink.absolutePath, "-v", "--strip-debug", "--compress", jlinkCompression)
+      args.addAll(
+        listOf(
           "--no-header-files",
           "--no-man-pages",
           "--module-path",
@@ -199,9 +195,44 @@ val createJreImage by
           "--output",
           jreDir.absolutePath,
         )
+      )
 
       println("Executing jlink: ${args.joinToString(" ")}")
-      execOps.exec { commandLine(args) }
+      val process = ProcessBuilder(args).redirectErrorStream(true).start()
+      val outputPump =
+        Thread {
+            process.inputStream.bufferedReader().useLines { lines ->
+              lines.forEach { line -> logger.lifecycle(line) }
+            }
+          }
+          .apply {
+            name = "jlink-output-pump"
+            isDaemon = true
+            start()
+          }
+
+      val completed = process.waitFor(10, TimeUnit.MINUTES)
+      outputPump.join(2_000)
+      if (!completed) {
+        val jreReady =
+          (jreDir.resolve("release").isFile &&
+            jreDir.resolve("lib/modules").isFile &&
+            (jreDir.resolve("bin/java.exe").isFile || jreDir.resolve("bin/java").isFile))
+        if (jreReady) {
+          logger.warn(
+            "jlink did not exit, but the runtime image is complete. Terminating lingering jlink process."
+          )
+          process.destroyForcibly()
+          return@doLast
+        }
+        process.destroyForcibly()
+        throw GradleException("jlink timed out after 10 minutes")
+      }
+
+      val exit = process.exitValue()
+      if (exit != 0) {
+        throw GradleException("jlink failed with exit code $exit")
+      }
     }
   }
 
@@ -237,7 +268,7 @@ val prepareJlinkImage by
     }
   }
 
-// Zip the jlink image with predictable name
+// Zip the jlink image with a predictable name
 val distZipCryptadJlink by
   tasks.registering(Zip::class) {
     group = "distribution"

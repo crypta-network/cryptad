@@ -3,43 +3,102 @@ package network.crypta.support.io;
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
 import network.crypta.fs.AppEnv;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Do *NOT* forget to call super.run() if you extend it!
+ * A {@link Thread} that can adjust its native scheduling priority on Linux.
+ *
+ * <p>The class maps Java thread priorities to the operating system's {@code nice} levels using JNA
+ * bindings to {@code getpriority(2)} and {@code setpriority(2)}. On non-Linux platforms, or when
+ * the process runs inside a sandboxed/containerized environment where decreasing priority is
+ * disallowed, it falls back to regular JVM priorities without attempting native calls.
+ *
+ * <p>Extenders may override {@link #realRun()} to add post-run behavior, but must still call {@link
+ * Thread#run()} by either not overriding {@link #run()} or by calling {@code super.run()}
+ * explicitly if they do override it.
+ *
+ * <p>Operational notes:
+ *
+ * <ul>
+ *   <li>Linux only: native priority adjustments require enough privileges to decrease the {@code
+ *       nice} value. Without privileges, calls fail and the class records a disabled state.
+ *   <li>Sandbox detection: Snap, Flatpak, and Docker are detected via {@code AppEnv}; native
+ *       renicing is skipped to avoid noisy failures.
+ *   <li>Threading: this class extends {@link Thread} and is therefore not thread-safe beyond the
+ *       guarantees provided by {@link Thread}.
+ * </ul>
  *
  * @see <a href="https://emu.freenetproject.org/pipermail/devl/2008-February/028357.html">Devl
  *     Mailing List</a>
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class NativeThread extends Thread {
-  public static final boolean _loadNative;
-  private static boolean _disabled;
-  public static final int JAVA_PRIORITY_RANGE = Thread.MAX_PRIORITY - Thread.MIN_PRIORITY;
-  private static final int NATIVE_PRIORITY_BASE;
-  public static final int NATIVE_PRIORITY_RANGE;
-  private int currentPriority = Thread.MAX_PRIORITY;
-  private boolean dontCheckRenice = false;
+  private static final Logger LOG = LoggerFactory.getLogger(NativeThread.class);
 
   /**
-   * True when running in a Linux sandbox (Snap/Flatpak/Docker) where decreasing nice is blocked
-   * without elevated capabilities. In this case we skip native setpriority calls and rely on JVM
-   * priorities only to avoid noisy failures.
+   * True when native functions are available and initialization succeeded on this runtime. On
+   * Linux, this implies that the C library has been registered via JNA.
+   */
+  public static final boolean LOAD_NATIVE;
+
+  /**
+   * True when native renicing has been permanently disabled for this process because an unexpected
+   * external renice was detected. When set, {@link #usingNativeCode()} returns false and further
+   * native adjustments are skipped.
+   */
+  private static volatile boolean disabled;
+
+  /** Range of Java priorities ({@code MAX_PRIORITY - MIN_PRIORITY}). */
+  public static final int JAVA_PRIORITY_RANGE = Thread.MAX_PRIORITY - Thread.MIN_PRIORITY;
+
+  /** Native baseline nice value measured at startup (Linux only). */
+  private static final int NATIVE_PRIORITY_BASE;
+
+  /** Number of usable native priority steps starting from {@link #NATIVE_PRIORITY_BASE}. */
+  public static final int NATIVE_PRIORITY_RANGE;
+
+  /** Current Java-level priority requested for this thread. */
+  private final int currentPriority;
+
+  /**
+   * If true, skip the consistency check that detects external renice. Use this when the creator
+   * runs at {@link #NATIVE_PRIORITY_BASE} and intentionally manages priorities externally.
+   */
+  private final boolean dontCheckRenice;
+
+  /**
+   * True in known Linux sandboxes (Snap/Flatpak/Docker) where decreasing {@code nice} is blocked
+   * without elevated capabilities. In that case, {@code setpriority(2)} is not invoked and the JVM
+   * priority is used exclusively to avoid noisy failures.
    */
   private static final boolean SANDBOX_DISABLE_RENICE;
 
   private static volatile boolean sandboxLogOnce = false;
 
+  /** True when at least three native priority bands are available. */
   public static final boolean HAS_THREE_NICE_LEVELS;
+
+  /** True when the native range can represent {@link PriorityLevel} values. */
   public static final boolean HAS_ENOUGH_NICE_LEVELS;
+
+  /** True when the native range can represent all Java priority steps. */
   public static final boolean HAS_PLENTY_NICE_LEVELS;
 
-  // TODO: Wire in.
+  /**
+   * Coarse-grained priority bands used by the runtime. The values map to Java priority constants
+   * and are converted to native {@code nice} levels on Linux.
+   */
   public enum PriorityLevel {
+    /** Lowest priority. */
     MIN_PRIORITY(1),
+    /** Below-normal priority. */
     LOW_PRIORITY(3),
+    /** Normal priority. */
     NORM_PRIORITY(5),
+    /** Above-normal priority. */
     HIGH_PRIORITY(7),
+    /** Highest priority. */
     MAX_PRIORITY(10);
 
     public final int value;
@@ -48,6 +107,14 @@ public class NativeThread extends Thread {
       value = myValue;
     }
 
+    /**
+     * Resolve a {@code PriorityLevel} from its integer value.
+     *
+     * @param value mapped integer value
+     * @return the matching level
+     * @throws IllegalArgumentException if {@code value} does not match a level
+     */
+    @SuppressWarnings("unused")
     public static PriorityLevel fromValue(int value) {
       for (PriorityLevel level : PriorityLevel.values()) {
         if (level.value == value) return level;
@@ -57,18 +124,14 @@ public class NativeThread extends Thread {
     }
   }
 
+  /** Number of coarse-grained levels expected for {@link #HAS_ENOUGH_NICE_LEVELS}. */
   public static final int ENOUGH_NICE_LEVELS = PriorityLevel.values().length;
-  @Deprecated public static final int MIN_PRIORITY = PriorityLevel.MIN_PRIORITY.value;
-  @Deprecated public static final int LOW_PRIORITY = PriorityLevel.LOW_PRIORITY.value;
-  @Deprecated public static final int NORM_PRIORITY = PriorityLevel.NORM_PRIORITY.value;
-  @Deprecated public static final int HIGH_PRIORITY = PriorityLevel.HIGH_PRIORITY.value;
-  @Deprecated public static final int MAX_PRIORITY = PriorityLevel.MAX_PRIORITY.value;
 
   static {
-    Logger.minor(NativeThread.class, "Running init()");
+    LOG.debug("Running init()");
     // Loading the NativeThread library isn't useful on macOS
     boolean maybeLoadNative = Platform.isLinux();
-    Logger.debug(NativeThread.class, "Run init(): should loadNative=" + maybeLoadNative);
+    LOG.trace("Run init(): should loadNative={}", maybeLoadNative);
     // Detect sandboxed/containerized environments where decreasing nice is blocked.
     AppEnv envDet = new AppEnv();
     boolean inSnap = envDet.isSnap();
@@ -78,19 +141,19 @@ public class NativeThread extends Thread {
     if (maybeLoadNative) {
       NATIVE_PRIORITY_BASE = LinuxNativeThread.getpriority(0, 0);
       NATIVE_PRIORITY_RANGE = 20 - NATIVE_PRIORITY_BASE;
-      System.out.println(
-          "Using the NativeThread implementation (base nice level is "
-              + NATIVE_PRIORITY_BASE
-              + ')');
+      LOG.info(
+          "Using the NativeThread implementation (base nice level is {}), native range {}",
+          NATIVE_PRIORITY_BASE,
+          NATIVE_PRIORITY_RANGE);
       // they are 3 main prio levels
       HAS_THREE_NICE_LEVELS = NATIVE_PRIORITY_RANGE >= 3;
       HAS_ENOUGH_NICE_LEVELS = NATIVE_PRIORITY_RANGE >= ENOUGH_NICE_LEVELS;
       HAS_PLENTY_NICE_LEVELS = NATIVE_PRIORITY_RANGE >= JAVA_PRIORITY_RANGE;
       if (!(HAS_ENOUGH_NICE_LEVELS && HAS_THREE_NICE_LEVELS))
-        System.err.println(
-            "WARNING!!! The JVM has been niced down to a level which won't allow it to schedule"
-                + " threads properly! LOWER THE NICE LEVEL!!");
-      _loadNative = true;
+        LOG.warn(
+            "The JVM has been niced down to a level which won't allow it to schedule threads"
+                + " properly. LOWER THE NICE LEVEL!");
+      LOAD_NATIVE = true;
     } else {
       // unused anyway
       NATIVE_PRIORITY_BASE = 0;
@@ -98,9 +161,9 @@ public class NativeThread extends Thread {
       HAS_THREE_NICE_LEVELS = true;
       HAS_ENOUGH_NICE_LEVELS = true;
       HAS_PLENTY_NICE_LEVELS = true;
-      _loadNative = false;
+      LOAD_NATIVE = false;
     }
-    Logger.minor(NativeThread.class, "Run init(): _loadNative = " + _loadNative);
+    LOG.debug("Run init(): LOAD_NATIVE = {}", LOAD_NATIVE);
     if (SANDBOX_DISABLE_RENICE) {
       StringBuilder sb = new StringBuilder("Sandbox detected: disabling native thread renice (");
       boolean first = true;
@@ -118,8 +181,7 @@ public class NativeThread extends Thread {
         sb.append("Docker");
       }
       sb.append(") due to sandbox constraints.");
-      Logger.normal(NativeThread.class, sb.toString());
-      System.out.println(sb.toString());
+      LOG.info("{}", sb);
     }
   }
 
@@ -134,12 +196,15 @@ public class NativeThread extends Thread {
   }
 
   /**
-   * Creates a new native (reniced) thread
+   * Construct a thread with the given name and initial priority.
    *
-   * @param name
-   * @param priority
-   * @param dontCheckRenice This should be set to true unless the caller is running at
-   *     NATIVE_PRIORITY_BASE @see bug6623
+   * <p>On Linux, the constructor does not immediately renice; the adjustment occurs when the thread
+   * starts via {@link #run()}.
+   *
+   * @param name thread name
+   * @param priority initial Java priority to apply
+   * @param dontCheckRenice set to {@code true} to skip external-renice detection; use only when the
+   *     creator intentionally manages native priorities
    */
   public NativeThread(String name, int priority, boolean dontCheckRenice) {
     super(name);
@@ -148,12 +213,15 @@ public class NativeThread extends Thread {
   }
 
   /**
-   * Creates a new native (reniced) thread
+   * Construct a thread with a target {@link Runnable}, name, and initial priority.
    *
-   * @param name
-   * @param priority
-   * @param dontCheckRenice This should be set to true unless the caller is running at
-   *     NATIVE_PRIORITY_BASE @see bug6623
+   * <p>On Linux, the native priority is applied when the thread starts.
+   *
+   * @param r task to execute
+   * @param name thread name
+   * @param priority initial Java priority to apply
+   * @param dontCheckRenice set to {@code true} to skip external-renice detection; use only when the
+   *     creator intentionally manages native priorities
    */
   public NativeThread(Runnable r, String name, int priority, boolean dontCheckRenice) {
     super(r, name);
@@ -161,81 +229,69 @@ public class NativeThread extends Thread {
     this.dontCheckRenice = dontCheckRenice;
   }
 
-  /**
-   * Creates a new native (reniced) thread
-   *
-   * @param name
-   * @param priority
-   * @param dontCheckRenice This should be set to true unless the caller is running at
-   *     NATIVE_PRIORITY_BASE @see bug6623
-   */
-  public NativeThread(
-      ThreadGroup g, Runnable r, String name, int priority, boolean dontCheckRenice) {
-    super(g, r, name);
-    this.currentPriority = priority;
-    this.dontCheckRenice = dontCheckRenice;
-  }
+  // Intentionally no constructor overload with ThreadGroup to avoid the legacy API.
 
   @Override
   public final void run() {
     if (!setNativePriority(currentPriority))
-      System.err.println("setNativePriority(" + currentPriority + ") has failed!");
+      LOG.info("setNativePriority({}) has failed!", currentPriority);
     super.run();
     realRun();
   }
 
+  /**
+   * Optional hook invoked after {@link Thread#run()} returns.
+   *
+   * <p>Subclasses may override this method to perform cleanup or additional work at the end of the
+   * thread's execution. The default implementation does nothing.
+   */
   public void realRun() {
-    // Override this for convenience when doing new NativeThread() { ... }
+    // No-op by default; subclasses may override.
   }
 
-  /** Rescale java priority and set linux priority. */
+  // Map Java priority to native nice and apply it when allowed.
   private boolean setNativePriority(int prio) {
-    Logger.minor(this, "setNativePriority(" + prio + ")");
-    setPriority(prio);
+    LOG.debug("setNativePriority({})", prio);
+    if (prio < Thread.MIN_PRIORITY || prio > Thread.MAX_PRIORITY) {
+      throw new IllegalArgumentException("Thread priority out of range: " + prio);
+    }
+    applyJvmPriority(prio);
     if (SANDBOX_DISABLE_RENICE) {
       if (!sandboxLogOnce) {
-        sandboxLogOnce = true;
-        Logger.normal(
-            this,
+        markSandboxLogged();
+        LOG.info(
             "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); using JVM priority"
                 + " only.");
       }
       return true; // treat as success to avoid noisy warnings
     }
-    if (!_loadNative) {
-      Logger.minor(this, "_loadNative is false");
+    if (!LOAD_NATIVE) {
+      LOG.debug("LOAD_NATIVE is false; using JVM priority only");
       return true;
     }
     int realPrio = LinuxNativeThread.getpriority(0, 0);
-    if (_disabled) {
-      Logger.normal(this, "Not setting native priority as disabled due to renicing");
+    if (disabled) {
+      LOG.info("Not setting native priority as disabled due to renicing");
       return false;
     }
     if (NATIVE_PRIORITY_BASE != realPrio && !dontCheckRenice) {
-      /* The user has reniced freenet or we didn't use the PacketSender to create the thread
-       * either ways it's bad for us.
-       *
-       * Let's disable the renicing as we can't rely on it anymore.
+      /*
+       * Detected external renice or unexpected creation path. Disable further native renicing
+       * because we can no longer assume a stable baseline for conversions.
        */
-      _disabled = true;
-      Logger.error(
-          this,
-          "Crypta has detected it has been reniced : THAT'S BAD, DON'T DO IT! Nice level detected"
-              + " statically: "
-              + NATIVE_PRIORITY_BASE
-              + " actual nice level: "
-              + realPrio
-              + " on "
-              + this);
-      System.err.println(
-          "Crypta has detected it has been reniced : THAT'S BAD, DON'T DO IT! Nice level detected"
-              + " statically: "
-              + NATIVE_PRIORITY_BASE
-              + " actual nice level: "
-              + realPrio
-              + " on "
-              + this);
-      new NullPointerException().printStackTrace();
+      markDisabled();
+      LOG.error(
+          "Detected external renice; disabling native priority adjustment. Base nice={}, actual={},"
+              + " thread={}",
+          NATIVE_PRIORITY_BASE,
+          realPrio,
+          this);
+      LOG.error(
+          "External renice detected; native renice remains disabled. Base nice={}, actual={},"
+              + " thread={}",
+          NATIVE_PRIORITY_BASE,
+          realPrio,
+          this);
       return false;
     }
     final int linuxPriority =
@@ -243,8 +299,8 @@ public class NativeThread extends Thread {
             + NATIVE_PRIORITY_RANGE
             - (NATIVE_PRIORITY_RANGE * (prio - PriorityLevel.MIN_PRIORITY.value))
                 / JAVA_PRIORITY_RANGE;
-    if (linuxPriority == realPrio) return true; // Ok
-    // That's an obvious coding mistake
+    if (linuxPriority == realPrio) return true; // Already at requested native priority.
+    // Guard: increasing priority without privileges should never be requested here.
     if (prio < currentPriority)
       throw new IllegalStateException(
           "You're trying to set a thread priority"
@@ -258,25 +314,47 @@ public class NativeThread extends Thread {
               + ':'
               + NATIVE_PRIORITY_BASE
               + ") SHOULD NOT HAPPEN, please report!");
-    Logger.minor(
-        this,
-        "Setting native priority to "
-            + linuxPriority
-            + " (base="
-            + NATIVE_PRIORITY_BASE
-            + ") for "
-            + this);
+    LOG.debug(
+        "Setting native priority to {} (base={}) for {}",
+        linuxPriority,
+        NATIVE_PRIORITY_BASE,
+        this);
     return (LinuxNativeThread.setpriority(0, 0, linuxPriority) > -1);
   }
 
+  @SuppressWarnings("ThreadPriorityCheck")
+  private void applyJvmPriority(int prio) {
+    setPriority(prio);
+  }
+
+  /**
+   * Current Java-level priority for this thread.
+   *
+   * @return the priority passed at construction time
+   */
   public int getNativePriority() {
     return currentPriority;
   }
 
+  /**
+   * Determine whether native renicing is active for this process.
+   *
+   * @return {@code true} if native functions are loaded and not disabled due to external renicing;
+   *     {@code false} otherwise
+   */
   public static boolean usingNativeCode() {
-    return _loadNative && !_disabled;
+    return LOAD_NATIVE && !disabled;
   }
 
+  /**
+   * Normalize a thread name by removing volatile suffixes.
+   *
+   * <p>Heuristics strip text following {@code " for "}, {@code '@'}, and {@code '('}. Use this to
+   * group related thread names for logging or metrics.
+   *
+   * @param name input name
+   * @return normalized name without variable suffixes
+   */
   public static String normalizeName(String name) {
     if (name.contains(" for ")) name = name.substring(0, name.indexOf(" for "));
     if (name.indexOf('@') != -1) name = name.substring(0, name.indexOf('@'));
@@ -285,7 +363,20 @@ public class NativeThread extends Thread {
     return name.trim();
   }
 
+  /**
+   * Convenience accessor that normalizes {@link #getName()}.
+   *
+   * @return normalized thread name
+   */
   public String getNormalizedName() {
     return normalizeName(getName());
+  }
+
+  private static void markDisabled() {
+    disabled = true;
+  }
+
+  private static void markSandboxLogged() {
+    sandboxLogOnce = true;
   }
 }

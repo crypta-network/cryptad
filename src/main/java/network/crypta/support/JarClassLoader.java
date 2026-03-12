@@ -7,77 +7,114 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Enumeration;
 import java.util.NoSuchElementException;
-import java.util.jar.Attributes;
+import java.util.Set;
 import java.util.jar.Attributes.Name;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Class loader that loads classes from a JAR file. The JAR file gets copied to a temporary
- * location; requests for classes and resources from this class loader are then satisfied from this
- * local copy.
+ * Class loader that serves classes and resources from a single JAR file.
+ *
+ * <p>On construction the source JAR is copied into a secure, process‑private temporary location.
+ * All subsequent class and resource lookups performed by this loader are satisfied from that local
+ * copy. This indirection lets the original JAR be replaced or removed while the application is
+ * running (particularly important on Windows, where open file handles block deletion).
+ *
+ * <p>Security and robustness:
+ *
+ * <ul>
+ *   <li>Archive entries are read with a strict upper bound to mitigate zip‑bomb style expansion.
+ *   <li>Temporary files and directories are created with restrictive permissions.
+ * </ul>
+ *
+ * <p>Threading: instances are not designed for concurrent mutation. Creating and closing the loader
+ * must not race with lookups. Once {@link #close()} is called the loader must no longer be used.
  *
  * @author <a href="mailto:dr@ina-germany.de">David Roden</a>
  * @version $Id$
  */
-public class JarClassLoader extends ClassLoader implements Closeable {
-  private static volatile boolean logMINOR;
+public final class JarClassLoader extends ClassLoader implements Closeable {
+  private static final Logger LOG = LoggerFactory.getLogger(JarClassLoader.class);
 
-  static {
-    Logger.registerClass(JarClassLoader.class);
-  }
+  /**
+   * Hard limit for a single class/resource read from this loader.
+   *
+   * <p>Prevents unbounded expansion of a maliciously crafted archive entry (zip bomb). The value is
+   * intentionally generous for practical class/resource sizes while still protecting memory.
+   */
+  private static final int MAX_ENTRY_BYTES = 64 * 1024 * 1024; // 64 MiB
+
+  // No static initialisation required.
 
   /** The temporary jar file. */
   private JarFile tempJarFile;
 
   /**
-   * Constructs a new jar class loader that loads classes from the jar file with the given name in
-   * the local file system.
+   * Constructs a loader backed by the JAR found at the given filesystem path.
    *
-   * @param fileName The name of the jar file
-   * @throws IOException if an I/O error occurs
+   * <p>The file is opened immediately. No network I/O occurs.
+   *
+   * @param fileName absolute or relative path to a JAR file
+   * @throws IOException if the file cannot be opened or read as a JAR
    */
+  @SuppressWarnings("unused")
   public JarClassLoader(String fileName) throws IOException {
     this(new File(fileName));
   }
 
   /**
-   * Constructs a new jar class loader that loads classes from the specified URL.
+   * Constructs a loader by downloading (or streaming) a JAR from the provided {@link URL}.
    *
-   * @param fileUrl The URL to load the jar file from
-   * @param length The length of the jar file if known, <code>-1</code> otherwise
-   * @throws IOException if an I/O error occurs
+   * <p>The content is copied to a secure temporary file, from which all lookups are served. Network
+   * or remote I/O occurs synchronously during construction.
+   *
+   * @param fileUrl source of the JAR bytes (e.g., {@code file:}, {@code http:})
+   * @param length optional size hint in bytes; pass {@code -1} when unknown
+   * @throws IOException if the URL cannot be read or the content is not a valid JAR
    */
   public JarClassLoader(URL fileUrl, long length) throws IOException {
     copyFileToTemp(fileUrl.openStream(), length);
   }
 
   /**
-   * Constructs a new jar class loader that loads classes from the specified file.
+   * Constructs a loader backed by the given JAR {@link File}.
    *
-   * @param file The file to load classes from
-   * @throws IOException if an I/O error occurs
+   * @param file readable JAR file on the local filesystem
+   * @throws IOException if the file cannot be opened or parsed as a JAR
    */
   public JarClassLoader(File file) throws IOException {
     tempJarFile = new JarFile(file);
   }
 
   /**
-   * Copies the contents of the input stream (which are supposed to be the contents of a jar file)
-   * to a temporary location.
+   * Copies JAR bytes from a stream into a secure temporary file owned by this process.
    *
-   * @param inputStream The input stream to read from
-   * @param length The length of the stream if known, <code>-1</code> if the length is not known
-   * @throws IOException if an I/O error occurs
+   * <p>Callers provide an optional size hint; when {@code -1} the stream is read until EOF. The
+   * destination file is created with restrictive permissions and scheduled for best‑effort deletion
+   * on JVM exit.
+   *
+   * @param inputStream source of JAR bytes (not closed by this method)
+   * @param length number of bytes to copy, or {@code -1} when unknown
+   * @throws IOException if copying fails or the result cannot be opened as a JAR
    */
   private void copyFileToTemp(InputStream inputStream, long length) throws IOException {
-    File tempFile = File.createTempFile("jar-", ".tmp");
+    File tempFile = createSecureTempFile();
     try (FileOutputStream fileOutputStream = new FileOutputStream(tempFile)) {
       FileUtil.copy(inputStream, fileOutputStream, length);
     }
@@ -86,11 +123,15 @@ public class JarClassLoader extends ClassLoader implements Closeable {
   }
 
   /**
-   * {@inheritDoc}
+   * Locates and defines a class by name from the backing JAR.
    *
-   * <p>This method searches the temporary copy of the jar file for an entry that is specified by
-   * the given class name.
+   * <p>This implementation searches the local temporary copy for the corresponding entry, validates
+   * size against an internal limit, defines the package using manifest attributes (if available),
+   * and finally defines the class.
    *
+   * @param name binary class name (e.g., {@code com.example.Foo})
+   * @return the defined {@link Class}
+   * @throws ClassNotFoundException if the entry is absent or unreadable
    * @see ClassLoader#findClass(String)
    */
   @Override
@@ -99,13 +140,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
       String pathName = transformName(name);
       JarEntry jarEntry = tempJarFile.getJarEntry(pathName);
       if (jarEntry != null) {
-        long size = jarEntry.getSize();
-        byte[] classBytes;
-        try (InputStream jarEntryInputStream = tempJarFile.getInputStream(jarEntry);
-            ByteArrayOutputStream classBytesOutputStream = new ByteArrayOutputStream((int) size)) {
-          FileUtil.copy(jarEntryInputStream, classBytesOutputStream, size);
-          classBytes = classBytesOutputStream.toByteArray();
-        }
+        byte[] classBytes = readEntryFully(jarEntry);
 
         definePackage(name);
 
@@ -118,14 +153,18 @@ public class JarClassLoader extends ClassLoader implements Closeable {
   }
 
   /**
-   * {@inheritDoc}
+   * Finds a single resource by name in this loader's JAR only.
    *
-   * <p>Finds the resource within this jar only. If it isn't found within the jar,
-   * getResourceAsStream() will look elsewhere.
+   * <p>Accepts names with or without a leading {@code '/'} for compatibility with older callers.
+   * When present, the leading slash is ignored. If the entry exists, a {@code jar:} URL pointing to
+   * the local temporary copy is returned; otherwise {@code null}.
+   *
+   * @param name resource path using forward slashes
+   * @return a {@code jar:} {@link URL} or {@code null} if absent
    */
   @Override
   protected URL findResource(String name) {
-    /* FIXME compatibility code. remove when all plugins are fixed. */
+    /* Compatibility: tolerate leading slash in resource names for older plugins. */
     if (name.startsWith("/")) {
       name = name.substring(1);
     }
@@ -134,14 +173,19 @@ public class JarClassLoader extends ClassLoader implements Closeable {
         return null;
       }
 
-      return new URL("jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + name);
-    } catch (MalformedURLException e) {
+      return jarEntryUrl(name);
+    } catch (MalformedURLException _) {
+      // Malformed entry name detected; treat as not found.
+      return null;
     }
-    return null;
   }
 
   @Override
   protected Enumeration<URL> findResources(String name) {
+    /*
+     * Enumerates all entries equal to {@code name} (optionally with a trailing '/') in this JAR
+     * and synthesizes {@code jar:} URLs for each. The enumeration is empty when no match exists.
+     */
     return new Enumeration<>() {
       private final Enumeration<JarEntry> jarFileEntries = tempJarFile.entries();
       private URL nextElement = null;
@@ -155,9 +199,8 @@ public class JarClassLoader extends ClassLoader implements Closeable {
           JarEntry jarEntry = jarFileEntries.nextElement();
           if (jarEntry.getName().equals(name) || jarEntry.getName().equals(name + "/")) {
             try {
-              nextElement =
-                  new URL("jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + name);
-            } catch (MalformedURLException e) {
+              nextElement = jarEntryUrl(name);
+            } catch (MalformedURLException _) {
               /* ignore. */
             }
           }
@@ -178,26 +221,31 @@ public class JarClassLoader extends ClassLoader implements Closeable {
   }
 
   /**
-   * {@inheritDoc}
+   * Opens a resource as a stream, preferring a handle directly from this loader's JAR.
    *
-   * <p>If the resource is found in this jar, opens the stream using ZipEntry's, so when tempJarFile
-   * is closed, so are all the streams, hence we can delete the jar on Windows.
+   * <p>If the requested resource resolves to this loader's JAR, the stream is opened via {@link
+   * JarFile#getInputStream(ZipEntry)} so that closing the JAR also closes any dependent streams.
+   * Otherwise, the method delegates to the URL returned by {@link #getResource(String)}.
    *
+   * <p>Callers must close the returned stream.
+   *
+   * @param name resource path using forward slashes (leading slash tolerated)
+   * @return an open {@link InputStream}, or {@code null} when not found or on I/O error
    * @see ClassLoader#getResourceAsStream(String)
    */
   @Override
   public InputStream getResourceAsStream(String name) {
-    if (logMINOR) Logger.minor(this, "Requested resource: " + name, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Requested resource: {}", name);
     URL url = getResource(name);
     if (url == null) return null;
-    if (logMINOR) Logger.minor(this, "Found resource at URL: " + url);
+    if (LOG.isDebugEnabled()) LOG.debug("Found resource at URL: {}", url);
 
     // If the resource is not from our jar, return it as normal
     URL localUrl = findResource(name);
     if (localUrl == null || !url.toString().equals(localUrl.toString()))
       try {
         return url.openStream();
-      } catch (IOException e) {
+      } catch (IOException _) {
         return null;
       }
 
@@ -205,7 +253,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     // so that we can close() all opened streams later and let the jar file
     // to be deleted on Windows
 
-    /* FIXME compatibility code. remove when all plugins are fixed. */
+    /* Compatibility: tolerate leading slash in resource names for older plugins. */
     if (name.startsWith("/")) {
       name = name.substring(1);
     }
@@ -213,33 +261,45 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     ZipEntry entry = tempJarFile.getEntry(name);
     try {
       return entry != null ? tempJarFile.getInputStream(entry) : null;
-    } catch (IOException e) {
+    } catch (IOException _) {
       return null;
     }
   }
 
   /**
-   * Transforms the class name into a file name that can be used to locate an entry in the jar file.
+   * Converts a binary class name into a JAR entry path.
    *
-   * @param name The name of the class
-   * @return The path name of the entry in the jar file
+   * @param name binary class name (e.g., {@code a.b.C})
+   * @return relative path to the class file inside the JAR (e.g., {@code a/b/C.class})
    */
   private String transformName(String name) {
     return name.replace('.', '/') + ".class";
   }
 
-  protected Package definePackage(String name) throws IllegalArgumentException {
+  /**
+   * Ensures that the package for a class is defined on this loader.
+   *
+   * <p>If a manifest is present it is consulted for specification and implementation attributes
+   * which are passed to {@link #definePackage(String, String, String, String, String, String,
+   * String, URL)}. If the class name has no package component, {@code null} is returned.
+   *
+   * @param name binary class name
+   * @return the existing or newly defined {@link Package}, or {@code null} if there is no package
+   * @throws IllegalArgumentException if an incompatible package definition already exists
+   */
+  @SuppressWarnings("UnusedReturnValue")
+  private Package definePackage(String name) throws IllegalArgumentException {
     Package pkg = null;
     int i = name.lastIndexOf('.');
     if (i != -1) {
       String pkgname = name.substring(0, i);
-      pkg = getPackage(pkgname);
+      pkg = getDefinedPackage(pkgname);
       if (pkg == null) {
         try {
           Manifest man = tempJarFile.getManifest();
           if (man == null) throw new IOException();
           pkg = definePackage(pkgname, man);
-        } catch (IOException e) {
+        } catch (IOException _) {
           pkg = definePackage(pkgname, null, null, null, null, null, null, null);
         }
       }
@@ -247,12 +307,26 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     return pkg;
   }
 
-  protected Package definePackage(String name, Manifest man) throws IllegalArgumentException {
+  /**
+   * Defines a package using attributes extracted from a {@link Manifest}.
+   *
+   * <p>Looks up both per‑package and main attributes and forwards them to the JDK's {@code
+   * definePackage} implementation. Any missing attribute is treated as {@code null}.
+   *
+   * @param name package name (e.g., {@code com.example})
+   * @param man manifest to read attributes from
+   * @return the created {@link Package}
+   * @throws IllegalArgumentException if a package of the same name already exists with different
+   *     attributes
+   */
+  private Package definePackage(String name, Manifest man) throws IllegalArgumentException {
     String path = name.replace('.', '/').concat("/");
-    String specTitle = null, specVersion = null, specVendor = null;
-    String implTitle = null, implVersion = null, implVendor = null;
-    String sealed = null;
-    URL sealBase = null;
+    String specTitle = null;
+    String specVersion = null;
+    String specVendor = null;
+    String implTitle = null;
+    String implVersion = null;
+    String implVendor = null;
 
     Attributes attr = man.getAttributes(path);
     if (attr != null) {
@@ -262,38 +336,112 @@ public class JarClassLoader extends ClassLoader implements Closeable {
       implTitle = attr.getValue(Name.IMPLEMENTATION_TITLE);
       implVersion = attr.getValue(Name.IMPLEMENTATION_VERSION);
       implVendor = attr.getValue(Name.IMPLEMENTATION_VENDOR);
-      sealed = attr.getValue(Name.SEALED);
     }
     attr = man.getMainAttributes();
     if (attr != null) {
-      if (specTitle == null) {
-        specTitle = attr.getValue(Name.SPECIFICATION_TITLE);
-      }
-      if (specVersion == null) {
-        specVersion = attr.getValue(Name.SPECIFICATION_VERSION);
-      }
-      if (specVendor == null) {
-        specVendor = attr.getValue(Name.SPECIFICATION_VENDOR);
-      }
-      if (implTitle == null) {
-        implTitle = attr.getValue(Name.IMPLEMENTATION_TITLE);
-      }
-      if (implVersion == null) {
-        implVersion = attr.getValue(Name.IMPLEMENTATION_VERSION);
-      }
-      if (implVendor == null) {
-        implVendor = attr.getValue(Name.IMPLEMENTATION_VENDOR);
-      }
-      if (sealed == null) {
-        sealed = attr.getValue(Name.SEALED);
-      }
+      specTitle = orAttr(specTitle, attr, Name.SPECIFICATION_TITLE);
+      specVersion = orAttr(specVersion, attr, Name.SPECIFICATION_VERSION);
+      specVendor = orAttr(specVendor, attr, Name.SPECIFICATION_VENDOR);
+      implTitle = orAttr(implTitle, attr, Name.IMPLEMENTATION_TITLE);
+      implVersion = orAttr(implVersion, attr, Name.IMPLEMENTATION_VERSION);
+      implVendor = orAttr(implVendor, attr, Name.IMPLEMENTATION_VENDOR);
     }
     return definePackage(
-        name, specTitle, specVersion, specVendor, implTitle, implVersion, implVendor, sealBase);
+        name, specTitle, specVersion, specVendor, implTitle, implVersion, implVendor, null);
   }
 
+  /**
+   * Builds a {@code jar:} URL pointing at the given entry inside the temporary JAR copy.
+   *
+   * @param entry entry name within the JAR
+   * @return {@link URL} using the {@code jar:} scheme
+   * @throws MalformedURLException if the synthesized URL is not valid
+   */
+  private URL jarEntryUrl(String entry) throws MalformedURLException {
+    try {
+      String spec = "jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + entry;
+      return URI.create(spec).toURL();
+    } catch (IllegalArgumentException e) {
+      MalformedURLException malformed = new MalformedURLException(e.getMessage());
+      malformed.initCause(e);
+      throw malformed;
+    }
+  }
+
+  /**
+   * Closes the underlying {@link JarFile} and releases any OS resources held by this loader.
+   *
+   * <p>After calling this method, further lookups on this instance may fail with I/O errors.
+   *
+   * @throws IOException if closing the JAR fails
+   */
   @Override
   public void close() throws IOException {
     tempJarFile.close();
+  }
+
+  private static String orAttr(String current, Attributes attributes, Name key) {
+    return current != null ? current : attributes.getValue(key);
+  }
+
+  private byte[] readEntryFully(JarEntry entry) throws IOException {
+    try (InputStream in = tempJarFile.getInputStream(entry)) {
+      int initial = 8192; // conservative default; don't trust declared size blindly
+      long declared = entry.getSize();
+      if (declared > 0 && declared <= MAX_ENTRY_BYTES) {
+        initial = (int) declared;
+      }
+      ByteArrayOutputStream out = new ByteArrayOutputStream(initial);
+      byte[] buffer = new byte[8192];
+      int read;
+      int total = 0;
+      while ((read = in.read(buffer)) != -1) {
+        total += read;
+        if (total > MAX_ENTRY_BYTES) {
+          throw new IOException("archive entry too large");
+        }
+        out.write(buffer, 0, read);
+      }
+      return out.toByteArray();
+    }
+  }
+
+  private static File createSecureTempFile() throws IOException {
+    final String prefix = "jar-";
+    final String suffix = ".tmp";
+    try {
+      FileAttribute<Set<PosixFilePermission>> dirAttr =
+          PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"));
+      FileAttribute<Set<PosixFilePermission>> fileAttr =
+          PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
+      Path dir = Files.createTempDirectory("crypta-jar-", dirAttr);
+      Path p = Files.createTempFile(dir, prefix, suffix, fileAttr);
+      File f = p.toFile();
+      // Best-effort cleanup of the dedicated directory on process exit when empty.
+      f.getParentFile().deleteOnExit();
+      return f;
+    } catch (UnsupportedOperationException _) {
+      // POSIX permissions not supported (e.g., Windows). Create a dedicated directory under the
+      // user's home and restrict permissions.
+      Path base = Paths.get(System.getProperty("user.home"), ".crypta", "tmp");
+      Files.createDirectories(base);
+      File d = base.toFile();
+      boolean ok = true;
+      ok &= d.setReadable(true, true);
+      ok &= d.setWritable(true, true);
+      ok &= d.setExecutable(true, true);
+      Path dir = Files.createTempDirectory(base, "crypta-jar-");
+      Path p = Files.createTempFile(dir, prefix, suffix);
+      File f = p.toFile();
+      ok &= f.setReadable(true, true);
+      ok &= f.setWritable(true, true);
+      ok &= f.setExecutable(false, true);
+      if (!ok && LOG.isWarnEnabled()) {
+        LOG.warn("Could not fully restrict permissions on temporary paths: dir={}, file={}", d, f);
+      }
+      // Best-effort cleanup of the dedicated directory on process exit when empty.
+      dir.toFile().deleteOnExit();
+      return f;
+    }
   }
 }

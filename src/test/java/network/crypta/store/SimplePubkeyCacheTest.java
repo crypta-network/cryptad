@@ -1,7 +1,5 @@
 package network.crypta.store;
 
-import static org.junit.Assert.*;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -11,12 +9,14 @@ import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.Global;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class SimplePubkeyCacheTest {
+import static org.junit.jupiter.api.Assertions.*;
+
+class SimplePubkeyCacheTest {
 
   @Test
-  public void testSimple() {
+  void testSimple() {
     final int keys = 10;
     PubkeyStore pk = new PubkeyStore();
     new RAMFreenetStore<>(pk, keys);

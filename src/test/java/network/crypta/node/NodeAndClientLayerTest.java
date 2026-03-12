@@ -1,7 +1,5 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
-
 import java.io.File;
 import java.io.IOException;
 import network.crypta.client.FetchContext;
@@ -15,15 +13,17 @@ import network.crypta.client.InsertException;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Creates a node, inserts data to it, and fetches the data back. Note that we need one JUnit class
@@ -31,15 +31,11 @@ import org.junit.Test;
  *
  * @author toad
  */
-public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
+class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
-  public void testFetchPullSingleNodeSsk()
-      throws InvalidThresholdException,
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+  void testFetchPullSingleNodeSsk()
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }
@@ -50,12 +46,8 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
   }
 
   @Test
-  public void testFetchPullSingleNodeUskEditionZero()
-      throws InvalidThresholdException,
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+  void testFetchPullSingleNodeUskEditionZero()
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }
@@ -65,32 +57,33 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     assertTrue(BucketTools.equalBuckets(result.asBucket(), block.getData()));
   }
 
-  @After
-  public void cleanUp() {
+  @AfterEach
+  void cleanUp() {
     FileUtil.removeAll(dir);
   }
 
   private static FetchResult insertAndRetrieveBlock(DummyRandomSource random, InsertBlock block)
-      throws InvalidThresholdException, NodeInitException, InsertException, FetchException {
-    final Executor executor = new PooledExecutor();
+      throws NodeInitException, InsertException, FetchException {
+    final PriorityAwareExecutor executor = new PooledExecutor();
     FileUtil.removeAll(dir);
-    dir.mkdir();
-    NodeStarter.globalTestInit(dir, false, Logger.LogLevel.ERROR, "", true, random);
+    boolean created = dir.mkdir();
+    assertTrue(created || dir.isDirectory(), "Failed to create test directory: " + dir);
+    NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
-    params.random = new DummyRandomSource(253121);
-    params.ramStore = true;
-    params.storeSize = FILE_SIZE * 3;
-    params.baseDirectory = dir;
-    params.executor = executor;
+    params.setRandom(new DummyRandomSource(253121));
+    params.setRamStore(true);
+    params.setStoreSize(FILE_SIZE * 3);
+    params.setBaseDirectory(dir);
+    params.setExecutor(executor);
     Node node = NodeStarter.createTestNode(params);
     node.start(false);
-    HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client = node.services().clientCore().makeClient((short) 0, false, false);
     InsertContext ictx = client.getInsertContext(true);
-    ictx.localRequestOnly = true;
+    ictx.setLocalRequestOnly(true);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
-    assertEquals(uri.getKeyType(), "SSK");
+    assertEquals("SSK", uri.getKeyType());
     FetchContext ctx = client.getFetchContext(FILE_SIZE * 2);
-    ctx.localRequestOnly = true;
+    ctx.setLocalRequestOnly(true);
     FetchWaiter fw = new FetchWaiter(rc);
     client.fetch(uri, FILE_SIZE * 2, fw, ctx, (short) 0);
     return fw.waitForCompletion();

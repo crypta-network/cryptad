@@ -64,7 +64,7 @@ public class SharedConnectionManager implements IConnectionManager, IUpdateManag
 					String originalLeader = Cookies.getCookie(LEADER_NAME);
 					if (originalLeader != null) {
 						// If there was an old leader, then notifies the server about the takeover
-						FreenetRequest.sendRequest(UpdaterConstants.failoverPath, new QueryParameter[] { new QueryParameter("requestId", FreenetJs.requestId),
+						FreenetRequest.sendRequest(UpdaterConstants.FAILOVER_PATH, new QueryParameter[] { new QueryParameter("requestId", FreenetJs.requestId),
 								new QueryParameter("originalRequestId", originalLeader) });
 					}
 					// Starts leading

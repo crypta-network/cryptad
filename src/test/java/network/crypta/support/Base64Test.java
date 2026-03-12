@@ -1,191 +1,403 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
-
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
-import org.junit.Test;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
- * Test case for {@link Base64} class.
- *
- * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
+ * Tests for {@link Base64}. AAA style, deterministic, parameterized where useful. Includes Mockito
+ * for simple I/O and time mocking without changing production code.
  */
-public class Base64Test {
+@SuppressWarnings("java:S5778")
+class Base64Test {
 
-  // data from http://www.alanwood.net/unicode/unicode_samples.html
-  static final String testSample =
-      "!5Aa¥¼ÑñĄąĲĳƏƐƕƺɖɞɫɷʱʬ˕˨o̕o̚ơo͡oΎΔδϠЉЩщӃԀԆԈԎԱԲաբסֶאבױ؟بحٍ۳܀ܐܠܘ݉ހސޤހި߄ߐ߰ߋ߹ࠀࠎࠏࠪ࠽ठःअठी३তঃঅ৩৵ਠਂਅਉਠੱઠઃઅઠૌ૩ଆଐଠୗ୩பஂஅபூ௩అఃఓఅౌ౩ಲಃಅಲೋ೩ഠഃഅഠൃ൩ෆංඑඣෆූกญกั๓ກຜໄ໓༣ཁངཱུངྵကဂု၄၍აზჵ჻ᄀᅙᇧᇸሀቻ፧፬ᎠᎫᏎᏴᐁᑦᕵᙧᚁᚈᚕ᚜ᚠᚳᛦᛰᜀᜄᜌᜊᜒᜠᜫᜪᜭᜯᝁᝊᝐᝊᝒᝠᝦᝮᝪᝲកឣខា៤᠀᠔ᡎᢥᢰᣇᣠᣴᤁᤥ᥅᥉ᥐᥞᥨᥲ᧠᧪᧴᧾ᨀᨁᨖᨔᨗᨠᨣᩯ᪁᪭ᬧᬀᬊᬧᭀ᭪ᮗᮀᮋᮗᮦ᮵ᰁᰘᰓᰯ᱅᱕ᱝᱰ᱿o᳐o᳢ᳩᳱᴂᴥᴽᵫḀẀẶỳἀὂᾑῼ—“‰※⁴⁾₃₌₢₣₪€o⃐o⃕o⃚o⃠℀℃№™⅛Ⅳⅸↂ←↯↻⇈∀∰⊇⋩⌂⌆⌣⌽␂␊␢␣⑀⑃⑆⑊③⑷⒌ⓦ┍┝╤╳▀▃▏░□▨◎◮☂☺♀♪✃✈❄➓⟐⟟⟥⟫⟰⟶⟺⟿⠀⠲⢖⣿⤄⤽⥈⥻⦀⦝⧰⧻⨇⨋⫚⫸⬀⬄⬉⬍ⰀⰉⰍⱙⱠⱥⱶⱺⲀⲑⲶⳂⴀⴆⴝⴢⴲⴶⵟⵥⶀⶆⶐⷖоⷠоⷩоⷶоⷿ⸁⸎⸨⸭⺀⺘⻂⻱⼀⼽⽺⿔⿰⿳⿷⿻々〒〣〰あぐるゞアヅヨヾㄆㄓㄝㄩㄱㄸㅪㆍ㆐㆕㆚㆟ㆠㆧㆯㆷㇰㇵㇺㇿ㈔㈲㊧㋮㌃㍻㎡㏵㐅㒅㝬㿜䷂䷫䷴䷾一憨田龥ꀀꅴꊩꒌ꒐꒡꒰꓆ꓐꓫꓻ꓿ꔁꔂꕝꕢꙂꙉꙮꚖꚠꛠꛕ꛰꛷꜁꜉ꜜꜟꜢꜮꝿꟿꠀꠇꠠꠤ꠪꠰꠶꠸꠹ꡁꡧꡳ꡷ꢝꢁꢍꢳ꣕ठ꣠ठ꣮ꣳꣻ꤅ꤎꤍꤪ꤮ꤰꤸꤷꥐ꥟ꥠꥪꥴꥼꦮꦀꦣꦮꦺ꧙ꨅꨍꨂꨬ꩖ꩠꩮꩴဂꩻꪀꪙꪒꪷ꫟ꯀꯌꯁꯧ꯹가뮀윸힣ힰퟎퟡퟻ豈朗歷館ﬀﬁﬗﭏﭐﰡﲼﷻo︠o︡o︢o︣︴︵﹃﹌﹖﹠﹩﹫ﹰﺗﺺﻼ３Ｆｶﾺ￹￺￼�𐀀𐀢𐁀𐁝𐂀𐂚𐃃𐃺𐄀𐄎𐄱𐄸𐅃𐅉𐅓𐆉𐆐𐆔𐆘𐆚𐇐𐇛𐇯𐇹𐊀𐊉𐊕𐊚𐊡𐊨𐊾𐋋𐌀𐌊𐌜𐌢𐌰𐌸𐍂𐍊𐎀𐎇𐎖𐎟𐐂𐐉𐐯𐑉𐑐𐑝𐑫𐑿𐒀𐒎𐒝𐒨𐠀𐠓𐠦𐠿𐡀𐡋𐡓𐡟𐤀𐤈𐤔𐤕𐤠𐤩𐤰𐤿𐨀𐨨𐨍𐨲𐩅𐩠𐩯𐩽𐩿𐬀𐬟𐬩𐬿𐭀𐭉𐭚𐭟𐭠𐭬𐭹𐭿𐰀𐰕𐰯𐱈𐹠𐹮𐹵𐹻𑂞𑂀𑂚𑂞𑂴𑃁𒀀𒀞𒅑𒍦𒐁𒐌𒐥𒑳𓀀𓅸𓉀𓐮𝁆𝂋𝃩𝃰𝄁𝄫𝅘𝅥𝅮𝇇𝌀𝌃𝌑𝍊𝍠𝍨𝍬𝍱𝓐𝕬𝝃𝟽🀀🀍🀒🀝🀴🁓🁮🂈🄀🄖🄭🆐🈐🈖🈪🉈𠀧𠤩𡨺𡽫𪜀𪮘𪾀𫜴勺卉善爨";
-  static final String testSampleStandardEncoding =
-      "ITVBYcKlwrzDkcOxxITEhcSyxLPGj8aQxpXGusmWyZ7Jq8m3yrHKrMuVy6hvzJVvzJpvzJtvzaFvzo7OlM60z6DQidCp0YnTg9SA1IbUiNSO1LHUstWh1aLXoda215DXkdex2J/YqNit2Y3bs9yA3JDcoNyY3YnegN6Q3qTegN6o34TfkN+w34vfueCggOCgjuCgj+CgquCgveCkoOCkg+CkheCkoOClgOClqeCmpOCmg+CmheCnqeCnteCooOCoguCoheCoieCooOCpseCqoOCqg+CqheCqoOCrjOCrqeCshuCskOCsoOCtl+CtqeCuquCuguCuheCuquCvguCvqeCwheCwg+Cwk+CwheCxjOCxqeCysuCyg+CyheCysuCzi+CzqeC0oOC0g+C0heC0oOC1g+C1qeC3huC2guC2keC2o+C3huC3luC4geC4jeC4geC4seC5k+C6geC6nOC7hOC7k+C8o+C9geC9hOC9teC9hOC+teGAgOGAguGAr+GBhOGBjeGDkOGDluGDteGDu+GEgOGFmeGHp+GHuOGIgOGJu+GNp+GNrOGOoOGOq+GPjuGPtOGQgeGRpuGVteGZp+GageGaiOGaleGanOGaoOGas+GbpuGbsOGcgOGchOGcjOGciuGckuGcoOGcq+GcquGcreGcr+GdgeGdiuGdkOGdiuGdkuGdoOGdpuGdruGdquGdsuGegOGeo+GegeGetuGfpOGggOGglOGhjuGipeGisOGjh+GjoOGjtOGkgeGkpeGlheGlieGlkOGlnuGlqOGlsuGnoOGnquGntOGnvuGogOGogeGoluGolOGol+GooOGoo+Gpr+GqgeGqreGsp+GsgOGsiuGsp+GtgOGtquGul+GugOGui+Gul+GupuGuteGwgeGwmOGwk+Gwr+GxheGxleGxneGxsOGxv2/hs5Bv4bOi4bOp4bOx4bSC4bSl4bS94bWr4biA4bqA4bq24buz4byA4b2C4b6R4b+84oCU4oCc4oCw4oC74oG04oG+4oKD4oKM4oKi4oKj4oKq4oKsb+KDkG/ig5Vv4oOab+KDoOKEgOKEg+KEluKEouKFm+KFo+KFuOKGguKGkOKGr+KGu+KHiOKIgOKIsOKKh+KLqeKMguKMhuKMo+KMveKQguKQiuKQouKQo+KRgOKRg+KRhuKRiuKRouKRt+KSjOKTpuKUjeKUneKVpOKVs+KWgOKWg+KWj+KWkeKWoeKWqOKXjuKXruKYguKYuuKZgOKZquKcg+KciOKdhOKek+KfkOKfn+KfpeKfq+KfsOKftuKfuuKfv+KggOKgsuKiluKjv+KkhOKkveKliOKlu+KmgOKmneKnsOKnu+Koh+Koi+KrmuKruOKsgOKshOKsieKsjeKwgOKwieKwjeKxmeKxoOKxpeKxtuKxuuKygOKykeKytuKzguK0gOK0huK0neK0ouK0suK0tuK1n+K1peK2gOK2huK2kOK3ltC+4reg0L7it6nQvuK3ttC+4re/4riB4riO4rio4rit4rqA4rqY4ruC4rux4ryA4ry94r264r+U4r+w4r+z4r+34r+744CF44CS44Cj44Cw44GC44GQ44KL44Ke44Ki44OF44Oo44O+44SG44ST44Sd44Sp44Sx44S444Wq44aN44aQ44aV44aa44af44ag44an44av44a344ew44e144e644e/44iU44iy44qn44uu44yD4427446h44+145CF45KF452s47+c5LeC5Ler5Le05Le+5LiA5oao55Sw6b6l6oCA6oW06oqp6pKM6pKQ6pKh6pKw6pOG6pOQ6pOr6pO76pO/6pSB6pSC6pWd6pWi6pmC6pmJ6pmu6pqW6pqg6pug6puV6puw6pu36pyB6pyJ6pyc6pyf6pyi6pyu6p2/6p+/6qCA6qCH6qCg6qCk6qCq6qCw6qC26qC46qC56qGB6qGn6qGz6qG36qKd6qKB6qKN6qKz6qOV4KSg6qOg4KSg6qOu6qOz6qO76qSF6qSO6qSN6qSq6qSu6qSw6qS46qS36qWQ6qWf6qWg6qWq6qW06qW86qau6qaA6qaj6qau6qa66qeZ6qiF6qiN6qiC6qis6qmW6qmg6qmu6qm04YCC6qm76qqA6qqZ6qqS6qq36quf6q+A6q+M6q+B6q+n6q+56rCA666A7Jy47Z6j7Z6w7Z+O7Z+h7Z+77oCA7pm474iw76O/76SA76Sp76aM76is76yA76yB76yX762P762Q77Ch77K877e7b++4oG/vuKFv77iib++4o++4tO+4te+5g++5jO+5lu+5oO+5qe+5q++5sO+6l++6uu+7vO+8k++8pu+9tu++uu+/ue+/uu+/vO+/vfCQgIDwkICi8JCBgPCQgZ3wkIKA8JCCmvCQg4PwkIO68JCEgPCQhI7wkISx8JCEuPCQhYPwkIWJ8JCFk/CQhonwkIaQ8JCGlPCQhpjwkIaa8JCHkPCQh5vwkIev8JCHufCQioDwkIqJ8JCKlfCQiprwkIqh8JCKqPCQir7wkIuL8JCMgPCQjIrwkIyc8JCMovCQjLDwkIy48JCNgvCQjYrwkI6A8JCOh/CQjpbwkI6f8JCQgvCQkInwkJCv8JCRifCQkZDwkJGd8JCRq/CQkb/wkJKA8JCSjvCQkp3wkJKo8JCggPCQoJPwkKCm8JCgv/CQoYDwkKGL8JChk/CQoZ/wkKSA8JCkiPCQpJTwkKSV8JCkoPCQpKnwkKSw8JCkv/CQqIDwkKio8JCojfCQqLLwkKmF8JCpoPCQqa/wkKm98JCpv/CQrIDwkKyf8JCsqfCQrL/wkK2A8JCtifCQrZrwkK2f8JCtoPCQrazwkK258JCtv/CQsIDwkLCV8JCwr/CQsYjwkLmg8JC5rvCQubXwkLm78JGCnvCRgoDwkYKa8JGCnvCRgrTwkYOB8JKAgPCSgJ7wkoWR8JKNpvCSkIHwkpCM8JKQpfCSkbPwk4CA8JOFuPCTiYDwk5Cu8J2BhvCdgovwnYOp8J2DsPCdhIHwnYSr8J2FoPCdh4fwnYyA8J2Mg/CdjJHwnY2K8J2NoPCdjajwnY2s8J2NsfCdk5DwnZWs8J2dg/Cdn73wn4CA8J+AjfCfgJLwn4Cd8J+AtPCfgZPwn4Gu8J+CiPCfhIDwn4SW8J+ErfCfhpDwn4iQ8J+IlvCfiKrwn4mI8KCAp/CgpKnwoai68KG9q/CqnIDwqq6Y8Kq+gPCrnLTwr6Co8K+grPCvoYbwr6Sg";
+  private static final String ILLEGAL_CHAR_MSG = "illegal Base64 character";
 
-  static final String toEncode =
-      "Man is distinguished, not only by his reason, but by this singular "
-          + "passion from other animals, which is a lust of the mind, that by a perseverance "
-          + "of delight in the continued and indefatigable generation of knowledge, exceeds "
-          + "the short vehemence of any carnal pleasure.";
-  static final String toDecode =
-      "TWFuIGlzIGRpc3Rpbmd1aXNoZWQsIG5vdCBvbmx5IGJ5IGhpcyByZWFzb24sIGJ"
-          + "1dCBieSB0aGlzIHNpbmd1bGFyIHBhc3Npb24gZnJvbSBvdGhlciBhbmltYWxzLCB3aGljaCBpcyBhIG"
-          + "x1c3Qgb2YgdGhlIG1pbmQsIHRoYXQgYnkgYSBwZXJzZXZlcmFuY2Ugb2YgZGVsaWdodCBpbiB0aGUgY"
-          + "29udGludWVkIGFuZCBpbmRlZmF0aWdhYmxlIGdlbmVyYXRpb24gb2Yga25vd2xlZGdlLCBleGNlZWRz"
-          + "IHRoZSBzaG9ydCB2ZWhlbWVuY2Ugb2YgYW55IGNhcm5hbCBwbGVhc3VyZS4";
+  // ----------------------------
+  // Happy-path round trips
+  // ----------------------------
 
-  /**
-   * Test the encode(byte[]) method against a well-known example (see
-   * http://en.wikipedia.org/wiki/Base_64 as reference) to verify if it encode works correctly.
-   */
   @Test
-  public void testEncode() {
-    byte[] aByteArrayToEncode = toEncode.getBytes(StandardCharsets.UTF_8);
-    assertEquals(Base64.encode(aByteArrayToEncode), toDecode);
+  @DisplayName("encode_whenEmpty_expectEmptyString")
+  void encodeWhenEmptyExpectEmptyString() {
+    // Arrange
+    byte[] input = new byte[0];
+
+    // Act
+    String modified = Base64.encode(input);
+    String standard = Base64.encodeStandard(input);
+
+    // Assert
+    assertEquals("", modified);
+    assertEquals("", standard);
   }
 
-  /**
-   * Test the decode(String) method against a well-known example (see
-   * http://en.wikipedia.org/wiki/Base_64 as reference) to verify if it decode an already encoded
-   * string correctly.
-   */
   @Test
-  public void testDecode() throws Exception {
-    String decodedString = new String(Base64.decode(toDecode));
-    assertEquals(decodedString, toEncode);
+  @DisplayName("decode_whenEmpty_expectEmptyArray")
+  void decodeWhenEmptyExpectEmptyArray() throws IllegalBase64Exception {
+    // Arrange
+    String empty = "";
+
+    // Act
+    byte[] modified = Base64.decode(empty);
+    byte[] standard = Base64.decodeStandard(empty);
+
+    // Assert
+    assertArrayEquals(new byte[0], modified);
+    assertArrayEquals(new byte[0], standard);
   }
 
-  /**
-   * Test the encodeStandard(byte[]) method This is the same as encode() from
-   * generator/js/src/freenet/client/tools/Base64.java
-   */
   @Test
-  public void testEncodeStandard() {
-    byte[] aByteArrayToEncode = testSample.getBytes(StandardCharsets.UTF_8);
-    assertEquals(Base64.encodeStandard(aByteArrayToEncode), testSampleStandardEncoding);
+  @DisplayName("encodeUTF8_whenRoundTripUnicode_expectOriginalString")
+  void encodeUtf8WhenRoundTripUnicodeExpectOriginalString() throws IllegalBase64Exception {
+    // Arrange
+    String original = "Hello, 世界 🌍 — Crypta";
+
+    // Act
+    String enc = Base64.encodeUTF8(original);
+    String dec = Base64.decodeUTF8(enc);
+
+    // Assert
+    assertEquals(original, dec);
   }
 
-  /**
-   * Test the decodeStandard(byte[]) method. This is the same as decode() from
-   * generator/js/src/freenet/client/tools/Base64.java
-   */
-  @Test
-  public void testDecodeStandard() throws Exception {
-    String decodedString =
-        new String(Base64.decodeStandard(testSampleStandardEncoding), StandardCharsets.UTF_8);
-    assertEquals(decodedString, testSample);
-  }
+  @ParameterizedTest(name = "len={0}, equalsPad={1}, standardAlphabet={2}")
+  @MethodSource("lengthsAndAlphabetsData")
+  @DisplayName("encode_whenVariousLengths_expectRoundTrip")
+  void encodeWhenVariousLengthsExpectRoundTrip(
+      int length, boolean equalsPad, boolean standardAlphabet) throws IllegalBase64Exception {
+    // Arrange
+    byte[] input = generate(length, 42);
 
-  /**
-   * Test encode(byte[] in) and decode(String inStr) methods, to verify if they work correctly
-   * together. It compares the string before encoding and with the one after decoding.
-   */
-  @Test
-  public void testEncodeDecode() {
-    byte[] bytesDecoded;
-    byte[] bytesToEncode = new byte[5];
-
-    // byte upper bound
-    bytesToEncode[0] = 127;
-    bytesToEncode[1] = 64;
-    bytesToEncode[2] = 0;
-    bytesToEncode[3] = -64;
-    // byte lower bound
-    bytesToEncode[4] = -128;
-
-    String aBase64EncodedString = Base64.encode(bytesToEncode);
-
-    try {
-      bytesDecoded = Base64.decode(aBase64EncodedString);
-      assertArrayEquals(bytesToEncode, bytesDecoded);
-    } catch (IllegalBase64Exception aException) {
-      fail("Not expected exception thrown : " + aException.getMessage());
-    }
-  }
-
-  /**
-   * Test the encode(String,boolean) method to verify if the padding character '=' is correctly
-   * placed.
-   */
-  @Test
-  public void testEncodePadding() {
-    byte[][] methodBytesArray = {
-      // three byte Array -> no padding char expected
-      {4, 4, 4},
-      // two byte Array -> one padding char expected
-      {4, 4},
-      // one byte Array -> two padding-chars expected
-      {4}
-    };
+    // Act
     String encoded;
+    byte[] decoded;
+    if (standardAlphabet) {
+      encoded = Base64.encodeStandard(input);
+      decoded = Base64.decodeStandard(encoded);
+    } else {
+      encoded = Base64.encode(input, equalsPad);
+      decoded = Base64.decode(encoded);
+    }
 
-    for (int i = 0; i < methodBytesArray.length; i++) {
-      encoded = Base64.encode(methodBytesArray[i], true);
-      if (i == 0)
-        // no occurrences expected
-        assertEquals(encoded.indexOf('='), -1);
-      else assertEquals(encoded.indexOf('='), encoded.length() - i);
+    // Assert
+    assertArrayEquals(input, decoded);
+    if (!standardAlphabet && equalsPad) {
+      assertEquals(0, encoded.length() % 4, "Padded output must be multiple of 4");
     }
   }
 
-  /**
-   * Test if the decode(String) method raise correctly an exception when providing a string with
-   * non-Base64 characters.
-   */
-  @Test
-  public void testIllegalBaseCharacter() {
-    //		TODO: check many other possible cases!
-    String illegalCharString = "abcd=fghilmn";
-    try {
-      Base64.decode(illegalCharString);
-      fail("Expected IllegalBase64Exception not thrown");
-    } catch (IllegalBase64Exception exception) {
-      assertSame("illegal Base64 character", exception.getMessage());
-    }
+  static Stream<Arguments> lengthsAndAlphabetsData() {
+    // lengths 0..5; both alphabets; equalsPad true/false for modified alphabet
+    Stream<Arguments> modified =
+        IntStream.rangeClosed(0, 5)
+            .boxed()
+            .flatMap(
+                len -> Stream.of(Arguments.of(len, false, false), Arguments.of(len, true, false)));
+    Stream<Arguments> standard =
+        IntStream.rangeClosed(0, 5).mapToObj(len -> Arguments.of(len, true, true));
+    return Stream.concat(modified, standard);
   }
 
-  /**
-   * Test if the decode(String) method raise correctly an exception when providing a string with a
-   * wrong Base64 length. (as we can consider not-padded strings too, the only wrong lengths are the
-   * ones where -> number MOD 4 = 1).
-   */
+  // ----------------------------
+  // Alphabet-specific expectations
+  // ----------------------------
+
   @Test
-  public void testIllegalBaseLength() {
-    // most interesting case
-    String illegalLengthString = "a";
-    try {
-      Base64.decode(illegalLengthString);
-      fail("Expected IllegalBase64Exception not thrown");
-    } catch (IllegalBase64Exception exception) {
-      assertSame("illegal Base64 length", exception.getMessage());
-    }
+  @DisplayName("encodeStandard_whenAllFF_expectSlashes")
+  void encodeStandardWhenAllFFExpectSlashes() throws IllegalBase64Exception {
+    // Arrange
+    byte[] input = new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF};
+
+    // Act
+    String encoded = Base64.encodeStandard(input);
+    byte[] decoded = Base64.decodeStandard(encoded);
+
+    // Assert
+    assertEquals("////", encoded);
+    assertArrayEquals(input, decoded);
   }
 
-  /**
-   * Random test
-   *
-   * @throws IllegalBase64Exception
-   */
   @Test
-  public void testRandom() throws IllegalBase64Exception {
-    int iter;
-    Random r = new Random(1234);
-    for (iter = 0; iter < 1000; iter++) {
-      byte[] b = new byte[r.nextInt(64)];
-      for (int i = 0; i < b.length; i++) b[i] = (byte) (r.nextInt(256));
-      String encoded = Base64.encode(b);
-      byte[] decoded = Base64.decode(encoded);
-      assertEquals("length mismatch", decoded.length, b.length);
+  @DisplayName("encodeNonStandard_whenAllFF_expectDashes")
+  void encodeNonStandardWhenAllFFExpectDashes() throws IllegalBase64Exception {
+    // Arrange
+    byte[] input = new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF};
 
-      for (int i = 0; i < b.length; i++)
-        assertEquals(
-            "data mismatch: index "
-                + i
-                + " of "
-                + b.length
-                + " should be 0x"
-                + Integer.toHexString(b[i] & 0xFF)
-                + " was 0x"
-                + Integer.toHexString(decoded[i] & 0xFF),
-            b[i],
-            decoded[i]);
-    }
+    // Act
+    String encoded = Base64.encode(input);
+    byte[] decoded = Base64.decode(encoded);
+
+    // Assert
+    assertEquals("----", encoded);
+    assertArrayEquals(input, decoded);
+  }
+
+  // ----------------------------
+  // Padding behavior
+  // ----------------------------
+
+  @ParameterizedTest(name = "len={0}")
+  @ValueSource(ints = {1, 2, 3, 4, 5})
+  @DisplayName("encode_whenEqualsPadTrue_expectMultipleOfFour")
+  void encodeWhenEqualsPadTrueExpectMultipleOfFour(int len) {
+    // Arrange
+    byte[] input = generate(len, 7);
+
+    // Act
+    String encoded = Base64.encode(input, true);
+
+    // Assert
+    assertEquals(0, encoded.length() % 4);
+  }
+
+  @Test
+  @DisplayName("encode_whenEqualsPadTrue_singleByte_expectTwoCharsPlusPadding")
+  void encodeWhenEqualsPadTrueSingleByteExpectTwoCharsPlusPadding() throws IllegalBase64Exception {
+    // Arrange
+    byte[] input = new byte[] {0x4D}; // 'M'
+
+    // Act
+    String modifiedPadded = Base64.encode(input, true);
+    String modifiedUnpadded = Base64.encode(input, false);
+
+    // Assert
+    assertEquals(4, modifiedPadded.length());
+    assertEquals(2, modifiedUnpadded.length());
+    assertEquals(modifiedUnpadded + "==", modifiedPadded);
+    assertArrayEquals(input, Base64.decode(modifiedPadded));
+    assertArrayEquals(input, Base64.decode(modifiedUnpadded));
+  }
+
+  @Test
+  @DisplayName("decodeStandard_whenKnownExamples_expectManFamily")
+  void decodeStandardWhenKnownExamplesExpectManFamily() throws IllegalBase64Exception {
+    // Arrange
+    String man = "TWFu"; // "Man"
+    String ma = "TWE="; // "Ma"
+    String m = "TQ=="; // "M"
+
+    // Act
+    byte[] outMan = Base64.decodeStandard(man);
+    byte[] outMa = Base64.decodeStandard(ma);
+    byte[] outM = Base64.decodeStandard(m);
+
+    // Assert
+    assertEquals("Man", new String(outMan, StandardCharsets.UTF_8));
+    assertEquals("Ma", new String(outMa, StandardCharsets.UTF_8));
+    assertEquals("M", new String(outM, StandardCharsets.UTF_8));
+  }
+
+  // ----------------------------
+  // Error paths
+  // ----------------------------
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abcd=fgh", "abcd=fghilmn", "YW*J", "YW_J"})
+  @DisplayName("decode_whenIllegalCharacters_expectIllegalBase64Character")
+  void decodeWhenIllegalCharactersExpectIllegalBase64Character(String illegal) {
+    // Arrange & Act
+    IllegalBase64Exception ex =
+        assertThrows(IllegalBase64Exception.class, () -> Base64.decode(illegal));
+    // Assert
+    assertEquals(ILLEGAL_CHAR_MSG, ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("decode_whenLengthModFourIsOne_expectIllegalBase64Length")
+  void decodeWhenLengthModFourIsOneExpectIllegalBase64Length() {
+    // Arrange
+    String illegalLength = "a";
+
+    // Act
+    IllegalBase64Exception ex =
+        assertThrows(IllegalBase64Exception.class, () -> Base64.decode(illegalLength));
+
+    // Assert
+    assertEquals("illegal Base64 length", ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("decodeStandard_whenWhitespacePresent_expectIllegalBase64Length")
+  void decodeStandardWhenWhitespacePresentExpectIllegalBase64Length() {
+    // Arrange
+    String withSpace = "Y WJj"; // spaces in base64 are illegal here
+
+    // Act & Assert
+    IllegalBase64Exception ex =
+        assertThrows(IllegalBase64Exception.class, () -> Base64.decodeStandard(withSpace));
+    assertEquals("illegal Base64 length", ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("decodeNonStandard_whenStandardAlphabetString_expectIllegalBase64Character")
+  void decodeNonStandardWhenStandardAlphabetStringExpectIllegalBase64Character() {
+    // Arrange
+    String standardEncoded = "////"; // index 63 is '/'
+
+    // Act & Assert
+    IllegalBase64Exception ex =
+        assertThrows(IllegalBase64Exception.class, () -> Base64.decode(standardEncoded));
+    assertEquals(ILLEGAL_CHAR_MSG, ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("decodeStandard_whenModifiedAlphabetString_expectIllegalBase64Character")
+  void decodeStandardWhenModifiedAlphabetStringExpectIllegalBase64Character() {
+    // Arrange
+    String modifiedEncoded = "----"; // index 63 is '-'
+
+    // Act & Assert
+    IllegalBase64Exception ex =
+        assertThrows(IllegalBase64Exception.class, () -> Base64.decodeStandard(modifiedEncoded));
+    assertEquals(ILLEGAL_CHAR_MSG, ex.getMessage());
+  }
+
+  // ----------------------------
+  // Null handling
+  // ----------------------------
+
+  @Test
+  @DisplayName("encode_whenNullBytes_expectNullPointerException")
+  void encodeWhenNullBytesExpectNullPointerException() {
+    // Arrange & Act & Assert
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Base64.encode(null));
+        });
+  }
+
+  @Test
+  @DisplayName("encodeUTF8_whenNull_expectNullPointerException")
+  void encodeUtf8WhenNullExpectNullPointerException() {
+    // Arrange & Act & Assert
+    assertThrows(
+        NullPointerException.class,
+        () -> {
+          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(Base64.encodeUTF8(null));
+        });
+  }
+
+  @Test
+  @DisplayName("decode_whenNull_expectNullPointerException")
+  void decodeWhenNullExpectNullPointerException() {
+    // Arrange & Act & Assert
+    assertThrows(NullPointerException.class, () -> Base64.decode(null));
+  }
+
+  @Test
+  @DisplayName("decodeStandard_whenNull_expectNullPointerException")
+  void decodeStandardWhenNullExpectNullPointerException() {
+    // Arrange & Act & Assert
+    assertThrows(NullPointerException.class, () -> Base64.decodeStandard(null));
+  }
+
+  @Test
+  @DisplayName("decodeUTF8_whenNull_expectNullPointerException")
+  void decodeUtf8WhenNullExpectNullPointerException() {
+    // Arrange & Act & Assert
+    assertThrows(NullPointerException.class, () -> Base64.decodeUTF8(null));
+  }
+
+  // ----------------------------
+  // Mockito: I/O and time
+  // ----------------------------
+
+  @Test
+  @DisplayName("encode_whenBytesProvidedByInputStream_expectCorrectOutput")
+  void encodeWhenBytesProvidedByInputStreamExpectCorrectOutput()
+      throws IOException, IllegalBase64Exception {
+    // Arrange
+    byte[] data = new byte[] {0x01, 0x02, 0x03, 0x04, 0x05};
+    InputStream is = mock(InputStream.class);
+    when(is.read(any(byte[].class)))
+        .thenAnswer(
+            new Answer<Integer>() {
+              int offset = 0;
+
+              @Override
+              public Integer answer(InvocationOnMock inv) {
+                byte[] dst = inv.getArgument(0);
+                if (offset >= data.length) return -1;
+                int len = Math.min(dst.length, data.length - offset);
+                System.arraycopy(data, offset, dst, 0, len);
+                offset += len;
+                return len;
+              }
+            });
+
+    // Act
+    byte[] readAll = readAll(is);
+    String encoded = Base64.encode(readAll, true);
+    byte[] decoded = Base64.decode(encoded);
+
+    // Assert
+    assertArrayEquals(data, readAll);
+    assertArrayEquals(data, decoded);
+    network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(
+        verify(is, atLeastOnce()).read(any(byte[].class)));
+  }
+
+  @Test
+  @DisplayName("random_whenSeededByMockedTime_expectDeterministicRoundTrip")
+  @SuppressWarnings("java:S2245")
+  void randomWhenSeededByMockedTimeExpectDeterministicRoundTrip() throws IllegalBase64Exception {
+    // Arrange
+    long seed = 987654321L;
+    AtomicInteger calls = new AtomicInteger();
+    LongSupplier time =
+        () -> {
+          calls.incrementAndGet();
+          return seed;
+        };
+    Random r = new Random(time.getAsLong());
+    byte[] input = new byte[32];
+    for (int i = 0; i < input.length; i++) input[i] = (byte) r.nextInt(256);
+
+    // Act
+    String encoded = Base64.encode(input);
+    byte[] decoded = Base64.decode(encoded);
+
+    // Assert
+    assertArrayEquals(input, decoded);
+    assertEquals(1, calls.get());
+  }
+
+  // ----------------------------
+  // Helpers
+  // ----------------------------
+
+  @SuppressWarnings("java:S2245")
+  private static byte[] generate(int length, long seed) {
+    Random r = new Random(seed + length);
+    byte[] out = new byte[length];
+    for (int i = 0; i < length; i++) out[i] = (byte) r.nextInt(256);
+    return out;
+  }
+
+  private static byte[] readAll(InputStream in) throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    byte[] buf = new byte[4];
+    int n;
+    while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
+    return baos.toByteArray();
   }
 }

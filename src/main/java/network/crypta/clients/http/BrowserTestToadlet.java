@@ -7,14 +7,31 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
 /**
- * Browser Test Toadlet. Accessible from <code>http://.../test/</code>.
+ * Toadlet that renders a browser capability self-test page for Crypta clients.
  *
- * <p>Useful to test browser's capabilities:
+ * <p>This handler serves under {@code /test/} and generates HTML sections that probe features often
+ * constrained by hardened browsers, including inline {@code data:} image rendering, concurrent
+ * connection limits, and basic JavaScript execution. It is intended for node operators to manually
+ * visit when verifying that their configured browser can interact with FProxy without silently
+ * blocking required resources. Output is created on demand and carries no mutable state, so
+ * repeated visits always reflect the user's current browser configuration and any active content
+ * filters.
+ *
+ * <p>The page composition uses {@link PageMaker} and the surrounding {@link ToadletContext} to
+ * build themed infoboxes and alerts while avoiding external network fetches. The class itself is
+ * stateless; thread safety is provided by the hosting toadlet framework, which typically handles
+ * one request per invocation. When the client supplies {@code wontload}, the handler skips certain
+ * probes to let automated checks detect connection limits without triggering unnecessary network
+ * noise.
  *
  * <ul>
- *   <li>warn the user about useless enabled features/plugins which might be dangerous
- *   <li>Assist the user in configuring his browser properly to surf on freenet
- *       <ul>
+ *   <li><strong>Responsibilities:</strong> Present browser diagnostics, warn about unsafe plugin
+ *       configurations, and surface alert summaries when full access is allowed.
+ *   <li><strong>Notable behaviors:</strong> Embeds a warning GIF as a data URI to check inline MIME
+ *       support and generates ten parallel image requests to expose per-host connection caps.
+ * </ul>
+ *
+ * @see Toadlet
  */
 public class BrowserTestToadlet extends Toadlet {
 
@@ -22,7 +39,7 @@ public class BrowserTestToadlet extends Toadlet {
     super(client);
   }
 
-  private static final String imgWarningMime =
+  private static final String IMG_WARNING_MIME =
       "R0lGODdh1AE8AOf9AAABAAcAAAkBAAoDARAAAQcECRYAAxoCAB4BACIBARMK"
           + "ACUBBCcBACoAABQMAw0PDBMPAC4BAiUHADQBABkQASMLAjoABRQSFj0CAUEA"
           + "AyASAC0MASQSAB8VAUYCAk4AAUkEAEgEBS8SAFYAAFEDAFEDBVkCBGAAAVwE"
@@ -175,6 +192,27 @@ public class BrowserTestToadlet extends Toadlet {
           + "TTfltFP4CgA1VFFFraqAAAIANUIAYJzwRFRHhRVWT2eltVZbb8U1V1135bVX"
           + "X38FNlhhhyW2WGOPRTZZZbEMCAA7";
 
+  private static final String INFOBOX_WARNING_CLASS = "infobox-warning";
+
+  /**
+   * Handles an HTTP GET by emitting a diagnostic page that exercises multiple browser features in
+   * isolation.
+   *
+   * <p>The handler builds a themed {@link PageNode} that includes three infoboxes: a MIME-inline
+   * data URI test, a connection saturation test that spawns more than ten parallel image fetches,
+   * and a JavaScript mutation test that rewrites an image source at runtime. If the client sets the
+   * {@code wontload} parameter, connection probes are suppressed to reduce noise during scripted
+   * checks. When the caller is permitted full access, the page also includes any queued alert
+   * summaries sourced from the context's alert manager.
+   *
+   * @param uri URI identifying the resource path within the test toadlet.
+   * @param request HTTPRequest containing query parameters and browser capability hints sent by
+   *     client.
+   * @param ctx Context that renders HTML, manages permissions, and writes response safely.
+   * @throws ToadletContextClosedException if the connection closes before the response is written.
+   * @throws IOException if writing the generated HTML to the client stream fails.
+   */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     // Yes, we need that in order to test the browser (number of connections per server)
@@ -189,19 +227,19 @@ public class BrowserTestToadlet extends Toadlet {
     /* for test (for allow <img src="data:...) add "; img-src 'self' data:"
      * to freenet.clients.http.ToadletContextImpl#generateCSP return statement */
     ctx.getPageMaker()
-        .getInfobox("infobox-warning", "MIME Inline", contentNode, "mime-inline-test", true)
+        .getInfobox(INFOBOX_WARNING_CLASS, "MIME Inline", contentNode, "mime-inline-test", true)
         .addChild(
             "img",
             new String[] {"src", "alt"},
             new String[] {
-              "data:image/gif;base64," + imgWarningMime, "Your browser is probably safe."
+              "data:image/gif;base64," + IMG_WARNING_MIME, "Your browser is probably safe."
             });
 
     // #### Test whether we can have more than 10 simultaneous connections to fproxy
     HTMLNode maxConnectionsPerServerContent =
         ctx.getPageMaker()
             .getInfobox(
-                "infobox-warning",
+                INFOBOX_WARNING_CLASS,
                 "Number of connections",
                 contentNode,
                 "browser-connections",
@@ -217,9 +255,9 @@ public class BrowserTestToadlet extends Toadlet {
         new String[] {"src", "alt"},
         new String[] {"/static/themes/clean/success.png", "fail!"});
 
-    // #### Test whether JS is available. : should do the test with pictures instead!
+    // #### Test whether JS is available. Should do the test with pictures instead!
     ctx.getPageMaker()
-        .getInfobox("infobox-warning", "Javascript", contentNode, "javascript-test", true)
+        .getInfobox(INFOBOX_WARNING_CLASS, "Javascript", contentNode, "javascript-test", true)
         .addChild("div")
         .addChild(
             "img",
@@ -229,9 +267,15 @@ public class BrowserTestToadlet extends Toadlet {
         .addChild(
             "%", "document.getElementById('JSTEST').src = '/static/themes/clean/warning.png';");
 
-    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), true);
+    this.writeHTMLReply(
+        ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", null, true), page.generate());
   }
 
+  /**
+   * Returns the mount path where this toadlet exposes its diagnostic page.
+   *
+   * @return String representing the public path {@code "/test/"} served by the toadlet.
+   */
   @Override
   public String path() {
     return "/test/";

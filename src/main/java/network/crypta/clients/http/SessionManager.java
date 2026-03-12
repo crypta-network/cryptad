@@ -1,53 +1,63 @@
 package network.crypta.clients.http;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
-import java.util.Date;
-import java.util.Enumeration;
+import java.time.Instant;
 import java.util.HashMap;
-import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
 import network.crypta.support.StringValidityChecker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /**
- * A basic session manager for cookie-based HTTP session. It allows its parent web interface to
- * associate a "UserID" (a string) with a session ID.
+ * SessionManager coordinates cookie-backed HTTP sessions for the Crypta HTTP interface.
  *
- * <p>Formal definition of a SessionManager: A 1:1 mapping of SessionID to UserID. Queries by
- * SessionID and UserID run in O(1). The Session ID primary key consists of: Cookie path + Cookie
- * name + random "actual" session ID The user ID is received from the client application.
+ * <p>It maintains a strict 1:1 mapping between an opaque session ID and a user-provided user ID
+ * while keeping lookups in both directions at constant time. A session ID is scoped by cookie path
+ * and name, then backed by a random {@link UUID} stored in the browser. The manager enforces
+ * exclusivity per user: creating a new session for the same user removes the previous one to
+ * prevent concurrent logins. The time-to-idle policy expires sessions after {@link
+ * #MAX_SESSION_IDLE_TIME} of inactivity and refreshes them on validated access. All public entry
+ * points are synchronized to guard the internal LRU cache and ensure the eviction order matches
+ * access time.
  *
- * <p>Therefore, when multiple client applications want to store sessions, each one is supposed to
- * create its own SessionManager because user IDs might overlap.
+ * <p>Use the path-based constructor when cookies should only be returned for a subtree of the HTTP
+ * interface. Use the namespace-based constructor when multiple applications share the root path;
+ * namespacing prefixes the cookie name to avoid collisions while still receiving cookies for all
+ * requests under "/".
  *
- * <p>The sessions of each application then get their {@link Session} by using a different cookie
- * path OR a different cookie namespace, depending on which constructor you use.
+ * <ul>
+ *   <li>Responsibilities: issuing session IDs, validating cookies, expiring idle entries.
+ *   <li>Thread-safety: all public methods synchronize on the instance; individual Session objects
+ *       rely on caller synchronization via the enclosing manager.
+ *   <li>Lifecycle: sessions are created on demand, refreshed on {@link
+ *       #useSession(ToadletContext)}, and lazily purged when clients next interact.
+ * </ul>
  *
- * <p>Paths are used when client applications do NOT share the same path on the server. For example
- * "/Chat" would cause the browser to only send back the cookie if the user is browsing "/Chat/",
- * not for "/". BUT usually we want the menu contents of client applications to be in the logged-in
- * state even if the user is NOT browsing the client application web interface right now, therefore
- * the "/" path must be used in most cases. If client application cookies shall be received from all
- * paths on the server, the client application should use the constructor which requires a cookie
- * namespace.
- *
- * <p>The usage of a namespace gurantees that Sessions of different client applications do not
- * overlap.
- *
+ * @see SessionManager.Session
+ * @see ToadletContext
  * @author xor (xor@freenetproject.org)
  */
 public final class SessionManager {
+  private static final Logger LOG = LoggerFactory.getLogger(SessionManager.class);
 
-  /** The amount of milliseconds after which a session is deleted due to expiration. */
+  /**
+   * Maximum idle time in milliseconds before a session is considered expired and purged lazily; by
+   * default, this is one hour, enforcing short-lived browser sessions without persistent storage.
+   */
   public static final long MAX_SESSION_IDLE_TIME = HOURS.toMillis(1);
 
+  /**
+   * Base cookie name used when no namespace is provided; combined with a namespace when present to
+   * keep cookies distinct across co-hosted applications while preserving recognizable identifiers.
+   */
   public static final String SESSION_COOKIE_NAME = "SessionID";
 
   private final URI mCookiePath;
@@ -55,10 +65,15 @@ public final class SessionManager {
   private final String mCookieName;
 
   /**
-   * Constructs a new session manager for use with the given cookie path. Cookies are only sent back
-   * if the user is browsing the domain within that path.
+   * Constructs a new session manager that restricts cookies to the supplied path segment.
    *
-   * @param myCookiePath The path in which the cookies should be valid.
+   * <p>The path must be relative and start with {@code /}; absolute URIs are rejected to avoid
+   * leaking cookies across hosts. Browsers will only present the issued session cookie when the
+   * current request path is equal to or beneath the configured path, making this constructor
+   * suitable for client interfaces that live in a dedicated subtree. The underlying cookie name is
+   * {@link #SESSION_COOKIE_NAME}; no namespace prefix is added when this constructor is used.
+   *
+   * @param myCookiePath relative path beginning with {@code /} where the cookie remains valid
    */
   public SessionManager(URI myCookiePath) {
     if (myCookiePath.isAbsolute())
@@ -67,26 +82,24 @@ public final class SessionManager {
     if (!myCookiePath.toString().startsWith("/"))
       throw new IllegalArgumentException("Illegal cookie path, must start with /: " + myCookiePath);
 
-    // FIXME: The new constructor was written at 2010-11-15. Uncomment the following safety check
-    // after we gave plugins some time to migrate
-    //	if(myCookiePath.getPath().equals("/"))
-    //		throw new IllegalArgumentException("Illegal cookie path '/'. You should use the constructor
-    // which allows the specification" +
-    //			"of a namespace for using the global path.");
+    // Legacy global-path cookies are intentionally allowed for backward compatibility with older
+    // clients that still rely on the root path.
 
-    // TODO: Add further checks.
-
-    // mCookieDomain = myCookieDomain;
     mCookiePath = myCookiePath;
     mCookieNamespace = "";
     mCookieName = SESSION_COOKIE_NAME;
   }
 
   /**
-   * Constructs a new session manager for use with the "/" cookie path
+   * Constructs a new session manager that uses the root path and a namespace-prefixed cookie name.
    *
-   * @param myCookieNamespace The name of the client application which uses this cookie. Must not be
-   *     empty. Must be latin letters and numbers only.
+   * <p>Namespaces let multiple applications share the same HTTP origin while keeping sessions
+   * isolated; the namespace is prepended to {@link #SESSION_COOKIE_NAME}. The parameter must be
+   * non-empty and limited to Latin letters and digits to ensure it is safe for cookie names and
+   * logging. Cookies issued by this manager are sent for all request paths because the cookie path
+   * is fixed to {@code /}.
+   *
+   * @param myCookieNamespace non-empty ASCII alphanumeric token that prefixes the cookie name
    */
   public SessionManager(String myCookieNamespace) {
     if (myCookieNamespace.isEmpty())
@@ -98,16 +111,27 @@ public final class SessionManager {
       throw new IllegalArgumentException(
           "The cookie namespace must be latin letters and numbers only.");
 
-    // mCookieDomain = myCookieDomain;
     try {
       mCookiePath = new URI("/");
     } catch (URISyntaxException e) {
-      throw new RuntimeException(e);
+      throw new IllegalStateException("Unexpected failure creating root URI", e);
     }
     mCookieNamespace = myCookieNamespace;
     mCookieName = myCookieNamespace + SESSION_COOKIE_NAME;
   }
 
+  /**
+   * Represents an individual HTTP session issued by {@link SessionManager} and stored in a browser
+   * cookie.
+   *
+   * <p>A Session bundles the random {@link UUID} sent to the client, the stable user ID supplied by
+   * the caller, and an arbitrary attribute map for request-scoped state. Expiration is tracked as a
+   * time-to-idle timestamp and refreshed when the session is successfully reused. Instances are
+   * created only through {@link #createSession(String, ToadletContext)}; equality and hash code are
+   * based solely on the session ID to make them reliable map keys. Mutability is limited to
+   * attribute storage and expiration updates. Concurrency is managed by the enclosing manager: the
+   * Session type itself performs no synchronization.
+   */
   public static final class Session {
 
     private final UUID mID;
@@ -134,10 +158,32 @@ public final class SessionManager {
       return mID.hashCode();
     }
 
+    /**
+     * Returns the immutable identifier assigned to this session when it was created.
+     *
+     * <p>The identifier is a randomly generated {@link UUID} and serves as the value stored in the
+     * session cookie. It never changes for the lifetime of the session and is unique enough to be
+     * safely used as the primary key in the manager's maps. Callers may log or compare the value,
+     * but should not attempt to interpret or reconstruct it. The ID becomes invalid once the
+     * session expires or is explicitly removed.
+     *
+     * @return unique, stable UUID that backs the cookie and map lookups for this session
+     */
     public UUID getID() {
       return mID;
     }
 
+    /**
+     * Returns the user identifier associated with this session.
+     *
+     * <p>The value is supplied by the caller of {@link SessionManager#createSession(String,
+     * ToadletContext)} and remains stable throughout the session lifetime. It is not transformed or
+     * validated beyond what the manager already performed at creation time. The string may be used
+     * for authorization decisions or UI display, but it is not guaranteed to be unique outside the
+     * managing instance, so consumers should scope comparisons accordingly.
+     *
+     * @return application-defined user ID bound to this session and never modified by the session
+     */
     public String getUserID() {
       return mUserID;
     }
@@ -155,51 +201,80 @@ public final class SessionManager {
     }
 
     /**
-     * Returns whether this session contains an attribute with the given name.
+     * Checks whether an attribute with the provided name is present in this session.
      *
-     * @param name The name of the attribute to check for
-     * @return {@code true} if this session contains an attribute with the given name, {@code false}
-     *     otherwise
+     * <p>Attributes are stored in a simple in-memory map and are not persisted beyond the lifetime
+     * of the session. Lookups are case-sensitive and treat {@code null} names the same way as any
+     * other map key. Use this method when you need to branch on optional values without triggering
+     * retrieval or default computation. The call is constant-time and does not alter the session
+     * state or expiration timer.
+     *
+     * @param name attribute key to test; expected to be non-null and meaningful to the caller
+     * @return {@code true} when an entry exists for the key; {@code false} otherwise
      */
     public boolean hasAttribute(String name) {
       return mAttributes.containsKey(name);
     }
 
     /**
-     * Returns the value of the attribute with the given name. If there is no attribute with the
-     * given name, {@code null} is returned.
+     * Retrieves the value stored under the provided attribute name.
      *
-     * @param name The name of the attribute whose value to get
-     * @return The value of the attribute, or {@code null}
+     * <p>When no entry exists, this method returns {@code null} without creating one. Attribute
+     * values are stored as raw {@link Object} instances; callers are responsible for casting to the
+     * expected type. The map permits {@code null} values, so callers should distinguish between
+     * absence and explicit null where necessary, possibly by pairing with {@link
+     * #hasAttribute(String)}. Access does not refresh the parent session's expiration timer and is
+     * safe to call repeatedly.
+     *
+     * @param name attribute key whose value should be retrieved; typically non-null and stable
+     * @return stored attribute value or {@code null} when missing or explicitly set to {@code null}
      */
     public Object getAttribute(String name) {
       return mAttributes.get(name);
     }
 
     /**
-     * Sets the value of the attribute with the given name.
+     * Stores or replaces an attribute under the provided name.
      *
-     * @param name The name of the attribute whose value to set
-     * @param value The new value of the attribute
+     * <p>The value may be any {@link Object}, including {@code null}; storing {@code null}
+     * deliberately distinguishes between an explicit null payload and a missing entry. Repeated
+     * calls with the same name overwrite the previous value. Attribute updates do not touch the
+     * session's expiration counter; refreshing idle time still requires {@link
+     * SessionManager#useSession(ToadletContext)}. Callers should avoid storing large mutable
+     * objects because Session instances are kept entirely in memory.
+     *
+     * @param name attribute key to insert or overwrite; should be non-null and consistent
+     * @param value attribute payload to associate with the key; may be {@code null}
      */
     public void setAttribute(String name, Object value) {
       mAttributes.put(name, value);
     }
 
     /**
-     * Removes the attribute with the given name. Nothing will happen if there is no attribute with
-     * the given name.
+     * Removes any attribute stored under the specified name.
      *
-     * @param name The name of the attribute to remove
+     * <p>If no mapping exists, the call is a no-op. Removing an attribute frees the entry from the
+     * in-memory map but does not alter session expiration or other state. Use this method when
+     * clearing sensitive or temporary data after it is no longer necessary or before reusing the
+     * key for a different type. The operation returns immediately and does not signal whether a
+     * value was present beforehand.
+     *
+     * @param name attribute key to delete; treated exactly as the key originally stored
      */
     public void removeAttribute(String name) {
       mAttributes.remove(name);
     }
 
     /**
-     * Returns the names of all currently existing attributes.
+     * Lists the names of all attributes currently stored on this session.
      *
-     * @return The names of all attributes
+     * <p>The returned set is backed directly by the internal map, so modifications to the set will
+     * affect the stored attributes. Callers that need an immutable snapshot should copy the set
+     * before iterating. Names reflect exactly what was supplied to {@link #setAttribute(String,
+     * Object)}; no normalization is performed. The set may be empty when no attributes have been
+     * defined, or after they were removed.
+     *
+     * @return live view of attribute keys present on this session; may be empty but never null
      */
     public Set<String> getAttributeNames() {
       return mAttributes.keySet();
@@ -207,36 +282,56 @@ public final class SessionManager {
   }
 
   private final LRUMap<UUID, Session> mSessionsByID = new LRUMap<>();
-  private final Hashtable<String, Session> mSessionsByUserID = new Hashtable<>();
+  private final Map<String, Session> mSessionsByUserID = new HashMap<>();
 
   /**
-   * Returns the cookie path as specified in the constructor. Returns "/" if the constructor which
-   * only requires a namespace was used.
+   * Exposes the cookie path configured for this manager.
+   *
+   * <p>For namespace-based managers the path is always {@code /}, enabling cookies to accompany all
+   * requests. For path-based managers, the value corresponds to the constructor argument and limits
+   * when browsers return the session cookie. The path is immutable after construction, so callers
+   * can cache the value when building HTTP responses or diagnostics. It does not include the cookie
+   * name or namespace; it is solely the path restriction recognized by the browser.
+   *
+   * @return immutable cookie path URI used when issuing and parsing session cookies
    */
   public URI getCookiePath() {
     return mCookiePath;
   }
 
   /**
-   * Returns the namespace as specified in the constructor. Returns an empty string if the
-   * constructor which requires a cookie path only was used.
+   * Returns the cookie namespace associated with this manager, or an empty string when unused.
+   *
+   * <p>The namespace, when provided, prefixes the cookie name to isolate sessions among multiple
+   * applications sharing the same origin. Namespace selection happens at construction time and
+   * cannot be altered later. Callers may incorporate the namespace into logging or UI labels to
+   * clarify which application issued the cookie. An empty string indicates the manager was created
+   * with the path-specific constructor and therefore uses the unprefixed {@link
+   * #SESSION_COOKIE_NAME}.
+   *
+   * @return namespace prefix for cookie names, or empty when none is configured
    */
   public String getCookieNamespace() {
     return mCookieNamespace;
   }
 
   /**
-   * Creates a new session for the given user ID.
+   * Creates a new session for the supplied user ID and writes the cookie to the response context.
    *
-   * <p>If a session for the given user ID already exists, it is deleted. It is not re-used to
-   * ensure that parallel logins with the same user account from different computers do not work.
+   * <p>If the user already has an active session, that session is removed before generating a new
+   * identifier, preventing parallel logins for the same account across devices. The method also
+   * purges any expired sessions, assigns a fresh {@link Session}, stores it in both lookup tables,
+   * and emits a cookie scoped to this manager's path and namespace. Calls are synchronized to keep
+   * LRU ordering consistent with the captured timestamp used for expiration refresh.
    *
-   * @param context The ToadletContext in which the session cookie shall be stored.
+   * @param userID caller-supplied user identifier to bind to the new session
+   * @param context request/response context whose cookies will carry the new session identifier
+   * @return newly created Session object representing the issued credentials
    */
   public synchronized Session createSession(String userID, ToadletContext context) {
     // We must synchronize around the fetching of the time and mSessionsByID.push() because
     // mSessionsByID is no sorting data structure: It's a plain
-    // LRUMap so to ensure that it stays sorted the operation "getTime(); push();" must be atomic.
+    // LRUMap, so to ensure that it stays sorted, the operation "getTime(); push();" must be atomic.
     long time = System.currentTimeMillis();
 
     removeExpiredSessions(time);
@@ -253,12 +348,16 @@ public final class SessionManager {
   }
 
   /**
-   * Returns true if the given {@link ToadletContext} contains a session cookie for a valid
-   * (existing and not expired) session.
+   * Checks whether the provided context holds a cookie for a currently valid session.
    *
-   * <p>In opposite to {@link getSessionUserID}, this function does NOT extend the validity of the
-   * session. Therefore, this function can be considered as a way of peeking for a session, to
-   * decide which Toadlet links should be visible.
+   * <p>This method is intended for lightweight "peek" operations such as deciding whether to show
+   * authenticated UI controls. It does not refresh the idle timer or modify cookies; it merely
+   * validates that the cookie maps to an existing, non-expired {@link Session}. Expired sessions
+   * are purged before the check to avoid false positives. The call is synchronized to maintain a
+   * consistent cache state during expiration cleanup.
+   *
+   * @param context HTTP toadlet context whose cookies should be inspected for a session identifier
+   * @return {@code true} when a non-expired session exists for the cookie; {@code false} otherwise
    */
   public synchronized boolean sessionExists(ToadletContext context) {
     UUID sessionID = getSessionID(context);
@@ -271,12 +370,17 @@ public final class SessionManager {
   }
 
   /**
-   * Retrieves the session ID from the session cookie in the given {@link ToadletContext}, checks if
-   * it contains a valid (existing and not expired) session and if yes, returns the {@link Session}.
+   * Retrieves and refreshes a session based on the cookie stored in the given context.
    *
-   * <p>If the session was valid, then its validity is extended by {@link MAX_SESSION_IDLE_TIME}.
+   * <p>The method resolves the session ID from the cookies, discards expired entries, and returns
+   * the corresponding {@link Session} when found. Successful lookups extend the expiration window
+   * by {@link #MAX_SESSION_IDLE_TIME} and reissue the cookie with the updated expiry to keep the
+   * browser in sync. When no valid session exists, {@code null} is returned and no cookies are
+   * modified. Synchronization ensures that LRU ordering and expiration timestamps remain coherent.
    *
-   * <p>If the session did not exist or is not valid anymore, <code>null</code> is returned.
+   * @param context HTTP toadlet context from which to read and to which to rewrite the session
+   *     cookie
+   * @return live Session when the cookie maps to a valid entry; {@code null} if missing or expired
    */
   public synchronized Session useSession(ToadletContext context) {
     UUID sessionID = getSessionID(context);
@@ -284,7 +388,7 @@ public final class SessionManager {
 
     // We must synchronize around the fetching of the time and mSessionsByID.push() because
     // mSessionsByID is no sorting data structure: It's a plain
-    // LRUMap so to ensure that it stays sorted the operation "getTime(); push();" must be atomic.
+    // LRUMap, so to ensure that it stays sorted, the operation "getTime(); push();" must be atomic.
     long time = System.currentTimeMillis();
 
     removeExpiredSessions(time);
@@ -302,10 +406,15 @@ public final class SessionManager {
   }
 
   /**
-   * Retrieves the session ID from the session cookie in the given {@link ToadletContext}, checks if
-   * it contains a valid (existing and not expired) session and if yes, deletes the session.
+   * Deletes the session referenced by the cookie in the provided context, if present and valid.
    *
-   * @return True if the session was deleted, false if there was no session cookie or no session.
+   * <p>The method resolves the session ID from the incoming cookies, validates existence, and
+   * removes the session from both lookup tables. Expired sessions are silently ignored. Cookies in
+   * the context are not cleared here; callers can choose whether to overwrite them after deletion.
+   * This is useful for logout flows that should not extend idle timers.
+   *
+   * @param context HTTP toadlet context supplying the cookie that identifies the session to remove
+   * @return {@code true} when a matching session existed and was removed; {@code false} otherwise
    */
   public boolean deleteSession(ToadletContext context) {
     UUID sessionID = getSessionID(context);
@@ -326,7 +435,7 @@ public final class SessionManager {
 
       return sessionCookie == null ? null : UUID.fromString(sessionCookie.getValue());
     } catch (ParseException | IllegalArgumentException e) {
-      Logger.error(this, "Getting session cookie failed", e);
+      LOG.error("Getting session cookie failed", e);
       return null;
     }
   }
@@ -340,11 +449,11 @@ public final class SessionManager {
    */
   private void setSessionCookie(Session session, ToadletContext context) {
     context.setCookie(
-        new Cookie(
+        Cookie.create(
             mCookiePath,
             mCookieName,
             session.getID().toString(),
-            new Date(session.getExpirationTime())));
+            Instant.ofEpochMilli(session.getExpirationTime())));
   }
 
   /**
@@ -362,27 +471,22 @@ public final class SessionManager {
     return true;
   }
 
-  /**
-   * Deletes the session associated with the given user ID.
-   *
-   * @return True if a session with the given ID existed.
-   */
-  private synchronized boolean deleteSessionByUserID(String userID) {
+  /** Deletes the session associated with the given user ID. */
+  private synchronized void deleteSessionByUserID(String userID) {
     Session session = mSessionsByUserID.remove(userID);
-    if (session == null) return false;
+    if (session == null) return;
 
     mSessionsByID.removeKey(session.getID());
-    return true;
   }
 
   /**
-   * Garbage-collects any expired sessions. Must be called before client-inteface functions do
-   * anything which relies on the existence a session, that is: creating sessions, using sessions or
-   * checking whether sessions exist.
+   * Garbage-collects any expired sessions. Must be called before client-interface functions do
+   * anything that relies on the existence of a session, that is: creating sessions, using sessions,
+   * or checking whether sessions exist.
    *
-   * <p>FIXME: Before putting the session manager into fred, write a thread which periodically
-   * garbage collects old sessions - currently, sessions will only be garbage collected if any
-   * client continues using the SessiomManager
+   * <p>Sessions are garbage-collected lazily when clients interact with the SessionManager; if no
+   * client activity occurs, expired sessions remain until the next access. A periodic collector
+   * could be added if this becomes an issue.
    *
    * @param time The current time.
    */
@@ -394,26 +498,25 @@ public final class SessionManager {
       mSessionsByUserID.remove(session.getUserID());
     }
 
-    // FIXME: Execute every few hours only.
+    // This debug check runs on each call; optimize to a periodic run if it proves expensive.
     verifySessionsByUserIDTable();
   }
 
   /**
-   * Debug function which checks whether the sessions by user ID table does not contain any sessions
-   * which do not exist anymore;
+   * Debug function which checks whether the sessions by user ID table do not contain any sessions
+   * that do not exist anymore;
    */
   private synchronized void verifySessionsByUserIDTable() {
 
-    Enumeration<Session> sessions = mSessionsByUserID.elements();
-    while (sessions.hasMoreElements()) {
-      Session session = sessions.nextElement();
+    Iterator<Session> sessions = mSessionsByUserID.values().iterator();
+    while (sessions.hasNext()) {
+      Session session = sessions.next();
 
       if (!mSessionsByID.containsKey(session.getID())) {
-        Logger.error(
-            this,
-            "Sessions by user ID hashtable contains deleted session, removing it: " + session);
+        LOG.error(
+            "Sessions by user ID hashtable contains deleted session, removing it: {}", session);
 
-        mSessionsByUserID.remove(session.getUserID());
+        sessions.remove();
       }
     }
   }

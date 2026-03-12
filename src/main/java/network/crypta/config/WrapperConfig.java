@@ -9,10 +9,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import network.crypta.node.NodeInitException;
-import network.crypta.support.Logger;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
@@ -21,6 +23,9 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * @author toad
  */
 public class WrapperConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(WrapperConfig.class);
+
+  private WrapperConfig() {}
 
   private static final HashMap<String, String> overrides = new HashMap<>();
 
@@ -34,28 +39,28 @@ public class WrapperConfig {
 
   public static boolean canChangeProperties() {
     if (!WrapperManager.isControlledByNativeWrapper()) {
-      Logger.normal(WrapperConfig.class, "Cannot alter properties: not running under wrapper");
+      LOG.info("Cannot alter properties: not running under wrapper");
       return false;
     }
     File f = new File("wrapper/wrapper.conf");
     if (!f.exists()) {
       f = new File("wrapper.conf");
       if (!f.exists()) {
-        Logger.normal(WrapperConfig.class, "Cannot alter properties: wrapper.conf does not exist");
+        LOG.info("Cannot alter properties: wrapper.conf does not exist");
         return false;
       }
     }
     if (!f.canRead()) {
-      Logger.normal(WrapperConfig.class, "Cannot alter properties: wrapper.conf not readable");
+      LOG.info("Cannot alter properties: wrapper.conf not readable");
       return false;
     }
     if (!f.canWrite()) {
-      Logger.normal(WrapperConfig.class, "Cannot alter properties: wrapper.conf not writable");
+      LOG.info("Cannot alter properties: wrapper.conf not writable");
       return false;
     }
     if (!FileUtil.getCanonicalFile(f).getParentFile().canWrite()) {
-      Logger.normal(WrapperConfig.class, "Cannot alter properties: parent dir not writable");
-      return false; // Can we create a file in order to rename over wrapper.conf?
+      LOG.info("Cannot alter properties: parent dir not writable");
+      return false; // Can we create a file to rename over wrapper.conf?
     }
     return true;
   }
@@ -79,21 +84,46 @@ public class WrapperConfig {
       newConfig = new File("wrapper.conf.new");
       wrapperDir = ".";
     }
+
+    try {
+      writeUpdatedConfig(oldConfig, newConfig, name, value);
+    } catch (IOException e) {
+      if (oldConfig.exists()) {
+        try {
+          java.nio.file.Files.deleteIfExists(newConfig.toPath());
+        } catch (IOException ioe) {
+          LOG.warn(
+              "Failed to delete temporary wrapper config: {} ({}).", newConfig, ioe.toString());
+        }
+      }
+      LOG.error("Unable to update wrapper property '{}': {}", name, e, e);
+      return false;
+    }
+
+    if (!replaceOldConfigWithNew(oldConfig, newConfig, wrapperDir, name)) {
+      return false;
+    }
+
+    // Wrapper properties are read-only, so don't setProperty().
+    overrides.put(name, value);
+    return true;
+  }
+
+  private static void writeUpdatedConfig(File oldConfig, File newConfig, String name, String value)
+      throws IOException {
     try (FileInputStream fis = new FileInputStream(oldConfig);
         BufferedInputStream bis = new BufferedInputStream(fis);
-        InputStreamReader isr = new InputStreamReader(bis);
+        InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
         BufferedReader br = new BufferedReader(isr);
         FileOutputStream fos = new FileOutputStream(newConfig);
-        OutputStreamWriter osw = new OutputStreamWriter(fos);
+        OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
         BufferedWriter bw = new BufferedWriter(osw)) {
 
       String line;
-
       boolean written = false;
       boolean writtenReload = false;
 
       while ((line = br.readLine()) != null) {
-
         if (line.startsWith(name + "=")) {
           bw.write(name + '=' + value + '\n');
           written = true;
@@ -107,17 +137,24 @@ public class WrapperConfig {
 
       if (!written) bw.write(name + '=' + value + '\n');
       if (!writtenReload) bw.write("wrapper.restart.reload_configuration=TRUE\n");
+    }
+  }
 
-    } catch (IOException e) {
-      if (oldConfig.exists()) newConfig.delete();
-      Logger.error(WrapperConfig.class, "Cannot update wrapper property " + "name: " + e, e);
-      System.err.println("Unable to update wrapper property " + name + " : " + e);
-      return false;
+  private static boolean replaceOldConfigWithNew(
+      File oldConfig, File newConfig, String wrapperDir, String name) {
+    if (newConfig.renameTo(oldConfig)) {
+      return true;
     }
 
-    if (!newConfig.renameTo(oldConfig)) {
-      File oldOldConfig = new File(wrapperDir + "/wrapper.conf.old");
-      if (oldOldConfig.exists() && !oldOldConfig.delete())
+    File oldOldConfig = new File(wrapperDir + "/wrapper.conf.old");
+    if (oldOldConfig.exists()) {
+      boolean deletionFailed = false;
+      try {
+        java.nio.file.Files.deleteIfExists(oldOldConfig.toPath());
+      } catch (IOException _) {
+        deletionFailed = true;
+      }
+      if (deletionFailed) {
         try {
           oldOldConfig =
               File.createTempFile(wrapperDir + "/wrapper.conf", ".old.tmp", new File("."));
@@ -126,47 +163,44 @@ public class WrapperConfig {
               "Unable to create temporary file and unable to copy wrapper.conf to wrapper.conf.old."
                   + " Could not update wrapper.conf trying to set property "
                   + name;
-          Logger.error(WrapperConfig.class, error);
-          System.err.println(error);
+          LOG.error(error, e);
           return false;
-        }
-      if (!oldConfig.renameTo(oldOldConfig)) {
-        String error =
-            "Unable to change property "
-                + name
-                + ": Could not move old config file "
-                + oldConfig
-                + ", so could not rename new config file "
-                + newConfig
-                + " over it (already tried without deleting.";
-        Logger.error(WrapperConfig.class, error);
-        System.err.println(error);
-        return false;
-      }
-      if (!newConfig.renameTo(oldConfig)) {
-        String error =
-            "Unable to rename "
-                + newConfig
-                + " to "
-                + oldConfig
-                + " even after moving the old config file out of the way! Trying to restore"
-                + " previous config file so the node will start up...";
-        Logger.error(WrapperConfig.class, error);
-        System.err.println(error);
-        if (!oldOldConfig.renameTo(oldConfig)) {
-          System.err.println(
-              "CATASTROPHIC UPDATE ERROR: Unable to rename backup copy of config file over the"
-                  + " current config file, after failing to update config file! The node will not"
-                  + " boot until you get a new wrapper.conf!\n"
-                  + "The old config file is saved in "
-                  + oldOldConfig
-                  + " and it should be renamed to wrapper.conf");
-          System.exit(NodeInitException.EXIT_BROKE_WRAPPER_CONF);
         }
       }
     }
-    // Wrapper properties are read-only, so don't setProperty().
-    overrides.put(name, value);
+
+    if (!oldConfig.renameTo(oldOldConfig)) {
+      String error =
+          "Unable to change property "
+              + name
+              + ": Could not move old config file "
+              + oldConfig
+              + ", so could not rename new config file "
+              + newConfig
+              + " over it (already tried without deleting.";
+      LOG.error(error);
+      return false;
+    }
+
+    if (!newConfig.renameTo(oldConfig)) {
+      String error =
+          "Unable to rename "
+              + newConfig
+              + " to "
+              + oldConfig
+              + " even after moving the old config file out of the way! Trying to restore"
+              + " previous config file so the node will start up...";
+      LOG.error(error);
+      if (!oldOldConfig.renameTo(oldConfig)) {
+        LOG.error(
+            "CATASTROPHIC UPDATE ERROR: Unable to rename backup copy of config file over the"
+                + " current config file, after failing to update config file! The node will not"
+                + " boot until you get a new wrapper.conf!\n"
+                + "The old config file is saved in {} and it should be renamed to wrapper.conf",
+            oldOldConfig);
+        System.exit(NodeInitException.EXIT_BROKE_WRAPPER_CONF);
+      }
+    }
     return true;
   }
 }

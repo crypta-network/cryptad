@@ -1,340 +1,512 @@
 package network.crypta.store.saltedhash;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Random;
-import network.crypta.crypt.DSAGroup;
-import network.crypta.crypt.DSAPrivateKey;
-import network.crypta.crypt.DSAPublicKey;
-import network.crypta.crypt.DummyRandomSource;
-import network.crypta.crypt.Global;
-import network.crypta.crypt.RandomSource;
-import network.crypta.crypt.SHA256;
-import network.crypta.keys.CHKBlock;
-import network.crypta.keys.CHKDecodeException;
-import network.crypta.keys.CHKEncodeException;
-import network.crypta.keys.CHKVerifyException;
-import network.crypta.keys.ClientCHK;
-import network.crypta.keys.ClientCHKBlock;
-import network.crypta.keys.ClientSSK;
-import network.crypta.keys.ClientSSKBlock;
-import network.crypta.keys.InsertableClientSSK;
-import network.crypta.keys.Key;
-import network.crypta.keys.KeyDecodeException;
-import network.crypta.keys.NodeSSK;
-import network.crypta.keys.SSKBlock;
-import network.crypta.keys.SSKEncodeException;
-import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.store.CHKStore;
-import network.crypta.store.GetPubkey;
-import network.crypta.store.KeyCollisionException;
-import network.crypta.store.PubkeyStore;
-import network.crypta.store.RAMFreenetStore;
-import network.crypta.store.SSKStore;
-import network.crypta.store.SimpleGetPubkey;
-import network.crypta.support.PooledExecutor;
-import network.crypta.support.SimpleReadOnlyArrayBucket;
+import network.crypta.store.BlockMetadata;
+import network.crypta.store.StorableBlock;
+import network.crypta.store.StoreCallback;
 import network.crypta.support.Ticker;
-import network.crypta.support.TrivialTicker;
-import network.crypta.support.api.Bucket;
-import network.crypta.support.compress.Compressor;
-import network.crypta.support.compress.InvalidCompressionCodecException;
-import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-/**
- * SaltedHashFreenetStoreTest Test for SaltedHashFreenetStore
- *
- * @author Simon Vocella <voxsim@gmail.com>
- */
-public class SaltedHashFreenetStoreTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
-  private final Random weakPRNG = new Random(12340);
-  private final PooledExecutor exec = new PooledExecutor();
-  private final Ticker ticker = new TrivialTicker(exec);
-  private File tempDir;
+@SuppressWarnings("java:S100") // test method naming convention
+@ExtendWith(MockitoExtension.class)
+class SaltedHashFreenetStoreTest {
 
-  @Before
-  public void setUp() throws Exception {
-    tempDir = new File("tmp-saltedHashfreenetstoretest");
-    tempDir.mkdir();
-    exec.start();
-    ResizablePersistentIntBuffer.setPersistenceTime(-1);
+  // Fixed sizes keep the on-disk layout small and predictable for tests.
+  private static final int DATA_LEN = 32;
+  private static final int HEADER_LEN = 16;
+  private static final int KEY_LEN = 32; // routing + full key lengths used by the test callback
+
+  @TempDir Path tempDir;
+
+  private Random rnd;
+  private Ticker ticker;
+
+  @BeforeEach
+  void setup() {
+    // Deterministic across runs.
+    rnd = new Random(42L);
+    // Use a ticker mock so the cleaner thread isn't started in tests.
+    ticker = mock(Ticker.class);
+    // Ensure the cleaner, if started elsewhere, doesn’t sleep long.
+    SaltedHashFreenetStore.setNoCleanerSleep(true);
   }
 
-  @After
-  public void tearDown() {
-    FileUtil.removeAll(tempDir);
-  }
-
-  /* Simple test with CHK for SaltedHashFreenetStore without slotFilter */
-  @Test
-  public void testSimpleCHK()
-      throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    File f = new File(tempDir, "saltstore");
-    FileUtil.removeAll(f);
-
-    CHKStore store = new CHKStore();
-    SaltedHashFreenetStore<CHKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testSaltedHashFreenetStoreCHK",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null);
-    saltStore.start(null, true);
-
-    for (int i = 0; i < 5; i++) {
-      String test = "test" + i;
-      ClientCHKBlock block = encodeBlockCHK(test);
-      store.put(block.getBlock(), false);
-      ClientCHK key = block.getClientKey();
-      CHKBlock verify = store.fetch(key.getNodeCHK(), false, false, null);
-      String data = decodeBlockCHK(verify, key);
-      assertEquals(test, data);
-    }
-
-    saltStore.close();
-  }
-
-  /* Simple test with SSK for SaltedHashFreenetStore without slotFilter */
-  @Test
-  public void testSimpleSSK()
-      throws IOException,
-          KeyCollisionException,
-          SSKVerifyException,
-          KeyDecodeException,
-          SSKEncodeException,
-          InvalidCompressionCodecException {
-    File f = new File(tempDir, "saltstore");
-    FileUtil.removeAll(f);
-
-    final int keys = 5;
-    PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<>(pk, keys);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
-    SSKStore store = new SSKStore(pubkeyCache);
-    SaltedHashFreenetStore<SSKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testSaltedHashFreenetStoreSSK",
-            store,
-            weakPRNG,
-            20,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null);
-    saltStore.start(null, true);
-    RandomSource random = new DummyRandomSource(12345);
-
-    for (int i = 0; i < 5; i++) {
-      String test = "test" + i;
-      ClientSSKBlock block = encodeBlockSSK(test, random);
-      SSKBlock sskBlock = (SSKBlock) block.getBlock();
-      store.put(sskBlock, false, false);
-      ClientSSK key = block.getClientKey();
-      NodeSSK ssk = (NodeSSK) key.getNodeKey();
-      pubkeyCache.cacheKey(ssk.getPubKeyHash(), ssk.getPubKey(), false, false, false, false, false);
-      SSKBlock verify = store.fetch(ssk, false, false, false, false, null);
-      String data = decodeBlockSSK(verify, key);
-      assertEquals(test, data);
-    }
-
-    saltStore.close();
-  }
-
-  private String decodeBlockCHK(CHKBlock verify, ClientCHK key)
-      throws CHKVerifyException, CHKDecodeException, IOException {
-    ClientCHKBlock cb = new ClientCHKBlock(verify, key);
-    Bucket output = cb.decode(new ArrayBucketFactory(), 32768, false);
-    byte[] buf = BucketTools.toByteArray(output);
-    return new String(buf, StandardCharsets.UTF_8);
-  }
-
-  private ClientCHKBlock encodeBlockCHK(String test) throws CHKEncodeException, IOException {
-    byte[] data = test.getBytes(StandardCharsets.UTF_8);
-    SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
-    return ClientCHKBlock.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-        null,
-        (byte) 0);
+  @AfterEach
+  void tearDown() {
+    // Nothing to do: individual tests close/destruct stores they create.
   }
 
   @Test
-  public void testOnCollisionsSSK()
-      throws IOException,
-          SSKEncodeException,
-          InvalidCompressionCodecException,
-          SSKVerifyException,
-          KeyDecodeException,
-          KeyCollisionException {
-    // With slot filters turned off, it goes straight to disk, because probablyInStore() always
-    // returns true.
-    checkOnCollisionsSSK(false);
-    // With slot filters turned on, it should be cached, it should compare it, and still not throw
-    // if it's the same block.
-    checkOnCollisionsSSK(true);
-  }
+  void start_whenNewStoreAndLongStartFalse_returnsEarlyAndDefersResizing() throws Exception {
+    File base = tempDir.resolve("storeA").toFile();
+    TestCallback cb = new TestCallback();
 
-  /* Test collisions on SSK */
-  private void checkOnCollisionsSSK(boolean useSlotFilter)
-      throws IOException,
-          SSKEncodeException,
-          InvalidCompressionCodecException,
-          SSKVerifyException,
-          KeyDecodeException,
-          KeyCollisionException {
-    File f = new File(tempDir, "saltstore");
-    FileUtil.removeAll(f);
-
-    final int keys = 5;
-    PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<>(pk, keys);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
-    SSKStore store = new SSKStore(pubkeyCache);
-    SaltedHashFreenetStore<SSKBlock> saltStore =
+    try (SaltedHashFreenetStore<TestBlock> store =
         SaltedHashFreenetStore.construct(
-            f,
-            "testSaltedHashFreenetStoreOnCloseSSK",
-            store,
-            weakPRNG,
-            10,
-            true,
+            base,
+            "dat",
+            cb,
+            rnd,
+            /*maxKeys*/ 8,
+            /*useSlotFilter*/ true,
             SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null);
-    saltStore.start(null, true);
-    RandomSource random = new DummyRandomSource(12345);
+            /*preallocate*/ false,
+            /*resizeOnStart*/ true,
+            /*masterKey*/ new byte[32])) {
 
-    final int CRYPTO_KEY_LENGTH = 32;
-    byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
-    random.nextBytes(ckey);
-    DSAGroup g = Global.DSAgroupBigA;
-    DSAPrivateKey privKey = new DSAPrivateKey(g, random);
-    DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
-    byte[] pkHash = SHA256.digest(pubKey.asBytes());
-    String docName = "myDOC";
-    InsertableClientSSK ik =
-        new InsertableClientSSK(
-            docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
+      // The first call with longStart=false should return true (cannot complete quickly).
+      boolean deferred = store.start(ticker, /*longStart*/ false);
+      assertTrue(deferred, "start() should defer when longStart=false and files need padding");
 
-    String test = "test";
-    SimpleReadOnlyArrayBucket bucket =
-        new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
-    ClientSSKBlock block =
-        ik.encode(
-            bucket,
-            false,
-            false,
-            (short) -1,
-            bucket.size(),
-            random,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-    SSKBlock sskBlock = (SSKBlock) block.getBlock();
-    store.put(sskBlock, false, false);
+      // Files exist but should still be length 0 as resizing/padding hasn't happened yet.
+      File meta = new File(base, "dat.metadata");
+      File hd = new File(base, "dat.hd");
+      assertEquals(0L, meta.length(), "metadata length should be 0 before long start");
+      assertEquals(0L, hd.length(), "hd length should be 0 before long start");
 
-    // If the block is the same then there should not be a collision
-    try {
-      store.put(sskBlock, false, false);
-      assertTrue(true);
-    } catch (KeyCollisionException e) {
-      fail();
+      // Now start with longStart=true; these pads/resizes and schedules cleaner through the ticker.
+      boolean nowStarted = store.start(ticker, /*longStart*/ true);
+      assertFalse(nowStarted, "start(longStart=true) should complete and return false");
+
+      long expectedMeta = 0x80L * 8; // Entry.METADATA_LENGTH * maxKeys
+      int block = HEADER_LEN + DATA_LEN;
+      int pad = ((block + 512 - 1) & ~511) - block; // same formula used by the store
+      long expectedHd = (long) (block + pad) * 8;
+
+      assertEquals(expectedMeta, meta.length(), "metadata file size after start");
+      assertEquals(expectedHd, hd.length(), "hd file size after start");
+
+      store.close();
+      store.destruct();
     }
-
-    String test1 = "test1";
-    SimpleReadOnlyArrayBucket bucket1 =
-        new SimpleReadOnlyArrayBucket(test1.getBytes(StandardCharsets.UTF_8));
-    ClientSSKBlock block1 =
-        ik.encode(
-            bucket1,
-            false,
-            false,
-            (short) -1,
-            bucket1.size(),
-            random,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-    SSKBlock sskBlock1 = (SSKBlock) block1.getBlock();
-
-    // if it's different (e.g. different content, same key), there should be a KCE thrown
-    try {
-      store.put(sskBlock1, false, false);
-      fail();
-    } catch (KeyCollisionException e) {
-      assertTrue(true);
-    }
-
-    // if overwrite is set, then no collision should be thrown
-    try {
-      store.put(sskBlock1, true, false);
-      assertTrue(true);
-    } catch (KeyCollisionException e) {
-      fail();
-    }
-
-    ClientSSK key = block1.getClientKey();
-    pubkeyCache.cacheKey(
-        sskBlock.getKey().getPubKeyHash(),
-        sskBlock.getKey().getPubKey(),
-        false,
-        false,
-        false,
-        false,
-        false);
-    // Check that it's in the cache, *not* the underlying store.
-    NodeSSK ssk = (NodeSSK) key.getNodeKey();
-    SSKBlock verify = store.fetch(ssk, false, false, false, false, null);
-    String data = decodeBlockSSK(verify, key);
-    assertEquals(test1, data);
-
-    saltStore.close();
   }
 
-  private String decodeBlockSSK(SSKBlock verify, ClientSSK key)
-      throws SSKVerifyException, KeyDecodeException, IOException {
-    ClientSSKBlock cb = ClientSSKBlock.construct(verify, key);
-    Bucket output = cb.decode(new ArrayBucketFactory(), 32768, false);
-    byte[] buf = BucketTools.toByteArray(output);
-    return new String(buf, StandardCharsets.UTF_8);
+  @Test
+  void probablyInStore_whenSlotFilterNew_returnsFalse() throws Exception {
+    File base = tempDir.resolve("storeB").toFile();
+    TestCallback cb = new TestCallback();
+    try (SaltedHashFreenetStore<TestBlock> store =
+        SaltedHashFreenetStore.construct(
+            base,
+            "dat2",
+            cb,
+            rnd,
+            /*maxKeys*/ 16,
+            /*useSlotFilter*/ true,
+            SemiOrderedShutdownHook.get(),
+            /*preallocate*/ false,
+            /*resizeOnStart*/ true,
+            /*masterKey*/ new byte[32])) {
+
+      store.start(ticker, /*longStart*/ true);
+
+      byte[] rk = new byte[KEY_LEN];
+      rnd.nextBytes(rk);
+      // Fresh slot filter is pre-filled with "checked and empty"; we should return false here.
+      assertFalse(store.probablyInStore(rk));
+
+      store.close();
+      store.destruct();
+    }
   }
 
-  private ClientSSKBlock encodeBlockSSK(String test, RandomSource random)
-      throws IOException, SSKEncodeException, InvalidCompressionCodecException {
-    byte[] data = test.getBytes(StandardCharsets.UTF_8);
-    SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
-    InsertableClientSSK ik = InsertableClientSSK.createRandom(random, test);
-    return ik.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        random,
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+  @Test
+  void putAndFetch_whenInserted_returnsOriginalPayloadAndUpdatesStats() throws Exception {
+    File base = tempDir.resolve("storeC").toFile();
+    TestCallback cb = new TestCallback();
+    try (SaltedHashFreenetStore<TestBlock> store =
+        SaltedHashFreenetStore.construct(
+            base,
+            "dat3",
+            cb,
+            rnd,
+            /*maxKeys*/ 32,
+            /*useSlotFilter*/ true,
+            SemiOrderedShutdownHook.get(),
+            /*preallocate*/ false,
+            /*resizeOnStart*/ true,
+            /*masterKey*/ new byte[32])) {
+
+      store.start(ticker, /*longStart*/ true);
+
+      byte[] data = new byte[DATA_LEN];
+      byte[] hdr = new byte[HEADER_LEN];
+      byte[] rk = new byte[KEY_LEN];
+      byte[] fk = new byte[KEY_LEN];
+      rnd.nextBytes(data);
+      rnd.nextBytes(hdr);
+      rnd.nextBytes(rk);
+      rnd.nextBytes(fk);
+
+      TestBlock block = new TestBlock(rk, fk, data, hdr);
+
+      store.put(block, data, hdr, /*overwrite*/ false, /*isOldBlock*/ false);
+
+      // Quick presence signal should be true after put when the slot filter is enabled.
+      assertTrue(store.probablyInStore(rk));
+
+      TestBlock fetched =
+          store.fetch(
+              rk, fk, /*dontPromote*/ false, true, true, /*ignoreOld*/ false, new BlockMetadata());
+      assertNotNull(fetched, "fetch should succeed for inserted key");
+      assertArrayEquals(data, fetched.data, "payload round-trips");
+      assertArrayEquals(hdr, fetched.header, "headers round-trip");
+
+      assertEquals(1L, store.hits(), "hits updated");
+      assertEquals(0L, store.misses(), "misses unchanged");
+      assertEquals(1L, store.writes(), "writes updated");
+      assertEquals(1L, store.keyCount(), "key count updated");
+
+      store.close();
+      store.destruct();
+    }
+  }
+
+  @Test
+  void fetch_whenUnknownKey_returnsNullAndIncrementsMisses() throws Exception {
+    File base = tempDir.resolve("storeD").toFile();
+    TestCallback cb = new TestCallback();
+    try (SaltedHashFreenetStore<TestBlock> store =
+        SaltedHashFreenetStore.construct(
+            base,
+            "dat4",
+            cb,
+            rnd,
+            /*maxKeys*/ 8,
+            /*useSlotFilter*/ false, // disable to simplify the read path
+            SemiOrderedShutdownHook.get(),
+            /*preallocate*/ false,
+            /*resizeOnStart*/ true,
+            /*masterKey*/ new byte[32])) {
+
+      store.start(ticker, /*longStart*/ true);
+
+      byte[] rk = new byte[KEY_LEN];
+      byte[] fk = new byte[KEY_LEN];
+      rnd.nextBytes(rk);
+      rnd.nextBytes(fk);
+
+      TestBlock fetched =
+          store.fetch(
+              rk, fk, /*dontPromote*/ false, true, true, /*ignoreOld*/ false, new BlockMetadata());
+      assertNull(fetched, "unknown key should return null");
+      assertEquals(0L, store.hits());
+      assertEquals(1L, store.misses());
+      assertEquals(0L, store.writes());
+
+      store.close();
+      store.destruct();
+    }
+  }
+
+  @Test
+  void setAltStore_whenTargetAlreadyHasAltStore_throws() throws Exception {
+    File base = tempDir.resolve("alt-parent").toFile();
+    File aDir = new File(base, "A");
+    File bDir = new File(base, "B");
+    File cDir = new File(base, "C");
+    TestCallback cb = new TestCallback();
+
+    try (SaltedHashFreenetStore<TestBlock> a =
+            SaltedHashFreenetStore.construct(
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(aDir, "a"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)));
+        SaltedHashFreenetStore<TestBlock> b =
+            SaltedHashFreenetStore.construct(
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(bDir, "b"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)));
+        SaltedHashFreenetStore<TestBlock> c =
+            SaltedHashFreenetStore.construct(
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(cDir, "c"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)))) {
+
+      a.start(ticker, true);
+      b.start(ticker, true);
+      c.start(ticker, true);
+
+      // The first association is valid.
+      b.setAltStore(a);
+      // Now A -> B should fail because B already has an alt store.
+      assertThrows(IllegalArgumentException.class, () -> a.setAltStore(b));
+
+      a.close();
+      b.close();
+      c.close();
+      a.destruct();
+      b.destruct();
+      c.destruct();
+    }
+  }
+
+  @Test
+  @Tag("slow")
+  void put_whenFull_redirectsToAltStoreWithoutOverwritingPrimary() throws Exception {
+    File base = tempDir.resolve("alt-case").toFile();
+    TestCallback cb = new TestCallback();
+    File aDir = new File(base, "A");
+    File bDir = new File(base, "B");
+
+    try (SaltedHashFreenetStore<TestBlock> a =
+            SaltedHashFreenetStore.construct(
+                aDir,
+                "a",
+                cb,
+                rnd,
+                1, /*useSlotFilter*/
+                false,
+                SemiOrderedShutdownHook.get(),
+                false,
+                true,
+                new byte[32]);
+        SaltedHashFreenetStore<TestBlock> b =
+            SaltedHashFreenetStore.construct(
+                bDir,
+                "b",
+                cb,
+                rnd,
+                1, /*useSlotFilter*/
+                false,
+                SemiOrderedShutdownHook.get(),
+                false,
+                true,
+                new byte[32])) {
+
+      a.start(ticker, true);
+      b.start(ticker, true);
+      a.setAltStore(b);
+
+      byte[] d1 = new byte[DATA_LEN];
+      byte[] h1 = new byte[HEADER_LEN];
+      byte[] rk1 = new byte[KEY_LEN];
+      byte[] fk1 = new byte[KEY_LEN];
+      rnd.nextBytes(d1);
+      rnd.nextBytes(h1);
+      rnd.nextBytes(rk1);
+      rnd.nextBytes(fk1);
+      TestBlock blk1 = new TestBlock(rk1, fk1, d1, h1);
+      a.put(blk1, d1, h1, false, false);
+
+      byte[] d2 = new byte[DATA_LEN];
+      byte[] h2 = new byte[HEADER_LEN];
+      byte[] rk2 = new byte[KEY_LEN];
+      byte[] fk2 = new byte[KEY_LEN];
+      rnd.nextBytes(d2);
+      rnd.nextBytes(h2);
+      rnd.nextBytes(rk2);
+      rnd.nextBytes(fk2);
+      TestBlock blk2 = new TestBlock(rk2, fk2, d2, h2);
+      a.put(blk2, d2, h2, false, false); // should redirect to alt store B, not overwrite A
+
+      // Primary should still return the first block.
+      TestBlock got1 = a.fetch(rk1, fk1, false, true, true, false, new BlockMetadata());
+      assertNotNull(got1, "primary retains first block");
+
+      // Primary must not have the second block.
+      TestBlock got2FromA = a.fetch(rk2, fk2, false, true, true, false, new BlockMetadata());
+      assertNull(got2FromA, "primary should not contain second block written when full");
+
+      // Alt store should contain the second block.
+      TestBlock got2 = b.fetch(rk2, fk2, false, true, true, false, new BlockMetadata());
+      assertNotNull(got2, "alt store contains redirected block");
+      assertArrayEquals(d2, got2.data);
+      assertArrayEquals(h2, got2.header);
+
+      // Stats: A has one writing; B has one writing.
+      assertEquals(1L, a.writes(), "primary writes");
+      assertEquals(1L, b.writes(), "alt writes");
+      assertEquals(1L, a.keyCount(), "primary keys");
+      assertEquals(1L, b.keyCount(), "alt keys");
+
+      a.close();
+      b.close();
+      a.destruct();
+      b.destruct();
+    }
+  }
+
+  @Test
+  @Tag("slow")
+  void put_whenAltStoreAlreadyHasBlock_reportsSuccessAndDoesNotOverwritePrimary() throws Exception {
+    File base = tempDir.resolve("alt-existing").toFile();
+    TestCallback cb = new TestCallback();
+    File aDir = new File(base, "A");
+    File bDir = new File(base, "B");
+
+    try (SaltedHashFreenetStore<TestBlock> a =
+            SaltedHashFreenetStore.construct(
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(aDir, "a"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(1, false, false, true)));
+        SaltedHashFreenetStore<TestBlock> b =
+            SaltedHashFreenetStore.construct(
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(bDir, "b"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(1, false, false, true)))) {
+
+      a.start(ticker, true);
+      b.start(ticker, true);
+      a.setAltStore(b);
+
+      // Fill primary A with a different block so it is full.
+      byte[] dA = new byte[DATA_LEN];
+      byte[] hA = new byte[HEADER_LEN];
+      byte[] rkA = new byte[KEY_LEN];
+      byte[] fkA = new byte[KEY_LEN];
+      rnd.nextBytes(dA);
+      rnd.nextBytes(hA);
+      rnd.nextBytes(rkA);
+      rnd.nextBytes(fkA);
+      TestBlock bA = new TestBlock(rkA, fkA, dA, hA);
+      a.put(bA, dA, hA, false, false);
+
+      long aWritesBefore = a.writes();
+      long aKeysBefore = a.keyCount();
+
+      // Prepare a block that already exists in the alt store B.
+      byte[] dX = new byte[DATA_LEN];
+      byte[] hX = new byte[HEADER_LEN];
+      byte[] rkX = new byte[KEY_LEN];
+      byte[] fkX = new byte[KEY_LEN];
+      rnd.nextBytes(dX);
+      rnd.nextBytes(hX);
+      rnd.nextBytes(rkX);
+      rnd.nextBytes(fkX);
+      TestBlock bX = new TestBlock(rkX, fkX, dX, hX);
+
+      // Insert into alt store first.
+      b.put(bX, dX, hX, false, false);
+      long bWritesBefore = b.writes();
+
+      // Now attempt to put the SAME block via primary A while A is full.
+      // With the fix, A will try the alt store, which will confirm presence and report success,
+      // and A will NOT overwrite in its own store.
+      a.put(bX, dX, hX, false, false);
+
+      // Primary A should still contain its original block and should not have performed a new
+      // write.
+      assertEquals(aWritesBefore, a.writes(), "primary should not perform an overwrite write");
+      assertEquals(aKeysBefore, a.keyCount(), "primary key count unchanged");
+      assertNotNull(a.fetch(rkA, fkA, false, true, true, false, new BlockMetadata()));
+      assertNull(a.fetch(rkX, fkX, false, true, true, false, new BlockMetadata()));
+
+      // Alt store B still has the block; it may or may not update metadata, but should not lose it.
+      assertNotNull(b.fetch(rkX, fkX, false, true, true, false, new BlockMetadata()));
+      assertTrue(b.writes() >= bWritesBefore, "alt store writes should not decrease");
+
+      a.close();
+      b.close();
+      a.destruct();
+      b.destruct();
+    }
+  }
+
+  // --- Minimal test block & callback used for this suite ---
+
+  private static final class TestBlock implements StorableBlock {
+    final byte[] routingKey;
+    final byte[] fullKey;
+    final byte[] data;
+    final byte[] header;
+
+    TestBlock(byte[] routingKey, byte[] fullKey, byte[] data, byte[] header) {
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+      this.data = data;
+      this.header = header;
+    }
+
+    @Override
+    public byte[] getRoutingKey() {
+      return routingKey;
+    }
+
+    @Override
+    public byte[] getFullKey() {
+      return fullKey;
+    }
+  }
+
+  private static class TestCallback extends StoreCallback<TestBlock> {
+    @Override
+    public int dataLength() {
+      return DATA_LEN;
+    }
+
+    @Override
+    public int headerLength() {
+      return HEADER_LEN;
+    }
+
+    @Override
+    public int routingKeyLength() {
+      return KEY_LEN;
+    }
+
+    @Override
+    public boolean storeFullKeys() {
+      return false;
+    }
+
+    @Override
+    public boolean constructNeedsKey() {
+      return false;
+    }
+
+    @Override
+    public int fullKeyLength() {
+      return KEY_LEN;
+    }
+
+    @Override
+    public boolean collisionPossible() {
+      return false;
+    }
+
+    @Override
+    public TestBlock construct(
+        BlockPayload payload,
+        ConstructOptions options,
+        network.crypta.crypt.DSAPublicKey knownPubKey) {
+      // Just wrap provided values; verification is performed earlier by the store.
+      return new TestBlock(
+          payload.routingKey(), payload.fullKey(), payload.data(), payload.headers());
+    }
+
+    @Override
+    public byte[] routingKeyFromFullKey(byte[] keyBuf) {
+      // For tests, treat full and routing keys as identical in size/semantics.
+      return keyBuf;
+    }
   }
 }

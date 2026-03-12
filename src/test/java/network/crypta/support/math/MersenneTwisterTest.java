@@ -1,202 +1,372 @@
 package network.crypta.support.math;
 
-import static org.junit.Assert.assertEquals;
-
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.lang.reflect.Modifier;
+import java.util.stream.Stream;
 import network.crypta.support.Fields;
-import org.junit.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.ThrowingSupplier;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-public class MersenneTwisterTest {
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-  // Should be sufficient for testing MT
-  private static final int SEED_SIZE = 624;
-  private static final int[] INT_SEED = new int[SEED_SIZE];
-  private static final byte[] BYTE_SEED;
-  private static final int[] INPUT_1 = new int[] {123456789, 123456789, 123456789, 123456789};
-  private static final byte[] OUTPUT_1 =
-      new byte[] {
-        (byte) 0x15,
-        (byte) 0xCD,
-        (byte) 0x5B,
-        (byte) 0x7,
-        (byte) 0x15,
-        (byte) 0xCD,
-        (byte) 0x5B,
-        (byte) 0x7,
-        (byte) 0x15,
-        (byte) 0xCD,
-        (byte) 0x5B,
-        (byte) 0x7,
-        (byte) 0x15,
-        (byte) 0xCD,
-        (byte) 0x5B,
-        (byte) 0x7
-      };
-  private static final byte[] EXPECTED_OUTPUT_MT_INT =
-      new byte[] {
-        (byte) 0x9a,
-        (byte) 0x6,
-        (byte) 0xab,
-        (byte) 0x8c,
-        (byte) 0x2b,
-        (byte) 0xf3,
-        (byte) 0x3d,
-        (byte) 0x7f,
-        (byte) 0x6,
-        (byte) 0x4,
-        (byte) 0x5b,
-        (byte) 0x20ac,
-        (byte) 0x46,
-        (byte) 0xdd,
-        (byte) 0xdf,
-        (byte) 0x47,
-        (byte) 0x28,
-        (byte) 0xc0,
-        (byte) 0xb7,
-        (byte) 0x74
-      };
-  private static final byte[] EXPECTED_OUTPUT_MT_LONG =
-      new byte[] {
-        (byte) 0x4f,
-        (byte) 0x75,
-        (byte) 0xda,
-        (byte) 0x52,
-        (byte) 0xe2,
-        (byte) 0x40,
-        (byte) 0xf0,
-        (byte) 0x1,
-        (byte) 0x8a,
-        (byte) 0x69,
-        (byte) 0xf6,
-        (byte) 0xcb,
-        (byte) 0x1a,
-        (byte) 0xe3,
-        (byte) 0x1,
-        (byte) 0xb6,
-        (byte) 0x21,
-        (byte) 0x1f,
-        (byte) 0x73,
-        (byte) 0xec
-      };
-  private static final byte[] EXPECTED_OUTPUT_MT_INTS =
-      new byte[] {
-        (byte) 0x1C,
-        (byte) 0x58,
-        (byte) 0xB0,
-        (byte) 0x47,
-        (byte) 0x92,
-        (byte) 0xC7,
-        (byte) 0xBE,
-        (byte) 0xC4,
-        (byte) 0x25,
-        (byte) 0x64,
-        (byte) 0x31,
-        (byte) 0x27,
-        (byte) 0x12,
-        (byte) 0x14,
-        (byte) 0xDB,
-        (byte) 0xF,
-        (byte) 0x61,
-        (byte) 0xA6,
-        (byte) 0x73,
-        (byte) 0x32
-      };
-  private static final byte[] EXPECTED_OUTPUT_MT_BYTES =
-      new byte[] {
-        (byte) 0x5C,
-        (byte) 0x6,
-        (byte) 0xAD,
-        (byte) 0x71,
-        (byte) 0x56,
-        (byte) 0xDB,
-        (byte) 0xBE,
-        (byte) 0x69,
-        (byte) 0x87,
-        (byte) 0xDF,
-        (byte) 0xC4,
-        (byte) 0x3B,
-        (byte) 0xCB,
-        (byte) 0x71,
-        (byte) 0x73,
-        (byte) 0xF1,
-        (byte) 0x9B,
-        (byte) 0xED,
-        (byte) 0x9,
-        (byte) 0x2D,
-      };
+/**
+ * Unit tests for {@link MersenneTwister} wrapper.
+ *
+ * <p>Tests compare sequences against the upstream implementation {@link
+ * org.spaceroots.mantissa.random.MersenneTwister} to ensure behavioral compatibility. All seeds are
+ * deterministic; tests avoid the time-based constructors to prevent flakiness.
+ */
+class MersenneTwisterTest {
 
-  static {
-    ByteBuffer bb = ByteBuffer.allocate(INT_SEED.length * 4);
-    for (int i = 0; i < INT_SEED.length; i++) {
-      INT_SEED[i] = i;
-      bb.putInt(i);
-    }
-    BYTE_SEED = bb.array();
+  // Generate a moderate number of values to validate sequence equality while keeping tests fast.
+  private static final int SEQ_LEN = 128;
+
+  // ----- Parameter sources -----
+
+  private static Stream<Integer> intSeeds() {
+    return Stream.of(0, 1, -1, 123456789, Integer.MIN_VALUE, Integer.MAX_VALUE);
   }
 
-  private static String bytesToString(byte[] bytes) {
-    return new String(bytes, StandardCharsets.UTF_8);
+  private static Stream<Long> longSeeds() {
+    return Stream.of(0L, 1L, -1L, 0x0123456789ABCDEFL, Long.MIN_VALUE, Long.MAX_VALUE);
   }
 
-  @Test
-  public void testBytesToInts() {
-    // Test the consistency in order to avoid the freenet-ext #24 fiasco
-    int[] output = Fields.bytesToInts(OUTPUT_1, 0, OUTPUT_1.length);
+  private static Stream<Arguments> intArraySeeds() {
+    return Stream.of(
+        Arguments.of((Object) new int[] {42}),
+        Arguments.of((Object) new int[] {0xCAFEBABE}),
+        Arguments.of((Object) new int[] {1, 2}),
+        Arguments.of((Object) new int[] {0, -1, Integer.MIN_VALUE, Integer.MAX_VALUE}));
+  }
 
-    assertEquals(INPUT_1.length, output.length);
-    for (int i = 0; i < INPUT_1.length; i++) {
-      assertEquals(INPUT_1[i], output[i]);
+  private static Stream<Arguments> validByteArraySeeds() {
+    // Use Fields.intsToBytes() to create byte[] that reversibly maps to int[] via bytesToInts().
+    return Stream.of(
+        Arguments.of((Object) Fields.intsToBytes(new int[] {42})),
+        Arguments.of((Object) Fields.intsToBytes(new int[] {0xCAFEBABE})),
+        Arguments.of((Object) Fields.intsToBytes(new int[] {1, 2})),
+        Arguments.of(
+            (Object) Fields.intsToBytes(new int[] {0, -1, Integer.MIN_VALUE, Integer.MAX_VALUE})));
+  }
+
+  private static Stream<byte[]> invalidLengthByteArraySeeds() {
+    return Stream.of(
+        new byte[] {1}, new byte[] {1, 2}, new byte[] {1, 2, 3}, new byte[] {1, 2, 3, 4, 5});
+  }
+
+  // ----- Tests comparing against upstream implementation -----
+
+  @ParameterizedTest
+  @MethodSource("intSeeds")
+  @DisplayName("nextInt_whenSeededWithInt_sameSequenceAsUpstream")
+  void nextInt_whenSeededWithInt_sameSequenceAsUpstream(int seed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextInt(), ours.nextInt(), "Mismatch at index " + i);
     }
   }
 
-  @Test
-  public void testConsistencySeedFromInts() throws NoSuchAlgorithmException {
-    MessageDigest md = MessageDigest.getInstance("SHA-1");
-    MersenneTwister mt = new MersenneTwister(INT_SEED);
-    byte[] bytes = new byte[SEED_SIZE];
+  @ParameterizedTest
+  @MethodSource("longSeeds")
+  @DisplayName("nextInt_whenSeededWithLong_sameSequenceAsUpstream")
+  void nextInt_whenSeededWithLong_sameSequenceAsUpstream(long seed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
 
-    mt.nextBytes(bytes);
-    md.update(bytes);
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextInt(), ours.nextInt(), "Mismatch at index " + i);
+    }
+  }
 
-    assertEquals(bytesToString(EXPECTED_OUTPUT_MT_INTS), bytesToString(md.digest()));
+  @ParameterizedTest
+  @MethodSource("intArraySeeds")
+  @DisplayName("nextInt_whenSeededWithIntArray_sameSequenceAsUpstream")
+  void nextInt_whenSeededWithIntArray_sameSequenceAsUpstream(int[] seed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextInt(), ours.nextInt(), "Mismatch at index " + i);
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("validByteArraySeeds")
+  @DisplayName("nextInt_whenSeededWithByteArray_sameSequenceAsUpstreamConvertedInts")
+  void nextInt_whenSeededWithByteArray_sameSequenceAsUpstreamConvertedInts(byte[] seed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(123); // placeholder seed, will be replaced
+    ours.setSeed(seed);
+
+    int[] ints = Fields.bytesToInts(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(ints);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextInt(), ours.nextInt(), "Mismatch at index " + i);
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("validByteArraySeeds")
+  @DisplayName("nextInt_whenCreatedUnsynchronizedByteSeed_matchesSynchronized")
+  void nextInt_whenCreatedUnsynchronizedByteSeed_matchesSynchronized(byte[] seed) {
+    // Arrange
+    MersenneTwister sync = MersenneTwister.createSynchronized(seed);
+    MersenneTwister unsync = MersenneTwister.createUnsynchronized(seed);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(sync.nextInt(), unsync.nextInt(), "Mismatch at index " + i);
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("intSeeds")
+  @DisplayName("nextGaussian_whenSameIntSeed_matchesUpstream")
+  void nextGaussian_whenSameIntSeed_matchesUpstream(int seed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextGaussian(), ours.nextGaussian(), 0.0, "Mismatch at index " + i);
+    }
   }
 
   @Test
-  public void testConsistencySeedFromBytes() throws NoSuchAlgorithmException {
-    MessageDigest md = MessageDigest.getInstance("SHA-1");
-    MersenneTwister mt = MersenneTwister.createUnsynchronized(BYTE_SEED);
-    byte[] bytes = new byte[SEED_SIZE];
+  @DisplayName("nextBytes_whenSameSeed_equalOutput")
+  void nextBytes_whenSameSeed_equalOutput() {
+    // Arrange
+    int seed = 987654321;
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
+    byte[] b1 = new byte[64];
+    byte[] b2 = new byte[64];
 
-    mt.nextBytes(bytes);
-    md.update(bytes);
+    // Act
+    ours.nextBytes(b1);
+    upstream.nextBytes(b2);
 
-    assertEquals(bytesToString(EXPECTED_OUTPUT_MT_BYTES), bytesToString(md.digest()));
+    // Assert
+    assertArrayEquals(b2, b1);
   }
 
   @Test
-  public void testConsistencySeedFromInteger() throws NoSuchAlgorithmException {
-    MessageDigest md = MessageDigest.getInstance("SHA-1");
-    MersenneTwister mt = new MersenneTwister(Integer.MAX_VALUE);
-    byte[] bytes = new byte[SEED_SIZE];
+  @DisplayName("nextBytes_whenZeroLength_noChangeAndNoException")
+  void nextBytes_whenZeroLength_noChangeAndNoException() {
+    // Arrange
+    int seed = 13579;
+    MersenneTwister ours = new MersenneTwister(seed);
+    byte[] empty = new byte[0];
 
-    mt.nextBytes(bytes);
-    md.update(bytes);
-
-    assertEquals(bytesToString(EXPECTED_OUTPUT_MT_INT), bytesToString(md.digest()));
+    // Act & Assert
+    assertDoesNotThrow(() -> ours.nextBytes(empty));
+    assertEquals(0, empty.length);
   }
 
   @Test
-  public void testConsistencySeedFromLong() throws NoSuchAlgorithmException {
-    MessageDigest md = MessageDigest.getInstance("SHA-1");
-    MersenneTwister mt = new MersenneTwister(Long.MAX_VALUE);
-    byte[] bytes = new byte[SEED_SIZE];
+  @DisplayName("setSeed_whenCalledTwiceWithSameIntSeed_resetsSequence")
+  void setSeed_whenCalledTwiceWithSameIntSeed_resetsSequence() {
+    // Arrange
+    int seed = 424242;
+    MersenneTwister ours = new MersenneTwister(seed);
 
-    mt.nextBytes(bytes);
-    md.update(bytes);
+    int firstA = ours.nextInt();
+    int secondA = ours.nextInt();
 
-    assertEquals(bytesToString(EXPECTED_OUTPUT_MT_LONG), bytesToString(md.digest()));
+    // Act
+    ours.setSeed(seed);
+
+    int firstB = ours.nextInt();
+    int secondB = ours.nextInt();
+
+    // Assert
+    assertEquals(firstA, firstB);
+    assertEquals(secondA, secondB);
+  }
+
+  // ----- Null and invalid input paths -----
+
+  @Test
+  @DisplayName("setSeed_whenIntArrayNull_doesNotThrow")
+  void setSeed_whenIntArrayNull_doesNotThrow() {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(123);
+
+    // Act & Assert: Upstream supports null -> time-based seed; wrapper forwards to super.
+    assertDoesNotThrow(() -> ours.setSeed((int[]) null));
+    // Also exercise that generator remains usable.
+    assertDoesNotThrow((ThrowingSupplier<Integer>) ours::nextInt);
+  }
+
+  @Test
+  @DisplayName("setSeed_whenByteArrayNull_throwsNullPointerException")
+  void setSeed_whenByteArrayNull_throwsNullPointerException() {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(123);
+
+    // Act + Assert
+    assertThrows(NullPointerException.class, () -> ours.setSeed((byte[]) null));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidLengthByteArraySeeds")
+  @DisplayName("setSeed_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException")
+  void setSeed_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException(byte[] badSeed) {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(123);
+
+    // Act + Assert
+    assertThrows(IllegalArgumentException.class, () -> ours.setSeed(badSeed));
+  }
+
+  @Test
+  @DisplayName("setSeed_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException")
+  void setSeed_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException() {
+    // Arrange
+    MersenneTwister ours = new MersenneTwister(123);
+    byte[] empty = new byte[0];
+
+    // Act + Assert: bytesToInts(empty) -> empty int[], upstream setSeed(int[]) will access seed[0]
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> ours.setSeed(empty));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidLengthByteArraySeeds")
+  @DisplayName("createSynchronized_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException")
+  void createSynchronized_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException(
+      byte[] badSeed) {
+    assertThrows(IllegalArgumentException.class, () -> MersenneTwister.createSynchronized(badSeed));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidLengthByteArraySeeds")
+  @DisplayName("createUnsynchronized_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException")
+  void createUnsynchronized_whenByteArrayNotMultipleOf4_throwsIllegalArgumentException(
+      byte[] badSeed) {
+    assertThrows(
+        IllegalArgumentException.class, () -> MersenneTwister.createUnsynchronized(badSeed));
+  }
+
+  @Test
+  @DisplayName("createSynchronized_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException")
+  void createSynchronized_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException() {
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> MersenneTwister.createSynchronized(new byte[0]));
+  }
+
+  @Test
+  @DisplayName("createUnsynchronized_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException")
+  void createUnsynchronized_whenEmptyByteArray_throwsArrayIndexOutOfBoundsException() {
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> MersenneTwister.createUnsynchronized(new byte[0]));
+  }
+
+  @Test
+  @DisplayName("createMethods_whenByteArrayNull_throwsNullPointerException")
+  void createMethods_whenByteArrayNull_throwsNullPointerException() {
+    assertThrows(NullPointerException.class, () -> MersenneTwister.createSynchronized(null));
+    assertThrows(NullPointerException.class, () -> MersenneTwister.createUnsynchronized(null));
+  }
+
+  // ----- Byte/int conversions and cross-API consistency -----
+
+  @Test
+  @DisplayName("setSeed_whenByteArrayEqualsIntsConversion_sameSequence")
+  void setSeed_whenByteArrayEqualsIntsConversion_sameSequence() {
+    // Arrange
+    int[] ints = new int[] {0x01234567, 0x89ABCDEF};
+    byte[] bytes = Fields.intsToBytes(ints);
+    MersenneTwister viaBytes = new MersenneTwister(0);
+    viaBytes.setSeed(bytes);
+
+    MersenneTwister viaInts = new MersenneTwister(0);
+    viaInts.setSeed(ints);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(viaInts.nextLong(), viaBytes.nextLong(), "Mismatch at index " + i);
+    }
+  }
+
+  @Test
+  @DisplayName("unsynchronizedAndSynchronized_whenSameSeed_produceIdenticalSequence")
+  void unsynchronizedAndSynchronized_whenSameSeed_produceIdenticalSequence() {
+    // Arrange
+    byte[] seed = Fields.intsToBytes(new int[] {123456789});
+    MersenneTwister sync = MersenneTwister.createSynchronized(seed);
+    MersenneTwister unsync = MersenneTwister.createUnsynchronized(seed);
+
+    // Act & Assert
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(sync.nextLong(), unsync.nextLong(), "Mismatch at index " + i);
+    }
+  }
+
+  @Test
+  @DisplayName("createUnsynchronized_whenInspectOverrides_expectNonSynchronizedMethods")
+  void createUnsynchronized_whenInspectOverrides_expectNonSynchronizedMethods()
+      throws NoSuchMethodException {
+    // Arrange
+    byte[] seed = Fields.intsToBytes(new int[] {123456789});
+    MersenneTwister unsync = MersenneTwister.createUnsynchronized(seed);
+    Class<?> implementationClass = unsync.getClass();
+
+    // Assert
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("next", int.class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", int.class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", int[].class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", long.class).getModifiers()));
+  }
+
+  @Test
+  @DisplayName("randomApiParity_whenSameSeed_matchesForAllPrimitives")
+  void randomApiParity_whenSameSeed_matchesForAllPrimitives() {
+    // Arrange
+    int seed = 2468;
+    MersenneTwister ours = new MersenneTwister(seed);
+    org.spaceroots.mantissa.random.MersenneTwister upstream =
+        new org.spaceroots.mantissa.random.MersenneTwister(seed);
+
+    // Act & Assert across various Random methods
+    for (int i = 0; i < SEQ_LEN; i++) {
+      assertEquals(upstream.nextBoolean(), ours.nextBoolean(), "boolean @" + i);
+      assertEquals(upstream.nextFloat(), ours.nextFloat(), 0.0f, "float @" + i);
+      assertEquals(upstream.nextDouble(), ours.nextDouble(), 0.0, "double @" + i);
+      assertEquals(upstream.nextLong(), ours.nextLong(), "long @" + i);
+    }
   }
 }

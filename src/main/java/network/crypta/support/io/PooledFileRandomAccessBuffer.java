@@ -1,53 +1,111 @@
 package network.crypta.support.io;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.io.ObjectInputStream;
+import java.io.RandomAccessFile;
+import java.io.Serial;
+import java.io.Serializable;
+import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.Random;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
 import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Random access files with a limited number of open files, using a pool. LOCKING OPTIMISATION:
- * Contention on DEFAULT_FDTRACKER likely here. It's not clear how to avoid that, FIXME. However,
- * this is doing disk I/O (even if cached, system calls), so maybe it's not a big deal ...
+ * Random-access file buffer that uses a global pool to cap the number of open file descriptors.
  *
- * <p>FIXME does this need a shutdown hook? I don't see why it would matter ... ???
+ * <p>Purpose: provides {@link RandomAccessFile}-style, fixed-length pread/pwrite while multiplexing
+ * a limited number of OS descriptors across instances. Callers can keep a descriptor open for a
+ * short critical section via {@link #lockOpen()}.
+ *
+ * <p>Concurrency: instances coordinate through a shared {@code FDTracker}. Pool coordination is
+ * synchronized on a final monitor ({@code fds.lock}). A lock from {@link #lockOpen()} controls only
+ * lifetime in the pool; it does not serialize I/O. Individual I/O calls synchronize on {@code this}
+ * around {@link RandomAccessFile#seek(long)} and the further read/write.
+ *
+ * <p>Resource management: call {@link #close()} when done. If {@code deleteOnFree} is true, {@link
+ * #free()} deletes the file (securely when {@link #setSecureDelete(boolean)} is enabled). Closing
+ * while holding a pool lock throws {@link IllegalStateException}.
+ *
+ * <p>Serialization/resume: a compact descriptor can be written with {@link #storeTo} and restored
+ * via the {@linkplain #PooledFileRandomAccessBuffer(DataInputStream, FilenameGenerator,
+ * PersistentFileTracker) persistence constructor}. {@link #onResume(ClientContext)} validates and
+ * re-registers persistent-temp files.
+ *
+ * <p>Shutdown: this type does not rely on a shutdown hook. Descriptors are reclaimed via explicit
+ * close/free and by the JVM on process exit.
  */
-public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerClass(PooledFileRandomAccessBuffer.class);
-  }
+public final class PooledFileRandomAccessBuffer
+    implements LockableRandomAccessBuffer, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(PooledFileRandomAccessBuffer.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
+  /**
+   * Tracks pooled descriptor usage and the set of buffers eligible to be closed to free capacity.
+   *
+   * <p>Thread-safety: all members are guarded by {@link #lock}. Callers must synchronize on that
+   * monitor when accessing or mutating the state.
+   */
   static class FDTracker implements Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
     private int maxOpenFDs;
     private int totalOpenFDs = 0;
     private final LinkedHashSet<PooledFileRandomAccessBuffer> closables = new LinkedHashSet<>();
+
+    /** Monitor used for coordinating access to this tracker; not serialized. */
+    transient Object lock = new Object();
 
     FDTracker(int maxOpenFDs) {
       this.maxOpenFDs = maxOpenFDs;
     }
 
-    /** Set the size of the fd pool */
-    synchronized void setMaxFDs(int max) {
-      if (max <= 0) throw new IllegalArgumentException();
-      maxOpenFDs = max;
+    /**
+     * Custom deserialization to restore the transient monitor.
+     *
+     * @param in source stream
+     * @throws IOException on I/O errors
+     * @throws ClassNotFoundException if a serialized type cannot be resolved
+     */
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      // Recreate the monitor because transient fields are not restored by default.
+      lock = new Object();
     }
 
-    /** How many fd's are open right now? Mainly for tests but also for stats. */
-    synchronized int getOpenFDs() {
-      return totalOpenFDs;
+    /** Set the maximum number of file descriptors the pool may hold at once. */
+    @SuppressWarnings("unused")
+    void setMaxFDs(int max) {
+      final Object monitor = lock;
+      synchronized (monitor) {
+        if (max <= 0) throw new IllegalArgumentException();
+        maxOpenFDs = max;
+      }
     }
 
-    synchronized int getClosableFDs() {
-      return closables.size();
+    /** Return the number of file descriptors currently open in this pool. */
+    @SuppressWarnings("unused")
+    int getOpenFDs() {
+      final Object monitor = lock;
+      synchronized (monitor) {
+        return totalOpenFDs;
+      }
+    }
+
+    int getClosableFDs() {
+      final Object monitor = lock;
+      synchronized (monitor) {
+        return closables.size();
+      }
     }
   }
 
@@ -55,53 +113,67 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   private static final FDTracker DEFAULT_FDTRACKER = new FDTracker(100);
   private transient FDTracker fds;
 
+  /**
+   * Path to the backing file. Never {@code null} for regular instances; may be {@code null} only in
+   * the serialization constructor.
+   */
   public final File file;
+
   private final boolean readOnly;
 
-  /**
-   * >0 means locked. We will wait until we get the lock if necessary, this is always accurate.
-   * LOCKING: Synchronized on fds.
-   */
+  // > 0 means this instance currently holds a pool lock. Guarded by fds.lock.
   private int lockLevel;
 
-  /**
-   * The actual RAF. Non-null only if open. LOCKING: Synchronized on (this). LOCKING: Always take
-   * (this) last, i.e. after fds.
-   */
+  // The current RandomAccessFile, or null when closed or evicted. Guarded by this.
+  // Always acquire fds.lock before synchronizing on this to avoid deadlocks.
   private transient RandomAccessFile raf;
 
   private final long length;
   private boolean closed;
 
-  /**
-   * -1 = not persistent-temp. Otherwise the ID. We need the ID so we can move files if the prefix
-   * changes.
-   */
+  // -1 when not a persistent-temp file; otherwise an ID to allow relocation across prefix changes.
   private final long persistentTempID;
 
-  private boolean secureDelete;
+  private volatile boolean secureDelete;
   private final boolean deleteOnFree;
 
   /**
-   * Create a RAF backed by a file.
+   * Construct a pooled random‑access buffer over an existing file with optional preallocation.
    *
-   * @param file
-   * @param readOnly
-   * @param forceLength
-   * @param seedRandom
-   * @param persistentTempID The tempfile ID, or -1.
-   * @throws IOException
+   * <p>Behavior:
+   *
+   * <ul>
+   *   <li>If {@code forceLength} is {@code >= 0} and differs from the current file size, the file
+   *       is extended or truncated to that size. On supported platforms a native preallocation is
+   *       attempted; otherwise a portable fallback is used.
+   *   <li>When {@code readOnly} is {@code true}, supplying a conflicting {@code forceLength}
+   *       results in an {@link IOException}.
+   *   <li>The instance participates in a global pool that limits concurrently open descriptors. The
+   *       constructor opens the file, performs any required preallocation, and then releases its
+   *       pool lock so the descriptor becomes eligible for reuse/eviction.
+   * </ul>
+   *
+   * <p>Threading: construction may block briefly while acquiring a pool slot. After construction,
+   * I/O calls are thread‑safe as described in the class documentation.
+   *
+   * <p>Postconditions: {@link #size()} equals the on‑disk size after any preallocation/truncation.
+   * The descriptor may or may not remain open depending on pool pressure.
+   *
+   * @param file non‑null path to the target file (must exist and be readable; writable when {@code
+   *     readOnly == false})
+   * @param readOnly if {@code true}, further calls to {@link #pwrite(long, byte[], int, int)} fail
+   *     with {@link IOException}
+   * @param forceLength desired size in bytes, or {@code -1} to keep the current size
+   * @param persistentTempID persistent‑temp identifier used during resume ({@code -1} for none)
+   * @param deleteOnFree if {@code true}, {@link #free()} deletes the backing file (securely when
+   *     {@link #setSecureDelete(boolean)} is enabled)
+   * @throws IOException if the file cannot be opened, preallocated, resized, or if a conflicting
+   *     {@code forceLength} is specified while {@code readOnly == true}
    */
   public PooledFileRandomAccessBuffer(
-      File file,
-      boolean readOnly,
-      long forceLength,
-      Random seedRandom,
-      long persistentTempID,
-      boolean deleteOnFree)
+      File file, boolean readOnly, long forceLength, long persistentTempID, boolean deleteOnFree)
       throws IOException {
-    this(
-        file, readOnly, forceLength, seedRandom, persistentTempID, deleteOnFree, DEFAULT_FDTRACKER);
+    this(file, readOnly, forceLength, persistentTempID, deleteOnFree, DEFAULT_FDTRACKER);
   }
 
   // For unit testing
@@ -109,7 +181,6 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
       File file,
       boolean readOnly,
       long forceLength,
-      Random seedRandom,
       long persistentTempID,
       boolean deleteOnFree,
       FDTracker fds)
@@ -121,7 +192,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     this.fds = fds;
     lockLevel = 0;
     // Check the parameters and get the length.
-    // Also, unlock() adds to the closeables queue, which is essential.
+    // Also, unlock() adds to the closeable queue, which is essential.
     RAFLock lock = lockOpen();
     try {
       long currentLength = raf.length();
@@ -131,7 +202,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
         // downloads.
         try (WrapperKeepalive wrapperKeepalive = new WrapperKeepalive()) {
           wrapperKeepalive.start();
-          // freenet-mobile-changed: Passing file descriptor to avoid using reflection
+          // freenet-mobile-changed: Passing a file descriptor to avoid using reflection
           Fallocate.forChannel(raf.getChannel(), raf.getFD(), forceLength)
               .fromOffset(currentLength)
               .execute();
@@ -141,18 +212,14 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
       }
       this.length = currentLength;
       lock.unlock();
-    } catch (IOException e) {
-      synchronized (this) {
-        raf.close();
-        raf = null;
-      }
+    } catch (IOException | RuntimeException e) {
+      cleanupAfterConstructorFailure(lock, e);
       throw e;
     }
   }
 
   public PooledFileRandomAccessBuffer(
       File file,
-      String mode,
       byte[] initialContents,
       int offset,
       int size,
@@ -171,17 +238,52 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     try {
       raf.write(initialContents, offset, size);
       lock.unlock();
-    } catch (IOException e) {
-      synchronized (this) {
-        raf.close();
-        raf = null;
-      }
+    } catch (IOException | RuntimeException e) {
+      cleanupAfterConstructorFailure(lock, e);
       throw e;
     }
   }
 
-  protected PooledFileRandomAccessBuffer() {
-    // For serialization.
+  /**
+   * Best-effort rollback for constructor failures.
+   *
+   * <p>When construction fails after acquiring a pool lock, the partially initialized instance can
+   * otherwise leak an open descriptor and lock state. This helper tries to unlock and close through
+   * the normal lifecycle; if that fails, it force-closes the underlying RAF state while preserving
+   * the original exception.
+   */
+  private void cleanupAfterConstructorFailure(RAFLock lock, Throwable failure) {
+    try {
+      lock.unlock();
+    } catch (RuntimeException unlockFailure) {
+      failure.addSuppressed(unlockFailure);
+    }
+
+    try {
+      close();
+      return;
+    } catch (RuntimeException closeFailure) {
+      failure.addSuppressed(closeFailure);
+    }
+
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
+      lockLevel = 0;
+      closed = true;
+      fds.closables.remove(this);
+      closeRAF();
+      monitor.notifyAll();
+    }
+  }
+
+  /**
+   * Serialization‑only constructor used by deserialization frameworks.
+   *
+   * <p>Do not call directly. {@link #readObject(ObjectInputStream)} rebinds transient fields after
+   * construction.
+   */
+  @SuppressWarnings("unused")
+  PooledFileRandomAccessBuffer() {
     file = null;
     readOnly = false;
     length = 0;
@@ -190,23 +292,48 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     fds = null;
   }
 
+  /**
+   * Custom deserialization; rebinds the transient pool tracker to the shared default instance.
+   *
+   * @param in source stream
+   * @throws IOException on I/O errors
+   * @throws ClassNotFoundException if a serialized type cannot be resolved
+   */
+  @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
-    // use the default fdtracker to avoid having one fd tracker per P F R A Buffer
     this.fds = DEFAULT_FDTRACKER;
   }
 
+  /**
+   * Return the fixed size of the buffer in bytes.
+   *
+   * @return number of bytes; never negative
+   */
   @Override
   public long size() {
     return length;
   }
 
+  /**
+   * Read {@code length} bytes starting at {@code fileOffset} into {@code buf}.
+   *
+   * <p>Blocks until all requested bytes are read or an exception is thrown. {@code buf} must have
+   * at least {@code bufOffset + length} bytes available.
+   *
+   * @param fileOffset absolute position in the file; must be {@code >= 0}
+   * @param buf destination array
+   * @param bufOffset offset within {@code buf}
+   * @param length number of bytes to read
+   * @throws IllegalArgumentException if {@code fileOffset < 0}
+   * @throws IOException if an I/O error occurs or EOF is reached before all bytes are read
+   */
   @Override
   public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
     if (fileOffset < 0) throw new IllegalArgumentException();
     RAFLock lock = lockOpen();
     try {
-      // FIXME Use NIO! This is absurd!
+      // Use RandomAccessFile for predictable semantics and compatibility.
       synchronized (this) {
         raf.seek(fileOffset);
         raf.readFully(buf, bufOffset, length);
@@ -216,6 +343,19 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     }
   }
 
+  /**
+   * Write {@code length} bytes from {@code buf} at {@code fileOffset}.
+   *
+   * <p>Writes must remain within the fixed size established at construction time. When {@code
+   * readOnly} is {@code true}, all writes fail.
+   *
+   * @param fileOffset absolute position in the file; must be {@code >= 0}
+   * @param buf source array
+   * @param bufOffset offset within {@code buf}
+   * @param length number of bytes to write
+   * @throws IllegalArgumentException if {@code fileOffset < 0}
+   * @throws IOException if the buffer is read-only, or if the writing would exceed the fixed length
+   */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
     if (fileOffset < 0) throw new IllegalArgumentException();
@@ -223,7 +363,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     RAFLock lock = lockOpen();
     try {
       if (fileOffset + length > this.length) throw new IOException("Length limit exceeded");
-      // FIXME Use NIO (which has proper pwrite, with concurrency)! This is absurd!
+      // Use RandomAccessFile for predictable semantics and compatibility.
       synchronized (this) {
         raf.seek(fileOffset);
         raf.write(buf, bufOffset, length);
@@ -233,20 +373,35 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     }
   }
 
+  /**
+   * Close the buffer and return its descriptor to the pool.
+   *
+   * <p>The instance must not hold a pool lock when closing.
+   *
+   * @throws IllegalStateException if a lock obtained via {@link #lockOpen()} is still held
+   */
   @Override
   public void close() {
-    if (logMINOR) Logger.minor(this, "Closing " + this, new Exception("debug"));
-    synchronized (fds) {
+    if (LOG.isDebugEnabled()) LOG.debug("Closing {}", this);
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       if (lockLevel != 0) throw new IllegalStateException("Must unlock first!");
       closed = true;
-      // Essential to avoid memory leak!
-      // Potentially slow but only happens on close(). Plus the size of closables is bounded anyway
-      // by the fd limit.
+      // Remove from the closables set to avoid retention. The set is bounded by the pool size.
       fds.closables.remove(this);
       closeRAF();
     }
   }
 
+  /**
+   * Keep the underlying {@link RandomAccessFile} open while the returned lock is held.
+   *
+   * <p>May block until a pool slot becomes available. The lock controls only lifetime in the pool;
+   * it does not serialize I/O.
+   *
+   * @return a lock that must be {@link RAFLock#unlock() unlocked} exactly once
+   * @throws IOException if the buffer has been closed
+   */
   @Override
   public RAFLock lockOpen() throws IOException {
     return lockOpen(false);
@@ -261,36 +416,77 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
             PooledFileRandomAccessBuffer.this.unlock();
           }
         };
-    synchronized (fds) {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       while (true) {
         fds.closables.remove(this);
         if (closed) throw new IOException("Already closed " + this);
-        if (raf != null) {
-          lockLevel++; // Already open, may or may not be already locked.
+
+        if (isOpenUnsafe()) {
+          incrementLockLevel();
           return lock;
-        } else if (fds.totalOpenFDs < fds.maxOpenFDs) {
-          raf = new RandomAccessFile(file, (readOnly && !forceWrite) ? "r" : "rw");
-          lockLevel++;
-          fds.totalOpenFDs++;
+        }
+
+        if (hasFDSlotUnsafe()) {
+          openRAFUnsafe(forceWrite);
+          incrementLockLevel();
           return lock;
-        } else {
-          PooledFileRandomAccessBuffer closable = pollFirstClosable();
-          if (closable != null) {
-            closable.closeRAF();
-            continue;
-          }
-          try {
-            fds.wait();
-          } catch (InterruptedException e) {
-            // Ignore
-          }
+        }
+
+        PooledFileRandomAccessBuffer closable = pollFirstClosable();
+        if (closable != null) {
+          closable.closeRAF();
+          continue;
+        }
+        waitForSlotUnsafe();
+      }
+    }
+  }
+
+  private boolean isOpenUnsafe() {
+    return raf != null;
+  }
+
+  private void incrementLockLevel() {
+    lockLevel++;
+  }
+
+  private boolean hasFDSlotUnsafe() {
+    return fds.totalOpenFDs < fds.maxOpenFDs;
+  }
+
+  private void openRAFUnsafe(boolean forceWrite) throws IOException {
+    raf = new RandomAccessFile(file, (readOnly && !forceWrite) ? "r" : "rw");
+    fds.totalOpenFDs++;
+  }
+
+  /**
+   * Wait until a pool slot is available or this instance is already open. Caller holds fds.lock.
+   */
+  private void waitForSlotUnsafe() throws IOException {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
+      // Wait only while there is no free slot, this buffer is not yet open/closed, and there
+      // are no queued closables we could reap after waking up.
+      while (fds.closables.isEmpty() && !hasFDSlotUnsafe() && !isOpenUnsafe() && !closed) {
+        try {
+          monitor.wait();
+        } catch (InterruptedException e) {
+          // Propagate interruption to the caller to avoid busy-spinning and allow higher-level
+          // code to decide whether to retry or abort.
+          Thread.currentThread().interrupt();
+          InterruptedIOException ex =
+              new InterruptedIOException("Interrupted while waiting for FD slot");
+          ex.initCause(e);
+          throw ex;
         }
       }
     }
   }
 
   private PooledFileRandomAccessBuffer pollFirstClosable() {
-    synchronized (fds) {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       Iterator<PooledFileRandomAccessBuffer> it = fds.closables.iterator();
       if (it.hasNext()) {
         PooledFileRandomAccessBuffer first = it.next();
@@ -301,15 +497,20 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     }
   }
 
-  /** Exposed for tests only. Used internally. Must be unlocked. */
-  protected void closeRAF() {
-    synchronized (fds) {
+  /**
+   * Close the live {@link RandomAccessFile} if present.
+   *
+   * <p>Precondition: {@code lockLevel == 0}. Intended for internal use and tests.
+   */
+  void closeRAF() {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       if (lockLevel != 0) throw new IllegalStateException();
       if (raf == null) return;
       try {
-        raf.close();
+        raf.close(); // Best effort; failures are logged and the pool counter still decrements.
       } catch (IOException e) {
-        Logger.error(this, "Error closing " + this + " : " + e, e);
+        LOG.error("Error closing {} : {}", this, e, e);
       }
       raf = null;
       fds.totalOpenFDs--;
@@ -317,18 +518,30 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   }
 
   private void unlock() {
-    synchronized (fds) {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       lockLevel--;
       if (lockLevel > 0) return;
       fds.closables.add(this);
-      fds.notify();
+      monitor.notifyAll();
     }
   }
 
+  /**
+   * Enable or disable secure deletion for {@link #free()}.
+   *
+   * @param secureDelete when {@code true}, attempts the best‑effort secure deleting
+   */
   public void setSecureDelete(boolean secureDelete) {
     this.secureDelete = secureDelete;
   }
 
+  /**
+   * Free this buffer. Always calls {@link #close()} and optionally deletes the backing file.
+   *
+   * <p>When {@code deleteOnFree} is {@code true}, performs the best‑effort delete. If {@link
+   * #setSecureDelete(boolean)} was enabled, a multi‑pass secure delete is attempted first.
+   */
   @Override
   public void free() {
     close();
@@ -337,33 +550,52 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
       try {
         FileUtil.secureDelete(file);
       } catch (IOException e) {
-        Logger.error(this, "Unable to delete " + file + " : " + e, e);
-        System.err.println("Unable to delete temporary file " + file);
+        LOG.error("Unable to delete {} : {}", file, e, e);
+        LOG.warn("Unable to delete temporary file {}", file);
       }
     } else {
-      file.delete();
+      try {
+        Files.delete(file.toPath());
+      } catch (IOException e) {
+        LOG.error("Unable to delete {} : {}", file, e, e);
+      }
     }
   }
 
   boolean isOpen() {
-    synchronized (fds) {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       return raf != null;
     }
   }
 
+  @SuppressWarnings("unused")
   boolean isLocked() {
-    synchronized (fds) {
+    final Object monitor = fds.lock;
+    synchronized (monitor) {
       return lockLevel != 0;
     }
   }
 
+  /**
+   * Validate the on-disk state and re-register persistent-temp files after deserialization.
+   *
+   * @param context client context providing the persistent file tracker
+   * @throws ResumeFailedException if the file is missing or if the stored length is inconsistent
+   */
   @Override
   public void onResume(ClientContext context) throws ResumeFailedException {
     if (!file.exists()) throw new ResumeFailedException("File does not exist: " + file);
     if (length > file.length()) throw new ResumeFailedException("Bad length");
-    if (persistentTempID != -1) context.persistentFileTracker.register(file);
+    if (persistentTempID != -1) context.getPersistentFileTracker().register(file);
   }
 
+  /**
+   * Return a debugging-friendly identifier that includes the backing file path.
+   *
+   * @return a string in the form {@code super.toString():<path>}
+   */
+  @Override
   public String toString() {
     return super.toString() + ":" + file;
   }
@@ -371,6 +603,16 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   static final int MAGIC = 0x297c550a;
   static final int VERSION = 1;
 
+  /**
+   * Write a compact descriptor sufficient to reconstruct this buffer later.
+   *
+   * <p>Format: {@link #MAGIC} (int), {@link #VERSION} (int), path (UTF), readOnly (boolean), length
+   * (long), persistentTempID (long), deleteOnFree (boolean), and optionally secureDelete (boolean)
+   * when {@code deleteOnFree == true}.
+   *
+   * @param dos destination stream
+   * @throws IOException on I/O errors
+   */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
     dos.writeInt(MAGIC);
@@ -384,11 +626,18 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   }
 
   /**
-   * Caller has already checked magic
+   * Reconstruct a buffer from a descriptor written by {@link #storeTo}.
    *
-   * @throws StorageFormatException
-   * @throws IOException
-   * @throws ResumeFailedException
+   * <p>Caller must consume {@link #MAGIC} before invoking this constructor; this method validates
+   * {@link #VERSION}. For persistent-temp files, the file may be moved by {@link FilenameGenerator}
+   * during resume.
+   *
+   * @param dis source stream positioned after {@link #MAGIC}
+   * @param fg filename generator for persistent-temp resolution
+   * @param persistentFileTracker tracker used to (re)register files during resume
+   * @throws StorageFormatException if the version or stored values are invalid
+   * @throws IOException on I/O errors
+   * @throws ResumeFailedException if the file is missing and cannot be recovered
    */
   PooledFileRandomAccessBuffer(
       DataInputStream dis, FilenameGenerator fg, PersistentFileTracker persistentFileTracker)
@@ -423,35 +672,37 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     }
   }
 
+  /**
+   * Compute a hash based on path, size, and configuration flags.
+   *
+   * @return a hash consistent with {@link #equals(Object)}
+   */
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = 1;
     result = prime * result + (deleteOnFree ? 1231 : 1237);
     result = prime * result + ((file == null) ? 0 : file.hashCode());
-    result = prime * result + (int) (length ^ (length >>> 32));
-    result = prime * result + (int) (persistentTempID ^ (persistentTempID >>> 32));
+    result = prime * result + Long.hashCode(length);
+    result = prime * result + Long.hashCode(persistentTempID);
     result = prime * result + (readOnly ? 1231 : 1237);
     result = prime * result + (secureDelete ? 1231 : 1237);
     return result;
   }
 
   /**
-   * Must reimplement equals() as two PooledRAFWrapper's could well be the same storage object i.e.
-   * file on disk. This is particularly important during resuming a splitfile insert.
+   * Compare based on the underlying storage object and configuration flags.
+   *
+   * <p>Two buffers are equal when they reference the same path and have identical size and flags.
    */
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof PooledFileRandomAccessBuffer other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    PooledFileRandomAccessBuffer other = (PooledFileRandomAccessBuffer) obj;
     if (deleteOnFree != other.deleteOnFree) {
       return false;
     }

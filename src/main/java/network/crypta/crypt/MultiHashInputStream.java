@@ -3,6 +3,7 @@ package network.crypta.crypt;
 import java.io.IOException;
 import java.io.InputStream;
 import network.crypta.support.io.SkipShieldingInputStream;
+import org.jetbrains.annotations.NotNull;
 
 public class MultiHashInputStream extends SkipShieldingInputStream {
 
@@ -15,7 +16,7 @@ public class MultiHashInputStream extends SkipShieldingInputStream {
   }
 
   @Override
-  public int read(byte[] buf, int off, int len) throws IOException {
+  public int read(byte @NotNull [] buf, int off, int len) throws IOException {
     int ret = in.read(buf, off, len);
     if (ret <= 0) return ret;
     digester.update(buf, off, ret);
@@ -45,7 +46,11 @@ public class MultiHashInputStream extends SkipShieldingInputStream {
   }
 
   @Override
-  public void mark(int readlimit) {}
+  public void mark(int readlimit) {
+    // Intentionally a no-op: mark/reset are not supported because this stream
+    // updates multiple digests incrementally and cannot rewind that state.
+    // See: markSupported() returns false and reset() throws IOException.
+  }
 
   public HashResult[] getResults() {
     return digester.getResults().toArray(new HashResult[0]);

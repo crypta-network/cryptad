@@ -5,64 +5,71 @@ import java.util.Arrays;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.support.BitArray;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.RandomAccessBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Equivalent of PartiallyReceivedBlock, for large(ish) file transfers. As presently implemented, we
- * keep a bitmap in RAM of blocks received, so it should be adequate for fairly large files (128kB
- * for a 1GB file e.g.). We can compress this structure later on if need be.
+ * Tracks and persists a large multi-block transfer.
+ *
+ * <p>This class is the bulk-file counterpart to {@code PartiallyReceivedBlock}. It maintains an
+ * in-memory bitmap of received blocks and commits payloads to a {@link
+ * network.crypta.support.api.RandomAccessBuffer}. The current approach keeps one bit per block in
+ * RAM, which is adequate for fairly large files (for example, roughly 128&nbsp;KiB of bitmap memory
+ * for a 1&nbsp;GiB file at 64&nbsp;KiB blocks). The representation may be compressed in the future
+ * without changing the external behavior.
+ *
+ * <p>Concurrency: the instance synchronizes updates to its internal bitmap and transmitter list.
+ * Callers must not rely on finer-grained atomicity than provided by the synchronized methods. I/O
+ * is performed outside the synchronized section to avoid long critical sections. On fatal errors,
+ * {@link #abort(int, String)} transitions the instance to an aborted state, notifies registered
+ * collaborators, and closes the underlying buffer.
  *
  * @author toad
  */
-public class PartiallyReceivedBulk {
+public final class PartiallyReceivedBulk {
+  private static final Logger LOG = LoggerFactory.getLogger(PartiallyReceivedBulk.class);
 
-  /** The size of the data being received. Does *not* have to be a multiple of blockSize. */
+  /**
+   * Total size of the data being received, in bytes. The value does not need to be a multiple of
+   * {@link #blockSize} (the last block may be partial).
+   */
   final long size;
 
-  /** The size of the blocks sent as packets. */
+  /** Size of each transfer block, in bytes. */
   final int blockSize;
 
   private final RandomAccessBuffer raf;
 
-  /** Which blocks have been received and written? */
+  /** Bitmap indicating which blocks have been received and written. */
   private final BitArray blocksReceived;
 
   final int blocks;
   private BulkTransmitter[] transmitters;
   final MessageCore usm;
 
-  /** The one and only BulkReceiver */
+  /** The sole {@link BulkReceiver} coordinating inbound packets for this bulk. */
   BulkReceiver recv;
 
   private int blocksReceivedCount;
-  // Abort status
-  boolean _aborted;
-  int _abortReason;
-  String _abortDescription;
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Abort status (accessed by package classes and getters)
+  boolean aborted;
+  int abortReason;
+  String abortDescription;
 
   /**
-   * Construct a PartiallyReceivedBulk.
+   * Creates a new bulk-transfer accumulator.
    *
-   * @param size Size of the file, does not have to be a multiple of blockSize.
-   * @param blockSize Block size.
-   * @param raf Where to store the data.
-   * @param initialState If true, assume all blocks have been received. If false, assume no blocks
-   *     have been received.
+   * @param usm Message core used by collaborating components.
+   * @param size Total size of the incoming data, in bytes. Does not need to be a multiple of {@code
+   *     blockSize}.
+   * @param blockSize Size of each block, in bytes.
+   * @param raf Random-access buffer used to persist the received data. The buffer must be at least
+   *     {@code size} bytes large.
+   * @param initialState When {@code true}, marks every block as already present (e.g., whole-file
+   *     already cached). When {@code false}, marks all blocks as missing.
+   * @throws IllegalArgumentException If {@code size} implies more than {@link Integer#MAX_VALUE}
+   *     blocks, or when {@code raf.size() < size}.
    */
   public PartiallyReceivedBulk(
       MessageCore usm, long size, int blockSize, RandomAccessBuffer raf, boolean initialState) {
@@ -70,33 +77,35 @@ public class PartiallyReceivedBulk {
     this.blockSize = blockSize;
     this.raf = raf;
     this.usm = usm;
-    long blocks = (size + blockSize - 1) / blockSize;
-    if (blocks > Integer.MAX_VALUE) throw new IllegalArgumentException("Too big");
-    this.blocks = (int) blocks;
+    long blocksCount = (size + blockSize - 1) / blockSize;
+    if (blocksCount > Integer.MAX_VALUE) throw new IllegalArgumentException("Too big");
+    this.blocks = (int) blocksCount;
     blocksReceived = new BitArray(this.blocks);
     if (initialState) {
       blocksReceived.setAllOnes();
       blocksReceivedCount = this.blocks;
     }
-    assert (raf.size() >= size);
+    if (raf.size() < size) {
+      throw new IllegalArgumentException("Backing buffer too small: " + raf.size() + " < " + size);
+    }
   }
 
   /**
-   * Clone the blocksReceived BitArray. Used by BulkTransmitter to find what blocks are available on
-   * creation. BulkTransmitter will have already taken the lock and will keep it over the add()
-   * also.
+   * Returns a snapshot of the received-blocks bitmap.
    *
-   * @return A copy of blocksReceived.
+   * <p>Used by {@link BulkTransmitter} to discover which blocks are already present at construction
+   * time. Callers must already hold this instance's monitor.
+   *
+   * @return a copy of {@link #blocksReceived}.
    */
   synchronized BitArray cloneBlocksReceived() {
     return new BitArray(blocksReceived);
   }
 
   /**
-   * Add a BulkTransmitter to the list of BulkTransmitters. When a block comes in, we will tell each
-   * BulkTransmitter about it.
+   * Registers a {@link BulkTransmitter} to receive block-availability notifications.
    *
-   * @param bt The BulkTransmitter to register.
+   * @param bt transmitter to register.
    */
   synchronized void add(BulkTransmitter bt) {
     if (transmitters == null) transmitters = new BulkTransmitter[] {bt};
@@ -107,67 +116,79 @@ public class PartiallyReceivedBulk {
   }
 
   /**
-   * Called when a block has been received. Will copy the data from the provided buffer and store
-   * it.
+   * Commits a received block to storage and updates the state, then notifies transmitters.
    *
-   * @param blockNum The block number.
-   * @param data The byte array from which to read the data.
-   * @param offset The start of the data in the buffer.
+   * <p>Validates that {@code length} is at least the expected number of bytes for the addressed
+   * block. If validation or storage fails, the transfer is aborted for an appropriate reason.
+   * Blocks that are already marked as received are ignored.
+   *
+   * @param blockNum zero-based block index.
+   * @param data source buffer containing the block payload.
+   * @param offset offset into {@code data} where the payload starts.
+   * @param length number of bytes available from {@code data[offset...]}; must be at least the
+   *     expected block length (short final block permitted).
    */
+  @SuppressWarnings("java:S1181")
   void received(int blockNum, byte[] data, int offset, int length) {
-    if (blockNum > blocks) {
-      Logger.error(this, "Received block " + blockNum + " of " + blocks + " !");
+    if (blockNum >= blocks) {
+      LOG.error("Received block {} of {} !", blockNum, blocks);
       return;
     }
-    if (logMINOR) Logger.minor(this, "Received block " + blockNum);
+    if (LOG.isDebugEnabled()) LOG.debug("Received block {}", blockNum);
     BulkTransmitter[] notifyBTs;
     long fileOffset = (long) blockNum * (long) blockSize;
     int bs = (int) Math.min(blockSize, size - fileOffset);
     if (length < bs) {
       String err = "Data too short! Should be " + bs + " actually " + length;
-      Logger.error(this, err + " for " + this);
+      LOG.error("{} for {}", err, this);
       abort(RetrievalException.PREMATURE_EOF, err);
       return;
     }
     synchronized (this) {
-      if (blocksReceived.bitAt(blockNum)) return; // ignore
-      blocksReceived.setBit(blockNum, true); // assume the rest of the function succeeds
+      if (blocksReceived.bitAt(blockNum)) return; // Ignore duplicates
+      // Optimistically mark as received before I/O; abort() will notify on failure.
+      blocksReceived.setBit(blockNum, true);
       blocksReceivedCount++;
       notifyBTs = transmitters;
     }
     try {
       raf.pwrite(fileOffset, data, offset, bs);
     } catch (Throwable t) {
-      Logger.error(
-          this, "Failed to store received block " + blockNum + " on " + this + " : " + t, t);
+      LOG.error("Failed to store received block {} on {} : {}", blockNum, this, t, t);
       abort(RetrievalException.IO_ERROR, t.toString());
     }
     if (notifyBTs == null) return;
     for (BulkTransmitter notifyBT : notifyBTs) {
-      // Not a generic callback, so no catch{} guard
+      // Not a generic callback; allow exceptions to surface during development/tests.
       notifyBT.blockReceived(blockNum);
     }
   }
 
+  /**
+   * Aborts the transfer, notifies collaborators, and closes the underlying buffer.
+   *
+   * <p>After abortion, {@link #isAborted()} returns {@code true}. Registered transmitters and the
+   * current receiver (if any) are notified via their respective callbacks. The {@link
+   * RandomAccessBuffer} is closed.
+   *
+   * @param errCode a {@link RetrievalException} error code that explains the reason.
+   * @param why human-readable description of the failure; may be {@code null}.
+   */
   public void abort(int errCode, String why) {
-    if (logMINOR)
-      Logger.normal(
+    if (LOG.isDebugEnabled())
+      LOG.info(
+          "Aborting {}: {} : {} first missing is {}",
           this,
-          "Aborting "
-              + this
-              + ": "
-              + errCode
-              + " : "
-              + why
-              + " first missing is "
-              + blocksReceived.firstZero(0),
+          errCode,
+          why,
+          blocksReceived.firstZero(0),
           new Exception("debug"));
     BulkTransmitter[] notifyBTs;
     BulkReceiver notifyBR;
     synchronized (this) {
-      _aborted = true;
-      _abortReason = errCode;
-      _abortDescription = why;
+      aborted = true;
+      abortReason = errCode;
+      abortDescription = why;
       notifyBTs = transmitters;
       notifyBR = recv;
     }
@@ -180,14 +201,33 @@ public class PartiallyReceivedBulk {
     raf.close();
   }
 
+  /**
+   * Returns whether the transfer has been aborted.
+   *
+   * @return {@code true} if {@link #abort(int, String)} has been called; otherwise {@code false}.
+   */
   public synchronized boolean isAborted() {
-    return _aborted;
+    return aborted;
   }
 
-  public boolean hasWholeFile() {
+  /**
+   * Returns whether all blocks have been received and written.
+   *
+   * @return {@code true} when every block is present; otherwise {@code false}.
+   */
+  public synchronized boolean hasWholeFile() {
     return blocksReceivedCount >= blocks;
   }
 
+  /**
+   * Reads and returns the bytes for a stored block.
+   *
+   * <p>On I/O failure, the method logs, aborts the transfer with {@link
+   * RetrievalException#IO_ERROR}, and returns {@code null} to preserve historical behavior.
+   *
+   * @param blockNum zero-based block index.
+   * @return the block contents, or {@code null} on failure.
+   */
   public byte[] getBlockData(int blockNum) {
     long fileOffset = (long) blockNum * (long) blockSize;
     int bs = (int) Math.min(blockSize, size - fileOffset);
@@ -195,13 +235,18 @@ public class PartiallyReceivedBulk {
     try {
       raf.pread(fileOffset, data, 0, bs);
     } catch (IOException e) {
-      Logger.error(this, "Failed to read stored block " + blockNum + " on " + this + " : " + e, e);
+      LOG.error("Failed to read stored block {} on {} : {}", blockNum, this, e, e);
       abort(RetrievalException.IO_ERROR, e.toString());
-      return null;
+      data = null; // Preserve existing contract: return null on failure
     }
     return data;
   }
 
+  /**
+   * Unregisters a {@link BulkTransmitter}. No-op when the transmitter is not currently registered.
+   *
+   * @param remove transmitter to remove.
+   */
   public synchronized void remove(BulkTransmitter remove) {
     boolean found = false;
     for (BulkTransmitter t : transmitters) {
@@ -220,11 +265,22 @@ public class PartiallyReceivedBulk {
     transmitters = newTrans;
   }
 
+  /**
+   * Returns the numeric abort reason associated with the last {@link #abort(int, String)} call.
+   *
+   * @return a {@link RetrievalException} reason code.
+   */
   public int getAbortReason() {
-    return _abortReason;
+    return abortReason;
   }
 
+  /**
+   * Returns the descriptive abort message associated with the last {@link #abort(int, String)}
+   * call.
+   *
+   * @return a human-readable description; may be {@code null}.
+   */
   public String getAbortDescription() {
-    return _abortDescription;
+    return abortDescription;
   }
 }

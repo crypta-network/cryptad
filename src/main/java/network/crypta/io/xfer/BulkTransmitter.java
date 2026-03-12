@@ -1,8 +1,5 @@
 package network.crypta.io.xfer;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -14,82 +11,105 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.BitArray;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
- * Bulk data transfer (not block). Bulk transfer is designed for files which may be much bigger than
- * a key block, and where we have the whole file at the outset. Do not persist across node restarts.
+ * Sends large, file-like payloads to a single peer using the bulk transfer protocol. The
+ * transmitter assumes the data is locally available and is not persisted across node restarts.
  *
- * <p>Used by update over mandatory, sending a file to our peers attached to an N2NTM etc.
+ * <p>It streams block-sized packets, tracks in-flight packets, and—unless {@code noWait} is
+ * true—waits for the final {@code FNPBulkReceivedAll} acknowledgement before reporting success.
+ * Local aborts or remote cancellations unblock the sending loop promptly.
+ *
+ * <p>Threading: state transitions synchronize on {@code this}. Instances are notified by {@link
+ * PartiallyReceivedBulk} (new blocks or abort) and by asynchronous message filters registered on
+ * {@link network.crypta.io.comm.MessageCore}. Public methods may block until progress, completion,
+ * cancellation, or timeout.
  *
  * @author toad
  */
-public class BulkTransmitter {
+public final class BulkTransmitter {
+  private static final Logger LOG = LoggerFactory.getLogger(BulkTransmitter.class);
 
+  /**
+   * Callback invoked when all packets have been queued and their sending callbacks have fired.
+   *
+   * <p>The callback is invoked at most once, asynchronously on the message executor.
+   */
   public interface AllSentCallback {
 
+    /**
+     * Notifies that all packets were queued and observed as {@code sent}.
+     *
+     * @param bulkTransmitter the transmitter reporting completion of queuing
+     * @param anyFailed {@code true} if any packet failed to send; {@code false} otherwise
+     */
     void allSent(BulkTransmitter bulkTransmitter, boolean anyFailed);
   }
 
-  /**
-   * If no packets sent in this period, and no completion acknowledgement / cancellation, assume
-   * failure.
-   */
+  /** Maximum time without progress before the transfer is considered failed. Unit: milliseconds. */
   static final long TIMEOUT = MINUTES.toMillis(5);
 
-  /** Time to hang around listening for the last FNPBulkReceivedAll message */
+  /**
+   * Grace period to keep listening for the final {@code FNPBulkReceivedAll} after finishing. Unit:
+   * milliseconds.
+   */
   static final long FINAL_ACK_TIMEOUT = SECONDS.toMillis(10);
 
   final AllSentCallback allSentCallback;
 
-  /** Available blocks */
+  /** Available blocks. Provided by the associated {@link PartiallyReceivedBulk}. */
   final PartiallyReceivedBulk prb;
 
-  /** Peer who we are sending the data to */
+  /** Peer receiving the data. */
   final PeerContext peer;
 
-  /** Transfer UID for messages */
+  /** Transfer UID used in all protocol messages. */
   final long uid;
 
   /**
-   * Blocks we have but haven't sent yet. 0 = block sent or not present, 1 = block present but not
-   * sent
+   * Tracks blocks present but not yet sent. Bit semantics: 0 = sent or not present; 1 = present and
+   * pending.
    */
   final BitArray blocksNotSentButPresent;
 
+  /**
+   * Number of blocks observed by this transmitter (initial snapshot + {@link #blockReceived(int)}).
+   */
+  private int blocksReceivedByTransmitter;
+
   private boolean cancelled;
 
-  /** Not persistent over reboots */
+  /** Peer boot identifier observed when the transfer started; used to detect restarts. */
   final long peerBootID;
 
   private boolean sentCancel;
   private boolean finished;
 
-  /** Not expecting a response? */
+  /** When {@code true}, do not wait for the final acknowledgement after sending. */
   final boolean noWait;
 
   private long finishTime = -1;
   private String cancelReason;
   private final ByteCounter ctr;
-  private final boolean realTime;
+
+  // 'realTime' parameter is accepted in the constructor for API compatibility, but no field is
+  // needed here.
+  /**
+   * Whether an {@link InterruptedException} was observed inside internal waits. Interrupt status is
+   * restored when {@link #send()} returns to allow callers to observe it (see java:S2142).
+   */
+  private volatile boolean interruptedDuringWait = false;
 
   private static long transfersCompleted;
   private static long transfersSucceeded;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // No static initialization required.
 
   public BulkTransmitter(
       PartiallyReceivedBulk prb,
@@ -103,15 +123,20 @@ public class BulkTransmitter {
   }
 
   /**
-   * Create a bulk data transmitter.
+   * Creates a bulk transmitter.
    *
-   * @param prb The PartiallyReceivedBulk containing the file we want to send, or the part of it
-   *     that we have so far.
-   * @param peer The peer we want to send it to.
-   * @param uid The unique identifier for this data transfer
-   * @param noWait If true, don't wait for an FNPBulkReceivedAll, return as soon as we've sent
-   *     everything.
-   * @throws DisconnectedException If the peer we are trying to send to becomes disconnected.
+   * <p>The constructor registers asynchronous filters for abort and final-ack messages on the
+   * underlying message core and associates the transmitter with the supplied {@link
+   * PartiallyReceivedBulk}.
+   *
+   * @param prb the data source that exposes available blocks and notifies of new blocks/aborts
+   * @param peer the destination peer
+   * @param uid a unique transfer identifier used in protocol messages
+   * @param noWait when {@code true}, return after sending all available data without waiting for
+   *     {@code FNPBulkReceivedAll}
+   * @param ctr byte counter to record payload accounting; must not be {@code null}
+   * @param realTime accepted for API compatibility; does not alter scheduling semantics here
+   * @throws DisconnectedException if the peer disconnects while registering filters
    */
   public BulkTransmitter(
       PartiallyReceivedBulk prb,
@@ -127,17 +152,19 @@ public class BulkTransmitter {
     this.uid = uid;
     this.noWait = noWait;
     this.ctr = ctr;
-    this.realTime = realTime;
+    // Touch the flag to make the intent explicit without changing behavior.
+    if (realTime && LOG.isTraceEnabled()) {
+      LOG.trace("Real-time flag set for {}", this);
+    }
     this.allSentCallback = cb;
     if (ctr == null) throw new NullPointerException();
     peerBootID = peer.getBootID();
-    // Need to sync on prb while doing both operations, to avoid race condition.
-    // Specifically, we must not get calls to blockReceived() until blocksNotSentButPresent
-    // has been set, AND it must be accurate, so there must not be an unlocked period
-    // between cloning and adding.
-    synchronized (prb) {
+    // Synchronize on PRB while cloning and registering to avoid seeing block updates before the
+    // bitmap snapshot is initialized.
+    synchronized (this.prb) {
       // We can just clone it.
       blocksNotSentButPresent = prb.cloneBlocksReceived();
+      blocksReceivedByTransmitter = countSetBits(blocksNotSentButPresent);
       prb.add(this);
     }
     try {
@@ -163,17 +190,17 @@ public class BulkTransmitter {
 
             @Override
             public void onTimeout() {
-              // Ignore
+              // No-op: the filter is removed by cancellation/completion.
             }
 
             @Override
             public void onDisconnect(PeerContext ctx) {
-              // Ignore
+              // No-op: cancellation paths handle disconnects.
             }
 
             @Override
             public void onRestarted(PeerContext ctx) {
-              // Ignore
+              // No-op: peer restarts are detected via boot ID in the send loop.
             }
           },
           ctr);
@@ -202,17 +229,17 @@ public class BulkTransmitter {
 
             @Override
             public void onTimeout() {
-              // Ignore
+              // No-op: the filter is removed by cancellation/completion.
             }
 
             @Override
             public void onDisconnect(PeerContext ctx) {
-              // Ignore
+              // No-op: cancellation paths handle disconnects.
             }
 
             @Override
             public void onRestarted(PeerContext ctx) {
-              // Ignore
+              // No-op: peer restarts are detected via boot ID in the send loop.
             }
           },
           ctr);
@@ -229,32 +256,38 @@ public class BulkTransmitter {
    * @param block The block number that has been received.
    */
   synchronized void blockReceived(int block) {
+    if (!blocksNotSentButPresent.bitAt(block)) {
+      blocksReceivedByTransmitter++;
+    }
     blocksNotSentButPresent.setBit(block, true);
     notifyAll();
   }
 
-  /** Called when the PRB is aborted. */
+  /**
+   * Notifies the transmitter that the associated {@link PartiallyReceivedBulk} aborted.
+   *
+   * <p>Sends a best-effort {@code FNPBulkSendAborted} to the peer and wakes any waiting threads.
+   * Idempotent.
+   */
   public void onAborted() {
-    sendAbortedMessage();
-    synchronized (this) {
-      notifyAll();
-    }
+    cancel("PartiallyReceivedBulk aborted");
   }
 
+  /** Sends {@code FNPBulkSendAborted} once. Subsequent calls are no-ops. */
   private void sendAbortedMessage() {
     synchronized (this) {
       if (sentCancel) return;
       sentCancel = true;
     }
     try {
-      peer.sendAsync(DMT.createFNPBulkSendAborted(uid), null, ctr);
-    } catch (NotConnectedException e) {
-      // Cool
+      peer.transport().sendAsync(DMT.createFNPBulkSendAborted(uid), null, ctr);
+    } catch (NotConnectedException _) {
+      // Best-effort notification only; ignore if not connected.
     }
   }
 
   public void cancel(String reason) {
-    if (logMINOR) Logger.minor(this, "Cancelling " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelling {}", this);
     sendAbortedMessage();
     synchronized (this) {
       if (cancelled || finished) return;
@@ -267,12 +300,15 @@ public class BulkTransmitter {
       transfersCompleted++;
     }
     // Call AllSentCallback if necessary.
-    // If there are packets still waiting, it will be called after they are sent or failed.
+    // If packets are still in flight, the callback is invoked after they complete or fail.
     setAllQueued();
   }
 
   /**
-   * Like cancel(), but without the negative overtones: The client says it's got everything, we
+   * Marks the transfer successful, updates counters, and notifies waiting threads and the optional
+   * callback.
+   *
+   * <p>Like cancel(), but without the negative overtones: The client says it's got everything, we
    * believe them (even if we haven't sent everything; maybe they had a partial).
    */
   public void completed() {
@@ -287,121 +323,271 @@ public class BulkTransmitter {
       transfersCompleted++;
       transfersSucceeded++;
     }
-    if (logMINOR) Logger.minor(this, "Completed transfer successfully " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Completed transfer successfully {}", this);
   }
 
   /**
-   * Send the file.
+   * Runs the sending loop until success, failure, or cancellation.
    *
-   * @return True if the file was successfully sent. False otherwise.
-   * @throws DisconnectedException
+   * <p>When {@code noWait} is {@code true} and the full file is already present locally, this
+   * method completes after enqueueing all packets without waiting for the final acknowledgement.
+   *
+   * @return {@code true} if the peer acknowledged receipt (or {@code noWait} short-circuited after
+   *     enqueueing); {@code false} if canceled, aborted, or timed out
+   * @throws DisconnectedException if the peer disconnects or restarts during the transfer
    */
   public boolean send() throws DisconnectedException {
-    long lastSentPacket = System.currentTimeMillis();
-    outer:
-    while (true) {
-      int max = Math.min(Integer.MAX_VALUE, prb.blocks);
-      max = Math.min(max, peer.getThrottleWindowSize());
-      // FIXME Need to introduce the global limiter of [code]max[/code] for memory management
-      // instead of hard-code for each, no?
-      max = Math.min(max, 100);
-      if (max < 1) max = 1;
+    try {
+      long lastSentPacket = System.currentTimeMillis();
+      while (true) {
+        IterationResult r = doOneSendIteration(lastSentPacket);
+        if (r.outcome == Outcome.SUCCEEDED) return true;
+        if (r.outcome == Outcome.FAILED) return false;
+        lastSentPacket = r.lastSentPacket;
+      }
+    } finally {
+      // Restore interrupt status if we swallowed any InterruptedException during internal waits.
+      if (interruptedDuringWait) Thread.currentThread().interrupt();
+    }
+  }
 
-      if (prb.isAborted()) {
-        if (logMINOR) Logger.minor(this, "Aborted " + this);
-        return false;
-      }
-      int blockNo;
-      if (peer.getBootID() != peerBootID) {
-        synchronized (this) {
-          cancelled = true;
-          notifyAll();
-        }
-        prb.remove(BulkTransmitter.this);
-        if (logMINOR) Logger.minor(this, "Failed to send " + uid + ": peer restarted: " + peer);
-        throw new DisconnectedException();
-      }
+  private record IterationResult(Outcome outcome, long lastSentPacket) {
+
+    static IterationResult cont(long ts) {
+      return new IterationResult(Outcome.CONTINUE, ts);
+    }
+
+    static IterationResult success(long ts) {
+      return new IterationResult(Outcome.SUCCEEDED, ts);
+    }
+
+    static IterationResult fail(long ts) {
+      return new IterationResult(Outcome.FAILED, ts);
+    }
+  }
+
+  private IterationResult doOneSendIteration(long lastSentPacket) throws DisconnectedException {
+    int max = computeMaxInFlight();
+
+    if (prb.isAborted()) {
+      if (LOG.isDebugEnabled()) LOG.debug("Aborted {}", this);
+      return IterationResult.fail(lastSentPacket);
+    }
+
+    ensurePeerNotRestarted();
+
+    int blockNo = nextBlockOrStatus();
+    if (blockNo == FINISHED_SENTINEL) return IterationResult.success(lastSentPacket);
+    if (blockNo == CANCELLED_SENTINEL) return IterationResult.fail(lastSentPacket);
+
+    if (blockNo < 0) {
+      Outcome outcome = handleNoBlockAvailable(lastSentPacket);
+      if (outcome == Outcome.SUCCEEDED) return IterationResult.success(lastSentPacket);
+      if (outcome == Outcome.FAILED) return IterationResult.fail(lastSentPacket);
+      return IterationResult.cont(lastSentPacket);
+    }
+
+    long ts = sendPacket(blockNo, max);
+    if (ts < 0) return IterationResult.fail(lastSentPacket); // Already canceled, quit
+    return IterationResult.cont(ts);
+  }
+
+  private int computeMaxInFlight() {
+    int max = prb.blocks;
+    max = Math.min(max, peer.getThrottleWindowSize());
+    // Note: A global limiter of [code]max[/code] for memory management may be desirable
+    // instead of hard-coding per use.
+    max = Math.min(max, 100);
+    if (max < 1) max = 1;
+    return max;
+  }
+
+  private void ensurePeerNotRestarted() throws DisconnectedException {
+    if (peer.getBootID() != peerBootID) {
       synchronized (this) {
-        if (finished) return true;
-        if (cancelled) return false;
-        blockNo = blocksNotSentButPresent.firstOne();
+        cancelled = true;
+        notifyAll();
       }
-      if (blockNo < 0) {
-        setAllQueued();
-        if (noWait && prb.hasWholeFile()) {
-          completed();
-          return true;
-        }
-        synchronized (this) {
-          // Wait for all packets to complete
-          while (true) {
-            if (failedPacket) {
-              cancel("Packet send failed");
-              return false;
-            }
-            if (logMINOR) Logger.minor(this, "Waiting for packets: remaining: " + inFlightPackets);
-            if (inFlightPackets == 0) break;
-            try {
-              wait();
-              if (failedPacket) {
-                cancel("Packet send failed");
-                return false;
-              }
-              if (inFlightPackets == 0) break;
-              continue outer; // Might be a packet...
-            } catch (InterruptedException e) {
-              // Ignore
-            }
-          }
+      prb.remove(BulkTransmitter.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Failed to send {}: peer restarted: {}", uid, peer);
+      throw new DisconnectedException();
+    }
+  }
 
-          // Wait for a packet to come in, BulkReceivedAll or BulkReceiveAborted
-          try {
-            wait(SECONDS.toMillis(60));
-          } catch (InterruptedException e) {
-            // No problem
-            continue;
-          }
-        }
-        long end = System.currentTimeMillis();
-        if (end - lastSentPacket > TIMEOUT) {
-          Logger.error(this, "Send timed out on " + this);
-          cancel("Timeout awaiting BulkReceivedAll");
-          return false;
-        }
-        continue;
+  private static final int FINISHED_SENTINEL = Integer.MIN_VALUE;
+  private static final int CANCELLED_SENTINEL = Integer.MAX_VALUE;
+
+  private int nextBlockOrStatus() {
+    synchronized (this) {
+      if (finished) return FINISHED_SENTINEL;
+      if (cancelled) return CANCELLED_SENTINEL;
+      return blocksNotSentButPresent.firstOne();
+    }
+  }
+
+  private enum Outcome {
+    CONTINUE,
+    SUCCEEDED,
+    FAILED
+  }
+
+  private Outcome handleNoBlockAvailable(long lastSentPacket) {
+    setAllQueued();
+    Outcome early = fastCompleteIfNoWait();
+    if (early != null) return early;
+    Outcome drained = waitForInFlightToDrainOrContinue();
+    if (drained != null) return drained;
+    return waitForAckOrAbort(lastSentPacket);
+  }
+
+  private Outcome fastCompleteIfNoWait() {
+    if (!noWait) {
+      return null;
+    }
+    synchronized (this) {
+      // Complete in no-wait mode only after this transmitter has observed every block and there
+      // are no locally pending blocks left to queue.
+      if (blocksReceivedByTransmitter >= prb.blocks && blocksNotSentButPresent.firstOne() < 0) {
+        completed();
+        return Outcome.SUCCEEDED;
       }
-      // Send a packet
-      byte[] buf = prb.getBlockData(blockNo);
-      if (buf == null) {
-        if (logMINOR)
-          Logger.minor(
-              this, "Block " + blockNo + " is null, presumably the send is cancelled: " + this);
-        // Already cancelled, quit
-        return false;
+    }
+    return null;
+  }
+
+  private static int countSetBits(BitArray bits) {
+    int count = 0;
+    for (int idx = bits.firstOne(); idx >= 0; idx = bits.firstOne(idx + 1)) {
+      count++;
+    }
+    return count;
+  }
+
+  /**
+   * Wait while there are packets in flight, but wake opportunistically.
+   *
+   * <p>When the transmitter temporarily runs out of locally available blocks, we do not want to
+   * stall until every outstanding packet completes. New blocks may arrive (via {@link
+   * #blockReceived(int)}) while there are still packets in flight; in that case, we should return
+   * to the outer sending loop as soon as we are woken so the new block can be queued the moment the
+   * congestion window permits.
+   *
+   * <p>Return semantics: - {@code Outcome.FAILED}: a packet failed while waiting. - {@code
+   * Outcome.CONTINUE}: woke before fully draining; re-check availability and possibly send. -
+   * {@code null}: in-flight packets fully drained; caller may proceed to ACK/abort the wait path.
+   */
+  @SuppressWarnings("java:S2142")
+  private Outcome waitForInFlightToDrainOrContinue() {
+    synchronized (this) {
+      if (failedPacket) {
+        cancel("Packet send failed");
+        return Outcome.FAILED;
+      }
+      if (inFlightPackets == 0) return null; // Already drained; fall through to ACK wait.
+
+      if (LOG.isDebugEnabled())
+        LOG.debug("Waiting for packets (opportunistic wake): remaining: {}", inFlightPackets);
+
+      // Guard against spurious wakeup; wake early only when a new block is available or when
+      // in-flight packets drain to zero.
+      while (!failedPacket && inFlightPackets != 0 && blocksNotSentButPresent.firstOne() < 0) {
+        try {
+          wait();
+        } catch (InterruptedException _) {
+          // Ignore and continue waiting; do not reassert the interrupt flag (see java:S2142).
+          // We must not exit early here, or further waits will spin and bypass throttling.
+          interruptedDuringWait = true; // restored by send() finally block
+        }
       }
 
-      // Congestion control and bandwidth limiting
-      try {
-        if (logMINOR) Logger.minor(this, "Sending packet " + blockNo);
-        Message msg = DMT.createFNPBulkPacketSend(uid, blockNo, buf, realTime);
-        UnsentPacketTag tag = new UnsentPacketTag();
-        peer.sendAsync(msg, tag, ctr);
-        synchronized (this) {
-          while (inFlightPackets >= max && !failedPacket)
-            try {
-              wait(1000);
-            } catch (InterruptedException e) {
-              // Ignore
-            }
+      if (failedPacket) {
+        cancel("Packet send failed");
+        return Outcome.FAILED;
+      }
+      if (inFlightPackets == 0) return null; // Fully drained, proceed to ACK the wait path.
+      // A new block is now available; give control back to the outer loop to enqueue it
+      // (congestion control still enforced in waitWhileCongested()).
+      return Outcome.CONTINUE;
+    }
+  }
+
+  @SuppressWarnings("java:S2142")
+  private Outcome waitForAckOrAbort(long lastSentPacket) {
+    // When there are no packets in flight, we may be waiting for the final
+    // FNPBulkReceivedAll. However, new blocks can become available at any time
+    // (blockReceived()), so we must also wake and return to the outer loop
+    // immediately to queue them instead of stalling for up to 60 seconds.
+    synchronized (this) {
+      long deadline = System.currentTimeMillis() + SECONDS.toMillis(60);
+      while (!failedPacket
+          && !finished
+          && !cancelled
+          && !prb.isAborted()
+          && inFlightPackets == 0
+          && blocksNotSentButPresent.firstOne() < 0) { // break early when a new block appears
+        long remaining = deadline - System.currentTimeMillis();
+        if (remaining <= 0) break;
+        try {
+          wait(remaining);
+        } catch (InterruptedException _) {
+          // Ignore and loop; we restore the interrupt in send() finally.
+          interruptedDuringWait = true;
         }
-        synchronized (this) {
-          blocksNotSentButPresent.setBit(blockNo, false);
+      }
+      // If we observed completion/cancellation while waiting, return immediately so the outer
+      // loop can see FINISHED/CANCELLED without stalling for the full deadline.
+      // Also return promptly if the local PRB aborted while we were waiting; the outer loop
+      // checks prb.isAborted() at the start of the iteration and will fail fast.
+      if (finished || cancelled || prb.isAborted()) return Outcome.CONTINUE;
+    }
+    long end = System.currentTimeMillis();
+    if (end - lastSentPacket > TIMEOUT) {
+      LOG.error("Send timed out on {}", this);
+      cancel("Timeout awaiting BulkReceivedAll");
+      return Outcome.FAILED;
+    }
+    return Outcome.CONTINUE;
+  }
+
+  private long sendPacket(int blockNo, int max) throws DisconnectedException {
+    // Send a packet
+    byte[] buf = prb.getBlockData(blockNo);
+    if (buf == null) {
+      if (LOG.isDebugEnabled())
+        LOG.debug("Block {} is null, presumably the send is cancelled: {}", blockNo, this);
+      // Already canceled, quit
+      return -1L;
+    }
+
+    // Congestion control and bandwidth limiting
+    try {
+      if (LOG.isDebugEnabled()) LOG.debug("Sending packet {}", blockNo);
+      Message msg = DMT.createFNPBulkPacketSend(uid, blockNo, buf);
+      UnsentPacketTag tag = new UnsentPacketTag();
+      peer.transport().sendAsync(msg, tag, ctr);
+      waitWhileCongested(max);
+      synchronized (this) {
+        blocksNotSentButPresent.setBit(blockNo, false);
+      }
+      return System.currentTimeMillis();
+    } catch (NotConnectedException _) {
+      cancel("Disconnected");
+      if (LOG.isDebugEnabled()) LOG.debug("Cancelled: not connected {}", this);
+      throw new DisconnectedException();
+    }
+  }
+
+  @SuppressWarnings("java:S2142")
+  private void waitWhileCongested(int max) {
+    synchronized (this) {
+      while (inFlightPackets >= max && !failedPacket) {
+        try {
+          wait(1000);
+        } catch (InterruptedException _) {
+          // Ignore and continue waiting; keep honoring congestion/throttle semantics.
+          // We restore the interrupt when send() returns to avoid spinning here.
+          interruptedDuringWait = true;
         }
-        lastSentPacket = System.currentTimeMillis();
-      } catch (NotConnectedException e) {
-        cancel("Disconnected");
-        if (logMINOR) Logger.minor(this, "Cancelled: not connected " + this);
-        throw new DisconnectedException();
       }
     }
   }
@@ -413,12 +599,13 @@ public class BulkTransmitter {
       synchronized (this) {
         allQueued = true;
         if (unsentPackets == 0 && !calledAllSent) {
-          if (logMINOR) Logger.minor(this, "Calling all sent callback on " + this);
+          if (LOG.isDebugEnabled())
+            LOG.debug("All packets queued; invoking all-sent callback for {}", this);
           callAllSent = true;
           calledAllSent = true;
           anyFailed = failedPacket;
-        } else if (!calledAllSent) {
-          if (logMINOR) Logger.minor(this, "Still waiting for " + unsentPackets);
+        } else if (!calledAllSent && LOG.isDebugEnabled()) {
+          LOG.debug("Still waiting for {}", unsentPackets);
         }
       }
       if (callAllSent) {
@@ -479,14 +666,13 @@ public class BulkTransmitter {
         if (failed) {
           failedPacket = true;
           BulkTransmitter.this.notifyAll();
-          if (logMINOR) Logger.minor(this, "Packet failed for " + BulkTransmitter.this);
+          if (LOG.isDebugEnabled()) LOG.debug("Packet failed for {}", BulkTransmitter.this);
         } else {
           inFlightPackets--;
           BulkTransmitter.this.notifyAll();
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "Packet sent " + BulkTransmitter.this + " remaining in flight: " + inFlightPackets);
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "Packet sent {} remaining in flight: {}", BulkTransmitter.this, inFlightPackets);
         }
       }
       sent(true);
@@ -524,20 +710,30 @@ public class BulkTransmitter {
         calledAllSent = true;
         anyFailed = failedPacket;
       }
-      if (logMINOR) Logger.minor(this, "Calling all sent callback on " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("All packets sent; invoking all-sent callback for {}", this);
       callAllSentCallbackInner(anyFailed);
     }
   }
 
+  /** Returns a short, human-readable identifier containing the UID and peer. */
   @Override
   public String toString() {
     return "BulkTransmitter:" + uid + ":" + peer.shortToString();
   }
 
+  /** Returns the cancellation reason, or {@code null} if not canceled. */
   public String getCancelReason() {
     return cancelReason;
   }
 
+  /**
+   * Returns aggregate counters for completed and successful transfers.
+   *
+   * <p>Index {@code 0} = total completed, index {@code 1} = total succeeded.
+   *
+   * @return a two-element array {@code [completed, succeeded]}
+   */
   public static synchronized long[] transferSuccess() {
     return new long[] {transfersCompleted, transfersSucceeded};
   }
