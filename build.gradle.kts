@@ -14,8 +14,27 @@ plugins {
 // Update version manually before a new release development starts
 version = "2"
 
+val internalLeafProjects =
+  listOf(
+    project(":foundation-fs"),
+    project(":foundation-compat"),
+    project(":thirdparty-onion"),
+    project(":thirdparty-legacy"),
+    project(":launcher-desktop"),
+  )
+
+val internalLeafMainJavaSourceDirs =
+  internalLeafProjects.map { leaf -> leaf.layout.projectDirectory.dir("src/main/java") }
+
+val internalLeafMainClassDirs =
+  internalLeafProjects.map { leaf -> leaf.layout.buildDirectory.dir("classes/java/main") }
+
 dependencies {
   // implementation
+  implementation(project(":foundation-fs"))
+  implementation(project(":foundation-compat"))
+  implementation(project(":thirdparty-onion"))
+  implementation(project(":thirdparty-legacy"))
   implementation(libs.bcprov)
   implementation(libs.bcpkix)
   implementation(libs.jna)
@@ -44,12 +63,14 @@ dependencies {
   compileOnly(libs.jetbrainsAnnotations)
 
   // runtimeOnly
+  runtimeOnly(project(":launcher-desktop"))
   runtimeOnly(libs.dbusTransportNativeUnix)
   runtimeOnly(files("libs/db4o-7.4.58.jar"))
   // SLF4J binding (Logback) for the new Slf4jLoggerHook
   runtimeOnly(libs.logbackClassic)
 
   // testImplementation
+  testImplementation(project(":launcher-desktop"))
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
@@ -65,6 +86,80 @@ dependencies {
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
+}
+
+val internalLeafJarNames =
+  providers.provider {
+    internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
+  }
+
+tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
+  dependsOn(internalLeafProjects.map { "${it.path}:classes" })
+  internalLeafProjects.forEach { leaf ->
+    from(
+      leaf.extensions
+        .getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
+        .named("main")
+        .map { it.output }
+    )
+  }
+}
+
+tasks.named<Copy>("prepareWrapperLibs") {
+  exclude { details -> details.file.name in internalLeafJarNames.get() }
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+  dependsOn(internalLeafProjects.map { "${it.path}:classes" })
+  classDirectories.setFrom(
+    files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
+  )
+  sourceDirectories.setFrom(
+    files(sourceSets.main.get().java.srcDirs, internalLeafMainJavaSourceDirs)
+  )
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+  dependsOn(internalLeafProjects.map { "${it.path}:classes" })
+  classDirectories.setFrom(
+    files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
+  )
+  sourceDirectories.setFrom(
+    files(sourceSets.main.get().java.srcDirs, internalLeafMainJavaSourceDirs)
+  )
+}
+
+sonar {
+  properties {
+    property(
+      "sonar.sources",
+      providers.provider {
+        (sourceSets.main.get().java.srcDirs + internalLeafMainJavaSourceDirs.map { it.asFile })
+          .distinct()
+          .joinToString(",") { relativePath(it) }
+      },
+    )
+    property(
+      "sonar.java.binaries",
+      providers.provider {
+        (sourceSets.main.get().output.classesDirs.files +
+            internalLeafMainClassDirs.map { it.get().asFile })
+          .distinct()
+          .joinToString(",") { it.absolutePath }
+      },
+    )
+    property(
+      "sonar.java.libraries",
+      providers.provider {
+        sourceSets.main
+          .get()
+          .compileClasspath
+          .files
+          .filter { it.isFile }
+          .joinToString(",") { it.absolutePath }
+      },
+    )
+  }
 }
 
 // Utility task to print the project version

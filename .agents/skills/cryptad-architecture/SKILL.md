@@ -13,6 +13,24 @@ Use this skill when you need to:
 - Understand request routing, updates, plugins, or storage.
 - Make changes that could affect wire compatibility or on-disk formats.
 
+## Build/module layout (PR-1)
+- Cryptad now uses a partial multi-project Gradle build.
+- The root project `:cryptad` remains the daemon/application project.
+- The root project still owns `buildJar`, `run`, `runLauncher`, distribution/jpackage tasks, the
+  strongly coupled core packages, and all tests.
+- Leaf subprojects:
+  - `:foundation-fs` → `network.crypta.fs`
+  - `:foundation-compat` → `network.crypta.compat`
+  - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
+  - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
+  - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
+    resources
+- The large cyclic daemon core still lives in the root project:
+  `network.crypta.node`, `network.crypta.io`, `network.crypta.client`,
+  `network.crypta.clients`, `network.crypta.support`, `network.crypta.config`,
+  `network.crypta.l10n`, `network.crypta.crypt`, `network.crypta.keys`,
+  `network.crypta.store`, and `network.crypta.tools`.
+
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
 - Node coordination: `Node.java`
@@ -52,6 +70,19 @@ Use this skill when you need to:
 
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers
+
+### Launcher/Desktop leaf module (`:launcher-desktop`)
+- Swing launcher: `network.crypta.launcher`
+- Desktop theme detection: `com.jthemedetecor`
+- Vendored OSHI annotations and launcher resources
+
+### Foundation leaf modules
+- `:foundation-fs`: `network.crypta.fs`
+- `:foundation-compat`: `network.crypta.compat`
+
+### Vendored library leaf modules
+- `:thirdparty-onion`: `com.onionnetworks`
+- `:thirdparty-legacy`: `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
 
 ### UID trace logging
 - UID lifecycle tracing logs routing/timeout/finish events to `crypta-uidtrace-latest.log` to debug

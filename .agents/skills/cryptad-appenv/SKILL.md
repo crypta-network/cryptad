@@ -18,6 +18,12 @@ Use this skill when you touch:
 Do not read `System.getProperty("os.name")`, `os.arch`, or parse PATH directly in new code.
 Use `network.crypta.fs.AppEnv` instead.
 
+## Source ownership
+- `AppEnv` and the rest of `network.crypta.fs` now live in the `:foundation-fs` subproject.
+- Canonical source path: `foundation-fs/src/main/java/network/crypta/fs/AppEnv.java`
+- The root project and other leaf projects depend on `:foundation-fs`; do not duplicate platform
+  detection in parallel helper classes.
+
 ## APIs provided (high-level)
 - OS:
   - `isWindows()`, `isMac()`, `isLinux()`

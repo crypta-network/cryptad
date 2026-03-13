@@ -23,5 +23,13 @@ dependencyResolutionManagement {
 
 rootProject.name = "cryptad"
 
+include(
+  ":foundation-fs",
+  ":foundation-compat",
+  ":thirdparty-onion",
+  ":thirdparty-legacy",
+  ":launcher-desktop",
+)
+
 // Gradle 9: Use an included build for convention plugins instead of buildSrc
 includeBuild("build-logic")
