@@ -1,4 +1,4 @@
-You are a refactoring agent working in a JVM codebase (Java/Kotlin). Your goal is to eliminate IntelliJ IDEA/Qodana inspection warnings for: “Non-distinguishable logging calls” (inspection ID: LoggingSimilarMessage).
+You are a refactoring agent working in a Java codebase. Your goal is to eliminate IntelliJ IDEA/Qodana inspection warnings for: “Non-distinguishable logging calls” (inspection ID: LoggingSimilarMessage).
 
 What the inspection means:
 Multiple SLF4J / Log4j2 logging statements within the same class have message templates that are too similar, making it hard to tell which call site emitted a given line.

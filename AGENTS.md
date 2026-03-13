@@ -1,7 +1,7 @@
 # Project Configuration
 
 ## Project Overview
-Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore. It is a fork of Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This repository contains the reference node implementation (the "Crypta reference daemon") written primarily in Java with some Kotlin components.
+Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore. It is a fork of Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This repository contains the reference node implementation (the "Crypta reference daemon").
 
 ## Skills: load on demand
 
@@ -26,7 +26,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-runtime-debugging** — Debug live or reproducible Cryptad JVM failures on Windows, macOS, and Linux using `jcmd`, `jdb`, thread dumps, and the default JDWP listener on `127.0.0.1:5005`.
 - **$cryptad-write-release-notes** — Draft or review GitHub release notes and changelog artifacts for Cryptad builds, including `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
 - **$cryptad-writing-guides** — Apply Cryptad prose conventions for README/docs content, release notes, migration notes, and other operator-facing writing.
-- **$cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
+- **$cryptad-style-docs** — Apply Cryptad Java style, file layout rules, and long-lived documentation/commenting practices.
 - **$codebase-retrieval** — Use semantic codebase retrieval to identify 1–5 target files before significant reading or edits when the file scope is unclear.
 - **$web-search** — Use both Exa and Tavily for external/current web research, then cross-check sources before answering.
 
@@ -41,8 +41,8 @@ Load only what you need. It’s normal to load multiple skills for one task.
 
 ## Always-on rules (keep these in mind)
 
-- **Languages:** Kotlin + Java.
-  - Kotlin sources must live under `src/*/kotlin` (including tests). Do not add Kotlin files under `src/*/java/`.
+- **Language:** Java.
+  - Java sources must live under `src/*/java/` (including tests).
 - **OpenCode LSP:** Treat LSP/typechecker diagnostics as blockers for touched files.
   - If the OpenCode `lsp` tool is enabled, prefer it for definition/reference/hover instead of guessing
 - **Repository discovery:** If the task does not provide exact paths/symbols, load `$codebase-retrieval` before making code changes.
