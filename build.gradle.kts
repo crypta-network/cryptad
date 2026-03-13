@@ -99,13 +99,7 @@ val aggregatedSonarBinaryPaths =
     .distinct()
     .joinToString(",") { it.absolutePath }
 
-val aggregatedSonarLibraryPaths =
-  sourceSets.main
-    .get()
-    .compileClasspath
-    .files
-    .filter { it.isFile }
-    .joinToString(",") { it.absolutePath }
+val aggregatedSonarLibraryFiles = sourceSets.main.get().compileClasspath.filter { it.isFile }
 
 val internalLeafJarNames =
   providers.provider {
@@ -156,7 +150,7 @@ sonar {
   properties {
     property("sonar.sources", aggregatedSonarSourcePaths)
     property("sonar.java.binaries", aggregatedSonarBinaryPaths)
-    property("sonar.java.libraries", aggregatedSonarLibraryPaths)
+    property("sonar.java.libraries", aggregatedSonarLibraryFiles)
   }
 }
 
