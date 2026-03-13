@@ -88,6 +88,25 @@ dependencies {
   testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
+val aggregatedSonarSourcePaths =
+  (sourceSets.main.get().java.srcDirs + internalLeafMainJavaSourceDirs.map { it.asFile })
+    .distinct()
+    .joinToString(",") { relativePath(it) }
+
+val aggregatedSonarBinaryPaths =
+  (sourceSets.main.get().output.classesDirs.files +
+      internalLeafMainClassDirs.map { it.get().asFile })
+    .distinct()
+    .joinToString(",") { it.absolutePath }
+
+val aggregatedSonarLibraryPaths =
+  sourceSets.main
+    .get()
+    .compileClasspath
+    .files
+    .filter { it.isFile }
+    .joinToString(",") { it.absolutePath }
+
 val internalLeafJarNames =
   providers.provider {
     internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
@@ -131,34 +150,9 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 
 sonar {
   properties {
-    property(
-      "sonar.sources",
-      providers.provider {
-        (sourceSets.main.get().java.srcDirs + internalLeafMainJavaSourceDirs.map { it.asFile })
-          .distinct()
-          .joinToString(",") { relativePath(it) }
-      },
-    )
-    property(
-      "sonar.java.binaries",
-      providers.provider {
-        (sourceSets.main.get().output.classesDirs.files +
-            internalLeafMainClassDirs.map { it.get().asFile })
-          .distinct()
-          .joinToString(",") { it.absolutePath }
-      },
-    )
-    property(
-      "sonar.java.libraries",
-      providers.provider {
-        sourceSets.main
-          .get()
-          .compileClasspath
-          .files
-          .filter { it.isFile }
-          .joinToString(",") { it.absolutePath }
-      },
-    )
+    property("sonar.sources", aggregatedSonarSourcePaths)
+    property("sonar.java.binaries", aggregatedSonarBinaryPaths)
+    property("sonar.java.libraries", aggregatedSonarLibraryPaths)
   }
 }
 
