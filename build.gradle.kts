@@ -12,7 +12,7 @@ plugins {
 }
 
 // Update version manually before a new release development starts
-version = "2"
+version = "3"
 
 val internalLeafProjects =
   listOf(
