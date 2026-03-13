@@ -20,8 +20,8 @@ This directory contains the Flatpak manifest and metadata used to build and test
 Quick build and run (requires `flatpak` and Freedesktop 24.08 runtime/SDK):
 
 ```bash
-./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle buildJar
-./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle distJlinkCryptad
+./gradlew buildJar
+./gradlew distJlinkCryptad
 mkdir -p tools/flatpak/local
 cp -f build/distributions/cryptad-jlink-v1.tar.gz tools/flatpak/local/
 rm -rf builddir repo .flatpak-builder

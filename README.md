@@ -10,7 +10,6 @@
     <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
   </a>
   <img alt="Java 25+" src="https://img.shields.io/badge/Java-25%2B-007396?logo=openjdk" />
-  <img alt="Kotlin 2.3.0+" src="https://img.shields.io/badge/Kotlin-2.3.0%2B-7F52FF?logo=kotlin" />
   <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
 </p>
 
@@ -41,7 +40,7 @@ on:
   latency.
 - Safe observability: privacy‑preserving telemetry and reproducible benchmarking harnesses to inform tuning without
   leaking user data.
-- A better platform: Kotlin‑first codebase, typed configuration, and testable interfaces to make extending the network
+- A better platform: typed configuration and testable interfaces to make extending the network
   straightforward.
 
 This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
@@ -148,7 +147,6 @@ wrapper, you can build immediately.
 Prerequisites:
 
 - Java 25 or newer
-- Kotlin 2.3.0+ (tooling; the project includes Kotlin Gradle plugins)
 - A POSIX shell or Windows terminal
 
 Build the node JAR (prints SHA‑256 of the output):
@@ -416,19 +414,16 @@ cd build/jpackage/Crypta.app/Contents
 
 ## Development Guidelines
 
-- Primary languages: Kotlin/Java
-  - New files should be written in Kotlin
-  - Prefer top‑level functions where idiomatic in Kotlin
+- Primary language: Java
 - Code style:
-  - Kotlin: https://kotlinlang.org/docs/coding-conventions.html
   - Java: https://google.github.io/styleguide/javaguide.html
-- Tests: JUnit and kotlin‑test; target 80%+ coverage
-- Documentation: Add/update JavaDoc/KDoc when editing Java/Kotlin files
+- Tests: JUnit; target 80%+ coverage
+- Documentation: Add or update Javadoc when editing Java files
 
 ## Dependencies
 
 - Runtime: Java 25+
-- Language/Tooling: Kotlin 2.3.0+, Gradle Wrapper (provided in this repo)
+- Tooling: Gradle Wrapper (provided in this repo)
 - External libraries are managed via Gradle.
 - Dependency verification is enabled. When adding or updating libraries:
   - Declare versions in `gradle/libs.versions.toml` and add usages in `build.gradle.kts`.
@@ -436,7 +431,7 @@ cd build/jpackage/Crypta.app/Contents
     artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Launcher adds:
-- `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` for Swing + coroutine integration.
+- additional Swing support libraries used by the launcher.
 
 ### Spotless + Dependency Verification
 
@@ -461,7 +456,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 ## Versioning
 
 - The build number is a single integer in `build.gradle.kts` (e.g., `version = "<int>"`).
-- During build, tokens are replaced into `network/crypta/node/Version.kt` (e.g., `@build_number@`, `@git_rev@`).
+- During build, tokens are replaced into the generated version source file (e.g., `@build_number@`, `@git_rev@`).
 - Version strings support both Cryptad and Fred formats for wire compatibility; protocol compatibility enforces minimum builds.
 
 ## Branching & Releases

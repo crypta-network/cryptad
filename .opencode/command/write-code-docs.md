@@ -7,7 +7,6 @@
 ## File Type & Scope
 
 - If `$1` ends with **`.java`**, apply **Javadoc** rules and run **doclint** (see loop below).
-- If `$1` ends with **`.kt`**, apply **KDoc** rules; **do not** run doclint.
 - Otherwise, **return unchanged**.
 
 **Edits allowed:** comments and log message strings only.  
@@ -135,15 +134,7 @@ When the file has many public/protected members (e.g., **> 30**):
 
 ---
 
-## KDoc Rules (Kotlin)
-
-- Markdown allowed; backticks for code.
-- Tags: `@param`, `@return`, `@throws`, `@receiver`, `@constructor`, `@property`, type params via `@param T`.
-- Same scope constraints as Java. No doclint.
-
----
-
-## Inline Comments (both languages)
+## Inline Comments
 
 - Prefer short `//` comments for non-obvious intent (invariants, edge cases, concurrency), ≤ 2 short lines, placed **above** the code.
 - Use `/* … */` for slightly longer local notes (not doc blocks).
@@ -168,7 +159,7 @@ When the file has many public/protected members (e.g., **> 30**):
 ## Preservation & Promotion
 
 - Preserve license headers, annotations, and any **valid** existing docs; improve wording and formatting where helpful.
-- Promote meaningful `//` explanations of **public/protected** behavior to proper Javadoc/KDoc when appropriate (without moving/duplicating placeholder markers).
+- Promote meaningful `//` explanations of **public/protected** behavior to proper Javadoc when appropriate (without moving/duplicating placeholder markers).
 - Keep private/internal docs concise.
 
 ---
