@@ -161,28 +161,42 @@ Clean build:
 ./gradlew clean buildJar
 ```
 
+### Project Layout
+
+Cryptad now uses a partial multi-project Gradle build.
+
+- The root project remains the daemon/application project. It still owns the daemon JAR, tests,
+  `run`, `runLauncher`, `assembleCryptadDist`, and jpackage task graph.
+- `:foundation-fs` owns `network.crypta.fs`.
+- `:foundation-compat` owns `network.crypta.compat`.
+- `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
+- `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
+- `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
+  resources.
+- The large cyclic daemon core remains in the root project for now, and all tests still live there.
+
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
 `distributionSha256Sum=<sha256>` for the chosen Gradle distribution.
 
 ## Testing
 
-- Run all tests in parallel:
+- Run all tests:
 
 ```bash
-./gradlew --parallel test
+./gradlew test
 ```
 
 - Run a specific test class:
 
 ```bash
-./gradlew --parallel test --tests *TestClassName
+./gradlew test --tests *TestClassName
 ```
 
 - Run a specific test method:
 
 ```bash
-./gradlew --parallel test --tests *TestClassName.methodName
+./gradlew test --tests *TestClassName.methodName
 ```
 
 ## Code Quality
@@ -236,15 +250,8 @@ The resulting tree at `build/cryptad-dist` contains:
 The launcher defers config path resolution to the runtime via `AppEnv` (no hard‑coded
 `cryptad.ini`), adapting to system services or per‑user environments.
 
-To override Gradle settings, create `gradle.properties` (see the
-[Gradle docs](https://docs.gradle.org/8.11/userguide/build_environment.html)) and add entries like:
-
-```properties
-org.gradle.parallel=true
-org.gradle.daemon=true
-org.gradle.jvmargs=-Xms256m -Xmx1024m
-org.gradle.configureondemand=true
-```
+Use the repo’s Gradle defaults for daemon, parallelism, and JVM settings. Avoid `--no-daemon`,
+`--parallel`, and ad-hoc CLI JVM tuning when running local builds.
 
 ### JLink Runtime Distribution
 
@@ -431,7 +438,11 @@ cd build/jpackage/Crypta.app/Contents
     artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Launcher adds:
-- additional Swing support libraries used by the launcher.
+- `:launcher-desktop`: Swing launcher code and desktop/theme detection dependencies.
+- `:thirdparty-onion`: Onion FEC and related vendored sources/resources.
+- `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
+- `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
+  leaf modules used by the root daemon.
 
 ### Spotless + Dependency Verification
 
@@ -473,6 +484,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 ## Architecture Overview
 
+- Build/module layout:
+  - Root project `:cryptad` remains the daemon/application build and still owns the strongly
+    coupled core packages, all tests, and packaging/runtime tasks.
+  - Leaf subprojects are `:foundation-fs`, `:foundation-compat`, `:thirdparty-onion`,
+    `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
 - Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
@@ -480,6 +496,12 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP (`network.crypta.clients.http`).
 - Config (`network.crypta.config`): type‑safe persisted configuration.
 - Support (`network.crypta.support`): logging, data structures, threading, helpers.
+- Launcher/Desktop: `:launcher-desktop` provides `network.crypta.launcher`,
+  `com.jthemedetecor`, launcher resources, and desktop-theme integration.
+- Extracted foundations: `:foundation-fs` provides `network.crypta.fs`,
+  `:foundation-compat` provides `network.crypta.compat`.
+- Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
+  `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 
 You generally do not need to install libraries manually; Gradle resolves them.
 

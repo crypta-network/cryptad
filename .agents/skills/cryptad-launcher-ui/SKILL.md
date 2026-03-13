@@ -15,6 +15,15 @@ Use this skill when working on:
 - Theme (FlatLaf) or Flatpak theme detection
 - Windows launcher scripts and wrapper binaries
 
+## Source ownership
+- Launcher sources now live in the `:launcher-desktop` subproject.
+- Main source roots:
+  - `launcher-desktop/src/main/java/network/crypta/launcher`
+  - `launcher-desktop/src/main/java/com/jthemedetecor`
+  - `launcher-desktop/src/main/java/oshi`
+  - `launcher-desktop/src/main/resources/network/crypta/launcher`
+- The root project still owns `runLauncher`, distribution assembly, and jpackage packaging tasks.
+
 ## Swing launcher overview
 - Package: `network.crypta.launcher`
 - Entry point: `Launcher.main()`
@@ -86,8 +95,8 @@ If `script` exists, the launcher may wrap the process to reduce buffering.
 - Decide dark/light based on OS theme **before** any Swing components are created (EDT).
 - Flatpak:
   - OS theme detection reads the XDG Desktop Portal setting `org.freedesktop.appearance/color-scheme` via dbus-java.
-  - Portal detector: `src/main/java/com/jthemedetecor/PortalThemeDetector.java`
-  - Factory: `src/main/java/network/crypta/launcher/FlatpakAwareOsThemeDetector.java` prefers the portal and falls back to upstream detector when unavailable.
+  - Portal detector: `launcher-desktop/src/main/java/com/jthemedetecor/PortalThemeDetector.java`
+  - Factory: `launcher-desktop/src/main/java/network/crypta/launcher/FlatpakAwareOsThemeDetector.java` prefers the portal and falls back to upstream detector when unavailable.
 - Ordering matters:
   - Register the browser theme change listener (`matchMedia('(prefers-color-scheme: dark)')`) before creating UI controls.
 

@@ -16,6 +16,14 @@ Use this skill when working on:
 - Flatpak build and packaging files
 - Windows wrapper asset sourcing/pinning
 
+## Ownership in the partial multi-project build
+- Packaging remains root-owned.
+- The root project `:cryptad` still owns `buildJar`, `assembleCryptadDist`, `dist*`, `run`,
+  `runLauncher`, and jpackage tasks.
+- Extracted leaf modules contribute jars and resources through the root runtime classpath.
+- Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
+  artifact and distribution layout from the root build.
+
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.
   - Non-Windows wrapper files come from the upstream Tanuki delta pack.

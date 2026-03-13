@@ -15,6 +15,14 @@ Use this skill when you need to:
 - Validate that your local build can be deployed to a running node.
 - Diagnose Gradle/Java toolchain issues (Java 25+).
 
+## Build layout
+- Cryptad now uses a partial multi-project Gradle build.
+- Use root-project tasks by default; the root project remains the daemon/application target.
+- The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
+  `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
+- All tests remain in the root project for now and compile against the leaf subprojects through the
+  root build.
+
 ## Guardrails (must follow)
 - Always use the Gradle wrapper: `./gradlew …`
 - Do **not** use `--no-daemon`.
@@ -42,6 +50,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## Compile-only / quick checks
 - Compile only:
   - `./gradlew compileJava`
+- Compile the root project and its unchanged test tree against the leaf-module layout:
+  - `./gradlew compileJava compileTestJava`
 
 ## Run tasks
 - Run daemon entrypoint (`NodeStarter`):
