@@ -112,6 +112,10 @@ val internalLeafJarNames =
     internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
   }
 
+internalLeafProjects.forEach { leaf ->
+  leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
+}
+
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->

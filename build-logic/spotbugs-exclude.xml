@@ -127,6 +127,17 @@
   </Match>
 
   <!--
+    The portal-backed theme detector intentionally opens DBus resources during construction and
+    fails fast when that initialization cannot be completed. This implementation has no finalizer
+    and is not used as an inheritance hook, so SpotBugs' generic constructor-throws warning is not
+    actionable here.
+  -->
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="network.crypta.launcher.PortalThemeDetectorImpl"/>
+  </Match>
+
+  <!--
     Batch 1 EI_EXPOSE_REP triage:
     These records/classes intentionally transport live runtime collaborators (executors, contexts,
     callbacks, services, endpoint owners). Defensive copying is either impossible or would break
