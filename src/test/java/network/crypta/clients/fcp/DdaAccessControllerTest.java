@@ -5,7 +5,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
-import network.crypta.node.Node;
+import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.FileUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,9 +32,8 @@ class DdaAccessControllerTest {
 
   @Mock private FCPServer server;
   @Mock private Logger log;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RandomnessPort randomnessPort;
 
   @TempDir private Path tempDir;
 
@@ -52,8 +52,9 @@ class DdaAccessControllerTest {
   }
 
   private void stubRandomAccess() {
-    when(server.getNode()).thenReturn(node);
-    when(node.bootstrap().fastWeakRandom()).thenReturn(random);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    when(randomnessPort.fastWeakRandom()).thenReturn(random);
   }
 
   @Test

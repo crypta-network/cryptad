@@ -7,6 +7,7 @@ import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 
 /**
@@ -42,7 +43,7 @@ public final class ClientEndpoints {
   private UserAlert startingUpAlert;
 
   /**
-   * Result wrapper for {@link #create(Node, NodeClientCore, NodeClientCoreInit,
+   * Result wrapper for {@link #create(Node, NodeClientCore, RuntimePorts, NodeClientCoreInit,
    * NodeClientPersistence, ClientContext)}.
    *
    * <p>The returned direct TMCI is created but not started. Callers must publish it via {@link
@@ -299,12 +300,13 @@ public final class ClientEndpoints {
    *
    * <pre>{@code
    * ClientEndpoints.InitResult initResult =
-   *     ClientEndpoints.create(node, core, init, persistence, clientContext);
+   *     ClientEndpoints.create(node, core, runtimePorts, init, persistence, clientContext);
    * initResult.endpoints().maybeStart();
    * }</pre>
    *
    * @param node node instance used for endpoint creation and configuration.
    * @param core client core used by endpoint factories and alert registration.
+   * @param runtimePorts runtime SPI bridge passed to the FCP infrastructure.
    * @param init initializer providing configuration and toadlet container access.
    * @param persistence persistence layer responsible for creating the FCP server.
    * @param clientContext client context updated with the FCP download cache.
@@ -314,13 +316,14 @@ public final class ClientEndpoints {
   public static InitResult create(
       Node node,
       NodeClientCore core,
+      RuntimePorts runtimePorts,
       NodeClientCoreInit init,
       NodeClientPersistence persistence,
       ClientContext clientContext) {
     TextModeClientInterfaceServer.InitResult tmciInit =
         TextModeClientInterfaceServer.maybeCreate(node, core, init.config());
     TextModeClientInterfaceServer tmci = tmciInit.server();
-    FCPServer fcpServer = persistence.createFcpServer(node, core);
+    FCPServer fcpServer = persistence.createFcpServer(node, core, runtimePorts);
     clientContext.setDownloadCache(fcpServer);
     if (!core.killedDatabase()) {
       fcpServer.load();

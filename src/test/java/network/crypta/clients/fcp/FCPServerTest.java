@@ -6,6 +6,7 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,7 @@ class FCPServerTest {
   private Node node;
 
   @Mock private NodeClientCore core;
+  @Mock private RuntimePorts runtimePorts;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     FcpServerConfig config =
@@ -39,7 +41,7 @@ class FCPServerTest {
             false,
             10);
     return new FCPServer(
-        config, new FcpServerDependencies(node, core, new PersistentRequestRoot()));
+        config, new FcpServerDependencies(node, core, runtimePorts, new PersistentRequestRoot()));
   }
 
   @Test
@@ -104,7 +106,8 @@ class FCPServerTest {
             false,
             false,
             10);
-    FCPServer server = new FCPServer(config, new FcpServerDependencies(node, core, root));
+    FCPServer server =
+        new FCPServer(config, new FcpServerDependencies(node, core, runtimePorts, root));
     PersistentRequestClient forever = root.registerForeverClient("forever", null);
 
     // Act
@@ -132,6 +135,13 @@ class FCPServerTest {
     // Act & Assert
     assertFalse(server.isDownloadDDAAlwaysAllowed());
     assertTrue(server.isUploadDDAAlwaysAllowed());
+  }
+
+  @Test
+  void runtime_whenQueried_returnsConfiguredPorts() {
+    FCPServer server = newServer(false, false);
+
+    assertSame(runtimePorts, server.runtime());
   }
 
   @Test

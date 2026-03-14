@@ -6,9 +6,8 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.stream.IntStream;
-import network.crypta.node.Node;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.runtime.spi.ExecutionPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,11 +35,6 @@ class FCPConnectionOutputHandlerTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private PriorityAwareExecutor executor;
   @Mock private Socket socket;
   @Mock private OutputStream outputStream;
   @Mock private SocketAddress socketAddress;
@@ -54,19 +48,19 @@ class FCPConnectionOutputHandlerTest {
 
   @Test
   void start_whenSocketPresent_submitsRunnableWithLabel() {
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    ExecutionPort executionPort = mock(ExecutionPort.class);
     when(handler.getSocket()).thenReturn(socket);
     when(socket.getRemoteSocketAddress()).thenReturn(socketAddress);
     when(socketAddress.toString()).thenReturn("remote");
     when(socket.getPort()).thenReturn(9481);
     when(handler.getServer()).thenReturn(server);
-    when(server.getNode()).thenReturn(node);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.executor()).thenReturn(executor);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.execution()).thenReturn(executionPort);
 
     outputHandler.start();
 
-    verify(executor).execute(outputHandler, "FCP output handler for remote:9481");
+    verify(executionPort).execute(outputHandler, "FCP output handler for remote:9481");
   }
 
   @Test
@@ -75,7 +69,7 @@ class FCPConnectionOutputHandlerTest {
 
     outputHandler.start();
 
-    verifyNoInteractions(executor);
+    verifyNoInteractions(server);
   }
 
   @Test

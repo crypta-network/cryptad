@@ -7,6 +7,7 @@ import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +38,7 @@ class ClientEndpointsTest {
   @Mock private NodeClientCore core;
   @Mock private NodeClientPersistence persistence;
   @Mock private ClientContext clientContext;
+  @Mock private RuntimePorts runtimePorts;
 
   @Test
   void constructor_whenProvidedDependencies_returnsSameInstances() {
@@ -166,7 +168,7 @@ class ClientEndpointsTest {
     SimpleToadletServer toadlets = Mockito.mock(SimpleToadletServer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
-    Mockito.when(persistence.createFcpServer(node, core)).thenReturn(fcpServer);
+    Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);
     Mockito.when(core.killedDatabase()).thenReturn(false);
 
     try (MockedStatic<TextModeClientInterfaceServer> tmciMock =
@@ -176,7 +178,7 @@ class ClientEndpointsTest {
           .thenReturn(new TextModeClientInterfaceServer.InitResult(tmci, null));
 
       ClientEndpoints.InitResult initResult =
-          ClientEndpoints.create(node, core, init, persistence, clientContext);
+          ClientEndpoints.create(node, core, runtimePorts, init, persistence, clientContext);
       ClientEndpoints endpoints = initResult.endpoints();
 
       assertSame(fcpServer, endpoints.getFCPServer());
@@ -185,7 +187,7 @@ class ClientEndpointsTest {
       tmciMock.verify(() -> TextModeClientInterfaceServer.maybeCreate(node, core, config));
     }
 
-    Mockito.verify(persistence).createFcpServer(node, core);
+    Mockito.verify(persistence).createFcpServer(node, core, runtimePorts);
     Mockito.verify(clientContext).setDownloadCache(fcpServer);
     Mockito.verify(fcpServer).load();
   }
@@ -196,7 +198,7 @@ class ClientEndpointsTest {
     SimpleToadletServer toadlets = Mockito.mock(SimpleToadletServer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
-    Mockito.when(persistence.createFcpServer(node, core)).thenReturn(fcpServer);
+    Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);
     Mockito.when(core.killedDatabase()).thenReturn(true);
 
     try (MockedStatic<TextModeClientInterfaceServer> tmciMock =
@@ -206,7 +208,7 @@ class ClientEndpointsTest {
           .thenReturn(new TextModeClientInterfaceServer.InitResult(tmci, null));
 
       ClientEndpoints.InitResult initResult =
-          ClientEndpoints.create(node, core, init, persistence, clientContext);
+          ClientEndpoints.create(node, core, runtimePorts, init, persistence, clientContext);
       ClientEndpoints endpoints = initResult.endpoints();
 
       assertSame(fcpServer, endpoints.getFCPServer());

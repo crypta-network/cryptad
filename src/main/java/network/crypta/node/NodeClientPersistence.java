@@ -14,6 +14,7 @@ import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.DiskSpaceCheckingRandomAccessBufferFactory;
@@ -253,16 +254,17 @@ public final class NodeClientPersistence {
    * Creates the FCP server configured for this node and client core.
    *
    * <p>The server is constructed via {@link FCPServer#maybeCreate(Node, NodeClientCore,
-   * network.crypta.config.Config, PersistentRequestRoot)} and shares this instance's persistent
-   * request root so durable requests can be managed consistently across reconnections. This method
-   * performs no side effects beyond the delegation.
+   * RuntimePorts, network.crypta.config.Config, PersistentRequestRoot)} and shares this instance's
+   * persistent request root so durable requests can be managed consistently across reconnections.
+   * This method performs no side effects beyond the delegation.
    *
    * @param node node instance supplying configuration and shared services.
    * @param core client core used by the FCP server for callbacks.
+   * @param runtimePorts runtime SPI bridge passed to the FCP infrastructure.
    * @return the configured FCP server instance from {@code maybeCreate}.
    */
-  public FCPServer createFcpServer(Node node, NodeClientCore core) {
-    return FCPServer.maybeCreate(node, core, node.getConfig(), persistentRoot);
+  public FCPServer createFcpServer(Node node, NodeClientCore core, RuntimePorts runtimePorts) {
+    return FCPServer.maybeCreate(node, core, runtimePorts, node.getConfig(), persistentRoot);
   }
 
   /**

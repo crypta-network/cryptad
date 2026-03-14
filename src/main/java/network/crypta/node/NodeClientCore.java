@@ -18,7 +18,9 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.runtime.LegacyRuntimePorts;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Base64;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.SimpleFieldSet;
@@ -131,6 +133,9 @@ public final class NodeClientCore implements Persistable {
 
   /** Client-facing endpoints (TMCI, FCP, and FProxy wiring). */
   private final ClientEndpoints endpoints;
+
+  /** Runtime SPI bridge used by infrastructure layers that must avoid daemon-internal types. */
+  private final RuntimePorts runtimePorts;
 
   /**
    * Compressor used for network transfers and stored blocks.
@@ -373,6 +378,7 @@ public final class NodeClientCore implements Persistable {
     sortOrder = transferPolicy.registerDownloadAllowedDirs(init, sortOrder);
 
     sortOrder = transferPolicy.registerUploadAllowedDirs(init, sortOrder);
+    runtimePorts = new LegacyRuntimePorts(node, this);
 
     LOG.info("Initializing USK Manager");
     uskManager.init(getClientContext());
@@ -384,7 +390,7 @@ public final class NodeClientCore implements Persistable {
 
     // TMCI and FCP (including persistent requests so needs to start before FProxy)
     ClientEndpoints.InitResult endpointsInit =
-        ClientEndpoints.create(node, this, init, persistence, clientContext);
+        ClientEndpoints.create(node, this, runtimePorts, init, persistence, clientContext);
     endpoints = endpointsInit.endpoints();
     TextModeClientInterface directTMCI = endpointsInit.directTMCI();
     if (directTMCI != null) {
@@ -1134,6 +1140,20 @@ public final class NodeClientCore implements Persistable {
    */
   public ClientEndpoints getEndpoints() {
     return endpoints;
+  }
+
+  /**
+   * Returns the runtime SPI bridge for infrastructure code that should not depend on daemon
+   * internals.
+   *
+   * <p>The returned {@link RuntimePorts} instance delegates back into the current node and client
+   * core without adding new business logic. It is created during construction and shared for the
+   * lifetime of the core.
+   *
+   * @return runtime SPI bridge backed by this node and client core.
+   */
+  public RuntimePorts getRuntimePorts() {
+    return runtimePorts;
   }
 
   /**

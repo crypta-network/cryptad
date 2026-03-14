@@ -15,7 +15,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.runtime.spi.ExecutionPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.LineReadingInputStream;
@@ -67,22 +68,22 @@ class FCPConnectionInputHandlerTest {
   void start_whenSocketPresent_submitsRunnableWithRemoteAddress() {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     FCPServer server = mock(FCPServer.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    ExecutionPort executionPort = mock(ExecutionPort.class);
     Socket socket = mock(Socket.class);
     InetSocketAddress address = new InetSocketAddress(InetAddress.getLoopbackAddress(), 9481);
 
     when(handler.getSocket()).thenReturn(socket);
     when(socket.getRemoteSocketAddress()).thenReturn(address);
     when(handler.getServer()).thenReturn(server);
-    when(server.getNode()).thenReturn(node);
-    when(node.network().executor()).thenReturn(executor);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.execution()).thenReturn(executionPort);
 
     FCPConnectionInputHandler inputHandler = new FCPConnectionInputHandler(handler);
 
     inputHandler.start();
 
-    verify(executor).execute(eq(inputHandler), contains(address.toString()));
+    verify(executionPort).execute(eq(inputHandler), contains(address.toString()));
   }
 
   @Test

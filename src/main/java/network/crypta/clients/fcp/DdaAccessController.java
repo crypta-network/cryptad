@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.Random;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 
@@ -155,12 +156,8 @@ final class DdaAccessController {
       throw new IllegalArgumentException("There is already a TestDDA going on for that directory!");
     }
 
-    File writeFile =
-        write
-            ? new File(
-                path,
-                "DDACheck-" + server.getNode().bootstrap().fastWeakRandom().nextInt() + ".tmp")
-            : null;
+    Random fastWeakRandom = server.runtime().randomness().fastWeakRandom();
+    File writeFile = write ? new File(path, "DDACheck-" + fastWeakRandom.nextInt() + ".tmp") : null;
     File readFile = null;
     if (read) {
       try {
@@ -171,9 +168,7 @@ final class DdaAccessController {
       }
     }
 
-    DdaCheckJob job =
-        new DdaCheckJob(
-            server.getNode().bootstrap().fastWeakRandom(), directory, readFile, writeFile);
+    DdaCheckJob job = new DdaCheckJob(fastWeakRandom, directory, readFile, writeFile);
 
     if (readFile != null) {
       try (FileOutputStream fos = new FileOutputStream(readFile);

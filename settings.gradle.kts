@@ -26,6 +26,7 @@ rootProject.name = "cryptad"
 include(
   ":foundation-fs",
   ":foundation-compat",
+  ":runtime-spi",
   ":thirdparty-onion",
   ":thirdparty-legacy",
   ":launcher-desktop",

@@ -12,6 +12,7 @@ import network.crypta.io.AllowedHosts;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.Bucket;
 
 /**
@@ -54,6 +55,8 @@ public class FCPServer implements Runnable, DownloadCache {
 
   /* It’s not the field that is deprecated, but accessing it directly is. */
   private final Node node;
+
+  private final RuntimePorts runtime;
 
   final int port;
 
@@ -108,6 +111,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.enabled = config.enabled();
     this.node = dependencies.node();
     this.core = dependencies.core();
+    this.runtime = dependencies.runtimePorts();
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
@@ -132,6 +136,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * @param port TCP port number for the FCP listener, in the host byte order.
    * @param node owning {@link Node} providing executors and lifecycle hooks.
    * @param core node client core exposing persistence, download directories, and cache factories.
+   * @param runtime runtime SPI bridge for infrastructure code that avoids daemon internals.
    * @param isEnabled whether networked FCP should start.
    * @param assumeDDADownloadAllowed flag to treat download DDA as preapproved globally.
    * @param assumeDDAUploadAllowed flag to treat upload DDA as preapproved globally.
@@ -147,6 +152,7 @@ public class FCPServer implements Runnable, DownloadCache {
       int port,
       Node node,
       NodeClientCore core,
+      RuntimePorts runtime,
       boolean isEnabled,
       boolean assumeDDADownloadAllowed,
       boolean assumeDDAUploadAllowed,
@@ -164,7 +170,7 @@ public class FCPServer implements Runnable, DownloadCache {
             assumeDDAUploadAllowed,
             neverDropAMessage,
             maxMessageQueueLength),
-        new FcpServerDependencies(node, core, persistentRoot));
+        new FcpServerDependencies(node, core, runtime, persistentRoot));
   }
 
   /**
@@ -216,13 +222,18 @@ public class FCPServer implements Runnable, DownloadCache {
    *
    * @param node the owning node providing executors and core services for the server.
    * @param core client core used for persistence and endpoint access.
+   * @param runtime runtime SPI bridge used by infrastructure code inside the server.
    * @param config configuration registry where the {@code fcp} subsection is registered.
    * @param root persistence root used to back global request queues.
    * @return configured server instance ready to be started by the caller.
    */
   public static FCPServer maybeCreate(
-      Node node, NodeClientCore core, Config config, PersistentRequestRoot root) {
-    return FcpServerConfigRegistrar.maybeCreate(node, core, config, root);
+      Node node,
+      NodeClientCore core,
+      RuntimePorts runtime,
+      Config config,
+      PersistentRequestRoot root) {
+    return FcpServerConfigRegistrar.maybeCreate(node, core, runtime, config, root);
   }
 
   /**
@@ -730,6 +741,19 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public NodeClientCore getCore() {
     return core;
+  }
+
+  /**
+   * Returns the runtime SPI bridge used by FCP infrastructure code.
+   *
+   * <p>The returned {@link RuntimePorts} instance is the same adapter supplied during server
+   * construction. It exposes execution, randomness, transfer policy, and lifecycle metadata without
+   * forcing infrastructure classes to depend directly on daemon-internal types.
+   *
+   * @return runtime SPI bridge backing this server instance.
+   */
+  public RuntimePorts runtime() {
+    return runtime;
   }
 
   /**

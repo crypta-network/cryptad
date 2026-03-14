@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.file.Path;
+import java.util.Arrays;
 import network.crypta.client.FetchContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
@@ -12,9 +13,10 @@ import network.crypta.clients.fcp.ClientGet.GlobalRequestConfig;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
+import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
@@ -22,7 +24,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,9 +47,6 @@ class ClientGetFactoryTest {
   @Mock private ClientContext clientContext;
   @Mock private FetchContext fetchContext;
   @Mock private ClientEventProducer eventProducer;
-
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void fromGlobal_whenIdentifierAlreadyRegistered_throwsIdentifierCollisionException()
@@ -255,7 +254,18 @@ class ClientGetFactoryTest {
   private FCPConnectionHandler newConnectionHandler() {
     FCPServer server = mock(FCPServer.class);
     Socket socket = mock(Socket.class);
-    when(server.getNode()).thenReturn(node);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    doAnswer(
+            invocation -> {
+              byte[] target = invocation.getArgument(0);
+              Arrays.fill(target, (byte) 1);
+              return null;
+            })
+        .when(randomnessPort)
+        .fillSecureRandom(any(byte[].class));
     return new FCPConnectionHandler(socket, server);
   }
 

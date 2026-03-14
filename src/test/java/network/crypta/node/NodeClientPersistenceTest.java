@@ -20,6 +20,7 @@ import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
@@ -473,6 +474,7 @@ class NodeClientPersistenceTest {
     when(node.getConfig()).thenReturn(config);
     NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 0);
     NodeClientCore core = mock(NodeClientCore.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
     FCPServer expected = mock(FCPServer.class);
 
     // Act
@@ -481,17 +483,25 @@ class NodeClientPersistenceTest {
           .when(
               () ->
                   FCPServer.maybeCreate(
-                      eq(node), eq(core), eq(config), any(PersistentRequestRoot.class)))
+                      eq(node),
+                      eq(core),
+                      eq(runtimePorts),
+                      eq(config),
+                      any(PersistentRequestRoot.class)))
           .thenReturn(expected);
 
-      FCPServer result = persistence.createFcpServer(node, core);
+      FCPServer result = persistence.createFcpServer(node, core, runtimePorts);
 
       // Assert
       assertSame(expected, result);
       fcpServerMock.verify(
           () ->
               FCPServer.maybeCreate(
-                  eq(node), eq(core), eq(config), any(PersistentRequestRoot.class)));
+                  eq(node),
+                  eq(core),
+                  eq(runtimePorts),
+                  eq(config),
+                  any(PersistentRequestRoot.class)));
     }
   }
 

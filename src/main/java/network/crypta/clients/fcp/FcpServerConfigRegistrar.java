@@ -10,6 +10,7 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
@@ -53,18 +54,24 @@ final class FcpServerConfigRegistrar {
    *
    * <pre>{@code
    * Config config = new Config();
-   * FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, config, root);
+   * FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, runtimePorts, config,
+   * root);
    * server.maybeStart();
    * }</pre>
    *
    * @param node the owning node providing executors and core services for the server.
    * @param core client core used for endpoint access and persisted settings lookups.
+   * @param runtimePorts runtime SPI bridge passed to the created server.
    * @param config root configuration registry where the {@code fcp} subsection is registered.
    * @param root persistent request root used to wire global request queues.
    * @return configured {@link FCPServer} instance ready for {@link FCPServer#maybeStart()}.
    */
   static FCPServer maybeCreate(
-      Node node, NodeClientCore core, Config config, PersistentRequestRoot root) {
+      Node node,
+      NodeClientCore core,
+      RuntimePorts runtimePorts,
+      Config config,
+      PersistentRequestRoot root) {
     SubConfig fcpConfig = config.createSubConfig("fcp");
     short sortOrder = 0;
     fcpConfig.register(
@@ -166,7 +173,7 @@ final class FcpServerConfigRegistrar {
             fcpConfig.getBoolean("assumeUploadDDAIsAllowed"),
             fcpConfig.getBoolean("neverDropAMessage"),
             fcpConfig.getInt("maxMessageQueueLength"));
-    FcpServerDependencies dependencies = new FcpServerDependencies(node, core, root);
+    FcpServerDependencies dependencies = new FcpServerDependencies(node, core, runtimePorts, root);
     FCPServer fcp = new FCPServer(serverConfig, dependencies);
 
     cb4.server = fcp;

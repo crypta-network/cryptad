@@ -6,6 +6,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -30,6 +31,8 @@ class FcpServerConfigRegistrarTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private NodeClientCore core;
 
+  @Mock private RuntimePorts runtimePorts;
+
   @Test
   void maybeCreate_whenDefaults_expectConfiguredServerAndInitializedSubConfig() {
     // Arrange
@@ -37,7 +40,7 @@ class FcpServerConfigRegistrarTest {
     PersistentRequestRoot root = new PersistentRequestRoot();
 
     // Act
-    FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, config, root);
+    FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, runtimePorts, config, root);
     SubConfig subConfig = config.get("fcp");
 
     // Assert
@@ -52,6 +55,7 @@ class FcpServerConfigRegistrarTest {
     assertFalse(server.assumeUploadDDAIsAllowed);
     assertFalse(server.neverDropAMessage);
     assertEquals(1024, server.maxMessageQueueLength);
+    assertEquals(runtimePorts, server.runtime());
     assertNotNull(subConfig.getOption("enabled"));
     assertNotNull(subConfig.getOption("ssl"));
     assertNotNull(subConfig.getOption("port"));
@@ -229,6 +233,6 @@ class FcpServerConfigRegistrarTest {
             false,
             10);
     return new FCPServer(
-        config, new FcpServerDependencies(node, core, new PersistentRequestRoot()));
+        config, new FcpServerDependencies(node, core, runtimePorts, new PersistentRequestRoot()));
   }
 }

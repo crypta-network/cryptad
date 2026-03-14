@@ -11,9 +11,10 @@ import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EntropySource;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
+import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -43,9 +45,8 @@ class FCPConnectionHandlerTest {
   @Mock private ClientContext clientContext;
   @Mock private TempBucketFactory tempBucketFactory;
   @Mock private Socket socket;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RandomnessPort randomnessPort;
 
   private FCPConnectionHandler handler;
   private Random fastRandom;
@@ -57,8 +58,18 @@ class FCPConnectionHandlerTest {
 
     lenient().when(server.getCore()).thenReturn(core);
     lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
-    lenient().when(server.getNode()).thenReturn(node);
-    lenient().when(node.getRandom()).thenReturn(randomSource);
+    lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    lenient()
+        .doAnswer(
+            invocation -> {
+              byte[] target = invocation.getArgument(0);
+              randomSource.nextBytes(target);
+              return null;
+            })
+        .when(randomnessPort)
+        .fillSecureRandom(any(byte[].class));
+    lenient().when(randomnessPort.fastWeakRandom()).thenReturn(fastRandom);
 
     handler = new FCPConnectionHandler(socket, server);
   }
@@ -175,7 +186,6 @@ class FCPConnectionHandlerTest {
 
   @Test
   void enqueueDDACheck_whenJobAlreadyInFlight_throws(@TempDir Path tempDir) {
-    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     String directory = tempDir.toString();
     handler.enqueueDDACheck(directory, true, false);
 
@@ -185,7 +195,6 @@ class FCPConnectionHandlerTest {
 
   @Test
   void enqueueAndPopDDACheck_roundTripCreatesAndRemovesJob(@TempDir Path tempDir) throws Exception {
-    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     DdaCheckJob job = handler.enqueueDDACheck(tempDir.toString(), true, true);
 
     assertNotNull(job);
@@ -205,7 +214,6 @@ class FCPConnectionHandlerTest {
 
   @Test
   void freeDDAJobs_deletesOutstandingFiles(@TempDir Path tempDir) {
-    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     DdaCheckJob job = handler.enqueueDDACheck(tempDir.toString(), true, false);
     assertNotNull(job.readFilename);
     assertTrue(job.readFilename.exists());
