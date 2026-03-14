@@ -767,11 +767,11 @@ public abstract class ClientRequest implements Serializable {
    * Schedules an asynchronous restart of this request on the appropriate executor.
    *
    * <p>For forever-persistent requests the restart is queued on the persistent job runner so that
-   * it can survive node restarts; for other requests it is dispatched to the core executor as a
-   * {@link PrioRunnable}. Status caches are updated before the restart is enqueued, and the {@link
-   * #started} flag is cleared so that callers can observe the pending restart.
+   * it can survive node restarts; for other requests it is dispatched through the runtime execution
+   * port as a {@link PrioRunnable}. Status caches are updated before the restart is enqueued, and
+   * the {@link #started} flag is cleared so that callers can observe the pending restart.
    *
-   * @param server server instance used to access the core execution and persistence infrastructure
+   * @param server server instance used to access persistence infrastructure and runtime execution
    * @param disableFilterData whether associated filter data should be disabled for the restart
    * @throws PersistenceDisabledException if the underlying persistence layer cannot support restart
    */
@@ -805,10 +805,8 @@ public abstract class ClientRequest implements Serializable {
               NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     } else {
       server
-          .getCore()
-          .getNode()
-          .network()
-          .executor()
+          .runtime()
+          .execution()
           .execute(
               new PrioRunnable() {
 

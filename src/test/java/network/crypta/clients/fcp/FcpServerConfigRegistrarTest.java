@@ -6,6 +6,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,12 +33,14 @@ class FcpServerConfigRegistrarTest {
   private NodeClientCore core;
 
   @Mock private RuntimePorts runtimePorts;
+  @Mock private ExecutionPort executionPort;
 
   @Test
   void maybeCreate_whenDefaults_expectConfiguredServerAndInitializedSubConfig() {
     // Arrange
     Config config = new Config();
     PersistentRequestRoot root = new PersistentRequestRoot();
+    when(runtimePorts.execution()).thenReturn(executionPort);
 
     // Act
     FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, runtimePorts, config, root);
@@ -221,6 +224,7 @@ class FcpServerConfigRegistrarTest {
   }
 
   private FCPServer newServer() {
+    when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",

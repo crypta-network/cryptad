@@ -22,9 +22,9 @@ import network.crypta.support.api.Bucket;
  * coordinates request lifecycle management for external clients. It wires persistent request queues
  * and the download cache so clients can resume work across node restarts. The server is created
  * from configured defaults, started lazily through {@link #maybeStart()}, and runs a dedicated
- * accept-loop on a daemon thread so shutdown does not block. Concurrency is managed through the
- * executor supplied by {@link Node}, and request jobs are marshaled onto the {@link ClientContext}
- * job runner.
+ * accept-loop on a daemon thread so shutdown does not block. Runtime-facing listener work is
+ * scheduled through {@link RuntimePorts#execution()}, and request jobs are marshaled onto the
+ * {@link ClientContext} job runner.
  *
  * <p>Responsibilities include:
  *
@@ -116,7 +116,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
     this.maxMessageQueueLength = config.maxMessageQueueLength();
-    this.listener = new FcpServerListener(this, node, config);
+    this.listener = new FcpServerListener(this, runtime, config);
     this.persistentOps = new FcpServerPersistentOps(this, core, dependencies.persistentRoot());
   }
 
@@ -134,7 +134,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * @param allowedHostsFullAccess allowlist used for privileged operations that bypass client-side
    *     restrictions.
    * @param port TCP port number for the FCP listener, in the host byte order.
-   * @param node owning {@link Node} providing executors and lifecycle hooks.
+   * @param node owning {@link Node} providing daemon services still required by legacy FCP code.
    * @param core node client core exposing persistence, download directories, and cache factories.
    * @param runtime runtime SPI bridge for infrastructure code that avoids daemon internals.
    * @param isEnabled whether networked FCP should start.
@@ -220,7 +220,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * point. The returned server is fully wired to the supplied node, client core, and persistence
    * root, so it can immediately serve FCP traffic once started.
    *
-   * @param node the owning node providing executors and core services for the server.
+   * @param node the owning node providing daemon services still required by legacy FCP code.
    * @param core client core used for persistence and endpoint access.
    * @param runtime runtime SPI bridge used by infrastructure code inside the server.
    * @param config configuration registry where the {@code fcp} subsection is registered.

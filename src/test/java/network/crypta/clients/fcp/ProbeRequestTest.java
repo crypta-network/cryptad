@@ -1,15 +1,16 @@
 package network.crypta.clients.fcp;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.crypt.RandomSource;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
-import network.crypta.node.subsystem.NodeBootstrap;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -121,12 +122,14 @@ class ProbeRequestTest {
   void run_whenHtlMissing_usesProbeMaxHtl() throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, null));
     when(handler.hasFullAccess()).thenReturn(true);
-    RandomSource random = mock(RandomSource.class);
-    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    FCPServer server = mock(FCPServer.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.bootstrap()).thenReturn(bootstrap);
-    when(bootstrap.random()).thenReturn(random);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    stubProbeUid(randomnessPort);
     when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
@@ -141,12 +144,14 @@ class ProbeRequestTest {
   void run_whenHtlProvided_usesProvidedValue() throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 12));
     when(handler.hasFullAccess()).thenReturn(true);
-    RandomSource random = mock(RandomSource.class);
-    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    FCPServer server = mock(FCPServer.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.bootstrap()).thenReturn(bootstrap);
-    when(bootstrap.random()).thenReturn(random);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    stubProbeUid(randomnessPort);
     when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
@@ -358,12 +363,14 @@ class ProbeRequestTest {
 
   private Listener runAndCaptureListener(ProbeRequest request) throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    RandomSource random = mock(RandomSource.class);
-    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    FCPServer server = mock(FCPServer.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.bootstrap()).thenReturn(bootstrap);
-    when(bootstrap.random()).thenReturn(random);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    stubProbeUid(randomnessPort);
     when(node.network()).thenReturn(network);
     AtomicReference<Listener> listenerRef = new AtomicReference<>();
     doAnswer(
@@ -377,6 +384,18 @@ class ProbeRequestTest {
     request.run(handler, node);
 
     return listenerRef.get();
+  }
+
+  private void stubProbeUid(RandomnessPort randomnessPort) {
+    byte[] probeUid = ByteBuffer.allocate(Long.BYTES).putLong(REQUEST_UID).array();
+    doAnswer(
+            invocation -> {
+              byte[] target = invocation.getArgument(0);
+              System.arraycopy(probeUid, 0, target, 0, probeUid.length);
+              return null;
+            })
+        .when(randomnessPort)
+        .fillSecureRandom(any(byte[].class));
   }
 
   private static SimpleFieldSet fieldSet(String identifier, Type type, Byte htl) {

@@ -6,6 +6,7 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
@@ -27,8 +28,10 @@ class FCPServerTest {
 
   @Mock private NodeClientCore core;
   @Mock private RuntimePorts runtimePorts;
+  @Mock private ExecutionPort executionPort;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
+    when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -95,6 +98,7 @@ class FCPServerTest {
   void unregisterClient_whenForeverClient_delegatesToRoot() {
     // Arrange
     PersistentRequestRoot root = spy(new PersistentRequestRoot());
+    when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -161,28 +165,10 @@ class FCPServerTest {
     FCPServer server = newServer(false, false);
     PersistentRequestClient rebootClient = server.getGlobalRebootClient();
     FreenetURI uri = mock(FreenetURI.class);
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "id-1",
-            Persistence.REBOOT,
-            false,
-            false,
-            false,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            false,
-            (short) 0);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(10, "text/plain", null, null, null, mock(Bucket.class), false);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
-    rebootClient.getRequestStatusCache().addDownload(status);
+    DownloadRequestStatus status =
+        newDownloadStatus(
+            "id-1", Persistence.REBOOT, false, 10, "text/plain", mock(Bucket.class), uri);
+    requireStatusCache(rebootClient).addDownload(status);
 
     // Act
     RequestStatus[] result = server.getGlobalRequests();
@@ -196,32 +182,13 @@ class FCPServerTest {
   void lookupInstant_whenShadowBucketPresent_returnsCachedResult() {
     // Arrange
     FCPServer server = newServer(false, false);
-    PersistentRequestClient foreverClient = server.getGlobalForeverClient();
+    PersistentRequestClient foreverClient = requireClient(server.getGlobalForeverClient());
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = mock(Bucket.class);
     when(bucket.size()).thenReturn(5L);
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "cached",
-            Persistence.FOREVER,
-            false,
-            false,
-            true,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            true,
-            (short) 0);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(5, "image/png", null, null, null, bucket, false);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
-    foreverClient.getRequestStatusCache().addDownload(status);
+    DownloadRequestStatus status =
+        newDownloadStatus("cached", Persistence.FOREVER, true, 5, "image/png", bucket, uri);
+    requireStatusCache(foreverClient).addDownload(status);
 
     // Act
     CacheFetchResult result = server.lookupInstant(uri, false, false, null);
@@ -234,5 +201,51 @@ class FCPServerTest {
       assertNotSame(bucket, resultBucket);
       assertEquals(5L, resultBucket.size());
     }
+  }
+
+  private static RequestStatusCache requireStatusCache(PersistentRequestClient client) {
+    RequestStatusCache cache = client.getRequestStatusCache();
+    if (cache == null) {
+      throw new AssertionError("Expected global client to expose a request status cache");
+    }
+    return cache;
+  }
+
+  private static PersistentRequestClient requireClient(PersistentRequestClient client) {
+    if (client == null) {
+      throw new AssertionError("Expected global forever client to be available");
+    }
+    return client;
+  }
+
+  private static DownloadRequestStatus newDownloadStatus(
+      String identifier,
+      Persistence persistence,
+      boolean success,
+      long dataSize,
+      String mimeType,
+      Bucket dataShadow,
+      FreenetURI uri) {
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            identifier,
+            persistence,
+            false,
+            false,
+            success,
+            0,
+            0,
+            0,
+            null,
+            0,
+            0,
+            null,
+            success,
+            (short) 0);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(dataSize, mimeType, null, null, null, dataShadow, false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    return new DownloadRequestStatus(statusSnapshot, details);
   }
 }
