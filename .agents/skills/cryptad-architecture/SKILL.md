@@ -21,10 +21,15 @@ Use this skill when you need to:
 - Leaf subprojects:
   - `:foundation-fs` → `network.crypta.fs`
   - `:foundation-compat` → `network.crypta.compat`
+  - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
     resources
+- The runtime boundary is split intentionally:
+  - `:runtime-spi` exposes small JDK-only ports and immutable config DTOs.
+  - The root project implements those ports in `network.crypta.node.runtime.LegacyRuntimePorts`
+    and `LegacyConfigPort`.
 - The large cyclic daemon core still lives in the root project:
   `network.crypta.node`, `network.crypta.io`, `network.crypta.client`,
   `network.crypta.clients`, `network.crypta.support`, `network.crypta.config`,
@@ -58,7 +63,19 @@ Use this skill when you need to:
 ### Client APIs
 - High-level client: `network.crypta.client`
 - FCP: `network.crypta.clients.fcp`
+  - Runtime-facing execution, randomness, lifecycle, transfer-policy, and config access now come
+    through `RuntimePorts`.
+  - `FcpRuntimeAdapters` preserves legacy FCP-local shapes such as `PriorityAwareExecutor` and
+    `RandomSource` on top of the SPI.
 - HTTP interface: `network.crypta.clients.http`
+
+### Runtime SPI (`network.crypta.runtime.spi`)
+- Aggregate boundary: `RuntimePorts`
+- Small ports: `ExecutionPort`, `RandomnessPort`, `TransferAccessPort`, `LifecyclePort`,
+  `ConfigPort`
+- Immutable config DTOs: `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`
+- Root adapters: `network.crypta.node.runtime.LegacyRuntimePorts`,
+  `network.crypta.node.runtime.LegacyConfigPort`
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`
@@ -67,6 +84,8 @@ Use this skill when you need to:
 
 ### Configuration (`network.crypta.config`)
 - Type-safe configuration with persistence
+- Higher layers should prefer `RuntimePorts#config()` over traversing daemon config internals
+  directly when the SPI already covers the needed operation
 
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers
@@ -79,6 +98,7 @@ Use this skill when you need to:
 ### Foundation leaf modules
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`
+- `:runtime-spi`: `network.crypta.runtime.spi`
 
 ### Vendored library leaf modules
 - `:thirdparty-onion`: `com.onionnetworks`

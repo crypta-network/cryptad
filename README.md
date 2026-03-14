@@ -169,11 +169,16 @@ Cryptad now uses a partial multi-project Gradle build.
   `run`, `runLauncher`, `assembleCryptadDist`, and jpackage task graph.
 - `:foundation-fs` owns `network.crypta.fs`.
 - `:foundation-compat` owns `network.crypta.compat`.
+- `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
+  by higher layers.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
   resources.
 - The large cyclic daemon core remains in the root project for now, and all tests still live there.
+- Higher-level infrastructure now crosses a narrower boundary through
+  `network.crypta.runtime.spi.RuntimePorts`, implemented in the root project by
+  `network.crypta.node.runtime.LegacyRuntimePorts`.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
@@ -437,10 +442,12 @@ cd build/jpackage/Crypta.app/Contents
   - Update verification metadata so `gradle/verification-metadata.xml` and keyrings reflect the new
     artifacts; use the commands in “Spotless + Dependency Verification” below.
 
-Launcher adds:
+Root build also includes:
 - `:launcher-desktop`: Swing launcher code and desktop/theme detection dependencies.
 - `:thirdparty-onion`: Onion FEC and related vendored sources/resources.
 - `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
+- `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
+  and other infrastructure code.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon.
 
@@ -486,20 +493,29 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 - Build/module layout:
   - Root project `:cryptad` remains the daemon/application build and still owns the strongly
-    coupled core packages, all tests, and packaging/runtime tasks.
-  - Leaf subprojects are `:foundation-fs`, `:foundation-compat`, `:thirdparty-onion`,
-    `:thirdparty-legacy`, and `:launcher-desktop`.
+    coupled core packages, all tests, packaging/runtime tasks, and the current
+    `LegacyRuntimePorts` bridge into the runtime SPI.
+  - Leaf subprojects are `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+    `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
 - Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
 - Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
-- Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP (`network.crypta.clients.http`).
-- Config (`network.crypta.config`): type‑safe persisted configuration.
+- Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
+  (`network.crypta.clients.http`). FCP now consumes execution, randomness, transfer policy,
+  lifecycle, and config access through `RuntimePorts` and FCP-local adapters instead of reaching
+  directly into daemon internals for those concerns.
+- Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and immutable config DTOs such as
+  `RuntimePorts`, `ConfigPort`, `ConfigSnapshot`, and `ConfigFieldSet`.
+- Config (`network.crypta.config`): type‑safe persisted configuration retained in the root daemon
+  and exposed upstream through `network.crypta.node.runtime.LegacyConfigPort` via
+  `RuntimePorts#config()`.
 - Support (`network.crypta.support`): logging, data structures, threading, helpers.
 - Launcher/Desktop: `:launcher-desktop` provides `network.crypta.launcher`,
   `com.jthemedetecor`, launcher resources, and desktop-theme integration.
 - Extracted foundations: `:foundation-fs` provides `network.crypta.fs`,
   `:foundation-compat` provides `network.crypta.compat`.
+- Runtime boundary leaf: `:runtime-spi` provides `network.crypta.runtime.spi`.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 
