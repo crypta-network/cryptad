@@ -8,7 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
@@ -42,7 +43,8 @@ class ClientPutDiskDirMessageTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-  @Mock private NodeClientCore core;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private TransferAccessPort transferAccess;
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
@@ -57,8 +59,9 @@ class ClientPutDiskDirMessageTest {
   @BeforeEach
   void setUp() {
     lenient().when(handler.getServer()).thenReturn(server);
-    lenient().when(server.getCore()).thenReturn(core);
-    lenient().when(core.allowUploadFrom(any())).thenReturn(true);
+    lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+    lenient().when(transferAccess.allowUploadFrom(any())).thenReturn(true);
   }
 
   @Test
@@ -80,7 +83,7 @@ class ClientPutDiskDirMessageTest {
 
   @Test
   void run_whenUploadNotAllowed_expectAccessDenied() throws Exception {
-    when(core.allowUploadFrom(any())).thenReturn(false);
+    when(transferAccess.allowUploadFrom(any())).thenReturn(false);
     ClientPutDiskDirMessage message = newMessage(tempDir);
 
     MessageInvalidException ex =
@@ -124,7 +127,9 @@ class ClientPutDiskDirMessageTest {
     assertEquals("index.html", rootElement.fullName);
     assertEquals(Files.size(file), rootElement.getSize());
     FileBucket bucket = (FileBucket) rootElement.getData();
-    assertEquals(file.toFile().getAbsolutePath(), bucket.getFile().getAbsolutePath());
+    File bucketFile = bucket.getFile();
+    assertNotNull(bucketFile);
+    assertEquals(file.toFile().getAbsolutePath(), bucketFile.getAbsolutePath());
 
     @SuppressWarnings("unchecked")
     HashMap<String, Object> nested = (HashMap<String, Object>) buckets.get("assets");

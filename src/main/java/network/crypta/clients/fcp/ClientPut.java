@@ -158,7 +158,8 @@ public final class ClientPut extends ClientPutBase {
     RandomAccessBucket tempData = upload.data();
 
     if (uploadFromType == UploadFrom.DISK) {
-      ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, uploadOrigFilename);
+      ClientPutDiskUploadValidator.validatePersistentDiskUpload(
+          core.getRuntimePorts().transferAccess(), uploadOrigFilename);
     }
 
     this.binaryBlob = upload.binaryBlob();

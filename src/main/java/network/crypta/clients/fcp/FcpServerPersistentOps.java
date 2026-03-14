@@ -23,6 +23,7 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.Base64;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
@@ -543,7 +544,7 @@ final class FcpServerPersistentOps implements DownloadCache {
             persistenceTypeString,
             returnTypeString,
             realTimeFlag,
-            core.getDownloadsDir()));
+            transferAccess().downloadsDir()));
   }
 
   void makePersistentGlobalRequest(
@@ -574,6 +575,10 @@ final class FcpServerPersistentOps implements DownloadCache {
     } catch (IdentifierCollisionException _) {
       return false;
     }
+  }
+
+  private TransferAccessPort transferAccess() {
+    return server.runtime().transferAccess();
   }
 
   private File makeReturnFilename(FreenetURI uri, String expectedMimeType, File downloadsDir) {

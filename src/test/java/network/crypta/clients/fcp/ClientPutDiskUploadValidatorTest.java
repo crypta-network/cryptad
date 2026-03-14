@@ -9,7 +9,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.UUID;
 import network.crypta.crypt.SHA256;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.Base64;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.RandomAccessBucket;
@@ -36,34 +37,34 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validatePersistentDiskUpload_whenNotAllowed_throwsNotAllowed() {
-    NodeClientCore core = mock(NodeClientCore.class);
+    TransferAccessPort transferAccess = mock(TransferAccessPort.class);
     File file = tempDir.resolve("upload.dat").toFile();
-    when(core.allowUploadFrom(file)).thenReturn(false);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(false);
 
     assertThrows(
         NotAllowedException.class,
-        () -> ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, file));
+        () -> ClientPutDiskUploadValidator.validatePersistentDiskUpload(transferAccess, file));
   }
 
   @Test
   void validatePersistentDiskUpload_whenMissingFile_throwsFileNotFound() {
-    NodeClientCore core = mock(NodeClientCore.class);
+    TransferAccessPort transferAccess = mock(TransferAccessPort.class);
     File file = tempDir.resolve("missing.dat").toFile();
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
 
     assertThrows(
         FileNotFoundException.class,
-        () -> ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, file));
+        () -> ClientPutDiskUploadValidator.validatePersistentDiskUpload(transferAccess, file));
   }
 
   @Test
   void validatePersistentDiskUpload_whenReadableFile_allowsUpload() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
+    TransferAccessPort transferAccess = mock(TransferAccessPort.class);
     File file = tempDir.resolve("data.bin").toFile();
     assertTrue(file.createNewFile());
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
 
-    ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, file);
+    ClientPutDiskUploadValidator.validatePersistentDiskUpload(transferAccess, file);
   }
 
   @Test
@@ -80,15 +81,13 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validateDiskUpload_whenUploadNotAllowed_throwsMessageInvalid() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    TransferAccessPort transferAccess = configureTransferAccess(handler, server);
     File file = createFile("blocked.dat");
 
     ClientPutMessage message = buildMessage(ClientPutBase.UploadFrom.DISK, file, null);
-    when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.allowUploadFrom(file)).thenReturn(false);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(false);
 
     MessageInvalidException error =
         assertThrows(
@@ -100,18 +99,16 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validateDiskUpload_whenFileHashProvided_buildsSaltedContext() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    TransferAccessPort transferAccess = configureTransferAccess(handler, server);
     File file = createFile("file.dat");
     UUID connectionId = UUID.fromString("f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
     byte[] expectedHash = new byte[] {1, 2, 3, 4};
 
     ClientPutMessage message =
         buildMessage(ClientPutBase.UploadFrom.DISK, file, Base64.encodeStandard(expectedHash));
-    when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
     when(handler.getConnectionIdentifierUUID()).thenReturn(connectionId);
 
     DiskUploadContext context =
@@ -123,16 +120,14 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validateDiskUpload_whenDdaDenied_throwsMessageInvalid() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
     DdaAccessController ddaController = mock(DdaAccessController.class);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    TransferAccessPort transferAccess = configureTransferAccess(handler, server);
     File file = createFile("file.dat");
 
     ClientPutMessage message = buildMessage(ClientPutBase.UploadFrom.DISK, file, null);
-    when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaController);
     when(ddaController.allowDDAFrom(file, false)).thenReturn(false);
 
@@ -146,16 +141,14 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validateDiskUpload_whenDdaAllowed_returnsEmptyContext() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
     DdaAccessController ddaController = mock(DdaAccessController.class);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    TransferAccessPort transferAccess = configureTransferAccess(handler, server);
     File file = createFile("file.dat");
 
     ClientPutMessage message = buildMessage(ClientPutBase.UploadFrom.DISK, file, null);
-    when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaController);
     when(ddaController.allowDDAFrom(file, false)).thenReturn(true);
 
@@ -167,15 +160,13 @@ class ClientPutDiskUploadValidatorTest {
 
   @Test
   void validateDiskUpload_whenInvalidFileHash_throwsMessageInvalid() throws Exception {
-    NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    TransferAccessPort transferAccess = configureTransferAccess(handler, server);
     File file = createFile("file.dat");
     ClientPutMessage message = buildMessage(ClientPutBase.UploadFrom.DISK, file, "@@@");
 
-    when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.allowUploadFrom(file)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(file)).thenReturn(true);
     when(handler.getConnectionIdentifierUUID())
         .thenReturn(UUID.fromString("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"));
 
@@ -294,5 +285,15 @@ class ClientPutDiskUploadValidatorTest {
     File file = tempDir.resolve(name).toFile();
     assertTrue(file.createNewFile());
     return file;
+  }
+
+  private static TransferAccessPort configureTransferAccess(
+      FCPConnectionHandler handler, FCPServer server) {
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    TransferAccessPort transferAccess = mock(TransferAccessPort.class);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+    return transferAccess;
   }
 }

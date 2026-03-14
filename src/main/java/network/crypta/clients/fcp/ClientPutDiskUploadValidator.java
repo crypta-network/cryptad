@@ -9,7 +9,7 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Objects;
 import network.crypta.crypt.SHA256;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.api.RandomAccessBucket;
@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  * setup code without additional synchronization.
  *
  * <ul>
- *   <li>Checks whether a disk upload is allowed by node policy and DDA rules.
+ *   <li>Checks whether a disk upload is allowed by transfer policy and DDA rules.
  *   <li>Decodes and verifies salted SHA-256 hashes when provided by clients.
  *   <li>Produces {@link DiskUploadContext} instances for downstream verification steps.
  * </ul>
@@ -48,21 +48,22 @@ final class ClientPutDiskUploadValidator {
   private ClientPutDiskUploadValidator() {}
 
   /**
-   * Validates a persistent disk upload against core permissions and file readability.
+   * Validates a persistent disk upload against transfer permissions and file readability.
    *
    * <p>This method is used for persistent inserts where the node must be able to reopen the source
-   * file across restarts. It first checks the node policy via {@link
-   * NodeClientCore#allowUploadFrom} and then verifies that the file exists and can be read. It
-   * performs no hashing and does not mutate the input file.
+   * file across restarts. It first checks the transfer policy via {@link
+   * TransferAccessPort#allowUploadFrom(File)} and then verifies that the file exists and can be
+   * read. It performs no hashing and does not mutate the input file.
    *
-   * @param core node core used to evaluate disk upload policy; must not be {@code null}.
+   * @param transferAccess transfer policy used to evaluate disk upload permission; must not be
+   *     {@code null}.
    * @param origFilename original file submitted by the client; must not be {@code null}.
-   * @throws NotAllowedException when the node policy disallows the requested disk upload.
+   * @throws NotAllowedException when the transfer policy disallows the requested disk upload.
    * @throws IOException when the file does not exist or cannot be read.
    */
-  static void validatePersistentDiskUpload(NodeClientCore core, File origFilename)
+  static void validatePersistentDiskUpload(TransferAccessPort transferAccess, File origFilename)
       throws NotAllowedException, IOException {
-    if (!core.allowUploadFrom(origFilename)) {
+    if (!transferAccess.allowUploadFrom(origFilename)) {
       throw new NotAllowedException();
     }
     if (!(origFilename.exists() && origFilename.canRead())) {
@@ -93,7 +94,8 @@ final class ClientPutDiskUploadValidator {
     if (message.uploadFromType != ClientPutBase.UploadFrom.DISK) {
       return DiskUploadContext.empty();
     }
-    if (!handler.getServer().getCore().allowUploadFrom(message.origFilename)) {
+    TransferAccessPort transferAccess = handler.getServer().runtime().transferAccess();
+    if (!transferAccess.allowUploadFrom(message.origFilename)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
           "Not allowed to upload from " + message.origFilename,
@@ -207,7 +209,7 @@ final class ClientPutDiskUploadValidator {
  * null} components. Downstream checks can call {@link #hasSalt()} to determine whether verification
  * should occur.
  */
-@SuppressWarnings("java:S6206")
+@SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 final class DiskUploadContext {
   private final String salt;
   private final byte[] saltedHash;

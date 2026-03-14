@@ -10,7 +10,7 @@ import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.node.Node;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
@@ -36,8 +36,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Builds a nested {@code Map} structure that mirrors directory layout before dispatch.
  *   <li>Streams {@code UploadFrom=direct} payloads in alphabetical order to avoid buffering.
- *   <li>Validates disk-sourced files against {@link NodeServicesSubsystem#clientCore()} upload
- *       policy.
+ *   <li>Validates disk-sourced files against {@link
+ *       TransferAccessPort#allowUploadFrom(java.io.File)} upload policy.
  * </ul>
  *
  * <p>Example payload:
@@ -89,14 +89,13 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
   public ClientPutComplexDirMessage(
       SimpleFieldSet fs, BucketFactory bfTemp, PersistentTempBucketFactory bfPersistent)
       throws MessageInvalidException {
-    requireFilesSection(fs);
+    SimpleFieldSet files = requireFilesSection(fs);
     super(parseCommonFields(fs));
 
     filesByName = new HashMap<>();
     filesToRead = new ArrayList<>();
     long totalBytes = 0;
     // Now parse the meat
-    SimpleFieldSet files = fs.subset("Files");
     for (int i = 0; ; i++) {
       SimpleFieldSet subset = files.subset(Integer.toString(i));
       if (subset == null) break;
@@ -227,15 +226,15 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * Converts parsed files into {@link ManifestElement} trees and instructs the handler to start the
    * directory insert.
    *
-   * <p>During execution the method validates disk-backed files through {@link
-   * NodeServicesSubsystem#clientCore()} before constructing the manifest, thereby ensuring policy
-   * compliance without touching the network. The resulting map mirrors the original hierarchy, so
-   * downstream components can process nested directories without recomputing paths. The insert
-   * begins immediately afterward, and any {@link MessageInvalidException} bubbles up to the caller
-   * so the FCP client receives actionable feedback.
+   * <p>During execution the method validates disk-backed files through {@link TransferAccessPort}
+   * before constructing the manifest, thereby ensuring policy compliance without touching the
+   * network. The resulting map mirrors the original hierarchy, so downstream components can process
+   * nested directories without recomputing paths. The insert begins immediately afterward, and any
+   * {@link MessageInvalidException} bubbles up to the caller so the FCP client receives actionable
+   * feedback.
    *
    * @param handler active connection handler responsible for initiating the put job
-   * @param node node instance that supplies policy checks and storage context for the request
+   * @param node legacy execution parameter retained by the message API; unused here
    * @throws MessageInvalidException if conversion detects disallowed files or inconsistent input
    */
   @Override
@@ -244,7 +243,8 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
     // of ManifestElement's.
     // Then simply create the ClientPutDir.
     HashMap<String, Object> manifestElements = new HashMap<>();
-    convertFilesByNameToManifestElements(filesByName, manifestElements, node);
+    convertFilesByNameToManifestElements(
+        filesByName, manifestElements, handler.getServer().runtime().transferAccess());
     handler.startClientPutDir(this, manifestElements, false);
   }
 
@@ -253,7 +253,9 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * containing ManifestElement's.
    */
   private void convertFilesByNameToManifestElements(
-      Map<String, Object> filesByName, Map<String, Object> manifestElements, Node node)
+      Map<String, Object> filesByName,
+      Map<String, Object> manifestElements,
+      TransferAccessPort transferAccess)
       throws MessageInvalidException {
 
     for (Map.Entry<String, Object> entry : filesByName.entrySet()) {
@@ -263,11 +265,10 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
         Map<String, Object> h = Metadata.forceMap(val);
         HashMap<String, Object> manifests = new HashMap<>();
         manifestElements.put(tempName, manifests);
-        convertFilesByNameToManifestElements(h, manifests, node);
+        convertFilesByNameToManifestElements(h, manifests, transferAccess);
       } else {
         DirPutFile f = (DirPutFile) val;
-        if (f instanceof DiskDirPutFile file
-            && !node.services().clientCore().allowUploadFrom(file.getFile()))
+        if (f instanceof DiskDirPutFile file && !transferAccess.allowUploadFrom(file.getFile()))
           throw new MessageInvalidException(
               ProtocolErrorMessage.ACCESS_DENIED,
               "Not allowed to upload " + file.getFile(),
@@ -279,13 +280,16 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
     }
   }
 
-  private static void requireFilesSection(SimpleFieldSet fs) throws MessageInvalidException {
-    if (fs.subset("Files") == null) {
+  private static SimpleFieldSet requireFilesSection(SimpleFieldSet fs)
+      throws MessageInvalidException {
+    SimpleFieldSet files = fs.subset("Files");
+    if (files == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "Missing Files section",
           fs.get("Identifier"),
           fs.getBoolean("Global", false));
     }
+    return files;
   }
 }

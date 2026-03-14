@@ -17,6 +17,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ class ClientGetFactoryTest {
   @Mock private ClientContext clientContext;
   @Mock private FetchContext fetchContext;
   @Mock private ClientEventProducer eventProducer;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private TransferAccessPort transferAccess;
 
   @Test
   void fromGlobal_whenIdentifierAlreadyRegistered_throwsIdentifierCollisionException()
@@ -137,9 +140,11 @@ class ClientGetFactoryTest {
   void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir) {
     when(core.getClientContext()).thenReturn(clientContext);
     when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
+    when(core.getRuntimePorts()).thenReturn(runtimePorts);
+    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     File target = tempDir.resolve("target.bin").toFile();
-    when(core.allowDownloadTo(target)).thenReturn(false);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(false);
     GlobalRequestConfig config =
         new GlobalRequestConfig(
             false,
@@ -249,15 +254,17 @@ class ClientGetFactoryTest {
     when(core.getClientContext()).thenReturn(clientContext);
     when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
     when(fetchContext.getEventProducer()).thenReturn(eventProducer);
+    when(core.getRuntimePorts()).thenReturn(runtimePorts);
+    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
   }
 
   private FCPConnectionHandler newConnectionHandler() {
     FCPServer server = mock(FCPServer.class);
     Socket socket = mock(Socket.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RuntimePorts handlerRuntimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    when(server.runtime()).thenReturn(runtimePorts);
-    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    when(server.runtime()).thenReturn(handlerRuntimePorts);
+    when(handlerRuntimePorts.randomness()).thenReturn(randomnessPort);
     doAnswer(
             invocation -> {
               byte[] target = invocation.getArgument(0);

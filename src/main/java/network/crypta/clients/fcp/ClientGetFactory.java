@@ -4,6 +4,7 @@ import java.io.IOException;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,15 +74,15 @@ final class ClientGetFactory {
           "Charset parameter is ignored for ClientGet global queue requests: {}",
           requestConfig.charset());
     }
+    TransferAccessPort transferAccess = core.getRuntimePorts().transferAccess();
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForGlobal(
             requestConfig.identifier(),
-            true,
             fctx,
             requestConfig.returnType(),
             requestConfig.returnFilename(),
             requestConfig.filterData(),
-            core);
+            transferAccess);
     ClientRequestParams params =
         new ClientRequestParams(
             uri,
@@ -135,9 +136,10 @@ final class ClientGetFactory {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
     FetchContext fctx = buildFetchContextForMessage(core, message);
+    TransferAccessPort transferAccess = core.getRuntimePorts().transferAccess();
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForMessage(
-            message.identifier, message.global, fctx, message, core, handler);
+            message.identifier, message.global, fctx, message, transferAccess, handler);
     Bucket initialMetadata = message.getInitialMetadata();
     try {
       ClientGet.ClientGetSetup requestSetup =
