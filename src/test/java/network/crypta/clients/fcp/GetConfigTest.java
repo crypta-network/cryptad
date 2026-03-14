@@ -1,7 +1,14 @@
 package network.crypta.clients.fcp;
 
+import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.ConfigFieldSet;
+import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.ConfigSection;
+import network.crypta.runtime.spi.ConfigSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,6 +35,12 @@ class GetConfigTest {
   @Mock FCPConnectionHandler handler;
 
   @Mock Node node;
+
+  @Mock FCPServer server;
+
+  @Mock RuntimePorts runtimePorts;
+
+  @Mock ConfigPort configPort;
 
   @Test
   void constructor_whenFieldsPresent_setsFlagsAndIdentifierAndRemovesIdentifierFromSource() {
@@ -85,10 +99,12 @@ class GetConfigTest {
     assertEquals("GetConfig requires full access", thrown.getMessage());
     assertFalse(thrown.global);
     verify(handler, never()).send(any(FCPMessage.class));
+    verifyNoInteractions(server, runtimePorts, configPort, node);
   }
 
   @Test
-  void run_whenHandlerHasFullAccess_sendsConfigDataWithMatchingFlags() throws Exception {
+  @SuppressWarnings("unchecked")
+  void run_whenHandlerHasFullAccess_exportsMatchingSectionsAndSendsConfigData() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("WithCurrent", "true");
     fs.putSingle("WithDefaults", "true");
@@ -100,24 +116,34 @@ class GetConfigTest {
     fs.putSingle("WithDataTypes", "true");
     fs.putSingle("Identifier", "cfg-7");
     GetConfig getConfig = new GetConfig(fs);
+    ConfigSnapshot snapshot =
+        new ConfigSnapshot(
+            Map.of(ConfigSection.CURRENT, new ConfigFieldSet(Map.of("enabled", "true"), Map.of())));
     when(handler.hasFullAccess()).thenReturn(true);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.config()).thenReturn(configPort);
+    when(configPort.export(any())).thenReturn(snapshot);
 
     getConfig.run(handler, node);
+
+    ArgumentCaptor<Set<ConfigSection>> sectionsCaptor = ArgumentCaptor.forClass(Set.class);
+    verify(configPort).export(sectionsCaptor.capture());
+    assertEquals(
+        EnumSet.of(
+            ConfigSection.CURRENT,
+            ConfigSection.DEFAULTS,
+            ConfigSection.EXPERT_FLAG,
+            ConfigSection.SHORT_DESCRIPTION,
+            ConfigSection.DATA_TYPES),
+        sectionsCaptor.getValue());
 
     ArgumentCaptor<ConfigData> captor = ArgumentCaptor.forClass(ConfigData.class);
     verify(handler).send(captor.capture());
     ConfigData sent = captor.getValue();
 
-    assertEquals(node, sent.node);
-    Set<ConfigData.Section> sections = sent.getSections();
-    assertTrue(sections.contains(ConfigData.Section.CURRENT));
-    assertTrue(sections.contains(ConfigData.Section.DEFAULTS));
-    assertFalse(sections.contains(ConfigData.Section.SORT_ORDER));
-    assertTrue(sections.contains(ConfigData.Section.EXPERT_FLAG));
-    assertFalse(sections.contains(ConfigData.Section.FORCE_WRITE_FLAG));
-    assertTrue(sections.contains(ConfigData.Section.SHORT_DESCRIPTION));
-    assertFalse(sections.contains(ConfigData.Section.LONG_DESCRIPTION));
-    assertTrue(sections.contains(ConfigData.Section.DATA_TYPES));
+    assertEquals(snapshot, sent.snapshot);
     assertEquals("cfg-7", sent.requestIdentifier);
+    verifyNoInteractions(node);
   }
 }

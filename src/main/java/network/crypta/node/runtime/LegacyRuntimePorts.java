@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.Random;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -17,8 +18,8 @@ import network.crypta.runtime.spi.TransferAccessPort;
  * captures the existing {@link Node} and {@link NodeClientCore} instances and exposes their
  * already-available capabilities through the smaller {@link RuntimePorts} surface. The class adds
  * no policy of its own; each sub-port delegates directly to the legacy implementation, so behavior,
- * timing, and file-access semantics remain aligned with the daemon that existed before the SPI was
- * introduced.
+ * timing, file-access semantics, and configuration-management semantics remain aligned with the
+ * daemon that existed before the SPI was introduced.
  *
  * <p>The adapter is immutable after construction. It is safe to share the instance anywhere the
  * daemon currently threads runtime dependencies, but callers should remember that the returned
@@ -31,6 +32,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final RandomnessPort randomnessPort;
   private final TransferAccessPort transferAccessPort;
   private final LifecyclePort lifecyclePort;
+  private final ConfigPort configPort;
 
   /**
    * Creates a runtime SPI adapter backed by the current daemon internals.
@@ -38,7 +40,8 @@ public final class LegacyRuntimePorts implements RuntimePorts {
    * <p>The constructed adapter keeps direct references to {@code node} and {@code core} and uses
    * them to implement each runtime sub-port with thin delegation only. No data is copied and no
    * validation or normalization is introduced here, so existing daemon semantics remain the source
-   * of truth for execution, randomness, transfer policy, and lifecycle state.
+   * of truth for execution, randomness, transfer policy, lifecycle state, and configuration
+   * management.
    *
    * @param node live daemon node that provides execution, randomness, and lifecycle behavior
    * @param core live client core that provides transfer-policy checks and directory access
@@ -109,6 +112,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
             return LegacyRuntimePorts.this.node.getStartupTime();
           }
         };
+    this.configPort = new LegacyConfigPort(node, core);
   }
 
   /**
@@ -151,5 +155,16 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public LifecyclePort lifecycle() {
     return lifecyclePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps all legacy configuration traversals and persistence inside the
+   * daemon root module while exposing only SPI-local DTOs upstream.
+   */
+  @Override
+  public ConfigPort config() {
+    return configPort;
   }
 }
