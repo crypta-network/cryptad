@@ -56,6 +56,7 @@ final class ClientGetFactory {
    * @param uri target {@link FreenetURI} describing the key to fetch; must be non-null.
    * @param requestConfig immutable configuration with limits, flags, and return preferences.
    * @param core node core providing fetch contexts, planners, and bucket factories.
+   * @param transferAccess transfer policy used for disk-return planning in this request flow.
    * @return configured {@link ClientGet} instance ready for registration and start.
    * @throws IdentifierCollisionException if the identifier is already registered globally.
    * @throws NotAllowedException if disk output violates policy or DDA restrictions.
@@ -65,7 +66,8 @@ final class ClientGetFactory {
       PersistentRequestClient globalClient,
       FreenetURI uri,
       ClientGet.GlobalRequestConfig requestConfig,
-      NodeClientCore core)
+      NodeClientCore core,
+      TransferAccessPort transferAccess)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
     FetchContext fctx = buildFetchContextForGlobal(core, requestConfig);
@@ -74,7 +76,6 @@ final class ClientGetFactory {
           "Charset parameter is ignored for ClientGet global queue requests: {}",
           requestConfig.charset());
     }
-    TransferAccessPort transferAccess = core.getRuntimePorts().transferAccess();
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForGlobal(
             requestConfig.identifier(),

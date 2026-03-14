@@ -80,7 +80,7 @@ class ClientGetFactoryTest {
         IdentifierCollisionException.class,
         () ->
             ClientGetFactory.fromGlobal(
-                client, new FreenetURI("KSK@global-collision"), config, core));
+                client, new FreenetURI("KSK@global-collision"), config, core, transferAccess));
   }
 
   @ParameterizedTest
@@ -110,7 +110,7 @@ class ClientGetFactoryTest {
             true,
             false);
 
-    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, core);
+    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, core, transferAccess);
 
     assertNotNull(request);
     assertEquals(config.identifier(), request.getIdentifier());
@@ -140,8 +140,6 @@ class ClientGetFactoryTest {
   void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir) {
     when(core.getClientContext()).thenReturn(clientContext);
     when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
-    when(core.getRuntimePorts()).thenReturn(runtimePorts);
-    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     File target = tempDir.resolve("target.bin").toFile();
     when(transferAccess.allowDownloadTo(target)).thenReturn(false);
@@ -166,7 +164,9 @@ class ClientGetFactoryTest {
 
     assertThrows(
         NotAllowedException.class,
-        () -> ClientGetFactory.fromGlobal(client, new FreenetURI("KSK@global-disk"), config, core));
+        () ->
+            ClientGetFactory.fromGlobal(
+                client, new FreenetURI("KSK@global-disk"), config, core, transferAccess));
   }
 
   @Test
@@ -188,6 +188,7 @@ class ClientGetFactoryTest {
   void fromMessage_whenValidConnectionMessage_buildsRequestAndAppliesFetchContext()
       throws Exception {
     configureCoreWithFetchContext();
+    configureRuntimePorts();
     SimpleFieldSet fs = baseMessageFieldSet("message-ok");
     fs.putOverwrite("DSOnly", "true");
     fs.putOverwrite("IgnoreDS", "true");
@@ -229,6 +230,7 @@ class ClientGetFactoryTest {
   void fromMessage_whenBinaryBlobBucketCreationFails_wrapsIntoMessageInvalidException()
       throws Exception {
     configureCoreWithFetchContext();
+    configureRuntimePorts();
     BucketFactory bucketFactory = mock(BucketFactory.class);
     IOException ioFailure = new IOException("disk-full");
     when(fetchContext.getMaxOutputLength()).thenReturn(333L);
@@ -254,6 +256,9 @@ class ClientGetFactoryTest {
     when(core.getClientContext()).thenReturn(clientContext);
     when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
     when(fetchContext.getEventProducer()).thenReturn(eventProducer);
+  }
+
+  private void configureRuntimePorts() {
     when(core.getRuntimePorts()).thenReturn(runtimePorts);
     when(runtimePorts.transferAccess()).thenReturn(transferAccess);
   }

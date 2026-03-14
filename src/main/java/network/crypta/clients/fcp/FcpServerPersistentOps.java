@@ -632,7 +632,8 @@ final class FcpServerPersistentOps implements DownloadCache {
             spec.persistRebootOnly() ? globalRebootClient : globalForeverClient,
             spec.fetchURI(),
             requestConfig,
-            core);
+            core,
+            transferAccess());
     cg.register(false);
     cg.start(core.getClientContext());
   }

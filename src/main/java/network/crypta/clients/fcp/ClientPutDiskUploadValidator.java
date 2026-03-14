@@ -79,6 +79,8 @@ final class ClientPutDiskUploadValidator {
    * hash is decoded and returned in a {@link DiskUploadContext} so later steps can verify it
    * against the upload bucket. When no hash is provided, DDA access is validated directly.
    *
+   * @param transferAccess transfer policy used to evaluate disk upload permission; must not be
+   *     {@code null}.
    * @param handler active connection handler that supplies policy and identifiers; must not be
    *     {@code null}.
    * @param message parsed FCP put message containing upload fields; must not be {@code null}.
@@ -89,12 +91,15 @@ final class ClientPutDiskUploadValidator {
    * @throws MessageInvalidException when the request violates DDA rules or contains bad hash data.
    */
   static DiskUploadContext validateDiskUpload(
-      FCPConnectionHandler handler, ClientPutMessage message, String identifier, boolean global)
+      TransferAccessPort transferAccess,
+      FCPConnectionHandler handler,
+      ClientPutMessage message,
+      String identifier,
+      boolean global)
       throws MessageInvalidException {
     if (message.uploadFromType != ClientPutBase.UploadFrom.DISK) {
       return DiskUploadContext.empty();
     }
-    TransferAccessPort transferAccess = handler.getServer().runtime().transferAccess();
     if (!transferAccess.allowUploadFrom(message.origFilename)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

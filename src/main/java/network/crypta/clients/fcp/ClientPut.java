@@ -19,6 +19,7 @@ import network.crypta.client.async.InsertRequestParams;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -250,10 +251,11 @@ public final class ClientPut extends ClientPutBase {
             message.global);
     super(requestParams, null, options, handler, server, derivePublicURI(requestParams.uri()));
     binaryBlob = message.binaryBlob;
+    TransferAccessPort transferAccess = server.getCore().getRuntimePorts().transferAccess();
 
     DiskUploadContext diskContext =
         ClientPutDiskUploadValidator.validateDiskUpload(
-            handler, message, message.identifier, message.global);
+            transferAccess, handler, message, message.identifier, message.global);
 
     this.targetFilename = message.targetFilename;
     this.uploadFrom = message.uploadFromType;
