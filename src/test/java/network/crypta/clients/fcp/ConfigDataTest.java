@@ -1,10 +1,11 @@
 package network.crypta.clients.fcp;
 
-import java.util.EnumSet;
+import java.util.EnumMap;
 import java.util.Map;
-import network.crypta.config.Config.RequestType;
-import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.ConfigFieldSet;
+import network.crypta.runtime.spi.ConfigSection;
+import network.crypta.runtime.spi.ConfigSnapshot;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,101 +14,91 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ConfigDataTest {
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private PersistentConfig config;
   @Mock private FCPConnectionHandler connectionHandler;
+
+  @Mock private Node node;
 
   @Test
   void getFieldSet_whenAllSectionsRequested_expectCorrespondingSubsets() {
-    when(node.getConfig()).thenReturn(config);
-    SimpleFieldSet current = nonEmptyFieldSet("Current", "true");
-    SimpleFieldSet defaults = nonEmptyFieldSet("Default", "42");
-    SimpleFieldSet sort = nonEmptyFieldSet("Sort", "10");
-    SimpleFieldSet expert = nonEmptyFieldSet("Expert", "yes");
-    SimpleFieldSet forceWrite = nonEmptyFieldSet("Force", "confirm");
-    SimpleFieldSet shortDesc = nonEmptyFieldSet("Short", "sh");
-    SimpleFieldSet longDesc = nonEmptyFieldSet("Long", "loooooong");
-    SimpleFieldSet dataTypes = nonEmptyFieldSet("Type", "string");
-
-    when(config.exportFieldSet(RequestType.CURRENT_SETTINGS, true)).thenReturn(current);
-    when(config.exportFieldSet(RequestType.DEFAULT_SETTINGS, false)).thenReturn(defaults);
-    when(config.exportFieldSet(RequestType.SORT_ORDER, false)).thenReturn(sort);
-    when(config.exportFieldSet(RequestType.EXPERT_FLAG, false)).thenReturn(expert);
-    when(config.exportFieldSet(RequestType.FORCE_WRITE_FLAG, false)).thenReturn(forceWrite);
-    when(config.exportFieldSet(RequestType.SHORT_DESCRIPTION, false)).thenReturn(shortDesc);
-    when(config.exportFieldSet(RequestType.LONG_DESCRIPTION, false)).thenReturn(longDesc);
-    when(config.exportFieldSet(RequestType.DATA_TYPE, false)).thenReturn(dataTypes);
-
-    ConfigData configData =
-        new ConfigData(node, EnumSet.allOf(ConfigData.Section.class), "request-42");
+    EnumMap<ConfigSection, ConfigFieldSet> sections = new EnumMap<>(ConfigSection.class);
+    sections.put(
+        ConfigSection.CURRENT,
+        new ConfigFieldSet(
+            Map.of("enabled", "true"),
+            Map.of("node", new ConfigFieldSet(Map.of("name", "alpha"), Map.of()))));
+    sections.put(ConfigSection.DEFAULTS, new ConfigFieldSet(Map.of("enabled", "false"), Map.of()));
+    sections.put(ConfigSection.SORT_ORDER, new ConfigFieldSet(Map.of("enabled", "10"), Map.of()));
+    sections.put(ConfigSection.EXPERT_FLAG, new ConfigFieldSet(Map.of("enabled", "yes"), Map.of()));
+    sections.put(
+        ConfigSection.FORCE_WRITE_FLAG, new ConfigFieldSet(Map.of("enabled", "confirm"), Map.of()));
+    sections.put(
+        ConfigSection.SHORT_DESCRIPTION, new ConfigFieldSet(Map.of("enabled", "short"), Map.of()));
+    sections.put(
+        ConfigSection.LONG_DESCRIPTION, new ConfigFieldSet(Map.of("enabled", "long"), Map.of()));
+    sections.put(
+        ConfigSection.DATA_TYPES, new ConfigFieldSet(Map.of("enabled", "boolean"), Map.of()));
+    ConfigData configData = new ConfigData(new ConfigSnapshot(sections), "request-42");
 
     SimpleFieldSet result = configData.getFieldSet();
 
     Map<String, SimpleFieldSet> subsets = result.directSubsets();
     assertEquals(8, subsets.size());
-    assertSame(current, subsets.get("current"));
-    assertSame(defaults, subsets.get("default"));
-    assertSame(sort, subsets.get("sortOrder"));
-    assertSame(expert, subsets.get("expertFlag"));
-    assertSame(forceWrite, subsets.get("forceWriteFlag"));
-    assertSame(shortDesc, subsets.get("shortDescription"));
-    assertSame(longDesc, subsets.get("longDescription"));
-    assertSame(dataTypes, subsets.get("dataType"));
+    assertEquals("true", result.get("current.enabled"));
+    assertEquals("alpha", result.get("current.node.name"));
+    assertEquals("false", result.get("default.enabled"));
+    assertEquals("10", result.get("sortOrder.enabled"));
+    assertEquals("yes", result.get("expertFlag.enabled"));
+    assertEquals("confirm", result.get("forceWriteFlag.enabled"));
+    assertEquals("short", result.get("shortDescription.enabled"));
+    assertEquals("long", result.get("longDescription.enabled"));
+    assertEquals("boolean", result.get("dataType.enabled"));
     assertEquals("request-42", result.get("Identifier"));
   }
 
   @Test
-  void getFieldSet_whenNoFlagsEnabled_expectEmptyResultAndNoConfigAccess() {
-    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
+  void getFieldSet_whenSnapshotEmpty_expectEmptyResult() {
+    ConfigData configData = new ConfigData(ConfigSnapshot.empty(), null);
 
     SimpleFieldSet result = configData.getFieldSet();
 
     assertTrue(result.directSubsets().isEmpty());
     assertNull(result.get("Identifier"));
-    verify(node, never()).getConfig();
-    verifyNoInteractions(config);
   }
 
   @Test
-  void getFieldSet_whenExportReturnsEmptySubset_expectSubsetOmitted() {
-    when(node.getConfig()).thenReturn(config);
-    when(config.exportFieldSet(RequestType.SHORT_DESCRIPTION, false))
-        .thenReturn(new SimpleFieldSet(true));
-
-    ConfigData configData =
-        new ConfigData(node, EnumSet.of(ConfigData.Section.SHORT_DESCRIPTION), "id");
+  void getFieldSet_whenSubsetIsEmpty_expectSubsetOmitted() {
+    ConfigSnapshot snapshot =
+        new ConfigSnapshot(
+            Map.of(
+                ConfigSection.SHORT_DESCRIPTION,
+                new ConfigFieldSet(
+                    Map.of("visible", "value"), Map.of("empty", ConfigFieldSet.empty()))));
+    ConfigData configData = new ConfigData(snapshot, "id");
 
     SimpleFieldSet result = configData.getFieldSet();
 
-    assertTrue(result.directSubsets().isEmpty());
+    assertEquals("value", result.get("shortDescription.visible"));
+    assertNull(result.subset("shortDescription.empty"));
     assertEquals("id", result.get("Identifier"));
-    verify(config).exportFieldSet(RequestType.SHORT_DESCRIPTION, false);
   }
 
   @Test
   void getName_whenCalled_returnsStaticName() {
-    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
+    ConfigData configData = new ConfigData(ConfigSnapshot.empty(), null);
 
     assertEquals("ConfigData", configData.getName());
   }
 
   @Test
   void run_whenInvoked_throwsMessageInvalidException() {
-    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
+    ConfigData configData = new ConfigData(ConfigSnapshot.empty(), null);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> configData.run(connectionHandler, node));
@@ -115,11 +106,5 @@ class ConfigDataTest {
     assertEquals(
         "ConfigData goes from server to client not the other way around", exception.getMessage());
     assertNull(exception.ident);
-  }
-
-  private static SimpleFieldSet nonEmptyFieldSet(String key, String value) {
-    SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle(key, value);
-    return fs;
   }
 }

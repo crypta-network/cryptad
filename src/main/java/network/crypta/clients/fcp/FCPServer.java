@@ -747,8 +747,9 @@ public class FCPServer implements Runnable, DownloadCache {
    * Returns the runtime SPI bridge used by FCP infrastructure code.
    *
    * <p>The returned {@link RuntimePorts} instance is the same adapter supplied during server
-   * construction. It exposes execution, randomness, transfer policy, and lifecycle metadata without
-   * forcing infrastructure classes to depend directly on daemon-internal types.
+   * construction. It exposes execution, randomness, transfer policy, lifecycle metadata, and
+   * configuration management without forcing infrastructure classes to depend directly on
+   * daemon-internal types.
    *
    * @return runtime SPI bridge backing this server instance.
    */

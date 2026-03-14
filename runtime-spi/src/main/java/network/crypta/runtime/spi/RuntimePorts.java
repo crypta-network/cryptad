@@ -3,11 +3,11 @@ package network.crypta.runtime.spi;
 /**
  * Aggregate entry point for runtime-facing SPI adapters used by higher layers.
  *
- * <p>This interface groups the small set of runtime capabilities that PR-2 makes available outside
- * the daemon root module. Instead of injecting several unrelated services into infrastructure code,
- * the runtime exposes one stable handle that can be threaded through legacy code paths with minimal
+ * <p>This interface groups the small set of runtime capabilities currently exposed outside the
+ * daemon root module. Instead of injecting several unrelated services into infrastructure code, the
+ * runtime exposes one stable handle that can be threaded through legacy code paths with minimal
  * disruption. Each sub-port narrows access to a specific concern such as execution, randomness,
- * file-transfer policy, or lifecycle observation.
+ * file-transfer policy, lifecycle observation, or configuration management.
  *
  * <p>The aggregate is intentionally small and JDK-only. It is not a general domain API for the
  * node, and it does not attempt to model every daemon subsystem. Future adapters can depend on this
@@ -18,6 +18,7 @@ package network.crypta.runtime.spi;
  * @see RandomnessPort
  * @see TransferAccessPort
  * @see LifecyclePort
+ * @see ConfigPort
  */
 public interface RuntimePorts {
   /**
@@ -65,4 +66,16 @@ public interface RuntimePorts {
    * @return lifecycle runtime port for observing startup time and state flags
    */
   LifecyclePort lifecycle();
+
+  /**
+   * Returns the configuration capability exposed to infrastructure code.
+   *
+   * <p>This port lets higher layers export selected configuration sections, apply dotted-name
+   * overrides, and request persistence without depending on daemon configuration classes. The
+   * returned object should be treated as a live runtime view backed by the node's existing config
+   * subsystem.
+   *
+   * @return configuration runtime port for export, update, and persistence operations
+   */
+  ConfigPort config();
 }

@@ -1,43 +1,37 @@
 package network.crypta.clients.fcp;
 
 import java.util.EnumSet;
-import network.crypta.config.Config;
-import network.crypta.config.Option;
-import network.crypta.config.SubConfig;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.support.SimpleFieldSet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Handles the {@code ModifyConfig} FCP request by applying configuration updates supplied by the
  * client.
  *
- * <p>This message consumes a {@link SimpleFieldSet} whose keys mirror the hierarchical names of
- * {@link Option} instances in the node configuration. The constructor captures the request
- * identifier up front and strips it from the field set so only option names remain. During {@link
- * #run(FCPConnectionHandler, Node)} every {@link SubConfig} is traversed and each option is updated
- * when a matching key exists. Values identical to the current configuration are ignored to avoid
- * redundant writes.
+ * <p>This message consumes a {@link SimpleFieldSet} whose keys mirror dotted option names in the
+ * node configuration. The constructor captures the request identifier up front and strips it from
+ * the field set so only option overrides remain. During {@link #run(FCPConnectionHandler, Node)}
+ * the overrides are handed to the runtime SPI, which preserves the legacy config-update semantics.
  *
  * <p>The message requires the connection to possess full access; otherwise it terminates early with
- * a {@link MessageInvalidException}. After successful updates, the configuration is persisted via
- * the client core and a fresh {@link ConfigData} response is sent so callers can confirm the
- * effective state.
+ * a {@link MessageInvalidException}. After the update pass, the configuration is persisted and a
+ * fresh {@link ConfigData} response is sent so callers can confirm the effective state.
  *
  * <ul>
- *   <li>Responsibility: reconcile client-supplied option values with the in-memory configuration.
+ *   <li>Responsibility: hand client-supplied overrides to the runtime config port.
  *   <li>Persistence: flushes changes to disk before replying.
  *   <li>Threading: intended for use on the handler thread; no internal synchronization is added.
  * </ul>
  *
  * @see ConfigData
- * @see Option
- * @see SubConfig
+ * @see ConfigPort
  */
 public class ModifyConfig extends FCPMessage {
-  private static final Logger LOG = LoggerFactory.getLogger(ModifyConfig.class);
-
   static final String NAME = "ModifyConfig";
 
   final SimpleFieldSet fs;
@@ -97,11 +91,10 @@ public class ModifyConfig extends FCPMessage {
    * Applies the requested configuration updates and emits the latest configuration snapshot.
    *
    * <p>The method first enforces that the connection holds full access privileges; otherwise a
-   * {@link MessageInvalidException} is thrown back to the caller. It then iterates through every
-   * {@link SubConfig} and {@link Option} pairing, invoking {@link #updateOption(String, Option)} to
-   * reconcile differences between the incoming field set and the node's current configuration. When
-   * modifications occur, the configuration is persisted before a {@link ConfigData} message is
-   * returned so clients can verify the applied values.
+   * {@link MessageInvalidException} is thrown back to the caller. It then forwards the requested
+   * dotted-name overrides to the runtime config port, persists the current config state, and
+   * returns a current-settings {@link ConfigData} snapshot so clients can verify the applied
+   * values.
    *
    * <pre>{@code
    * // Typical server-side handling path
@@ -124,43 +117,22 @@ public class ModifyConfig extends FCPMessage {
           requestIdentifier,
           false);
     }
-    Config config = node.getConfig();
-
-    for (SubConfig sc : config.getConfigs()) {
-      String prefix = sc.getPrefix();
-      for (Option<?> option : sc.getOptions()) {
-        updateOption(prefix, option);
-      }
-    }
-    node.services().clientCore().storeConfig();
-    handler.send(new ConfigData(node, EnumSet.of(ConfigData.Section.CURRENT), requestIdentifier));
+    ConfigPort config = handler.getServer().runtime().config();
+    config.applyOverrides(extractOverrides());
+    config.persist();
+    handler.send(
+        new ConfigData(config.export(EnumSet.of(ConfigSection.CURRENT)), requestIdentifier));
   }
 
-  /**
-   * Updates a single option when the incoming field set provides a new value.
-   *
-   * <p>Only different values are applied; unchanged entries are skipped to avoid unnecessary work
-   * and log noise. Invalid values are reported via the logger but do not interrupt processing, so
-   * the remaining options can still be evaluated.
-   */
-  private void updateOption(String prefix, Option<?> option) {
-    String configName = option.getName();
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Setting {}.{}", prefix, configName);
+  private Map<String, String> extractOverrides() {
+    LinkedHashMap<String, String> overrides = new LinkedHashMap<>();
+    for (Iterator<String> keys = fs.keyIterator(); keys.hasNext(); ) {
+      String key = keys.next();
+      String value = fs.get(key);
+      if (value != null) {
+        overrides.put(key, value);
+      }
     }
-    String value = fs.get(prefix + '.' + configName);
-    if (value == null || option.getValueString().equals(value)) {
-      return;
-    }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Setting {}.{} to {}", prefix, configName, value);
-    }
-    try {
-      option.setValue(value);
-    } catch (Exception e) {
-      // Bad values silently fail from an FCP perspective, but the FCP client can tell if a change
-      // took by comparing ConfigData messages before and after
-      LOG.error("Caught {}", e, e);
-    }
+    return overrides;
   }
 }

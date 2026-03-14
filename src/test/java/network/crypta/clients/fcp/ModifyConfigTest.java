@@ -1,14 +1,14 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.Option;
-import network.crypta.config.PersistentConfig;
-import network.crypta.config.StringOption;
-import network.crypta.config.SubConfig;
+import java.util.EnumSet;
+import java.util.Map;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ConfigFieldSet;
+import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.ConfigSection;
+import network.crypta.runtime.spi.ConfigSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.StringCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,10 +35,13 @@ class ModifyConfigTest {
 
   @Mock FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  Node node;
+  @Mock Node node;
 
-  @Mock NodeClientCore clientCore;
+  @Mock FCPServer server;
+
+  @Mock RuntimePorts runtimePorts;
+
+  @Mock ConfigPort configPort;
 
   @Test
   void constructor_whenIdentifierPresent_storesItAndRemovesFromFieldSet() {
@@ -82,140 +86,41 @@ class ModifyConfigTest {
     assertEquals("ModifyConfig requires full access", thrown.getMessage());
     assertFalse(thrown.global);
     verify(handler, never()).send(any(FCPMessage.class));
+    verifyNoInteractions(server, runtimePorts, configPort, node);
   }
 
   @Test
-  void run_whenValueDiffers_updatesOptionStoresConfigAndSendsReply() throws Exception {
-    PersistentConfig config = new PersistentConfig(null);
-    SubConfig subConfig = config.createSubConfig("node");
-    CountingStringCallback callback = new CountingStringCallback("5");
-    StringOption option =
-        new StringOption(
-            subConfig, "maxPeers", "5", new Option.Meta(0, false, false, null, null), callback);
-    subConfig.register(option);
-    when(node.getConfig()).thenReturn(config);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
-    when(handler.hasFullAccess()).thenReturn(true);
+  @SuppressWarnings("unchecked")
+  void run_whenHandlerHasFullAccess_appliesOverridesPersistsExportsCurrentAndSendsReply()
+      throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "cfg-1");
     fs.putSingle("node.maxPeers", "10");
-    ModifyConfig modifyConfig = new ModifyConfig(fs);
-
-    modifyConfig.run(handler, node);
-
-    assertEquals(1, callback.getSetCount());
-    assertEquals("10", option.getValueString());
-    assertEquals("10", callback.getCurrentValue());
-    InOrder order = inOrder(clientCore, handler);
-    order.verify(clientCore).storeConfig();
-    ArgumentCaptor<ConfigData> captor = ArgumentCaptor.forClass(ConfigData.class);
-    order.verify(handler).send(captor.capture());
-    ConfigData sent = captor.getValue();
-    assertEquals(node, sent.node);
-    assertEquals("cfg-1", sent.requestIdentifier);
-  }
-
-  @Test
-  void run_whenValueUnchanged_doesNotInvokeSetValueButStillStoresAndSends() throws Exception {
-    PersistentConfig config = new PersistentConfig(null);
-    SubConfig subConfig = config.createSubConfig("ui");
-    CountingStringCallback callback = new CountingStringCallback("light");
-    StringOption option =
-        new StringOption(
-            subConfig, "theme", "light", new Option.Meta(0, false, false, null, null), callback);
-    subConfig.register(option);
-    when(node.getConfig()).thenReturn(config);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
-    when(handler.hasFullAccess()).thenReturn(true);
-    SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", "cfg-2");
     fs.putSingle("ui.theme", "light");
     ModifyConfig modifyConfig = new ModifyConfig(fs);
-
-    modifyConfig.run(handler, node);
-
-    assertEquals(0, callback.getSetCount());
-    assertEquals("light", option.getValueString());
-    verify(clientCore).storeConfig();
-    verify(handler).send(any(ConfigData.class));
-  }
-
-  @Test
-  void run_whenOptionUpdateFails_continuesToStoreAndRespond() throws Exception {
-    PersistentConfig config = new PersistentConfig(null);
-    SubConfig subConfig = config.createSubConfig("net");
-    ThrowingStringCallback callback = new ThrowingStringCallback("8080");
-    StringOption failingOption =
-        new StringOption(
-            subConfig, "port", "8080", new Option.Meta(0, false, false, null, null), callback);
-    subConfig.register(failingOption);
-    when(node.getConfig()).thenReturn(config);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
+    ConfigSnapshot snapshot =
+        new ConfigSnapshot(
+            Map.of(ConfigSection.CURRENT, new ConfigFieldSet(Map.of("enabled", "true"), Map.of())));
     when(handler.hasFullAccess()).thenReturn(true);
-    SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", "cfg-3");
-    fs.putSingle("net.port", "9090");
-    ModifyConfig modifyConfig = new ModifyConfig(fs);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.config()).thenReturn(configPort);
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT))).thenReturn(snapshot);
 
     modifyConfig.run(handler, node);
 
-    assertEquals("8080", failingOption.getValueString());
-    verify(clientCore).storeConfig();
-    verify(handler).send(any(ConfigData.class));
-  }
+    InOrder order = inOrder(configPort, handler);
+    ArgumentCaptor<Map<String, String>> overridesCaptor = ArgumentCaptor.forClass(Map.class);
+    order.verify(configPort).applyOverrides(overridesCaptor.capture());
+    assertEquals(Map.of("node.maxPeers", "10", "ui.theme", "light"), overridesCaptor.getValue());
+    order.verify(configPort).persist();
+    order.verify(configPort).export(EnumSet.of(ConfigSection.CURRENT));
+    ArgumentCaptor<ConfigData> responseCaptor = ArgumentCaptor.forClass(ConfigData.class);
+    order.verify(handler).send(responseCaptor.capture());
 
-  private static final class CountingStringCallback extends StringCallback {
-    private int setCount;
-    private String currentValue;
-
-    CountingStringCallback(String initialValue) {
-      this.currentValue = initialValue;
-    }
-
-    @Override
-    public String get() {
-      return currentValue;
-    }
-
-    @Override
-    public void set(String val) {
-      setCount++;
-      currentValue = val;
-    }
-
-    int getSetCount() {
-      return setCount;
-    }
-
-    String getCurrentValue() {
-      return currentValue;
-    }
-  }
-
-  private static final class ThrowingStringCallback extends StringCallback {
-    private final String currentValue;
-
-    ThrowingStringCallback(String currentValue) {
-      this.currentValue = currentValue;
-    }
-
-    @Override
-    public String get() {
-      return currentValue;
-    }
-
-    @Override
-    public void set(String val) throws InvalidConfigValueException {
-      throw new InvalidConfigValueException("boom");
-    }
+    ConfigData sent = responseCaptor.getValue();
+    assertEquals(snapshot, sent.snapshot);
+    assertEquals("cfg-1", sent.requestIdentifier);
+    verifyNoInteractions(node);
   }
 }

@@ -1,25 +1,27 @@
 package network.crypta.clients.fcp;
 
 import java.util.EnumSet;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import network.crypta.config.Config;
-import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.ConfigFieldSet;
+import network.crypta.runtime.spi.ConfigSection;
+import network.crypta.runtime.spi.ConfigSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
 /**
  * Server-to-client FCP message that transports slices of the node configuration.
  *
- * <p>This type assembles a {@link SimpleFieldSet} containing whichever option categories a caller
- * requests (current values, defaults, metadata flags, descriptions, and data types). The resulting
- * tree mirrors the structure returned by {@link PersistentConfig#exportFieldSet(Config.RequestType,
- * boolean)} for each category, letting remote tooling reconstruct the node's configuration dialog
- * without needing multiple round trips.
+ * <p>This type holds an immutable {@link ConfigSnapshot} produced by the runtime SPI and rebuilds
+ * the corresponding {@link SimpleFieldSet} only when the FCP layer serializes the response. The
+ * resulting payload mirrors the historical configuration export tree without keeping live daemon
+ * objects in the message itself.
  *
  * <p>Each instance is immutable once constructed. Callers decide at construction time which
- * sections should be included and whether an identifier should be attached so that asynchronous
- * responses can be correlated. The exporter queries the {@link Node} configuration only if at least
- * one section is requested, preventing unnecessary work when the message would otherwise be empty.
+ * snapshot should be returned and whether an identifier should be attached so that asynchronous
+ * responses can be correlated. Empty sections are omitted from the serialized payload, matching the
+ * compact wire behavior of earlier implementations.
  *
  * <ul>
  *   <li>Intended consumers are FCP clients that need a snapshot of the configuration state.
@@ -27,47 +29,29 @@ import network.crypta.support.SimpleFieldSet;
  *   <li>The produced field set omits empty subsections so payloads stay compact.
  * </ul>
  *
- * <p>Thread-safety: instances rely on the underlying {@link PersistentConfig}; only construct them
- * in threads that can safely read configuration state, and avoid sharing mutable {@link Node}
- * references across threads without external coordination.
+ * <p>Thread-safety: instances are pure immutable values and are safe to share across threads after
+ * construction.
  */
 public class ConfigData extends FCPMessage {
   static final String NAME = "ConfigData";
 
-  /** Flags describing which configuration subsections to export. */
-  public enum Section {
-    CURRENT,
-    DEFAULTS,
-    SORT_ORDER,
-    EXPERT_FLAG,
-    FORCE_WRITE_FLAG,
-    SHORT_DESCRIPTION,
-    LONG_DESCRIPTION,
-    DATA_TYPES
-  }
-
-  final Node node;
-  private final EnumSet<Section> sections;
+  final ConfigSnapshot snapshot;
   final String requestIdentifier;
 
   /**
-   * Creates a configuration snapshot request with a precisely scoped payload budget.
+   * Creates a configuration snapshot response with a precisely scoped payload.
    *
-   * <p>The supplied section set determines which subsections are exported, allowing callers to
-   * tailor the trade-off between completeness and serialization cost. Use {@link EnumSet#noneOf} to
-   * request only an identifier, or {@link EnumSet#allOf} to include every available section. The
-   * identifier is optional but recommended for clients that expect multiple outstanding responses.
+   * <p>The supplied snapshot is already detached from daemon-only configuration types, so this
+   * message becomes a transport value that can be queued and serialized without additional runtime
+   * lookups. The identifier is optional but recommended for clients that expect multiple
+   * outstanding responses.
    *
-   * @param node node instance providing the backing {@link PersistentConfig}; must be non-null and
-   *     ready for read-only queries.
-   * @param sections subset of {@link Section} values describing which configuration views to
-   *     include.
+   * @param snapshot runtime-exported configuration snapshot to serialize
    * @param identifier identifier echoed into the payload via {@link FCPMessage#IDENTIFIER}; may be
    *     {@code null} when the caller does not need correlation.
    */
-  public ConfigData(Node node, Set<Section> sections, String identifier) {
-    this.node = node;
-    this.sections = sections.isEmpty() ? EnumSet.noneOf(Section.class) : EnumSet.copyOf(sections);
+  public ConfigData(ConfigSnapshot snapshot, String identifier) {
+    this.snapshot = Objects.requireNonNull(snapshot);
     this.requestIdentifier = identifier;
   }
 
@@ -75,115 +59,70 @@ public class ConfigData extends FCPMessage {
    * Builds the {@link SimpleFieldSet} payload that will be serialized into the outgoing FCP
    * message.
    *
-   * <p>The exporter requests each enabled subsection from {@link PersistentConfig} exactly once and
-   * attaches it under a stable key (for example {@code current}, {@code default}, or {@code
-   * shortDescription}). Empty subsections are suppressed to avoid emitting redundant braces. When
-   * no sections are enabled, the returned field set is empty unless an identifier is present.
+   * <p>The exporter rebuilds each section under its historical FCP key (for example {@code
+   * current}, {@code default}, or {@code shortDescription}). Nested values and subsets are copied
+   * recursively into a fresh {@link SimpleFieldSet}. Empty subsections are suppressed to avoid
+   * emitting redundant braces. When no sections are enabled, the returned field set is empty unless
+   * an identifier is present.
    *
    * <pre>{@code
-   * ConfigData data = new ConfigData(
-   *     node,
-   *     EnumSet.of(Section.CURRENT, Section.SHORT_DESCRIPTION),
-   *     "cfg-1");
+   * ConfigData data =
+   *     new ConfigData(
+   *         new ConfigSnapshot(
+   *             Map.of(
+   *                 ConfigSection.CURRENT,
+   *                 new ConfigFieldSet(Map.of("enabled", "true"), Map.of()))),
+   *         "cfg-1");
    * SimpleFieldSet payload = data.getFieldSet();
    * }</pre>
    *
-   * @return a short-lived field set containing the requested subsections and optional identifier;
-   *     callers must not mutate subsets that are also owned by {@link PersistentConfig}.
+   * @return a short-lived field set containing the snapshot subsections and optional identifier
    */
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    PersistentConfig config = needsConfigLookup() ? node.getConfig() : null;
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.CURRENT),
-        Config.RequestType.CURRENT_SETTINGS,
-        true,
-        "current");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.DEFAULTS),
-        Config.RequestType.DEFAULT_SETTINGS,
-        false,
-        "default");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.SORT_ORDER),
-        Config.RequestType.SORT_ORDER,
-        false,
-        "sortOrder");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.EXPERT_FLAG),
-        Config.RequestType.EXPERT_FLAG,
-        false,
-        "expertFlag");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.FORCE_WRITE_FLAG),
-        Config.RequestType.FORCE_WRITE_FLAG,
-        false,
-        "forceWriteFlag");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.SHORT_DESCRIPTION),
-        Config.RequestType.SHORT_DESCRIPTION,
-        false,
-        "shortDescription");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.LONG_DESCRIPTION),
-        Config.RequestType.LONG_DESCRIPTION,
-        false,
-        "longDescription");
-    addSection(
-        fs,
-        config,
-        sections.contains(Section.DATA_TYPES),
-        Config.RequestType.DATA_TYPE,
-        false,
-        "dataType");
-    if (requestIdentifier != null) fs.putSingle("Identifier", requestIdentifier);
+    for (Map.Entry<ConfigSection, ConfigFieldSet> entry : snapshot.sections().entrySet()) {
+      fs.tput(sectionKey(entry.getKey()), toSimpleFieldSet(entry.getValue()));
+    }
+    if (requestIdentifier != null) {
+      fs.putSingle("Identifier", requestIdentifier);
+    }
     return fs;
   }
 
   /**
    * Returns a snapshot of the enabled configuration sections.
    *
-   * @return a new {@link Set} containing the enabled {@link Section} values.
+   * @return a new {@link Set} containing the exported {@link ConfigSection} values.
    */
-  public Set<Section> getSections() {
-    return EnumSet.copyOf(sections);
+  public Set<ConfigSection> getSections() {
+    return snapshot.sections().isEmpty()
+        ? EnumSet.noneOf(ConfigSection.class)
+        : EnumSet.copyOf(snapshot.sections().keySet());
   }
 
-  /** Returns {@code true} if any section flag is enabled and a configuration lookup is required. */
-  private boolean needsConfigLookup() {
-    return !sections.isEmpty();
+  private static String sectionKey(ConfigSection section) {
+    return switch (section) {
+      case CURRENT -> "current";
+      case DEFAULTS -> "default";
+      case SORT_ORDER -> "sortOrder";
+      case EXPERT_FLAG -> "expertFlag";
+      case FORCE_WRITE_FLAG -> "forceWriteFlag";
+      case SHORT_DESCRIPTION -> "shortDescription";
+      case LONG_DESCRIPTION -> "longDescription";
+      case DATA_TYPES -> "dataType";
+    };
   }
 
-  /** Adds a subsection when the flag is enabled and the exported data is non-empty. */
-  private static void addSection(
-      SimpleFieldSet target,
-      PersistentConfig config,
-      boolean includeSection,
-      Config.RequestType type,
-      boolean defaults,
-      String subsetKey) {
-    if (!includeSection || config == null) {
-      return;
+  private static SimpleFieldSet toSimpleFieldSet(ConfigFieldSet source) {
+    SimpleFieldSet target = new SimpleFieldSet(true);
+    for (Map.Entry<String, String> entry : source.directValues().entrySet()) {
+      target.putSingle(entry.getKey(), entry.getValue());
     }
-    SimpleFieldSet section = config.exportFieldSet(type, defaults);
-    if (!section.isEmpty()) {
-      target.put(subsetKey, section);
+    for (Map.Entry<String, ConfigFieldSet> entry : source.directSubsets().entrySet()) {
+      target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
     }
+    return target;
   }
 
   /**

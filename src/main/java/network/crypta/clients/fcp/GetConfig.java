@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.util.EnumSet;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -102,11 +103,10 @@ public class GetConfig extends FCPMessage {
    *
    * <p>The handler must present full-access credentials; otherwise this method halts execution by
    * raising a {@link MessageInvalidException} describing the access denial. When authorized, it
-   * constructs a {@link ConfigData} response using the cached flags to decide whether to include
-   * current values, defaults, sort order, expert-only markers, force-write allowances, short or
-   * long descriptions, and data-type metadata. The response is streamed via the provided handler
-   * without mutating the {@link Node}. Invocations are single-shot per instance; repeated calls
-   * would resend identical configuration data until the connection closes.
+   * requests the selected configuration sections from the runtime SPI and constructs a {@link
+   * ConfigData} response from the returned snapshot. The response is streamed via the provided
+   * handler without mutating the {@link Node}. Invocations are single-shot per instance; repeated
+   * calls would resend identical configuration data until the connection closes.
    *
    * @param handler connection context responsible for permission checks and outbound delivery; must
    *     not be {@code null} and must expose full access for the call to proceed.
@@ -123,34 +123,36 @@ public class GetConfig extends FCPMessage {
           requestIdentifier,
           false);
     }
-    handler.send(new ConfigData(node, buildSections(), requestIdentifier));
+    handler.send(
+        new ConfigData(
+            handler.getServer().runtime().config().export(buildSections()), requestIdentifier));
   }
 
-  private EnumSet<ConfigData.Section> buildSections() {
-    EnumSet<ConfigData.Section> sections = EnumSet.noneOf(ConfigData.Section.class);
+  private EnumSet<ConfigSection> buildSections() {
+    EnumSet<ConfigSection> sections = EnumSet.noneOf(ConfigSection.class);
     if (withCurrent) {
-      sections.add(ConfigData.Section.CURRENT);
+      sections.add(ConfigSection.CURRENT);
     }
     if (withDefaults) {
-      sections.add(ConfigData.Section.DEFAULTS);
+      sections.add(ConfigSection.DEFAULTS);
     }
     if (withSortOrder) {
-      sections.add(ConfigData.Section.SORT_ORDER);
+      sections.add(ConfigSection.SORT_ORDER);
     }
     if (withExpertFlag) {
-      sections.add(ConfigData.Section.EXPERT_FLAG);
+      sections.add(ConfigSection.EXPERT_FLAG);
     }
     if (withForceWriteFlag) {
-      sections.add(ConfigData.Section.FORCE_WRITE_FLAG);
+      sections.add(ConfigSection.FORCE_WRITE_FLAG);
     }
     if (withShortDescription) {
-      sections.add(ConfigData.Section.SHORT_DESCRIPTION);
+      sections.add(ConfigSection.SHORT_DESCRIPTION);
     }
     if (withLongDescription) {
-      sections.add(ConfigData.Section.LONG_DESCRIPTION);
+      sections.add(ConfigSection.LONG_DESCRIPTION);
     }
     if (withDataTypes) {
-      sections.add(ConfigData.Section.DATA_TYPES);
+      sections.add(ConfigSection.DATA_TYPES);
     }
     return sections;
   }

@@ -1148,7 +1148,8 @@ public final class NodeClientCore implements Persistable {
    *
    * <p>The returned {@link RuntimePorts} instance delegates back into the current node and client
    * core without adding new business logic. It is created during construction and shared for the
-   * lifetime of the core.
+   * lifetime of the core, covering execution, randomness, transfer policy, lifecycle, and config
+   * access.
    *
    * @return runtime SPI bridge backed by this node and client core.
    */
