@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,19 +19,19 @@ import org.slf4j.LoggerFactory;
  * validation.
  *
  * <p>Typical usage is to construct one planner per request and call either {@link
- * #forGlobalRequest(ClientGet.ReturnType, File, boolean, NodeClientCore)} for global requests or
- * {@link #forMessage(ClientGetMessage, NodeClientCore, FCPConnectionHandler)} for FCP message
- * handling. The planner enforces policy checks (node download permissions and DDA access),
+ * #forGlobalRequest(ClientGet.ReturnType, File, boolean, TransferAccessPort)} for global requests
+ * or {@link #forMessage(ClientGetMessage, TransferAccessPort, FCPConnectionHandler)} for FCP
+ * message handling. The planner enforces policy checks (download permissions and DDA access),
  * validates that disk targets are safe to use, and prepares a {@link Bucket} plus optional file
  * extension hint for filtered data. It does not perform I/O beyond basic file existence checks and
  * deletion of zero-length stale files.
  *
  * <p>The class is not thread-safe and is designed for single-request, single-threaded use. All
- * state is immutable after construction; methods derive a {@link ReturnSetup} based on inputs and
+ * states are immutable after construction; methods derive a {@link ReturnSetup} based on inputs and
  * may throw exceptions to signal invalid requests or unsafe targets.
  *
  * <ul>
- *   <li>Validates node policy and DDA access for disk destinations.
+ *   <li>Validates transfer policy and DDA access for disk destinations.
  *   <li>Normalizes existing file handling to avoid overwriting data.
  *   <li>Derives extension hints when filtered output is requested.
  * </ul>
@@ -52,8 +52,8 @@ final class ClientGetReturnPlanner {
   /**
    * Creates a planner for a single request using the supplied identifier and fetch settings.
    *
-   * <p>The planner retains the identifier and global flag for subsequent error reporting and uses
-   * the fetch context to decide whether to derive file extensions for filtered data. Instances are
+   * <p>The planner retains the identifier and global flag for further error reporting and uses the
+   * fetch context to decide whether to derive file extensions for filtered data. Instances are
    * lightweight and intended to be short-lived for the lifetime of a single {@link ClientGet}
    * request.
    *
@@ -71,27 +71,30 @@ final class ClientGetReturnPlanner {
   /**
    * Builds return handling for a global request with explicit disk parameters.
    *
-   * <p>The method validates node policy for disk downloads, checks whether the target file is safe
-   * to use, and prepares a disk-backed bucket when the return type is {@link
+   * <p>The method validates transfer policy for disk downloads, checks whether the target file is
+   * safe to use, and prepares a disk-backed bucket when the return type is {@link
    * ClientGet.ReturnType#DISK}. For non-disk return types, the returned setup is empty with all
-   * fields set to {@code null}. The caller is expected to pass a valid {@link NodeClientCore}
+   * fields set to {@code null}. The caller is expected to pass a valid {@link TransferAccessPort}
    * instance and, for disk requests, a concrete target file.
    *
    * @param type return strategy describing whether disk output is required.
    * @param returnFilename target file to write to when {@code type} is disk.
    * @param filterData whether to derive an extension hint for filtered output.
-   * @param core node core that enforces download policy checks.
+   * @param transferAccess transfer policy that enforces download permission checks.
    * @return a prepared {@link ReturnSetup} describing bucket, target, and extension hint.
-   * @throws NotAllowedException if the node policy rejects the requested target path.
+   * @throws NotAllowedException if the transfer policy rejects the requested target path.
    * @throws IOException if an existing target file cannot be removed or is unsafe to overwrite.
    * @throws NullPointerException if {@code returnFilename} is null when disk output is requested.
    */
   ReturnSetup forGlobalRequest(
-      ClientGet.ReturnType type, File returnFilename, boolean filterData, NodeClientCore core)
+      ClientGet.ReturnType type,
+      File returnFilename,
+      boolean filterData,
+      TransferAccessPort transferAccess)
       throws NotAllowedException, IOException {
     if (type == ClientGet.ReturnType.DISK) {
       File file = Objects.requireNonNull(returnFilename, "returnFilename");
-      ensureDownloadAllowed(core, file);
+      ensureDownloadAllowed(transferAccess, file);
       return createDiskReturnSetup(file, filterData);
     }
     return new ReturnSetup(null, null, null);
@@ -100,23 +103,24 @@ final class ClientGetReturnPlanner {
   /**
    * Builds return handling from an already-parsed {@link ClientGetMessage}.
    *
-   * <p>The method performs node policy checks and DDA validation before returning a disk setup for
-   * {@link ClientGet.ReturnType#DISK} messages. Any invalid condition results in a {@link
+   * <p>The method performs transfer-policy checks and DDA validation before returning a disk setup
+   * for {@link ClientGet.ReturnType#DISK} messages. Any invalid condition results in a {@link
    * MessageInvalidException} carrying an appropriate protocol error code and identifier. For
    * non-disk return types, the returned setup is empty with all fields set to {@code null}.
    *
-   * @param message parsed request message containing return type and disk filename.
-   * @param core node core used to validate download policy for disk targets.
+   * @param message parsed request message containing the return type and disk filename.
+   * @param transferAccess transfer policy used to validate download permission for disk targets.
    * @param handler connection handler providing DDA access control decisions.
    * @return a prepared {@link ReturnSetup} describing bucket, target, and extension hint.
    * @throws MessageInvalidException if policy checks fail or the target file is unsafe to use.
-   * @throws NullPointerException if {@code message}, {@code core}, or {@code handler} is null.
+   * @throws NullPointerException if {@code message}, {@code transferAccess}, or {@code handler} is
+   *     null.
    */
   ReturnSetup forMessage(
-      ClientGetMessage message, NodeClientCore core, FCPConnectionHandler handler)
+      ClientGetMessage message, TransferAccessPort transferAccess, FCPConnectionHandler handler)
       throws MessageInvalidException {
     if (message.returnType == ClientGet.ReturnType.DISK) {
-      return buildDiskSetupForMessage(message, core, handler);
+      return buildDiskSetupForMessage(message, transferAccess, handler);
     }
     return new ReturnSetup(null, null, null);
   }
@@ -124,22 +128,22 @@ final class ClientGetReturnPlanner {
   /**
    * Validates and prepares disk return handling for an FCP message.
    *
-   * <p>This method enforces node download policy, DDA access permission, and target file safety
-   * before constructing the {@link ReturnSetup}. It maps failures to {@link
-   * MessageInvalidException} instances with protocol-appropriate error codes to allow callers to
-   * respond to the remote peer deterministically.
+   * <p>This method enforces transfer policy, DDA access permission, and target file safety before
+   * constructing the {@link ReturnSetup}. It maps failures to {@link MessageInvalidException}
+   * instances with protocol-appropriate error codes to allow callers to respond to the remote peer
+   * deterministically.
    *
    * @param message parsed message providing the disk target and return settings.
-   * @param core node core that enforces download policy for the target.
+   * @param transferAccess transfer policy that enforces download permission for the target.
    * @param handler connection handler that provides DDA access validation.
    * @return prepared disk return setup with bucket, target file, and optional extension.
    * @throws MessageInvalidException if any policy or disk checks fail.
    */
   private ReturnSetup buildDiskSetupForMessage(
-      ClientGetMessage message, NodeClientCore core, FCPConnectionHandler handler)
+      ClientGetMessage message, TransferAccessPort transferAccess, FCPConnectionHandler handler)
       throws MessageInvalidException {
     File diskFile = message.diskFile;
-    if (!core.allowDownloadTo(diskFile)) {
+    if (!transferAccess.allowDownloadTo(diskFile)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
           "Not allowed to download to " + diskFile,
@@ -179,7 +183,7 @@ final class ClientGetReturnPlanner {
    * includes an extension hint when filtering is enabled. The method does not verify the file
    * itself; callers must ensure it is safe to use before invoking this helper.
    *
-   * @param file disk target file to back the return bucket.
+   * @param file the disk target file to back the return bucket.
    * @param filterData whether to derive a file extension hint for filtered data.
    * @return a {@link ReturnSetup} holding the disk bucket, target file, and optional extension.
    */
@@ -207,21 +211,22 @@ final class ClientGetReturnPlanner {
   }
 
   /**
-   * Verifies that the node allows disk downloads and that the target file is safe to use.
+   * Verifies that the transfer policy allows disk downloads and that the target file is safe to
+   * use.
    *
-   * <p>The method delegates policy validation to {@link NodeClientCore#allowDownloadTo(File)} and
-   * then ensures the destination does not already exist, except for the special case where a
+   * <p>The method delegates policy validation to {@link TransferAccessPort#allowDownloadTo(File)}
+   * and then ensures the destination does not already exist, except for the special case where a
    * zero-length file is deleted as a stale placeholder. It does not create directories or touch the
    * filesystem beyond existence checks and optional deletion of a zero-length file.
    *
-   * @param core node core used to verify download policy for the target path.
+   * @param transferAccess transfer policy used to verify download permission for the target path.
    * @param file destination file for disk output.
-   * @throws NotAllowedException if the node policy rejects the target file location.
+   * @throws NotAllowedException if the transfer policy rejects the target file location.
    * @throws IOException if the target file exists and cannot be safely removed.
    */
-  private void ensureDownloadAllowed(NodeClientCore core, File file)
+  private void ensureDownloadAllowed(TransferAccessPort transferAccess, File file)
       throws NotAllowedException, IOException {
-    if (!core.allowDownloadTo(file)) {
+    if (!transferAccess.allowDownloadTo(file)) {
       throw new NotAllowedException();
     }
     handleExistingTargetFile(file);

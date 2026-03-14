@@ -26,6 +26,7 @@ import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.FileBucket;
@@ -253,28 +254,26 @@ final class ClientGetGetterFactory {
    * order.
    *
    * @param identifier request identifier used for policy checks.
-   * @param global whether the request uses the global identifier namespace.
    * @param fetchContext fetch context for return planning.
    * @param returnType configured return type.
    * @param returnFilename target file for disk returns.
    * @param filterData whether to derive an extension hint when filtering.
-   * @param core node core used for policy checks.
+   * @param transferAccess transfer policy used for policy checks.
    * @return setup containing {@link Bucket}, {@link File}, and extension {@link String}.
-   * @throws NotAllowedException if the node policy rejects the requested target path.
+   * @throws NotAllowedException if the transfer policy rejects the requested target path.
    * @throws IOException if an existing target file cannot be removed or is unsafe to overwrite.
    */
   static ClientGetReturnPlanner.ReturnSetup planReturnForGlobal(
       String identifier,
-      boolean global,
       FetchContext fetchContext,
       ClientGet.ReturnType returnType,
       File returnFilename,
       boolean filterData,
-      NodeClientCore core)
+      TransferAccessPort transferAccess)
       throws NotAllowedException, IOException {
     ClientGetReturnPlanner returnPlanner =
-        new ClientGetReturnPlanner(identifier, global, fetchContext);
-    return returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, core);
+        new ClientGetReturnPlanner(identifier, true, fetchContext);
+    return returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, transferAccess);
   }
 
   /**
@@ -287,7 +286,7 @@ final class ClientGetGetterFactory {
    * @param global whether the request uses the global identifier namespace.
    * @param fetchContext fetch context for return planning.
    * @param message message containing return settings.
-   * @param core node core used for policy checks.
+   * @param transferAccess transfer policy used for policy checks.
    * @param handler connection handler providing DDA validation.
    * @return setup containing {@link Bucket}, {@link File}, and extension {@link String}.
    * @throws MessageInvalidException if policy checks fail or the target file is unsafe to use.
@@ -297,12 +296,12 @@ final class ClientGetGetterFactory {
       boolean global,
       FetchContext fetchContext,
       ClientGetMessage message,
-      NodeClientCore core,
+      TransferAccessPort transferAccess,
       FCPConnectionHandler handler)
       throws MessageInvalidException {
     ClientGetReturnPlanner returnPlanner =
         new ClientGetReturnPlanner(identifier, global, fetchContext);
-    return returnPlanner.forMessage(message, core, handler);
+    return returnPlanner.forMessage(message, transferAccess, handler);
   }
 
   /**

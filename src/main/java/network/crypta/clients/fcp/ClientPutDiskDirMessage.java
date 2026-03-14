@@ -68,11 +68,11 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * @throws MessageInvalidException if the {@code Filename} field is absent.
    */
   public ClientPutDiskDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    requireFilename(fs);
+    String filename = requireFilename(fs);
     super(parseCommonFields(fs));
     allowUnreadableFiles = fs.getBoolean("AllowUnreadableFiles", false);
     includeHiddenFiles = fs.getBoolean("includeHiddenFiles", false);
-    dirname = new File(fs.get("Filename"));
+    dirname = new File(filename);
   }
 
   /**
@@ -93,17 +93,17 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * performs a full recursive traversal via {@link #makeBucketsByName(File, String)}, and hands the
    * resulting manifest tree to {@link FCPConnectionHandler#startClientPutDir}. Errors are raised
    * immediately if the directory is blocked or if the traversal encounters unreadable entries when
-   * such failures are not allowed by the client flag. This call is synchronous for traversal but
+   * such failures are not allowed by the client flag. This call is synchronous for traversal, but
    * the returned buckets may be consumed asynchronously by upload workers.
    *
    * @param handler connection handler owning this message; must be non-null and connected.
-   * @param node node instance that enforces upload policy and owns the datastore.
-   * @throws MessageInvalidException if the directory is not permitted or traversal fails under the
+   * @param node legacy execution parameter retained by the message API; unused here.
+   * @throws MessageInvalidException if the directory is not permitted, or traversal fails under the
    *     configured validation rules.
    */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    if (!handler.getServer().getCore().allowUploadFrom(dirname))
+    if (!handler.getServer().runtime().transferAccess().allowUploadFrom(dirname))
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
           "Not allowed to upload from " + dirname,
@@ -120,11 +120,11 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * filenames.
    *
    * @param thisdir directory whose immediate children are inspected; must already exist on disk.
-   * @param prefix logical path prefix appended to every discovered file or directory name for the
+   * @param prefix a logical path prefix appended to every discovered file or directory name for the
    *     manifest.
    * @return mutable map where keys are child names and values are {@link ManifestElement} instances
    *     or nested maps representing subdirectories.
-   * @throws MessageInvalidException if a directory does not exist or a child violates the
+   * @throws MessageInvalidException if a directory does not exist, or a child violates the
    *     configured readability rules.
    */
   private Map<String, Object> makeBucketsByName(File thisdir, String prefix)
@@ -242,7 +242,7 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * <p>No additional data is written because the entire manifest content is produced from the local
    * filesystem instead of a pre-serialized buffer.
    *
-   * @param os ignored output stream provided by the protocol framework.
+   * @param os ignored the output stream provided by the protocol framework.
    * @throws IOException never thrown because the method writes nothing.
    */
   @Override
@@ -250,13 +250,15 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
     // Do nothing
   }
 
-  private static void requireFilename(SimpleFieldSet fs) throws MessageInvalidException {
-    if (fs.get("Filename") == null) {
+  private static String requireFilename(SimpleFieldSet fs) throws MessageInvalidException {
+    String filename = fs.get("Filename");
+    if (filename == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "Filename missing",
           fs.get("Identifier"),
           fs.getBoolean("Global", false));
     }
+    return filename;
   }
 }

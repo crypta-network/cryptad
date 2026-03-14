@@ -13,6 +13,8 @@ import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -44,6 +47,8 @@ class FcpServerPersistentOpsTest {
   @Mock private NodeClientCore core;
 
   @Mock private FCPServer server;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private TransferAccessPort transferAccess;
 
   @Test
   void load_whenInvoked_expectNoException() {
@@ -188,7 +193,9 @@ class FcpServerPersistentOpsTest {
     DownloadRequestStatusDetails details =
         new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
     DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
-    rebootClient.getRequestStatusCache().addDownload(status);
+    var requestStatusCache = rebootClient.getRequestStatusCache();
+    assertNotNull(requestStatusCache);
+    requestStatusCache.addDownload(status);
 
     // Act
     RequestStatus[] result = ops.getGlobalRequests();
@@ -383,7 +390,7 @@ class FcpServerPersistentOpsTest {
     FcpServerPersistentOps ops = spy(newOps(new PersistentRequestRoot()));
     FreenetURI uri = mock(FreenetURI.class);
     File downloads = new File("/tmp/downloads");
-    when(core.getDownloadsDir()).thenReturn(downloads);
+    when(transferAccess.downloadsDir()).thenReturn(downloads);
     AtomicReference<PersistentGlobalRequestParams> captured = new AtomicReference<>();
     doAnswer(
             invocation -> {
@@ -627,6 +634,8 @@ class FcpServerPersistentOpsTest {
   }
 
   private FcpServerPersistentOps newOps(PersistentRequestRoot root) {
+    lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     return new FcpServerPersistentOps(server, core, root);
   }
 

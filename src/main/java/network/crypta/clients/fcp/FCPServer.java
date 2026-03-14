@@ -471,10 +471,10 @@ public class FCPServer implements Runnable, DownloadCache {
    * Convenience overload that enqueues a persistent request using the default downloads directory.
    *
    * <p>All parameters mirror {@link #makePersistentGlobalRequest(PersistentGlobalRequestParams)},
-   * substituting {@link NodeClientCore#getDownloadsDir()} for the target directory. The request is
-   * created synchronously but does not block on completion. This method is suitable for callers
-   * that rely on the node's configured downloads directory and do not require fine-grained output
-   * path selection.
+   * substituting the downloads directory exposed through {@link RuntimePorts#transferAccess()} for
+   * the target directory. The request is created synchronously but does not block on completion.
+   * This method is suitable for callers that rely on the node's configured downloads directory and
+   * do not require fine-grained output path selection.
    *
    * @param fetchURI URI to fetch from the network.
    * @param filterData whether content should be filtered prior to delivery.

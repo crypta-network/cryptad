@@ -9,7 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
@@ -50,21 +51,20 @@ class ClientPutComplexDirMessageTest {
   @Mock private PersistentTempBucketFactory persistentBucketFactory;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private TransferAccessPort transferAccess;
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
-
-  @Mock private NodeClientCore core;
 
   @TempDir Path tempDir;
 
   @BeforeEach
   void setUp() throws IOException {
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    lenient().when(node.services()).thenReturn(services);
-    lenient().when(services.clientCore()).thenReturn(core);
-    lenient().when(core.allowUploadFrom(any(File.class))).thenReturn(true);
+    lenient().when(handler.getServer()).thenReturn(server);
+    lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+    lenient().when(transferAccess.allowUploadFrom(any(File.class))).thenReturn(true);
     lenient()
         .when(persistentBucketFactory.makeBucket(anyLong()))
         .thenAnswer(_ -> new ArrayBucket());
@@ -132,7 +132,7 @@ class ClientPutComplexDirMessageTest {
   @Test
   void run_whenDiskFileNotAllowed_expectAccessDenied() throws Exception {
     Path diskFile = Files.writeString(tempDir.resolve("disk.txt"), "denied");
-    when(core.allowUploadFrom(diskFile.toFile())).thenReturn(false);
+    when(transferAccess.allowUploadFrom(diskFile.toFile())).thenReturn(false);
     SimpleFieldSet fs = baseFieldSet();
     addDiskFile(fs, 0, "disk.txt", diskFile);
     ClientPutComplexDirMessage message =
@@ -148,7 +148,7 @@ class ClientPutComplexDirMessageTest {
   @Test
   void run_whenFilesInSubdirectories_expectManifestTreeAndData() throws Exception {
     Path diskFile = Files.writeString(tempDir.resolve("disk.txt"), "disk-data");
-    when(core.allowUploadFrom(diskFile.toFile())).thenReturn(true);
+    when(transferAccess.allowUploadFrom(diskFile.toFile())).thenReturn(true);
     byte[] directBytes = "hello".getBytes(UTF_8);
     SimpleFieldSet fs = baseFieldSet();
     addDirectFile(fs, 0, "docs/direct.txt", directBytes.length);

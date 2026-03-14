@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileBucket;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class ClientGetReturnPlannerTest {
   private static final String REQUEST_ID = "id";
 
   @Mock private FetchContext fetchContext;
-  @Mock private NodeClientCore core;
+  @Mock private TransferAccessPort transferAccess;
   @Mock private FCPConnectionHandler handler;
   @Mock private DdaAccessController ddaAccessController;
 
@@ -60,26 +60,26 @@ class ClientGetReturnPlannerTest {
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
 
     ClientGetReturnPlanner.ReturnSetup setup =
-        planner.forGlobalRequest(ReturnType.DIRECT, null, false, core);
+        planner.forGlobalRequest(ReturnType.DIRECT, null, false, transferAccess);
 
     assertAll(
         () -> assertNull(setup.bucket()),
         () -> assertNull(setup.targetFile()),
         () -> assertNull(setup.extension()));
-    verifyNoInteractions(core);
+    verifyNoInteractions(transferAccess);
   }
 
   @Test
   void forGlobalRequest_whenDiskNotAllowed_throwsNotAllowedException() {
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
     File target = tempDir.resolve(PAYLOAD_BIN).toFile();
-    when(core.allowDownloadTo(target)).thenReturn(false);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(false);
 
     assertThrows(
         NotAllowedException.class,
-        () -> planner.forGlobalRequest(ReturnType.DISK, target, false, core));
+        () -> planner.forGlobalRequest(ReturnType.DISK, target, false, transferAccess));
 
-    verify(core).allowDownloadTo(target);
+    verify(transferAccess).allowDownloadTo(target);
   }
 
   @Test
@@ -87,10 +87,10 @@ class ClientGetReturnPlannerTest {
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
     File target = tempDir.resolve(PAYLOAD_BIN).toFile();
     assertTrue(target.createNewFile());
-    when(core.allowDownloadTo(target)).thenReturn(true);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(true);
 
     ClientGetReturnPlanner.ReturnSetup setup =
-        planner.forGlobalRequest(ReturnType.DISK, target, true, core);
+        planner.forGlobalRequest(ReturnType.DISK, target, true, transferAccess);
 
     assertAll(
         () -> assertInstanceOf(FileBucket.class, setup.bucket()),
@@ -105,12 +105,12 @@ class ClientGetReturnPlannerTest {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     Files.writeString(targetPath, "data");
     File target = targetPath.toFile();
-    when(core.allowDownloadTo(target)).thenReturn(true);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(true);
 
     IOException thrown =
         assertThrows(
             IOException.class,
-            () -> planner.forGlobalRequest(ReturnType.DISK, target, false, core));
+            () -> planner.forGlobalRequest(ReturnType.DISK, target, false, transferAccess));
 
     assertTrue(thrown.getMessage().contains("Target filename exists already"));
     assertTrue(target.exists());
@@ -121,13 +121,13 @@ class ClientGetReturnPlannerTest {
     ClientGetMessage message = buildMessage(ReturnType.NONE, null);
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
 
-    ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, core, handler);
+    ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, transferAccess, handler);
 
     assertAll(
         () -> assertNull(setup.bucket()),
         () -> assertNull(setup.targetFile()),
         () -> assertNull(setup.extension()));
-    verifyNoInteractions(core, handler);
+    verifyNoInteractions(transferAccess, handler);
   }
 
   @Test
@@ -135,11 +135,12 @@ class ClientGetReturnPlannerTest {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, true, fetchContext);
-    when(core.allowDownloadTo(targetPath.toFile())).thenReturn(false);
+    when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(false);
 
     MessageInvalidException thrown =
         assertThrows(
-            MessageInvalidException.class, () -> planner.forMessage(message, core, handler));
+            MessageInvalidException.class,
+            () -> planner.forMessage(message, transferAccess, handler));
 
     assertAll(
         () -> assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode),
@@ -152,13 +153,14 @@ class ClientGetReturnPlannerTest {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
-    when(core.allowDownloadTo(targetPath.toFile())).thenReturn(true);
+    when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(false);
 
     MessageInvalidException thrown =
         assertThrows(
-            MessageInvalidException.class, () -> planner.forMessage(message, core, handler));
+            MessageInvalidException.class,
+            () -> planner.forMessage(message, transferAccess, handler));
 
     assertEquals(ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED, thrown.protocolCode);
   }
@@ -170,13 +172,14 @@ class ClientGetReturnPlannerTest {
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
     Files.writeString(targetPath, "data");
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
-    when(core.allowDownloadTo(targetPath.toFile())).thenReturn(true);
+    when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(true);
 
     MessageInvalidException thrown =
         assertThrows(
-            MessageInvalidException.class, () -> planner.forMessage(message, core, handler));
+            MessageInvalidException.class,
+            () -> planner.forMessage(message, transferAccess, handler));
 
     assertAll(
         () -> assertEquals(ProtocolErrorMessage.INTERNAL_ERROR, thrown.protocolCode),
@@ -189,12 +192,12 @@ class ClientGetReturnPlannerTest {
     Path targetPath = tempDir.resolve("payload.txt");
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
     ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
-    when(core.allowDownloadTo(targetPath.toFile())).thenReturn(true);
+    when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(true);
     when(fetchContext.getFilterData()).thenReturn(true);
 
-    ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, core, handler);
+    ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, transferAccess, handler);
 
     assertAll(
         () -> assertInstanceOf(FileBucket.class, setup.bucket()),

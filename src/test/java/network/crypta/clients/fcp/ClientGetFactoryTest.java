@@ -17,6 +17,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ class ClientGetFactoryTest {
   @Mock private ClientContext clientContext;
   @Mock private FetchContext fetchContext;
   @Mock private ClientEventProducer eventProducer;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private TransferAccessPort transferAccess;
 
   @Test
   void fromGlobal_whenIdentifierAlreadyRegistered_throwsIdentifierCollisionException()
@@ -77,7 +80,7 @@ class ClientGetFactoryTest {
         IdentifierCollisionException.class,
         () ->
             ClientGetFactory.fromGlobal(
-                client, new FreenetURI("KSK@global-collision"), config, core));
+                client, new FreenetURI("KSK@global-collision"), config, core, transferAccess));
   }
 
   @ParameterizedTest
@@ -107,7 +110,7 @@ class ClientGetFactoryTest {
             true,
             false);
 
-    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, core);
+    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, core, transferAccess);
 
     assertNotNull(request);
     assertEquals(config.identifier(), request.getIdentifier());
@@ -139,7 +142,7 @@ class ClientGetFactoryTest {
     when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     File target = tempDir.resolve("target.bin").toFile();
-    when(core.allowDownloadTo(target)).thenReturn(false);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(false);
     GlobalRequestConfig config =
         new GlobalRequestConfig(
             false,
@@ -161,7 +164,9 @@ class ClientGetFactoryTest {
 
     assertThrows(
         NotAllowedException.class,
-        () -> ClientGetFactory.fromGlobal(client, new FreenetURI("KSK@global-disk"), config, core));
+        () ->
+            ClientGetFactory.fromGlobal(
+                client, new FreenetURI("KSK@global-disk"), config, core, transferAccess));
   }
 
   @Test
@@ -183,6 +188,7 @@ class ClientGetFactoryTest {
   void fromMessage_whenValidConnectionMessage_buildsRequestAndAppliesFetchContext()
       throws Exception {
     configureCoreWithFetchContext();
+    configureRuntimePorts();
     SimpleFieldSet fs = baseMessageFieldSet("message-ok");
     fs.putOverwrite("DSOnly", "true");
     fs.putOverwrite("IgnoreDS", "true");
@@ -224,6 +230,7 @@ class ClientGetFactoryTest {
   void fromMessage_whenBinaryBlobBucketCreationFails_wrapsIntoMessageInvalidException()
       throws Exception {
     configureCoreWithFetchContext();
+    configureRuntimePorts();
     BucketFactory bucketFactory = mock(BucketFactory.class);
     IOException ioFailure = new IOException("disk-full");
     when(fetchContext.getMaxOutputLength()).thenReturn(333L);
@@ -251,13 +258,18 @@ class ClientGetFactoryTest {
     when(fetchContext.getEventProducer()).thenReturn(eventProducer);
   }
 
+  private void configureRuntimePorts() {
+    when(core.getRuntimePorts()).thenReturn(runtimePorts);
+    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+  }
+
   private FCPConnectionHandler newConnectionHandler() {
     FCPServer server = mock(FCPServer.class);
     Socket socket = mock(Socket.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RuntimePorts handlerRuntimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    when(server.runtime()).thenReturn(runtimePorts);
-    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    when(server.runtime()).thenReturn(handlerRuntimePorts);
+    when(handlerRuntimePorts.randomness()).thenReturn(randomnessPort);
     doAnswer(
             invocation -> {
               byte[] target = invocation.getArgument(0);

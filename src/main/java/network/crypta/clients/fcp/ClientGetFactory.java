@@ -4,6 +4,7 @@ import java.io.IOException;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,7 @@ final class ClientGetFactory {
    * @param uri target {@link FreenetURI} describing the key to fetch; must be non-null.
    * @param requestConfig immutable configuration with limits, flags, and return preferences.
    * @param core node core providing fetch contexts, planners, and bucket factories.
+   * @param transferAccess transfer policy used for disk-return planning in this request flow.
    * @return configured {@link ClientGet} instance ready for registration and start.
    * @throws IdentifierCollisionException if the identifier is already registered globally.
    * @throws NotAllowedException if disk output violates policy or DDA restrictions.
@@ -64,7 +66,8 @@ final class ClientGetFactory {
       PersistentRequestClient globalClient,
       FreenetURI uri,
       ClientGet.GlobalRequestConfig requestConfig,
-      NodeClientCore core)
+      NodeClientCore core,
+      TransferAccessPort transferAccess)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
     FetchContext fctx = buildFetchContextForGlobal(core, requestConfig);
@@ -76,12 +79,11 @@ final class ClientGetFactory {
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForGlobal(
             requestConfig.identifier(),
-            true,
             fctx,
             requestConfig.returnType(),
             requestConfig.returnFilename(),
             requestConfig.filterData(),
-            core);
+            transferAccess);
     ClientRequestParams params =
         new ClientRequestParams(
             uri,
@@ -135,9 +137,10 @@ final class ClientGetFactory {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
     FetchContext fctx = buildFetchContextForMessage(core, message);
+    TransferAccessPort transferAccess = core.getRuntimePorts().transferAccess();
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForMessage(
-            message.identifier, message.global, fctx, message, core, handler);
+            message.identifier, message.global, fctx, message, transferAccess, handler);
     Bucket initialMetadata = message.getInitialMetadata();
     try {
       ClientGet.ClientGetSetup requestSetup =
