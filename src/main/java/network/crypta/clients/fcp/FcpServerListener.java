@@ -3,7 +3,8 @@ package network.crypta.clients.fcp;
 import java.net.Socket;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
-import network.crypta.node.Node;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -15,9 +16,11 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * creating the listening {@link NetworkInterface}, binding it to the configured addresses, and
  * accepting incoming connections. Callers typically construct the listener during server
  * initialization and invoke {@link #maybeStart()} once; the accept-loop then runs on a daemon
- * thread, dispatching sockets to {@link FCPConnectionHandler} instances. Configuration updates such
- * as {@link #updateBindTo(String)} and {@link #setAllowedHosts(String)} are delegated to the
- * underlying interface when available, while SSL mode is tracked via static flag accessors.
+ * thread, dispatching sockets to {@link FCPConnectionHandler} instances. Runtime lifecycle and
+ * execution concerns are consumed through {@link RuntimePorts} so the listener does not depend on
+ * daemon executor implementations directly. Configuration updates such as {@link
+ * #updateBindTo(String)} and {@link #setAllowedHosts(String)} are delegated to the underlying
+ * interface when available, while SSL mode is tracked via static flag accessors.
  *
  * <p>The listener is intentionally conservative about re-binding: it caches the created interface
  * and only creates a new one once per instance. Shutdown handling relies on the Tanuki Wrapper
@@ -43,8 +46,11 @@ final class FcpServerListener implements Runnable {
   /** Owning server used to construct connection handlers for accepted sockets. */
   private final FCPServer server;
 
-  /** Node used to get executors and startup lifecycle information. */
-  private final Node node;
+  /** Runtime SPI bridge supplying execution and lifecycle views for listener infrastructure. */
+  private final RuntimePorts runtime;
+
+  /** Executor adapter expected by the legacy network-interface factories. */
+  private final PriorityAwareExecutor executor;
 
   /** TCP port to bind when creating the network interface. */
   private final int port;
@@ -62,19 +68,22 @@ final class FcpServerListener implements Runnable {
   private NetworkInterface networkInterface;
 
   /**
-   * Creates a listener bound to the provided server, node, and configuration snapshot.
+   * Creates a listener bound to the provided server, runtime SPI bridge, and configuration
+   * snapshot.
    *
    * <p>The constructor captures immutable configuration such as port, bind address, and allowed
    * hosts. It does not create sockets or start threads; callers must invoke {@link #maybeStart()}
    * to initialize the {@link NetworkInterface} and begin accepting connections.
    *
    * @param server the owning server that constructs connection handlers for clients.
-   * @param node node supplying executors and lifecycle state used by the accept-loop.
+   * @param runtime runtime SPI bridge supplying execution and lifecycle state used by the
+   *     accept-loop.
    * @param config snapshot of listener configuration values at construction time.
    */
-  FcpServerListener(FCPServer server, Node node, FcpServerConfig config) {
+  FcpServerListener(FCPServer server, RuntimePorts runtime, FcpServerConfig config) {
     this.server = server;
-    this.node = node;
+    this.runtime = runtime;
+    this.executor = FcpRuntimeAdapters.priorityAwareExecutor(runtime);
     this.port = config.port();
     this.enabled = config.enabled();
     this.allowedHosts = config.allowedHosts();
@@ -174,11 +183,9 @@ final class FcpServerListener implements Runnable {
     NetworkInterface tempNetworkInterface;
     if (ssl) {
       tempNetworkInterface =
-          SSLNetworkInterface.createSsl(
-              port, bindTo, allowedHosts, node.network().executor(), true);
+          SSLNetworkInterface.createSsl(port, bindTo, allowedHosts, executor, true);
     } else {
-      tempNetworkInterface =
-          NetworkInterface.create(port, bindTo, allowedHosts, node.network().executor(), true);
+      tempNetworkInterface = NetworkInterface.create(port, bindTo, allowedHosts, executor, true);
     }
 
     this.networkInterface = tempNetworkInterface;
@@ -229,13 +236,13 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Accepts a single connection and starts a handler when the node is running.
+   * Accepts a single connection and starts a handler when the runtime is running.
    *
-   * <p>If the node has not yet started, the method returns without accepting. Otherwise, it accepts
-   * one socket and dispatches it to a new {@link FCPConnectionHandler} instance.
+   * <p>If the runtime has not yet started, the method returns without accepting. Otherwise, it
+   * accepts one socket and dispatches it to a new {@link FCPConnectionHandler} instance.
    */
   private void realRun() {
-    if (!node.isHasStarted()) return;
+    if (!runtime.lifecycle().hasStarted()) return;
     Socket s = networkInterface.accept();
     FCPConnectionHandler ch = new FCPConnectionHandler(s, server);
     ch.start();

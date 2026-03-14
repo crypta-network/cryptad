@@ -1,11 +1,16 @@
 package network.crypta.clients.fcp;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.Socket;
 import network.crypta.io.NetworkInterface;
-import network.crypta.node.Node;
+import network.crypta.runtime.spi.ExecutionPort;
+import network.crypta.runtime.spi.LifecyclePort;
+import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.tanukisoftware.wrapper.WrapperManager;
 
@@ -17,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,7 +32,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FcpServerListenerTest {
 
-  @Mock private Node node;
+  @Mock private FCPServer server;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private ExecutionPort executionPort;
+  @Mock private LifecyclePort lifecyclePort;
 
   @Test
   void isSslEnabled_whenToggled_expectUpdatedValue() {
@@ -155,8 +165,47 @@ class FcpServerListenerTest {
     verify(networkInterface).waitBound();
   }
 
+  @Test
+  void realRun_whenRuntimeNotStarted_expectAcceptSkipped() throws Exception {
+    // Arrange
+    FcpServerListener listener = newListener(true);
+    NetworkInterface networkInterface = mock(NetworkInterface.class);
+    setNetworkInterface(listener, networkInterface);
+    when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
+    when(lifecyclePort.hasStarted()).thenReturn(false);
+
+    // Act
+    invokeRealRun(listener);
+
+    // Assert
+    verify(networkInterface, never()).accept();
+  }
+
+  @Test
+  void realRun_whenRuntimeStarted_expectConnectionHandlerStarted() throws Exception {
+    // Arrange
+    FcpServerListener listener = newListener(true);
+    NetworkInterface networkInterface = mock(NetworkInterface.class);
+    Socket socket = mock(Socket.class);
+    setNetworkInterface(listener, networkInterface);
+    when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
+    when(lifecyclePort.hasStarted()).thenReturn(true);
+    when(networkInterface.accept()).thenReturn(socket);
+
+    // Act
+    try (MockedConstruction<FCPConnectionHandler> construction =
+        mockConstruction(FCPConnectionHandler.class)) {
+      invokeRealRun(listener);
+
+      // Assert
+      assertEquals(1, construction.constructed().size());
+      verify(networkInterface).accept();
+      verify(construction.constructed().getFirst()).start();
+    }
+  }
+
   private FcpServerListener newListener(boolean enabled) {
-    FCPServer server = mock(FCPServer.class);
+    when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -168,7 +217,7 @@ class FcpServerListenerTest {
             false,
             false,
             10);
-    return new FcpServerListener(server, node, config);
+    return new FcpServerListener(server, runtimePorts, config);
   }
 
   private void setNetworkInterface(FcpServerListener listener, NetworkInterface value)
@@ -190,5 +239,11 @@ class FcpServerListenerTest {
     Object value = field.get(listener);
     assertNotNull(value);
     return (String) value;
+  }
+
+  private void invokeRealRun(FcpServerListener listener) throws Exception {
+    Method method = FcpServerListener.class.getDeclaredMethod("realRun");
+    method.setAccessible(true);
+    method.invoke(listener);
   }
 }

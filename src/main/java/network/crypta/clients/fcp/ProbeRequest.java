@@ -13,16 +13,17 @@ import network.crypta.support.SimpleFieldSet;
  * client.
  *
  * <p>This message is created from a parsed {@link SimpleFieldSet} and validates the probe type and
- * optional hop budget before execution. Callers typically obtain it through the FCP dispatch layer
- * and then invoke {@link #run(FCPConnectionHandler, Node)} to start the probe asynchronously. The
- * request retains the identifier, type, and hop budget as immutable state; it is not intended to be
- * reused across unrelated client sessions. A {@code null} identifier is supported and results in
+ * optional hop budget before execution. Callers typically get it through the FCP dispatch layer and
+ * then invoke {@link #run(FCPConnectionHandler, Node)} to start the probe asynchronously. The
+ * request retains the identifier, type, and hop budget as an immutable state; it is not intended to
+ * be reused across unrelated client sessions. A {@code null} identifier is supported and results in
  * response messages that omit the {@code Identifier} field.
  *
  * <p>Execution requires full-access credentials. When authorized, {@link #run(FCPConnectionHandler,
  * Node)} constructs a {@link Listener} that adapts probe callbacks into concrete {@link FCPMessage}
- * responses, and delegates to {@code node.network().startProbe(...)}. The method does not block for
- * completion; responses arrive asynchronously via the handler.
+ * responses, gets a secure probe UID from the handler's server runtime, and delegates to {@code
+ * node.network().startProbe(...)}. The method does not block for completion; responses arrive
+ * asynchronously via the handler.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> validate fields, enforce access, and bridge callbacks.
@@ -69,8 +70,8 @@ public final class ProbeRequest extends FCPMessage {
    * @throws MessageInvalidException if the type is invalid or hopsToLive cannot be parsed.
    */
   public ProbeRequest(SimpleFieldSet fs) throws MessageInvalidException {
-    /* If not defined in the field set Identifier will be null. As adding a null value to the field set does
-     * not actually add something under the key, it will also be omitted in the response messages.
+    /* If not defined in the field set, Identifier will be null. As adding a null value to the field set does
+     * not add something under the key, it will also be omitted in the response messages.
      */
     this.requestIdentifier = fs.get(IDENTIFIER);
 
@@ -92,7 +93,7 @@ public final class ProbeRequest extends FCPMessage {
           null,
           false);
     } catch (FSParseException e) {
-      // Getting a String from a SimpleFieldSet does not throw - it can at worst return null.
+      // Getting a String from a SimpleFieldSet does not throw - it can, at worst, return null.
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_MESSAGE,
           "Unable to parse hopsToLive \"" + fs.get(HTL) + "\": " + e,
@@ -122,7 +123,7 @@ public final class ProbeRequest extends FCPMessage {
    *
    * <p>The name is constant and matches the identifier expected by FCP clients. It is used when
    * serializing outbound messages and when routing inbound messages to this implementation. The
-   * method is side-effect free and performs no allocation beyond returning the constant string.
+   * method is side-effect-free and performs no allocation beyond returning the constant string.
    *
    * @return stable protocol name token, never null, matching {@link #NAME}.
    */
@@ -138,12 +139,13 @@ public final class ProbeRequest extends FCPMessage {
    * ProtocolErrorMessage#ACCESS_DENIED} is thrown and no probe is started. When authorized, this
    * method builds a {@link Listener} that maps each callback to the corresponding {@link
    * FCPResponse} message and then delegates to {@code node.network().startProbe(...)} using the
-   * stored hop budget and a fresh random UID from the node. The call is non-blocking and returns
-   * immediately while responses are emitted asynchronously via {@link
+   * stored hop budget and a fresh secure random UID from the server runtime. The call is
+   * non-blocking and returns immediately while responses are emitted asynchronously via {@link
    * FCPConnectionHandler#send(FCPMessage)}.
    *
    * @param handler connection handler used to authorize and send probe responses.
-   * @param node node instance that executes the probe and supplies randomness.
+   * @param node node instance that executes the probe while the handler's server runtime supplies
+   *     the probe UID.
    * @throws MessageInvalidException if the caller lacks full access for probe execution.
    */
   @Override
@@ -216,7 +218,7 @@ public final class ProbeRequest extends FCPMessage {
                     requestIdentifier, bandwidthClassForCapacityUsage, capacityUsage));
           }
         };
-    node.network()
-        .startProbe(hopsToLive, node.bootstrap().random().nextLong(), probeType, listener);
+    long probeUid = FcpRuntimeAdapters.nextSecureLong(handler.getServer().runtime().randomness());
+    node.network().startProbe(hopsToLive, probeUid, probeType, listener);
   }
 }

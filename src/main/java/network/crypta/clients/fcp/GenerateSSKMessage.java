@@ -8,9 +8,9 @@ import network.crypta.support.SimpleFieldSet;
 /**
  * Generates a new signed subspace key (SSK) pair for an FCP client and relays it back over the
  * connection. The message is created from the parsed field set of an inbound request and, when
- * executed, allocates a fresh {@link InsertableClientSSK} using the node's secure random source.
- * Clients use this flow when they need a write-capable insert URI and a corresponding request URI
- * without transmitting their own key material.
+ * executed, allocates a fresh {@link InsertableClientSSK} using the server runtime's secure random
+ * source. Clients use this flow when they need a write-capable insert URI and a corresponding
+ * request URI without transmitting their own key material.
  *
  * <p>The instance is intentionally lightweight and stateless: all protocol information lives in the
  * supplied {@link SimpleFieldSet}, and all cryptographic material is produced during {@link
@@ -68,20 +68,22 @@ public class GenerateSSKMessage extends FCPMessage {
   /**
    * Generates a new random SSK keypair and sends it to the client as an {@link SSKKeypairMessage}.
    * The method is synchronous with respect to the caller: key generation occurs immediately using
-   * the node's random source, and the response is dispatched on the provided connection handler. No
-   * state is retained after sending; callers may invoke this repeatedly to obtain multiple
+   * the runtime's secure random source, and the response is dispatched on the provided connection
+   * handler. No state is retained after sending; callers may invoke this repeatedly to get multiple
    * independent keypairs.
    *
    * @param handler active connection handler that delivers the generated keypair back to the
    *     requesting client; must not be {@code null}.
-   * @param node running node that supplies randomness and environment context for creating the SSK
-   *     pair; expected to be fully initialized.
+   * @param node running node supplied by the unchanged FCP message signature; not consulted for
+   *     randomness because the handler's server runtime provides that capability.
    * @throws MessageInvalidException if the response message cannot be encoded or sent according to
-   *     FCP protocol rules or if the handler rejects the outbound payload.
+   *     FCP protocol rules, or if the handler rejects the outbound payload.
    */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    InsertableClientSSK key = InsertableClientSSK.createRandom(node.bootstrap().random(), "");
+    InsertableClientSSK key =
+        InsertableClientSSK.createRandom(
+            FcpRuntimeAdapters.secureRandomSource(handler.getServer().runtime().randomness()), "");
     FreenetURI insertURI = key.getInsertURI();
     FreenetURI requestURI = key.getURI();
     SSKKeypairMessage msg = new SSKKeypairMessage(insertURI, requestURI, clientIdentifier);
