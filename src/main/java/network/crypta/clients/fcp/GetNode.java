@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -17,7 +18,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <ul>
  *   <li>Honors optional flags to include opennet references, private state, and volatile details.
- *   <li>Copies a caller-supplied identifier so responses can be correlated by clients.
+ *   <li>Copies a caller-supplied identifier so clients can correlate responses.
  *   <li>Does not mutate the source field set beyond removing the identifier key.
  * </ul>
  */
@@ -88,14 +89,16 @@ public class GetNode extends FCPMessage {
    * Executes the request by validating access and sending node details back to the client.
    *
    * <p>The handler must already be associated with a fully authorized connection; otherwise a
-   * {@link ProtocolErrorMessage#ACCESS_DENIED} failure is raised. On success, it emits a {@link
-   * NodeData} response populated according to the stored flags, ensuring the caller receives only
-   * the amount of information it asked for. The method performs no retries or partial responses;
-   * any failure propagates via the thrown exception.
+   * {@link ProtocolErrorMessage#ACCESS_DENIED} failure is raised. On success, it requests the
+   * selected node-reference snapshot from the runtime SPI and emits a {@link NodeData} response
+   * populated according to the stored flags, ensuring the caller receives only the amount of
+   * information it asked for. The method performs no retries or partial responses; any failure
+   * propagates via the thrown exception.
    *
    * @param handler connection handler performing access checks and delivering responses; must be
    *     authenticated.
-   * @param node node instance providing current state and references to serialize; not null.
+   * @param node backing node reference retained for {@link FCPMessage} signature parity; the
+   *     runtime SPI supplies the serialized snapshot.
    * @throws MessageInvalidException if the client lacks full access or the request violates
    *     protocol constraints.
    */
@@ -108,6 +111,16 @@ public class GetNode extends FCPMessage {
           requestIdentifier,
           false);
     }
-    handler.send(new NodeData(node, giveOpennetRef, withPrivate, withVolatile, requestIdentifier));
+    handler.send(
+        new NodeData(
+            handler.getServer().runtime().nodeInfo().exportReference(referenceView(), withVolatile),
+            requestIdentifier));
+  }
+
+  private NodeReferenceView referenceView() {
+    if (giveOpennetRef) {
+      return withPrivate ? NodeReferenceView.OPENNET_PRIVATE : NodeReferenceView.OPENNET_PUBLIC;
+    }
+    return withPrivate ? NodeReferenceView.DARKNET_PRIVATE : NodeReferenceView.DARKNET_PUBLIC;
   }
 }
