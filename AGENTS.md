@@ -27,14 +27,13 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-write-release-notes** — Draft or review GitHub release notes and changelog artifacts for Cryptad builds, including `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
 - **$cryptad-writing-guides** — Apply Cryptad prose conventions for README/docs content, release notes, migration notes, and other operator-facing writing.
 - **$cryptad-style-docs** — Apply Cryptad Java style, file layout rules, and long-lived documentation/commenting practices.
-- **$codebase-retrieval** — Use semantic codebase retrieval to identify 1–5 target files before significant reading or edits when the file scope is unclear.
 - **$web-search** — Use both Exa and Tavily for external/current web research, then cross-check sources before answering.
 
 ### Skill-first workflow
 
 1. Identify the task domain(s) (build/test, tooling, packaging, updater, platform detection, crypto formats, UI, git branching/release/hotfix workflows, etc.).
 2. Load the matching skill(s) via `skill(...)`.
-3. If relevant files are not already known, load `$codebase-retrieval` first, then inspect code, and run targeted searches (don’t guess).
+3. If relevant files are not already known, identify them with targeted local searches first, then inspect code (don’t guess).
 4. Make the smallest safe change.
 5. Run the relevant Gradle checks (see `$cryptad-build-test` / `$cryptad-build-tooling`).
 6. Update docs/tests when needed.
@@ -45,7 +44,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
   - Java sources must live under `src/*/java/` (including tests).
 - **OpenCode LSP:** Treat LSP/typechecker diagnostics as blockers for touched files.
   - If the OpenCode `lsp` tool is enabled, prefer it for definition/reference/hover instead of guessing
-- **Repository discovery:** If the task does not provide exact paths/symbols, load `$codebase-retrieval` before making code changes.
+- **Repository discovery:** If the task does not provide exact paths/symbols, identify the relevant files with deterministic local search before making code changes.
 - **Compatibility:** Avoid breaking persistent formats, on-disk layouts, and wire protocols without an explicit migration plan.
   - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.

@@ -10,7 +10,7 @@ description: Debug live or reproducible Cryptad runtime failures such as deadloc
 - Capture runtime evidence before editing code or restarting the node.
 - Prefer `jcmd` for first-response diagnosis because it is lower risk and still works when another debugger is already attached.
 - Use `jdb` only when thread dumps and logs are insufficient and interactive inspection or breakpoints are necessary.
-- Pair this skill with [$cryptad-architecture](../cryptad-architecture/SKILL.md) when stacks need package context, [$codebase-retrieval](../codebase-retrieval/SKILL.md) when file scope is unclear, and [$cryptad-build-test](../cryptad-build-test/SKILL.md) after making a fix.
+- Pair this skill with [$cryptad-architecture](../cryptad-architecture/SKILL.md) when stacks need package context and [$cryptad-build-test](../cryptad-build-test/SKILL.md) after making a fix.
 
 ## Guardrails
 
