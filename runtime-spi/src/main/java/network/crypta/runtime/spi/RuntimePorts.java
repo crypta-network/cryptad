@@ -20,6 +20,7 @@ package network.crypta.runtime.spi;
  * @see LifecyclePort
  * @see ConfigPort
  * @see ConnectivityPort
+ * @see DiagnosticPort
  * @see NodeInfoPort
  * @see PeerPort
  * @see RequestQueuePort
@@ -95,6 +96,18 @@ public interface RuntimePorts {
    * @return connectivity runtime port for read-only connectivity snapshots
    */
   ConnectivityPort connectivity();
+
+  /**
+   * Returns the diagnostic-report capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached plain-text report snapshot containing the
+   * current diagnostic section ordering and body lines. It intentionally exposes only JDK-only
+   * section DTOs, so callers can render the legacy diagnostic page without depending on daemon-only
+   * node, FCP, statistics, or thread-diagnostics types.
+   *
+   * @return diagnostic-report runtime port for read-only report snapshots
+   */
+  DiagnosticPort diagnostic();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.

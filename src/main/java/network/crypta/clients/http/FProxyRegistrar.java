@@ -328,7 +328,7 @@ final class FProxyRegistrar {
             null));
 
     DiagnosticToadlet diagnosticToadlet =
-        new DiagnosticToadlet(node, core.getEndpoints().getFCPServer(), client);
+        new DiagnosticToadlet(client, core.getRuntimePorts().diagnostic());
     server.register(
         diagnosticToadlet,
         ToadletRegistration.menuLink(
