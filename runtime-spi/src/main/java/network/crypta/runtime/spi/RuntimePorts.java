@@ -20,6 +20,7 @@ package network.crypta.runtime.spi;
  * @see LifecyclePort
  * @see ConfigPort
  * @see ConnectivityPort
+ * @see ConnectionsPagePort
  * @see DiagnosticPort
  * @see StatisticsPort
  * @see NodeInfoPort
@@ -97,6 +98,20 @@ public interface RuntimePorts {
    * @return connectivity runtime port for read-only connectivity snapshots
    */
   ConnectivityPort connectivity();
+
+  /**
+   * Returns the legacy connections-page capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached page snapshot for either the darknet
+   * friends page or the opennet strangers page without depending on daemon-only node, peer, stats,
+   * or HTML builder types. Request-context-only concerns such as alert summaries and form-password
+   * protected peer-action wrappers remain in the HTTP layer, but the returned object keeps the
+   * large legacy peer traversal, sorting, and HTML fragment rendering inside the daemon root
+   * module.
+   *
+   * @return connections-page runtime port for detached legacy friends and strangers snapshots
+   */
+  ConnectionsPagePort connectionsPage();
 
   /**
    * Returns the diagnostic-report capability exposed to admin-facing HTTP code.

@@ -2,14 +2,13 @@ package network.crypta.clients.http;
 
 import java.util.Comparator;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.TimeUtil;
 
 /**
  * Toadlet that renders the opennet peer list for the FProxy UI, focusing on anonymous stranger
@@ -46,69 +45,12 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * @param client high-level client for UI links and redirects; expected to be configured for
    *     opennet-safe operations.
    */
-  protected OpennetConnectionsToadlet(Node n, NodeClientCore core, HighLevelSimpleClient client) {
-    super(n, core, client);
-  }
-
-  /**
-   * Suppresses name rendering for opennet peers because identities are intentionally unavailable.
-   * This override keeps the table layout consistent with the base class while ensuring no empty
-   * cells or misleading headings are produced when names cannot be derived safely.
-   *
-   * @param peerRow table row node that would normally receive the name cell output.
-   * @param peerNodeStatus status snapshot for the peer whose row is being rendered in the table.
-   * @param advanced whether advanced UI mode is active; retained for signature compatibility only.
-   */
-  @Override
-  protected void drawNameColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advanced) {
-    // Do nothing - no names on opennet
-  }
-
-  /**
-   * Disables the private-note column because the opennet model lacks user-managed trust metadata.
-   * Keeping this method as a no-op prevents accidental rendering of fields that would suggest
-   * mutable annotations on strangers, which the UI and persistence layers do not support.
-   *
-   * @param peerRow table row node for the current peer being rendered in the list view.
-   * @param peerNodeStatus status object describing connectivity and performance for the peer.
-   * @param fProxyJavascriptEnabled flag indicating whether JavaScript helpers are available in the
-   *     browser session; unused because the column is suppressed unconditionally.
-   */
-  @Override
-  protected void drawPrivateNoteColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean fProxyJavascriptEnabled) {
-    // Do nothing - no private notes either (no such thing as negative trust in cyberspace)
-  }
-
-  /**
-   * Indicates that the opennet table omits the name column entirely.
-   *
-   * <p>Opennet peers present only cryptographic identifiers, so exposing a name column would either
-   * remain blank or mislead users into thinking a stable label exists. Keeping this flag false also
-   * simplifies column counts elsewhere in the table layout and prevents localization strings for
-   * names from being loaded unnecessarily.
-   *
-   * @return always {@code false} because opennet peers are not associated with human-readable
-   *     names.
-   */
-  @Override
-  protected boolean hasNameColumn() {
-    return false;
-  }
-
-  /**
-   * Reports that the private note column is unavailable for opennet peers.
-   *
-   * <p>The design intentionally removes ad hoc annotations on strangers to reduce risk of leaking
-   * identifiable hints or encouraging user-managed reputation for anonymous participants.
-   * Downstream renderers and CSV exporters can rely on this flag to avoid allocating unused cells
-   * or headers and to align other columns correctly when opennet mode is active.
-   *
-   * @return always {@code false} because private annotations are not supported in opennet mode.
-   */
-  @Override
-  protected boolean hasPrivateNoteColumn() {
-    return false;
+  protected OpennetConnectionsToadlet(
+      Node n,
+      NodeClientCore core,
+      HighLevelSimpleClient client,
+      ConnectionsPagePort connectionsPage) {
+    super(n, core, client, connectionsPage);
   }
 
   /**
@@ -125,21 +67,6 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
   }
 
   /**
-   * Retrieves the current opennet peer status snapshots used to populate the table rows. The caller
-   * controls whether heavy data (such as bandwidth histories) should be excluded to reduce
-   * rendering cost when the page is not in advanced mode.
-   *
-   * @param noHeavy when {@code true}, request lightweight status objects that omit expensive
-   *     metrics to keep UI responses fast.
-   * @return array of {@link PeerNodeStatus} entries describing each opennet peer known to the node;
-   *     never {@code null} but may be empty.
-   */
-  @Override
-  protected PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy) {
-    return node.network().peers().statusBook().getOpennetPeerNodeStatuses(noHeavy);
-  }
-
-  /**
    * Checks whether opennet support is currently enabled on the hosting node before serving the
    * toadlet. Requests are only allowed when opennet is active, preventing exposure of partial UI
    * state while the feature is disabled or unavailable.
@@ -151,24 +78,6 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
   @Override
   public boolean isEnabled(ToadletContext ctx) {
     return node.network().isOpennetEnabled();
-  }
-
-  /**
-   * Builds the localized page title string, embedding the formatted peer count supplied by the base
-   * class. The title is used by the surrounding FProxy layout and should remain short while still
-   * distinguishing opennet content from friend connections.
-   *
-   * @param titleCountString pre-formatted text representing the current peer counts shown in the
-   *     header.
-   * @return localized title string describing the opennet connections page with embedded counts.
-   */
-  @Override
-  protected String getPageTitle(String titleCountString) {
-    return NodeL10n.getBase()
-        .getString(
-            "OpennetConnectionsToadlet.fullTitle",
-            new String[] {"counts"},
-            new String[] {titleCountString});
   }
 
   /**
@@ -210,22 +119,6 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
   @Override
   protected void drawPeerActionSelectBox(HTMLNode peerForm, boolean advancedModeEnabled) {
     // Do nothing, see showPeerActionsBox().
-  }
-
-  /**
-   * Supplies the localized title for the opennet peers list. The title appears above the table and
-   * clarifies that entries correspond to stranger connections rather than friend nodes.
-   *
-   * <p>Localization is resolved on each request so the title reflects the active language choice of
-   * the current user, and separating the text from code keeps the wording aligned with the rest of
-   * the UI. The returned string is short to fit within common header constraints while remaining
-   * distinct from friend connection screens.
-   *
-   * @return localized list title pulled from the node localization bundle.
-   */
-  @Override
-  protected String getPeerListTitle() {
-    return NodeL10n.getBase().getString("OpennetConnectionsToadlet.peersListTitle");
   }
 
   /**
@@ -282,7 +175,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * <p>The comparator is created per request to encapsulate the active sort key and direction,
    * ensuring thread-safety and allowing multiple concurrent sorts without shared mutable state.
    */
-  protected class OpennetComparator extends ComparatorByStatus {
+  protected static class OpennetComparator extends ComparatorByStatus {
 
     OpennetComparator(String sortBy, boolean reversed) {
       super(sortBy, reversed);
@@ -325,52 +218,6 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
   @Override
   protected Comparator<PeerNodeStatus> comparator(String sortBy, boolean reversed) {
     return new OpennetComparator(sortBy, reversed);
-  }
-
-  /**
-   * Defines the trailing columns for the peer table. In advanced mode the method adds a single
-   * column showing the elapsed time since the last successful communication with each peer; in
-   * basic mode it returns an empty array to keep the layout compact.
-   *
-   * @param advancedMode flag indicating whether advanced UI elements should be included in the
-   *     response.
-   * @return array of simple column definitions to append to the table; never {@code null}.
-   */
-  @Override
-  SimpleColumn[] endColumnHeaders(boolean advancedMode) {
-    if (!advancedMode) return new SimpleColumn[0];
-    return new SimpleColumn[] {
-      new SimpleColumn() {
-
-        @Override
-        protected void drawColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-          OpennetPeerNodeStatus status = (OpennetPeerNodeStatus) peerNodeStatus;
-          long tLastSuccess = status.timeLastSuccess;
-          peerRow.addChild(
-              "td",
-              "class",
-              "peer-last-success",
-              tLastSuccess > 0
-                  ? TimeUtil.formatTime(System.currentTimeMillis() - tLastSuccess)
-                  : "NEVER");
-        }
-
-        @Override
-        public String getExplanationKey() {
-          return "OpennetConnectionsToadlet.successTime";
-        }
-
-        @Override
-        public String getSortString() {
-          return "successTime";
-        }
-
-        @Override
-        public String getTitleKey() {
-          return "OpennetConnectionsToadlet.successTimeTitle";
-        }
-      }
-    };
   }
 
   /**

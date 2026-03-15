@@ -16,6 +16,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
@@ -49,7 +50,6 @@ import org.slf4j.LoggerFactory;
  */
 public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetConnectionsToadlet.class);
-  private static final String ATTR_CLASS = "class";
   private static final String ELEMENT_INPUT = "input";
   private static final String ELEMENT_SELECT = "select";
   private static final String ELEMENT_OPTION = "option";
@@ -81,8 +81,12 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
           Map.entry("set_allow_local", pn -> pn.setAllowLocalAddresses(true)),
           Map.entry("clear_allow_local", pn -> pn.setAllowLocalAddresses(false)));
 
-  DarknetConnectionsToadlet(Node n, NodeClientCore core, HighLevelSimpleClient client) {
-    super(n, core, client);
+  DarknetConnectionsToadlet(
+      Node n,
+      NodeClientCore core,
+      HighLevelSimpleClient client,
+      ConnectionsPagePort connectionsPage) {
+    super(n, core, client, connectionsPage);
   }
 
   private static String l10n(String string) {
@@ -100,7 +104,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * ordering. Instances are short-lived and created per request to avoid storing mutable sorting
    * preferences globally.
    */
-  protected class DarknetComparator extends ComparatorByStatus {
+  protected static class DarknetComparator extends ComparatorByStatus {
 
     DarknetComparator(String sortBy, boolean reversed) {
       super(sortBy, reversed);
@@ -165,180 +169,6 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Indicate that the darknet table always displays a peer name column.
-   *
-   * <p>The name column serves as the primary identifier for friends, enabling both navigation to
-   * the confidential messaging form and, in advanced mode, access to downloadable references.
-   * Hiding it would prevent users from distinguishing peers, so the method consistently returns
-   * {@code true} regardless of UI mode or configuration.
-   *
-   * @return {@code true}, signalling that a name column must be rendered for every row.
-   */
-  @Override
-  protected boolean hasNameColumn() {
-    return true;
-  }
-
-  /**
-   * Render the peer name cell with an optional noderef download link for advanced users.
-   *
-   * <p>The method writes a table cell containing the peer's display name and a link to the
-   * confidential messaging endpoint. When advanced mode is active and a full noderef is available,
-   * it also exposes a secondary link that triggers a download of the sanitized friend reference.
-   * The cell contents remain purely presentational; selection and bulk actions are handled
-   * elsewhere in the form.
-   *
-   * @param peerRow table row receiving the name content; must be non-null and part of the page.
-   * @param peerNodeStatus status wrapper for the darknet peer whose name is shown.
-   * @param advanced whether to include the noderef download link beside the name.
-   */
-  @Override
-  protected void drawNameColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advanced) {
-    // name column
-    HTMLNode cell = peerRow.addChild("td", ATTR_CLASS, "peer-name");
-    cell.addChild(
-        "a",
-        "href",
-        "/send_n2ntm/?peernode_hashcode=" + peerNodeStatus.hashCode(),
-        ((DarknetPeerNodeStatus) peerNodeStatus).getName());
-    if (advanced && peerNodeStatus.hasFullNoderef) {
-      cell.addChild("#", " (");
-      cell.addChild(
-          "a",
-          "href",
-          path() + FRIEND_PREFIX + peerNodeStatus.hashCode() + FREF_SUFFIX,
-          l10n("noderefLink"));
-      cell.addChild("#", ")");
-    }
-  }
-
-  /**
-   * Signal that the trust column should always be rendered for darknet peers.
-   *
-   * <p>Trust is a primary tuning mechanism for darknet routing, so the column remains visible in
-   * both basic and advanced modes. The consistent presence of the column also keeps the table
-   * layout stable when users toggle feature flags.
-   *
-   * @return {@code true}, indicating the trust column is required in the output table.
-   */
-  @Override
-  protected boolean hasTrustColumn() {
-    return true;
-  }
-
-  /**
-   * Populate the trust column with the peer's configured trust enum value.
-   *
-   * <p>The method writes a simple text cell that mirrors the underlying {@link FRIEND_TRUST} value
-   * so users can quickly scan relative trust levels. No editing controls are embedded here;
-   * adjustments are performed through the bulk actions box to avoid per-row form sprawl.
-   *
-   * @param peerRow row node that will receive the trust cell; must already exist in the DOM.
-   * @param peerNodeStatus status describing the peer whose trust value is being rendered.
-   */
-  @Override
-  protected void drawTrustColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    peerRow
-        .addChild("td", ATTR_CLASS, "peer-trust")
-        .addChild("#", ((DarknetPeerNodeStatus) peerNodeStatus).getTrustLevel().name());
-  }
-
-  /**
-   * Declare that visibility settings should always be displayed for darknet peers.
-   *
-   * <p>Visibility reflects whether peers may reveal each other's identity to others, making it a
-   * critical safety control. Showing it unconditionally keeps the user aware of both inbound and
-   * outbound sharing preferences and avoids layout shifts between basic and advanced views.
-   *
-   * @return {@code true}, ensuring the visibility column is rendered.
-   */
-  @Override
-  protected boolean hasVisibilityColumn() {
-    return true;
-  }
-
-  /**
-   * Render local and optionally remote visibility settings in a compact text cell.
-   *
-   * <p>The local visibility always appears so users can confirm how their node shares the
-   * connection. When advanced mode is enabled, the peer's visibility toward this node is appended
-   * in parentheses to highlight asymmetries. No formatting or icons are used to keep the table
-   * printable and screen-reader friendly.
-   *
-   * @param peerRow destination row that receives the visibility cell.
-   * @param peerNodeStatus status object containing local and remote visibility values.
-   * @param advancedModeEnabled whether to append the peer's visibility toward this node.
-   */
-  @Override
-  protected void drawVisibilityColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advancedModeEnabled) {
-    String content = ((DarknetPeerNodeStatus) peerNodeStatus).getOurVisibility().name();
-    if (advancedModeEnabled)
-      content += " (" + ((DarknetPeerNodeStatus) peerNodeStatus).getTheirVisibility().name() + ")";
-    peerRow.addChild("td", ATTR_CLASS, "peer-trust").addChild("#", content);
-  }
-
-  /**
-   * Indicate that the private note column should always be present on the friends table.
-   *
-   * <p>Private notes allow operators to annotate friends with context or trust cues; keeping the
-   * column consistently visible avoids data loss and maintains table alignment across modes.
-   *
-   * @return {@code true}, signalling that note inputs should be rendered for each peer.
-   */
-  @Override
-  protected boolean hasPrivateNoteColumn() {
-    return true;
-  }
-
-  /**
-   * Render the editable private note field for a peer, enabling JS onchange when available.
-   *
-   * <p>The method emits an {@code input type="text"} element sized for short annotations and limits
-   * user input to 250 characters. When the FProxy JavaScript helpers are enabled, an {@code
-   * onChange} hook triggers the client-side note tracking logic; otherwise a plain input is
-   * provided so accessibility and non-scripted environments remain functional.
-   *
-   * @param peerRow row node to which the note input cell is appended.
-   * @param peerNodeStatus status describing the peer whose note value is being edited.
-   * @param fProxyJavascriptEnabled whether to attach the JavaScript change handler attribute.
-   */
-  @Override
-  protected void drawPrivateNoteColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean fProxyJavascriptEnabled) {
-    // private darknet node comment note column
-    DarknetPeerNodeStatus status = (DarknetPeerNodeStatus) peerNodeStatus;
-    if (fProxyJavascriptEnabled) {
-      peerRow
-          .addChild("td", ATTR_CLASS, "peer-private-darknet-comment-note")
-          .addChild(
-              ELEMENT_INPUT,
-              new String[] {"type", "name", "size", "maxlength", "onChange", ATTR_VALUE},
-              new String[] {
-                "text",
-                PEER_PRIVATE_NOTE_PREFIX + peerNodeStatus.hashCode(),
-                "16",
-                "250",
-                "peerNoteChange();",
-                status.getPrivateDarknetCommentNote()
-              });
-    } else {
-      peerRow
-          .addChild("td", ATTR_CLASS, "peer-private-darknet-comment-note")
-          .addChild(
-              ELEMENT_INPUT,
-              new String[] {"type", "name", "size", "maxlength", ATTR_VALUE},
-              new String[] {
-                "text",
-                PEER_PRIVATE_NOTE_PREFIX + peerNodeStatus.hashCode(),
-                "16",
-                "250",
-                status.getPrivateDarknetCommentNote()
-              });
-    }
-  }
-
-  /**
    * Export the local node's public darknet reference for distribution.
    *
    * <p>The exported field set omits private data and contains only the values needed for a remote
@@ -353,43 +183,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Collect status snapshots for all darknet peers, optionally skipping heavy calculations.
-   *
-   * <p>When {@code noHeavy} is true, the returned statuses avoid expensive metrics so lightweight
-   * pages can render quickly. The array ordering matches that provided by the node's peer manager
-   * and is later sorted by {@link #comparator(String, boolean)} according to user preferences.
-   *
-   * @param noHeavy whether to omit heavy computations such as aggregated statistics.
-   * @return array of {@link DarknetPeerNodeStatus} instances representing current darknet peers.
-   */
-  @Override
-  protected PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy) {
-    return node.network().peers().statusBook().getDarknetPeerNodeStatuses(noHeavy);
-  }
-
-  /**
-   * Build a localized page title that embeds the formatted friend count.
-   *
-   * <p>The title text is fetched from localization resources and accepts the {@code counts}
-   * placeholder, allowing the caller to present short summaries such as "(5 friends)" without
-   * duplicating translation keys. Returning the fully interpolated string keeps the template logic
-   * centralized within the toadlet rather than scattering title construction throughout the UI
-   * layer.
-   *
-   * @param titleCountString localized or numeric friend count already formatted for display.
-   * @return localized title string ready for insertion into the page header.
-   */
-  @Override
-  protected String getPageTitle(String titleCountString) {
-    return NodeL10n.getBase()
-        .getString(
-            "DarknetConnectionsToadlet.fullTitle",
-            new String[] {"counts"},
-            new String[] {titleCountString});
-  }
-
-  /**
-   * Determine whether the page should include the self noderef download box.
+   * Determine whether the page should include the self-noderef download box.
    *
    * <p>The box is useful for power users distributing their own references but can overwhelm new
    * users. By tying visibility to the advanced mode flag, the method keeps the standard workflow
@@ -412,7 +206,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * so the actions box is never hidden. The contained controls gate advanced operations internally
    * rather than being removed from the DOM.
    *
-   * @return {@code true}, signalling callers to render the actions box unconditionally.
+   * @return {@code true}, signaling callers to render the actions box unconditionally.
    */
   @Override
   protected boolean showPeerActionsBox() {
@@ -428,7 +222,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * hidden from basic users. The controls rely on the parent form to provide checkbox selections
    * whose names follow the {@code node_<hashcode>} convention.
    *
-   * @param peerForm form node to which controls are appended; must already exist in the page.
+   * @param peerForm the form node to which controls are appended; must already exist in the page.
    * @param advancedModeEnabled whether to include advanced-only routing and security options.
    */
   @Override
@@ -504,21 +298,6 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       changeVisibilitySelect.addChild(
           ELEMENT_OPTION, ATTR_VALUE, trust.name(), l10n("peerVisibility." + trust.name()));
     }
-  }
-
-  /**
-   * Return the localized heading that labels the darknet friends table.
-   *
-   * <p>The title is intentionally short to keep table layouts compact while still providing clear
-   * context when embedded inside larger pages or infoboxes. It is reused by multiple rendering
-   * paths so the same wording appears in both standard and advanced layouts, reducing localization
-   * overhead and preserving consistency when the table is refreshed after POST actions.
-   *
-   * @return localized string representing the section title for friends.
-   */
-  @Override
-  protected String getPeerListTitle() {
-    return l10n("myFriends");
   }
 
   /**
@@ -811,24 +590,9 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Provide additional column headers appended after the standard set.
-   *
-   * <p>Darknet connections do not require trailing columns beyond those defined in the base class,
-   * so this implementation returns an empty array. Advanced mode status does not influence the
-   * outcome, preserving a consistent column layout.
-   *
-   * @param advancedMode whether advanced mode is enabled for the current render.
-   * @return an empty array, indicating no extra headers are added.
-   */
-  @Override
-  SimpleColumn[] endColumnHeaders(boolean advancedMode) {
-    return new SimpleColumn[0];
-  }
-
-  /**
    * Expose the URL path handled by this toadlet for routing purposes.
    *
-   * <p>The path is shared across GET and POST handlers so form actions and links consistently
+   * <p>The path is shared across GET and POST handlers, so form actions and links consistently
    * resolve to the friends' endpoint. Centralizing the path string here avoids duplication in
    * templates and makes it easy for callers to build absolute links when issuing redirects or
    * constructing downloadable noderef URLs.
@@ -853,7 +617,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * @param request HTTP request wrapper carrying query parameters and advanced-mode state.
    * @param ctx toadlet context used to write the HTML page or attachment response.
    * @throws ToadletContextClosedException if the client disconnects during output.
-   * @throws IOException if streaming the response fails.
+   * @throws IOException if streaming, the response fails.
    * @throws RedirectException if the superclass initiates a redirect during page handling.
    */
   @Override
