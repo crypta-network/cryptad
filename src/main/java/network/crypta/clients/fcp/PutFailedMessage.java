@@ -11,7 +11,6 @@ import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -280,11 +279,10 @@ public final class PutFailedMessage extends FCPMessage implements Serializable {
    * global flag for logging. The method is intentionally non-idempotent because it always throws.
    *
    * @param handler connection handler that attempted to process the outbound message.
-   * @param node node instance associated with the connection; unused but required by signature.
    * @throws MessageInvalidException always thrown to signal protocol misuse by the client.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PutFailed goes from server to client not the other way around",

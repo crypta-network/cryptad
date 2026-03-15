@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -20,8 +19,8 @@ import network.crypta.support.SimpleFieldSet;
  * <ul>
  *   <li><strong>Responsibilities:</strong> hold metadata common to responses, enforce identifier
  *       propagation, and expose the name for routing/logging.
- *   <li><strong>Notable behavior:</strong> {@link #run(FCPConnectionHandler, Node)} always signals
- *       an error if invoked because responses are node-originated only.
+ *   <li><strong>Notable behavior:</strong> {@link #run(FCPConnectionHandler)} always signals an
+ *       error if invoked because responses are node-originated only.
  * </ul>
  *
  * @see FCPMessage
@@ -95,17 +94,15 @@ public abstract class FCPResponse extends FCPMessage {
    * accidentally sending a response message upstream. The exception embeds {@link
    * ProtocolErrorMessage#INVALID_MESSAGE} so callers can map the failure to a protocol error frame
    * and audit the misuse. Although this override never performs handler interactions, it keeps the
-   * signature identical to {@link FCPMessage#run(FCPConnectionHandler, Node)} for uniformity.
+   * signature identical to {@link FCPMessage#run(FCPConnectionHandler)} for uniformity.
    *
    * @param handler Handler instance that attempted to process the inbound message despite it being
    *     node-originated only.
-   * @param node Node that detected the misuse; not otherwise touched because execution aborts
-   *     immediately.
    * @throws MessageInvalidException Always thrown to reject client-originated attempts to send
    *     response-only envelope types.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         getName() + " is a reply from the node; the client should not send it.",

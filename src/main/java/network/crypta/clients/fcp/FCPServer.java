@@ -10,7 +10,6 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.config.Config;
 import network.crypta.io.AllowedHosts;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.Bucket;
@@ -52,9 +51,6 @@ public class FCPServer implements Runnable, DownloadCache {
 
   /* It’s not the field that is deprecated, but accessing it directly is. */
   private final NodeClientCore core;
-
-  /* It’s not the field that is deprecated, but accessing it directly is. */
-  private final Node node;
 
   private final RuntimePorts runtime;
 
@@ -109,7 +105,6 @@ public class FCPServer implements Runnable, DownloadCache {
     this.allowedHostsFullAccess = new AllowedHosts(config.allowedHostsFullAccess());
     this.port = config.port();
     this.enabled = config.enabled();
-    this.node = dependencies.node();
     this.core = dependencies.core();
     this.runtime = dependencies.runtimePorts();
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
@@ -134,7 +129,6 @@ public class FCPServer implements Runnable, DownloadCache {
    * @param allowedHostsFullAccess allowlist used for privileged operations that bypass client-side
    *     restrictions.
    * @param port TCP port number for the FCP listener, in the host byte order.
-   * @param node owning {@link Node} providing daemon services still required by legacy FCP code.
    * @param core node client core exposing persistence, download directories, and cache factories.
    * @param runtime runtime SPI bridge for infrastructure code that avoids daemon internals.
    * @param isEnabled whether networked FCP should start.
@@ -150,7 +144,6 @@ public class FCPServer implements Runnable, DownloadCache {
       String allowedHosts,
       String allowedHostsFullAccess,
       int port,
-      Node node,
       NodeClientCore core,
       RuntimePorts runtime,
       boolean isEnabled,
@@ -170,7 +163,7 @@ public class FCPServer implements Runnable, DownloadCache {
             assumeDDAUploadAllowed,
             neverDropAMessage,
             maxMessageQueueLength),
-        new FcpServerDependencies(node, core, runtime, persistentRoot));
+        new FcpServerDependencies(core, runtime, persistentRoot));
   }
 
   /**
@@ -217,10 +210,9 @@ public class FCPServer implements Runnable, DownloadCache {
    * <p>This factory wires the FCP-related settings into the {@code fcp} configuration subtree and
    * constructs the server with immutable values derived from that configuration. It does not start
    * network listeners; callers still invoke {@link #maybeStart()} at the appropriate lifecycle
-   * point. The returned server is fully wired to the supplied node, client core, and persistence
-   * root, so it can immediately serve FCP traffic once started.
+   * point. The returned server is fully wired to the supplied client core and persistence root, so
+   * it can immediately serve FCP traffic once started.
    *
-   * @param node the owning node providing daemon services still required by legacy FCP code.
    * @param core client core used for persistence and endpoint access.
    * @param runtime runtime SPI bridge used by infrastructure code inside the server.
    * @param config configuration registry where the {@code fcp} subsection is registered.
@@ -228,12 +220,8 @@ public class FCPServer implements Runnable, DownloadCache {
    * @return configured server instance ready to be started by the caller.
    */
   public static FCPServer maybeCreate(
-      Node node,
-      NodeClientCore core,
-      RuntimePorts runtime,
-      Config config,
-      PersistentRequestRoot root) {
-    return FcpServerConfigRegistrar.maybeCreate(node, core, runtime, config, root);
+      NodeClientCore core, RuntimePorts runtime, Config config, PersistentRequestRoot root) {
+    return FcpServerConfigRegistrar.maybeCreate(core, runtime, config, root);
   }
 
   /**
@@ -755,19 +743,6 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public RuntimePorts runtime() {
     return runtime;
-  }
-
-  /**
-   * Returns the owning {@link Node} instance.
-   *
-   * <p>The owning node provides executors, configuration, and lifecycle coordination. The returned
-   * reference is the same instance passed to the constructor and should be treated as a shared
-   * mutable state. Callers should avoid long-lived synchronization on the node object.
-   *
-   * @return node that created and manages this server.
-   */
-  public Node getNode() {
-    return node;
   }
 
   AllowedHosts getAllowedHostsFullAccess() {

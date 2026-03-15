@@ -169,7 +169,7 @@ class AddPeerTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("AddPeer requires full access", exception.getMessage());
@@ -188,7 +188,7 @@ class AddPeerTest {
     when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
         .thenReturn(snapshot);
 
-    addPeer.run(handler, node);
+    addPeer.run(handler);
 
     ArgumentCaptor<PeerFieldSet> referenceCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
     verify(peerPort).add(referenceCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
@@ -210,7 +210,7 @@ class AddPeerTest {
     when(peerPort.add(any(PeerFieldSet.class), any(PeerTrust.class), any(PeerVisibility.class)))
         .thenReturn(snapshot);
 
-    addPeer.run(handler, node);
+    addPeer.run(handler);
 
     ArgumentCaptor<PeerTrust> trustCaptor = ArgumentCaptor.forClass(PeerTrust.class);
     ArgumentCaptor<PeerVisibility> visibilityCaptor = ArgumentCaptor.forClass(PeerVisibility.class);
@@ -260,7 +260,7 @@ class AddPeerTest {
     when(handler.hasFullAccess()).thenReturn(true);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.NOT_A_FILE_ERROR, exception.protocolCode);
     verifyNoInteractions(server, runtimePorts, peerPort, node);
@@ -275,7 +275,7 @@ class AddPeerTest {
         .thenThrow(new PeerAddRejectedException(reason, "detail-" + reason.name()));
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler));
 
     assertEquals(protocolCode, exception.protocolCode);
     assertEquals("detail-" + reason.name(), exception.getMessage());

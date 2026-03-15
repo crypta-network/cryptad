@@ -88,12 +88,11 @@ public class ShutdownMessage extends FCPMessage {
    *
    * @param handler connection handler that issued the request; must provide full-access rights or
    *     the call fails with an exception
-   * @param node target node instance that will perform the actual process termination on approval
    * @throws MessageInvalidException when the connection lacks required privileges or protocol
    *     validation fails prior to triggering the shutdown
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED, "Shutdown requires full access", null, false);
@@ -102,6 +101,6 @@ public class ShutdownMessage extends FCPMessage {
         new ProtocolErrorMessage(
             ProtocolErrorMessage.SHUTTING_DOWN, true, "The node is shutting down", "Node", false);
     handler.send(msg);
-    node.exit("Received FCP shutdown message");
+    handler.getServer().getCore().getNode().exit("Received FCP shutdown message");
   }
 }

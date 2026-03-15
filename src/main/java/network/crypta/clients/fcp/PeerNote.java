@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.Base64;
 import network.crypta.support.SimpleFieldSet;
 
@@ -48,7 +47,6 @@ public class PeerNote extends FCPMessage {
    * PeerNote note = new PeerNote(peerId, "Peer capacity changed", 2, "note-42");
    * }</pre>
    *
-   * @param nodeIdentifier stable identifier of the peer that the note concerns; never {@code null}.
    * @param noteText human-readable note body in UTF-8; empty strings are permitted but discouraged.
    * @param peerNoteType integer classification flag understood by the remote endpoint; non-negative
    *     values typically map to predefined categories.
@@ -105,12 +103,10 @@ public class PeerNote extends FCPMessage {
    * response that explains the violation. No state is modified prior to raising the exception.
    *
    * @param handler connection context invoking the message handler; used only for validation.
-   * @param node active node instance representing the running server; not used when rejecting the
-   *     message but provided to satisfy the superclass contract.
    * @throws MessageInvalidException always thrown to signal that the message direction is invalid.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PeerNote goes from server to client not the other way around",

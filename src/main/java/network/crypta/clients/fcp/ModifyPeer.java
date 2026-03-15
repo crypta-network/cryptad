@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
 import network.crypta.runtime.spi.PeerSnapshot;
@@ -92,13 +91,11 @@ public class ModifyPeer extends FCPMessage {
    *
    * @param handler connection handler that mediates access checks and message delivery for the
    *     caller; must support full-access operations.
-   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
-   *     mutation is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, required fields are missing, or the target
    *     peer is not available as a darknet peer.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

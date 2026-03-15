@@ -81,7 +81,7 @@ class ListPeerNotesMessageTest {
     ListPeerNotesMessage message = new ListPeerNotesMessage(fs);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode);
     assertEquals("ListPeerNotes requires full access", thrown.getMessage());
@@ -99,7 +99,7 @@ class ListPeerNotesMessageTest {
     ListPeerNotesMessage message = new ListPeerNotesMessage(fs);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, thrown.protocolCode);
     assertEquals("Error: NodeIdentifier field missing", thrown.getMessage());
@@ -122,7 +122,7 @@ class ListPeerNotesMessageTest {
     fs.putSingle("NodeIdentifier", "node-unknown");
     ListPeerNotesMessage message = new ListPeerNotesMessage(fs);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
@@ -147,7 +147,7 @@ class ListPeerNotesMessageTest {
     ListPeerNotesMessage message = new ListPeerNotesMessage(fs);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.DARKNET_ONLY, thrown.protocolCode);
     assertEquals("ModifyPeer only available for darknet peers", thrown.getMessage());
@@ -168,7 +168,7 @@ class ListPeerNotesMessageTest {
     fs.putSingle("NodeIdentifier", "node-3");
     ListPeerNotesMessage message = new ListPeerNotesMessage(fs);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(2)).send(captor.capture());

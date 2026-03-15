@@ -23,8 +23,8 @@ import network.crypta.support.SimpleFieldSet;
  *   <li>Emitting protocol-level acknowledgments that reflect success or descriptive failure.
  * </ul>
  *
- * <p>Instances are short-lived and not thread-safe; a single {@link #run(FCPConnectionHandler,
- * Node)} invocation should be used per incoming request on the handler thread. The original {@link
+ * <p>Instances are short-lived and not thread-safe; a single {@link #run(FCPConnectionHandler)}
+ * invocation should be used per incoming request on the handler thread. The original {@link
  * SimpleFieldSet} is retained by reference, so callers should not reuse it concurrently.
  *
  * @see PeerRemoved
@@ -45,11 +45,11 @@ public class RemovePeer extends FCPMessage {
    * <p>The constructor reads the {@code Identifier} field from the supplied {@link SimpleFieldSet}
    * to keep it available for later replies and removes it from the mutable field set to avoid
    * accidental forwarding. The remaining fields, including {@code NodeIdentifier}, are processed
-   * during {@link #run(FCPConnectionHandler, Node)}. Reference retains the supplied field set, so
-   * callers should not modify it after construction if consistent behavior is required.
+   * during {@link #run(FCPConnectionHandler)}. Reference retains the supplied field set, so callers
+   * should not modify it after construction if consistent behavior is required.
    *
    * @param fs inbound protocol fields for this request; must contain {@code Identifier} and is
-   *     expected to contain {@code NodeIdentifier} when {@link #run(FCPConnectionHandler, Node)} is
+   *     expected to contain {@code NodeIdentifier} when {@link #run(FCPConnectionHandler)} is
    *     invoked; must be non-null and remain stable for the lifetime of this instance.
    */
   public RemovePeer(SimpleFieldSet fs) {
@@ -102,18 +102,16 @@ public class RemovePeer extends FCPMessage {
    * <pre>{@code
    * // Example: remove a peer by its node identifier
    * var message = new RemovePeer(fields);
-   * message.run(handler, node);
+   * message.run(handler);
    * }</pre>
    *
    * @param handler connection handler responsible for sending responses; must provide full-access
    *     privileges for the operation to proceed and must not be null.
-   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
-   *     removal is delegated through the runtime SPI
    * @throws MessageInvalidException when access is denied or required, fields are absent, halting
    *     further processing and surfacing a protocol-level error to the caller.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

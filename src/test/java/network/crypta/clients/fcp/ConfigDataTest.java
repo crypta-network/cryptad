@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.EnumMap;
 import java.util.Map;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.ConfigFieldSet;
 import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.runtime.spi.ConfigSnapshot;
@@ -22,8 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ConfigDataTest {
 
   @Mock private FCPConnectionHandler connectionHandler;
-
-  @Mock private Node node;
 
   @Test
   void getFieldSet_whenAllSectionsRequested_expectCorrespondingSubsets() {
@@ -101,7 +98,7 @@ class ConfigDataTest {
     ConfigData configData = new ConfigData(ConfigSnapshot.empty(), null);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> configData.run(connectionHandler, node));
+        assertThrows(MessageInvalidException.class, () -> configData.run(connectionHandler));
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(
         "ConfigData goes from server to client not the other way around", exception.getMessage());

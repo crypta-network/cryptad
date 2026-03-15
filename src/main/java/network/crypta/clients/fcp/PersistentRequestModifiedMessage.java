@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -147,12 +146,11 @@ public class PersistentRequestModifiedMessage extends FCPMessage {
    * logging because the responsibility lies with higher protocol layers to enforce directionality.
    *
    * @param handler connection handler that attempted to route the message; never modified.
-   * @param node node instance processing the inbound message; unused because execution aborts.
    * @throws MessageInvalidException always thrown to indicate that clients must not send this
    *     message type to the server.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentRequestModified goes from server to client not the other way around",

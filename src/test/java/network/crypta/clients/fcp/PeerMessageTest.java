@@ -79,7 +79,7 @@ class PeerMessageTest {
     PeerMessage message = new PeerMessage(PeerSnapshot.empty(), null);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);
     assertEquals("Peer goes from server to client not the other way around", thrown.getMessage());

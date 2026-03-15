@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -25,8 +24,7 @@ import network.crypta.support.SimpleFieldSet;
  *       instance carries no additional state; repeated {@link #getFieldSet()} calls allocate new
  *       {@link SimpleFieldSet} objects.
  *   <li><strong>Usage pattern:</strong> create the message, emit it via {@link #send}, and expect
- *       no server-side action because {@link #run(FCPConnectionHandler, Node)} is intentionally a
- *       no-op.
+ *       no server-side action because {@link #run(FCPConnectionHandler)} is intentionally a no-op.
  * </ul>
  *
  * @see FCPMessage
@@ -88,11 +86,10 @@ public class ExpectedMIME extends FCPMessage {
    * contract and communicates that receiving this message should not attempt side effects.
    *
    * @param handler connection handler that received the message; unused but required by the API.
-   * @param node node instance hosting the handler; unused because the message is declarative.
    * @throws MessageInvalidException never thrown because the method does not perform validation.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     // Not supported
   }
 }

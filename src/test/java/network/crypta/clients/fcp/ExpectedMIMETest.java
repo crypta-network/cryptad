@@ -54,7 +54,7 @@ class ExpectedMIMETest {
   void run_whenInvoked_expectNoInteractionsOrExceptions() {
     ExpectedMIME expectedMIME = new ExpectedMIME("identifier", true, "application/json");
 
-    assertDoesNotThrow(() -> expectedMIME.run(handler, node));
+    assertDoesNotThrow(() -> expectedMIME.run(handler));
     verifyNoInteractions(handler, node);
   }
 }

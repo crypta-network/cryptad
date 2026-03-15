@@ -20,9 +20,9 @@ package network.crypta.clients.fcp;
  *   <li><strong>Responsibilities:</strong> label the refusal event and propagate the FCP
  *       identifier, enabling clients to reconcile probes with outcomes.
  *   <li><strong>Notable behavior:</strong> {@link
- *       FCPResponse#run(network.crypta.clients.fcp.FCPConnectionHandler, network.crypta.node.Node)}
- *       remains the inherited guard that always raises {@link MessageInvalidException} if a client
- *       attempts to send this response upstream.
+ *       FCPResponse#run(network.crypta.clients.fcp.FCPConnectionHandler)} remains the inherited
+ *       guard that always raises {@link MessageInvalidException} if a client attempts to send this
+ *       response upstream.
  * </ul>
  *
  * @see FCPResponse

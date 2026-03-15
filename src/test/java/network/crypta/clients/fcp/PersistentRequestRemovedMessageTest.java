@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,9 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PersistentRequestRemovedMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @ParameterizedTest
   @CsvSource({"req-123,true", "another-id,false"})
@@ -53,7 +49,7 @@ class PersistentRequestRemovedMessageTest {
         new PersistentRequestRemovedMessage(identifier, global);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

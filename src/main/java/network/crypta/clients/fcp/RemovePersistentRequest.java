@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -15,8 +14,8 @@ import org.slf4j.LoggerFactory;
  * registered for persistence, regardless of whether it has finished or is still queued. It carries
  * the opaque request identifier and a flag indicating whether the request was global. Instances are
  * immutable after creation; they simply transport the parameters required for removal and delegate
- * the actual work to the {@link FCPConnectionHandler} when {@link #run(FCPConnectionHandler, Node)}
- * is invoked. Because persistence and request queues may span multiple subsystems, the class favors
+ * the actual work to the {@link FCPConnectionHandler} when {@link #run(FCPConnectionHandler)} is
+ * invoked. Because persistence and request queues may span multiple subsystems, the class favors
  * clarity and explicit branching over silent failure.
  *
  * <p>The handler treats three stages distinctly: removal from reboot-persistent queues, removal
@@ -109,13 +108,11 @@ public final class RemovePersistentRequest extends FCPMessage {
    *
    * @param handler connection handler responsible for coordinating client requests; must not be
    *     {@code null} and is assumed to execute callbacks on its internal dispatcher thread.
-   * @param node current node instance supplied by the dispatcher; the parameter is reserved for
-   *     interface compliance and is not modified by this implementation.
    * @throws MessageInvalidException if the handler detects that the request parameters violate
    *     protocol rules or if downstream validation fails during removal.
    */
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
     ClientRequest req = handler.removePersistentRebootRequest(global, requestIdentifier);
     if (req == null && !global) {
       req = handler.removeRequestByIdentifier(requestIdentifier, true);

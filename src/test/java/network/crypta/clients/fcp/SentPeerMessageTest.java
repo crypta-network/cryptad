@@ -64,7 +64,7 @@ class SentPeerMessageTest {
 
     // Act
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     // Assert
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);

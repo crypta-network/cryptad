@@ -16,9 +16,9 @@ import network.crypta.support.SimpleFieldSet;
  * connections as long as each instance is used once.
  *
  * <p>Typical usage constructs {@code GetConfig} immediately after parsing inbound fields and calls
- * {@link #run(FCPConnectionHandler, Node)} to validate access and send a {@link ConfigData}
- * response. The message refuses to run when the connection lacks full access, preventing
- * configuration disclosure to limited clients and aligning with the FCP access-control contract.
+ * {@link #run(FCPConnectionHandler)} to validate access and send a {@link ConfigData} response. The
+ * message refuses to run when the connection lacks full access, preventing configuration disclosure
+ * to limited clients and aligning with the FCP access-control contract.
  *
  * <ul>
  *   <li>Responsibilities: capture client preferences and dispatch the configuration payload.
@@ -110,12 +110,10 @@ public class GetConfig extends FCPMessage {
    *
    * @param handler connection context responsible for permission checks and outbound delivery; must
    *     not be {@code null} and must expose full access for the call to proceed.
-   * @param node backing node that supplies the configuration values reflected in the response; may
-   *     be queried but is not modified during processing.
    * @throws MessageInvalidException if the caller lacks full access or message validation fails.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

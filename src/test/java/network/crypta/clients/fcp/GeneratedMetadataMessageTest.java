@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
@@ -26,9 +25,6 @@ class GeneratedMetadataMessageTest {
   @Mock private BucketFactory bucketFactory;
   @Mock private FCPServer server;
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void dataLength_whenBucketHasSize_returnsBucketSize() {
@@ -92,6 +88,6 @@ class GeneratedMetadataMessageTest {
     GeneratedMetadataMessage message =
         new GeneratedMetadataMessage("id", false, new SimpleReadOnlyArrayBucket(new byte[0]));
 
-    assertThrows(UnsupportedOperationException.class, () -> message.run(handler, node));
+    assertThrows(UnsupportedOperationException.class, () -> message.run(handler));
   }
 }

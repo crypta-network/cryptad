@@ -50,7 +50,7 @@ class PeerRemovedTest {
     PeerRemoved message = new PeerRemoved("identity-123", "node-abc", "request-42");
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

@@ -6,7 +6,6 @@ import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 
@@ -17,7 +16,7 @@ import network.crypta.support.SimpleFieldSet;
  * including URIs, compression preferences, and retry behavior, so they can be serialized into a
  * {@link SimpleFieldSet} for transmission. Instances are constructed on the server side when
  * enumerating or mirroring client requests and are never executed in the inbound direction, as
- * {@link #run(FCPConnectionHandler, Node)} always rejects client-sourced messages.
+ * {@link #run(FCPConnectionHandler)} always rejects client-sourced messages.
  *
  * <p>Use this type when a caller needs to:
  *
@@ -167,11 +166,10 @@ public class PersistentPut extends FCPMessage {
    * invalid direction while preserving the identifier and global flag for diagnostics.
    *
    * @param handler connection handler that attempted to process the message
-   * @param node node reference supplied by the caller, unused because of rejection
    * @throws MessageInvalidException always thrown to indicate the invalid message direction
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentPut goes from server to client not the other way around",

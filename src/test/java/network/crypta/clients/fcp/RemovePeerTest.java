@@ -75,7 +75,7 @@ class RemovePeerTest {
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-abc", "id-123"));
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> removePeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> removePeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("RemovePeer requires full access", exception.getMessage());
@@ -92,7 +92,7 @@ class RemovePeerTest {
     RemovePeer removePeer = new RemovePeer(fieldSet);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> removePeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> removePeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, exception.protocolCode);
     assertEquals("Error: NodeIdentifier field missing", exception.getMessage());
@@ -110,7 +110,7 @@ class RemovePeerTest {
     when(peerPort.remove("node-missing")).thenThrow(new UnknownPeerException("node-missing"));
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-missing", "id-789"));
 
-    removePeer.run(handler, node);
+    removePeer.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
@@ -132,7 +132,7 @@ class RemovePeerTest {
         .thenReturn(new RemovedPeerSnapshot("identity-xyz", "node-123"));
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-123", "id-555"));
 
-    removePeer.run(handler, node);
+    removePeer.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());

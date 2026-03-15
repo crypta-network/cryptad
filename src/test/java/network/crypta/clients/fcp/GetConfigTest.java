@@ -92,7 +92,7 @@ class GetConfigTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> getConfig.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> getConfig.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode);
     assertEquals("req-123", thrown.ident);
@@ -125,7 +125,7 @@ class GetConfigTest {
     when(runtimePorts.config()).thenReturn(configPort);
     when(configPort.export(any())).thenReturn(snapshot);
 
-    getConfig.run(handler, node);
+    getConfig.run(handler);
 
     ArgumentCaptor<Set<ConfigSection>> sectionsCaptor = ArgumentCaptor.forClass(Set.class);
     verify(configPort).export(sectionsCaptor.capture());

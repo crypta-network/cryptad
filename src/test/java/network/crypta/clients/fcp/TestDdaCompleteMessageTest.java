@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Random;
-import network.crypta.node.Node;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,9 +24,6 @@ class TestDdaCompleteMessageTest {
   @TempDir File tempDir;
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getName_whenInvoked_returnsConstantName() {
@@ -115,7 +111,7 @@ class TestDdaCompleteMessageTest {
     DdaCheckJob job = new DdaCheckJob(new Random(6L), tempDir, null, null);
     TestDdaCompleteMessage message = new TestDdaCompleteMessage(handler, job, job.readContent);
 
-    assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+    assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     verifyNoMoreInteractions(handler);
   }

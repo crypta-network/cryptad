@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.async.USKManager;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
@@ -37,12 +36,10 @@ class SubscribeUSKMessageTest {
       "USK@0I8gctpUE32CM0iQhXaYpCMvtPPGfT4pjXm01oid5Zc,"
           + "3dAcn4fX2LyxO6uCnWFTx-2HKZ89uruurcKwLSCxbZ4,AQACAAE/Ultimate-Freenet-Index/55/";
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
   @Mock private NodeClientCore nodeClientCore;
   @Mock private USKManager uskManager;
   @Mock private FCPConnectionHandler handler;
+  @Mock private FCPServer server;
   @Mock private PersistentRequestClient rebootClient;
   @Mock private RequestClient requestClient;
 
@@ -140,14 +137,12 @@ class SubscribeUSKMessageTest {
     wireHandlerForSuccessfulSubscribe();
     SubscribeUSKMessage message = new SubscribeUSKMessage(baseFields());
 
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    lenient().when(node.services()).thenReturn(services);
-    lenient().when(services.clientCore()).thenReturn(nodeClientCore);
+    when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.getUskManager()).thenReturn(uskManager);
     doNothing().when(uskManager).subscribe(any(), any(), anyBoolean(), anyBoolean(), any());
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
@@ -158,17 +153,15 @@ class SubscribeUSKMessageTest {
 
   @Test
   void run_whenIdentifierCollides_sendsIdentifierCollisionMessage() throws Exception {
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    lenient().when(node.services()).thenReturn(services);
-    lenient().when(services.clientCore()).thenReturn(nodeClientCore);
+    when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(nodeClientCore);
     doThrow(new IdentifierCollisionException())
         .when(handler)
         .addUSKSubscription(any(), any(SubscribeUSK.class));
 
     SubscribeUSKMessage message = new SubscribeUSKMessage(baseFields());
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).send(isA(IdentifierCollisionMessage.class));
     verify(handler, never()).send(isA(SubscribedUSKMessage.class));
@@ -184,10 +177,8 @@ class SubscribeUSKMessageTest {
   private void wireHandlerForSuccessfulSubscribe() throws IdentifierCollisionException {
     lenient().when(handler.getRebootClient()).thenReturn(rebootClient);
     lenient().when(rebootClient.lowLevelClient(false)).thenReturn(requestClient);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    lenient().when(node.services()).thenReturn(services);
-    lenient().when(services.clientCore()).thenReturn(nodeClientCore);
+    lenient().when(handler.getServer()).thenReturn(server);
+    lenient().when(server.getCore()).thenReturn(nodeClientCore);
     doNothing().when(handler).addUSKSubscription(any(), any(SubscribeUSK.class));
   }
 }

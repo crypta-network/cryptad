@@ -54,7 +54,7 @@ class EndListPersistentRequestsMessageTest {
     EndListPersistentRequestsMessage message = new EndListPersistentRequestsMessage(IDENTIFIER);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

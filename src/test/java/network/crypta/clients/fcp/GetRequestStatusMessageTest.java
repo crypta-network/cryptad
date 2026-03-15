@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueTask;
@@ -32,7 +31,6 @@ class GetRequestStatusMessageTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPConnectionOutputHandler outputHandler;
-  @Mock private Node node;
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RequestQueuePort requestQueuePort;
@@ -86,7 +84,7 @@ class GetRequestStatusMessageTest {
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(request);
     when(handler.getOutputHandler()).thenReturn(outputHandler);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(request).sendPendingMessages(outputHandler, identifier, true, true);
     verify(handler, never()).send(any());
@@ -103,7 +101,7 @@ class GetRequestStatusMessageTest {
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(null);
     when(requestQueuePort.isPersistenceDatabaseKilled()).thenReturn(true);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler, never()).send(any());
     verify(requestQueuePort).isPersistenceDatabaseKilled();
@@ -125,7 +123,7 @@ class GetRequestStatusMessageTest {
     when(handler.getOutputHandler()).thenReturn(outputHandler);
     when(requestQueuePort.isPersistenceDatabaseKilled()).thenReturn(false);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
     verify(requestQueuePort)
@@ -151,7 +149,7 @@ class GetRequestStatusMessageTest {
     when(handler.getForeverRequest(false, handler, identifier)).thenReturn(null);
     when(requestQueuePort.isPersistenceDatabaseKilled()).thenReturn(false);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
     verify(requestQueuePort)
@@ -184,7 +182,7 @@ class GetRequestStatusMessageTest {
         .when(requestQueuePort)
         .submitPersistentJob(any(), eq(RequestQueuePriority.NORMAL));
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<ProtocolErrorMessage> errorCaptor =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);

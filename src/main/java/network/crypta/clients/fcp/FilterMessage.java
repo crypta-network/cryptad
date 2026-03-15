@@ -15,7 +15,6 @@ import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.FSParseException;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -310,13 +309,11 @@ public final class FilterMessage extends DataCarryingMessage {
    *
    * @param handler connection handler responsible for sending replies back over the client's FCP
    *     socket and exposing the server core; must remain valid for the call duration.
-   * @param node node instance containing the wider runtime context; used indirectly when retrieving
-   *     the {@link ClientContext} from the server.
    * @throws MessageInvalidException if the payload bucket is absent or a transient allocation error
    *     prevents preparing buckets for the filtering process.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (bucket == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "Must contain data", identifier, false);

@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.nio.charset.StandardCharsets;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,11 +82,10 @@ class FeedMessageTest {
   void run_whenInvoked_expectMessageInvalidExceptionWithInvalidMessageCode() {
     // Arrange
     FeedMessage message = new FeedMessage("header", "short", "text", (short) 2, 123_456_789L);
-    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     // Act
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     // Assert
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);

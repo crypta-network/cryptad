@@ -4,10 +4,8 @@ import java.util.Arrays;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
-import org.mockito.Answers;
 import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -94,9 +92,8 @@ class ExpectedHashesTest {
     ExpectedHashes expectedHashes = new ExpectedHashes(new HashResult[0], "run", false);
     //noinspection resource
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
-    Node node = Mockito.mock(Node.class, Answers.RETURNS_DEEP_STUBS);
 
-    assertThrows(UnsupportedOperationException.class, () -> expectedHashes.run(handler, node));
+    assertThrows(UnsupportedOperationException.class, () -> expectedHashes.run(handler));
   }
 
   private static HashResult createHash(HashType type, byte fillValue) {

@@ -13,7 +13,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
@@ -272,7 +271,6 @@ class FCPConnectionInputHandlerTest {
     ctx.handler = mock(FCPConnectionHandler.class);
     ctx.bucketFactory = mock(TempBucketFactory.class);
     ctx.server = mock(FCPServer.class);
-    ctx.node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     ctx.core = mock(NodeClientCore.class);
     ctx.runtimePorts = mock(RuntimePorts.class);
     ctx.nodeInfoPort = mock(NodeInfoPort.class);
@@ -282,7 +280,6 @@ class FCPConnectionInputHandlerTest {
     when(ctx.handler.getSocket()).thenReturn(ctx.socket);
     when(ctx.socket.getInputStream()).thenReturn(stream);
     when(ctx.handler.getServer()).thenReturn(ctx.server);
-    lenient().when(ctx.server.getNode()).thenReturn(ctx.node);
     lenient().when(ctx.server.getCore()).thenReturn(ctx.core);
     lenient().when(ctx.server.runtime()).thenReturn(ctx.runtimePorts);
     lenient().when(ctx.runtimePorts.nodeInfo()).thenReturn(ctx.nodeInfoPort);
@@ -335,7 +332,6 @@ class FCPConnectionInputHandlerTest {
     FCPConnectionInputHandler inputHandler;
     FCPConnectionHandler handler;
     FCPServer server;
-    Node node;
     NodeClientCore core;
     RuntimePorts runtimePorts;
     NodeInfoPort nodeInfoPort;
@@ -360,7 +356,7 @@ class FCPConnectionInputHandlerTest {
     }
 
     @Override
-    public void run(FCPConnectionHandler handler, Node node) {
+    public void run(FCPConnectionHandler handler) {
       // Intentionally empty: run() must remain inert so that tests focus solely on readFrom().
     }
 
@@ -409,7 +405,7 @@ class FCPConnectionInputHandlerTest {
     }
 
     @Override
-    public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+    public void run(FCPConnectionHandler handler) throws MessageInvalidException {
       if (runHook != null) {
         runHook.run();
       }

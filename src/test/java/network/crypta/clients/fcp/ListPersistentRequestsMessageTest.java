@@ -64,7 +64,7 @@ class ListPersistentRequestsMessageTest {
     mockQueuesReturningEmpty(identifier, outputHandler, rebootClient, foreverClient);
     executePersistentTasksImmediately();
 
-    message.run(handler, null);
+    message.run(handler);
 
     ArgumentCaptor<EndListPersistentRequestsMessage> captor =
         ArgumentCaptor.forClass(EndListPersistentRequestsMessage.class);
@@ -97,7 +97,7 @@ class ListPersistentRequestsMessageTest {
     mockQueuesReturningEmpty(identifier, outputHandler, globalRebootClient, globalForeverClient);
     executePersistentTasksImmediately();
 
-    message.run(handler, null);
+    message.run(handler);
 
     verify(handler).send(any(EndListPersistentRequestsMessage.class));
     verify(requestQueuePort, times(1)).submitPersistentJob(any(), eq(RequestQueuePriority.LISTING));

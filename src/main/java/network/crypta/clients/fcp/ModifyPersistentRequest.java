@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
@@ -147,13 +146,11 @@ public final class ModifyPersistentRequest extends FCPMessage {
    *
    * @param handler connection handler used to resolve the request identifier and send any protocol
    *     error responses; must not be {@code null}
-   * @param node node instance providing access to the client core, persistent job runner, and FCP
-   *     server used to apply the modification; must not be {@code null}
    * @throws MessageInvalidException if the identifier or request parameters violate protocol
    *     constraints while attempting to execute the modification
    */
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
 
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {

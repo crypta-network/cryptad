@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -21,7 +20,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <ul>
  *   <li>Responsibilities: encode the identifier and advertise the canonical message name.
- *   <li>Limitations: never sent by clients; {@link #run(FCPConnectionHandler, Node)} always throws.
+ *   <li>Limitations: never sent by clients; {@link #run(FCPConnectionHandler)} always throws.
  *   <li>Observability: the {@link #NAME} constant allows tests to verify correct wiring.
  * </ul>
  *
@@ -96,11 +95,10 @@ public class EndListPersistentRequestsMessage extends FCPMessage {
    * spoofed completion notices that could otherwise truncate legitimate listings.
    *
    * @param handler connection handler requesting execution; ignored because the call always fails.
-   * @param node reference to the running node; unused because the message is outbound-only.
    * @throws MessageInvalidException always thrown to signal protocol misuse by the client.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "EndListPersistentRequests goes from server to client not the other way around",

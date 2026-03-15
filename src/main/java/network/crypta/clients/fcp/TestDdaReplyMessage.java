@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -116,12 +115,11 @@ public class TestDdaReplyMessage extends FCPMessage {
    * same inbound frame.
    *
    * @param handler connection handler consuming the message; supplied by dispatcher and never null.
-   * @param node active node context for symmetry; unused because inbound delivery is invalid.
    * @throws MessageInvalidException always thrown to signal the directionality error and terminate
    *     processing of the malformed inbound message.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         NAME + " goes from server to client not the other way around",

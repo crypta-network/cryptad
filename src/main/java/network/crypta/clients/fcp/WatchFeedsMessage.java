@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -75,15 +74,13 @@ public class WatchFeedsMessage extends FCPMessage {
    *
    * @param handler connection handler representing the client session; must be non-{@code null} and
    *     already associated with the target node.
-   * @param node server node that owns the alert subsystem used to register or unregister the
-   *     handler.
    * @throws MessageInvalidException if the connection state rejects alert watching, matching base
    *     FCP error propagation semantics.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    if (enabled) node.services().clientCore().getAlerts().watch(handler);
-    else node.services().clientCore().getAlerts().unwatch(handler);
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
+    if (enabled) handler.getServer().getCore().getAlerts().watch(handler);
+    else handler.getServer().getCore().getAlerts().unwatch(handler);
   }
 
   /**

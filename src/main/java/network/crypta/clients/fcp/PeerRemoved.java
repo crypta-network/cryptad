@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -17,7 +16,7 @@ import network.crypta.support.SimpleFieldSet;
  * reuse or modify it across threads. The class itself is thread-safe because it exposes only final
  * state, but concurrent dispatchers should still avoid sharing mutable transport buffers. As part
  * of the server-to-client event stream it obeys the FCP rule that clients never send this message
- * back to the server; attempts to do so are rejected by {@link #run(FCPConnectionHandler, Node)}.
+ * back to the server; attempts to do so are rejected by {@link #run(FCPConnectionHandler)}.
  *
  * <ul>
  *   <li>Represents a peer removal event originating from the server.
@@ -45,7 +44,6 @@ public class PeerRemoved extends FCPMessage {
    * immutable and can be safely shared for read-only use across components that emit FCP messages.
    *
    * @param identity canonical identity string for the removed peer; never {@code null}
-   * @param nodeIdentifier local node identifier associated with the peer; never {@code null}
    * @param identifier optional client correlation token; may be {@code null} when unspecified
    */
   public PeerRemoved(String identity, String nodeIdentifier, String identifier) {
@@ -96,11 +94,10 @@ public class PeerRemoved extends FCPMessage {
    * side effects and is intentionally non-idempotent only in that it always throws.
    *
    * @param handler connection handler that attempted to process the message; never {@code null}
-   * @param node current node instance that received the invalid message; never {@code null}
    * @throws MessageInvalidException always thrown to signal that the direction is unsupported
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PeerRemoved goes from server to client not the other way around",

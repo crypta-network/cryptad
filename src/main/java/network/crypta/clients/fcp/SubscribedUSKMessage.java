@@ -112,13 +112,11 @@ public class SubscribedUSKMessage extends FCPMessage {
    *
    * @param handler active FCP connection context that attempted to process the message; not
    *     modified by this method.
-   * @param node node instance receiving the invalid message; provided for parity with other message
-   *     handlers but unused because processing always aborts.
    * @throws MessageInvalidException always thrown to indicate the directional violation and halt
    *     further processing of the inbound payload.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         NAME + " goes from server to client not the other way around",

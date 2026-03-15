@@ -70,7 +70,7 @@ class URIGeneratedMessageTest {
 
     // Act + Assert
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

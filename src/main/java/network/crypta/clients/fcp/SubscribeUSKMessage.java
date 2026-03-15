@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.net.MalformedURLException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
-import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 
@@ -137,14 +136,12 @@ public final class SubscribeUSKMessage extends FCPMessage {
    *
    * @param handler connection-scoped handler responsible for sending replies and managing session
    *     state; must not be {@code null}
-   * @param node node instance that provides client core access and scheduling services; must not be
-   *     {@code null}
    * @throws MessageInvalidException if validation fails while creating the backend subscription
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     try {
-      new SubscribeUSK(this, node.services().clientCore(), handler);
+      new SubscribeUSK(this, handler.getServer().getCore(), handler);
     } catch (IdentifierCollisionException _) {
       handler.send(new IdentifierCollisionMessage(clientIdentifier, false));
       return;

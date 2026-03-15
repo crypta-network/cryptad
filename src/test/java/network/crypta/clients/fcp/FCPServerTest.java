@@ -4,7 +4,6 @@ import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -22,9 +21,6 @@ import static org.mockito.ArgumentMatchers.isA;
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class FCPServerTest {
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Mock private NodeClientCore core;
   @Mock private RuntimePorts runtimePorts;
@@ -44,7 +40,7 @@ class FCPServerTest {
             false,
             10);
     return new FCPServer(
-        config, new FcpServerDependencies(node, core, runtimePorts, new PersistentRequestRoot()));
+        config, new FcpServerDependencies(core, runtimePorts, new PersistentRequestRoot()));
   }
 
   @Test
@@ -110,8 +106,7 @@ class FCPServerTest {
             false,
             false,
             10);
-    FCPServer server =
-        new FCPServer(config, new FcpServerDependencies(node, core, runtimePorts, root));
+    FCPServer server = new FCPServer(config, new FcpServerDependencies(core, runtimePorts, root));
     PersistentRequestClient forever = root.registerForeverClient("forever", null);
 
     // Act

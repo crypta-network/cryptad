@@ -4,7 +4,6 @@ import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -27,9 +26,6 @@ import static org.mockito.Mockito.when;
 class FcpServerConfigRegistrarTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private NodeClientCore core;
 
   @Mock private RuntimePorts runtimePorts;
@@ -43,7 +39,7 @@ class FcpServerConfigRegistrarTest {
     when(runtimePorts.execution()).thenReturn(executionPort);
 
     // Act
-    FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, runtimePorts, config, root);
+    FCPServer server = FcpServerConfigRegistrar.maybeCreate(core, runtimePorts, config, root);
     SubConfig subConfig = config.get("fcp");
 
     // Assert
@@ -237,6 +233,6 @@ class FcpServerConfigRegistrarTest {
             false,
             10);
     return new FCPServer(
-        config, new FcpServerDependencies(node, core, runtimePorts, new PersistentRequestRoot()));
+        config, new FcpServerDependencies(core, runtimePorts, new PersistentRequestRoot()));
   }
 }

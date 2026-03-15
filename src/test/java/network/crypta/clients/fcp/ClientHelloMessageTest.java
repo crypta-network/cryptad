@@ -87,7 +87,7 @@ class ClientHelloMessageTest {
     when(nodeInfoPort.greeting()).thenReturn(greeting);
     when(handler.getConnectionIdentifierUUID()).thenReturn(identifier);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     InOrder order = inOrder(nodeInfoPort, handler);

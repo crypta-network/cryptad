@@ -7,7 +7,6 @@ import network.crypta.client.async.BaseManifestPutter;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -260,13 +259,11 @@ public final class PersistentPutDir extends FCPMessage {
    *
    * @param handler connection handler associated with the client session; not used beyond error
    *     reporting in this implementation.
-   * @param node node instance that received the message; supplied for interface completeness and
-   *     unchanged here.
    * @throws MessageInvalidException always thrown to indicate the message direction is incorrect
    *     when arriving from a client.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentPut goes from server to client not the other way around",

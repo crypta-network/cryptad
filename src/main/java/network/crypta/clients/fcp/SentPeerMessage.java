@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -12,8 +11,8 @@ import network.crypta.support.SimpleFieldSet;
  * asynchronous outcomes, even when multiple sends are queued over the same FCP connection. The
  * class is immutable, carries no side effects, and is intended to be serialized immediately after
  * construction rather than retained long term. Because it is purely a response envelope, invoking
- * {@link #run(FCPConnectionHandler, Node)} is invalid and will always raise a protocol error to
- * guard against direction mistakes.
+ * {@link #run(FCPConnectionHandler)} is invalid and will always raise a protocol error to guard
+ * against direction mistakes.
  *
  * <ul>
  *   <li>Echoes the client-provided identifier for correlation with outstanding requests.
@@ -58,8 +57,6 @@ public class SentPeerMessage extends FCPMessage {
    *
    * @param identifier client-provided token used to match responses to requests; may be {@code
    *     null} when the client omitted the field in its send command.
-   * @param nodeStatus integer status reported by peer-handling logic; range and meaning are defined
-   *     by the originating send command implementation.
    */
   public SentPeerMessage(String identifier, int nodeStatus) {
     this.clientIdentifier = identifier;
@@ -109,13 +106,11 @@ public class SentPeerMessage extends FCPMessage {
    *
    * @param handler active connection handler that attempted to dispatch the message; never used for
    *     successful execution because the message should not arrive from a client.
-   * @param node local node instance supplied by the dispatcher; unused because execution always
-   *     aborts before any node interaction.
    * @throws MessageInvalidException always thrown to indicate the message cannot be sent by a
    *     client under the FCP protocol rules.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         getName() + " goes from server to client not the other way around",

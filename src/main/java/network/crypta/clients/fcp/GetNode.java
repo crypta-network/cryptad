@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.SimpleFieldSet;
 
@@ -97,13 +96,11 @@ public class GetNode extends FCPMessage {
    *
    * @param handler connection handler performing access checks and delivering responses; must be
    *     authenticated.
-   * @param node backing node reference retained for {@link FCPMessage} signature parity; the
-   *     runtime SPI supplies the serialized snapshot.
    * @throws MessageInvalidException if the client lacks full access or the request violates
    *     protocol constraints.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

@@ -14,7 +14,6 @@ import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
@@ -154,11 +153,7 @@ class FilterMessageTest {
     FCPConnectionHandler handler = handlerWithContext(Mockito.mock(ClientContext.class));
 
     MessageInvalidException exception =
-        assertThrows(
-            MessageInvalidException.class,
-            () ->
-                message.run(
-                    handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, exception.protocolCode);
     assertEquals("req-run-nobucket", exception.ident);
@@ -183,11 +178,7 @@ class FilterMessageTest {
     FCPConnectionHandler handler = handlerWithContext(Mockito.mock(ClientContext.class));
 
     MessageInvalidException exception =
-        assertThrows(
-            MessageInvalidException.class,
-            () ->
-                message.run(
-                    handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INTERNAL_ERROR, exception.protocolCode);
     assertEquals("req-run-bf", exception.ident);
@@ -222,7 +213,7 @@ class FilterMessageTest {
                 return status;
               });
 
-      message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
+      message.run(handler);
     }
 
     Mockito.verify(handler).send(responseCaptor.capture());
@@ -278,7 +269,7 @@ class FilterMessageTest {
                       Mockito.any(ContentFilterCallbacks.class)))
           .thenThrow(unsafe);
 
-      message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
+      message.run(handler);
     }
 
     Mockito.verify(handler).send(responseCaptor.capture());

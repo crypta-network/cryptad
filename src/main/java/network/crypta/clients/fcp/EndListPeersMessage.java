@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -97,12 +96,11 @@ public class EndListPeersMessage extends FCPMessage {
    * because the server cannot trust the client-supplied identifier in this misuse scenario.
    *
    * @param handler connection handler invoking the message; ignored because execution always fails.
-   * @param node node instance owning the FCP connection; ignored because execution always fails.
    * @throws MessageInvalidException always thrown to indicate that clients must not send this
    *     message to the node.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "EndListPeers goes from server to client not the other way around",

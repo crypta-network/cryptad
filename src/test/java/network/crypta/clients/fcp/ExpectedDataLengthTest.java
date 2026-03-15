@@ -60,7 +60,7 @@ class ExpectedDataLengthTest {
   void run_whenCalled_expectNoInteractions() {
     ExpectedDataLength message = new ExpectedDataLength("identifier", true, 2048);
 
-    assertDoesNotThrow(() -> message.run(handler, node));
+    assertDoesNotThrow(() -> message.run(handler));
     verifyNoInteractions(handler, node);
   }
 }

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -16,7 +15,7 @@ import network.crypta.support.SimpleFieldSet;
  * network.crypta.client.events.SendingToNetworkEvent}, translate it into this message, and queue it
  * on an {@link FCPConnectionHandler}. Clients use the identifier to align UI or bookkeeping with
  * their pending request before subsequent progress events arrive. Because the notification is
- * informational only, {@link #run(FCPConnectionHandler, Node)} intentionally performs no action on
+ * informational only, {@link #run(FCPConnectionHandler)} intentionally performs no action on
  * inbound paths.
  *
  * <ul>
@@ -106,12 +105,11 @@ public class SendingToNetworkMessage extends FCPMessage {
    * with the abstract signature, yet no exception is thrown here.
    *
    * @param handler Connection context invoking execution, ignored for this outbound message.
-   * @param node Node instance supplied by caller but unused because no work occurs.
    * @throws MessageInvalidException Retained for interface compliance; not thrown by this
    *     implementation.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     // Not possible
   }
 }

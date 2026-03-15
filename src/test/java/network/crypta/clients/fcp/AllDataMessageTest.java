@@ -71,7 +71,7 @@ class AllDataMessageTest {
         new AllDataMessage(bucket, IDENTIFIER, true, STARTUP_TIME, COMPLETION_TIME, MIME_TYPE);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(IDENTIFIER, exception.ident);

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,7 +23,6 @@ class WatchGlobalTest {
   @Mock private FCPConnectionHandler handler;
   @Mock private PersistentRequestClient rebootClient;
   @Mock private PersistentRequestClient foreverClient;
-  @Mock private Node node;
   @Mock private FCPServer handlerFcpServer;
 
   @Test
@@ -79,7 +77,7 @@ class WatchGlobalTest {
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(true, 3));
 
-    watchGlobal.run(handler, node);
+    watchGlobal.run(handler);
 
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(messageCaptor.capture());
@@ -102,7 +100,7 @@ class WatchGlobalTest {
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(false, 9));
 
-    watchGlobal.run(handler, node);
+    watchGlobal.run(handler);
 
     verify(rebootClient).setWatchGlobal(false, 9, handlerFcpServer);
     verify(handler, never()).send(any(FCPMessage.class));
@@ -118,7 +116,7 @@ class WatchGlobalTest {
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(false, 7));
 
-    watchGlobal.run(handler, node);
+    watchGlobal.run(handler);
 
     verify(rebootClient).setWatchGlobal(false, 7, handlerFcpServer);
     verify(foreverClient).setWatchGlobal(false, 7, handlerFcpServer);

@@ -288,7 +288,7 @@ class PersistentPutDirTest {
     PersistentPutDir message = buildRunMessage(manifest);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler));
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals("ident", ex.ident);
     assertTrue(ex.global);

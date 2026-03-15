@@ -15,9 +15,9 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>Instances are immutable and therefore thread-safe; a single instance can be reused whenever
  * the protocol stack needs to convey the same action. Lifecycle management is straightforward: once
- * {@link #run(FCPConnectionHandler, Node)} executes, resources such as socket registrations,
- * throttling counters, and per-request callbacks are released as part of the handler's {@code
- * close()} routine, ensuring accounting remains balanced even under load.
+ * {@link #run(FCPConnectionHandler)} executes, resources such as socket registrations, throttling
+ * counters, and per-request callbacks are released as part of the handler's {@code close()}
+ * routine, ensuring accounting remains balanced even under load.
  *
  * <ul>
  *   <li>Preserves explicit shutdown semantics rather than relying on TCP FIN/RST heuristics.
@@ -91,18 +91,16 @@ public class DisconnectMessage extends FCPMessage {
    *
    * <pre>{@code
    * // Example: proactively terminate a misbehaving client
-   * message.run(connectionHandler, node);
+   * message.run(connectionHandler);
    * }</pre>
    *
    * @param handler Active connection handler whose {@code close()} method performs the shutdown and
    *     must not be {@code null} when this message executes.
-   * @param node Node instance coordinating the broader session; provided for interface symmetry
-   *     even though Disconnect does not manipulate node-local state.
    * @throws MessageInvalidException if the handler rejects the transition or detects a protocol
    *     violation while attempting to close.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     handler.close();
   }
 }

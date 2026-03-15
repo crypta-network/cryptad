@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -71,23 +70,21 @@ public class SubscribedUSKSendingToNetworkMessage extends FCPMessage {
   /**
    * This message is outbound-only and should never be executed as an inbound command.
    *
-   * <p>The FCP dispatcher calls {@link FCPMessage#run(FCPConnectionHandler, Node)} for messages
-   * received from peers. Because {@code SubscribedUSKSendingToNetwork} is emitted by clients rather
-   * than consumed by them, invoking this method represents a protocol misuse and results in an
-   * {@link UnsupportedOperationException}. No state is changed and the provided handler and node
+   * <p>The FCP dispatcher calls {@link FCPMessage#run(FCPConnectionHandler)} for messages received
+   * from peers. Because {@code SubscribedUSKSendingToNetwork} is emitted by clients rather than
+   * consumed by them, invoking this method represents a protocol misuse and results in an {@link
+   * UnsupportedOperationException}. No state is changed and the provided handler and node
    * references are left untouched.
    *
    * @param handler active connection context for the current FCP session; never used here but
    *     required by the interface
-   * @param node target node instance associated with the connection; unused because the message is
-   *     not processed inbound
    * @throws MessageInvalidException declared for interface compatibility; never intentionally
    *     thrown by this implementation
    * @throws UnsupportedOperationException always thrown to signal that inbound execution is
    *     unsupported
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new UnsupportedOperationException();
   }
 }

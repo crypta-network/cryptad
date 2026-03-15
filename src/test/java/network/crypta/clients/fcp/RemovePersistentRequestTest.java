@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueTask;
@@ -34,7 +33,6 @@ class RemovePersistentRequestTest {
   private static final String IDENTIFIER = "req-id";
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RequestQueuePort requestQueuePort;
@@ -81,7 +79,7 @@ class RemovePersistentRequestTest {
     RemovePersistentRequest message = new RemovePersistentRequest(fs);
     when(handler.removePersistentRebootRequest(false, IDENTIFIER)).thenReturn(clientRequest);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).removePersistentRebootRequest(false, IDENTIFIER);
     verify(handler, never()).removeRequestByIdentifier(any(), anyBoolean());
@@ -96,7 +94,7 @@ class RemovePersistentRequestTest {
     when(handler.removePersistentRebootRequest(false, IDENTIFIER)).thenReturn(null);
     when(handler.removeRequestByIdentifier(IDENTIFIER, true)).thenReturn(clientRequest);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).removePersistentRebootRequest(false, IDENTIFIER);
     verify(handler).removeRequestByIdentifier(IDENTIFIER, true);
@@ -115,7 +113,7 @@ class RemovePersistentRequestTest {
     when(handler.removePersistentRebootRequest(true, IDENTIFIER)).thenReturn(null);
     when(handler.removePersistentForeverRequest(true, IDENTIFIER)).thenReturn(clientRequest);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
     verify(requestQueuePort)
@@ -140,7 +138,7 @@ class RemovePersistentRequestTest {
         .when(requestQueuePort)
         .submitPersistentJob(any(), eq(RequestQueuePriority.HIGH));
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(messageCaptor.capture());

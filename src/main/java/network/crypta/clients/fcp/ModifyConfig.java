@@ -4,7 +4,6 @@ import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.support.SimpleFieldSet;
@@ -15,8 +14,8 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>This message consumes a {@link SimpleFieldSet} whose keys mirror dotted option names in the
  * node configuration. The constructor captures the request identifier up front and strips it from
- * the field set so only option overrides remain. During {@link #run(FCPConnectionHandler, Node)}
- * the overrides are handed to the runtime SPI, which preserves the legacy config-update semantics.
+ * the field set so only option overrides remain. During {@link #run(FCPConnectionHandler)} the
+ * overrides are handed to the runtime SPI, which preserves the legacy config-update semantics.
  *
  * <p>The message requires the connection to possess full access; otherwise it terminates early with
  * a {@link MessageInvalidException}. After the update pass, the configuration is persisted and a
@@ -98,18 +97,16 @@ public class ModifyConfig extends FCPMessage {
    *
    * <pre>{@code
    * // Typical server-side handling path
-   * new ModifyConfig(requestFields).run(handler, node);
+   * new ModifyConfig(requestFields).run(handler);
    * }</pre>
    *
    * @param handler connection-specific dispatcher required to validate access and send responses;
    *     must not be {@code null} and should support full access for this message.
-   * @param node target node whose configuration is adjusted; expected to be initialized and ready
-   *     for persistence operations.
    * @throws MessageInvalidException if the connection lacks full access, or the message is not
    *     permitted in the current context.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

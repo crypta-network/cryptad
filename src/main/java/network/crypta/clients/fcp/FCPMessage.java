@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.PersistentTempBucketFactory;
@@ -17,7 +16,7 @@ import org.slf4j.LoggerFactory;
  * <p>Each instance represents a single message on the wire, consisting of a textual message name
  * followed by a {@link SimpleFieldSet} of name–value pairs. Subclasses provide the concrete mapping
  * between protocol-level fields and internal structures, as well as the handling logic executed by
- * {@link #run(FCPConnectionHandler, Node)}.
+ * {@link #run(FCPConnectionHandler)}.
  *
  * <p>The core responsibilities of this type are:
  *
@@ -26,8 +25,8 @@ import org.slf4j.LoggerFactory;
  *   <li>providing factory methods {@link #create(String, SimpleFieldSet, BucketFactory,
  *       PersistentTempBucketFactory)} and {@link #create(String, SimpleFieldSet)} to reify messages
  *       received from the network
- *   <li>defining an execution hook {@link #run(FCPConnectionHandler, Node)} for processing messages
- *       on the server side
+ *   <li>defining an execution hook {@link #run(FCPConnectionHandler)} for processing messages on
+ *       the server side
  * </ul>
  *
  * <p>This abstraction does not define any concurrency guarantees. Callers should treat message
@@ -401,8 +400,8 @@ public abstract class FCPMessage {
    * Returns an FCP message that wraps another message and adds a list request identifier.
    *
    * <p>The returned wrapper delegates {@link #send(OutputStream)}, {@link #getFieldSet()}, {@link
-   * #getName()} and {@link #run(FCPConnectionHandler, Node)} to the supplied {@code fcpMessage},
-   * but injects a {@code "ListRequestIdentifier"} field into the {@link SimpleFieldSet} returned by
+   * #getName()} and {@link #run(FCPConnectionHandler)} to the supplied {@code fcpMessage}, but
+   * injects a {@code "ListRequestIdentifier"} field into the {@link SimpleFieldSet} returned by
    * {@link #getFieldSet()}. This is useful when the same underlying message needs to be associated
    * with a particular list operation on the client side without changing the original
    * implementation.
@@ -446,8 +445,8 @@ public abstract class FCPMessage {
       }
 
       @Override
-      public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-        fcpMessage.run(handler, node);
+      public void run(FCPConnectionHandler handler) throws MessageInvalidException {
+        fcpMessage.run(handler);
       }
     };
   }
@@ -457,15 +456,13 @@ public abstract class FCPMessage {
    *
    * <p>This method is typically invoked by an {@link FCPConnectionHandler} after a message has been
    * parsed from the client connection. Implementations are expected to inspect the message fields,
-   * interact with the supplied {@link Node}, and send any responses or follow-up messages through
-   * the handler. The exact side effects depend on the concrete message type.
+   * resolve any required server context from the handler, and send responses or follow-up messages
+   * through that same handler. The exact side effects depend on the concrete message type.
    *
    * @param handler connection handler representing the client session that sent this message; used
    *     to enqueue replies and status updates
-   * @param node running node instance on which the message should operate; provides access to core
-   *     services and configuration
    * @throws MessageInvalidException if the message is syntactically correct but cannot be processed
    *     due to invalid field combinations or state constraints
    */
-  public abstract void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException;
+  public abstract void run(FCPConnectionHandler handler) throws MessageInvalidException;
 }

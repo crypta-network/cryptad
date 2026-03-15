@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.util.Objects;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
@@ -99,13 +98,11 @@ public class NodeHelloMessage extends FCPMessage {
    *
    * @param handler connection context that delivered the message; never {@code null}; not used in
    *     the rejection path but present to satisfy {@link FCPMessage} dispatch signatures.
-   * @param node node instance backing the handler; never {@code null}; unused because the operation
-   *     always fails.
    * @throws MessageInvalidException always thrown to signal that {@code NodeHello} is outbound-only
    *     and must not be received from clients.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "NodeHello goes from server to client not the other way around",

@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.time.Instant;
 import java.util.Objects;
 import network.crypta.client.events.SplitfileProgressEvent;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -143,13 +142,11 @@ public class SimpleProgressMessage extends FCPMessage {
    *
    * @param handler connection handler representing the client session that attempted to send the
    *     message; not used because the method always fails fast.
-   * @param node current node instance; retained for interface compatibility but unused in the
-   *     rejection path.
    * @throws MessageInvalidException always thrown to signal that the message direction is invalid
    *     when initiated by a client.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "SimpleProgress goes from server to client not the other way around",

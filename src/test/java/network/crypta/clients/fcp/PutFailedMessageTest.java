@@ -183,7 +183,7 @@ class PutFailedMessageTest {
     PutFailedMessage message = new PutFailedMessage(exception, "insert-4", true);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);
     assertEquals("insert-4", thrown.ident);

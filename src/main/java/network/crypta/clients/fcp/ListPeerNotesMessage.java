@@ -12,9 +12,9 @@ import network.crypta.support.SimpleFieldSet;
  * provided request identifier so responses can be correlated by the requester. The message is
  * effectively read-only after construction: it strips the {@code Identifier} field from the field
  * set to prevent accidental forwarding and retains only the minimal state needed for routing.
- * Typical use flows through {@link #run(FCPConnectionHandler, Node)} exactly once, where the
- * handler performs access checks, resolves the targeted peer, and returns the current note content
- * followed by {@link EndListPeerNotesMessage}.
+ * Typical use flows through {@link #run(FCPConnectionHandler)} exactly once, where the handler
+ * performs access checks, resolves the targeted peer, and returns the current note content followed
+ * by {@link EndListPeerNotesMessage}.
  *
  * <p>Concurrency considerations: each instance is used by a single handler invocation and stores no
  * mutable global state, so it is thread-confined by design. The lifetime is short-lived, created
@@ -96,13 +96,11 @@ public class ListPeerNotesMessage extends FCPMessage {
    *
    * @param handler connection context used to check privileges and emit responses; must not be
    *     {@code null}
-   * @param node local node context supplied by the legacy FCP dispatch signature; unused because
-   *     peer-note access is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, required fields are missing, or the target
    *     peer is not a darknet peer
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

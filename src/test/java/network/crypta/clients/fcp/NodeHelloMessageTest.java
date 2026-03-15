@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -59,10 +58,7 @@ class NodeHelloMessageTest {
     MessageInvalidException exception =
         assertThrows(
             MessageInvalidException.class,
-            () ->
-                message.run(
-                    org.mockito.Mockito.mock(FCPConnectionHandler.class),
-                    org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+            () -> message.run(org.mockito.Mockito.mock(FCPConnectionHandler.class)));
 
     assertAll(
         () -> assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode),

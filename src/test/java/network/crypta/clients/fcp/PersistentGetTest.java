@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,9 +25,6 @@ class PersistentGetTest {
   private static final String IDENTIFIER = "test-id";
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void constructor_whenUriIsNull_throwsNullPointerException(@TempDir Path tempDir) {
@@ -104,7 +100,7 @@ class PersistentGetTest {
     PersistentGet persistentGet = new PersistentGet(requestParams, descriptor);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> persistentGet.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> persistentGet.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(IDENTIFIER, exception.ident);

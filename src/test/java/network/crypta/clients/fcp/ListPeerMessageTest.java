@@ -60,7 +60,7 @@ class ListPeerMessageTest {
     ListPeerMessage message = new ListPeerMessage(fs);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode);
     assertEquals("ListPeer requires full access", thrown.getMessage());
@@ -78,7 +78,7 @@ class ListPeerMessageTest {
     ListPeerMessage message = new ListPeerMessage(fs);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, thrown.protocolCode);
     assertEquals("Error: NodeIdentifier field missing", thrown.getMessage());
@@ -101,7 +101,7 @@ class ListPeerMessageTest {
     fs.putSingle("NodeIdentifier", "node-unknown");
     ListPeerMessage message = new ListPeerMessage(fs);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
@@ -128,7 +128,7 @@ class ListPeerMessageTest {
     fs.putSingle("NodeIdentifier", "node-42");
     ListPeerMessage message = new ListPeerMessage(fs);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());

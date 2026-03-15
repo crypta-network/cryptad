@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -14,12 +13,12 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>The instance is intentionally lightweight and stateless: all protocol information lives in the
  * supplied {@link SimpleFieldSet}, and all cryptographic material is produced during {@link
- * #run(FCPConnectionHandler, Node)}. This makes it safe to reuse a single instance per incoming
- * request in a multithreaded FCP server loop. The generated keypair is ephemeral until persisted
- * elsewhere; no on-disk side effects occur in this class. The optional client identifier is echoed
- * back so callers can correlate responses to their session or outstanding command queue. Typical
- * usage calls {@link #getFieldSet()} during serialization, then {@link #run(FCPConnectionHandler,
- * Node)} when the command should be fulfilled.
+ * #run(FCPConnectionHandler)}. This makes it safe to reuse a single instance per incoming request
+ * in a multithreaded FCP server loop. The generated keypair is ephemeral until persisted elsewhere;
+ * no on-disk side effects occur in this class. The optional client identifier is echoed back so
+ * callers can correlate responses to their session or outstanding command queue. Typical usage
+ * calls {@link #getFieldSet()} during serialization, then {@link #run(FCPConnectionHandler)} when
+ * the command should be fulfilled.
  *
  * <ul>
  *   <li>Parses the caller-supplied identifier, if present, from the inbound field set.
@@ -74,13 +73,11 @@ public class GenerateSSKMessage extends FCPMessage {
    *
    * @param handler active connection handler that delivers the generated keypair back to the
    *     requesting client; must not be {@code null}.
-   * @param node running node supplied by the unchanged FCP message signature; not consulted for
-   *     randomness because the handler's server runtime provides that capability.
    * @throws MessageInvalidException if the response message cannot be encoded or sent according to
    *     FCP protocol rules, or if the handler rejects the outbound payload.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     InsertableClientSSK key =
         InsertableClientSSK.createRandom(
             FcpRuntimeAdapters.secureRandomSource(handler.getServer().runtime().randomness()), "");

@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
@@ -234,11 +233,10 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * feedback.
    *
    * @param handler active connection handler responsible for initiating the put job
-   * @param node legacy execution parameter retained by the message API; unused here
    * @throws MessageInvalidException if conversion detects disallowed files or inconsistent input
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     // Convert the hierarchical hashmap's of DirPutFile's to hierarchical hashmap's
     // of ManifestElement's.
     // Then simply create the ClientPutDir.

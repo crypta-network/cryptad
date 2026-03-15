@@ -23,7 +23,7 @@ import network.crypta.support.SimpleFieldSet;
  * <ul>
  *   <li>Immutable view of expected data lengths for a single identifier.
  *   <li>Safe to reuse across protocol layers as long as no caller mutates the emitted field set.
- *   <li>Contains no side effects when executed via {@link #run(FCPConnectionHandler, Node)}.
+ *   <li>Contains no side effects when executed via {@link #run(FCPConnectionHandler)}.
  * </ul>
  */
 public class ExpectedDataLength extends FCPMessage {
@@ -96,12 +96,11 @@ public class ExpectedDataLength extends FCPMessage {
    * method is safe and idempotent on any thread because the body contains no shared state access.
    *
    * @param handler active connection handler receiving the event; ignored while honoring the API.
-   * @param node node instance backing the handler; ignored because no processing occurs.
    * @throws MessageInvalidException never thrown; declared to honor the {@link FCPMessage}
    *     contract.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     // Not supported
   }
 }

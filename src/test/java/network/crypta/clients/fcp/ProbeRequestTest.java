@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
@@ -110,7 +111,7 @@ class ProbeRequestTest {
     when(node.network()).thenReturn(network);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> request.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> request.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("probe-1", exception.ident);
@@ -126,14 +127,17 @@ class ProbeRequestTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(core);
+    when(core.getNode()).thenReturn(node);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
     when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
-    request.run(handler, node);
+    request.run(handler);
 
     verify(network)
         .startProbe(eq(Probe.MAX_HTL), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
@@ -148,14 +152,17 @@ class ProbeRequestTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(core);
+    when(core.getNode()).thenReturn(node);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
     when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
-    request.run(handler, node);
+    request.run(handler);
 
     verify(network)
         .startProbe(eq((byte) 12), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
@@ -367,7 +374,10 @@ class ProbeRequestTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(core);
+    when(core.getNode()).thenReturn(node);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
@@ -381,7 +391,7 @@ class ProbeRequestTest {
         .when(network)
         .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
 
-    request.run(handler, node);
+    request.run(handler);
 
     return listenerRef.get();
   }

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -250,7 +249,7 @@ public class ListPersistentRequestsMessage extends FCPMessage {
   }
 
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
     RequestQueuePort requestQueuePort = handler.getServer().runtime().requestQueue();
     FCPConnectionOutputHandler outputHandler = handler.getOutputHandler();
     Runnable endListing =

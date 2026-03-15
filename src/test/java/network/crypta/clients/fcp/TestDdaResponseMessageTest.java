@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.util.Random;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,9 +23,6 @@ class TestDdaResponseMessageTest {
   private static final String DIRECTORY = "/tmp/dir";
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void constructor_whenDirectoryMissing_throwsMessageInvalidException() {
@@ -59,7 +55,7 @@ class TestDdaResponseMessageTest {
         .thenThrow(new IllegalArgumentException("unsupported directory"));
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_FIELD, exception.protocolCode);
     assertEquals("unsupported directory", exception.getMessage());
@@ -73,7 +69,7 @@ class TestDdaResponseMessageTest {
     when(handler.popDDACheck(DIRECTORY)).thenReturn(null);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertTrue(exception.getMessage().contains(DIRECTORY));
@@ -88,7 +84,7 @@ class TestDdaResponseMessageTest {
     when(handler.popDDACheck(DIRECTORY)).thenReturn(job);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, exception.protocolCode);
     assertTrue(exception.getMessage().contains(TestDdaResponseMessage.READ_CONTENT));
@@ -104,7 +100,7 @@ class TestDdaResponseMessageTest {
     ArgumentCaptor<TestDdaCompleteMessage> captor =
         ArgumentCaptor.forClass(TestDdaCompleteMessage.class);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler, times(1)).popDDACheck(DIRECTORY);
     verify(handler).send(captor.capture());

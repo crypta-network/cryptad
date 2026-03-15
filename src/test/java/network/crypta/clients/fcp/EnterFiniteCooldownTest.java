@@ -47,7 +47,7 @@ class EnterFiniteCooldownTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verifyNoInteractions(handler, node);
   }

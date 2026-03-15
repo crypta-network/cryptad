@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.FetchResult;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 
@@ -56,11 +55,7 @@ class DataFoundMessageTest {
 
     MessageInvalidException exception =
         assertThrows(
-            MessageInvalidException.class,
-            () ->
-                message.run(
-                    mock(FCPConnectionHandler.class),
-                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+            MessageInvalidException.class, () -> message.run(mock(FCPConnectionHandler.class)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

@@ -1,13 +1,11 @@
 package network.crypta.clients.fcp;
 
 import java.util.Map;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,8 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class NodeDataTest {
-
-  @Mock private Node node;
 
   @Test
   void getFieldSet_whenSnapshotContainsNestedValues_rebuildsFieldSetRecursively() {
@@ -84,7 +80,7 @@ class NodeDataTest {
     NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), identifier);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> nodeData.run(null, node));
+        assertThrows(MessageInvalidException.class, () -> nodeData.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(
@@ -98,7 +94,7 @@ class NodeDataTest {
     NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), null);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> nodeData.run(null, node));
+        assertThrows(MessageInvalidException.class, () -> nodeData.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertNull(exception.ident);
