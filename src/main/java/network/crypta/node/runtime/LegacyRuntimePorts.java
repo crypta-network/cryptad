@@ -5,6 +5,7 @@ import java.util.Random;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.ConnectivityPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -36,6 +37,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final TransferAccessPort transferAccessPort;
   private final LifecyclePort lifecyclePort;
   private final ConfigPort configPort;
+  private final ConnectivityPort connectivityPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -119,6 +121,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
           }
         };
     this.configPort = new LegacyConfigPort(node, core);
+    this.connectivityPort = new LegacyConnectivityPort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -175,6 +178,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public ConfigPort config() {
     return configPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps all legacy connectivity tracking, listener-port exports, and
+   * connection-type notice collection inside the daemon root module while exposing only detached
+   * SPI-local snapshots upstream.
+   */
+  @Override
+  public ConnectivityPort connectivity() {
+    return connectivityPort;
   }
 
   /**

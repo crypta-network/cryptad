@@ -340,7 +340,8 @@ final class FProxyRegistrar {
             true,
             null));
 
-    ConnectivityToadlet connectivityToadlet = new ConnectivityToadlet(client, node);
+    ConnectivityToadlet connectivityToadlet =
+        new ConnectivityToadlet(client, core.getRuntimePorts().connectivity());
     server.register(
         connectivityToadlet,
         ToadletRegistration.menuLink(

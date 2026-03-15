@@ -26,6 +26,7 @@ import network.crypta.node.useralerts.IPUndetectedUserAlert;
 import network.crypta.node.useralerts.InvalidAddressOverrideUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.StringCallback;
@@ -944,8 +945,14 @@ public class NodeIPDetector {
   }
 
   /** Adds the connection type UI box content via the detector manager. */
+  @SuppressWarnings("unused")
   public void addConnectionTypeBox(HTMLNode contentNode) {
     ipDetectorManager.addConnectionTypeBox(contentNode);
+  }
+
+  /** Returns the current connection-type notice as a detached snapshot, if active. */
+  public ConnectivityNoticeSnapshot connectionTypeNotice() {
+    return ipDetectorManager.connectionTypeNotice();
   }
 
   /**
