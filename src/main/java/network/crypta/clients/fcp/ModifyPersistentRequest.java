@@ -1,11 +1,11 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +88,7 @@ public final class ModifyPersistentRequest extends FCPMessage {
    * flag mirroring the values supplied by the client. The {@code PriorityClass} field is also
    * present for every message instance; a negative value indicates that the node should leave the
    * existing priority unchanged. When a non-{@code null} client token is supplied, it is encoded as
-   * the {@code ClientToken} field so that subsequent status notifications can be correlated by the
+   * the {@code ClientToken} field so that later status notifications can be correlated by the
    * client application.
    *
    * <p>A new {@link SimpleFieldSet} is allocated on each call and populated only from the immutable
@@ -133,10 +133,11 @@ public final class ModifyPersistentRequest extends FCPMessage {
    * FCPConnectionHandler#getRebootRequest(boolean, FCPConnectionHandler, String)}. When a matching
    * request is found, the change is applied immediately on the caller's thread by invoking {@link
    * ClientRequest#modifyRequest(String, short, FCPServer)} with the stored client token and
-   * priority. If no reboot-persistent request is present, a {@link PersistentJob} is queued on the
-   * client's job runner to search the forever-persistent store using {@link
-   * FCPConnectionHandler#getForeverRequest(boolean, FCPConnectionHandler, String)} and apply the
-   * same modification there.
+   * priority. If no reboot-persistent request is present, the method submits a persistent lookup
+   * task through {@link RequestQueuePort#submitPersistentJob(
+   * network.crypta.runtime.spi.RequestQueueTask, RequestQueuePriority)} to search the
+   * forever-persistent store using {@link FCPConnectionHandler#getForeverRequest(boolean,
+   * FCPConnectionHandler, String)} and apply the same modification there.
    *
    * <p>If neither store contains the referenced identifier, a {@link ProtocolErrorMessage} with
    * code {@link ProtocolErrorMessage#NO_SUCH_IDENTIFIER} is sent back to the client. When the
@@ -156,42 +157,35 @@ public final class ModifyPersistentRequest extends FCPMessage {
 
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
+      RequestQueuePort requestQueuePort = handler.getServer().runtime().requestQueue();
       try {
-        node.services()
-            .clientCore()
-            .getClientContext()
-            .jobRunner
-            .queue(
-                (PersistentJob)
-                    context -> {
-                      ClientRequest req1 =
-                          handler.getForeverRequest(global, handler, requestIdentifier);
-                      if (req1 == null) {
-                        LOG.error("Huh ? the request is null!");
-                        ProtocolErrorMessage msg =
-                            new ProtocolErrorMessage(
-                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
-                                false,
-                                null,
-                                requestIdentifier,
-                                global);
-                        handler.send(msg);
-                        return false;
-                      } else {
-                        req1.modifyRequest(clientToken, priorityClass, handler.getServer());
-                      }
-                      return true;
-                    },
-                NativeThread.PriorityLevel.NORM_PRIORITY.value);
-      } catch (PersistenceDisabledException _) {
+        requestQueuePort.submitPersistentJob(
+            () -> {
+              ClientRequest req1 = handler.getForeverRequest(global, handler, requestIdentifier);
+              if (req1 == null) {
+                LOG.error("Huh ? the request is null!");
+                ProtocolErrorMessage msg =
+                    new ProtocolErrorMessage(
+                        ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                        false,
+                        null,
+                        requestIdentifier,
+                        global);
+                handler.send(msg);
+                return false;
+              }
+              req1.modifyRequest(clientToken, priorityClass, handler.getServer());
+              return true;
+            },
+            RequestQueuePriority.NORMAL);
+      } catch (RequestQueueUnavailableException _) {
         ProtocolErrorMessage msg =
             new ProtocolErrorMessage(
                 ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, requestIdentifier, global);
         handler.send(msg);
       }
     } else {
-      req.modifyRequest(
-          clientToken, priorityClass, node.services().clientCore().getEndpoints().getFCPServer());
+      req.modifyRequest(clientToken, priorityClass, handler.getServer());
     }
   }
 }

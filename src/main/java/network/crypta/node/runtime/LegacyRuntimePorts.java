@@ -10,6 +10,7 @@ import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 
@@ -35,6 +36,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final TransferAccessPort transferAccessPort;
   private final LifecyclePort lifecyclePort;
   private final ConfigPort configPort;
+  private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
 
@@ -117,6 +119,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
           }
         };
     this.configPort = new LegacyConfigPort(node, core);
+    this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
   }
@@ -172,6 +175,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public ConfigPort config() {
     return configPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps all legacy persistence-runner and ticker traversals inside the
+   * daemon root module while exposing only queue-control semantics upstream.
+   */
+  @Override
+  public RequestQueuePort requestQueue() {
+    return requestQueuePort;
   }
 
   /**

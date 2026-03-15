@@ -1,10 +1,10 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.NativeThread;
 
 /**
  * FCP message that asks the node to stream the most recent status (and optionally data) for a
@@ -112,37 +112,32 @@ public class GetRequestStatusMessage extends FCPMessage {
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
-      if (node.services().clientCore().killedDatabase()) {
+      RequestQueuePort requestQueuePort = handler.getServer().runtime().requestQueue();
+      if (requestQueuePort.isPersistenceDatabaseKilled()) {
         // Ignore.
         return;
       }
       try {
-        node.services()
-            .clientCore()
-            .getClientContext()
-            .jobRunner
-            .queue(
-                (PersistentJob)
-                    context -> {
-                      ClientRequest req1 =
-                          handler.getForeverRequest(global, handler, requestIdentifier);
-                      if (req1 == null) {
-                        ProtocolErrorMessage msg =
-                            new ProtocolErrorMessage(
-                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
-                                false,
-                                null,
-                                requestIdentifier,
-                                global);
-                        handler.send(msg);
-                      } else {
-                        req1.sendPendingMessages(
-                            handler.getOutputHandler(), requestIdentifier, true, onlyData);
-                      }
-                      return false;
-                    },
-                NativeThread.PriorityLevel.NORM_PRIORITY.value);
-      } catch (PersistenceDisabledException _) {
+        requestQueuePort.submitPersistentJob(
+            () -> {
+              ClientRequest req1 = handler.getForeverRequest(global, handler, requestIdentifier);
+              if (req1 == null) {
+                ProtocolErrorMessage msg =
+                    new ProtocolErrorMessage(
+                        ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                        false,
+                        null,
+                        requestIdentifier,
+                        global);
+                handler.send(msg);
+              } else {
+                req1.sendPendingMessages(
+                    handler.getOutputHandler(), requestIdentifier, true, onlyData);
+              }
+              return false;
+            },
+            RequestQueuePriority.NORMAL);
+      } catch (RequestQueueUnavailableException _) {
         ProtocolErrorMessage msg =
             new ProtocolErrorMessage(
                 ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, requestIdentifier, global);

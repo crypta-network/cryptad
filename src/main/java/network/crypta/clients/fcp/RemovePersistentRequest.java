@@ -1,17 +1,17 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Removes a persistent client request from the node on behalf of an FCP client.
  *
- * <p>This message is emitted by a client that wishes to cancel a request which was previously
+ * <p>This message is emitted by a client that wishes to cancel a request, which was previously
  * registered for persistence, regardless of whether it has finished or is still queued. It carries
  * the opaque request identifier and a flag indicating whether the request was global. Instances are
  * immutable after creation; they simply transport the parameters required for removal and delegate
@@ -70,7 +70,7 @@ public final class RemovePersistentRequest extends FCPMessage {
    * Builds a minimal field set representing this message for transmission.
    *
    * <p>Only the persistent request identifier is serialized because removal requests do not carry
-   * payload data. The returned structure is newly allocated and independent of the instance so it
+   * payload data. The returned structure is newly allocated and independent of the instance, so it
    * can be freely mutated by downstream serialization layers without affecting the stored state.
    *
    * @return a new {@link SimpleFieldSet} containing the {@code Identifier} entry required by the
@@ -121,38 +121,33 @@ public final class RemovePersistentRequest extends FCPMessage {
       req = handler.removeRequestByIdentifier(requestIdentifier, true);
     }
     if (req == null) {
+      RequestQueuePort requestQueuePort = handler.getServer().runtime().requestQueue();
       try {
-        handler
-            .getServer()
-            .getCore()
-            .getClientContext()
-            .jobRunner
-            .queue(
-                (PersistentJob)
-                    context -> {
-                      ClientRequest req1 =
-                          handler.removePersistentForeverRequest(global, requestIdentifier);
-                      if (req1 == null) {
-                        if (LOG.isDebugEnabled()) {
-                          LOG.debug(
-                              "RemovePersistentRequest missing identifier {} (global={})",
-                              requestIdentifier,
-                              global);
-                        }
-                        ProtocolErrorMessage msg =
-                            new ProtocolErrorMessage(
-                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
-                                false,
-                                null,
-                                requestIdentifier,
-                                global);
-                        handler.send(msg);
-                        return false;
-                      }
-                      return true;
-                    },
-                NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException _) {
+        requestQueuePort.submitPersistentJob(
+            () -> {
+              ClientRequest req1 =
+                  handler.removePersistentForeverRequest(global, requestIdentifier);
+              if (req1 == null) {
+                if (LOG.isDebugEnabled()) {
+                  LOG.debug(
+                      "RemovePersistentRequest missing identifier {} (global={})",
+                      requestIdentifier,
+                      global);
+                }
+                ProtocolErrorMessage msg =
+                    new ProtocolErrorMessage(
+                        ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                        false,
+                        null,
+                        requestIdentifier,
+                        global);
+                handler.send(msg);
+                return false;
+              }
+              return true;
+            },
+            RequestQueuePriority.HIGH);
+      } catch (RequestQueueUnavailableException _) {
         FCPMessage err =
             new ProtocolErrorMessage(
                 ProtocolErrorMessage.PERSISTENCE_DISABLED,
