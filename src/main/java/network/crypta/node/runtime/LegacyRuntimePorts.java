@@ -6,6 +6,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectivityPort;
+import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -38,6 +39,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final LifecyclePort lifecyclePort;
   private final ConfigPort configPort;
   private final ConnectivityPort connectivityPort;
+  private final DiagnosticPort diagnosticPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -122,6 +124,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
         };
     this.configPort = new LegacyConfigPort(node, core);
     this.connectivityPort = new LegacyConnectivityPort(node);
+    this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -190,6 +193,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public ConnectivityPort connectivity() {
     return connectivityPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps all legacy diagnostic traversal, queue aggregation, and thread
+   * formatting inside the daemon root module while exposing only detached report sections upstream.
+   */
+  @Override
+  public DiagnosticPort diagnostic() {
+    return diagnosticPort;
   }
 
   /**
