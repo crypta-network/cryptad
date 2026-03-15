@@ -280,8 +280,10 @@ public class ConnectivityToadlet extends Toadlet {
     row.addChild("td", initiatorLabel(entry.initiator(), noreply, local, remote));
     row.addChild("td", TimeUtil.formatTime(entry.firstSendLeadTimeMillis()));
     row.addChild("td", TimeUtil.formatTime(entry.firstReceiveLeadTimeMillis()));
-    for (ConnectivityGapSnapshot gap : entry.gaps()) {
-      row.addChild("td", gapLabel(gap, now));
+    List<ConnectivityGapSnapshot> gaps = entry.gaps();
+    for (int i = 0; i < GAP_COLUMNS; i++) {
+      String gap = i < gaps.size() ? gapLabel(gaps.get(i), now) : "";
+      row.addChild("td", gap);
     }
   }
 

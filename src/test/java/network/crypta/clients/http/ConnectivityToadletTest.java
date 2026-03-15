@@ -124,6 +124,66 @@ class ConnectivityToadletTest {
   }
 
   @Test
+  void handleMethodGET_whenGapHistoryShorterThanHeader_padsRenderedGapCells() throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    when(connectivity.snapshot(true))
+        .thenReturn(
+            advancedSnapshot(
+                List.of(
+                    new ConnectivityGapSnapshot(10_000L, 20_000L),
+                    new ConnectivityGapSnapshot(5_000L, 15_000L)),
+                null));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertEquals(12, renderedTableCellCount(html), "Should render five gap cells for the row");
+  }
+
+  @Test
+  void handleMethodGET_whenGapHistoryLongerThanHeader_clampsRenderedGapCells() throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    when(connectivity.snapshot(true))
+        .thenReturn(
+            advancedSnapshot(
+                null,
+                List.of(
+                    new ConnectivityGapSnapshot(10_000L, 20_000L),
+                    new ConnectivityGapSnapshot(20_000L, 30_000L),
+                    new ConnectivityGapSnapshot(30_000L, 40_000L),
+                    new ConnectivityGapSnapshot(40_000L, 50_000L),
+                    new ConnectivityGapSnapshot(50_000L, 60_000L),
+                    new ConnectivityGapSnapshot(60_000L, 70_000L))));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertEquals(12, renderedTableCellCount(html), "Should clamp the row to five gap cells");
+  }
+
+  @Test
   void handleMethodGET_whenNoticePresent_rendersDetachedConnectionTypeAlertHtml() throws Exception {
     HTMLNode content = new HTMLNode("div");
     PageMaker pageMaker = stubPageMaker(content);
@@ -201,6 +261,11 @@ class ConnectivityToadletTest {
   }
 
   private ConnectivitySnapshot advancedSnapshot() {
+    return advancedSnapshot(gapHistory(), gapHistory());
+  }
+
+  private ConnectivitySnapshot advancedSnapshot(
+      List<ConnectivityGapSnapshot> peerGaps, List<ConnectivityGapSnapshot> ipGaps) {
     return new ConnectivitySnapshot(
         54321,
         0,
@@ -213,24 +278,26 @@ class ConnectivityToadletTest {
                 "udp-9999",
                 ConnectivityPortForwardStatus.DEFINITELY_PORT_FORWARDED,
                 12_345L,
-                List.of(
-                    new ConnectivityTrafficEntrySnapshot(
-                        "1.1.1.1:4242",
-                        1,
-                        1,
-                        ConnectivityTrafficInitiator.LOCAL,
-                        1_000L,
-                        3_000L,
-                        gapHistory())),
-                List.of(
-                    new ConnectivityTrafficEntrySnapshot(
-                        "/2.2.2.2",
-                        1,
-                        1,
-                        ConnectivityTrafficInitiator.REMOTE,
-                        2_000L,
-                        4_000L,
-                        gapHistory())))));
+                peerEntries(peerGaps),
+                ipEntries(ipGaps))));
+  }
+
+  private List<ConnectivityTrafficEntrySnapshot> peerEntries(List<ConnectivityGapSnapshot> gaps) {
+    if (gaps == null) {
+      return List.of();
+    }
+    return List.of(
+        new ConnectivityTrafficEntrySnapshot(
+            "1.1.1.1:4242", 1, 1, ConnectivityTrafficInitiator.LOCAL, 1_000L, 3_000L, gaps));
+  }
+
+  private List<ConnectivityTrafficEntrySnapshot> ipEntries(List<ConnectivityGapSnapshot> gaps) {
+    if (gaps == null) {
+      return List.of();
+    }
+    return List.of(
+        new ConnectivityTrafficEntrySnapshot(
+            "/2.2.2.2", 1, 1, ConnectivityTrafficInitiator.REMOTE, 2_000L, 4_000L, gaps));
   }
 
   private List<ConnectivityGapSnapshot> gapHistory() {
@@ -240,6 +307,10 @@ class ConnectivityToadletTest {
         new ConnectivityGapSnapshot(0L, 0L),
         new ConnectivityGapSnapshot(0L, 0L),
         new ConnectivityGapSnapshot(0L, 0L));
+  }
+
+  private int renderedTableCellCount(String html) {
+    return html.split(java.util.regex.Pattern.quote("<td"), -1).length - 1;
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {
