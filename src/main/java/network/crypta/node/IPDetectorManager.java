@@ -26,6 +26,7 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.ProxyUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.transport.ip.IPUtil;
@@ -1183,6 +1184,31 @@ public class IPDetectorManager implements ForwardPortCallback {
     }
     if (proxyAlert.isValid())
       contentNode.addChild(node.services().clientCore().getAlerts().renderAlert(proxyAlert));
+  }
+
+  /**
+   * Returns the current connection-type notice as a detached snapshot, if one is active.
+   *
+   * <p>Precondition: {@link #start()} has been called. If not, a log entry is emitted and the
+   * method returns {@code null}. The returned value includes both plain-text fields and a rendered
+   * HTML alert fragment so HTTP surfaces can preserve the legacy alert infobox, forwarding-help
+   * links, and dismissal controls without depending on daemon-only alert types.
+   *
+   * @return detached notice snapshot, or {@code null} when no connection-type notice is active
+   */
+  public ConnectivityNoticeSnapshot connectionTypeNotice() {
+    if (node.services().clientCore() == null) return null;
+    var alerts = node.services().clientCore().getAlerts();
+    if (alerts == null) return null;
+    if (proxyAlert == null) {
+      LOG.error("start() not called yet");
+      return null;
+    }
+    if (!proxyAlert.isValid()) {
+      return null;
+    }
+    return new ConnectivityNoticeSnapshot(
+        proxyAlert.getTitle(), proxyAlert.getText(), alerts.renderAlert(proxyAlert).generate());
   }
 
   /**

@@ -19,6 +19,7 @@ package network.crypta.runtime.spi;
  * @see TransferAccessPort
  * @see LifecyclePort
  * @see ConfigPort
+ * @see ConnectivityPort
  * @see NodeInfoPort
  * @see PeerPort
  * @see RequestQueuePort
@@ -81,6 +82,19 @@ public interface RuntimePorts {
    * @return configuration runtime port for export, update, and persistence operations
    */
   ConfigPort config();
+
+  /**
+   * Returns the connectivity capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached snapshot containing the current listener
+   * port configuration, UDP socket status summary, optional connection-type notice, and, when
+   * requested, advanced tracker tables. It intentionally exposes only JDK-only DTOs, so callers can
+   * render the connectivity page without depending on daemon-only trackers, socket handlers, or
+   * alert classes.
+   *
+   * @return connectivity runtime port for read-only connectivity snapshots
+   */
+  ConnectivityPort connectivity();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.

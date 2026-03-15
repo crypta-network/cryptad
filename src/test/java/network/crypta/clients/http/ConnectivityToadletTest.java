@@ -1,22 +1,22 @@
 package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
-import java.net.InetAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.config.PersistentConfig;
-import network.crypta.config.SubConfig;
-import network.crypta.io.AddressTracker;
-import network.crypta.io.InetAddressAddressTrackerItem;
-import network.crypta.io.PeerAddressTrackerItem;
-import network.crypta.io.comm.Peer;
-import network.crypta.io.comm.UdpSocketHandler;
-import network.crypta.node.Node;
-import network.crypta.node.NodeIPDetector;
+import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.ConnectivityGapSnapshot;
+import network.crypta.runtime.spi.ConnectivityListenerPortSnapshot;
+import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
+import network.crypta.runtime.spi.ConnectivityPort;
+import network.crypta.runtime.spi.ConnectivityPortForwardStatus;
+import network.crypta.runtime.spi.ConnectivitySnapshot;
+import network.crypta.runtime.spi.ConnectivitySocketSnapshot;
+import network.crypta.runtime.spi.ConnectivityTrafficEntrySnapshot;
+import network.crypta.runtime.spi.ConnectivityTrafficInitiator;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,20 +41,16 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ConnectivityToadletTest {
 
-  @Mock HighLevelSimpleClient client;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  Node node;
-
-  @Mock PersistentConfig config;
-  @Mock ToadletContext ctx;
-  @Mock HTTPRequest request;
+  @Mock private HighLevelSimpleClient client;
+  @Mock private ConnectivityPort connectivity;
+  @Mock private ToadletContext ctx;
+  @Mock private HTTPRequest request;
 
   private ConnectivityToadlet toadlet;
 
   @BeforeEach
   void setUp() {
-    toadlet = new ConnectivityToadlet(client, node);
+    toadlet = new ConnectivityToadlet(client, connectivity);
   }
 
   @Test
@@ -66,26 +62,11 @@ class ConnectivityToadletTest {
   void handleMethodGET_whenAdvancedDisabled_rendersPortSummaryAndAlertBox() throws Exception {
     HTMLNode content = new HTMLNode("div");
     PageMaker pageMaker = stubPageMaker(content);
-
-    setConfigPorts(true, 8080, false, 0, false, 0);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.fnpPort()).thenReturn(12345);
-    when(network.opennetFnpPort()).thenReturn(33333);
-    when(node.getConfig()).thenReturn(config);
-    when(network.packetSocketHandlers()).thenReturn(new UdpSocketHandler[0]);
-
-    NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(network.ipDetector()).thenReturn(ipDetector);
-    doAnswer(invocation -> ((HTMLNode) invocation.getArgument(0)).addChild("div", "ip"))
-        .when(ipDetector)
-        .addConnectionTypeBox(any(HTMLNode.class));
+    when(connectivity.snapshot(false)).thenReturn(nonAdvancedSnapshot(null));
 
     UserAlertManager alertManager = mock(UserAlertManager.class);
     when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
     when(ctx.getAlertManager()).thenReturn(alertManager);
-
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.isAdvancedModeEnabled()).thenReturn(false);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
@@ -99,9 +80,17 @@ class ConnectivityToadletTest {
     assertTrue(html.contains("12345"), "Should list darknet FNP port");
     assertTrue(html.contains("33333"), "Should list opennet FNP port when configured");
     assertTrue(html.contains("8080"), "Should list enabled fproxy port");
+    assertTrue(html.contains("udp-9999"), "Should render the socket summary row");
+    assertTrue(
+        html.contains(
+            NodeL10n.getBase()
+                .getString(
+                    "ConnectivityToadlet.status."
+                        + ConnectivityPortForwardStatus.DEFINITELY_PORT_FORWARDED)),
+        "Should render the localized socket status");
     assertTrue(html.contains("alert"), "Should render alert summary for full access users");
 
-    verify(ipDetector).addConnectionTypeBox(content);
+    verify(connectivity).snapshot(false);
     verify(ctx).sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
   }
 
@@ -109,49 +98,11 @@ class ConnectivityToadletTest {
   void handleMethodGET_whenAdvancedEnabled_rendersPeerAndIpTables() throws Exception {
     HTMLNode content = new HTMLNode("div");
     PageMaker pageMaker = stubPageMaker(content);
-
-    setConfigPorts(false, 9090, true, 9481, true, 2222);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.fnpPort()).thenReturn(54321);
-    when(network.opennetFnpPort()).thenReturn(0);
-    when(node.getConfig()).thenReturn(config);
-
-    PeerAddressTrackerItem peerItem =
-        new PeerAddressTrackerItem(0, 0, new Peer("1.1.1.1:4242", false));
-    peerItem.sentPacket(1_000L);
-    peerItem.receivedPacket(AddressTracker.MAYBE_TUNNEL_LENGTH + 2_000L);
-
-    InetAddressAddressTrackerItem ipItem =
-        new InetAddressAddressTrackerItem(0, 0, InetAddress.getByName("2.2.2.2"));
-    ipItem.sentPacket(2_000L);
-    ipItem.receivedPacket(AddressTracker.MAYBE_TUNNEL_LENGTH + 4_000L);
-
-    AddressTracker tracker = mock(AddressTracker.class);
-    when(tracker.getPortForwardStatus())
-        .thenReturn(AddressTracker.Status.DEFINITELY_PORT_FORWARDED);
-    when(tracker.getLongestSendReceiveGap()).thenReturn(12_345L);
-    when(tracker.getPeerAddressTrackerItems()).thenReturn(new PeerAddressTrackerItem[] {peerItem});
-    when(tracker.getInetAddressTrackerItems())
-        .thenReturn(new InetAddressAddressTrackerItem[] {ipItem});
-
-    UdpSocketHandler handler = mock(UdpSocketHandler.class);
-    when(handler.getTitle()).thenReturn("udp-9999");
-    when(handler.getAddressTracker()).thenReturn(tracker);
-
-    when(network.packetSocketHandlers()).thenReturn(new UdpSocketHandler[] {handler});
-
-    NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(network.ipDetector()).thenReturn(ipDetector);
-    doAnswer(invocation -> ((HTMLNode) invocation.getArgument(0)).addChild("div", "ip"))
-        .when(ipDetector)
-        .addConnectionTypeBox(any(HTMLNode.class));
+    when(connectivity.snapshot(true)).thenReturn(advancedSnapshot());
 
     UserAlertManager alertManager = mock(UserAlertManager.class);
     when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
     when(ctx.getAlertManager()).thenReturn(alertManager);
-
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.isAdvancedModeEnabled()).thenReturn(true);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
@@ -163,8 +114,203 @@ class ConnectivityToadletTest {
     String html = body.toString(StandardCharsets.UTF_8);
 
     assertTrue(html.contains("1.1.1.1:4242"), "Peer table should include peer address");
-    assertTrue(html.contains("2.2.2.2"), "IP table should include raw IP");
+    assertTrue(html.contains("/2.2.2.2"), "IP table should include raw IP");
     assertTrue(html.contains("udp-9999"), "Summary should list handler title");
+    assertTrue(
+        html.contains(NodeL10n.getBase().getString("ConnectivityToadlet.local")),
+        "Advanced table should render initiator labels");
+
+    verify(connectivity).snapshot(true);
+  }
+
+  @Test
+  void handleMethodGET_whenGapHistoryShorterThanHeader_padsRenderedGapCells() throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    when(connectivity.snapshot(true))
+        .thenReturn(
+            advancedSnapshot(
+                List.of(
+                    new ConnectivityGapSnapshot(10_000L, 20_000L),
+                    new ConnectivityGapSnapshot(5_000L, 15_000L)),
+                null));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertEquals(12, renderedTableCellCount(html), "Should render five gap cells for the row");
+  }
+
+  @Test
+  void handleMethodGET_whenGapHistoryLongerThanHeader_clampsRenderedGapCells() throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    when(connectivity.snapshot(true))
+        .thenReturn(
+            advancedSnapshot(
+                null,
+                List.of(
+                    new ConnectivityGapSnapshot(10_000L, 20_000L),
+                    new ConnectivityGapSnapshot(20_000L, 30_000L),
+                    new ConnectivityGapSnapshot(30_000L, 40_000L),
+                    new ConnectivityGapSnapshot(40_000L, 50_000L),
+                    new ConnectivityGapSnapshot(50_000L, 60_000L),
+                    new ConnectivityGapSnapshot(60_000L, 70_000L))));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertEquals(12, renderedTableCellCount(html), "Should clamp the row to five gap cells");
+  }
+
+  @Test
+  void handleMethodGET_whenNoticePresent_rendersDetachedConnectionTypeAlertHtml() throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    ConnectivityNoticeSnapshot notice =
+        new ConnectivityNoticeSnapshot(
+            "Connection Type",
+            "Port restricted NAT detected",
+            """
+            <div class="infobox infobox-warning">
+            \t<div class="infobox-header">Connection Type</div>
+            \t<div class="infobox-content"><a href="/help">Forward a port</a><form><div><input type="submit" name="dismiss-user-alert" value="Hide" /></div></form></div>
+            </div>
+            """);
+    when(connectivity.snapshot(false)).thenReturn(nonAdvancedSnapshot(notice));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(false);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertTrue(html.contains("infobox-warning"), "Should preserve the alert severity infobox");
+    assertTrue(html.contains("Forward a port"), "Should preserve the actionable help link");
+    assertTrue(html.contains("dismiss-user-alert"), "Should preserve the dismiss control");
+  }
+
+  @Test
+  void handleMethodGET_whenRenderedNoticeHtmlUnavailable_rendersDetachedConnectionTypeNotice()
+      throws Exception {
+    HTMLNode content = new HTMLNode("div");
+    PageMaker pageMaker = stubPageMaker(content);
+    ConnectivityNoticeSnapshot notice =
+        new ConnectivityNoticeSnapshot("Connection Type", "Port restricted NAT detected", "");
+    when(connectivity.snapshot(false)).thenReturn(nonAdvancedSnapshot(notice));
+
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(false);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/connectivity/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+
+    assertTrue(html.contains(notice.title()), "Should render the notice title");
+    assertTrue(html.contains(notice.text()), "Should render the notice body");
+  }
+
+  private ConnectivitySnapshot nonAdvancedSnapshot(ConnectivityNoticeSnapshot notice) {
+    return new ConnectivitySnapshot(
+        12345,
+        33333,
+        new ConnectivityListenerPortSnapshot(true, 8080),
+        new ConnectivityListenerPortSnapshot(false, 0),
+        new ConnectivityListenerPortSnapshot(false, 0),
+        notice,
+        List.of(
+            new ConnectivitySocketSnapshot(
+                "udp-9999",
+                ConnectivityPortForwardStatus.DEFINITELY_PORT_FORWARDED,
+                -1,
+                List.of(),
+                List.of())));
+  }
+
+  private ConnectivitySnapshot advancedSnapshot() {
+    return advancedSnapshot(gapHistory(), gapHistory());
+  }
+
+  private ConnectivitySnapshot advancedSnapshot(
+      List<ConnectivityGapSnapshot> peerGaps, List<ConnectivityGapSnapshot> ipGaps) {
+    return new ConnectivitySnapshot(
+        54321,
+        0,
+        new ConnectivityListenerPortSnapshot(false, 0),
+        new ConnectivityListenerPortSnapshot(true, 9481),
+        new ConnectivityListenerPortSnapshot(true, 2222),
+        null,
+        List.of(
+            new ConnectivitySocketSnapshot(
+                "udp-9999",
+                ConnectivityPortForwardStatus.DEFINITELY_PORT_FORWARDED,
+                12_345L,
+                peerEntries(peerGaps),
+                ipEntries(ipGaps))));
+  }
+
+  private List<ConnectivityTrafficEntrySnapshot> peerEntries(List<ConnectivityGapSnapshot> gaps) {
+    if (gaps == null) {
+      return List.of();
+    }
+    return List.of(
+        new ConnectivityTrafficEntrySnapshot(
+            "1.1.1.1:4242", 1, 1, ConnectivityTrafficInitiator.LOCAL, 1_000L, 3_000L, gaps));
+  }
+
+  private List<ConnectivityTrafficEntrySnapshot> ipEntries(List<ConnectivityGapSnapshot> gaps) {
+    if (gaps == null) {
+      return List.of();
+    }
+    return List.of(
+        new ConnectivityTrafficEntrySnapshot(
+            "/2.2.2.2", 1, 1, ConnectivityTrafficInitiator.REMOTE, 2_000L, 4_000L, gaps));
+  }
+
+  private List<ConnectivityGapSnapshot> gapHistory() {
+    return List.of(
+        new ConnectivityGapSnapshot(10_000L, 20_000L),
+        new ConnectivityGapSnapshot(0L, 0L),
+        new ConnectivityGapSnapshot(0L, 0L),
+        new ConnectivityGapSnapshot(0L, 0L),
+        new ConnectivityGapSnapshot(0L, 0L));
+  }
+
+  private int renderedTableCellCount(String html) {
+    return html.split(java.util.regex.Pattern.quote("<td"), -1).length - 1;
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {
@@ -181,6 +327,7 @@ class ConnectivityToadletTest {
               HTMLNode parent = invocation.getArgument(2);
               HTMLNode infobox = new HTMLNode("div", "class", "infobox");
               parent.addChild(infobox);
+              infobox.addChild("div", "class", "header", invocation.getArgument(1));
               return infobox.addChild("div", "class", "content");
             })
         .when(pageMaker)
@@ -188,35 +335,9 @@ class ConnectivityToadletTest {
     return pageMaker;
   }
 
-  private void setConfigPorts(
-      boolean fproxyEnabled,
-      int fproxyPort,
-      boolean fcpEnabled,
-      int fcpPort,
-      boolean tmciEnabled,
-      int tmciPort) {
-    when(config.get("fproxy")).thenReturn(mockSubConfig(fproxyEnabled, fproxyPort));
-    when(config.get("fcp")).thenReturn(mockSubConfig(fcpEnabled, fcpPort));
-    when(config.get("console")).thenReturn(mockSubConfig(tmciEnabled, tmciPort));
-  }
-
-  private SubConfig mockSubConfig(boolean enabled, int port) {
-    SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.put("enabled", enabled);
-    fs.put("port", port);
-    return mock(
-        SubConfig.class,
-        invocation -> {
-          if ("exportFieldSet".equals(invocation.getMethod().getName())) {
-            return fs;
-          }
-          return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
-        });
-  }
-
   private ByteArrayOutputStream captureBody(ToadletContext context) throws Exception {
     ByteArrayOutputStream body = new ByteArrayOutputStream();
-    doAnswer(invocation -> null)
+    doAnswer(_ -> null)
         .when(context)
         .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
     doAnswer(
