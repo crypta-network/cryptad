@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.spi.RemovedPeerSnapshot;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -30,7 +30,6 @@ import network.crypta.support.SimpleFieldSet;
  * @see PeerRemoved
  * @see UnknownNodeIdentifierMessage
  * @see Node
- * @see PeerNode
  */
 public class RemovePeer extends FCPMessage {
 
@@ -95,11 +94,10 @@ public class RemovePeer extends FCPMessage {
    * <p>The handler must have full access; otherwise a {@link MessageInvalidException} with an
    * {@link ProtocolErrorMessage#ACCESS_DENIED} error is thrown. When the {@code NodeIdentifier}
    * field is missing, the method signals a {@link ProtocolErrorMessage#MISSING_FIELD} error. If a
-   * matching peer exists, it is detached via {@link
-   * NodeNetworkSubsystem#removePeerConnection(PeerNode)} and a {@link PeerRemoved} acknowledgment
-   * is sent. Unknown peer identifiers yield an {@link UnknownNodeIdentifierMessage}. No state
-   * beyond the current invocation is retained, and the method is not idempotent if the peer list
-   * changes between calls.
+   * matching peer exists, it is detached through the runtime peer-management SPI and a {@link
+   * PeerRemoved} acknowledgment is sent. Unknown peer identifiers yield an {@link
+   * UnknownNodeIdentifierMessage}. No state beyond the current invocation is retained, and the
+   * method is not idempotent if the peer list changes between calls.
    *
    * <pre>{@code
    * // Example: remove a peer by its node identifier
@@ -109,8 +107,8 @@ public class RemovePeer extends FCPMessage {
    *
    * @param handler connection handler responsible for sending responses; must provide full-access
    *     privileges for the operation to proceed and must not be null.
-   * @param node target node on which the peer should be removed; must not be null and must support
-   *     lookup of the specified node identifier.
+   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
+   *     removal is delegated through the runtime SPI
    * @throws MessageInvalidException when access is denied or required, fields are absent, halting
    *     further processing and surfacing a protocol-level error to the caller.
    */
@@ -131,14 +129,13 @@ public class RemovePeer extends FCPMessage {
           messageIdentifier,
           false);
     }
-    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
-    if (pn == null) {
+    try {
+      RemovedPeerSnapshot removedPeer = handler.getServer().runtime().peer().remove(nodeIdentifier);
+      handler.send(
+          new PeerRemoved(removedPeer.identity(), removedPeer.nodeIdentifier(), messageIdentifier));
+    } catch (UnknownPeerException _) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, messageIdentifier);
       handler.send(msg);
-      return;
     }
-    String identity = pn.getIdentityString();
-    node.network().removePeerConnection(pn);
-    handler.send(new PeerRemoved(identity, nodeIdentifier, messageIdentifier));
   }
 }

@@ -1,8 +1,12 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,12 +16,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,11 +35,13 @@ class ModifyPeerTest {
 
   @Mock FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  Node node;
+  @Mock Node node;
 
-  @Mock DarknetPeerNode darknetPeerNode;
-  @Mock PeerNode peerNode;
+  @Mock FCPServer server;
+
+  @Mock RuntimePorts runtimePorts;
+
+  @Mock PeerPort peerPort;
 
   @Test
   void getName_returnsModifyPeerLiteral() {
@@ -67,7 +71,7 @@ class ModifyPeerTest {
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
-    verifyNoInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
     verify(handler, never()).send(any());
   }
 
@@ -83,7 +87,7 @@ class ModifyPeerTest {
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
-    verify(node.network(), never()).getPeerNode(anyString());
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
     verify(handler, never()).send(any());
   }
 
@@ -92,7 +96,11 @@ class ModifyPeerTest {
     SimpleFieldSet fs = baseFieldSet();
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(null);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.updateDarknetPeer(any(), any()))
+        .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
 
     modifyPeer.run(handler, node);
 
@@ -105,11 +113,15 @@ class ModifyPeerTest {
   }
 
   @Test
-  void run_whenPeerIsNotDarknet_throwsDarknetOnly() {
+  void run_whenPeerIsNotDarknet_throwsDarknetOnly() throws Exception {
     SimpleFieldSet fs = baseFieldSet();
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(peerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.updateDarknetPeer(any(), any()))
+        .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler, node));
@@ -129,24 +141,34 @@ class ModifyPeerTest {
     fs.putSingle("AllowLocalAddresses", "FALSE");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    PeerSnapshot snapshot =
+        new PeerSnapshot(
+            new network.crypta.runtime.spi.PeerFieldSet(
+                java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of()));
+    when(peerPort.updateDarknetPeer(any(), any())).thenReturn(snapshot);
 
     modifyPeer.run(handler, node);
 
-    verify(darknetPeerNode, times(1)).disablePeer();
-    verify(darknetPeerNode, never()).enablePeer();
-    verify(darknetPeerNode, times(1)).setListenOnly(true);
-    verify(darknetPeerNode, times(1)).setBurstOnly(false);
-    verify(darknetPeerNode, times(1)).setIgnoreSourcePort(true);
-    verify(darknetPeerNode, times(1)).setAllowLocalAddresses(false);
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort)
+        .updateDarknetPeer(
+            org.mockito.ArgumentMatchers.eq(NODE_IDENTIFIER), updateCaptor.capture());
+    DarknetPeerSettingsUpdate update = updateCaptor.getValue();
+    assertEquals(Boolean.TRUE, update.disabled());
+    assertEquals(Boolean.TRUE, update.listenOnly());
+    assertEquals(Boolean.FALSE, update.burstOnly());
+    assertEquals(Boolean.TRUE, update.ignoreSourcePort());
+    assertEquals(Boolean.FALSE, update.allowLocalAddresses());
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
     assertInstanceOf(PeerMessage.class, captor.getValue());
     PeerMessage sent = (PeerMessage) captor.getValue();
-    assertSame(darknetPeerNode, sent.pn);
-    assertTrue(sent.withMetadata);
-    assertTrue(sent.withVolatile);
+    assertEquals(snapshot, sent.snapshot);
     assertEquals(IDENTIFIER, sent.messageIdentifier);
   }
 
@@ -156,12 +178,23 @@ class ModifyPeerTest {
     fs.putSingle("IsDisabled", "false");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.updateDarknetPeer(any(), any()))
+        .thenReturn(
+            new PeerSnapshot(
+                new network.crypta.runtime.spi.PeerFieldSet(
+                    java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of())));
 
     modifyPeer.run(handler, node);
 
-    verify(darknetPeerNode, never()).disablePeer();
-    verify(darknetPeerNode, times(1)).enablePeer();
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort)
+        .updateDarknetPeer(
+            org.mockito.ArgumentMatchers.eq(NODE_IDENTIFIER), updateCaptor.capture());
+    assertEquals(Boolean.FALSE, updateCaptor.getValue().disabled());
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
     assertInstanceOf(PeerMessage.class, captor.getValue());
@@ -177,16 +210,28 @@ class ModifyPeerTest {
     fs.putSingle("AllowLocalAddresses", "");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.updateDarknetPeer(any(), any()))
+        .thenReturn(
+            new PeerSnapshot(
+                new network.crypta.runtime.spi.PeerFieldSet(
+                    java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of())));
 
     modifyPeer.run(handler, node);
 
-    verify(darknetPeerNode, never()).disablePeer();
-    verify(darknetPeerNode, never()).enablePeer();
-    verify(darknetPeerNode, never()).setListenOnly(anyBoolean());
-    verify(darknetPeerNode, never()).setBurstOnly(anyBoolean());
-    verify(darknetPeerNode, never()).setIgnoreSourcePort(anyBoolean());
-    verify(darknetPeerNode, never()).setAllowLocalAddresses(anyBoolean());
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort)
+        .updateDarknetPeer(
+            org.mockito.ArgumentMatchers.eq(NODE_IDENTIFIER), updateCaptor.capture());
+    DarknetPeerSettingsUpdate update = updateCaptor.getValue();
+    assertNull(update.disabled());
+    assertNull(update.listenOnly());
+    assertNull(update.burstOnly());
+    assertNull(update.ignoreSourcePort());
+    assertNull(update.allowLocalAddresses());
     verify(handler, times(1)).send(any(PeerMessage.class));
   }
 

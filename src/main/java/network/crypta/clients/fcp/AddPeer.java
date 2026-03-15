@@ -12,21 +12,19 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
-import network.crypta.node.OpennetDisabledException;
-import network.crypta.node.PeerNode;
-import network.crypta.node.PeerTooOldException;
 import network.crypta.node.RequestStarter;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.spi.PeerAddFailureReason;
+import network.crypta.runtime.spi.PeerAddRejectedException;
+import network.crypta.runtime.spi.PeerFieldSet;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.support.MediaType;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -52,9 +50,6 @@ import org.slf4j.LoggerFactory;
  * <p>Typical callers do not construct this class directly; instead they delegate to {@link
  * FCPMessage#create(String, SimpleFieldSet)} after decoding the message name and fields from the
  * wire.
- *
- * @see PeerMessage
- * @see NodeNetworkSubsystem#addPeerConnection(PeerNode)
  */
 public final class AddPeer extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(AddPeer.class);
@@ -70,15 +65,15 @@ public final class AddPeer extends FCPMessage {
 
   SimpleFieldSet fs;
   final String messageIdentifier;
-  final FRIEND_TRUST trust;
-  final FRIEND_VISIBILITY visibility;
+  final PeerTrust trust;
+  final PeerVisibility visibility;
 
   /**
    * Creates a new {@link AddPeer} instance from the supplied field set.
    *
    * <p>The constructor extracts the {@code Identifier}, {@code Trust}, and {@code Visibility}
    * fields from {@code fs}, storing the identifier for later replies and converting the trust and
-   * visibility strings to the corresponding {@link FRIEND_TRUST} and {@link FRIEND_VISIBILITY}
+   * visibility strings to the corresponding {@link PeerTrust} and {@link PeerVisibility}
    * enumeration values. The extracted keys are removed from the field set so that the remaining
    * data describes only the peer reference itself or indirections to it such as {@code URL} and
    * {@code File} fields.
@@ -90,7 +85,7 @@ public final class AddPeer extends FCPMessage {
    * @param fs client-supplied field set containing the decoded AddPeer request fields, including
    *     identifier, trust, visibility, and peer reference information; must not be {@code null}
    * @throws MessageInvalidException if required fields are missing, empty, or cannot be converted
-   *     into valid {@link FRIEND_TRUST} or {@link FRIEND_VISIBILITY} values
+   *     into valid {@link PeerTrust} or {@link PeerVisibility} values
    */
   public AddPeer(SimpleFieldSet fs) throws MessageInvalidException {
     this.fs = fs;
@@ -103,7 +98,7 @@ public final class AddPeer extends FCPMessage {
           ProtocolErrorMessage.MISSING_FIELD, "AddPeer requires Trust", messageIdentifier, false);
     }
     try {
-      this.trust = FRIEND_TRUST.valueOf(trustValue);
+      this.trust = PeerTrust.valueOf(trustValue);
       fs.removeValue("Trust");
     } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
@@ -122,7 +117,7 @@ public final class AddPeer extends FCPMessage {
           false);
     }
     try {
-      this.visibility = FRIEND_VISIBILITY.valueOf(visibilityValue);
+      this.visibility = PeerVisibility.valueOf(visibilityValue);
       fs.removeValue("Visibility");
     } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
@@ -254,17 +249,17 @@ public final class AddPeer extends FCPMessage {
    * field set, optionally dereferencing a {@code URL} or {@code File} indirection, and parses the
    * resulting text into a structured {@link SimpleFieldSet}.
    *
-   * <p>Depending on whether the {@code opennet} flag is present, the implementation creates either
-   * an opennet or darknet {@link PeerNode}, validates that the reference does not describe the node
-   * itself, and attempts to register the new peer with the node's peer manager. Any parse errors,
-   * signature problems, duplicate identities, or configuration constraints are reported via {@link
+   * <p>Depending on whether the {@code opennet} flag is present, the implementation forwards the
+   * resolved reference to the runtime peer-management port, which performs peer creation,
+   * validation, self-checking, and registration with the node. Any parse errors, signature
+   * problems, duplicate identities, or configuration constraints are reported via {@link
    * MessageInvalidException} with an appropriate {@link ProtocolErrorMessage} code, which the
    * handler will translate into a protocol error response.
    *
    * @param handler connection handler representing the client session that issued the AddPeer
    *     request; used to send back the resulting {@link PeerMessage} or error messages
-   * @param node running node instance to which the new peer should be added and from which client
-   *     fetches and peer database operations are performed
+   * @param node running node instance supplied by the legacy FCP dispatch signature; unused because
+   *     peer-management is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, the peer reference cannot be parsed or
    *     verified, the reference describes the node itself, or a peer with the same identity already
    *     exists on the node
@@ -272,10 +267,15 @@ public final class AddPeer extends FCPMessage {
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     ensureFullAccess(handler);
-    fs = resolveFieldSetForReference(node);
-    fs.setEndMarker("End");
-    PeerNode peerNode = createPeer(node);
-    handler.send(new PeerMessage(peerNode, true, true, messageIdentifier));
+    fs = resolveFieldSetForReference(handler);
+    try {
+      PeerSnapshot snapshot =
+          handler.getServer().runtime().peer().add(toPeerFieldSet(fs), trust, visibility);
+      handler.send(new PeerMessage(snapshot, messageIdentifier));
+    } catch (PeerAddRejectedException e) {
+      throw new MessageInvalidException(
+          protocolCodeFor(e.reason()), e.getMessage(), messageIdentifier, false);
+    }
   }
 
   private void ensureFullAccess(FCPConnectionHandler handler) throws MessageInvalidException {
@@ -288,10 +288,11 @@ public final class AddPeer extends FCPMessage {
     }
   }
 
-  private SimpleFieldSet resolveFieldSetForReference(Node node) throws MessageInvalidException {
+  private SimpleFieldSet resolveFieldSetForReference(FCPConnectionHandler handler)
+      throws MessageInvalidException {
     String urlString = fs.get("URL");
     if (urlString != null) {
-      return buildFieldSetFromUrl(urlString, node);
+      return buildFieldSetFromUrl(urlString, handler);
     }
     String fileString = fs.get("File");
     if (fileString != null) {
@@ -300,9 +301,9 @@ public final class AddPeer extends FCPMessage {
     return fs;
   }
 
-  private SimpleFieldSet buildFieldSetFromUrl(String urlString, Node node)
+  private SimpleFieldSet buildFieldSetFromUrl(String urlString, FCPConnectionHandler handler)
       throws MessageInvalidException {
-    StringBuilder ref = fetchReferenceFromUrl(urlString, node);
+    StringBuilder ref = fetchReferenceFromUrl(urlString, handler);
     String refString = ref.toString().trim();
     if (refString.isEmpty()) {
       throw new MessageInvalidException(
@@ -322,10 +323,10 @@ public final class AddPeer extends FCPMessage {
     }
   }
 
-  private StringBuilder fetchReferenceFromUrl(String urlString, Node node)
+  private StringBuilder fetchReferenceFromUrl(String urlString, FCPConnectionHandler handler)
       throws MessageInvalidException {
     try {
-      return tryFetchFromCryptaUriOrUrl(urlString, node);
+      return tryFetchFromCryptaUriOrUrl(urlString, handler);
     } catch (MalformedURLException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.URL_PARSE_ERROR,
@@ -341,12 +342,14 @@ public final class AddPeer extends FCPMessage {
     }
   }
 
-  private StringBuilder tryFetchFromCryptaUriOrUrl(String urlString, Node node) throws IOException {
+  private StringBuilder tryFetchFromCryptaUriOrUrl(String urlString, FCPConnectionHandler handler)
+      throws IOException {
     try {
       FreenetURI refUri = new FreenetURI(urlString);
       HighLevelSimpleClient client =
-          node.services()
-              .clientCore()
+          handler
+              .getServer()
+              .getCore()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
     } catch (MalformedURLException | FetchException _) {
@@ -418,82 +421,29 @@ public final class AddPeer extends FCPMessage {
     }
   }
 
-  private PeerNode createPeer(Node node) throws MessageInvalidException {
-    boolean isOpennetRef = fs.getBoolean("opennet", false);
-    PeerNode peerNode = isOpennetRef ? createOpennetPeer(node) : createDarknetPeer(node);
-    ensureNotSelfPeer(node, isOpennetRef, peerNode);
-    addPeerConnection(node, isOpennetRef, peerNode);
-    return peerNode;
+  private static PeerFieldSet toPeerFieldSet(SimpleFieldSet fieldSet) {
+    if (fieldSet.isEmpty()) {
+      return PeerFieldSet.empty();
+    }
+
+    LinkedHashMap<String, String> directValues = new LinkedHashMap<>(fieldSet.directKeyValues());
+    LinkedHashMap<String, PeerFieldSet> directSubsets = new LinkedHashMap<>();
+    for (Map.Entry<String, SimpleFieldSet> entry : fieldSet.directSubsets().entrySet()) {
+      PeerFieldSet subset = toPeerFieldSet(entry.getValue());
+      if (!subset.isEmpty()) {
+        directSubsets.put(entry.getKey(), subset);
+      }
+    }
+    return new PeerFieldSet(directValues, directSubsets);
   }
 
-  private PeerNode createOpennetPeer(Node node) throws MessageInvalidException {
-    try {
-      return node.network().createNewOpennetNode(fs);
-    } catch (FSParseException | PeerParseException | PeerTooOldException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.REF_PARSE_ERROR,
-          "Error parsing ref: " + e.getMessage(),
-          messageIdentifier,
-          false);
-    } catch (OpennetDisabledException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.OPENNET_DISABLED,
-          "Error adding ref: " + e.getMessage(),
-          messageIdentifier,
-          false);
-    } catch (ReferenceSignatureVerificationException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.REF_SIGNATURE_INVALID,
-          "Error adding ref: " + e.getMessage(),
-          messageIdentifier,
-          false);
-    }
-  }
-
-  private PeerNode createDarknetPeer(Node node) throws MessageInvalidException {
-    try {
-      return node.network().createNewDarknetNode(fs, trust, visibility);
-    } catch (FSParseException | PeerParseException | PeerTooOldException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.REF_PARSE_ERROR,
-          "Error parsing ref: " + e.getMessage(),
-          messageIdentifier,
-          false);
-    } catch (ReferenceSignatureVerificationException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.REF_SIGNATURE_INVALID,
-          "Error adding ref: " + e.getMessage(),
-          messageIdentifier,
-          false);
-    }
-  }
-
-  private void ensureNotSelfPeer(Node node, boolean isOpennetRef, PeerNode peerNode)
-      throws MessageInvalidException {
-    byte[] nodePubKeyHash =
-        isOpennetRef ? node.network().opennetPubKeyHash() : node.network().darknetPubKeyHash();
-    if (Arrays.equals(peerNode.peerECDSAPubKeyHash, nodePubKeyHash)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.CANNOT_PEER_WITH_SELF,
-          "Node cannot peer with itself",
-          messageIdentifier,
-          false);
-    }
-  }
-
-  private void addPeerConnection(Node node, boolean isOpennetRef, PeerNode peerNode)
-      throws MessageInvalidException {
-    if (!node.network().addPeerConnection(peerNode)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DUPLICATE_PEER_REF,
-          "Node already has a peer with that identity",
-          messageIdentifier,
-          false);
-    }
-    if (isOpennetRef) {
-      LOG.info("Added opennet peer: {}", peerNode);
-    } else {
-      LOG.info("Added darknet peer: {}", peerNode);
-    }
+  private static int protocolCodeFor(PeerAddFailureReason reason) {
+    return switch (reason) {
+      case REF_PARSE_ERROR -> ProtocolErrorMessage.REF_PARSE_ERROR;
+      case OPENNET_DISABLED -> ProtocolErrorMessage.OPENNET_DISABLED;
+      case REF_SIGNATURE_INVALID -> ProtocolErrorMessage.REF_SIGNATURE_INVALID;
+      case CANNOT_PEER_WITH_SELF -> ProtocolErrorMessage.CANNOT_PEER_WITH_SELF;
+      case DUPLICATE_PEER_REF -> ProtocolErrorMessage.DUPLICATE_PEER_REF;
+    };
   }
 }

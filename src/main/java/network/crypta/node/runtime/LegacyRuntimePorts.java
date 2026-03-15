@@ -8,6 +8,7 @@ import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -35,6 +36,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final LifecyclePort lifecyclePort;
   private final ConfigPort configPort;
   private final NodeInfoPort nodeInfoPort;
+  private final PeerPort peerPort;
 
   /**
    * Creates a runtime SPI adapter backed by the current daemon internals.
@@ -116,6 +118,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
         };
     this.configPort = new LegacyConfigPort(node, core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
+    this.peerPort = new LegacyPeerPort(node);
   }
 
   /**
@@ -180,5 +183,16 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public NodeInfoPort nodeInfo() {
     return nodeInfoPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps all legacy peer export and mutation logic inside the daemon root
+   * module while exposing only SPI-local snapshots, DTOs, and exceptions upstream.
+   */
+  @Override
+  public PeerPort peer() {
+    return peerPort;
   }
 }

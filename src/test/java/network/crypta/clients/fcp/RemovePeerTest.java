@@ -1,7 +1,10 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.RemovedPeerSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,10 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -28,10 +29,13 @@ class RemovePeerTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
 
-  @Mock private PeerNode peerNode;
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private PeerPort peerPort;
 
   @Test
   void constructor_removesIdentifierFromFieldSet() {
@@ -77,9 +81,7 @@ class RemovePeerTest {
     assertEquals("RemovePeer requires full access", exception.getMessage());
     assertEquals("id-123", exception.ident);
     assertFalse(exception.global);
-    verify(handler).hasFullAccess();
-    verifyNoMoreInteractions(handler);
-    verifyNoMoreInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
@@ -96,28 +98,22 @@ class RemovePeerTest {
     assertEquals("Error: NodeIdentifier field missing", exception.getMessage());
     assertEquals("id-456", exception.ident);
     assertFalse(exception.global);
-    verify(handler).hasFullAccess();
-    verifyNoMoreInteractions(handler);
-    verifyNoMoreInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
-  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
+  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.getPeerNode("node-missing")).thenReturn(null);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.remove("node-missing")).thenThrow(new UnknownPeerException("node-missing"));
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-missing", "id-789"));
 
     removePeer.run(handler, node);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(handler).hasFullAccess();
-    verify(network).getPeerNode("node-missing");
     verify(handler).send(captor.capture());
-    verify(network, never()).removePeerConnection(any(PeerNode.class));
-    verifyNoMoreInteractions(handler, node);
 
     FCPMessage sent = captor.getValue();
     assertInstanceOf(UnknownNodeIdentifierMessage.class, sent);
@@ -127,25 +123,19 @@ class RemovePeerTest {
   }
 
   @Test
-  void run_whenPeerPresent_removesPeerAndSendsPeerRemoved() throws MessageInvalidException {
+  void run_whenPeerPresent_removesPeerAndSendsPeerRemoved() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.getPeerNode("node-123")).thenReturn(peerNode);
-    when(peerNode.getIdentityString()).thenReturn("identity-xyz");
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.remove("node-123"))
+        .thenReturn(new RemovedPeerSnapshot("identity-xyz", "node-123"));
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-123", "id-555"));
 
     removePeer.run(handler, node);
 
-    verify(handler).hasFullAccess();
-    verify(network).getPeerNode("node-123");
-    verify(peerNode).getIdentityString();
-    verify(network).removePeerConnection(peerNode);
-
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
-    verifyNoMoreInteractions(handler, node, peerNode);
 
     FCPMessage sent = captor.getValue();
     assertInstanceOf(PeerRemoved.class, sent);

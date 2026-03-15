@@ -1,8 +1,7 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.spi.PeerSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -92,8 +91,8 @@ public class ListPeersMessage extends FCPMessage {
    *
    * @param handler connection handler responsible for sending responses; must already be
    *     authenticated for full access.
-   * @param node node instance supplying the current peers; expected to return a live snapshot via
-   *     {@link NodeNetworkSubsystem#peerNodes()}.
+   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
+   *     enumeration is delegated through the runtime SPI
    * @throws MessageInvalidException when the handler lacks required access rights or when message
    *     validation fails before any peer data is returned.
    */
@@ -106,9 +105,9 @@ public class ListPeersMessage extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode[] nodes = node.network().peerNodes();
-    for (PeerNode pn : nodes) {
-      handler.send(new PeerMessage(pn, withMetadata, withVolatile, requestIdentifier));
+    for (PeerSnapshot snapshot :
+        handler.getServer().runtime().peer().list(withMetadata, withVolatile)) {
+      handler.send(new PeerMessage(snapshot, requestIdentifier));
     }
 
     handler.send(new EndListPeersMessage(requestIdentifier));

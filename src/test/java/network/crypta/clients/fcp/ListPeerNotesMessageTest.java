@@ -1,8 +1,10 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,11 +32,13 @@ class ListPeerNotesMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
 
-  @Mock private PeerNode peerNode;
-  @Mock private DarknetPeerNode darknetPeerNode;
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private PeerPort peerPort;
 
   @Test
   void constructor_whenIdentifierProvided_removesIdentifierFromFieldSet() {
@@ -84,7 +88,7 @@ class ListPeerNotesMessageTest {
     assertEquals("req-3", thrown.ident);
     assertFalse(thrown.global, "Expected non-global error");
     verify(handler, never()).send(any());
-    verifyNoInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
@@ -102,13 +106,17 @@ class ListPeerNotesMessageTest {
     assertEquals("req-4", thrown.ident);
     assertFalse(thrown.global, "Expected non-global error");
     verify(handler, never()).send(any());
-    verifyNoInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
-  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
+  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode("node-unknown")).thenReturn(null);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.readPrivateDarknetComment("node-unknown"))
+        .thenThrow(new UnknownPeerException("node-unknown"));
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-5");
     fs.putSingle("NodeIdentifier", "node-unknown");
@@ -126,9 +134,13 @@ class ListPeerNotesMessageTest {
   }
 
   @Test
-  void run_whenPeerIsNotDarknet_throwsDarknetOnly() {
+  void run_whenPeerIsNotDarknet_throwsDarknetOnly() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode("node-2")).thenReturn(peerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.readPrivateDarknetComment("node-2"))
+        .thenThrow(new DarknetPeerRequiredException("node-2"));
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-6");
     fs.putSingle("NodeIdentifier", "node-2");
@@ -145,10 +157,12 @@ class ListPeerNotesMessageTest {
   }
 
   @Test
-  void run_whenPeerIsDarknet_sendsPeerNoteAndEndMessage() throws MessageInvalidException {
+  void run_whenPeerIsDarknet_sendsPeerNoteAndEndMessage() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode("node-3")).thenReturn(darknetPeerNode);
-    when(darknetPeerNode.getPrivateDarknetCommentNote()).thenReturn("secret-note");
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.readPrivateDarknetComment("node-3")).thenReturn("secret-note");
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-7");
     fs.putSingle("NodeIdentifier", "node-3");

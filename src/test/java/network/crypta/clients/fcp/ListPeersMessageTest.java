@@ -2,7 +2,9 @@ package network.crypta.clients.fcp;
 
 import java.util.List;
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +24,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -30,11 +33,13 @@ class ListPeersMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
 
-  @Mock private PeerNode peerOne;
-  @Mock private PeerNode peerTwo;
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private PeerPort peerPort;
 
   @Test
   void constructor_whenFieldsPresent_setsFlagsAndStripsIdentifierFromFieldSet() {
@@ -72,15 +77,20 @@ class ListPeersMessageTest {
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals("id-1", ex.ident);
-    verify(node.network(), never()).peerNodes();
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
     verify(handler, never()).send(any());
   }
 
   @Test
   void run_whenFullAccess_sendsEachPeerFollowedByEnd() throws MessageInvalidException {
     ListPeersMessage message = new ListPeersMessage(buildFieldSet(true, true, "identifier"));
+    PeerSnapshot peerOne = peerSnapshot("peer-one");
+    PeerSnapshot peerTwo = peerSnapshot("peer-two");
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().peerNodes()).thenReturn(new PeerNode[] {peerOne, peerTwo});
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.list(true, true)).thenReturn(List.of(peerOne, peerTwo));
 
     message.run(handler, node);
 
@@ -91,15 +101,11 @@ class ListPeersMessageTest {
     assertEquals(3, sentMessages.size());
 
     PeerMessage firstPeer = (PeerMessage) sentMessages.getFirst();
-    assertEquals(peerOne, firstPeer.pn);
-    assertTrue(firstPeer.withMetadata);
-    assertTrue(firstPeer.withVolatile);
+    assertEquals(peerOne, firstPeer.snapshot);
     assertEquals("identifier", firstPeer.messageIdentifier);
 
     PeerMessage secondPeer = (PeerMessage) sentMessages.get(1);
-    assertEquals(peerTwo, secondPeer.pn);
-    assertTrue(secondPeer.withMetadata);
-    assertTrue(secondPeer.withVolatile);
+    assertEquals(peerTwo, secondPeer.snapshot);
     assertEquals("identifier", secondPeer.messageIdentifier);
 
     EndListPeersMessage endMessage = (EndListPeersMessage) sentMessages.get(2);
@@ -115,7 +121,10 @@ class ListPeersMessageTest {
   void run_whenNoPeersStillEmitsEndMarker() throws MessageInvalidException {
     ListPeersMessage message = new ListPeersMessage(buildFieldSet(false, false, null));
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().peerNodes()).thenReturn(new PeerNode[0]);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.list(false, false)).thenReturn(List.of());
 
     message.run(handler, node);
 
@@ -146,5 +155,11 @@ class ListPeersMessageTest {
       fs.putSingle("Identifier", id);
     }
     return fs;
+  }
+
+  private static PeerSnapshot peerSnapshot(String identity) {
+    return new PeerSnapshot(
+        new network.crypta.runtime.spi.PeerFieldSet(
+            java.util.Map.of("identity", identity), java.util.Map.of()));
   }
 }
