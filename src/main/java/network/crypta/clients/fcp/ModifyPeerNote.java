@@ -3,6 +3,7 @@ package network.crypta.clients.fcp;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
@@ -93,12 +94,12 @@ public class ModifyPeerNote extends FCPMessage {
    * Executes the {@code ModifyPeerNote} request against the running node.
    *
    * <p>This method enforces full-access permissions on the connection, extracts the target peer
-   * identifier and peer-note type from the backing field set, and resolves the peer through the
-   * runtime SPI. Only darknet peers are accepted; other peer types cause a protocol error. The
-   * handler then decodes the Base64-encoded {@code NoteText} value, applies the note when the note
-   * type is supported, and sends a {@link PeerNote} message back to the client reflecting the new
-   * state. Invalid or missing fields cause {@link MessageInvalidException} to be thrown or a
-   * specific error response to be sent.
+   * identifier from the backing field set, and resolves the peer through the runtime SPI before any
+   * note-type-specific handling. Only darknet peers are accepted; other peer types cause a protocol
+   * error. The handler then parses the peer-note type, decodes the Base64-encoded {@code NoteText}
+   * value, applies the note when the note type is supported, and sends a {@link PeerNote} message
+   * back to the client reflecting the new state. Invalid or missing fields cause {@link
+   * MessageInvalidException} to be thrown or a specific error response to be sent.
    *
    * <p>The method is not idempotent with respect to note contents: later calls with the same peer
    * and note type overwrite the existing note. Behavior is undefined if the node is stopping or the
@@ -127,6 +128,10 @@ public class ModifyPeerNote extends FCPMessage {
           "Error: NodeIdentifier field missing",
           requestIdentifier,
           false);
+    }
+    PeerPort peerPort = handler.getServer().runtime().peer();
+    if (!ensureDarknetPeerExists(handler, peerPort, nodeIdentifier)) {
+      return;
     }
     int peerNoteType;
     try {
@@ -162,12 +167,45 @@ public class ModifyPeerNote extends FCPMessage {
       return;
     }
     try {
-      String storedNoteText =
-          handler.getServer().runtime().peer().writePrivateDarknetComment(nodeIdentifier, noteText);
+      String storedNoteText = peerPort.writePrivateDarknetComment(nodeIdentifier, noteText);
       handler.send(new PeerNote(nodeIdentifier, storedNoteText, peerNoteType, requestIdentifier));
     } catch (UnknownPeerException _) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);
+    } catch (DarknetPeerRequiredException _) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.DARKNET_ONLY,
+          "ModifyPeerNote only available for darknet peers",
+          requestIdentifier,
+          false);
+    }
+  }
+
+  /**
+   * Resolves the target peer through the runtime SPI before any note-type-specific handling.
+   *
+   * <p>The legacy daemon-backed implementation validated peer existence and darknet eligibility
+   * before parsing or validating note contents. The SPI does not expose a generic peer-note
+   * capability probe, so this method uses the existing private-comment read operation as a
+   * non-mutating preflight to preserve the original FCP error precedence.
+   *
+   * @param handler connection handler used to send protocol error responses back to the client
+   * @param peerPort runtime peer-management port used to resolve the target peer
+   * @param nodeIdentifier peer identifier supplied by the FCP client
+   * @return {@code true} if the peer exists and supports darknet notes, otherwise {@code false}
+   *     after sending the appropriate unknown-node response
+   * @throws MessageInvalidException if the peer exists but is not a darknet peer
+   */
+  private boolean ensureDarknetPeerExists(
+      FCPConnectionHandler handler, PeerPort peerPort, String nodeIdentifier)
+      throws MessageInvalidException {
+    try {
+      peerPort.readPrivateDarknetComment(nodeIdentifier);
+      return true;
+    } catch (UnknownPeerException _) {
+      FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
+      handler.send(msg);
+      return false;
     } catch (DarknetPeerRequiredException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DARKNET_ONLY,

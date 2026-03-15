@@ -32,6 +32,7 @@ class ModifyPeerNoteTest {
   private static final String IDENTIFIER = "req-1";
   private static final String NODE_IDENTIFIER = "peer-123";
   private static final String NOTE_TEXT = "Private darknet note";
+  private static final String EXISTING_NOTE = "Existing note";
   private static final int UNKNOWN_PEER_NOTE_TYPE = 99;
 
   @Mock FCPConnectionHandler handler;
@@ -107,11 +108,8 @@ class ModifyPeerNoteTest {
     fs.put("PeerNoteType", Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT);
     fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
-    when(handler.getServer()).thenReturn(server);
-    when(server.runtime()).thenReturn(runtimePorts);
-    when(runtimePorts.peer()).thenReturn(peerPort);
-    when(peerPort.writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT))
+    stubPeerPort();
+    when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
         .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
 
     modifyPeerNote.run(handler, node);
@@ -130,11 +128,8 @@ class ModifyPeerNoteTest {
     fs.put("PeerNoteType", Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT);
     fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
-    when(handler.getServer()).thenReturn(server);
-    when(server.runtime()).thenReturn(runtimePorts);
-    when(runtimePorts.peer()).thenReturn(peerPort);
-    when(peerPort.writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT))
+    stubPeerPort();
+    when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
         .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
 
     MessageInvalidException ex =
@@ -146,12 +141,12 @@ class ModifyPeerNoteTest {
   }
 
   @Test
-  void run_whenPeerNoteTypeNotANumber_throwsInvalidField() {
+  void run_whenPeerNoteTypeNotANumber_throwsInvalidField() throws Exception {
     SimpleFieldSet fs = baseFieldSet();
     fs.putSingle("PeerNoteType", "not-a-number");
     fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
+    stubPeerPort();
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
@@ -159,15 +154,16 @@ class ModifyPeerNoteTest {
     assertEquals(ProtocolErrorMessage.INVALID_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
     verify(handler, never()).send(any());
-    verifyNoInteractions(server, runtimePorts, peerPort, node);
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
   }
 
   @Test
-  void run_whenNoteTextMissing_throwsMissingField() {
+  void run_whenNoteTextMissing_throwsMissingField() throws Exception {
     SimpleFieldSet fs = baseFieldSet();
     fs.put("PeerNoteType", Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT);
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
+    stubPeerPort();
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
@@ -175,7 +171,8 @@ class ModifyPeerNoteTest {
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
     verify(handler, never()).send(any());
-    verifyNoInteractions(server, runtimePorts, peerPort, node);
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
   }
 
   @Test
@@ -184,12 +181,13 @@ class ModifyPeerNoteTest {
     fs.put("PeerNoteType", Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT);
     fs.putSingle("NoteText", "%%%"); // invalid Base64
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
+    stubPeerPort();
 
     modifyPeerNote.run(handler, node);
 
     verify(handler, never()).send(any());
-    verifyNoInteractions(server, runtimePorts, peerPort, node);
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
   }
 
   @Test
@@ -198,17 +196,58 @@ class ModifyPeerNoteTest {
     fs.put("PeerNoteType", UNKNOWN_PEER_NOTE_TYPE);
     fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
+    stubPeerPort();
 
     modifyPeerNote.run(handler, node);
 
-    verifyNoInteractions(server, runtimePorts, peerPort, node);
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
     assertInstanceOf(UnknownPeerNoteTypeMessage.class, captor.getValue());
     UnknownPeerNoteTypeMessage sent = (UnknownPeerNoteTypeMessage) captor.getValue();
     assertEquals(UNKNOWN_PEER_NOTE_TYPE, sent.peerNoteType);
     assertEquals(IDENTIFIER, sent.messageIdentifier);
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
+  }
+
+  @Test
+  void run_whenPeerMissingAndPeerNoteTypeUnsupported_sendsUnknownNodeIdentifierMessage()
+      throws Exception {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.put("PeerNoteType", UNKNOWN_PEER_NOTE_TYPE);
+    fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
+    ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
+    stubPeerPort();
+    when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
+        .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
+
+    modifyPeerNote.run(handler, node);
+
+    ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
+    verify(handler, times(1)).send(captor.capture());
+    assertInstanceOf(UnknownNodeIdentifierMessage.class, captor.getValue());
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
+  }
+
+  @Test
+  void run_whenPeerNotDarknetAndPeerNoteTypeUnsupported_throwsDarknetOnly() throws Exception {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.put("PeerNoteType", UNKNOWN_PEER_NOTE_TYPE);
+    fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
+    ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
+    stubPeerPort();
+    when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
+        .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+
+    assertEquals(ProtocolErrorMessage.DARKNET_ONLY, ex.protocolCode);
+    assertEquals(IDENTIFIER, ex.ident);
+    verify(handler, never()).send(any());
+    verify(peerPort, never()).writePrivateDarknetComment(any(), any());
+    verifyNoInteractions(node);
   }
 
   @Test
@@ -217,14 +256,12 @@ class ModifyPeerNoteTest {
     fs.put("PeerNoteType", Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT);
     fs.putSingle("NoteText", Base64.encodeUTF8(NOTE_TEXT, true));
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
-    when(handler.hasFullAccess()).thenReturn(true);
-    when(handler.getServer()).thenReturn(server);
-    when(server.runtime()).thenReturn(runtimePorts);
-    when(runtimePorts.peer()).thenReturn(peerPort);
+    stubPeerPort();
     when(peerPort.writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT)).thenReturn(NOTE_TEXT);
 
     modifyPeerNote.run(handler, node);
 
+    verify(peerPort, times(1)).readPrivateDarknetComment(NODE_IDENTIFIER);
     verify(peerPort, times(1)).writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT);
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -241,5 +278,13 @@ class ModifyPeerNoteTest {
     fs.putSingle("Identifier", IDENTIFIER);
     fs.putSingle("NodeIdentifier", NODE_IDENTIFIER);
     return fs;
+  }
+
+  private void stubPeerPort() throws Exception {
+    when(handler.hasFullAccess()).thenReturn(true);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER)).thenReturn(EXISTING_NOTE);
   }
 }
