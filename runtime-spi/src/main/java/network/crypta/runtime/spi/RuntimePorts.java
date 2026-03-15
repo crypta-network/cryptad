@@ -21,6 +21,7 @@ package network.crypta.runtime.spi;
  * @see ConfigPort
  * @see NodeInfoPort
  * @see PeerPort
+ * @see RequestQueuePort
  */
 public interface RuntimePorts {
   /**
@@ -80,6 +81,17 @@ public interface RuntimePorts {
    * @return configuration runtime port for export, update, and persistence operations
    */
   ConfigPort config();
+
+  /**
+   * Returns the persistent-request queue-control capability exposed to infrastructure code.
+   *
+   * <p>This port lets callers submit persistent-request jobs, observe whether the persistence
+   * database has already been killed, and schedule lightweight delayed retries without depending on
+   * daemon-only persistence runners, client contexts, or ticker implementations.
+   *
+   * @return queue-control runtime port for persistent-request work and delayed retries
+   */
+  RequestQueuePort requestQueue();
 
   /**
    * Returns the node-info capability exposed to management-facing infrastructure code.

@@ -1,42 +1,14 @@
 package network.crypta.clients.fcp;
 
-import java.util.Random;
-import network.crypta.client.ArchiveManager;
-import network.crypta.client.FetchContext;
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientContextDefaults;
-import network.crypta.client.async.ClientContextRafFactories;
-import network.crypta.client.async.ClientContextRuntime;
-import network.crypta.client.async.ClientContextServices;
-import network.crypta.client.async.ClientContextStorageFactories;
-import network.crypta.client.async.ClientLayerPersister;
-import network.crypta.client.async.DatastoreChecker;
-import network.crypta.client.async.HealingQueue;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.USKManager;
-import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.config.Config;
-import network.crypta.crypt.MasterSecret;
-import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientContextResources;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.support.MemoryLimitedJobRunner;
-import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueTask;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.Ticker;
-import network.crypta.support.api.LockableRandomAccessBufferFactory;
-import network.crypta.support.compress.RealCompressor;
-import network.crypta.support.io.FileRandomAccessBufferFactory;
-import network.crypta.support.io.FilenameGenerator;
-import network.crypta.support.io.PersistentFileTracker;
-import network.crypta.support.io.PersistentTempBucketFactory;
-import network.crypta.support.io.TempBucketFactory;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,6 +27,11 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ListPersistentRequestsMessageTest {
+
+  @Mock private FCPConnectionHandler handler;
+  @Mock private FCPServer server;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RequestQueuePort requestQueuePort;
 
   @Test
   void getName_whenCalled_returnsConstant() {
@@ -77,62 +54,23 @@ class ListPersistentRequestsMessageTest {
   @Test
   void run_whenWatchGlobalDisabled_sendsEndAfterLocalClients() throws Exception {
     String identifier = "req-1";
-    SimpleFieldSet input = new SimpleFieldSet(true);
-    input.putSingle("Identifier", identifier);
-    ListPersistentRequestsMessage message = new ListPersistentRequestsMessage(input);
+    ListPersistentRequestsMessage message = new ListPersistentRequestsMessage(fieldSet(identifier));
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    FCPServer server = mock(FCPServer.class);
-    when(server.maxMessageQueueLength()).thenReturn(10);
-    when(handler.getServer()).thenReturn(server);
-
-    FCPConnectionOutputHandler outputHandler = new FCPConnectionOutputHandler(handler);
-    when(handler.getOutputHandler()).thenReturn(outputHandler);
-
+    FCPConnectionOutputHandler outputHandler = newOutputHandler();
     PersistentRequestClient rebootClient = mock(PersistentRequestClient.class);
     PersistentRequestClient foreverClient = mock(PersistentRequestClient.class);
     when(handler.getRebootClient()).thenReturn(rebootClient);
     when(handler.getForeverClient()).thenReturn(foreverClient);
+    mockQueuesReturningEmpty(identifier, outputHandler, rebootClient, foreverClient);
+    executePersistentTasksImmediately();
 
-    when(rebootClient.queuePendingMessagesOnConnectionRestart(
-            eq(outputHandler), eq(identifier), anyInt(), anyInt()))
-        .thenReturn(0);
-    when(rebootClient.queuePendingMessagesFromRunningRequests(
-            eq(outputHandler), eq(identifier), anyInt(), anyInt()))
-        .thenReturn(0);
-    when(foreverClient.queuePendingMessagesOnConnectionRestart(
-            eq(outputHandler), eq(identifier), anyInt(), anyInt()))
-        .thenReturn(0);
-    when(foreverClient.queuePendingMessagesFromRunningRequests(
-            eq(outputHandler), eq(identifier), anyInt(), anyInt()))
-        .thenReturn(0);
-
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = newClientContext(jobRunner, ticker);
-    NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-    when(core.getClientContext()).thenReturn(context);
-
-    doAnswer(
-            invocation -> {
-              PersistentJob job = invocation.getArgument(0);
-              return job.run(context);
-            })
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
-
-    message.run(handler, node);
+    message.run(handler, null);
 
     ArgumentCaptor<EndListPersistentRequestsMessage> captor =
         ArgumentCaptor.forClass(EndListPersistentRequestsMessage.class);
     verify(handler).send(captor.capture());
     assertEquals(identifier, captor.getValue().getFieldSet().get("Identifier"));
-
+    verify(requestQueuePort).submitPersistentJob(any(), eq(RequestQueuePriority.LISTING));
     verify(rebootClient).queuePendingMessagesOnConnectionRestart(outputHandler, identifier, 0, 30);
     verify(rebootClient).queuePendingMessagesFromRunningRequests(outputHandler, identifier, 0, 30);
     verify(foreverClient).queuePendingMessagesOnConnectionRestart(outputHandler, identifier, 0, 30);
@@ -142,18 +80,9 @@ class ListPersistentRequestsMessageTest {
   @Test
   void run_whenWatchGlobalEnabled_includesGlobalQueuesThenEnds() throws Exception {
     String identifier = "req-global";
-    SimpleFieldSet input = new SimpleFieldSet(true);
-    input.putSingle("Identifier", identifier);
-    ListPersistentRequestsMessage message = new ListPersistentRequestsMessage(input);
+    ListPersistentRequestsMessage message = new ListPersistentRequestsMessage(fieldSet(identifier));
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    FCPServer server = mock(FCPServer.class);
-    when(server.maxMessageQueueLength()).thenReturn(10);
-    when(handler.getServer()).thenReturn(server);
-
-    FCPConnectionOutputHandler outputHandler = new FCPConnectionOutputHandler(handler);
-    when(handler.getOutputHandler()).thenReturn(outputHandler);
-
+    FCPConnectionOutputHandler outputHandler = newOutputHandler();
     PersistentRequestClient rebootClient = mock(PersistentRequestClient.class);
     rebootClient.watchGlobal = true;
     PersistentRequestClient foreverClient = mock(PersistentRequestClient.class);
@@ -164,32 +93,14 @@ class ListPersistentRequestsMessageTest {
     when(handler.getForeverClient()).thenReturn(foreverClient);
     when(server.getGlobalRebootClient()).thenReturn(globalRebootClient);
     when(server.getGlobalForeverClient()).thenReturn(globalForeverClient);
-
     mockQueuesReturningEmpty(identifier, outputHandler, rebootClient, foreverClient);
     mockQueuesReturningEmpty(identifier, outputHandler, globalRebootClient, globalForeverClient);
+    executePersistentTasksImmediately();
 
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = newClientContext(jobRunner, ticker);
-    NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-    when(core.getClientContext()).thenReturn(context);
-
-    doAnswer(
-            invocation -> {
-              PersistentJob job = invocation.getArgument(0);
-              return job.run(context);
-            })
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
-
-    message.run(handler, node);
+    message.run(handler, null);
 
     verify(handler).send(any(EndListPersistentRequestsMessage.class));
+    verify(requestQueuePort, times(1)).submitPersistentJob(any(), eq(RequestQueuePriority.LISTING));
     verify(globalRebootClient)
         .queuePendingMessagesOnConnectionRestart(outputHandler, identifier, 0, 30);
     verify(globalForeverClient)
@@ -197,18 +108,35 @@ class ListPersistentRequestsMessageTest {
   }
 
   @Test
-  void listJob_whenOutputQueueHalfFull_reschedulesAndStops() {
+  void transientListJob_whenOutputQueueHalfFull_reschedulesViaRequestQueuePort() {
     FCPConnectionOutputHandler outputHandler = mock(FCPConnectionOutputHandler.class);
     when(outputHandler.isQueueHalfFull()).thenReturn(true);
 
     PersistentRequestClient client = mock(PersistentRequestClient.class);
-    TrackingListJob job = new TrackingListJob(client, outputHandler, "id", true);
+    TrackingTransientListJob job =
+        new TrackingTransientListJob(client, outputHandler, requestQueuePort, "id");
 
-    boolean result = job.run(null);
+    job.run();
 
-    assertFalse(result, "run should stop when rescheduled");
-    assertTrue(job.rescheduled, "reschedule should be invoked");
+    verify(requestQueuePort).scheduleLater(job, 100L);
     verifyNoInteractions(client);
+    assertFalse(job.completed);
+  }
+
+  @Test
+  void persistentListJob_whenRun_submitsListingTaskViaRequestQueuePort() throws Exception {
+    FCPConnectionOutputHandler outputHandler = mock(FCPConnectionOutputHandler.class);
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    TrackingPersistentListJob job =
+        new TrackingPersistentListJob(client, outputHandler, requestQueuePort, "id");
+
+    job.run();
+
+    ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
+    verify(requestQueuePort)
+        .submitPersistentJob(taskCaptor.capture(), eq(RequestQueuePriority.LISTING));
+    assertFalse(job.completed);
+    assertFalse(taskCaptor.getValue().run());
   }
 
   @Test
@@ -226,7 +154,7 @@ class ListPersistentRequestsMessageTest {
 
     TrackingListJob job = new TrackingListJob(client, outputHandler, "id", false);
 
-    boolean result = job.run(null);
+    boolean result = job.execute();
 
     assertFalse(result);
     assertTrue(job.completed);
@@ -237,6 +165,27 @@ class ListPersistentRequestsMessageTest {
             eq(outputHandler), eq("id"), restartOffsets.capture(), eq(30));
     assertEquals(0, restartOffsets.getAllValues().get(0));
     assertEquals(1, restartOffsets.getAllValues().get(1));
+  }
+
+  private FCPConnectionOutputHandler newOutputHandler() {
+    when(server.maxMessageQueueLength()).thenReturn(10);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.requestQueue()).thenReturn(requestQueuePort);
+    FCPConnectionOutputHandler outputHandler = new FCPConnectionOutputHandler(handler);
+    when(handler.getOutputHandler()).thenReturn(outputHandler);
+    return outputHandler;
+  }
+
+  private void executePersistentTasksImmediately() throws Exception {
+    doAnswer(
+            invocation -> {
+              RequestQueueTask task = invocation.getArgument(0);
+              task.run();
+              return null;
+            })
+        .when(requestQueuePort)
+        .submitPersistentJob(any(), eq(RequestQueuePriority.LISTING));
   }
 
   private static void mockQueuesReturningEmpty(
@@ -258,75 +207,13 @@ class ListPersistentRequestsMessageTest {
         .thenReturn(0);
   }
 
-  private static ClientContext newClientContext(ClientLayerPersister jobRunner, Ticker ticker) {
-    PriorityAwareExecutor executor =
-        new PriorityAwareExecutor() {
-
-          @Override
-          public void execute(@NotNull Runnable job) {
-            job.run();
-          }
-
-          @Override
-          public void execute(@NotNull Runnable job, String jobName) {
-            job.run();
-          }
-
-          @Override
-          public void execute(@NotNull Runnable job, String jobName, boolean fromTicker) {
-            job.run();
-          }
-
-          @Override
-          public int[] waitingThreads() {
-            return new int[0];
-          }
-
-          @Override
-          public int[] runningThreads() {
-            return new int[0];
-          }
-
-          @Override
-          public int getWaitingThreadsCount() {
-            return 0;
-          }
-        };
-
-    return new ClientContext(
-        1L,
-        new ClientContextRuntime(
-            jobRunner,
-            executor,
-            mock(MemoryLimitedJobRunner.class),
-            ticker,
-            mock(RandomSource.class),
-            new Random(0),
-            mock(MasterSecret.class)),
-        new ClientContextStorageFactories(
-            mock(PersistentTempBucketFactory.class),
-            mock(TempBucketFactory.class),
-            mock(PersistentFileTracker.class),
-            mock(FilenameGenerator.class),
-            mock(FilenameGenerator.class),
-            mock(FileRandomAccessBufferFactory.class),
-            mock(FileRandomAccessBufferFactory.class)),
-        new ClientContextRafFactories(
-            mock(LockableRandomAccessBufferFactory.class),
-            mock(LockableRandomAccessBufferFactory.class)),
-        new ClientContextServices(
-            new ClientContextResources(mock(ArchiveManager.class), mock(HealingQueue.class)),
-            mock(USKManager.class),
-            mock(RealCompressor.class),
-            mock(DatastoreChecker.class),
-            mock(PersistentRequestRoot.class),
-            mock(LinkFilterExceptionProvider.class)),
-        new ClientContextDefaults(
-            mock(FetchContext.class), mock(InsertContext.class), mock(Config.class)));
+  private static SimpleFieldSet fieldSet(String identifier) {
+    SimpleFieldSet input = new SimpleFieldSet(true);
+    input.putSingle("Identifier", identifier);
+    return input;
   }
 
   private static class TrackingListJob extends ListPersistentRequestsMessage.ListJob {
-    boolean rescheduled;
     boolean completed;
     private final boolean noRunning;
 
@@ -340,18 +227,54 @@ class ListPersistentRequestsMessageTest {
     }
 
     @Override
-    void reschedule(ClientContext context) {
-      rescheduled = true;
+    void reschedule() {
+      // No-op for this focused progress test.
     }
 
     @Override
-    void complete(ClientContext context) {
+    void complete() {
       completed = true;
     }
 
     @Override
     protected boolean noRunning() {
       return noRunning;
+    }
+  }
+
+  private static final class TrackingTransientListJob
+      extends ListPersistentRequestsMessage.TransientListJob {
+    boolean completed;
+
+    TrackingTransientListJob(
+        PersistentRequestClient client,
+        FCPConnectionOutputHandler outputHandler,
+        RequestQueuePort requestQueuePort,
+        String listRequestIdentifier) {
+      super(client, outputHandler, requestQueuePort, listRequestIdentifier);
+    }
+
+    @Override
+    void complete() {
+      completed = true;
+    }
+  }
+
+  private static final class TrackingPersistentListJob
+      extends ListPersistentRequestsMessage.PersistentListJob {
+    boolean completed;
+
+    TrackingPersistentListJob(
+        PersistentRequestClient client,
+        FCPConnectionOutputHandler outputHandler,
+        RequestQueuePort requestQueuePort,
+        String listRequestIdentifier) {
+      super(client, outputHandler, requestQueuePort, listRequestIdentifier, () -> {});
+    }
+
+    @Override
+    void complete() {
+      completed = true;
     }
   }
 }

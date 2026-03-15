@@ -14,6 +14,7 @@ import network.crypta.clients.fcp.ListPersistentRequestsMessage.PersistentListJo
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.TransientListJob;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
+import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,8 +158,8 @@ public final class PersistentRequestClient {
    * Returns the currently attached FCP connection handler.
    *
    * <p>The returned handler is mutable over the lifetime of the client and may be {@code null} when
-   * the peer is disconnected. Callers should snapshot the value once and avoid reusing it after
-   * reconnection events to prevent sending on a stale socket.
+   * the peer is disconnected. Callers should have snapshot the value once and avoid reusing it
+   * after reconnection events to prevent sending on a stale socket.
    *
    * @return active {@link FCPConnectionHandler} for this client, or {@code null} when disconnected.
    */
@@ -188,8 +189,8 @@ public final class PersistentRequestClient {
    * currently active connection reference, the reference is cleared. Use this when the underlying
    * transport closes unexpectedly so reconnection logic can proceed cleanly.
    *
-   * @param handler connection instance that was closed; only clears state when it equals the active
-   *     handler.
+   * @param handler connection instance that was closed; only clears the state when it equals the
+   *     active handler.
    */
   public synchronized void onLostConnection(FCPConnectionHandler handler) {
     handler.freeDDAJobs();
@@ -200,7 +201,7 @@ public final class PersistentRequestClient {
    * Marks a persistent request as finished and stages it for acknowledgment.
    *
    * <p>This method moves the request from the running list into the completed-but-unacknowledged
-   * list so the client can emit completion messages on reconnect. It also updates the {@link
+   * list so the client can emit completion messages on reconnection. It also updates the {@link
    * RequestStatusCache} with the final download or upload status. Callers must only invoke this for
    * requests whose {@link ClientRequest#persistence} matches the client; mixing lifetimes is
    * treated as a programmer error. The operation is idempotent for already-moved requests but still
@@ -208,7 +209,7 @@ public final class PersistentRequestClient {
    *
    * @param get finished {@link ClientRequest} that has not yet been acknowledged by the peer; must
    *     belong to this client and have matching persistence.
-   * @throws IllegalStateException if the request persistence does not match the client settings or
+   * @throws IllegalStateException if the request persistence does not match the client settings, or
    *     if the request type is unexpected when updating the cache.
    */
   public void finishedClientRequest(ClientRequest get) {
@@ -277,38 +278,37 @@ public final class PersistentRequestClient {
    * Asynchronously queues pending messages for replay after a connection restart.
    *
    * <p>Depending on the persistence mode, this spins up either a {@link PersistentListJob} or a
-   * {@link TransientListJob} to enumerate requests and emit the necessary responses. The job is run
-   * immediately on the provided {@link ClientContext} but does not block the caller. Completion is
-   * intentionally a no-op because this helper is used during reconnection flows that already manage
-   * lifecycle events.
+   * {@link TransientListJob} to list requests and emit the necessary responses. The job is run
+   * immediately using the connection handler's request-queue runtime port and does not block the
+   * caller. Completion is intentionally a no-op because this helper is used during reconnection
+   * flows that already manage lifecycle events.
    *
    * @param outputHandler handler used to enqueue outgoing FCP messages on the revived connection;
    *     must remain valid for the duration of the listing job.
-   * @param context execution context supplying thread pools and cancellation signals for the
-   *     listing job; must not be {@code null}.
    */
   public void queuePendingMessagesOnConnectionRestartAsync(
-      FCPConnectionOutputHandler outputHandler, ClientContext context) {
+      FCPConnectionOutputHandler outputHandler) {
+    RequestQueuePort requestQueuePort = outputHandler.handler.getServer().runtime().requestQueue();
     if (persistence == Persistence.FOREVER) {
       PersistentListJob job =
-          new PersistentListJob(this, outputHandler, context, null) {
+          new PersistentListJob(this, outputHandler, requestQueuePort, null, () -> {}) {
 
             @Override
-            void complete(ClientContext context) {
+            void complete() {
               // Do nothing.
             }
           };
-      job.run(context);
+      job.run();
     } else {
       TransientListJob job =
-          new TransientListJob(this, outputHandler, context, null) {
+          new TransientListJob(this, outputHandler, requestQueuePort, null) {
 
             @Override
-            void complete(ClientContext context) {
+            void complete() {
               // Do nothing.
             }
           };
-      job.run(context);
+      job.run();
     }
   }
 
@@ -417,10 +417,10 @@ public final class PersistentRequestClient {
    * Removes and optionally cancels a request by its identifier.
    *
    * <p>The method updates the status cache, unlinks the request from internal maps and lists, and
-   * notifies registered completion callbacks. When {@code kill} is true the request is cancelled
+   * notifies registered completion callbacks. When {@code kill} is true the request is canceled
    * before removal. It returns {@code false} if no request with the supplied identifier exists,
-   * leaving internal state unchanged. When a server is not provided a warning is logged because the
-   * caller may miss ancillary cleanup.
+   * leaving internal state unchanged. When a server is not provided, a warning is logged because
+   * the caller may miss ancillary cleanup.
    *
    * @param identifier unique request identifier belonging to this client; must not be {@code null}.
    * @param kill whether to cancel the request before removal to stop any in-flight work.
@@ -554,7 +554,7 @@ public final class PersistentRequestClient {
         LOG.error("BROKEN REQUEST LOADING PERSISTENT REQUEST STATUS: {}", t.getMessage(), t);
         // Consider surfacing this to the user if it becomes frequent.
       }
-      // Deactivation policy depends on callers; keep current behavior.
+      // The deactivation policy depends on callers; keep current behavior.
     }
   }
 
@@ -607,13 +607,11 @@ public final class PersistentRequestClient {
         if (persistence == Persistence.REBOOT)
           server
               .getGlobalRebootClient()
-              .queuePendingMessagesOnConnectionRestartAsync(
-                  connHandler.getOutputHandler(), server.getCore().getClientContext());
+              .queuePendingMessagesOnConnectionRestartAsync(connHandler.getOutputHandler());
         else
           server
               .getGlobalForeverClient()
-              .queuePendingMessagesOnConnectionRestartAsync(
-                  connHandler.getOutputHandler(), server.getCore().getClientContext());
+              .queuePendingMessagesOnConnectionRestartAsync(connHandler.getOutputHandler());
       }
       watchGlobal = true;
     }
@@ -693,7 +691,7 @@ public final class PersistentRequestClient {
   }
 
   /**
-   * Looks up a tracked request by its identifier without altering state.
+   * It looks up a tracked request by its identifier without altering the state.
    *
    * @param identifier request identifier previously registered with this client; must not be {@code
    *     null}.
@@ -737,8 +735,8 @@ public final class PersistentRequestClient {
    * Notifies registered completion callbacks that a request has failed.
    *
    * <p>As with {@link #notifySuccess(ClientRequest)}, the request must belong to this client. The
-   * method does not alter internal state; it only forwards the failure to listeners. Callers
-   * typically pair this with subsequent removal or retry logic.
+   * method does not alter the internal state; it only forwards the failure to listeners. Callers
+   * typically pair this with further removal or retry logic.
    *
    * @param req request that ended in failure; must match this client’s persistence policy.
    * @throws IllegalArgumentException if the request persistence does not match the client policy.
@@ -782,8 +780,9 @@ public final class PersistentRequestClient {
   /**
    * Clears all tracked requests and status cache entries for this client.
    *
-   * <p>Both running and completed queues are emptied and the identifier map is reset. The operation
-   * does not cancel in-flight work; callers should cancel or disconnect separately if required.
+   * <p>Both running and completed queues are emptied, and the identifier map is reset. The
+   * operation does not cancel in-flight work; callers should cancel or disconnect separately if
+   * required.
    */
   public void removeAll() {
     if (statusCache != null) statusCache.clear();
@@ -828,8 +827,8 @@ public final class PersistentRequestClient {
   /**
    * Reloads the status cache from persistent storage when operating in forever mode.
    *
-   * <p>This is typically called during startup to repopulate progress indicators from disk-backed
-   * request state. No effect occurs for reboot-persistent clients.
+   * <p>This is typically called during startup to repopulate progress indicators from the
+   * disk-backed request state. No effect occurs for reboot-persistent clients.
    */
   public void updateRequestStatusCache() {
     updateRequestStatusCache(statusCache);
@@ -874,9 +873,9 @@ public final class PersistentRequestClient {
   /**
    * Reattaches a deserialized or resumed request to this client.
    *
-   * <p>The request is placed into the appropriate queue based on completion state and added to the
-   * identifier map. If an entry with the same identifier already exists and refers to a different
-   * instance, an exception is thrown to prevent corruption.
+   * <p>The request is placed into the appropriate queue based on the completion state and added to
+   * the identifier map. If an entry with the same identifier already exists and refers to a
+   * different instance, an exception is thrown to prevent corruption.
    *
    * @param clientRequest request recovered from persistence or another source; must carry a unique
    *     identifier for this client.

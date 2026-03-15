@@ -1,8 +1,6 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,13 +24,7 @@ class WatchGlobalTest {
   @Mock private FCPConnectionHandler handler;
   @Mock private PersistentRequestClient rebootClient;
   @Mock private PersistentRequestClient foreverClient;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private NodeClientCore nodeClientCore;
-  @Mock private ClientEndpoints endpoints;
-  @Mock private FCPServer nodeFcpServer;
+  @Mock private Node node;
   @Mock private FCPServer handlerFcpServer;
 
   @Test
@@ -82,8 +74,7 @@ class WatchGlobalTest {
   void run_whenRebootSetWatchGlobalFails_sendsProtocolErrorAndUpdatesForeverClient()
       throws Exception {
     prepareSharedMocks();
-    when(handler.getServer()).thenReturn(handlerFcpServer);
-    when(rebootClient.setWatchGlobal(true, 3, nodeFcpServer)).thenReturn(false);
+    when(rebootClient.setWatchGlobal(true, 3, handlerFcpServer)).thenReturn(false);
     when(handler.getForeverClient()).thenReturn(foreverClient);
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(true, 3));
@@ -99,53 +90,44 @@ class WatchGlobalTest {
     assertTrue(errorFs.getBoolean("Global", false));
     assertEquals("Persistence disabled", errorFs.get("ExtraDescription"));
 
-    verify(rebootClient).setWatchGlobal(true, 3, nodeFcpServer);
+    verify(rebootClient).setWatchGlobal(true, 3, handlerFcpServer);
     verify(foreverClient).setWatchGlobal(true, 3, handlerFcpServer);
   }
 
   @Test
   void run_whenForeverClientMissing_skipsForeverWatchWithoutError() throws Exception {
     prepareSharedMocks();
-    when(rebootClient.setWatchGlobal(false, 9, nodeFcpServer)).thenReturn(true);
+    when(rebootClient.setWatchGlobal(false, 9, handlerFcpServer)).thenReturn(true);
     when(handler.getForeverClient()).thenReturn(null);
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(false, 9));
 
     watchGlobal.run(handler, node);
 
-    verify(rebootClient).setWatchGlobal(false, 9, nodeFcpServer);
-    verify(handler, never()).send(org.mockito.ArgumentMatchers.any(FCPMessage.class));
+    verify(rebootClient).setWatchGlobal(false, 9, handlerFcpServer);
+    verify(handler, never()).send(any(FCPMessage.class));
     verify(handler).getRebootClient();
     verify(handler).getForeverClient();
-    verify(nodeClientCore).getEndpoints();
-    verify(endpoints).getFCPServer();
-    verifyNoMoreInteractions(handler, rebootClient, node, nodeClientCore, nodeFcpServer);
   }
 
   @Test
-  void run_whenSetWatchGlobalSucceeds_updatesBothClientsWithoutError() throws Exception {
+  void run_whenSetWatchGlobalSucceeds_updatesBothClientsWithHandlerServer() throws Exception {
     prepareSharedMocks();
-    when(handler.getServer()).thenReturn(handlerFcpServer);
-    when(rebootClient.setWatchGlobal(false, 7, nodeFcpServer)).thenReturn(true);
+    when(rebootClient.setWatchGlobal(false, 7, handlerFcpServer)).thenReturn(true);
     when(handler.getForeverClient()).thenReturn(foreverClient);
 
     WatchGlobal watchGlobal = new WatchGlobal(fieldSet(false, 7));
 
     watchGlobal.run(handler, node);
 
-    verify(rebootClient).setWatchGlobal(false, 7, nodeFcpServer);
+    verify(rebootClient).setWatchGlobal(false, 7, handlerFcpServer);
     verify(foreverClient).setWatchGlobal(false, 7, handlerFcpServer);
-    verify(handler, never()).send(org.mockito.ArgumentMatchers.any(FCPMessage.class));
+    verify(handler, never()).send(any(FCPMessage.class));
   }
 
   private void prepareSharedMocks() {
     when(handler.getRebootClient()).thenReturn(rebootClient);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(nodeClientCore);
-    when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(nodeFcpServer);
+    when(handler.getServer()).thenReturn(handlerFcpServer);
   }
 
   private SimpleFieldSet fieldSet(boolean enabled, int verbosityMask) {

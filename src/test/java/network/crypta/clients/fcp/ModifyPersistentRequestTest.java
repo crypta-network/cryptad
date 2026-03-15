@@ -1,45 +1,16 @@
 package network.crypta.clients.fcp;
 
-import java.util.Random;
-import network.crypta.client.ArchiveManager;
-import network.crypta.client.FetchContext;
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientContextDefaults;
-import network.crypta.client.async.ClientContextRafFactories;
-import network.crypta.client.async.ClientContextRuntime;
-import network.crypta.client.async.ClientContextServices;
-import network.crypta.client.async.ClientContextStorageFactories;
-import network.crypta.client.async.ClientLayerPersister;
-import network.crypta.client.async.DatastoreChecker;
-import network.crypta.client.async.HealingQueue;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.USKManager;
-import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.config.Config;
-import network.crypta.crypt.MasterSecret;
-import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientContextResources;
-import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.support.MemoryLimitedJobRunner;
-import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueTask;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.Ticker;
-import network.crypta.support.api.LockableRandomAccessBufferFactory;
-import network.crypta.support.compress.RealCompressor;
-import network.crypta.support.io.FileRandomAccessBufferFactory;
-import network.crypta.support.io.FilenameGenerator;
-import network.crypta.support.io.NativeThread;
-import network.crypta.support.io.PersistentFileTracker;
-import network.crypta.support.io.PersistentTempBucketFactory;
-import network.crypta.support.io.TempBucketFactory;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,24 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100") // test method naming: method_whenCondition_expectOutcome
+@SuppressWarnings("java:S100")
 class ModifyPersistentRequestTest {
 
-  // ---------- Constructor validation ----------
+  @Mock private FCPConnectionHandler handler;
+  @Mock private Node node;
+  @Mock private FCPServer server;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RequestQueuePort requestQueuePort;
 
   @Test
   void constructor_whenIdentifierMissing_throwsMessageInvalidException() {
@@ -101,7 +70,6 @@ class ModifyPersistentRequestTest {
   void constructor_whenPriorityClassOutOfRange_throwsMessageInvalidException() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-2");
-    // RequestStarter.PAUSED_PRIORITY_CLASS == 6, MAXIMUM_PRIORITY_CLASS == 0
     fs.putSingle("PriorityClass", "7");
 
     MessageInvalidException ex =
@@ -126,8 +94,6 @@ class ModifyPersistentRequestTest {
     assertEquals(-1, message.priorityClass);
     assertNull(message.clientToken);
   }
-
-  // ---------- getFieldSet / getName ----------
 
   @Test
   void getFieldSet_whenClientTokenPresent_includesAllFields() throws Exception {
@@ -170,10 +136,8 @@ class ModifyPersistentRequestTest {
     assertEquals("ModifyPersistentRequest", message.getName());
   }
 
-  // ---------- run(): reboot request path ----------
-
   @Test
-  void run_whenRebootRequestExists_modifiesRequestViaNodeFcpServer() throws Exception {
+  void run_whenRebootRequestExists_modifiesRequestViaHandlerServer() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-7");
     fs.put("Global", false);
@@ -181,29 +145,16 @@ class ModifyPersistentRequestTest {
     fs.putSingle("ClientToken", "tok");
     ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    ClientRequest rebootRequest = mock(ClientRequest.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeClientCore core = mock(NodeClientCore.class);
-    FCPServer server = mock(FCPServer.class);
-
+    ClientRequest rebootRequest = org.mockito.Mockito.mock(ClientRequest.class);
     when(handler.getRebootRequest(false, handler, "req-7")).thenReturn(rebootRequest);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
-    when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(server);
+    when(handler.getServer()).thenReturn(server);
 
     message.run(handler, node);
 
-    verify(handler, times(1)).getRebootRequest(false, handler, "req-7");
-    verify(rebootRequest, times(1)).modifyRequest("tok", (short) 1, server);
+    verify(rebootRequest).modifyRequest("tok", (short) 1, server);
+    verifyNoInteractions(requestQueuePort);
     verify(handler, never()).send(any(FCPMessage.class));
   }
-
-  // ---------- run(): forever request path via job runner ----------
 
   @Test
   void run_whenRebootRequestMissingAndForeverRequestExists_modifiesRequestViaHandlerServer()
@@ -215,80 +166,47 @@ class ModifyPersistentRequestTest {
     fs.putSingle("ClientToken", "new-token");
     ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    ClientRequest foreverRequest = mock(ClientRequest.class);
-    FCPServer server = mock(FCPServer.class);
+    ClientRequest foreverRequest = org.mockito.Mockito.mock(ClientRequest.class);
+    stubRequestQueuePort();
     when(handler.getRebootRequest(false, handler, "req-8")).thenReturn(null);
     when(handler.getForeverRequest(false, handler, "req-8")).thenReturn(foreverRequest);
-    when(handler.getServer()).thenReturn(server);
-
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = newClientContext(jobRunner, ticker);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-
-    doAnswer(
-            invocation -> {
-              PersistentJob job = invocation.getArgument(0);
-              job.run(context);
-              return null;
-            })
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
 
     message.run(handler, node);
 
-    verify(jobRunner, times(1))
-        .queue(any(PersistentJob.class), eq(NativeThread.PriorityLevel.NORM_PRIORITY.value));
-    verify(handler, times(1)).getForeverRequest(false, handler, "req-8");
-    verify(foreverRequest, times(1)).modifyRequest("new-token", (short) 4, server);
+    ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
+    verify(requestQueuePort)
+        .submitPersistentJob(taskCaptor.capture(), eq(RequestQueuePriority.NORMAL));
+
+    boolean checkpointRequested = taskCaptor.getValue().run();
+
+    assertTrue(checkpointRequested);
+    verify(foreverRequest).modifyRequest("new-token", (short) 4, server);
     verify(handler, never()).send(any(ProtocolErrorMessage.class));
   }
 
   @Test
-  void run_whenRebootAndForeverRequestsMissing_sendsNoSuchIdentifierErrorFromJob()
+  void run_whenRebootAndForeverRequestsMissing_sendsNoSuchIdentifierErrorFromQueuedTask()
       throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-9");
     fs.put("Global", false);
     ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    stubRequestQueuePort();
     when(handler.getRebootRequest(false, handler, "req-9")).thenReturn(null);
     when(handler.getForeverRequest(false, handler, "req-9")).thenReturn(null);
 
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = newClientContext(jobRunner, ticker);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
+    message.run(handler, node);
+
+    ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
+    verify(requestQueuePort)
+        .submitPersistentJob(taskCaptor.capture(), eq(RequestQueuePriority.NORMAL));
+
+    taskCaptor.getValue().run();
 
     ArgumentCaptor<ProtocolErrorMessage> errorCaptor =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
-
-    doAnswer(
-            invocation -> {
-              PersistentJob job = invocation.getArgument(0);
-              job.run(context);
-              return null;
-            })
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
-
-    message.run(handler, node);
-
-    verify(handler, times(1)).send(errorCaptor.capture());
+    verify(handler).send(errorCaptor.capture());
     ProtocolErrorMessage error = errorCaptor.getValue();
     assertNotNull(error);
     assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.getCode());
@@ -298,41 +216,26 @@ class ModifyPersistentRequestTest {
     assertNull(error.extra);
   }
 
-  // ---------- run(): persistence disabled path ----------
-
   @Test
-  void run_whenPersistenceDisabled_sendsNoSuchIdentifierErrorImmediately() throws Exception {
+  void run_whenQueueUnavailable_sendsNoSuchIdentifierErrorImmediately() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-10");
     fs.put("Global", true);
     ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
 
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    stubRequestQueuePort();
     when(handler.getRebootRequest(true, handler, "req-10")).thenReturn(null);
-
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = newClientContext(jobRunner, ticker);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-
-    doThrow(new PersistenceDisabledException())
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
+    doThrow(new RequestQueueUnavailableException("disabled"))
+        .when(requestQueuePort)
+        .submitPersistentJob(any(), eq(RequestQueuePriority.NORMAL));
 
     ArgumentCaptor<ProtocolErrorMessage> errorCaptor =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
 
     message.run(handler, node);
 
-    verify(handler, times(1)).send(errorCaptor.capture());
-    verify(handler, never())
-        .getForeverRequest(anyBoolean(), any(FCPConnectionHandler.class), anyString());
+    verify(handler).send(errorCaptor.capture());
+    verify(handler, never()).getForeverRequest(eq(true), eq(handler), eq("req-10"));
     ProtocolErrorMessage error = errorCaptor.getValue();
     assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.getCode());
     assertFalse(error.fatal);
@@ -341,99 +244,9 @@ class ModifyPersistentRequestTest {
     assertNull(error.extra);
   }
 
-  @Test
-  void run_whenRebootRequestExists_doesNotInteractWithJobRunner() throws Exception {
-    SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", "req-11");
-    fs.put("Global", false);
-    ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    ClientRequest rebootRequest = mock(ClientRequest.class);
-    when(handler.getRebootRequest(false, handler, "req-11")).thenReturn(rebootRequest);
-
-    ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
-    NodeClientCore core = mock(NodeClientCore.class);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
-    when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(mock(FCPServer.class));
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(core);
-
-    message.run(handler, node);
-
-    verifyNoInteractions(jobRunner);
-  }
-
-  // ---------- Test helpers ----------
-
-  private static ClientContext newClientContext(ClientLayerPersister jobRunner, Ticker ticker) {
-    PriorityAwareExecutor executor =
-        new PriorityAwareExecutor() {
-
-          @Override
-          public void execute(@NotNull Runnable job) {
-            job.run();
-          }
-
-          @Override
-          public void execute(@NotNull Runnable job, String jobName) {
-            job.run();
-          }
-
-          @Override
-          public void execute(@NotNull Runnable job, String jobName, boolean fromTicker) {
-            job.run();
-          }
-
-          @Override
-          public int[] waitingThreads() {
-            return new int[0];
-          }
-
-          @Override
-          public int[] runningThreads() {
-            return new int[0];
-          }
-
-          @Override
-          public int getWaitingThreadsCount() {
-            return 0;
-          }
-        };
-
-    return new ClientContext(
-        1L,
-        new ClientContextRuntime(
-            jobRunner,
-            executor,
-            mock(MemoryLimitedJobRunner.class),
-            ticker,
-            mock(RandomSource.class),
-            new Random(0),
-            mock(MasterSecret.class)),
-        new ClientContextStorageFactories(
-            mock(PersistentTempBucketFactory.class),
-            mock(TempBucketFactory.class),
-            mock(PersistentFileTracker.class),
-            mock(FilenameGenerator.class),
-            mock(FilenameGenerator.class),
-            mock(FileRandomAccessBufferFactory.class),
-            mock(FileRandomAccessBufferFactory.class)),
-        new ClientContextRafFactories(
-            mock(LockableRandomAccessBufferFactory.class),
-            mock(LockableRandomAccessBufferFactory.class)),
-        new ClientContextServices(
-            new ClientContextResources(mock(ArchiveManager.class), mock(HealingQueue.class)),
-            mock(USKManager.class),
-            mock(RealCompressor.class),
-            mock(DatastoreChecker.class),
-            mock(PersistentRequestRoot.class),
-            mock(LinkFilterExceptionProvider.class)),
-        new ClientContextDefaults(
-            mock(FetchContext.class), mock(InsertContext.class), mock(Config.class)));
+  private void stubRequestQueuePort() {
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.requestQueue()).thenReturn(requestQueuePort);
   }
 }

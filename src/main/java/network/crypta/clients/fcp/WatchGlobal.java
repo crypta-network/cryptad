@@ -8,7 +8,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>This message is sent by an FCP client when it wants to receive node-wide notifications (such
  * as request lifecycle updates) beyond its own request scope. The handler stores the preference on
- * both the reboot-persistent client and the in-memory forever client so the subscription survives
+ * both the reboot-persistent client and the in-memory forever client, so the subscription survives
  * across reconnections when persistence is available. Applications typically send this once during
  * session initialization and keep the returned verbosity mask aligned with their logging strategy.
  *
@@ -120,17 +120,14 @@ public final class WatchGlobal extends FCPMessage {
    *
    * @param handler active connection handler that owns both persistent and in-memory clients; must
    *     not be {@code null} and is expected to originate the incoming FCP message.
-   * @param node current node instance supplying the client core and FCP server used to register the
-   *     watch; must expose a non-null client core when invoked.
-   * @throws MessageInvalidException if subordinate clients reject the configuration change or the
+   * @param node the current node instance supplying the client core and FCP server used to register
+   *     the watch; must expose a non-null client core when invoked.
+   * @throws MessageInvalidException if subordinate clients reject the configuration change, or the
    *     handler signals a protocol-level validation failure.
    */
   @Override
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    if (!handler
-        .getRebootClient()
-        .setWatchGlobal(
-            enabled, verbosityMask, node.services().clientCore().getEndpoints().getFCPServer())) {
+    if (!handler.getRebootClient().setWatchGlobal(enabled, verbosityMask, handler.getServer())) {
       FCPMessage err =
           new ProtocolErrorMessage(
               ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence disabled", null, true);

@@ -1,14 +1,12 @@
 package network.crypta.clients.fcp;
 
-import java.lang.reflect.Field;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.PersistentJobRunner;
-import network.crypta.node.NodeClientCore;
+import network.crypta.node.Node;
+import network.crypta.runtime.spi.RequestQueuePort;
+import network.crypta.runtime.spi.RequestQueuePriority;
+import network.crypta.runtime.spi.RequestQueueTask;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.NativeThread;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,9 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,24 +28,17 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100") // method naming: method_whenCondition_expectOutcome
+@SuppressWarnings("java:S100")
 class RemovePersistentRequestTest {
 
   private static final String IDENTIFIER = "req-id";
 
   @Mock private FCPConnectionHandler handler;
+  @Mock private Node node;
   @Mock private FCPServer server;
-  @Mock private NodeClientCore core;
-  @Mock private ClientContext clientContext;
-  @Mock private PersistentJobRunner jobRunner;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RequestQueuePort requestQueuePort;
   @Mock private ClientRequest clientRequest;
-
-  @BeforeEach
-  void setUp() throws Exception {
-    Field jobRunnerField = ClientContext.class.getField("jobRunner");
-    jobRunnerField.setAccessible(true);
-    jobRunnerField.set(clientContext, jobRunner);
-  }
 
   @Test
   void constructor_whenIdentifierMissing_throwsMessageInvalidException() {
@@ -92,70 +81,66 @@ class RemovePersistentRequestTest {
     RemovePersistentRequest message = new RemovePersistentRequest(fs);
     when(handler.removePersistentRebootRequest(false, IDENTIFIER)).thenReturn(clientRequest);
 
-    message.run(handler, null);
+    message.run(handler, node);
 
     verify(handler).removePersistentRebootRequest(false, IDENTIFIER);
     verify(handler, never()).removeRequestByIdentifier(any(), anyBoolean());
-    verifyNoInteractions(jobRunner);
+    verifyNoInteractions(requestQueuePort);
   }
 
   @Test
-  void run_whenNonPersistentRequestFound_skipsPersistenceJob() throws Exception {
+  void run_whenNonPersistentRequestFound_skipsPersistentQueue() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
     RemovePersistentRequest message = new RemovePersistentRequest(fs);
     when(handler.removePersistentRebootRequest(false, IDENTIFIER)).thenReturn(null);
     when(handler.removeRequestByIdentifier(IDENTIFIER, true)).thenReturn(clientRequest);
 
-    message.run(handler, null);
+    message.run(handler, node);
 
     verify(handler).removePersistentRebootRequest(false, IDENTIFIER);
     verify(handler).removeRequestByIdentifier(IDENTIFIER, true);
     verify(handler, never()).removePersistentForeverRequest(anyBoolean(), any());
-    verifyNoInteractions(jobRunner);
+    verifyNoInteractions(requestQueuePort);
   }
 
   @Test
-  void run_whenQueuedJobRuns_removesForeverRequest() throws Exception {
+  void run_whenQueuedTaskRuns_removesForeverRequest() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
     fs.put("Global", true);
     RemovePersistentRequest message = new RemovePersistentRequest(fs);
+
+    stubRequestQueuePort();
     when(handler.removePersistentRebootRequest(true, IDENTIFIER)).thenReturn(null);
     when(handler.removePersistentForeverRequest(true, IDENTIFIER)).thenReturn(clientRequest);
-    stubJobRunnerChain();
-    ArgumentCaptor<PersistentJob> jobCaptor = ArgumentCaptor.forClass(PersistentJob.class);
-    doAnswer(invocation -> null)
-        .when(jobRunner)
-        .queue(jobCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
 
-    message.run(handler, null);
+    message.run(handler, node);
 
-    verify(handler).removePersistentRebootRequest(true, IDENTIFIER);
-    verify(handler, never()).removeRequestByIdentifier(any(), anyBoolean());
-    verify(jobRunner)
-        .queue(any(PersistentJob.class), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
+    ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
+    verify(requestQueuePort)
+        .submitPersistentJob(taskCaptor.capture(), eq(RequestQueuePriority.HIGH));
 
-    PersistentJob captured = jobCaptor.getValue();
-    boolean result = captured.run(clientContext);
+    boolean result = taskCaptor.getValue().run();
 
     assertTrue(result);
     verify(handler).removePersistentForeverRequest(true, IDENTIFIER);
   }
 
   @Test
-  void run_whenPersistenceDisabled_sendsProtocolError() throws Exception {
+  void run_whenQueueUnavailable_sendsPersistenceDisabledProtocolError() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
     RemovePersistentRequest message = new RemovePersistentRequest(fs);
+
+    stubRequestQueuePort();
     when(handler.removePersistentRebootRequest(false, IDENTIFIER)).thenReturn(null);
     when(handler.removeRequestByIdentifier(IDENTIFIER, true)).thenReturn(null);
-    stubJobRunnerChain();
-    doThrow(new PersistenceDisabledException())
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
+    doThrow(new RequestQueueUnavailableException("disabled"))
+        .when(requestQueuePort)
+        .submitPersistentJob(any(), eq(RequestQueuePriority.HIGH));
 
-    message.run(handler, null);
+    message.run(handler, node);
 
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(messageCaptor.capture());
@@ -165,9 +150,9 @@ class RemovePersistentRequestTest {
     assertEquals("Persistence disabled and non-persistent request not found", error.extra);
   }
 
-  private void stubJobRunnerChain() {
+  private void stubRequestQueuePort() {
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.getClientContext()).thenReturn(clientContext);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.requestQueue()).thenReturn(requestQueuePort);
   }
 }
