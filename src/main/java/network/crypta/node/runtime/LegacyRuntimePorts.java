@@ -14,6 +14,7 @@ import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.StatisticsPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 
 /**
@@ -40,6 +41,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final ConfigPort configPort;
   private final ConnectivityPort connectivityPort;
   private final DiagnosticPort diagnosticPort;
+  private final StatisticsPort statisticsPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -125,6 +127,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.configPort = new LegacyConfigPort(node, core);
     this.connectivityPort = new LegacyConnectivityPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
+    this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -204,6 +207,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DiagnosticPort diagnostic() {
     return diagnosticPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the legacy statistics-page traversal and HTML-template generation
+   * inside the daemon root module while exposing only detached SPI-local snapshots upstream.
+   */
+  @Override
+  public StatisticsPort statistics() {
+    return statisticsPort;
   }
 
   /**

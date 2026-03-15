@@ -599,7 +599,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       if (numARKFetchers > 0) {
         activityList.addChild("li", "ARK\u00a0Fetch\u00a0Requests:\u00a0" + numARKFetchers);
       }
-      StatisticsToadlet.drawBandwidth(activityList, node, nodeUptimeSeconds, true);
+      StatisticsToadlet.drawBandwidth(activityList, node, nodeUptimeSeconds);
     }
   }
 

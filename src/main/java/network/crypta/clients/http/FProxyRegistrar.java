@@ -315,7 +315,8 @@ final class FProxyRegistrar {
     BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
     server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
 
-    StatisticsToadlet statisticsToadlet = new StatisticsToadlet(node, core, client);
+    StatisticsToadlet statisticsToadlet =
+        new StatisticsToadlet(client, core.getRuntimePorts().statistics());
     server.register(
         statisticsToadlet,
         ToadletRegistration.menuLink(
