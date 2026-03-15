@@ -21,6 +21,7 @@ package network.crypta.runtime.spi;
  * @see ConfigPort
  * @see ConnectivityPort
  * @see DiagnosticPort
+ * @see StatisticsPort
  * @see NodeInfoPort
  * @see PeerPort
  * @see RequestQueuePort
@@ -108,6 +109,19 @@ public interface RuntimePorts {
    * @return diagnostic-report runtime port for read-only report snapshots
    */
   DiagnosticPort diagnostic();
+
+  /**
+   * Returns the legacy statistics-page capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached HTML-template snapshot for either the main
+   * statistics overview or the requester subpage without depending on daemon-only node, peer,
+   * requester, or HTML builder types. Request-context-only controls remain in the HTTP layer, but
+   * the returned object keeps the large legacy page traversal and formatting inside the daemon root
+   * module.
+   *
+   * @return statistics-page runtime port for detached overview and requester snapshots
+   */
+  StatisticsPort statistics();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.
