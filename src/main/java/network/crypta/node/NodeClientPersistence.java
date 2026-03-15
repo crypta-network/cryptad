@@ -253,10 +253,10 @@ public final class NodeClientPersistence {
   /**
    * Creates the FCP server configured for this node and client core.
    *
-   * <p>The server is constructed via {@link FCPServer#maybeCreate(Node, NodeClientCore,
-   * RuntimePorts, network.crypta.config.Config, PersistentRequestRoot)} and shares this instance's
-   * persistent request root so durable requests can be managed consistently across reconnections.
-   * This method performs no side effects beyond the delegation.
+   * <p>The server is constructed via {@link FCPServer#maybeCreate(NodeClientCore, RuntimePorts,
+   * network.crypta.config.Config, PersistentRequestRoot)} and shares this instance's persistent
+   * request root so durable requests can be managed consistently across reconnections. This method
+   * performs no side effects beyond the delegation.
    *
    * @param node node instance supplying configuration and shared services.
    * @param core client core used by the FCP server for callbacks.
@@ -264,7 +264,7 @@ public final class NodeClientPersistence {
    * @return the configured FCP server instance from {@code maybeCreate}.
    */
   public FCPServer createFcpServer(Node node, NodeClientCore core, RuntimePorts runtimePorts) {
-    return FCPServer.maybeCreate(node, core, runtimePorts, node.getConfig(), persistentRoot);
+    return FCPServer.maybeCreate(core, runtimePorts, node.getConfig(), persistentRoot);
   }
 
   /**

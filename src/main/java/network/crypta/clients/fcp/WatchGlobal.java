@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -46,7 +45,7 @@ public final class WatchGlobal extends FCPMessage {
    * processing for the current request.
    *
    * <p>Usage is straightforward: instantiate within an FCP handler when a {@code WatchGlobal}
-   * message arrives, then invoke {@link #run(FCPConnectionHandler, Node)} to apply the preference.
+   * message arrives, then invoke {@link #run(FCPConnectionHandler)} to apply the preference.
    *
    * @param fs non-null set of key/value pairs received from the peer; expects {@code Enabled}
    *     (boolean) and optional {@code VerbosityMask} (integer) entries and tolerates absent fields.
@@ -115,18 +114,16 @@ public final class WatchGlobal extends FCPMessage {
    *
    * <pre>{@code
    * var msg = new WatchGlobal(fields);
-   * msg.run(connectionHandler, node);
+   * msg.run(connectionHandler);
    * }</pre>
    *
    * @param handler active connection handler that owns both persistent and in-memory clients; must
    *     not be {@code null} and is expected to originate the incoming FCP message.
-   * @param node the current node instance supplying the client core and FCP server used to register
-   *     the watch; must expose a non-null client core when invoked.
    * @throws MessageInvalidException if subordinate clients reject the configuration change, or the
    *     handler signals a protocol-level validation failure.
    */
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.getRebootClient().setWatchGlobal(enabled, verbosityMask, handler.getServer())) {
       FCPMessage err =
           new ProtocolErrorMessage(

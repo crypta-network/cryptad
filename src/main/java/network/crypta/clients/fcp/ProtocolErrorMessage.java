@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Map;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -249,10 +248,9 @@ public final class ProtocolErrorMessage extends FCPMessage implements Serializab
    *
    * @param handler active FCP connection handler receiving the message; never {@code null} during
    *     normal operation
-   * @param node current node instance that owns the connection; used by higher-level handlers
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) {
+  public void run(FCPConnectionHandler handler) {
     LOG.error("Client reported protocol error");
   }
 

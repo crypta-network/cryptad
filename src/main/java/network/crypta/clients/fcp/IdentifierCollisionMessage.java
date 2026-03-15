@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -14,9 +13,8 @@ import network.crypta.support.SimpleFieldSet;
  * <p>The class only serializes the collision metadata; it does not attempt to resolve or mutate any
  * node state. It is safe for concurrent use because all fields are final and no mutable state is
  * exposed. Typical usage is server-side construction followed by {@link #getFieldSet()} when
- * marshalling an outbound FCP response. The {@link #run(FCPConnectionHandler, Node)} method
- * intentionally rejects inbound execution because this message must not be sent from clients to the
- * node.
+ * marshalling an outbound FCP response. The {@link #run(FCPConnectionHandler)} method intentionally
+ * rejects inbound execution because this message must not be sent from clients to the node.
  *
  * <ul>
  *   <li>Encapsulates the offending client identifier and collision scope.
@@ -92,12 +90,11 @@ public class IdentifierCollisionMessage extends FCPMessage {
    *
    * @param handler connection handler that received the message; ignored because execution always
    *     aborts.
-   * @param node node instance tied to the connection; ignored because no processing occurs.
    * @throws MessageInvalidException always thrown to signal the invalid message direction before
    *     any state is modified or work is scheduled.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "IdentifierCollision goes from server to client not the other way around",

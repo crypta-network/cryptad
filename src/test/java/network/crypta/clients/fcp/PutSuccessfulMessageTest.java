@@ -48,7 +48,7 @@ class PutSuccessfulMessageTest {
     PutSuccessfulMessage message = new PutSuccessfulMessage("id-123", false, null, 0L, 0L);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);
     assertEquals(

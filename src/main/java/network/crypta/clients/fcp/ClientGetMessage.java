@@ -10,7 +10,6 @@ import java.util.Locale;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -368,11 +367,9 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
    * identifiers and client tokens.
    *
    * @param handler active connection handler orchestrating ClientGet lifecycle and status relays.
-   * @param node node instance whose datastore, routing, and scheduler components execute the
-   *     request.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) {
+  public void run(FCPConnectionHandler handler) {
     handler.startClientGet(this);
   }
 

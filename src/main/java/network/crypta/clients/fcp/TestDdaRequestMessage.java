@@ -17,8 +17,8 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>Instances are immutable after construction and are expected to be short-lived; they are not
  * reused across multiple checks. The class performs no I/O itself and is thread-confined to the
- * handler thread that calls {@link #run(FCPConnectionHandler, Node)}. Incoming field values are
- * used exactly as provided; callers should avoid reusing paths that may change between checks.
+ * handler thread that calls {@link #run(FCPConnectionHandler)}. Incoming field values are used
+ * exactly as provided; callers should avoid reusing paths that may change between checks.
  *
  * <ul>
  *   <li>Validates client intent and basic safety assumptions.
@@ -145,12 +145,11 @@ public final class TestDdaRequestMessage extends FCPMessage {
    *
    * @param handler connection-scoped handler responsible for scheduling DDA checks and sending
    *     replies synchronously.
-   * @param node owning node instance for contextual compatibility; not dereferenced by this method.
    * @throws MessageInvalidException if handler rejects the directory or if validation fails during
    *     enqueueing.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     DdaCheckJob job;
     try {
       job = handler.enqueueDDACheck(requestedDirectory, wantRead, wantWrite);

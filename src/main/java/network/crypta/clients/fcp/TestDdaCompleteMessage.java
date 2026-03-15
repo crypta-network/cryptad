@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -166,11 +165,10 @@ public class TestDdaCompleteMessage extends FCPMessage {
    *
    * @param handler connection handler that attempted to execute the message; ignored because the
    *     method always fails fast.
-   * @param node node instance associated with the handler; unused in this implementation.
    * @throws MessageInvalidException always thrown to indicate the message direction is invalid.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         NAME + " goes from server to client not the other way around",

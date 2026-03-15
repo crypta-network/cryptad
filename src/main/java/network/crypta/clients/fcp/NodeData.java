@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.support.SimpleFieldSet;
@@ -106,13 +105,11 @@ public class NodeData extends FCPMessage {
    * correctness.
    *
    * @param handler connection handler that attempted to route the message; ignored after failure.
-   * @param node node instance associated with the connection; not used because execution is
-   *     blocked.
    * @throws MessageInvalidException whenever invoked because clients must not send {@code
    *     NodeData}.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "NodeData goes from server to client not the other way around",

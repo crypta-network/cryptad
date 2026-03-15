@@ -506,11 +506,10 @@ public final class ClientPutMessage extends DataCarryingMessage {
    *
    * @param handler connection handler that accepted the message and coordinates streaming
    *     back-pressure
-   * @param node node instance used to resolve persistence settings and enforce configured limits
    * @throws MessageInvalidException if the handler detects inconsistency during late validation
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     handler.startClientPut(this);
   }
 

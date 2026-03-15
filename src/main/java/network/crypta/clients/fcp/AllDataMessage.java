@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 
@@ -138,11 +137,10 @@ public class AllDataMessage extends DataCarryingMessage {
    * an explicit error.
    *
    * @param handler connection handler that attempted execution; recorded only for diagnostics
-   * @param node node context in which this outbound response originated; otherwise unused
    * @throws MessageInvalidException always thrown to indicate the directionality violation
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "AllData goes from server to client not the other way around",

@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.CompatibilityAnalyser;
-import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 
@@ -15,7 +14,7 @@ import network.crypta.support.SimpleFieldSet;
  * instance once an analyser settles on definitive values, set the {@code identifier} that ties the
  * message back to their request queue, and send it over an {@link FCPConnectionHandler} so the node
  * can acknowledge whether it understands the announced range. Because the message is purely
- * descriptive, the {@link #run(FCPConnectionHandler, Node)} hook is intentionally unsupported.
+ * descriptive, the {@link #run(FCPConnectionHandler)} hook is intentionally unsupported.
  *
  * <p>The class keeps a reference to the analyser rather than copying individual values, ensuring
  * that {@link #getFieldSet()} always reflects the analyser's most recent view when serialization
@@ -121,12 +120,11 @@ public class CompatibilityMode extends FCPMessage {
    *
    * @param handler connection handler provided by the FCP framework; ignored because the method is
    *     unsupported.
-   * @param node node instance associated with the FCP server; ignored for the same reason.
    * @throws MessageInvalidException declared for compatibility with the superclass but never thrown
    *     because the method terminates earlier with {@link UnsupportedOperationException}.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new UnsupportedOperationException();
   }
 

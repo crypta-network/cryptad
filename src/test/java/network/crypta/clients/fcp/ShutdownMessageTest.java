@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,8 @@ import static org.mockito.Mockito.when;
 class ShutdownMessageTest {
 
   @Mock private FCPConnectionHandler handler;
+  @Mock private FCPServer server;
+  @Mock private NodeClientCore core;
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
@@ -51,7 +54,7 @@ class ShutdownMessageTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode);
     assertEquals("Shutdown requires full access", thrown.getMessage());
@@ -66,10 +69,13 @@ class ShutdownMessageTest {
       throws MessageInvalidException {
     ShutdownMessage message = new ShutdownMessage();
     when(handler.hasFullAccess()).thenReturn(true);
+    when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(core);
+    when(core.getNode()).thenReturn(node);
     ArgumentCaptor<ProtocolErrorMessage> sentMessage =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).send(sentMessage.capture());
     verify(node).exit("Received FCP shutdown message");

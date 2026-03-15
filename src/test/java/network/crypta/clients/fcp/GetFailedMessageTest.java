@@ -9,7 +9,6 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
@@ -28,9 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GetFailedMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getFieldSet_whenGlobalFalse_setsGlobalFalse() {
@@ -139,7 +135,7 @@ class GetFailedMessageTest {
     GetFailedMessage message = new GetFailedMessage(exception, "run-id", true);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals("run-id", thrown.ident);
     assertTrue(thrown.global);

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,9 +20,6 @@ import static org.mockito.Mockito.verify;
 class DisconnectMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getFieldSet_whenInvoked_returnsIndependentEmptyFieldSet() {
@@ -50,7 +46,7 @@ class DisconnectMessageTest {
   void run_whenCalled_invokesHandlerClose() throws MessageInvalidException {
     DisconnectMessage message = new DisconnectMessage(new SimpleFieldSet(true));
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).close();
   }
@@ -61,8 +57,7 @@ class DisconnectMessageTest {
     RuntimeException failure = new RuntimeException("boom");
     doThrow(failure).when(handler).close();
 
-    RuntimeException thrown =
-        assertThrows(RuntimeException.class, () -> message.run(handler, node));
+    RuntimeException thrown = assertThrows(RuntimeException.class, () -> message.run(handler));
 
     assertSame(failure, thrown);
   }

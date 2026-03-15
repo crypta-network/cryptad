@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -95,13 +94,11 @@ public class CloseConnectionDuplicateClientNameMessage extends FCPMessage {
    * be closed immediately after propagating it.
    *
    * @param handler connection-specific context that surfaced the offending message; never null.
-   * @param node node instance receiving the invalid inbound request and orchestrating shutdown
-   *     sequencing; never null.
    * @throws MessageInvalidException always thrown to stop processing because the message direction
    *     is unsupported and represents a client error.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "CloseConnectionDuplicateClientName goes from server to client not the other way around",

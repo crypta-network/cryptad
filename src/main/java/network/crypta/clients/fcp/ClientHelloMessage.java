@@ -16,10 +16,10 @@ import network.crypta.support.SimpleFieldSet;
  * when exercising integration tests or diagnostics.
  *
  * <p>The class is effectively immutable once constructed, so it can be safely passed across threads
- * as part of the connection pipeline. Invocation of {@link #run(FCPConnectionHandler, Node)} is
- * expected to happen on the per-connection handler thread; after it completes the handler registers
- * the supplied client name and the node replies with a {@link NodeHelloMessage}. No synchronization
- * is and remains thread-safe as long as the surrounding {@link FCPConnectionHandler} keeps its
+ * as part of the connection pipeline. Invocation of {@link #run(FCPConnectionHandler)} is expected
+ * to happen on the per-connection handler thread; after it completes the handler registers the
+ * supplied client name and the node replies with a {@link NodeHelloMessage}. No synchronization is
+ * and remains thread-safe as long as the surrounding {@link FCPConnectionHandler} keeps its
  * single-threaded contract.
  *
  * <ul>
@@ -122,15 +122,14 @@ public final class ClientHelloMessage extends FCPMessage {
    *
    * <pre>{@code
    * ClientHelloMessage hello = ...;
-   * hello.run(handler, node);
+   * hello.run(handler);
    * }</pre>
    *
    * @param handler connection handler sending {@link NodeHelloMessage} and storing the announced
    *     client label.
-   * @param node owning node reference reserved for future behavior, currently unused.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) {
+  public void run(FCPConnectionHandler handler) {
     // We know the Hello is valid.
     NodeGreetingSnapshot greeting = handler.getServer().runtime().nodeInfo().greeting();
     FCPMessage msg =

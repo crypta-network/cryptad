@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -13,8 +12,8 @@ import network.crypta.support.SimpleFieldSet;
  * <p>The instance is immutable: the identifier and accompanying flags are captured from the parsed
  * {@link SimpleFieldSet} and reused whenever the message is serialized or executed. Typical callers
  * construct it from an inbound request, hand it to the active {@link FCPConnectionHandler}, and let
- * {@link #run(FCPConnectionHandler, Node)} walk the reboot-time and persistent queues. When a match
- * is found, pending progress or data messages are forwarded; missing identifiers trigger a {@link
+ * {@link #run(FCPConnectionHandler)} walk the reboot-time and persistent queues. When a match is
+ * found, pending progress or data messages are forwarded; missing identifiers trigger a {@link
  * ProtocolErrorMessage} with {@link ProtocolErrorMessage#NO_SUCH_IDENTIFIER}.
  *
  * <p>Concurrency: the object is thread-safe through immutability. Execution normally occurs on the
@@ -30,7 +29,7 @@ import network.crypta.support.SimpleFieldSet;
  * <pre>{@code
  * // Example: forwarding a parsed message to the handler
  * var message = new GetRequestStatusMessage(parsedFields);
- * message.run(handler, node);
+ * message.run(handler);
  * }</pre>
  */
 public class GetRequestStatusMessage extends FCPMessage {
@@ -103,13 +102,11 @@ public class GetRequestStatusMessage extends FCPMessage {
    *
    * @param handler connection-scoped dispatcher that resolves client requests and emits replies;
    *     must not be null and typically represents the active FCP session.
-   * @param node owning node instance providing access to client cores and persistence; expected to
-   *     be fully initialized for job submission.
    * @throws MessageInvalidException if the handler detects protocol-level validation problems
    *     unrelated to missing identifiers.
    */
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
       RequestQueuePort requestQueuePort = handler.getServer().runtime().requestQueue();

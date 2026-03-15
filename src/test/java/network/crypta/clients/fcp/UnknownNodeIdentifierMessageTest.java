@@ -55,7 +55,7 @@ class UnknownNodeIdentifierMessageTest {
     UnknownNodeIdentifierMessage message = new UnknownNodeIdentifierMessage("node-id", "ident");
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);
     assertEquals(

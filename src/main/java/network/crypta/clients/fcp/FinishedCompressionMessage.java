@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.events.FinishedCompressionEvent;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor;
 
@@ -113,12 +112,11 @@ public class FinishedCompressionMessage extends FCPMessage {
    *
    * @param handler active FCP connection handler invoking this method; ignored during validation
    *     because the message is not supposed to originate from clients.
-   * @param node current node instance; provided for interface completeness but unused here.
    * @throws MessageInvalidException always thrown to signal that this message must not be received
    *     from an FCP client under the protocol rules.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "FinishedCompression goes from server to client not the other way around",

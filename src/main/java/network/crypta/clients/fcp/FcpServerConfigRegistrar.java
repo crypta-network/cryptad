@@ -8,7 +8,6 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.BooleanCallback;
@@ -31,7 +30,7 @@ import network.crypta.support.api.StringCallback;
  * <ul>
  *   <li>Registering the {@code fcp} option set with deterministic ordering and defaults.
  *   <li>Binding config callbacks that guard runtime changes and apply validation.
- *   <li>Building the {@link FCPServer} with dependencies from the owning {@link Node}.
+ *   <li>Building the {@link FCPServer} with dependencies from the node client core.
  * </ul>
  *
  * @see FCPServer
@@ -54,12 +53,10 @@ final class FcpServerConfigRegistrar {
    *
    * <pre>{@code
    * Config config = new Config();
-   * FCPServer server = FcpServerConfigRegistrar.maybeCreate(node, core, runtimePorts, config,
-   * root);
+   * FCPServer server = FcpServerConfigRegistrar.maybeCreate(core, runtimePorts, config, root);
    * server.maybeStart();
    * }</pre>
    *
-   * @param node the owning node providing executors and core services for the server.
    * @param core client core used for endpoint access and persisted settings lookups.
    * @param runtimePorts runtime SPI bridge passed to the created server.
    * @param config root configuration registry where the {@code fcp} subsection is registered.
@@ -67,11 +64,7 @@ final class FcpServerConfigRegistrar {
    * @return configured {@link FCPServer} instance ready for {@link FCPServer#maybeStart()}.
    */
   static FCPServer maybeCreate(
-      Node node,
-      NodeClientCore core,
-      RuntimePorts runtimePorts,
-      Config config,
-      PersistentRequestRoot root) {
+      NodeClientCore core, RuntimePorts runtimePorts, Config config, PersistentRequestRoot root) {
     SubConfig fcpConfig = config.createSubConfig("fcp");
     short sortOrder = 0;
     fcpConfig.register(
@@ -173,7 +166,7 @@ final class FcpServerConfigRegistrar {
             fcpConfig.getBoolean("assumeUploadDDAIsAllowed"),
             fcpConfig.getBoolean("neverDropAMessage"),
             fcpConfig.getInt("maxMessageQueueLength"));
-    FcpServerDependencies dependencies = new FcpServerDependencies(node, core, runtimePorts, root);
+    FcpServerDependencies dependencies = new FcpServerDependencies(core, runtimePorts, root);
     FCPServer fcp = new FCPServer(serverConfig, dependencies);
 
     cb4.server = fcp;

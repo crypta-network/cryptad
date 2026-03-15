@@ -111,7 +111,7 @@ class GetNodeTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> getNode.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> getNode.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("restricted-client", exception.ident);
@@ -145,7 +145,7 @@ class GetNodeTest {
     when(nodeInfoPort.exportReference(expectedView, true)).thenReturn(snapshot);
     ArgumentCaptor<NodeData> messageCaptor = ArgumentCaptor.forClass(NodeData.class);
 
-    getNode.run(handler, node);
+    getNode.run(handler);
 
     verify(nodeInfoPort).exportReference(expectedView, true);
     verify(handler).send(messageCaptor.capture());

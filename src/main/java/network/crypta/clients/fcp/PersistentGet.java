@@ -5,7 +5,6 @@ import java.util.Locale;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -22,7 +21,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>Typical usage: the node builds one per request when replying to a listing. Clients call {@link
  * #getFieldSet()} to emit FCP wire fields or hydrate UI-facing models. Inbound execution is
- * rejected by {@link #run(FCPConnectionHandler, Node)} to enforce directionality.
+ * rejected by {@link #run(FCPConnectionHandler)} to enforce directionality.
  *
  * @see ClientGet
  * @see ClientRequest
@@ -142,13 +141,11 @@ public final class PersistentGet extends FCPMessage {
    *
    * @param handler connection handler that attempted to process the message; not used beyond error
    *     reporting.
-   * @param node node instance receiving the message; present to satisfy the {@link FCPMessage}
-   *     contract but unused here.
    * @throws MessageInvalidException always thrown to signal that this message must not be sent from
    *     client to server in normal operation.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentGet goes from server to client not the other way around",

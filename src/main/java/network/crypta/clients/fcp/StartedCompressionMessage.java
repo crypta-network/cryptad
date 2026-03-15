@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 
@@ -16,15 +15,15 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
  *
  * <p>Instances are immutable and safe to share across threads because all state is provided at
  * construction time and never mutated. Typical callers build the message server-side, hand it to
- * the FCP output pipeline, and never invoke {@link #run(FCPConnectionHandler, Node)} because this
- * type is not meant to be received from clients. Client-side receipt is treated as a protocol
- * violation and rejected immediately.
+ * the FCP output pipeline, and never invoke {@link #run(FCPConnectionHandler)} because this type is
+ * not meant to be received from clients. Client-side receipt is treated as a protocol violation and
+ * rejected immediately.
  *
  * <ul>
  *   <li>Serializes as a {@link SimpleFieldSet} with {@code Identifier}, {@code Codec}, and {@code
  *       Global} keys.
  *   <li>Always reports the canonical FCP name {@code StartedCompression}.
- *   <li>{@link #run(FCPConnectionHandler, Node)} exists only to guard against misrouted traffic.
+ *   <li>{@link #run(FCPConnectionHandler)} exists only to guard against misrouted traffic.
  * </ul>
  *
  * @see FCPMessage
@@ -107,12 +106,11 @@ public class StartedCompressionMessage extends FCPMessage {
    *
    * @param handler connection handler requesting execution; ignored because the message is invalid
    *     inbound
-   * @param node active node instance; not used because execution always aborts
    * @throws MessageInvalidException always thrown to signal that the message direction violates the
    *     FCP contract
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "StartedCompression goes from server to client not the other way around",

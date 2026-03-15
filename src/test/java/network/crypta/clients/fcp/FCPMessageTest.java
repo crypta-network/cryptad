@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
@@ -64,9 +63,8 @@ class FCPMessageTest {
   void wrappedMessageDelegatesRun() throws MessageInvalidException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     FCPConnectionHandler connectionHandler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    wrappedMessage.run(connectionHandler, node);
-    verify(originalMessage).run(connectionHandler, node);
+    wrappedMessage.run(connectionHandler);
+    verify(originalMessage).run(connectionHandler);
   }
 
   @Test

@@ -65,7 +65,7 @@ class SimpleProgressMessageTest {
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, true, event);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, thrown.protocolCode);
     assertEquals(IDENTIFIER, thrown.ident);

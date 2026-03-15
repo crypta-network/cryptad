@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueTask;
@@ -32,7 +31,6 @@ import static org.mockito.Mockito.when;
 class ModifyPersistentRequestTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RequestQueuePort requestQueuePort;
@@ -149,7 +147,7 @@ class ModifyPersistentRequestTest {
     when(handler.getRebootRequest(false, handler, "req-7")).thenReturn(rebootRequest);
     when(handler.getServer()).thenReturn(server);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(rebootRequest).modifyRequest("tok", (short) 1, server);
     verifyNoInteractions(requestQueuePort);
@@ -171,7 +169,7 @@ class ModifyPersistentRequestTest {
     when(handler.getRebootRequest(false, handler, "req-8")).thenReturn(null);
     when(handler.getForeverRequest(false, handler, "req-8")).thenReturn(foreverRequest);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
     verify(requestQueuePort)
@@ -196,7 +194,7 @@ class ModifyPersistentRequestTest {
     when(handler.getRebootRequest(false, handler, "req-9")).thenReturn(null);
     when(handler.getForeverRequest(false, handler, "req-9")).thenReturn(null);
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<RequestQueueTask> taskCaptor = ArgumentCaptor.forClass(RequestQueueTask.class);
     verify(requestQueuePort)
@@ -232,7 +230,7 @@ class ModifyPersistentRequestTest {
     ArgumentCaptor<ProtocolErrorMessage> errorCaptor =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).send(errorCaptor.capture());
     verify(handler, never()).getForeverRequest(eq(true), eq(handler), eq("req-10"));

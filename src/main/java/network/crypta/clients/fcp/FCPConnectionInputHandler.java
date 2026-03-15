@@ -262,7 +262,7 @@ public class FCPConnectionInputHandler implements Runnable {
       if (LOG.isTraceEnabled()) {
         LOG.trace("Parsed message: {} for {}", msg, handler);
       }
-      msg.run(handler, handler.getServer().getNode());
+      msg.run(handler);
       return true;
     } catch (MessageInvalidException e) {
       sendProtocolError(e);

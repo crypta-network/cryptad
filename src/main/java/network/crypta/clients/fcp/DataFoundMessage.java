@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.FetchResult;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -16,9 +15,9 @@ import network.crypta.support.SimpleFieldSet;
  * as long as the surrounding FCP infrastructure treats {@link SimpleFieldSet} instances immutably.
  *
  * <p>Lifecycle wise, this object is created on the server (node) side and never sent from a client.
- * The {@link #run(FCPConnectionHandler, Node)} method therefore always rejects inbound invocations,
- * which protects the server against malformed or malicious transmissions that attempt to mimic
- * server messages. Consumers normally only call {@link #getFieldSet()} and {@link #getName()} when
+ * The {@link #run(FCPConnectionHandler)} method therefore always rejects inbound invocations, which
+ * protects the server against malformed or malicious transmissions that attempt to mimic server
+ * messages. Consumers normally only call {@link #getFieldSet()} and {@link #getName()} when
  * serializing the message to the wire. Concurrency guarantees are limited to constructor-time
  * publication; callers should not mutate returned field-set instances without copying them first.
  *
@@ -147,11 +146,10 @@ public class DataFoundMessage extends FCPMessage {
    * offending client.
    *
    * @param handler active connection handler attempting to execute the inbound message frame.
-   * @param node node instance receiving the message; unused because execution is forbidden.
    * @throws MessageInvalidException always thrown to preserve protocol directionality semantics.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "DataFound goes from server to client not the other way around",

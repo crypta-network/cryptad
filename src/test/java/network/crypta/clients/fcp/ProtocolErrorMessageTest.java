@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,9 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProtocolErrorMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getFieldSet_whenAllFieldsProvided_containsExpectedValues() {
@@ -72,7 +68,7 @@ class ProtocolErrorMessageTest {
   void run_whenInvoked_doesNotThrow() {
     ProtocolErrorMessage message = new ProtocolErrorMessage(1, false, null, null, false);
 
-    assertDoesNotThrow(() -> message.run(handler, node));
+    assertDoesNotThrow(() -> message.run(handler));
   }
 
   @Test

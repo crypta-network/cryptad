@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -18,7 +17,7 @@ import network.crypta.support.SimpleFieldSet;
  *       not map to any known peer note schema.
  *   <li>Transmission: {@link #getFieldSet()} serializes the numeric type and optional identifier to
  *       the wire format understood by the FCP layer.
- *   <li>Handling: {@link #run(FCPConnectionHandler, Node)} always fails fast with a {@link
+ *   <li>Handling: {@link #run(FCPConnectionHandler)} always fails fast with a {@link
  *       MessageInvalidException}, preventing the unknown type from propagating deeper into server
  *       logic.
  * </ul>
@@ -84,13 +83,11 @@ public class UnknownPeerNoteTypeMessage extends FCPMessage {
    *
    * @param handler connection handler invoking the message; not used beyond validation but must be
    *     non-null when provided by the framework.
-   * @param node active node instance for context; unused because the method never proceeds to node
-   *     operations.
    * @throws MessageInvalidException always thrown to signal that the message direction is invalid
    *     for the server and processing cannot continue.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "UnknownPeerNoteType goes from server to client not the other way around",

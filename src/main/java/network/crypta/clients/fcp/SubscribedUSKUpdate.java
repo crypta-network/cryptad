@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.keys.USK;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -104,12 +103,10 @@ public class SubscribedUSKUpdate extends FCPMessage {
    * intentionally non-idempotent because each invocation raises a new exception instance.
    *
    * @param handler connection handler attempting to process the message; expected to be non-null
-   * @param node local node context; supplied for interface completeness but unused in this
-   *     implementation
    * @throws MessageInvalidException always thrown to signal server-only directionality violations
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "SubscribedUSKUpdate goes from server to client not the other way around",

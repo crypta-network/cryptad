@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
@@ -20,12 +19,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class WatchFeedsMessageTest {
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alertManager;
   @Mock private FCPConnectionHandler handler;
+  @Mock private FCPServer server;
 
   @Test
   void constructor_whenEnabledMissing_defaultsToTrue() {
@@ -62,13 +59,11 @@ class WatchFeedsMessageTest {
     fs.put("Enabled", true);
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
+    when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(alertManager).watch(handler);
     verify(alertManager, never()).unwatch(handler);
@@ -80,13 +75,11 @@ class WatchFeedsMessageTest {
     fs.put("Enabled", false);
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
+    when(handler.getServer()).thenReturn(server);
+    when(server.getCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(alertManager).unwatch(handler);
     verify(alertManager, never()).watch(handler);

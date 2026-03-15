@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,9 +17,6 @@ import static org.mockito.Mockito.verify;
 class UnsubscribeUSKMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void constructor_whenIdentifierMissing_throwsMessageInvalidException() {
@@ -67,7 +63,7 @@ class UnsubscribeUSKMessageTest {
     UnsubscribeUSKMessage message = new UnsubscribeUSKMessage(fieldSet);
 
     // Act
-    message.run(handler, node);
+    message.run(handler);
 
     // Assert
     verify(handler).unsubscribeUSK("abc");
@@ -86,7 +82,7 @@ class UnsubscribeUSKMessageTest {
 
     // Act & Assert
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
     assertEquals(failure, thrown);
   }
 }

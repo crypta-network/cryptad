@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.PeerSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
@@ -91,13 +90,11 @@ public class ListPeersMessage extends FCPMessage {
    *
    * @param handler connection handler responsible for sending responses; must already be
    *     authenticated for full access.
-   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
-   *     enumeration is delegated through the runtime SPI
    * @throws MessageInvalidException when the handler lacks required access rights or when message
    *     validation fails before any peer data is returned.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

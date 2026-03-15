@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.FileUtil;
@@ -110,7 +109,7 @@ final class UnsupportedPluginMessage extends BaseDataCarryingMessage {
   }
 
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     handler.send(
         new ProtocolErrorMessage(
             ProtocolErrorMessage.INVALID_MESSAGE,

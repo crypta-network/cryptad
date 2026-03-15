@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -83,21 +82,19 @@ public class EndListPeerNotesMessage extends FCPMessage {
   /**
    * Rejects execution because the message is server-to-client only.
    *
-   * <p>Although {@link FCPMessage#run(FCPConnectionHandler, Node)} usually processes
-   * client-originated requests, this message exists solely to inform clients that a server-side
-   * listing completed. Therefore, invoking {@code run} always throws {@link
-   * MessageInvalidException} with {@link ProtocolErrorMessage#INVALID_MESSAGE}. Callers should
-   * never attempt to enqueue this message for inbound processing; instead, serialize it directly to
-   * the client connection.
+   * <p>Although {@link FCPMessage#run(FCPConnectionHandler)} usually processes client-originated
+   * requests, this message exists solely to inform clients that a server-side listing completed.
+   * Therefore, invoking {@code run} always throws {@link MessageInvalidException} with {@link
+   * ProtocolErrorMessage#INVALID_MESSAGE}. Callers should never attempt to enqueue this message for
+   * inbound processing; instead, serialize it directly to the client connection.
    *
    * @param handler connection handler attempting to process the message; unused because execution
    *     is forbidden.
-   * @param node local node context; unused.
    * @throws MessageInvalidException always thrown to signal that the command is invalid in this
    *     direction and must not be executed.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "EndListPeerNotes goes from server to client not the other way around",

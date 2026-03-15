@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -15,8 +14,8 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>Instances are immutable and represent a single unsubscribe request. The lifecycle is short:
  * the message is parsed from the incoming field set, validated for the presence of the identifier,
- * and then executed once via {@link #run(FCPConnectionHandler, Node)}. Thread-safety is provided by
- * the caller; this class maintains no shared state. Use this type when tearing down long-lived USK
+ * and then executed once via {@link #run(FCPConnectionHandler)}. Thread-safety is provided by the
+ * caller; this class maintains no shared state. Use this type when tearing down long-lived USK
  * feeds to avoid unnecessary bandwidth and server-side cache usage.
  *
  * <ul>
@@ -40,7 +39,7 @@ public final class UnsubscribeUSKMessage extends FCPMessage {
    *
    * <p>The constructor reads the {@code Identifier} field supplied by the client. If the field is
    * missing or empty, it raises a {@link MessageInvalidException} to signal malformed input to the
-   * caller. Successful construction guarantees that {@link #run(FCPConnectionHandler, Node)} can
+   * caller. Successful construction guarantees that {@link #run(FCPConnectionHandler)} can
    * reference a non-null identifier when delegating to the connection handler.
    *
    * @param fs parsed fields for this message; must contain an Identifier entry.
@@ -97,13 +96,11 @@ public final class UnsubscribeUSKMessage extends FCPMessage {
    * identifiers as no-ops.
    *
    * @param handler connection-scoped dispatcher that tracks USK subscriptions for this client.
-   * @param node node instance receiving the command; not used directly but provided for parity with
-   *     other message handlers.
    * @throws MessageInvalidException if the handler rejects the identifier or cannot remove the
    *     subscription.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     handler.unsubscribeUSK(subscriptionIdentifier);
   }
 }

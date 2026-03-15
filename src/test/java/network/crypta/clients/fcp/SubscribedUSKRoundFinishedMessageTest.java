@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,9 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SubscribedUSKRoundFinishedMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getName_whenCalled_returnsSubscribedUSKRoundFinished() {
@@ -54,6 +50,6 @@ class SubscribedUSKRoundFinishedMessageTest {
     SubscribedUSKRoundFinishedMessage message =
         new SubscribedUSKRoundFinishedMessage("irrelevant-id");
 
-    assertThrows(UnsupportedOperationException.class, () -> message.run(handler, node));
+    assertThrows(UnsupportedOperationException.class, () -> message.run(handler));
   }
 }

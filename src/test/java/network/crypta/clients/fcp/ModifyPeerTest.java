@@ -67,7 +67,7 @@ class ModifyPeerTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -83,7 +83,7 @@ class ModifyPeerTest {
     when(handler.hasFullAccess()).thenReturn(true);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -102,7 +102,7 @@ class ModifyPeerTest {
     when(peerPort.updateDarknetPeer(any(), any()))
         .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
 
-    modifyPeer.run(handler, node);
+    modifyPeer.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -124,7 +124,7 @@ class ModifyPeerTest {
         .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler));
 
     assertEquals(ProtocolErrorMessage.DARKNET_ONLY, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -150,7 +150,7 @@ class ModifyPeerTest {
                 java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of()));
     when(peerPort.updateDarknetPeer(any(), any())).thenReturn(snapshot);
 
-    modifyPeer.run(handler, node);
+    modifyPeer.run(handler);
 
     ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
         ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
@@ -187,7 +187,7 @@ class ModifyPeerTest {
                 new network.crypta.runtime.spi.PeerFieldSet(
                     java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of())));
 
-    modifyPeer.run(handler, node);
+    modifyPeer.run(handler);
 
     ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
         ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
@@ -219,7 +219,7 @@ class ModifyPeerTest {
                 new network.crypta.runtime.spi.PeerFieldSet(
                     java.util.Map.of("identity", NODE_IDENTIFIER), java.util.Map.of())));
 
-    modifyPeer.run(handler, node);
+    modifyPeer.run(handler);
 
     ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
         ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);

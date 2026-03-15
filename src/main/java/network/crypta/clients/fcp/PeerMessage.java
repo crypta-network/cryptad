@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.PeerFieldSet;
 import network.crypta.runtime.spi.PeerSnapshot;
 import network.crypta.support.SimpleFieldSet;
@@ -85,11 +84,10 @@ public class PeerMessage extends FCPMessage {
    * node.
    *
    * @param handler connection handler that attempted to execute the message; not mutated here
-   * @param node node instance associated with the connection; unused because execution is rejected
    * @throws MessageInvalidException always thrown to indicate the direction is unsupported
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "Peer goes from server to client not the other way around",

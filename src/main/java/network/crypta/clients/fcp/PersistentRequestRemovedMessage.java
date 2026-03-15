@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -99,13 +98,11 @@ public class PersistentRequestRemovedMessage extends FCPMessage {
    *
    * @param handler connection handler that attempted to route the message; never modified by this
    *     method.
-   * @param node node instance receiving the message; included for interface parity and not used
-   *     here.
    * @throws MessageInvalidException always thrown to indicate that this message is invalid when
    *     sent toward the node.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PersistentRequestRemoved goes from server to client not the other way around",

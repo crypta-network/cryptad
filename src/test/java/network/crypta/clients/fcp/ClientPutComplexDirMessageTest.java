@@ -8,7 +8,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
@@ -53,9 +52,6 @@ class ClientPutComplexDirMessageTest {
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
   @Mock private TransferAccessPort transferAccess;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @TempDir Path tempDir;
 
@@ -139,7 +135,7 @@ class ClientPutComplexDirMessageTest {
         new ClientPutComplexDirMessage(fs, tempBucketFactory, persistentBucketFactory);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     verify(handler, never()).startClientPutDir(any(), any(), anyBoolean());
@@ -157,7 +153,7 @@ class ClientPutComplexDirMessageTest {
         new ClientPutComplexDirMessage(fs, tempBucketFactory, persistentBucketFactory);
 
     message.readFrom(new ByteArrayInputStream(directBytes), tempBucketFactory, server);
-    message.run(handler, node);
+    message.run(handler);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<HashMap<String, Object>> manifestCaptor = ArgumentCaptor.forClass(HashMap.class);

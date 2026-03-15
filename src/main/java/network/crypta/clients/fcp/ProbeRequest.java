@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.FSParseException;
-import network.crypta.node.Node;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
@@ -14,16 +13,16 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>This message is created from a parsed {@link SimpleFieldSet} and validates the probe type and
  * optional hop budget before execution. Callers typically get it through the FCP dispatch layer and
- * then invoke {@link #run(FCPConnectionHandler, Node)} to start the probe asynchronously. The
- * request retains the identifier, type, and hop budget as an immutable state; it is not intended to
- * be reused across unrelated client sessions. A {@code null} identifier is supported and results in
+ * then invoke {@link #run(FCPConnectionHandler)} to start the probe asynchronously. The request
+ * retains the identifier, type, and hop budget as an immutable state; it is not intended to be
+ * reused across unrelated client sessions. A {@code null} identifier is supported and results in
  * response messages that omit the {@code Identifier} field.
  *
- * <p>Execution requires full-access credentials. When authorized, {@link #run(FCPConnectionHandler,
- * Node)} constructs a {@link Listener} that adapts probe callbacks into concrete {@link FCPMessage}
- * responses, gets a secure probe UID from the handler's server runtime, and delegates to {@code
- * node.network().startProbe(...)}. The method does not block for completion; responses arrive
- * asynchronously via the handler.
+ * <p>Execution requires full-access credentials. When authorized, {@link
+ * #run(FCPConnectionHandler)} constructs a {@link Listener} that adapts probe callbacks into
+ * concrete {@link FCPMessage} responses, gets a secure probe UID from the handler's server runtime,
+ * and delegates to {@code node.network().startProbe(...)}. The method does not block for
+ * completion; responses arrive asynchronously via the handler.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> validate fields, enforce access, and bridge callbacks.
@@ -144,12 +143,10 @@ public final class ProbeRequest extends FCPMessage {
    * FCPConnectionHandler#send(FCPMessage)}.
    *
    * @param handler connection handler used to authorize and send probe responses.
-   * @param node node instance that executes the probe while the handler's server runtime supplies
-   *     the probe UID.
    * @throws MessageInvalidException if the caller lacks full access for probe execution.
    */
   @Override
-  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(final FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
@@ -219,6 +216,11 @@ public final class ProbeRequest extends FCPMessage {
           }
         };
     long probeUid = FcpRuntimeAdapters.nextSecureLong(handler.getServer().runtime().randomness());
-    node.network().startProbe(hopsToLive, probeUid, probeType, listener);
+    handler
+        .getServer()
+        .getCore()
+        .getNode()
+        .network()
+        .startProbe(hopsToLive, probeUid, probeType, listener);
   }
 }

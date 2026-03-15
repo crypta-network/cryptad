@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -109,13 +108,11 @@ public class SSKKeypairMessage extends FCPMessage {
    *
    * @param handler the connection handler receiving the message; must not be {@code null} even
    *     though the message is never executed successfully.
-   * @param node the local node instance; present for signature consistency and not used prior to
-   *     throwing the exception.
    * @throws MessageInvalidException always thrown to signal the message is invalid in this
    *     direction; callers should treat this as a protocol error.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "SSKKeypair goes from server to client not the other way around",

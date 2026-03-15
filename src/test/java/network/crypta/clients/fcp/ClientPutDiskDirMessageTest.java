@@ -7,7 +7,6 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
@@ -45,9 +44,6 @@ class ClientPutDiskDirMessageTest {
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
   @Mock private TransferAccessPort transferAccess;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Mock private InputStream inputStream;
   @Mock private BucketFactory bucketFactory;
@@ -87,7 +83,7 @@ class ClientPutDiskDirMessageTest {
     ClientPutDiskDirMessage message = newMessage(tempDir);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     verify(handler, never()).startClientPutDir(any(), any(), anyBoolean());
@@ -109,7 +105,7 @@ class ClientPutDiskDirMessageTest {
 
     ClientPutDiskDirMessage message = newMessage(tempDir);
 
-    message.run(handler, node);
+    message.run(handler);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<HashMap<String, Object>> bucketsCaptor = ArgumentCaptor.forClass(HashMap.class);
@@ -149,7 +145,7 @@ class ClientPutDiskDirMessageTest {
       ClientPutDiskDirMessage message = newMessage(tempDir);
 
       MessageInvalidException ex =
-          assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+          assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
       assertEquals(ProtocolErrorMessage.FILE_NOT_FOUND, ex.protocolCode);
     } finally {
@@ -171,7 +167,7 @@ class ClientPutDiskDirMessageTest {
       ArgumentCaptor<HashMap<String, Object>> bucketsCaptor =
           ArgumentCaptor.forClass(HashMap.class);
 
-      assertDoesNotThrow(() -> message.run(handler, node));
+      assertDoesNotThrow(() -> message.run(handler));
       verify(handler).startClientPutDir(eq(message), bucketsCaptor.capture(), eq(true));
 
       HashMap<String, Object> buckets = bucketsCaptor.getValue();
@@ -188,7 +184,7 @@ class ClientPutDiskDirMessageTest {
 
     ClientPutDiskDirMessage message = newMessage(tempDir, false, true);
 
-    message.run(handler, node);
+    message.run(handler);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<HashMap<String, Object>> bucketsCaptor = ArgumentCaptor.forClass(HashMap.class);

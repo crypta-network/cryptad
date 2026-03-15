@@ -483,11 +483,7 @@ class NodeClientPersistenceTest {
           .when(
               () ->
                   FCPServer.maybeCreate(
-                      eq(node),
-                      eq(core),
-                      eq(runtimePorts),
-                      eq(config),
-                      any(PersistentRequestRoot.class)))
+                      eq(core), eq(runtimePorts), eq(config), any(PersistentRequestRoot.class)))
           .thenReturn(expected);
 
       FCPServer result = persistence.createFcpServer(node, core, runtimePorts);
@@ -497,11 +493,7 @@ class NodeClientPersistenceTest {
       fcpServerMock.verify(
           () ->
               FCPServer.maybeCreate(
-                  eq(node),
-                  eq(core),
-                  eq(runtimePorts),
-                  eq(config),
-                  any(PersistentRequestRoot.class)));
+                  eq(core), eq(runtimePorts), eq(config), any(PersistentRequestRoot.class)));
     }
   }
 

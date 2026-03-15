@@ -69,6 +69,6 @@ class SubscribedUSKSendingToNetworkMessageTest {
     SubscribedUSKSendingToNetworkMessage message = new SubscribedUSKSendingToNetworkMessage("id");
 
     // Act & Assert
-    assertThrows(UnsupportedOperationException.class, () -> message.run(null, null));
+    assertThrows(UnsupportedOperationException.class, () -> message.run(null));
   }
 }

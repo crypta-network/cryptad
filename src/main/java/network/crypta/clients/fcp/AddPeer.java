@@ -17,7 +17,6 @@ import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
@@ -37,9 +36,9 @@ import org.slf4j.LoggerFactory;
  * <p>Instances of this class are constructed from a {@link SimpleFieldSet} received over an FCP
  * connection. The constructor parses common metadata such as {@code Identifier}, {@code Trust}, and
  * {@code Visibility}, and, when present, the peer reference itself or an indirection to it using a
- * {@code URL} or {@code File} field. During {@link #run(FCPConnectionHandler, Node)} the message
- * resolves the reference, validates that it is well-formed and not a self reference, and finally
- * installs the new peer in the node's darknet or opennet peer table.
+ * {@code URL} or {@code File} field. During {@link #run(FCPConnectionHandler)} the message resolves
+ * the reference, validates that it is well-formed and not a self reference, and finally installs
+ * the new peer in the node's darknet or opennet peer table.
  *
  * <p>The implementation enforces full-access permissions, rejects duplicate peers, and translates
  * low-level parsing or network errors into {@link MessageInvalidException} instances that are
@@ -258,14 +257,12 @@ public final class AddPeer extends FCPMessage {
    *
    * @param handler connection handler representing the client session that issued the AddPeer
    *     request; used to send back the resulting {@link PeerMessage} or error messages
-   * @param node running node instance supplied by the legacy FCP dispatch signature; unused because
-   *     peer-management is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, the peer reference cannot be parsed or
    *     verified, the reference describes the node itself, or a peer with the same identity already
    *     exists on the node
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     ensureFullAccess(handler);
     fs = resolveFieldSetForReference(handler);
     try {

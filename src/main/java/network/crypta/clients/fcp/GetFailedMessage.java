@@ -7,7 +7,6 @@ import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
@@ -259,7 +258,6 @@ public final class GetFailedMessage extends FCPMessage implements Serializable {
    * server-originated notification, so any inbound appearance is treated as invalid traffic.
    *
    * @param handler active connection handler receiving the message.
-   * @param node local node instance; unused but part of the dispatcher contract.
    * @throws MessageInvalidException always thrown to signal misuse of the message direction.
    *     <p><strong>Implementation note:</strong> This implementation never dispatches to the node;
    *     it simply raises an exception, ensuring that servers cannot be coerced into processing
@@ -267,7 +265,7 @@ public final class GetFailedMessage extends FCPMessage implements Serializable {
    *     bookkeeping.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "GetFailed goes from server to client not the other way around",

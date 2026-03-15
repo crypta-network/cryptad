@@ -59,7 +59,7 @@ class UnknownPeerNoteTypeMessageTest {
     UnknownPeerNoteTypeMessage message = new UnknownPeerNoteTypeMessage(5, identifier);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

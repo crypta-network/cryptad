@@ -78,7 +78,7 @@ class ModifyPeerNoteTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -94,7 +94,7 @@ class ModifyPeerNoteTest {
     when(handler.hasFullAccess()).thenReturn(true);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -112,7 +112,7 @@ class ModifyPeerNoteTest {
     when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
         .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
 
-    modifyPeerNote.run(handler, node);
+    modifyPeerNote.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -133,7 +133,7 @@ class ModifyPeerNoteTest {
         .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.DARKNET_ONLY, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -149,7 +149,7 @@ class ModifyPeerNoteTest {
     stubPeerPort();
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -166,7 +166,7 @@ class ModifyPeerNoteTest {
     stubPeerPort();
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -183,7 +183,7 @@ class ModifyPeerNoteTest {
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
     stubPeerPort();
 
-    modifyPeerNote.run(handler, node);
+    modifyPeerNote.run(handler);
 
     verify(handler, never()).send(any());
     verify(peerPort, never()).writePrivateDarknetComment(any(), any());
@@ -198,7 +198,7 @@ class ModifyPeerNoteTest {
     ModifyPeerNote modifyPeerNote = new ModifyPeerNote(fs);
     stubPeerPort();
 
-    modifyPeerNote.run(handler, node);
+    modifyPeerNote.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -221,7 +221,7 @@ class ModifyPeerNoteTest {
     when(peerPort.readPrivateDarknetComment(NODE_IDENTIFIER))
         .thenThrow(new UnknownPeerException(NODE_IDENTIFIER));
 
-    modifyPeerNote.run(handler, node);
+    modifyPeerNote.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -241,7 +241,7 @@ class ModifyPeerNoteTest {
         .thenThrow(new DarknetPeerRequiredException(NODE_IDENTIFIER));
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyPeerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.DARKNET_ONLY, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
@@ -259,7 +259,7 @@ class ModifyPeerNoteTest {
     stubPeerPort();
     when(peerPort.writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT)).thenReturn(NOTE_TEXT);
 
-    modifyPeerNote.run(handler, node);
+    modifyPeerNote.run(handler);
 
     verify(peerPort, times(1)).readPrivateDarknetComment(NODE_IDENTIFIER);
     verify(peerPort, times(1)).writePrivateDarknetComment(NODE_IDENTIFIER, NOTE_TEXT);

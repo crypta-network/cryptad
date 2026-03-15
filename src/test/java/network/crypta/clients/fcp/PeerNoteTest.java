@@ -62,7 +62,7 @@ class PeerNoteTest {
     PeerNote peerNote = new PeerNote(NODE_IDENTIFIER, NOTE_TEXT, PEER_NOTE_TYPE, IDENTIFIER);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> peerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> peerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals("PeerNote goes from server to client not the other way around", ex.getMessage());
@@ -76,7 +76,7 @@ class PeerNoteTest {
     PeerNote peerNote = new PeerNote(NODE_IDENTIFIER, NOTE_TEXT, PEER_NOTE_TYPE, null);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> peerNote.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> peerNote.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals("PeerNote goes from server to client not the other way around", ex.getMessage());

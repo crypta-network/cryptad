@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -15,8 +14,8 @@ import network.crypta.support.SimpleFieldSet;
  * class focuses on faithfully mirroring the wire format rather than enforcing business logic. In
  * typical flows, the node constructs the message immediately after verifying storage and announces
  * it to the originating client before any further cleanup. Attempted execution from a client is
- * rejected by {@link #run(FCPConnectionHandler, Node)} to preserve protocol directionality and
- * protect the server from spoofed success messages.
+ * rejected by {@link #run(FCPConnectionHandler)} to preserve protocol directionality and protect
+ * the server from spoofed success messages.
  *
  * <ul>
  *   <li>Encapsulates the success path for FCP insert operations.
@@ -147,11 +146,10 @@ public class PutSuccessfulMessage extends FCPMessage {
    * unused because the method always throws.
    *
    * @param handler active connection handler that attempted to process the inbound message frame.
-   * @param node node receiving the message; present for API symmetry but not used during handling.
    * @throws MessageInvalidException always thrown to enforce protocol directionality.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "InsertSuccessful goes from server to client not the other way around",

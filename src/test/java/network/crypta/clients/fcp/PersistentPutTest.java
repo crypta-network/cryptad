@@ -6,7 +6,6 @@ import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -140,11 +139,7 @@ class PersistentPutTest {
 
     MessageInvalidException ex =
         assertThrows(
-            MessageInvalidException.class,
-            () ->
-                put.run(
-                    mock(FCPConnectionHandler.class),
-                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+            MessageInvalidException.class, () -> put.run(mock(FCPConnectionHandler.class)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals(

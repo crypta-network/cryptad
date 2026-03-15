@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
 
@@ -11,10 +10,9 @@ import network.crypta.support.SimpleFieldSet;
  * <p>This abstraction is used by higher-level client protocols whenever they need to stream a
  * reply, queue update, or diagnostic snapshot to a known peer without exposing the common routing
  * boilerplate in each concrete message. Subclasses parse their payload up front, then invoke {@link
- * #run(FCPConnectionHandler, Node)} to resolve the peer, enforce darknet-only constraints, and
- * finally call {@link #handleFeed(DarknetPeerNode)} to transmit data. Instances are stateful
- * because they cache identifiers and the optional data length reported to peers during capability
- * negotiation.
+ * #run(FCPConnectionHandler)} to resolve the peer, enforce darknet-only constraints, and finally
+ * call {@link #handleFeed(DarknetPeerNode)} to transmit data. Instances are stateful because they
+ * cache identifiers and the optional data length reported to peers during capability negotiation.
  *
  * <p>Implementations are expected to be short-lived and not thread-safe; callers should create a
  * fresh instance per inbound FCP command. The base class never mutates shared node structures
@@ -124,14 +122,12 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    *
    * @param handler connection handler responsible for sending replies back to the client; must not
    *     be {@code null} and should already be authenticated.
-   * @param node local node instance used to resolve {@link PeerNode} references; must be live and
-   *     fully initialized.
    * @throws MessageInvalidException if the peer is not a darknet peer or if {@code handleFeed}
    *     reports an application-specific validation failure.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
+    PeerNode pn = handler.getServer().getCore().getNode().network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
       handler.send(msg);

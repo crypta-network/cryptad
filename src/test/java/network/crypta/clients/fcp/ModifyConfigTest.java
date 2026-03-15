@@ -79,7 +79,7 @@ class ModifyConfigTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException thrown =
-        assertThrows(MessageInvalidException.class, () -> modifyConfig.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> modifyConfig.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, thrown.protocolCode);
     assertEquals("blocked-id", thrown.ident);
@@ -107,7 +107,7 @@ class ModifyConfigTest {
     when(runtimePorts.config()).thenReturn(configPort);
     when(configPort.export(EnumSet.of(ConfigSection.CURRENT))).thenReturn(snapshot);
 
-    modifyConfig.run(handler, node);
+    modifyConfig.run(handler);
 
     InOrder order = inOrder(configPort, handler);
     ArgumentCaptor<Map<String, String>> overridesCaptor = ArgumentCaptor.forClass(Map.class);

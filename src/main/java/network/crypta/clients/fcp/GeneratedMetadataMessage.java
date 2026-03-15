@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -148,11 +147,10 @@ public class GeneratedMetadataMessage extends BaseDataCarryingMessage {
    * runnable behavior when expecting inbound execution.
    *
    * @param handler connection handler provided by the FCP server infrastructure; not used here
-   * @param node local node instance; not used because the message is not executed
    * @throws MessageInvalidException never thrown; declared to satisfy superclass signature
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new UnsupportedOperationException();
   }
 }

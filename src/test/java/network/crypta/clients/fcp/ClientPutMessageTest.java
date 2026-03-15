@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
@@ -121,7 +120,7 @@ class ClientPutMessageTest {
     ClientPutMessage message = newDirectMessage("put-run", 8L);
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
 
-    message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
+    message.run(handler);
 
     Mockito.verify(handler).startClientPut(message);
   }

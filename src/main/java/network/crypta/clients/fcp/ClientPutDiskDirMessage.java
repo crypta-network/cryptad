@@ -7,7 +7,6 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
@@ -25,11 +24,11 @@ import org.slf4j.LoggerFactory;
  * handling, and recursive traversal semantics. Every directory level is unfolded eagerly to size
  * files, attach {@link DefaultMIMETypes}, and guard against unreadable paths before the actual
  * network transfer begins. Callers typically instantiate this message during request construction,
- * then rely on {@link #run(FCPConnectionHandler, Node)} to build the manifest map and hand it to
- * the node core. The class is thread-confined: each instance is used by a single connection
- * handler, but the generated bucket map may be consumed by asynchronous upload workers. Error
- * reporting is immediate, so missing directories or unreadable files fail fast instead of producing
- * partial manifests.
+ * then rely on {@link #run(FCPConnectionHandler)} to build the manifest map and hand it to the node
+ * core. The class is thread-confined: each instance is used by a single connection handler, but the
+ * generated bucket map may be consumed by asynchronous upload workers. Error reporting is
+ * immediate, so missing directories or unreadable files fail fast instead of producing partial
+ * manifests.
  *
  * <p><strong>Responsibilities</strong>
  *
@@ -97,12 +96,11 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * the returned buckets may be consumed asynchronously by upload workers.
    *
    * @param handler connection handler owning this message; must be non-null and connected.
-   * @param node legacy execution parameter retained by the message API; unused here.
    * @throws MessageInvalidException if the directory is not permitted, or traversal fails under the
    *     configured validation rules.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.getServer().runtime().transferAccess().allowUploadFrom(dirname))
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

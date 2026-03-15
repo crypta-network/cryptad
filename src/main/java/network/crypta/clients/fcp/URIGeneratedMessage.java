@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -20,7 +19,7 @@ import network.crypta.support.SimpleFieldSet;
  *   <li>Expose the generated URI and identifier in the FCP wire format.
  *   <li>Advertise the standard message name {@code URIGenerated} to the protocol layer.
  *   <li>Guard against incorrect client-to-server usage by rejecting {@link
- *       #run(FCPConnectionHandler, Node)} calls.
+ *       #run(FCPConnectionHandler)} calls.
  * </ul>
  *
  * Concurrency: the object is immutable once constructed. Protocol handlers may reuse it across
@@ -77,12 +76,11 @@ public class URIGeneratedMessage extends FCPMessage {
    * in the FCP protocol.
    *
    * @param handler active connection handler attempting to process the message.
-   * @param node reference to the local node instance; unused because execution always fails.
    * @throws MessageInvalidException always thrown to indicate incorrect message direction on the
    *     wire.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "URIGenerated goes from server to client not the other way around",

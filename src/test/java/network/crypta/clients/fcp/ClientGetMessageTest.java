@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucketFactory;
@@ -31,9 +30,6 @@ import static org.mockito.Mockito.verify;
 class ClientGetMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void parseReturnTypeFCP_whenStringIsNull_returnsDirect() throws MessageInvalidException {
@@ -153,7 +149,7 @@ class ClientGetMessageTest {
   void run_whenInvoked_delegatesToConnectionHandler() throws MessageInvalidException {
     ClientGetMessage message = new ClientGetMessage(baseFieldSet());
 
-    message.run(handler, node);
+    message.run(handler);
 
     verify(handler).startClientGet(message);
   }

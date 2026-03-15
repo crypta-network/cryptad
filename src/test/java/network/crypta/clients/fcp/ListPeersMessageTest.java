@@ -73,7 +73,7 @@ class ListPeersMessageTest {
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals("id-1", ex.ident);
@@ -92,7 +92,7 @@ class ListPeersMessageTest {
     when(runtimePorts.peer()).thenReturn(peerPort);
     when(peerPort.list(true, true)).thenReturn(List.of(peerOne, peerTwo));
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(3)).send(captor.capture());
@@ -126,7 +126,7 @@ class ListPeersMessageTest {
     when(runtimePorts.peer()).thenReturn(peerPort);
     when(peerPort.list(false, false)).thenReturn(List.of());
 
-    message.run(handler, node);
+    message.run(handler);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());

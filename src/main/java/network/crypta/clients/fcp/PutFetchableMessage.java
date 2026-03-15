@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -83,13 +82,11 @@ public class PutFetchableMessage extends FCPMessage {
    *
    * @param handler connection handler receiving the message; must not be {@code null} but is unused
    *     because execution always fails on the client side.
-   * @param node active node instance associated with the connection; not consulted before the
-   *     exception is raised.
    * @throws MessageInvalidException always thrown to signal that the message cannot be executed
    *     from client to server.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PutFetchable goes from server to client not the other way around",

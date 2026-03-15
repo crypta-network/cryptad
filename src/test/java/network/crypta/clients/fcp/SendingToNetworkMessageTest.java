@@ -49,7 +49,7 @@ class SendingToNetworkMessageTest {
   void run_whenInvoked_expectNoInteractions() {
     SendingToNetworkMessage message = new SendingToNetworkMessage("id", false);
 
-    assertDoesNotThrow(() -> message.run(handler, node));
+    assertDoesNotThrow(() -> message.run(handler));
 
     verifyNoInteractions(handler, node);
   }

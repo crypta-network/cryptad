@@ -43,7 +43,7 @@ class EndListPeersMessageTest {
     EndListPeersMessage message = new EndListPeersMessage(IDENTIFIER);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

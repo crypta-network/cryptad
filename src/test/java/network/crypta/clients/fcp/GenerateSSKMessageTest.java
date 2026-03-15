@@ -4,7 +4,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
@@ -66,7 +65,6 @@ class GenerateSSKMessageTest {
     FCPServer server = mock(FCPServer.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    Node node = mock(Node.class);
     when(handler.getServer()).thenReturn(server);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
@@ -92,7 +90,7 @@ class GenerateSSKMessageTest {
                 return generatedKey;
               });
 
-      message.run(handler, node);
+      message.run(handler);
 
       mocked.verify(
           () -> InsertableClientSSK.createRandom(any(RandomSource.class), eq("")), times(1));
@@ -118,7 +116,6 @@ class GenerateSSKMessageTest {
     FCPServer server = mock(FCPServer.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    Node node = mock(Node.class);
     when(handler.getServer()).thenReturn(server);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
@@ -142,7 +139,7 @@ class GenerateSSKMessageTest {
                 return generatedKey;
               });
 
-      message.run(handler, node);
+      message.run(handler);
 
       verify(randomnessPort, times(1)).fillSecureRandom(any(byte[].class));
 

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -50,9 +49,9 @@ public final class TestDdaResponseMessage extends FCPMessage {
    *
    * <p>The constructor performs structural validation: it requires a non-empty directory path and
    * optionally accepts the payload read from the node-provided test file. It does not touch the
-   * filesystem and leaves permission evaluation to {@link #run(FCPConnectionHandler, Node)}. The
-   * instance is fully initialized after construction and can be executed immediately or queued for
-   * later handling.
+   * filesystem and leaves permission evaluation to {@link #run(FCPConnectionHandler)}. The instance
+   * is fully initialized after construction and can be executed immediately or queued for later
+   * handling.
    *
    * @param sfs parsed fields from the FCP layer, expected to contain directory and optional read
    *     content values; must not be {@code null}.
@@ -109,13 +108,11 @@ public final class TestDdaResponseMessage extends FCPMessage {
    *
    * @param handler active connection handler coordinating DDA checks for this client; must not be
    *     {@code null} and must have a pending check entry for the directory.
-   * @param node current node instance; present for interface symmetry but unused directly in this
-   *     implementation.
    * @throws MessageInvalidException if the directory is unknown, required content is absent, or the
    *     handler rejects the lookup parameters.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     DdaCheckJob job;
     try {
       job = handler.popDDACheck(directory);

@@ -70,7 +70,7 @@ class SSKKeypairMessageTest {
             new FreenetURI(INSERT_URI_STRING), new FreenetURI(REQUEST_URI_STRING), identifier);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

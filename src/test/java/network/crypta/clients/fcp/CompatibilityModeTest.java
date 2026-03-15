@@ -74,7 +74,7 @@ class CompatibilityModeTest {
   void run_whenInvoked_expectUnsupportedOperation() {
     CompatibilityMode message = new CompatibilityMode("id", true, analyser);
 
-    assertThrows(UnsupportedOperationException.class, () -> message.run(null, null));
+    assertThrows(UnsupportedOperationException.class, () -> message.run(null));
   }
 
   @Test

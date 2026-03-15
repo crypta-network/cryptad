@@ -50,7 +50,7 @@ public class ModifyPeerNote extends FCPMessage {
    * this message, including the client {@code Identifier} and all note-related values. The
    * constructor extracts and stores the identifier for later use, then removes it from the backing
    * field set so that only message-specific fields remain. No validation of required fields is
-   * performed here; it is deferred to {@link #run(FCPConnectionHandler, Node)}.
+   * performed here; it is deferred to {@link #run(FCPConnectionHandler)}.
    *
    * @param fs the non-{@code null} field set describing the request, including {@code Identifier}
    *     and note-related fields supplied by the FCP client
@@ -107,13 +107,11 @@ public class ModifyPeerNote extends FCPMessage {
    *
    * @param handler the connection handler that received the request and is used to send any reply
    *     or error messages back to the client; must have full access for the operation to proceed
-   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
-   *     note mutation is delegated through the runtime SPI
    * @throws MessageInvalidException if the caller lacks access rights, required fields are missing
    *     or malformed, or the peer cannot be updated under the current protocol rules
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
@@ -191,7 +189,6 @@ public class ModifyPeerNote extends FCPMessage {
    *
    * @param handler connection handler used to send protocol error responses back to the client
    * @param peerPort runtime peer-management port used to resolve the target peer
-   * @param nodeIdentifier peer identifier supplied by the FCP client
    * @return {@code true} if the peer exists and supports darknet notes, otherwise {@code false}
    *     after sending the appropriate unknown-node response
    * @throws MessageInvalidException if the peer exists but is not a darknet peer

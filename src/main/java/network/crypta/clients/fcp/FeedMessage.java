@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.nio.charset.StandardCharsets;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -116,13 +115,11 @@ public class FeedMessage extends MultipleDataCarryingMessage {
    * @param handler connection handler associated with the FCP session; ignored by this
    *     implementation because feed messages are not processed on the server side when received
    *     from clients.
-   * @param node node instance that would normally provide access to core services; ignored here
-   *     because the method always fails fast with a protocol error.
    * @throws MessageInvalidException always thrown to indicate that {@code FeedMessage} instances
    *     must not be sent from client to server in this direction.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         getName() + " goes from server to client not the other way around",

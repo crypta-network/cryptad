@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,9 +20,6 @@ class PersistentRequestModifiedMessageTest {
   private static final String CLIENT_TOKEN = "token-abc";
 
   @Mock private FCPConnectionHandler connectionHandler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
 
   @Test
   void getFieldSet_withPriorityOnly_setsIdentifierGlobalAndPriority() {
@@ -80,7 +76,7 @@ class PersistentRequestModifiedMessageTest {
         new PersistentRequestModifiedMessage(IDENTIFIER, true, (short) 2);
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(IDENTIFIER, exception.ident);

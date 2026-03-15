@@ -4,7 +4,6 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.ConfigFieldSet;
 import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.runtime.spi.ConfigSnapshot;
@@ -144,12 +143,10 @@ public class ConfigData extends FCPMessage {
    *
    * @param handler connection that attempted to process the message; ignored because validation
    *     always fails earlier.
-   * @param node node that received the invalid message; provided for interface completeness but not
-   *     consulted.
    * @throws MessageInvalidException always thrown to signal the unsupported direction.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "ConfigData goes from server to client not the other way around",

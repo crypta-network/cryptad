@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -13,11 +12,10 @@ import network.crypta.support.SimpleFieldSet;
  * and immutable: once constructed, the identifier values are stored verbatim and rendered into a
  * {@link SimpleFieldSet} without further validation. Typical call paths originate on the server
  * when validating inbound traffic; the client side should not emit this message, and {@link
- * #run(FCPConnectionHandler, Node)} throws if execution is attempted in that direction. Instances
- * are lightweight and thread-safe because they carry only final string fields and perform no
- * mutable operations. Use this type when you need a structured way to surface “unknown
- * NodeIdentifier” errors back to an FCP client while preserving the identifiers needed for
- * diagnostics and logging.
+ * #run(FCPConnectionHandler)} throws if execution is attempted in that direction. Instances are
+ * lightweight and thread-safe because they carry only final string fields and perform no mutable
+ * operations. Use this type when you need a structured way to surface “unknown NodeIdentifier”
+ * errors back to an FCP client while preserving the identifiers needed for diagnostics and logging.
  *
  * <ul>
  *   <li>Immutable payload carrying the unrecognized node identifier.
@@ -95,12 +93,11 @@ public class UnknownNodeIdentifierMessage extends FCPMessage {
    *
    * @param handler connection handler provided by the caller; ignored because the method always
    *     throws to block processing.
-   * @param node node context supplied by the caller; ignored because no processing occurs.
    * @throws MessageInvalidException always thrown to indicate the message direction is invalid when
    *     executed on the client side.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "UnknownNodeIdentifier goes from server to client not the other way around",

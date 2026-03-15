@@ -64,7 +64,7 @@ class FinishedCompressionMessageTest {
             "identifier", true, new FinishedCompressionEvent(-1, 5L, 5L));
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

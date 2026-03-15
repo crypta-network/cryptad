@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.PeerSnapshot;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
@@ -40,9 +39,8 @@ public class ListPeerMessage extends FCPMessage {
    * <p>The supplied {@link SimpleFieldSet} must include an {@code Identifier} entry used for
    * correlating responses; it is extracted and deleted immediately to avoid forwarding client
    * metadata unnecessarily. Callers may populate additional fields such as {@code NodeIdentifier}
-   * before invoking {@link #run(FCPConnectionHandler, Node)}. The constructor keeps a direct
-   * reference to the field set, so external mutations after construction will be visible during
-   * execution.
+   * before invoking {@link #run(FCPConnectionHandler)}. The constructor keeps a direct reference to
+   * the field set, so external mutations after construction will be visible during execution.
    *
    * @param fs mutable field set containing request metadata; must include {@code Identifier} and
    *     should eventually include {@code NodeIdentifier}; must not be {@code null}.
@@ -57,8 +55,8 @@ public class ListPeerMessage extends FCPMessage {
    * Provides the outgoing field set for serialization.
    *
    * <p>This implementation returns a new, empty {@link SimpleFieldSet} because all request data is
-   * consumed during {@link #run(FCPConnectionHandler, Node)}. Callers may mutate the returned set
-   * without affecting the original message.
+   * consumed during {@link #run(FCPConnectionHandler)}. Callers may mutate the returned set without
+   * affecting the original message.
    *
    * @return a freshly created, empty {@link SimpleFieldSet} instance.
    */
@@ -92,11 +90,10 @@ public class ListPeerMessage extends FCPMessage {
    *
    * @param handler connection handler that validates permissions and dispatches replies; must not
    *     be {@code null}.
-   * @param node target node queried for peer information; must not be {@code null}.
    * @throws MessageInvalidException when access is denied or required, fields are absent.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     if (!handler.hasFullAccess()) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,

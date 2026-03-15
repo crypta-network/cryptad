@@ -93,7 +93,7 @@ class FilterResultMessageTest {
             new SimpleReadOnlyArrayBucket(new byte[] {1, 2}));
 
     MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> message.run(null, null));
+        assertThrows(MessageInvalidException.class, () -> message.run(null));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

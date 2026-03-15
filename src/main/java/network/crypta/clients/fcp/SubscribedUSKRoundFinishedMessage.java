@@ -92,14 +92,13 @@ public class SubscribedUSKRoundFinishedMessage extends FCPMessage {
    *
    * @param handler connection handler associated with the subscription; never used because the
    *     method aborts immediately.
-   * @param node node instance representing the local Crypta daemon; unused in this guard path.
    * @throws MessageInvalidException never thrown directly here but retained for signature parity
    *     with the superclass contract and related message types.
    * @throws UnsupportedOperationException always thrown to indicate that this message is not meant
    *     to be executed on the receiving side.
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new UnsupportedOperationException();
   }
 }

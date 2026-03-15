@@ -4,7 +4,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.crypt.HashResult;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,12 +184,11 @@ public class ExpectedHashes extends FCPMessage implements Serializable {
    *
    * @param handler connection handler representing the peer endpoint; unused because execution is
    *     unsupported
-   * @param node running node instance; included for interface symmetry but never dereferenced here
    * @throws MessageInvalidException declared for interface compatibility, though the method always
    *     fails with {@link UnsupportedOperationException}
    */
   @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+  public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     throw new UnsupportedOperationException();
   }
 }

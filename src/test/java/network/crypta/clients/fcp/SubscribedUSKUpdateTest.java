@@ -6,7 +6,6 @@ import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,11 +58,7 @@ class SubscribedUSKUpdateTest {
 
     MessageInvalidException exception =
         assertThrows(
-            MessageInvalidException.class,
-            () ->
-                update.run(
-                    mock(FCPConnectionHandler.class),
-                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+            MessageInvalidException.class, () -> update.run(mock(FCPConnectionHandler.class)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(identifier, exception.ident);
