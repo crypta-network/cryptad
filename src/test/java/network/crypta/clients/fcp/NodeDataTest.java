@@ -1,120 +1,79 @@
 package network.crypta.clients.fcp;
 
+import java.util.Map;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class NodeDataTest {
 
-  private static final String VOLATILE_KEY = "volatile";
+  @Mock private Node node;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @ParameterizedTest
-  @CsvSource({"true,true", "true,false", "false,true", "false,false"})
-  void getFieldSet_whenFlagsCombination_selectsCorrectBaseFieldSet(
-      boolean giveOpennetRef, boolean withPrivate) {
-    SimpleFieldSet expected = new SimpleFieldSet(true);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-
-    if (giveOpennetRef && withPrivate) {
-      when(network.exportOpennetPrivateFieldSet()).thenReturn(expected);
-    } else if (giveOpennetRef) {
-      when(network.exportOpennetPublicFieldSet()).thenReturn(expected);
-    } else if (withPrivate) {
-      when(network.exportDarknetPrivateFieldSet()).thenReturn(expected);
-    } else {
-      when(network.exportDarknetPublicFieldSet()).thenReturn(expected);
-    }
-
-    NodeData nodeData =
-        new NodeData(node, giveOpennetRef, withPrivate, /* withVolatile= */ false, null);
+  @Test
+  void getFieldSet_whenSnapshotContainsNestedValues_rebuildsFieldSetRecursively() {
+    NodeReferenceSnapshot snapshot =
+        new NodeReferenceSnapshot(
+            new NodeFieldSet(
+                Map.of("identity", "alpha"),
+                Map.of(
+                    "physical", new NodeFieldSet(Map.of("address", "127.0.0.1"), Map.of()),
+                    "volatile", new NodeFieldSet(Map.of("uptimeSeconds", "42"), Map.of()))));
+    NodeData nodeData = new NodeData(snapshot, "node-identifier-1");
 
     SimpleFieldSet result = nodeData.getFieldSet();
 
-    assertSame(expected, result);
-    assertNull(result.subset(VOLATILE_KEY));
-    assertNull(result.get("Identifier"));
-    verify(network, never()).exportVolatileFieldSet();
+    assertEquals("alpha", result.get("identity"));
+    assertEquals("127.0.0.1", result.get("physical.address"));
+    assertEquals("42", result.get("volatile.uptimeSeconds"));
+    assertEquals("node-identifier-1", result.get("Identifier"));
   }
 
   @Test
-  void getFieldSet_whenWithVolatileAndNonEmpty_exportAddsVolatileSubset() {
-    SimpleFieldSet base = new SimpleFieldSet(true);
-    SimpleFieldSet vol = new SimpleFieldSet(true);
-    vol.putSingle("stat", "value");
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.exportOpennetPublicFieldSet()).thenReturn(base);
-    when(network.exportVolatileFieldSet()).thenReturn(vol);
-    NodeData nodeData =
-        new NodeData(node, /* giveOpennetRef= */ true, /* withPrivate= */ false, true, null);
+  void getFieldSet_whenSnapshotContainsEmptySubset_expectEmptySubsetOmitted() {
+    NodeReferenceSnapshot snapshot =
+        new NodeReferenceSnapshot(
+            new NodeFieldSet(
+                Map.of("identity", "alpha"),
+                Map.of(
+                    "empty",
+                    NodeFieldSet.empty(),
+                    "present",
+                    new NodeFieldSet(Map.of("name", "beta"), Map.of()))));
+    NodeData nodeData = new NodeData(snapshot, null);
 
     SimpleFieldSet result = nodeData.getFieldSet();
 
-    assertSame(base, result);
-    assertSame(vol, result.subset(VOLATILE_KEY));
+    assertEquals("alpha", result.get("identity"));
+    assertEquals("beta", result.get("present.name"));
+    assertNull(result.subset("empty"));
   }
 
   @Test
-  void getFieldSet_whenWithVolatileAndEmpty_exportDoesNotAddVolatileSubset() {
-    SimpleFieldSet base = new SimpleFieldSet(true);
-    SimpleFieldSet emptyVol = new SimpleFieldSet(true);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.exportDarknetPrivateFieldSet()).thenReturn(base);
-    when(network.exportVolatileFieldSet()).thenReturn(emptyVol);
-    NodeData nodeData =
-        new NodeData(node, /* giveOpennetRef= */ false, /* withPrivate= */ true, true, null);
+  void getFieldSet_whenSnapshotEmpty_expectEmptyFieldSetWithoutIdentifier() {
+    NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), null);
 
     SimpleFieldSet result = nodeData.getFieldSet();
 
-    assertSame(base, result);
-    assertNull(result.subset(VOLATILE_KEY));
-  }
-
-  @Test
-  void getFieldSet_whenIdentifierProvided_addsIdentifierField() {
-    SimpleFieldSet base = new SimpleFieldSet(true);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.exportOpennetPrivateFieldSet()).thenReturn(base);
-    String identifier = "node-identifier-1";
-    NodeData nodeData =
-        new NodeData(node, /* giveOpennetRef= */ true, /* withPrivate= */ true, false, identifier);
-
-    SimpleFieldSet result = nodeData.getFieldSet();
-
-    assertSame(base, result);
-    assertEquals(identifier, result.get("Identifier"));
+    assertTrue(result.directKeys().isEmpty());
+    assertTrue(result.directSubsets().isEmpty());
   }
 
   @Test
   void getName_returnsStaticName() {
-    NodeData nodeData =
-        new NodeData(node, /* giveOpennetRef= */ true, /* withPrivate= */ false, false, null);
+    NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), null);
 
     assertEquals("NodeData", nodeData.getName());
   }
@@ -122,9 +81,7 @@ class NodeDataTest {
   @Test
   void run_whenCalled_throwsInvalidMessageExceptionWithIdentifier() {
     String identifier = "client-id-123";
-    NodeData nodeData =
-        new NodeData(
-            node, /* giveOpennetRef= */ false, /* withPrivate= */ false, false, identifier);
+    NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), identifier);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> nodeData.run(null, node));
@@ -138,8 +95,7 @@ class NodeDataTest {
 
   @Test
   void run_whenIdentifierNull_throwsInvalidMessageExceptionWithNullIdentifier() {
-    NodeData nodeData =
-        new NodeData(node, /* giveOpennetRef= */ false, /* withPrivate= */ true, false, null);
+    NodeData nodeData = new NodeData(NodeReferenceSnapshot.empty(), null);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> nodeData.run(null, node));

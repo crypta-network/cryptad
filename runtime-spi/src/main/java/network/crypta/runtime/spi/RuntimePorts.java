@@ -19,6 +19,7 @@ package network.crypta.runtime.spi;
  * @see TransferAccessPort
  * @see LifecyclePort
  * @see ConfigPort
+ * @see NodeInfoPort
  */
 public interface RuntimePorts {
   /**
@@ -78,4 +79,16 @@ public interface RuntimePorts {
    * @return configuration runtime port for export, update, and persistence operations
    */
   ConfigPort config();
+
+  /**
+   * Returns the node-info capability exposed to management-facing infrastructure code.
+   *
+   * <p>This port lets higher layers request node greeting metadata and node-reference exports
+   * without depending on daemon-only node, version, localization, compressor, or field-set types.
+   * The returned object should be treated as a live runtime view whose methods produce detached
+   * immutable snapshots.
+   *
+   * @return node-info runtime port for greeting metadata and node-reference exports
+   */
+  NodeInfoPort nodeInfo();
 }

@@ -2,10 +2,18 @@ package network.crypta.clients.fcp;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceSnapshot;
+import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -13,10 +21,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,8 +33,13 @@ class GetNodeTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
+
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private NodeInfoPort nodeInfoPort;
 
   @Test
   void constructor_whenFieldsPresent_setsFlagsAndRemovesIdentifier() {
@@ -104,27 +117,41 @@ class GetNodeTest {
     assertEquals("restricted-client", exception.ident);
     assertFalse(exception.global);
     assertEquals("GetNode requires full access", exception.getMessage());
+    verifyNoInteractions(server, runtimePorts, nodeInfoPort, node);
   }
 
-  @Test
-  void run_whenFullAccess_sendsNodeDataWithFlags() throws MessageInvalidException {
+  @ParameterizedTest
+  @CsvSource({
+    "true,true,OPENNET_PRIVATE",
+    "true,false,OPENNET_PUBLIC",
+    "false,true,DARKNET_PRIVATE",
+    "false,false,DARKNET_PUBLIC"
+  })
+  void run_whenFullAccess_requestsMatchingReferenceViewAndSendsNodeData(
+      boolean giveOpennetRef, boolean withPrivate, NodeReferenceView expectedView)
+      throws MessageInvalidException {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("GiveOpennetRef", "true");
-    fs.putSingle("WithPrivate", "false");
+    fs.putSingle("GiveOpennetRef", Boolean.toString(giveOpennetRef));
+    fs.putSingle("WithPrivate", Boolean.toString(withPrivate));
     fs.putSingle("WithVolatile", "true");
     fs.putSingle("Identifier", "req-42");
     GetNode getNode = new GetNode(fs);
+    NodeReferenceSnapshot snapshot =
+        new NodeReferenceSnapshot(new NodeFieldSet(Map.of("identity", "alpha"), Map.of()));
     when(handler.hasFullAccess()).thenReturn(true);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.nodeInfo()).thenReturn(nodeInfoPort);
+    when(nodeInfoPort.exportReference(expectedView, true)).thenReturn(snapshot);
     ArgumentCaptor<NodeData> messageCaptor = ArgumentCaptor.forClass(NodeData.class);
 
     getNode.run(handler, node);
 
+    verify(nodeInfoPort).exportReference(expectedView, true);
     verify(handler).send(messageCaptor.capture());
     NodeData sent = messageCaptor.getValue();
-    assertSame(node, sent.node);
-    assertTrue(sent.giveOpennetRef);
-    assertFalse(sent.withPrivate);
-    assertTrue(sent.withVolatile);
+    assertEquals(snapshot, sent.snapshot);
     assertEquals("req-42", sent.requestIdentifier);
+    verifyNoInteractions(node);
   }
 }

@@ -2,17 +2,22 @@ package network.crypta.clients.fcp;
 
 import java.util.UUID;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeGreetingSnapshot;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -21,8 +26,13 @@ class ClientHelloMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
+
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private NodeInfoPort nodeInfoPort;
 
   @Test
   void constructor_whenNameMissing_expectException() {
@@ -64,19 +74,33 @@ class ClientHelloMessageTest {
   }
 
   @Test
-  void run_whenInvoked_sendsNodeHelloAndRegistersClient() throws MessageInvalidException {
+  void run_whenInvoked_fetchesGreetingSendsNodeHelloAndRegistersClient()
+      throws MessageInvalidException {
     ClientHelloMessage message = new ClientHelloMessage(fieldSet("deterministic-client", "0.7.0"));
     UUID identifier = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+    NodeGreetingSnapshot greeting =
+        new NodeGreetingSnapshot(
+            "Cryptad", "v-string", 123, "rev-xyz", true, "descriptor", "ENGLISH");
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.nodeInfo()).thenReturn(nodeInfoPort);
+    when(nodeInfoPort.greeting()).thenReturn(greeting);
     when(handler.getConnectionIdentifierUUID()).thenReturn(identifier);
 
     message.run(handler, node);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(handler).send(captor.capture());
+    InOrder order = inOrder(nodeInfoPort, handler);
+    order.verify(nodeInfoPort).greeting();
+    order.verify(handler).send(captor.capture());
+    order.verify(handler).setClientName("deterministic-client");
     FCPMessage sentMessage = captor.getValue();
     assertInstanceOf(NodeHelloMessage.class, sentMessage);
-    assertEquals(identifier.toString(), sentMessage.getFieldSet().get("ConnectionIdentifier"));
-    verify(handler).setClientName("deterministic-client");
+    SimpleFieldSet greetingFieldSet = sentMessage.getFieldSet();
+    assertEquals(identifier.toString(), greetingFieldSet.get("ConnectionIdentifier"));
+    assertEquals("Cryptad", greetingFieldSet.get("Node"));
+    assertEquals("v-string", greetingFieldSet.get("Version"));
+    verifyNoInteractions(node);
   }
 
   private static SimpleFieldSet fieldSet(String name, String expectedVersion) {

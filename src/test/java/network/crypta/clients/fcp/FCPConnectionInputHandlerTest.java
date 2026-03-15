@@ -16,6 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
+import network.crypta.runtime.spi.NodeGreetingSnapshot;
+import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
@@ -272,6 +274,8 @@ class FCPConnectionInputHandlerTest {
     ctx.server = mock(FCPServer.class);
     ctx.node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     ctx.core = mock(NodeClientCore.class);
+    ctx.runtimePorts = mock(RuntimePorts.class);
+    ctx.nodeInfoPort = mock(NodeInfoPort.class);
     ctx.persistentFactory = mock(PersistentTempBucketFactory.class);
     ctx.socket = mock(Socket.class);
 
@@ -280,6 +284,13 @@ class FCPConnectionInputHandlerTest {
     when(ctx.handler.getServer()).thenReturn(ctx.server);
     lenient().when(ctx.server.getNode()).thenReturn(ctx.node);
     lenient().when(ctx.server.getCore()).thenReturn(ctx.core);
+    lenient().when(ctx.server.runtime()).thenReturn(ctx.runtimePorts);
+    lenient().when(ctx.runtimePorts.nodeInfo()).thenReturn(ctx.nodeInfoPort);
+    lenient()
+        .when(ctx.nodeInfoPort.greeting())
+        .thenReturn(
+            new NodeGreetingSnapshot(
+                "Cryptad", "v-string", 123, "rev-xyz", false, "descriptor", "ENGLISH"));
     lenient().when(ctx.core.getTempBucketFactory()).thenReturn(ctx.bucketFactory);
     lenient().when(ctx.core.getPersistentTempBucketFactory()).thenReturn(ctx.persistentFactory);
     lenient().when(ctx.handler.isClosed()).thenReturn(false);
@@ -326,6 +337,8 @@ class FCPConnectionInputHandlerTest {
     FCPServer server;
     Node node;
     NodeClientCore core;
+    RuntimePorts runtimePorts;
+    NodeInfoPort nodeInfoPort;
     Socket socket;
     TempBucketFactory bucketFactory;
     PersistentTempBucketFactory persistentFactory;

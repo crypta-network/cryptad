@@ -1,19 +1,18 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.l10n.NodeL10n;
+import java.util.Objects;
 import network.crypta.node.Node;
-import network.crypta.node.Version;
+import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.compress.Compressor;
 
 /**
  * Outbound server greeting sent over the Freenet Client Protocol (FCP).
  *
- * <p>The message is emitted immediately after accepting an FCP connection so the client can learn
- * peer capabilities before issuing further commands. It advertises the negotiated protocol version,
- * build number, Git revision, and supported compression codecs. The greeting echoes a
- * connection-scoped identifier supplied at construction time so clients can correlate socket
- * handshakes with session state, and it carries a language hint for locale selection.
+ * <p>The message is emitted immediately after accepting an FCP connection, so the client can learn
+ * peer capabilities before issuing further commands. It advertises the negotiated protocol version
+ * alongside the daemon metadata already captured in a detached {@link NodeGreetingSnapshot}. The
+ * greeting echoes a connection-scoped identifier supplied at construction time so clients can
+ * correlate socket handshakes with session state.
  *
  * <p>Instances are immutable after construction and only assemble metadata; they never write to the
  * network or mutate node state. Threads may reuse the same instance safely because all fields are
@@ -31,46 +30,52 @@ public class NodeHelloMessage extends FCPMessage {
   /**
    * Canonical FCP message name used by the wire protocol and registry lookups.
    *
-   * <p>This constant is stable across releases so downstream components can perform equality checks
-   * without depending on instantiated objects.
+   * <p>This constant is stable across releases, so downstream components can perform equality
+   * checks without depending on instantiated objects.
    */
   public static final String NAME = "NodeHello";
 
-  private final String id;
+  private static final String FCP_VERSION = "2.0";
+
+  private final NodeGreetingSnapshot greeting;
+  private final String connectionIdentifier;
 
   /**
-   * Creates a greeting message bound to a connection identifier supplied by the FCP server.
+   * Creates a greeting message from a detached runtime snapshot and connection identifier.
    *
-   * @param id opaque connection identifier chosen by the server; never {@code null}; echoed back to
-   *     clients so they can match greetings to sockets or queued session metadata.
+   * @param greeting runtime snapshot containing node metadata to serialize
+   * @param connectionIdentifier opaque connection identifier chosen by the server; never {@code
+   *     null}; echoed back to clients so they can match greetings to sockets or queued session
+   *     metadata.
    */
-  public NodeHelloMessage(String id) {
-    this.id = id;
+  public NodeHelloMessage(NodeGreetingSnapshot greeting, String connectionIdentifier) {
+    this.greeting = Objects.requireNonNull(greeting, "greeting");
+    this.connectionIdentifier =
+        Objects.requireNonNull(connectionIdentifier, "connectionIdentifier");
   }
 
   /**
    * Builds a {@link SimpleFieldSet} describing the node and its negotiated connection settings.
    *
-   * <p>The returned set is freshly allocated on each call and includes protocol version, node
-   * identity, build number, Git revision, testnet flag, supported compression codecs, the supplied
-   * connection identifier, and a language hint derived from {@link NodeL10n}. All values are
-   * formatted using primitive types or strings ready for FCP serialization.
+   * <p>The returned set is freshly allocated on each call and includes the protocol version, the
+   * stored node metadata snapshot, and the supplied connection identifier. All values are formatted
+   * using primitive types or strings ready for FCP serialization.
    *
    * @return mutable field set ready for encoding; callers may add additional keys before sending
-   *     without affecting subsequent invocations because a new instance is produced each time.
+   *     without affecting later invocations because a new instance is produced each time.
    */
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
-    sfs.putSingle("FCPVersion", "2.0");
-    sfs.putSingle("Node", "Cryptad");
-    sfs.putSingle("Version", Version.getVersionString());
-    sfs.put("Build", Version.currentBuildNumber());
-    sfs.putSingle("Revision", Version.gitRevision());
-    sfs.put("Testnet", Node.isTestnetEnabled());
-    sfs.putSingle("CompressionCodecs", Compressor.COMPRESSOR_TYPE.getHelloCompressorDescriptor());
-    sfs.putSingle("ConnectionIdentifier", id);
-    sfs.putSingle("NodeLanguage", NodeL10n.getBase().getSelectedLanguage().toString());
+    sfs.putSingle("FCPVersion", FCP_VERSION);
+    sfs.putSingle("Node", greeting.nodeName());
+    sfs.putSingle("Version", greeting.versionString());
+    sfs.put("Build", greeting.buildNumber());
+    sfs.putSingle("Revision", greeting.revision());
+    sfs.put("Testnet", greeting.testnetEnabled());
+    sfs.putSingle("CompressionCodecs", greeting.compressionCodecs());
+    sfs.putSingle("ConnectionIdentifier", connectionIdentifier);
+    sfs.putSingle("NodeLanguage", greeting.nodeLanguage());
     return sfs;
   }
 

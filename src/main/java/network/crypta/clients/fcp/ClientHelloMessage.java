@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -113,11 +114,11 @@ public final class ClientHelloMessage extends FCPMessage {
    * and recording the announced client name for later auditing and quota attribution.
    *
    * <p>The method assumes the {@link FCPConnectionHandler} already verified message authenticity,
-   * so it focuses on the happy path: building a node response using the handler's connection UUID
-   * and dispatching it over the same channel. After the response leaves, the handler remembers the
-   * client name so future log lines can refer to it even if the socket closes unexpectedly. The
-   * {@link Node} parameter is currently unused but retained for parity with other {@link
-   * FCPMessage} hooks.
+   * so it focuses on the happy path: fetching greeting metadata from the runtime SPI, building a
+   * node response using the handler's connection UUID, and dispatching it over the same channel.
+   * After the response leaves, the handler remembers the client name so future log lines can refer
+   * to it even if the socket closes unexpectedly. The {@link Node} parameter is currently unused
+   * but retained for parity with other {@link FCPMessage} hooks.
    *
    * <pre>{@code
    * ClientHelloMessage hello = ...;
@@ -131,7 +132,9 @@ public final class ClientHelloMessage extends FCPMessage {
   @Override
   public void run(FCPConnectionHandler handler, Node node) {
     // We know the Hello is valid.
-    FCPMessage msg = new NodeHelloMessage(handler.getConnectionIdentifierUUID().toString());
+    NodeGreetingSnapshot greeting = handler.getServer().runtime().nodeInfo().greeting();
+    FCPMessage msg =
+        new NodeHelloMessage(greeting, handler.getConnectionIdentifierUUID().toString());
     handler.send(msg);
     handler.setClientName(clientName);
   }

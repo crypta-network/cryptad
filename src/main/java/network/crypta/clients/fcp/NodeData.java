@@ -1,24 +1,23 @@
 package network.crypta.clients.fcp;
 
+import java.util.Map;
+import java.util.Objects;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
 /**
  * Packages node reference data for transmission from the server to an FCP client.
  *
- * <p>This message captures a snapshot of the current node identity and connectivity information
- * produced by the supplied {@link Node}. Callers choose whether to emit opennet or darknet
- * references, whether to include private details intended only for trusted peers, and whether to
- * append transient volatile metadata. Instances are immutable after construction; serialization is
- * deferred until {@link #getFieldSet()} is invoked, so the referenced {@code Node} should remain
- * stable while export occurs. The message is intentionally one-directional: it is created by the
- * server side when answering discovery or status requests and must not be sent from clients.
- * Concurrency expectations match the node: callers should invoke export methods within the node's
- * usual synchronization regime to avoid racing configuration updates.
+ * <p>This message carries a detached {@link NodeReferenceSnapshot} produced by the runtime SPI.
+ * Callers choose the requested reference view before constructing the message, and serialization is
+ * deferred until {@link #getFieldSet()} rebuilds a fresh {@link SimpleFieldSet}. The message is
+ * intentionally one-directional: it is created by the server side when answering discovery or
+ * status requests and must not be sent from clients.
  *
  * <ul>
- *   <li>Selects opennet or darknet representations based on {@code giveOpennetRef}.
- *   <li>Optionally includes private and volatile subsets for richer diagnostics.
+ *   <li>Rebuilds the historical node-reference tree from an immutable runtime snapshot.
  *   <li>Echoes an optional identifier to correlate responses with client requests.
  * </ul>
  */
@@ -26,85 +25,62 @@ public class NodeData extends FCPMessage {
 
   static final String NAME = "NodeData";
 
-  final Node node;
-  final boolean giveOpennetRef;
-  final boolean withPrivate;
-  final boolean withVolatile;
+  final NodeReferenceSnapshot snapshot;
   final String requestIdentifier;
 
   /**
-   * Creates an immutable message wrapper around the node's reference exports.
+   * Creates an immutable message wrapper around a detached node-reference snapshot.
    *
-   * <p>The constructor only stores references and flags; it does not perform expensive exports.
-   * Actual serialization happens when {@link #getFieldSet()} is called, allowing callers to defer
-   * work until just before a response is written. No validation is performed here, so callers must
-   * ensure the {@link Node} has up-to-date reference data and that privacy flags reflect the
-   * intended audience. Providing a {@code null} identifier omits the {@code Identifier} field and
-   * yields an anonymous response. Instances are safe to reuse across requests as long as the
-   * underlying node state remains consistent with the chosen visibility settings.
+   * <p>The constructor stores only the immutable snapshot and optional request identifier; it does
+   * not perform additional runtime lookups. Actual serialization happens when {@link
+   * #getFieldSet()} is called, allowing callers to defer wire reconstruction until just before a
+   * response is written. Providing a {@code null} identifier omits the {@code Identifier} field and
+   * yields an anonymous response.
    *
    * <pre>{@code
-   * NodeData payload = new NodeData(node, true, true, false, "req-42");
+   * NodeData payload =
+   *     new NodeData(
+   *         new NodeReferenceSnapshot(new NodeFieldSet(Map.of("identity", "alpha"), Map.of())),
+   *         "req-42");
    * SimpleFieldSet fs = payload.getFieldSet();
    * }</pre>
    *
-   * @param node Node providing reference data to serialize; must not be null.
-   * @param giveOpennetRef true to export opennet reference, false for darknet details instead.
-   * @param withPrivate true to include private elements intended for trusted peers only.
-   * @param withVolatile true to append transient volatile metadata when available from the node.
+   * @param snapshot runtime-exported node-reference snapshot to serialize
    * @param requestIdentifier optional identifier echoed in the {@code Identifier} field; nullable.
    */
-  public NodeData(
-      Node node,
-      boolean giveOpennetRef,
-      boolean withPrivate,
-      boolean withVolatile,
-      String requestIdentifier) {
-    this.node = node;
-    this.giveOpennetRef = giveOpennetRef;
-    this.withPrivate = withPrivate;
-    this.withVolatile = withVolatile;
+  public NodeData(NodeReferenceSnapshot snapshot, String requestIdentifier) {
+    this.snapshot = Objects.requireNonNull(snapshot);
     this.requestIdentifier = requestIdentifier;
   }
 
   /**
    * Builds the {@link SimpleFieldSet} containing the requested node reference details.
    *
-   * <p>This method invokes the appropriate export routine on the backing {@link Node}, choosing
-   * between opennet and darknet forms and adding private content when requested. When {@code
-   * withVolatile} is set, it merges the node's volatile field set under the {@code volatile} key if
-   * present. If a {@code requestIdentifier} was provided at construction time, it is written under
-   * the {@code Identifier} key so clients can correlate responses. The returned field set is newly
-   * allocated by the node export routines; callers may modify it without affecting shared state.
+   * <p>This method rebuilds the historical node-reference tree from the stored snapshot and writes
+   * the optional identifier under the {@code Identifier} key so clients can correlate responses.
+   * The returned field set is newly allocated for each call; callers may modify it without
+   * affecting the stored snapshot or future serializations.
    *
    * @return SimpleFieldSet containing the selected node reference data; never null.
    */
   @Override
   public SimpleFieldSet getFieldSet() {
-    SimpleFieldSet fs;
-    if (giveOpennetRef) {
-      if (withPrivate) {
-        fs = node.network().exportOpennetPrivateFieldSet();
-      } else {
-        fs = node.network().exportOpennetPublicFieldSet();
-      }
-    } else {
-      if (withPrivate) {
-        fs = node.network().exportDarknetPrivateFieldSet();
-      } else {
-        fs = node.network().exportDarknetPublicFieldSet();
-      }
-    }
-    if (withVolatile) {
-      SimpleFieldSet vol = node.network().exportVolatileFieldSet();
-      if (!vol.isEmpty()) {
-        fs.put("volatile", vol);
-      }
-    }
+    SimpleFieldSet fs = toSimpleFieldSet(snapshot.root());
     if (requestIdentifier != null) {
       fs.putSingle("Identifier", requestIdentifier);
     }
     return fs;
+  }
+
+  private static SimpleFieldSet toSimpleFieldSet(NodeFieldSet source) {
+    SimpleFieldSet target = new SimpleFieldSet(true);
+    for (Map.Entry<String, String> entry : source.directValues().entrySet()) {
+      target.putSingle(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, NodeFieldSet> entry : source.directSubsets().entrySet()) {
+      target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
+    }
+    return target;
   }
 
   /**
