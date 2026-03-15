@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -17,9 +17,9 @@ import network.crypta.support.SimpleFieldSet;
  * followed by {@link EndListPeerNotesMessage}.
  *
  * <p>Concurrency considerations: each instance is used by a single handler invocation and stores no
- * mutable global state, so it is thread-confined by design. The lifetime is short-lived—created
+ * mutable global state, so it is thread-confined by design. The lifetime is short-lived, created
  * when the client issues the command and discarded immediately after the two response messages are
- * sent. Persistent data (the note text) remains managed by the underlying {@link DarknetPeerNode}.
+ * sent. Persistent data (the note text) remains managed behind the runtime peer-management port.
  *
  * <ul>
  *   <li>Validates full-access session credentials before revealing peer notes.
@@ -57,7 +57,7 @@ public class ListPeerNotesMessage extends FCPMessage {
    * <p>The listing logic sends dedicated response messages rather than encoding data inside this
    * object's field set. Consequently, this call intentionally returns a fresh, empty {@link
    * SimpleFieldSet} with freenet-specific escaping enabled. The method is idempotent and creates a
-   * new instance each time so callers cannot accidentally mutate shared state. It should be used
+   * new instance each time, so callers cannot accidentally mutate shared state. It should be used
    * primarily by generic message code paths that expect a field-set representation even when none
    * is meaningful.
    *
@@ -73,7 +73,7 @@ public class ListPeerNotesMessage extends FCPMessage {
    * Provides the protocol-level name for this message type.
    *
    * <p>The returned value matches the identifier expected by FCP clients when requesting darknet
-   * peer notes. It is a stable constant so log messages and routing tables can rely on it for
+   * peer notes. It is a stable constant, so log messages and routing tables can rely on it for
    * comparisons or switch statements. Because it performs no allocation beyond returning a string
    * literal, it is safe for frequent use in performance-sensitive paths.
    *
@@ -92,12 +92,12 @@ public class ListPeerNotesMessage extends FCPMessage {
    * the stored {@link SimpleFieldSet}; missing or unknown identifiers trigger protocol-compliant
    * error responses so clients can retry or repair the request. For darknet peers, the method sends
    * a {@link PeerNote} containing the private comment text followed by an {@link
-   * EndListPeerNotesMessage} marker. Execution is single-pass and does not modify peer state.
+   * EndListPeerNotesMessage} marker. Execution is single-pass and does not modify the peer state.
    *
    * @param handler connection context used to check privileges and emit responses; must not be
    *     {@code null}
-   * @param node local node context that resolves peer identifiers and provides stored note content;
-   *     must not be {@code null}
+   * @param node local node context supplied by the legacy FCP dispatch signature; unused because
+   *     peer-note access is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, required fields are missing, or the target
    *     peer is not a darknet peer
    */
@@ -118,27 +118,25 @@ public class ListPeerNotesMessage extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
-    if (pn == null) {
+    try {
+      String noteText =
+          handler.getServer().runtime().peer().readPrivateDarknetComment(nodeIdentifier);
+      handler.send(
+          new PeerNote(
+              nodeIdentifier,
+              noteText,
+              Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT,
+              requestIdentifier));
+      handler.send(new EndListPeerNotesMessage(nodeIdentifier, requestIdentifier));
+    } catch (UnknownPeerException _) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);
-      return;
-    }
-    if (!(pn instanceof DarknetPeerNode dpn)) {
+    } catch (DarknetPeerRequiredException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DARKNET_ONLY,
           "ModifyPeer only available for darknet peers",
           requestIdentifier,
           false);
     }
-    // Future enhancement: generalize for multiple peer notes per peer after PeerNode is updated
-    String noteText = dpn.getPrivateDarknetCommentNote();
-    handler.send(
-        new PeerNote(
-            nodeIdentifier,
-            noteText,
-            Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT,
-            requestIdentifier));
-    handler.send(new EndListPeerNotesMessage(nodeIdentifier, requestIdentifier));
   }
 }

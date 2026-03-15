@@ -1,11 +1,13 @@
 package network.crypta.clients.fcp;
 
-import java.util.function.Consumer;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.Fields;
 import network.crypta.support.SimpleFieldSet;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Handles the FCP {@code ModifyPeer} command, allowing a client to toggle operational flags on an
@@ -17,9 +19,9 @@ import network.crypta.support.SimpleFieldSet;
  * <p>Use this class when a client needs to adjust connectivity characteristics for a known peer
  * without recreating or deleting it. Typical call patterns originate from the FCP server loop,
  * which instantiates this message from incoming fields and delegates execution to {@link #run}. The
- * implementation delegates synchronization and persistence concerns to {@link Node} and peer
- * implementations; it performs only the protocol-level validation and flag translation. Flags are
- * optional and omitted values leave existing peer settings unchanged.
+ * implementation delegates synchronization and persistence concerns to the runtime peer-management
+ * SPI; it performs only the protocol-level validation and flag translation. Flags are optional and
+ * omitted values leave existing peer settings unchanged.
  *
  * <ul>
  *   <li>Checks for full-access permissions before applying any change.
@@ -31,7 +33,6 @@ import network.crypta.support.SimpleFieldSet;
  *
  * @see FCPMessage
  * @see PeerMessage
- * @see DarknetPeerNode
  */
 public class ModifyPeer extends FCPMessage {
   static final String NAME = "ModifyPeer";
@@ -91,7 +92,8 @@ public class ModifyPeer extends FCPMessage {
    *
    * @param handler connection handler that mediates access checks and message delivery for the
    *     caller; must support full-access operations.
-   * @param node node instance that stores peer records and applies requested state changes.
+   * @param node node instance supplied by the legacy FCP dispatch signature; unused because peer
+   *     mutation is delegated through the runtime SPI
    * @throws MessageInvalidException if access is denied, required fields are missing, or the target
    *     peer is not available as a darknet peer.
    */
@@ -112,44 +114,33 @@ public class ModifyPeer extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
-    if (pn == null) {
+    DarknetPeerSettingsUpdate update =
+        new DarknetPeerSettingsUpdate(
+            parseOptionalBoolean(fs.get("IsDisabled")),
+            parseOptionalBoolean(fs.get("IsListenOnly")),
+            parseOptionalBoolean(fs.get("IsBurstOnly")),
+            parseOptionalBoolean(fs.get("IgnoreSourcePort")),
+            parseOptionalBoolean(fs.get("AllowLocalAddresses")));
+    try {
+      PeerSnapshot snapshot =
+          handler.getServer().runtime().peer().updateDarknetPeer(nodeIdentifier, update);
+      handler.send(new PeerMessage(snapshot, requestIdentifier));
+    } catch (UnknownPeerException _) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);
-      return;
-    }
-    if (!(pn instanceof DarknetPeerNode dpn)) {
+    } catch (DarknetPeerRequiredException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DARKNET_ONLY,
           "ModifyPeer only available for darknet peers",
           requestIdentifier,
           false);
     }
-    applyDisableFlag(dpn, fs.get("IsDisabled"));
-    applyBooleanFlag(dpn::setListenOnly, fs.get("IsListenOnly"));
-    applyBooleanFlag(dpn::setBurstOnly, fs.get("IsBurstOnly"));
-    applyBooleanFlag(dpn::setIgnoreSourcePort, fs.get("IgnoreSourcePort"));
-    applyBooleanFlag(dpn::setAllowLocalAddresses, fs.get("AllowLocalAddresses"));
-    handler.send(new PeerMessage(pn, true, true, requestIdentifier));
   }
 
-  private static void applyDisableFlag(DarknetPeerNode dpn, String disableFlag) {
-    if (isNonEmpty(disableFlag)) {
-      if (Fields.stringToBool(disableFlag, false)) {
-        dpn.disablePeer();
-      } else {
-        dpn.enablePeer();
-      }
+  private static @Nullable Boolean parseOptionalBoolean(String flagValue) {
+    if (flagValue == null || flagValue.isEmpty()) {
+      return null;
     }
-  }
-
-  private static void applyBooleanFlag(Consumer<Boolean> setter, String flagValue) {
-    if (isNonEmpty(flagValue)) {
-      setter.accept(Fields.stringToBool(flagValue, false));
-    }
-  }
-
-  private static boolean isNonEmpty(String value) {
-    return value != null && !value.isEmpty();
+    return Fields.stringToBool(flagValue, false);
   }
 }

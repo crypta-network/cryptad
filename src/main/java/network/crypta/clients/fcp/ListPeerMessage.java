@@ -1,14 +1,15 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 
 /**
  * Client-to-node FCP message that requests detailed information about a specific peer maintained by
  * the destination node.
  *
- * <p>This lightweight wrapper is used when a client needs the status of a single peer—for example
+ * <p>This lightweight wrapper is used when a client needs the status of a single peer—for example,
  * to display link health or drive automated peer-admission decisions. It stores the caller-provided
  * request identifier and the field set that supplies {@code NodeIdentifier} during execution. When
  * run, the message enforces full-access permissions, validates the identifier, and emits either a
@@ -87,12 +88,12 @@ public class ListPeerMessage extends FCPMessage {
    * required and validated. Missing values cause a missing-field error; unknown peers produce an
    * {@link UnknownNodeIdentifierMessage}. When the peer exists, a {@link PeerMessage} describing it
    * is sent. The method is synchronous and read-only; it does not retry, cache results, or alter
-   * node state.
+   * the node state.
    *
    * @param handler connection handler that validates permissions and dispatches replies; must not
    *     be {@code null}.
    * @param node target node queried for peer information; must not be {@code null}.
-   * @throws MessageInvalidException when access is denied or required fields are absent.
+   * @throws MessageInvalidException when access is denied or required, fields are absent.
    */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
@@ -111,12 +112,12 @@ public class ListPeerMessage extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
-    if (pn == null) {
+    try {
+      PeerSnapshot snapshot = handler.getServer().runtime().peer().get(nodeIdentifier, true, true);
+      handler.send(new PeerMessage(snapshot, requestIdentifier));
+    } catch (UnknownPeerException _) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);
-      return;
     }
-    handler.send(new PeerMessage(pn, true, true, requestIdentifier));
   }
 }

@@ -6,20 +6,20 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
-import network.crypta.node.OpennetDisabledException;
-import network.crypta.node.OpennetPeerNode;
-import network.crypta.node.PeerNode;
-import network.crypta.node.PeerTooOldException;
+import network.crypta.runtime.spi.PeerAddFailureReason;
+import network.crypta.runtime.spi.PeerAddRejectedException;
+import network.crypta.runtime.spi.PeerFieldSet;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,23 +37,31 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings({"java:S100", "java:S2095", "resource"})
+@SuppressWarnings({"java:S100", "java:S2095"})
 @ExtendWith(MockitoExtension.class)
 class AddPeerTest {
 
   private static final String IDENTIFIER = "test-ident";
 
+  @Mock private FCPConnectionHandler handler;
+
+  @Mock private Node node;
+
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private PeerPort peerPort;
+
   @Test
   void constructor_whenTrustMissing_throwsMessageInvalidExceptionWithMissingFieldCode() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
-    // No Trust field
-    fs.putSingle("Visibility", FRIEND_VISIBILITY.YES.name());
+    fs.putSingle("Visibility", PeerVisibility.YES.name());
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> new AddPeer(fs));
@@ -67,7 +76,7 @@ class AddPeerTest {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
     fs.putSingle("Trust", "NOT_A_VALID_VALUE");
-    fs.putSingle("Visibility", FRIEND_VISIBILITY.YES.name());
+    fs.putSingle("Visibility", PeerVisibility.YES.name());
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> new AddPeer(fs));
@@ -81,8 +90,7 @@ class AddPeerTest {
   void constructor_whenVisibilityMissing_throwsMessageInvalidExceptionWithMissingFieldCode() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
-    fs.putSingle("Trust", FRIEND_TRUST.NORMAL.name());
-    // No Visibility field
+    fs.putSingle("Trust", PeerTrust.NORMAL.name());
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> new AddPeer(fs));
@@ -96,7 +104,7 @@ class AddPeerTest {
   void constructor_whenVisibilityInvalid_throwsMessageInvalidExceptionWithInvalidFieldCode() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
-    fs.putSingle("Trust", FRIEND_TRUST.NORMAL.name());
+    fs.putSingle("Trust", PeerTrust.NORMAL.name());
     fs.putSingle("Visibility", "NOT_A_VALID_VALUE");
 
     MessageInvalidException exception =
@@ -109,22 +117,18 @@ class AddPeerTest {
 
   @Test
   void getName_whenCalled_returnsAddPeerConstant() throws MessageInvalidException {
-    SimpleFieldSet fs = minimalValidFieldSet();
-
-    AddPeer addPeer = new AddPeer(fs);
+    AddPeer addPeer = new AddPeer(minimalValidFieldSet());
 
     assertEquals(AddPeer.NAME, addPeer.getName());
   }
 
   @Test
   void getFieldSet_whenCalled_returnsNonNullEmptyFieldSet() throws MessageInvalidException {
-    SimpleFieldSet fs = minimalValidFieldSet();
-
-    AddPeer addPeer = new AddPeer(fs);
+    AddPeer addPeer = new AddPeer(minimalValidFieldSet());
 
     SimpleFieldSet result = addPeer.getFieldSet();
+
     assertNotNull(result);
-    // A freshly created SimpleFieldSet should not contain user data yet.
     assertNull(result.get("Identifier"));
   }
 
@@ -161,12 +165,8 @@ class AddPeerTest {
 
   @Test
   void run_whenHandlerHasNoFullAccess_throwsAccessDenied() throws MessageInvalidException {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    AddPeer addPeer = new AddPeer(minimalValidFieldSet());
     when(handler.hasFullAccess()).thenReturn(false);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
@@ -174,219 +174,80 @@ class AddPeerTest {
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("AddPeer requires full access", exception.getMessage());
     assertEquals(IDENTIFIER, exception.ident);
-    verifyNoMoreInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
-  void run_whenOpennetRefCreatesPeer_addsPeerAndSendsPeerMessage() throws Exception {
+  void run_whenOpennetRefAccepted_convertsReferenceAndSendsPeerMessage() throws Exception {
     SimpleFieldSet fs = minimalValidFieldSet();
     fs.put("opennet", true);
     AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    PeerSnapshot snapshot = peerSnapshot("peer-one");
+    stubPeerPort();
     when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(network.opennetPubKeyHash()).thenReturn(new byte[] {1});
-    when(network.addPeerConnection(peerNode)).thenReturn(true);
+    when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
+        .thenReturn(snapshot);
 
     addPeer.run(handler, node);
 
-    verify(network).createNewOpennetNode(any(SimpleFieldSet.class));
-    verify(network).addPeerConnection(peerNode);
+    ArgumentCaptor<PeerFieldSet> referenceCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
+    verify(peerPort).add(referenceCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
+    assertEquals("true", referenceCaptor.getValue().directValues().get("opennet"));
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(messageCaptor.capture());
-    FCPMessage sent = messageCaptor.getValue();
-    assertNotNull(sent);
-    assertEquals(PeerMessage.class, sent.getClass());
-    PeerMessage peerMessage = (PeerMessage) sent;
+    PeerMessage peerMessage = (PeerMessage) messageCaptor.getValue();
+    assertEquals(snapshot, peerMessage.snapshot);
     assertEquals(IDENTIFIER, peerMessage.messageIdentifier);
+    verifyNoInteractions(node);
   }
 
   @Test
-  void run_whenDarknetRefCreatesPeer_addsPeerWithConfiguredTrustAndVisibility() throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    // No opennet flag -> darknet
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+  void run_whenDarknetRefAccepted_mapsConfiguredTrustAndVisibility() throws Exception {
+    AddPeer addPeer = new AddPeer(minimalValidFieldSet());
+    PeerSnapshot snapshot = peerSnapshot("peer-two");
+    stubPeerPort();
     when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    DarknetPeerNode peerNode = mock(DarknetPeerNode.class);
-    when(node.network().darknetPubKeyHash()).thenReturn(new byte[] {1});
-    when(node.network().addPeerConnection(peerNode)).thenReturn(true);
-
-    when(node.network()
-            .createNewDarknetNode(
-                any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
-        .thenReturn(peerNode);
+    when(peerPort.add(any(PeerFieldSet.class), any(PeerTrust.class), any(PeerVisibility.class)))
+        .thenReturn(snapshot);
 
     addPeer.run(handler, node);
 
-    ArgumentCaptor<FRIEND_TRUST> trustCaptor = ArgumentCaptor.forClass(FRIEND_TRUST.class);
-    ArgumentCaptor<FRIEND_VISIBILITY> visibilityCaptor =
-        ArgumentCaptor.forClass(FRIEND_VISIBILITY.class);
-
-    verify(node.network())
-        .createNewDarknetNode(
-            any(SimpleFieldSet.class), trustCaptor.capture(), visibilityCaptor.capture());
-    verify(node.network()).addPeerConnection(peerNode);
-
-    assertEquals(FRIEND_TRUST.NORMAL, trustCaptor.getValue());
-    assertEquals(FRIEND_VISIBILITY.YES, visibilityCaptor.getValue());
+    ArgumentCaptor<PeerTrust> trustCaptor = ArgumentCaptor.forClass(PeerTrust.class);
+    ArgumentCaptor<PeerVisibility> visibilityCaptor = ArgumentCaptor.forClass(PeerVisibility.class);
+    verify(peerPort)
+        .add(any(PeerFieldSet.class), trustCaptor.capture(), visibilityCaptor.capture());
+    assertEquals(PeerTrust.NORMAL, trustCaptor.getValue());
+    assertEquals(PeerVisibility.YES, visibilityCaptor.getValue());
   }
 
   @Test
-  void run_whenOpennetRefIsSelf_throwsCannotPeerWithSelf() throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(network.opennetPubKeyHash()).thenReturn(null);
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.CANNOT_PEER_WITH_SELF, exception.protocolCode);
-    verify(network, never()).addPeerConnection(any(PeerNode.class));
+  void run_whenAddRejectedWithRefParse_mapsProtocolCode() throws Exception {
+    assertAddRejectedMapsToProtocolCode(
+        PeerAddFailureReason.REF_PARSE_ERROR, ProtocolErrorMessage.REF_PARSE_ERROR);
   }
 
   @Test
-  void run_whenOpennetRefDuplicatePeer_throwsDuplicatePeerRef() throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(network.opennetPubKeyHash()).thenReturn(new byte[] {1});
-    when(network.addPeerConnection(peerNode)).thenReturn(false);
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.DUPLICATE_PEER_REF, exception.protocolCode);
+  void run_whenAddRejectedWithOpennetDisabled_mapsProtocolCode() throws Exception {
+    assertAddRejectedMapsToProtocolCode(
+        PeerAddFailureReason.OPENNET_DISABLED, ProtocolErrorMessage.OPENNET_DISABLED);
   }
 
   @Test
-  void run_whenOpennetCreationFailsWithFSParseException_throwsRefParseError() throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
-        .thenThrow(new FSParseException("parse-error"));
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.REF_PARSE_ERROR, exception.protocolCode);
+  void run_whenAddRejectedWithInvalidSignature_mapsProtocolCode() throws Exception {
+    assertAddRejectedMapsToProtocolCode(
+        PeerAddFailureReason.REF_SIGNATURE_INVALID, ProtocolErrorMessage.REF_SIGNATURE_INVALID);
   }
 
   @Test
-  void run_whenOpennetCreationFailsWithOpennetDisabled_throwsOpennetDisabledError()
-      throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
-        .thenThrow(new OpennetDisabledException("disabled"));
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.OPENNET_DISABLED, exception.protocolCode);
+  void run_whenAddRejectedWithCannotPeerWithSelf_mapsProtocolCode() throws Exception {
+    assertAddRejectedMapsToProtocolCode(
+        PeerAddFailureReason.CANNOT_PEER_WITH_SELF, ProtocolErrorMessage.CANNOT_PEER_WITH_SELF);
   }
 
   @Test
-  void run_whenOpennetCreationFailsWithInvalidSignature_throwsRefSignatureInvalid()
-      throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
-        .thenThrow(new ReferenceSignatureVerificationException("bad-sig"));
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.REF_SIGNATURE_INVALID, exception.protocolCode);
-  }
-
-  @Test
-  void run_whenOpennetCreationFailsWithPeerTooOld_throwsRefParseError() throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    fs.put("opennet", true);
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
-        .thenThrow(new PeerTooOldException("too-old", 1, null));
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.REF_PARSE_ERROR, exception.protocolCode);
-  }
-
-  @Test
-  void run_whenDarknetCreationFailsWithInvalidSignature_throwsRefSignatureInvalid()
-      throws Exception {
-    SimpleFieldSet fs = minimalValidFieldSet();
-    AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    when(handler.hasFullAccess()).thenReturn(true);
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.network()
-            .createNewDarknetNode(
-                any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
-        .thenThrow(new ReferenceSignatureVerificationException("bad-sig"));
-
-    MessageInvalidException exception =
-        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
-
-    assertEquals(ProtocolErrorMessage.REF_SIGNATURE_INVALID, exception.protocolCode);
+  void run_whenAddRejectedWithDuplicateRef_mapsProtocolCode() throws Exception {
+    assertAddRejectedMapsToProtocolCode(
+        PeerAddFailureReason.DUPLICATE_PEER_REF, ProtocolErrorMessage.DUPLICATE_PEER_REF);
   }
 
   @Test
@@ -396,22 +257,47 @@ class AddPeerTest {
     fs.putSingle("File", tempDir.toString());
 
     AddPeer addPeer = new AddPeer(fs);
-
-    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
 
     assertEquals(ProtocolErrorMessage.NOT_A_FILE_ERROR, exception.protocolCode);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
+  }
+
+  private void assertAddRejectedMapsToProtocolCode(PeerAddFailureReason reason, int protocolCode)
+      throws Exception {
+    AddPeer addPeer = new AddPeer(minimalValidFieldSet());
+    stubPeerPort();
+    when(handler.hasFullAccess()).thenReturn(true);
+    when(peerPort.add(any(PeerFieldSet.class), any(PeerTrust.class), any(PeerVisibility.class)))
+        .thenThrow(new PeerAddRejectedException(reason, "detail-" + reason.name()));
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
+
+    assertEquals(protocolCode, exception.protocolCode);
+    assertEquals("detail-" + reason.name(), exception.getMessage());
+    assertEquals(IDENTIFIER, exception.ident);
+  }
+
+  private void stubPeerPort() {
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
   }
 
   private SimpleFieldSet minimalValidFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", IDENTIFIER);
-    fs.putSingle("Trust", FRIEND_TRUST.NORMAL.name());
-    fs.putSingle("Visibility", FRIEND_VISIBILITY.YES.name());
+    fs.putSingle("Trust", PeerTrust.NORMAL.name());
+    fs.putSingle("Visibility", PeerVisibility.YES.name());
+    fs.putSingle("identity", "peer-identity");
     return fs;
+  }
+
+  private static PeerSnapshot peerSnapshot(String identity) {
+    return new PeerSnapshot(new PeerFieldSet(Map.of("identity", identity), Map.of()));
   }
 }

@@ -1,7 +1,10 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.node.PeerNode;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,10 +30,13 @@ class ListPeerMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private Node node;
 
-  @Mock private PeerNode peerNode;
+  @Mock private FCPServer server;
+
+  @Mock private RuntimePorts runtimePorts;
+
+  @Mock private PeerPort peerPort;
 
   @Test
   void constructor_whenIdentifierProvided_removesIdentifierFromFieldSet() {
@@ -61,7 +67,7 @@ class ListPeerMessageTest {
     assertEquals("req-2", thrown.ident);
     assertFalse(thrown.global, "Expected non-global error");
     verify(handler, never()).send(any());
-    verifyNoInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
@@ -79,13 +85,17 @@ class ListPeerMessageTest {
     assertEquals("req-3", thrown.ident);
     assertFalse(thrown.global, "Expected non-global error");
     verify(handler, never()).send(any());
-    verifyNoInteractions(node);
+    verifyNoInteractions(server, runtimePorts, peerPort, node);
   }
 
   @Test
-  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
+  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode("node-unknown")).thenReturn(null);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.get("node-unknown", true, true))
+        .thenThrow(new UnknownPeerException("node-unknown"));
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-4");
     fs.putSingle("NodeIdentifier", "node-unknown");
@@ -103,9 +113,16 @@ class ListPeerMessageTest {
   }
 
   @Test
-  void run_whenPeerFound_sendsPeerMessageWithMetadataAndVolatile() throws MessageInvalidException {
+  void run_whenPeerFound_sendsPeerMessageWithMetadataAndVolatile() throws Exception {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.network().getPeerNode("node-42")).thenReturn(peerNode);
+    when(handler.getServer()).thenReturn(server);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    PeerSnapshot snapshot =
+        new PeerSnapshot(
+            new network.crypta.runtime.spi.PeerFieldSet(
+                java.util.Map.of("identity", "node-42"), java.util.Map.of()));
+    when(peerPort.get("node-42", true, true)).thenReturn(snapshot);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-5");
     fs.putSingle("NodeIdentifier", "node-42");
@@ -116,9 +133,7 @@ class ListPeerMessageTest {
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
     PeerMessage peerMessage = assertInstanceOf(PeerMessage.class, captor.getValue());
-    assertEquals(peerNode, peerMessage.pn);
-    assertTrue(peerMessage.withMetadata);
-    assertTrue(peerMessage.withVolatile);
+    assertEquals(snapshot, peerMessage.snapshot);
     assertEquals("req-5", peerMessage.messageIdentifier);
   }
 

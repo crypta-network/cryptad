@@ -20,6 +20,7 @@ package network.crypta.runtime.spi;
  * @see LifecyclePort
  * @see ConfigPort
  * @see NodeInfoPort
+ * @see PeerPort
  */
 public interface RuntimePorts {
   /**
@@ -91,4 +92,16 @@ public interface RuntimePorts {
    * @return node-info runtime port for greeting metadata and node-reference exports
    */
   NodeInfoPort nodeInfo();
+
+  /**
+   * Returns the peer-management capability exposed to management-facing infrastructure code.
+   *
+   * <p>This port lets higher layers list peers, resolve one peer, add or remove peers, adjust
+   * darknet-only peer flags, and read or write the existing private darknet comment note without
+   * depending on daemon-only peer, network, or field-set types. The returned object should be
+   * treated as a live runtime view whose methods produce detached immutable snapshots.
+   *
+   * @return peer-management runtime port for peer inventory and peer mutation
+   */
+  PeerPort peer();
 }
