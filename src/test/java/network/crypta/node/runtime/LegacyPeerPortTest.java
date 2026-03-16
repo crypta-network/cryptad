@@ -337,6 +337,32 @@ class LegacyPeerPortTest {
   }
 
   @Test
+  void removeByIdentity_whenIdentityMatchesPeer_resolvesByIdentityOnly()
+      throws UnknownPeerException {
+    LegacyPeerPort port = newPort();
+    DarknetPeerNode collidingNamePeer = org.mockito.Mockito.mock(DarknetPeerNode.class);
+    when(network.peerNodes()).thenReturn(new PeerNode[] {collidingNamePeer, peerOne});
+    when(collidingNamePeer.getIdentityString()).thenReturn("other-peer");
+    when(peerOne.getIdentityString()).thenReturn("peer-123");
+
+    RemovedPeerSnapshot removedPeer = port.removeByIdentity("peer-123");
+
+    assertEquals("peer-123", removedPeer.identity());
+    assertEquals("peer-123", removedPeer.nodeIdentifier());
+    verify(network).removePeerConnection(peerOne);
+    verify(network, never()).getPeerNode(any());
+  }
+
+  @Test
+  void removeByIdentity_whenPeerMissing_throwsUnknownPeerException() {
+    LegacyPeerPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {peerOne});
+    when(peerOne.getIdentityString()).thenReturn("other-peer");
+
+    assertThrows(UnknownPeerException.class, () -> port.removeByIdentity("peer-123"));
+  }
+
+  @Test
   void remove_whenPeerMissing_throwsUnknownPeerException() {
     LegacyPeerPort port = newPort();
     when(network.getPeerNode("missing-peer")).thenReturn(null);

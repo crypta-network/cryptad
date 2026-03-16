@@ -264,7 +264,7 @@ final class FProxyRegistrar {
 
     DarknetConnectionsToadlet friendsToadlet =
         new DarknetConnectionsToadlet(
-            node, core, client, connectionsToadletRuntimePorts, runtimePorts.darknetConnections());
+            core, client, connectionsToadletRuntimePorts, runtimePorts.darknetConnections());
     server.register(
         friendsToadlet,
         ToadletRegistration.menuLink(
