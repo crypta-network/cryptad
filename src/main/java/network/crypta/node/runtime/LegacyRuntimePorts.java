@@ -8,6 +8,7 @@ import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectivityPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
@@ -44,6 +45,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final ConnectivityPort connectivityPort;
   private final ConnectionsPagePort connectionsPagePort;
   private final DarknetConnectionsPort darknetConnectionsPort;
+  private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
   private final StatisticsPort statisticsPort;
   private final RequestQueuePort requestQueuePort;
@@ -132,6 +134,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.connectivityPort = new LegacyConnectivityPort(node);
     this.connectionsPagePort = new LegacyConnectionsPagePort(node, core);
     this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
+    this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
@@ -226,6 +229,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DarknetConnectionsPort darknetConnections() {
     return darknetConnectionsPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps legacy N2NTM peer resolution, file-offer adaptation, and sends
+   * status mapping inside the daemon root module while exposing only detached SPI-local values
+   * upstream.
+   */
+  @Override
+  public DarknetMessagingPort darknetMessaging() {
+    return darknetMessagingPort;
   }
 
   /**

@@ -10,7 +10,6 @@ import java.util.concurrent.TimeUnit;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.PeerManager;
-import network.crypta.node.PeerNode;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
@@ -42,6 +41,8 @@ final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
   /** Live daemon node whose darknet peer inventory backs this adapter. */
   private final Node node;
 
+  private final LegacyDarknetPeerResolver peerResolver;
+
   /**
    * Creates a legacy-backed companion port for the darknet friends page.
    *
@@ -49,6 +50,7 @@ final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
    */
   LegacyDarknetConnectionsPort(Node node) {
     this.node = Objects.requireNonNull(node);
+    this.peerResolver = new LegacyDarknetPeerResolver(node);
   }
 
   /** {@inheritDoc} */
@@ -90,35 +92,20 @@ final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
   @Override
   public void acceptTransfer(String nodeIdentifier, long transferId)
       throws UnknownPeerException, DarknetPeerRequiredException {
-    resolveDarknetPeerByIdentity(nodeIdentifier).acceptTransfer(transferId);
+    peerResolver.resolveByIdentity(nodeIdentifier).acceptTransfer(transferId);
   }
 
   /** {@inheritDoc} */
   @Override
   public void rejectTransfer(String nodeIdentifier, long transferId)
       throws UnknownPeerException, DarknetPeerRequiredException {
-    resolveDarknetPeerByIdentity(nodeIdentifier).rejectTransfer(transferId);
+    peerResolver.resolveByIdentity(nodeIdentifier).rejectTransfer(transferId);
   }
 
   private static boolean removableWithoutForce(
       DarknetPeerNode peer, long removableWithoutForceCutoff) {
     return peer.timeLastConnectionCompleted() < removableWithoutForceCutoff
         || peer.getPeerNodeStatus() == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED;
-  }
-
-  private DarknetPeerNode resolveDarknetPeerByIdentity(String nodeIdentifier)
-      throws UnknownPeerException, DarknetPeerRequiredException {
-    Objects.requireNonNull(nodeIdentifier, "nodeIdentifier");
-    for (PeerNode peer : node.network().peerNodes()) {
-      if (!nodeIdentifier.equals(peer.getIdentityString())) {
-        continue;
-      }
-      if (peer instanceof DarknetPeerNode darknetPeer) {
-        return darknetPeer;
-      }
-      throw new DarknetPeerRequiredException(nodeIdentifier);
-    }
-    throw new UnknownPeerException(nodeIdentifier);
   }
 
   /**

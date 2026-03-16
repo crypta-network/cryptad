@@ -4,18 +4,26 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
-import network.crypta.node.PeerManager;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessageSendStatus;
+import network.crypta.runtime.spi.DarknetMessagingPort;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.DarknetUploadedFile;
+import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import org.slf4j.Logger;
@@ -30,8 +38,8 @@ import org.slf4j.LoggerFactory;
  * redirected back to the friends page when the flow is not recognized or when permission checks
  * fail. Error responses are rendered as infoboxes so the user can retry without losing context.
  *
- * <p>The class delegates file browsing to {@link LocalFileN2NMToadlet} and uses {@link Node} and
- * {@link DarknetPeerNode} APIs for delivery. It relies on the toadlet framework for request
+ * <p>The class delegates file browsing to {@link LocalFileN2NMToadlet} and routes peer lookup and
+ * delivery through detached runtime SPI ports. It relies on the toadlet framework for request
  * threading and performs no additional synchronization. Message size and upload size are bounded,
  * and UI feedback is localized through {@link NodeL10n}.
  *
@@ -60,26 +68,30 @@ public class N2NTMToadlet extends Toadlet {
   private static final int MESSAGE_HEAD_LIMIT = 1024;
   private static final int MESSAGE_LIMIT = 1024 * 128;
 
-  private final Node node;
+  private final DarknetConnectionsPort darknetConnections;
+  private final DarknetMessagingPort darknetMessaging;
   private final LocalFileN2NMToadlet browser;
 
   /**
    * Creates the toadlet with access to node state and HTTP utilities.
    *
-   * <p>The instance keeps references to the node and its browser toadlet so it can resolve peers,
-   * open the local file browser, and emit localized responses. Callers should provide the same
-   * {@link HighLevelSimpleClient} used by other toadlets to keep configuration and permissions
-   * consistent. The constructor performs no I/O and does not register itself; registration is
-   * managed elsewhere by the HTTP subsystem.
+   * <p>The instance keeps references to the detached runtime ports and its browser toadlet so it
+   * can resolve peers, send messages, open the local file browser, and emit localized responses.
+   * Callers should provide the same {@link HighLevelSimpleClient} used by other toadlets to keep
+   * configuration and permissions consistent. The constructor performs no I/O and does not register
+   * itself; registration is managed elsewhere by the HTTP subsystem.
    *
-   * @param n node instance that provides darknet peer connections and status.
-   * @param core node client core used by the file browser toadlet.
+   * @param runtimePorts runtime aggregate that exposes detached peer lookup and messaging ports.
+   * @param browser browser toadlet used for local file selection.
    * @param client HTTP client wrapper used by the base {@link Toadlet}.
    */
-  protected N2NTMToadlet(Node n, NodeClientCore core, HighLevelSimpleClient client) {
+  protected N2NTMToadlet(
+      RuntimePorts runtimePorts, LocalFileN2NMToadlet browser, HighLevelSimpleClient client) {
     super(client);
-    browser = new LocalFileN2NMToadlet(core, client);
-    this.node = n;
+    RuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
+    this.darknetConnections = Objects.requireNonNull(ports.darknetConnections());
+    this.darknetMessaging = Objects.requireNonNull(ports.darknetMessaging());
+    this.browser = Objects.requireNonNull(browser, "browser");
   }
 
   /**
@@ -100,9 +112,9 @@ public class N2NTMToadlet extends Toadlet {
    * Handles GET requests for the N2NTM send page.
    *
    * <p>The handler first enforces full-access permissions. If the request includes a peer hashcode
-   * parameter, it renders a pre-targeted send form or a peer-not-found error when the hash does not
-   * resolve. Otherwise, it redirects to the friends page so the normal N2N navigation remains
-   * consistent. This method does not mutate persistent state; it only renders HTML responses or
+   * parameter, it renders a pre-targeted sending form or a peer-not-found error when the hash does
+   * not resolve. Otherwise, it redirects to the friends page so the normal N2N navigation remains
+   * consistent. This method does not mutate a persistent state; it only renders HTML responses or
    * performs a redirect.
    *
    * @param uri request URI used for trace logging and path introspection.
@@ -133,7 +145,6 @@ public class N2NTMToadlet extends Toadlet {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("sendMessage"), ctx);
     HTMLNode contentNode = page.getContentNode();
 
-    String peerNodeName = null;
     String inputHashcodeString = request.getParam("peernode_hashcode");
     int inputHashcode = -1;
     try {
@@ -141,27 +152,28 @@ public class N2NTMToadlet extends Toadlet {
     } catch (NumberFormatException _) {
       // ignore here, handle below
     }
-    if (inputHashcode != -1) {
-      DarknetPeerNode[] peerNodes = node.network().darknetConnections();
-      for (DarknetPeerNode pn : peerNodes) {
-        int peerHashcode = pn.hashCode();
-        if (peerHashcode == inputHashcode) {
-          peerNodeName = pn.getName();
-          break;
-        }
-      }
-    }
-    if (peerNodeName == null) {
+    DarknetConnectionPeerSnapshot peer =
+        inputHashcode == -1 ? null : findPeerBySelectionToken(inputHashcode);
+    if (peer == null) {
       contentNode.addChild(
           createPeerErrorInfobox(
               l10n("peerNotFoundTitle"), l10nPeerNotFoundWithHash(inputHashcodeString)));
       this.writeHTMLReply(ctx, 200, "OK", page.generate());
       return;
     }
-    HashMap<String, String> peers = new HashMap<>();
-    peers.put(inputHashcodeString, peerNodeName);
+    Map<String, String> peers = new LinkedHashMap<>();
+    peers.put(inputHashcodeString, peer.displayName());
     createN2NTMSendForm(ctx.isAdvancedModeEnabled(), contentNode, ctx, peers);
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
+  }
+
+  private DarknetConnectionPeerSnapshot findPeerBySelectionToken(int selectionToken) {
+    for (DarknetConnectionPeerSnapshot peer : darknetConnections.listPeers()) {
+      if (peer.selectionToken() == selectionToken) {
+        return peer;
+      }
+    }
+    return null;
   }
 
   private static String l10n(String key) {
@@ -233,7 +245,7 @@ public class N2NTMToadlet extends Toadlet {
     }
     if (!ctx.checkFullAccess(this)) return;
 
-    // Browse button clicked. Redirect.
+    // The browse button clicked. Redirect.
     if (request.isPartSet("n2nm-browse")) {
       handleBrowseRedirect();
       return;
@@ -254,7 +266,7 @@ public class N2NTMToadlet extends Toadlet {
 
   private void handleBrowseRedirect() throws RedirectException {
     try {
-      throw new RedirectException(LocalFileN2NMToadlet.BROWSE_PATH);
+      throw new RedirectException(browser.path());
     } catch (URISyntaxException _) {
       // Should be impossible because the browser is registered with .PATH.
     }
@@ -271,7 +283,7 @@ public class N2NTMToadlet extends Toadlet {
     HTMLNode peerTableInfobox = contentNode.addChild("div", ATTR_CLASS, "infobox infobox-normal");
     SendRequestContext sendRequestContext =
         new SendRequestContext(request, peerTableInfobox, page, ctx, message);
-    DarknetPeerNode[] peerNodes = node.network().darknetConnections();
+    List<DarknetConnectionPeerSnapshot> selectedPeers = listSelectedPeers(request);
     FileSelection selectedFile =
         resolveSelectedFile(
             sendRequestContext.request(),
@@ -281,20 +293,43 @@ public class N2NTMToadlet extends Toadlet {
     if (selectedFile.handled()) {
       return;
     }
-
+    UploadSelection uploadSelection =
+        resolveUploadedFile(sendRequestContext, selectedFile.file(), selectedPeers.isEmpty());
+    if (uploadSelection.handled()) {
+      return;
+    }
     HTMLNode peerTable = buildPeerStatusTable(peerTableInfobox);
-    for (DarknetPeerNode pn : peerNodes) {
-      if (!request.isPartSet("node_" + pn.hashCode())) {
-        continue;
+    for (DarknetConnectionPeerSnapshot peer : selectedPeers) {
+      try {
+        DarknetMessageSendStatus status =
+            sendComposedMessageOrWriteFailureResponse(
+                sendRequestContext,
+                peer,
+                message,
+                selectedFile.file(),
+                uploadSelection.upload(),
+                messageHead);
+        if (status == null) {
+          return;
+        }
+        addPeerStatusRow(peerTable, peer.displayName(), status, message);
+      } catch (UnknownPeerException | DarknetPeerRequiredException e) {
+        LOG.warn("Rendering queued N2NTM status for unresolved peer {}", peer.nodeIdentifier(), e);
+        addPeerStatusRow(peerTable, peer.displayName(), DarknetMessageSendStatus.QUEUED, message);
       }
-      if (!sendFileOfferIfNeeded(sendRequestContext, pn, selectedFile.file(), messageHead)) {
-        return;
-      }
-      int status = pn.sendTextFeed(message);
-      addPeerStatusRow(peerTable, pn, status, message);
     }
     addMessageAndReturnLinks(peerTableInfobox, message);
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
+  }
+
+  private List<DarknetConnectionPeerSnapshot> listSelectedPeers(HTTPRequest request) {
+    List<DarknetConnectionPeerSnapshot> selectedPeers = new ArrayList<>();
+    for (DarknetConnectionPeerSnapshot peer : darknetConnections.listPeers()) {
+      if (request.isPartSet("node_" + peer.selectionToken())) {
+        selectedPeers.add(peer);
+      }
+    }
+    return List.copyOf(selectedPeers);
   }
 
   private String getMessageOrReply(HTTPRequest request, ToadletContext ctx)
@@ -327,50 +362,80 @@ public class N2NTMToadlet extends Toadlet {
     return new FileSelection(null, false);
   }
 
-  private boolean sendFileOfferIfNeeded(
-      SendRequestContext requestContext, DarknetPeerNode pn, File filename, String messageHead)
+  private UploadSelection resolveUploadedFile(
+      SendRequestContext requestContext, File selectedFile, boolean noSelectedPeers)
       throws ToadletContextClosedException, IOException {
-    if (filename != null) {
-      try {
-        pn.sendFileOffer(filename, messageHead);
-        return true;
-      } catch (IOException _) {
-        requestContext.peerTableInfobox().addChild("#", l10n("noSuchFileOrCannotRead"));
-        Toadlet.addHomepageLink(requestContext.peerTableInfobox());
-        addUnsentMessageTextInfo(requestContext.peerTableInfobox(), requestContext.message());
-        this.writeHTMLReply(requestContext.ctx(), 200, "OK", requestContext.page().generate());
-        return false;
-      }
-    }
-    if (!requestContext.request().isPartSet(UPLOAD_PART)) {
-      return true;
+    if (selectedFile != null
+        || noSelectedPeers
+        || !requestContext.request().isPartSet(UPLOAD_PART)) {
+      return new UploadSelection(null, false);
     }
     try {
       HTTPUploadedFile file = requestContext.request().getUploadedFile(UPLOAD_PART);
-      if (!file.getFilename().isEmpty()) {
-        long size = requestContext.request().getUploadedFile(UPLOAD_PART).getData().size();
-        if (size > 0) {
-          long limit = maxSize();
-          if (size > limit) {
-            addTooLargeUploadResponse(
-                requestContext.peerTableInfobox(),
-                size,
-                limit,
-                requestContext.message(),
-                requestContext.ctx(),
-                requestContext.page());
-            return false;
-          }
-          pn.sendFileOffer(requestContext.request().getUploadedFile(UPLOAD_PART), messageHead);
-        }
+      if (file == null || file.getFilename().isEmpty()) {
+        return new UploadSelection(null, false);
       }
+      Bucket uploadData = file.getData();
+      long size = uploadData.size();
+      if (size <= 0) {
+        return new UploadSelection(null, false);
+      }
+      long limit = maxSize();
+      if (size > limit) {
+        addTooLargeUploadResponse(
+            requestContext.peerTableInfobox(),
+            size,
+            limit,
+            requestContext.message(),
+            requestContext.ctx(),
+            requestContext.page());
+        return new UploadSelection(null, true);
+      }
+      return new UploadSelection(
+          new DarknetUploadedFile(
+              file.getFilename(),
+              file.getContentType(),
+              size,
+              uploadData::getInputStreamUnbuffered),
+          false);
     } catch (IOException _) {
-      requestContext.peerTableInfobox().addChild("#", l10n("uploadFailed"));
-      Toadlet.addHomepageLink(requestContext.peerTableInfobox());
-      addUnsentMessageTextInfo(requestContext.peerTableInfobox(), requestContext.message());
-      this.writeHTMLReply(requestContext.ctx(), 200, "OK", requestContext.page().generate());
-      return false;
+      return new UploadSelection(null, writeSendFailureResponse(requestContext, "uploadFailed"));
     }
+  }
+
+  private DarknetMessageSendStatus sendComposedMessageOrWriteFailureResponse(
+      SendRequestContext requestContext,
+      DarknetConnectionPeerSnapshot peer,
+      String message,
+      File filename,
+      DarknetUploadedFile upload,
+      String messageHead)
+      throws ToadletContextClosedException,
+          IOException,
+          UnknownPeerException,
+          DarknetPeerRequiredException {
+    try {
+      return darknetMessaging.sendComposedMessage(
+          peer.nodeIdentifier(), message, filename, upload, messageHead);
+    } catch (IOException e) {
+      if (filename != null) {
+        writeSendFailureResponse(requestContext, "noSuchFileOrCannotRead");
+        return null;
+      }
+      if (upload != null) {
+        writeSendFailureResponse(requestContext, "uploadFailed");
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  private boolean writeSendFailureResponse(SendRequestContext requestContext, String l10nKey)
+      throws ToadletContextClosedException, IOException {
+    requestContext.peerTableInfobox().addChild("#", l10n(l10nKey));
+    Toadlet.addHomepageLink(requestContext.peerTableInfobox());
+    addUnsentMessageTextInfo(requestContext.peerTableInfobox(), requestContext.message());
+    this.writeHTMLReply(requestContext.ctx(), 200, "OK", requestContext.page().generate());
     return true;
   }
 
@@ -404,21 +469,21 @@ public class N2NTMToadlet extends Toadlet {
   }
 
   private void addPeerStatusRow(
-      HTMLNode peerTable, DarknetPeerNode pn, int status, String message) {
+      HTMLNode peerTable, String peerDisplayName, DarknetMessageSendStatus status, String message) {
     SendStatusInfo statusInfo =
         switch (status) {
-          case PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF ->
+          case DELAYED ->
               new SendStatusInfo(
                   l10n("delayedTitle"), l10n("delayed"), "n2ntm-send-delayed", "Sent");
-          case PeerManager.PEER_NODE_STATUS_CONNECTED ->
+          case SENT ->
               new SendStatusInfo(l10n("sentTitle"), l10n("sent"), "n2ntm-send-sent", "Sent");
           default ->
               new SendStatusInfo(
                   l10n("queuedTitle"), l10n("queued"), "n2ntm-send-queued", "Queued");
         };
-    LOG.info("{} N2NTM to '{}': {}", statusInfo.logAction(), pn.getName(), message);
+    LOG.info("{} N2NTM to '{}': {}", statusInfo.logAction(), peerDisplayName, message);
     HTMLNode peerRow = peerTable.addChild("tr");
-    peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", pn.getName());
+    peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", peerDisplayName);
     peerRow
         .addChild("td", ATTR_CLASS, statusInfo.cssClass())
         .addChild(
@@ -452,9 +517,9 @@ public class N2NTMToadlet extends Toadlet {
    * Appends explanatory text and the unsent message to the given node.
    *
    * <p>This helper renders a short localized explanation followed by the raw message body so the
-   * user can copy or edit the content after a failed send. The message is inserted as plain text,
-   * not HTML, so any markup-like characters are treated as content. The caller owns the container
-   * node and decides where the paragraphs appear within the page layout.
+   * user can copy or edit the content after a failed sending. The message is inserted as plain
+   * text, not HTML, so any markup-like characters are treated as content. The caller owns the
+   * container node and decides where the paragraphs appear within the page layout.
    *
    * @param node HTML container that receives the explanatory paragraphs.
    * @param message original message content to re-display verbatim.
@@ -465,6 +530,8 @@ public class N2NTMToadlet extends Toadlet {
   }
 
   private record FileSelection(File file, boolean handled) {}
+
+  private record UploadSelection(DarknetUploadedFile upload, boolean handled) {}
 
   private record SendRequestContext(
       HTTPRequest request,
@@ -481,8 +548,8 @@ public class N2NTMToadlet extends Toadlet {
    *
    * <p>The form lists target peers, collects the message body, and optionally exposes file
    * attachment controls when advanced mode is enabled. Hidden fields encode the selected peers so
-   * the subsequent POST can map each checkbox to a peer hashcode. In advanced mode, the form shows
-   * both a local file browser button and a file upload input, plus a size warning derived from the
+   * the later POST can map each checkbox to a peer hashcode. In advanced mode, the form shows both
+   * a local file browser button and a file upload input, plus a size warning derived from the
    * runtime memory limit. The caller supplies the content node and toadlet context used to create a
    * correctly scoped form action.
    *
@@ -563,7 +630,7 @@ public class N2NTMToadlet extends Toadlet {
    * a stable routing key and avoid constructing variants with trailing segments, since those are
    * handled by separate toadlets or redirects.
    *
-   * @return the URL path segment for the send N2NTM endpoint.
+   * @return the URL path segment for the sending N2NTM endpoint.
    */
   @Override
   public String path() {
