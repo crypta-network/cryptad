@@ -22,6 +22,7 @@ package network.crypta.runtime.spi;
  * @see ConnectivityPort
  * @see ConnectionsPagePort
  * @see DarknetConnectionsPort
+ * @see DarknetMessagingPort
  * @see DiagnosticPort
  * @see StatisticsPort
  * @see NodeInfoPort
@@ -125,6 +126,18 @@ public interface RuntimePorts {
    * @return darknet friends-page companion port for detached peer selection and noderef export
    */
   DarknetConnectionsPort darknetConnections();
+
+  /**
+   * Returns the legacy darknet message-compose capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers send node-to-node text messages and file offers to detached
+   * peer identities without depending on daemon-only peer classes, upload wrappers, or peer-status
+   * constants. The returned object should be treated as a live runtime view that resolves detached
+   * peer identifiers on demand and preserves the current UI-level delivery categorization.
+   *
+   * @return darknet messaging runtime port for detached compose/send actions
+   */
+  DarknetMessagingPort darknetMessaging();
 
   /**
    * Returns the diagnostic-report capability exposed to admin-facing HTTP code.

@@ -313,9 +313,9 @@ final class FProxyRegistrar {
             true,
             chatForumsToadlet));
 
-    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(node, core, client);
-    server.register(n2ntmToadlet, ToadletRegistration.basic(null, "/send_n2ntm/", true, true));
     LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(core, client);
+    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(runtimePorts, localFileN2NMToadlet, client);
+    server.register(n2ntmToadlet, ToadletRegistration.basic(null, "/send_n2ntm/", true, true));
     server.register(
         localFileN2NMToadlet,
         ToadletRegistration.basic(null, LocalFileN2NMToadlet.BROWSE_PATH, true, false));
