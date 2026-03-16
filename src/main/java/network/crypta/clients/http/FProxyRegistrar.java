@@ -17,6 +17,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
+import network.crypta.runtime.spi.RuntimePorts;
 
 import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
 
@@ -68,6 +69,7 @@ final class FProxyRegistrar {
 
     HighLevelSimpleClient client =
         core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    RuntimePorts runtimePorts = core.getRuntimePorts();
 
     FProxyToadlet.random = new byte[32];
     core.getRandom().nextBytes(FProxyToadlet.random);
@@ -254,7 +256,14 @@ final class FProxyRegistrar {
         coreActionToadlet, ToadletRegistration.basic(null, CORE_UPDATE_PATH, true, false));
 
     DarknetConnectionsToadlet friendsToadlet =
-        new DarknetConnectionsToadlet(node, core, client, core.getRuntimePorts().connectionsPage());
+        new DarknetConnectionsToadlet(
+            node,
+            core,
+            client,
+            runtimePorts.connectionsPage(),
+            runtimePorts.peer(),
+            runtimePorts.nodeInfo(),
+            runtimePorts.config());
     server.register(
         friendsToadlet,
         ToadletRegistration.menuLink(
@@ -279,7 +288,14 @@ final class FProxyRegistrar {
             null));
 
     OpennetConnectionsToadlet opennetToadlet =
-        new OpennetConnectionsToadlet(node, core, client, core.getRuntimePorts().connectionsPage());
+        new OpennetConnectionsToadlet(
+            node,
+            core,
+            client,
+            runtimePorts.connectionsPage(),
+            runtimePorts.peer(),
+            runtimePorts.nodeInfo(),
+            runtimePorts.config());
     server.register(
         opennetToadlet,
         ToadletRegistration.menuLink(
@@ -317,8 +333,7 @@ final class FProxyRegistrar {
     BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
     server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
 
-    StatisticsToadlet statisticsToadlet =
-        new StatisticsToadlet(client, core.getRuntimePorts().statistics());
+    StatisticsToadlet statisticsToadlet = new StatisticsToadlet(client, runtimePorts.statistics());
     server.register(
         statisticsToadlet,
         ToadletRegistration.menuLink(
@@ -330,8 +345,7 @@ final class FProxyRegistrar {
             true,
             null));
 
-    DiagnosticToadlet diagnosticToadlet =
-        new DiagnosticToadlet(client, core.getRuntimePorts().diagnostic());
+    DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(client, runtimePorts.diagnostic());
     server.register(
         diagnosticToadlet,
         ToadletRegistration.menuLink(
@@ -344,7 +358,7 @@ final class FProxyRegistrar {
             null));
 
     ConnectivityToadlet connectivityToadlet =
-        new ConnectivityToadlet(client, core.getRuntimePorts().connectivity());
+        new ConnectivityToadlet(client, runtimePorts.connectivity());
     server.register(
         connectivityToadlet,
         ToadletRegistration.menuLink(
