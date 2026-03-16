@@ -29,7 +29,9 @@ Use this skill when you need to:
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports and immutable config DTOs.
   - The root project implements those ports in `network.crypta.node.runtime.LegacyRuntimePorts`
-    and `LegacyConfigPort`.
+    plus per-slice adapters such as `LegacyConfigPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
+    `LegacyConnectionsPagePort`, `LegacyConnectionsSupportPort`,
+    `LegacyDarknetConnectionsPort`, and `LegacyDarknetMessagingPort`.
 - The large cyclic daemon core still lives in the root project:
   `network.crypta.node`, `network.crypta.io`, `network.crypta.client`,
   `network.crypta.clients`, `network.crypta.support`, `network.crypta.config`,
@@ -67,15 +69,34 @@ Use this skill when you need to:
     through `RuntimePorts`.
   - `FcpRuntimeAdapters` preserves legacy FCP-local shapes such as `PriorityAwareExecutor` and
     `RandomSource` on top of the SPI.
+  - Detached peer-management operations such as `ModifyPeer` now go through `RuntimePorts#peer()`.
 - HTTP interface: `network.crypta.clients.http`
+  - The migrated management slices no longer depend directly on live daemon peers or node-info
+    exports for their core data flow.
+  - `ConnectionsToadlet`, `DarknetConnectionsToadlet`, `OpennetConnectionsToadlet`, and
+    `DarknetAddRefToadlet` use detached ports such as `ConnectionsPagePort`,
+    `ConnectionsSupportPort`, `PeerPort`, and `NodeInfoPort`.
+  - `N2NTMToadlet` uses `DarknetConnectionsPort` and `DarknetMessagingPort` for selected-peer
+    lookup, transfer confirmations, and compose/send actions.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
-- Small ports: `ExecutionPort`, `RandomnessPort`, `TransferAccessPort`, `LifecyclePort`,
-  `ConfigPort`
-- Immutable config DTOs: `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`
+- Small ports include: `ExecutionPort`, `RandomnessPort`, `TransferAccessPort`, `LifecyclePort`,
+  `ConfigPort`, `ConnectivityPort`, `ConnectionsPagePort`, `ConnectionsSupportPort`,
+  `DarknetConnectionsPort`, `DarknetMessagingPort`, `DiagnosticPort`, `StatisticsPort`,
+  `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
+- Detached DTOs include config, connectivity, peer, darknet-friends, node-reference, and
+  statistics/report snapshot types such as `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`,
+  `PeerSnapshot`, `DarknetConnectionPeerSnapshot`, `DarknetUploadedFile`, and
+  `NodeReferenceSnapshot`
 - Root adapters: `network.crypta.node.runtime.LegacyRuntimePorts`,
-  `network.crypta.node.runtime.LegacyConfigPort`
+  `network.crypta.node.runtime.LegacyConfigPort`,
+  `network.crypta.node.runtime.LegacyNodeInfoPort`,
+  `network.crypta.node.runtime.LegacyPeerPort`,
+  `network.crypta.node.runtime.LegacyConnectionsPagePort`,
+  `network.crypta.node.runtime.LegacyConnectionsSupportPort`,
+  `network.crypta.node.runtime.LegacyDarknetConnectionsPort`,
+  `network.crypta.node.runtime.LegacyDarknetMessagingPort`
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`
@@ -84,8 +105,10 @@ Use this skill when you need to:
 
 ### Configuration (`network.crypta.config`)
 - Type-safe configuration with persistence
-- Higher layers should prefer `RuntimePorts#config()` over traversing daemon config internals
-  directly when the SPI already covers the needed operation
+- Higher layers should prefer the narrow `RuntimePorts` sub-port that already covers the needed
+  operation (`config()`, `peer()`, `nodeInfo()`, `connectionsPage()`, `connectionsSupport()`,
+  `darknetConnections()`, `darknetMessaging()`, etc.) instead of traversing daemon internals
+  directly
 
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers

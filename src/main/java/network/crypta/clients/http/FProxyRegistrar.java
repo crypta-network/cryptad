@@ -277,7 +277,9 @@ final class FProxyRegistrar {
             true,
             null));
 
-    DarknetAddRefToadlet addRefToadlet = new DarknetAddRefToadlet(node, client, friendsToadlet);
+    DarknetAddRefToadlet addRefToadlet =
+        new DarknetAddRefToadlet(
+            runtimePorts.connectionsSupport(), runtimePorts.nodeInfo(), client, friendsToadlet);
     server.register(
         addRefToadlet,
         ToadletRegistration.menuLink(

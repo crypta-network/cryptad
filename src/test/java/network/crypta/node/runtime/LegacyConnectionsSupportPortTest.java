@@ -4,9 +4,14 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
+import network.crypta.node.NodeFile;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.runtime.spi.ConnectionsInstallerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,7 +22,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +33,8 @@ import static org.mockito.Mockito.when;
 class LegacyConnectionsSupportPortTest {
 
   @Mock private Node node;
+  @Mock private NodeServicesSubsystem services;
+  @Mock private NodeUpdateManager nodeUpdater;
 
   @TempDir private Path tempDir;
 
@@ -32,7 +42,38 @@ class LegacyConnectionsSupportPortTest {
 
   @BeforeEach
   void setUp() {
+    lenient().when(node.services()).thenReturn(services);
+    lenient().when(services.nodeUpdater()).thenReturn(nodeUpdater);
     port = new LegacyConnectionsSupportPort(node);
+  }
+
+  @Test
+  void windowsInstaller_whenQueried_returnsFilenameLocalFileAndFallbackSourceText()
+      throws Exception {
+    File installer =
+        Files.createFile(tempDir.resolve("freenet-latest-installer-windows.exe")).toFile();
+    FreenetURI installerUri = new FreenetURI("CHK", "win");
+    when(nodeUpdater.getInstallerWindows()).thenReturn(installer);
+    when(nodeUpdater.getInstallerWindowsURI()).thenReturn(installerUri);
+
+    ConnectionsInstallerSnapshot snapshot = port.windowsInstaller();
+
+    assertEquals(NodeFile.INSTALLER_WINDOWS.getFilename(), snapshot.filename());
+    assertSame(installer, snapshot.localFile());
+    assertEquals(installerUri.toString(), snapshot.sourceUriText());
+  }
+
+  @Test
+  void nonWindowsInstaller_whenLocalFileMissing_returnsFallbackSnapshot() {
+    FreenetURI installerUri = new FreenetURI("CHK", "unix");
+    when(nodeUpdater.getInstallerNonWindows()).thenReturn(null);
+    when(nodeUpdater.getInstallerNonWindowsURI()).thenReturn(installerUri);
+
+    ConnectionsInstallerSnapshot snapshot = port.nonWindowsInstaller();
+
+    assertEquals(NodeFile.INSTALLER_NON_WINDOWS.getFilename(), snapshot.filename());
+    assertNull(snapshot.localFile());
+    assertEquals(installerUri.toString(), snapshot.sourceUriText());
   }
 
   @Test
