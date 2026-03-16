@@ -16,11 +16,17 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
-import network.crypta.runtime.spi.ConfigPort;
-import network.crypta.runtime.spi.ConnectionsPagePort;
-import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
@@ -32,16 +38,16 @@ import org.slf4j.LoggerFactory;
 /**
  * Toadlet that renders and manages the darknet "friends" page and its form actions.
  *
- * <p>This toadlet presents the list of trusted darknet peers, allows users to adjust trust and
- * visibility settings, and exposes bulk actions such as enabling, disabling, or removing peers. It
- * reuses the shared table rendering logic from {@link ConnectionsToadlet} but specializes it for
- * darknet-only concepts like private notes, friend references, and transfer confirmations. Typical
- * callers route HTTP GET and POST traffic from the node's web interface to this class, which then
- * populates HTML structures using {@link network.crypta.support.HTMLNode} builders and performs
- * side effects against {@link network.crypta.node.DarknetPeerNode} instances. The class is stateful
- * only through its reference to the owning {@link network.crypta.node.Node}, and operations are
- * expected to run on the single request-handling thread that invoked the toadlet; no internal
- * synchronization is performed.
+ * <p>This toadlet presents the list of trusted darknet peers. It lets users adjust trust and
+ * visibility settings and trigger bulk actions such as enabling, disabling, or removing peers. It
+ * reuses the shared table rendering logic from {@link ConnectionsToadlet}. It also specializes the
+ * page for darknet-only concepts like private notes, friend references, and transfer confirmations.
+ *
+ * <p>Typical callers route HTTP GET and POST traffic from the node's web interface to this class.
+ * The toadlet builds HTML structures with {@link network.crypta.support.HTMLNode} helpers. It
+ * delegates non-destructive peer updates through runtime SPI ports. It still relies on the live
+ * {@link network.crypta.node.Node} for the legacy destructive and messaging paths that remain in
+ * scope for later migration.
  *
  * <ul>
  *   <li>Renders friend metadata, noderef download links, and private notes.
@@ -70,32 +76,65 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private static final char PATH_SEPARATOR = '/';
   private static final String FRIENDS_PATH = PATH_SEPARATOR + "friends" + PATH_SEPARATOR;
   private static final String NODE_PREFIX = "node_";
-  private static final Map<String, Consumer<DarknetPeerNode>> SIMPLE_ACTIONS =
+  private static final Map<String, DarknetPeerSettingsUpdate> SIMPLE_ACTIONS =
       Map.ofEntries(
-          Map.entry("enable", DarknetPeerNode::enablePeer),
-          Map.entry("disable", DarknetPeerNode::disablePeer),
-          Map.entry("set_burst_only", pn -> pn.setBurstOnly(true)),
-          Map.entry("clear_burst_only", pn -> pn.setBurstOnly(false)),
-          Map.entry("set_ignore_source_port", pn -> pn.setIgnoreSourcePort(true)),
-          Map.entry("clear_ignore_source_port", pn -> pn.setIgnoreSourcePort(false)),
-          Map.entry("set_dont_route", pn -> pn.setRoutingStatus(false, true)),
-          Map.entry("clear_dont_route", pn -> pn.setRoutingStatus(true, true)),
-          Map.entry("set_listen_only", pn -> pn.setListenOnly(true)),
-          Map.entry("clear_listen_only", pn -> pn.setListenOnly(false)),
-          Map.entry("set_allow_local", pn -> pn.setAllowLocalAddresses(true)),
-          Map.entry("clear_allow_local", pn -> pn.setAllowLocalAddresses(false)));
+          Map.entry("enable", peerSettingsUpdate(Boolean.FALSE, null, null, null, null, null)),
+          Map.entry("disable", peerSettingsUpdate(Boolean.TRUE, null, null, null, null, null)),
+          Map.entry(
+              "set_burst_only", peerSettingsUpdate(null, null, Boolean.TRUE, null, null, null)),
+          Map.entry(
+              "clear_burst_only", peerSettingsUpdate(null, null, Boolean.FALSE, null, null, null)),
+          Map.entry(
+              "set_ignore_source_port",
+              peerSettingsUpdate(null, null, null, Boolean.TRUE, null, null)),
+          Map.entry(
+              "clear_ignore_source_port",
+              peerSettingsUpdate(null, null, null, Boolean.FALSE, null, null)),
+          Map.entry(
+              "set_dont_route", peerSettingsUpdate(null, null, null, null, null, Boolean.FALSE)),
+          Map.entry(
+              "clear_dont_route", peerSettingsUpdate(null, null, null, null, null, Boolean.TRUE)),
+          Map.entry(
+              "set_listen_only", peerSettingsUpdate(null, Boolean.TRUE, null, null, null, null)),
+          Map.entry(
+              "clear_listen_only", peerSettingsUpdate(null, Boolean.FALSE, null, null, null, null)),
+          Map.entry(
+              "set_allow_local", peerSettingsUpdate(null, null, null, null, Boolean.TRUE, null)),
+          Map.entry(
+              "clear_allow_local",
+              peerSettingsUpdate(null, null, null, null, Boolean.FALSE, null)));
   private final Node node;
+  private final DarknetConnectionsPort darknetConnectionsPort;
+  private final PeerPort peerPort;
 
   DarknetConnectionsToadlet(
       Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage,
-      PeerPort peerPort,
-      NodeInfoPort nodeInfoPort,
-      ConfigPort configPort) {
-    super(core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+      ConnectionsToadletRuntimePorts runtimePorts,
+      DarknetConnectionsPort darknetConnectionsPort) {
+    super(core, client, runtimePorts);
     this.node = n;
+    this.darknetConnectionsPort = darknetConnectionsPort;
+    this.peerPort = runtimePorts.peerPort();
+  }
+
+  private static DarknetPeerSettingsUpdate peerSettingsUpdate(
+      Boolean disabled,
+      Boolean listenOnly,
+      Boolean burstOnly,
+      Boolean ignoreSourcePort,
+      Boolean allowLocalAddresses,
+      Boolean routingEnabled) {
+    return new DarknetPeerSettingsUpdate(
+        disabled,
+        listenOnly,
+        burstOnly,
+        ignoreSourcePort,
+        allowLocalAddresses,
+        routingEnabled,
+        null,
+        null);
   }
 
   private static String l10n(String string) {
@@ -443,12 +482,18 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private void handleChangeVisibility(HTTPRequest request) {
     FRIEND_VISIBILITY visibility =
         FRIEND_VISIBILITY.valueOf(request.getPartAsStringFailsafe(CHANGE_VISIBILITY, 10));
-    forSelectedPeers(request, pn -> pn.setVisibility(visibility));
+    applyUpdateToSelectedPeers(
+        request,
+        new DarknetPeerSettingsUpdate(
+            null, null, null, null, null, null, null, toPeerVisibility(visibility)));
   }
 
   private void handleChangeTrust(HTTPRequest request) {
     FRIEND_TRUST trust = FRIEND_TRUST.valueOf(request.getPartAsStringFailsafe(CHANGE_TRUST, 10));
-    forSelectedPeers(request, pn -> pn.setTrustLevel(trust));
+    applyUpdateToSelectedPeers(
+        request,
+        new DarknetPeerSettingsUpdate(
+            null, null, null, null, null, null, toPeerTrust(trust), null));
   }
 
   private boolean handleDoAction(String action, HTTPRequest request, ToadletContext ctx)
@@ -459,9 +504,9 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       return true;
     }
 
-    Consumer<DarknetPeerNode> peerAction = SIMPLE_ACTIONS.get(action);
+    DarknetPeerSettingsUpdate peerAction = SIMPLE_ACTIONS.get(action);
     if (peerAction != null) {
-      forSelectedPeers(request, peerAction);
+      applyUpdateToSelectedPeers(request, peerAction);
       redirectHere(ctx);
       return true;
     }
@@ -542,23 +587,47 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private void handleUpdateNotes(HTTPRequest request) {
-    for (DarknetPeerNode pn : node.network().darknetConnections()) {
-      String partName = PEER_PRIVATE_NOTE_PREFIX + pn.hashCode();
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      String partName = PEER_PRIVATE_NOTE_PREFIX + peer.selectionToken();
       if (!request.isPartSet(partName)) {
         continue;
       }
       String newNote = request.getPartAsStringFailsafe(partName, 250);
-      if (!newNote.equals(pn.getPrivateDarknetCommentNote())) {
-        pn.setPrivateDarknetCommentNote(newNote);
+      if (!newNote.equals(peer.privateNoteText())) {
+        writePrivateDarknetCommentByIdentity(peer.nodeIdentifier(), newNote);
       }
     }
   }
 
-  private void forSelectedPeers(HTTPRequest request, Consumer<DarknetPeerNode> action) {
-    for (DarknetPeerNode pn : node.network().darknetConnections()) {
-      if (request.isPartSet(NODE_PREFIX + pn.hashCode())) {
-        action.accept(pn);
+  private void forSelectedPeers(
+      HTTPRequest request, Consumer<DarknetConnectionPeerSnapshot> action) {
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      if (request.isPartSet(NODE_PREFIX + peer.selectionToken())) {
+        action.accept(peer);
       }
+    }
+  }
+
+  private void applyUpdateToSelectedPeers(HTTPRequest request, DarknetPeerSettingsUpdate update) {
+    if (update.isEmpty()) {
+      return;
+    }
+    forSelectedPeers(request, peer -> updateDarknetPeerByIdentity(peer.nodeIdentifier(), update));
+  }
+
+  private void updateDarknetPeerByIdentity(String peerIdentity, DarknetPeerSettingsUpdate update) {
+    try {
+      peerPort.updateDarknetPeerByIdentity(peerIdentity, update);
+    } catch (UnknownPeerException | DarknetPeerRequiredException | RuntimeException e) {
+      LOG.warn("Failed to update darknet peer {}", peerIdentity, e);
+    }
+  }
+
+  private void writePrivateDarknetCommentByIdentity(String peerIdentity, String newNote) {
+    try {
+      peerPort.writePrivateDarknetCommentByIdentity(peerIdentity, newNote);
+    } catch (UnknownPeerException | DarknetPeerRequiredException | RuntimeException e) {
+      LOG.warn("Failed to update private note for darknet peer {}", peerIdentity, e);
     }
   }
 
@@ -658,14 +727,19 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       return false;
     }
 
-    DarknetPeerNode peerNode = findPeerByHashcode(inputHashcode);
-    if (peerNode == null) {
+    DarknetConnectionPeerSnapshot peer = findPeerByHashcode(inputHashcode);
+    if (peer == null) {
       return false;
     }
 
-    SimpleFieldSet fs = peerNode.getFullNoderef();
-    if (fs == null) return false;
-    String filename = FileUtil.sanitizeFileNameWithExtras(peerNode.getName() + FREF_SUFFIX, "\" ");
+    NodeReferenceSnapshot snapshot =
+        darknetConnectionsPort.exportPeerReference(inputHashcode).orElse(null);
+    if (snapshot == null) {
+      return false;
+    }
+
+    SimpleFieldSet fs = toSimpleFieldSet(snapshot.root());
+    String filename = FileUtil.sanitizeFileNameWithExtras(peer.displayName() + FREF_SUFFIX, "\" ");
     String content = fs.toString();
     MultiValueTable<String, String> extraHeaders =
         MultiValueTable.from(
@@ -684,12 +758,31 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     }
   }
 
-  private DarknetPeerNode findPeerByHashcode(int targetHashcode) {
-    for (DarknetPeerNode peerNode : node.network().darknetConnections()) {
-      if (peerNode.hashCode() == targetHashcode) {
-        return peerNode;
+  private DarknetConnectionPeerSnapshot findPeerByHashcode(int targetHashcode) {
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      if (peer.selectionToken() == targetHashcode) {
+        return peer;
       }
     }
     return null;
+  }
+
+  private static SimpleFieldSet toSimpleFieldSet(NodeFieldSet source) {
+    SimpleFieldSet target = new SimpleFieldSet(true);
+    for (Map.Entry<String, String> entry : source.directValues().entrySet()) {
+      target.putSingle(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, NodeFieldSet> entry : source.directSubsets().entrySet()) {
+      target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
+    }
+    return target;
+  }
+
+  private static PeerTrust toPeerTrust(FRIEND_TRUST trust) {
+    return PeerTrust.valueOf(trust.name());
+  }
+
+  private static PeerVisibility toPeerVisibility(FRIEND_VISIBILITY visibility) {
+    return PeerVisibility.valueOf(visibility.name());
   }
 }

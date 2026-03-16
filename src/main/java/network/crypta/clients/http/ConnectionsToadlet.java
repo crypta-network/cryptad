@@ -291,24 +291,20 @@ public abstract class ConnectionsToadlet extends Toadlet {
    *     noderef files.
    * @param client high-level client used to retrieve noderefs via Freenet or HTTP when users submit
    *     URLs instead of pasted references.
-   * @param connectionsPage read-only runtime page port backing the detached GET render path.
-   * @param peerPort runtime peer-management port used for peer additions and related mutations.
-   * @param nodeInfoPort runtime node-info port used to export this node's own noderef.
-   * @param configPort runtime config port used for add-peer flow overrides.
+   * @param runtimePorts shared detached runtime ports backing page rendering, peer changes, noderef
+   *     export, and config lookups.
    */
   protected ConnectionsToadlet(
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage,
-      PeerPort peerPort,
-      NodeInfoPort nodeInfoPort,
-      ConfigPort configPort) {
+      ConnectionsToadletRuntimePorts runtimePorts) {
     super(client);
+    ConnectionsToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
     this.core = Objects.requireNonNull(core);
-    this.connectionsPage = Objects.requireNonNull(connectionsPage);
-    this.peerPort = Objects.requireNonNull(peerPort);
-    this.nodeInfoPort = Objects.requireNonNull(nodeInfoPort);
-    this.configPort = Objects.requireNonNull(configPort);
+    this.connectionsPage = ports.connectionsPage();
+    this.peerPort = ports.peerPort();
+    this.nodeInfoPort = ports.nodeInfoPort();
+    this.configPort = ports.configPort();
     refLink = HTMLNode.link(path() + "myref.fref").setReadOnly();
     reftextLink = HTMLNode.link(path() + "myref.txt").setReadOnly();
   }

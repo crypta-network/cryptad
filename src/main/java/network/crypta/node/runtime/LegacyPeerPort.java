@@ -116,11 +116,29 @@ final class LegacyPeerPort implements PeerPort {
       throws UnknownPeerException, DarknetPeerRequiredException {
     Objects.requireNonNull(update, "update");
     DarknetPeerNode peer = resolveDarknetPeer(nodeIdentifier);
+    return applyDarknetPeerUpdate(peer, update);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public PeerSnapshot updateDarknetPeerByIdentity(
+      String peerIdentity, DarknetPeerSettingsUpdate update)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    Objects.requireNonNull(update, "update");
+    DarknetPeerNode peer = resolveDarknetPeerByIdentity(peerIdentity);
+    return applyDarknetPeerUpdate(peer, update);
+  }
+
+  private PeerSnapshot applyDarknetPeerUpdate(
+      DarknetPeerNode peer, DarknetPeerSettingsUpdate update) {
     applyDisableFlag(peer, update.disabled());
     applyBooleanFlag(update.listenOnly(), peer::setListenOnly);
     applyBooleanFlag(update.burstOnly(), peer::setBurstOnly);
     applyBooleanFlag(update.ignoreSourcePort(), peer::setIgnoreSourcePort);
     applyBooleanFlag(update.allowLocalAddresses(), peer::setAllowLocalAddresses);
+    applyRoutingFlag(peer, update.routingEnabled());
+    applyTrust(peer, update.trust());
+    applyVisibility(peer, update.visibility());
     return toPeerSnapshot(peer, true, true);
   }
 
@@ -149,6 +167,15 @@ final class LegacyPeerPort implements PeerPort {
     return peer.getPrivateDarknetCommentNote();
   }
 
+  /** {@inheritDoc} */
+  @Override
+  public String writePrivateDarknetCommentByIdentity(String peerIdentity, String noteText)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    DarknetPeerNode peer = resolveDarknetPeerByIdentity(peerIdentity);
+    peer.setPrivateDarknetCommentNote(noteText);
+    return peer.getPrivateDarknetCommentNote();
+  }
+
   /**
    * Resolves one peer by the daemon's existing node-identifier lookup path.
    *
@@ -165,6 +192,16 @@ final class LegacyPeerPort implements PeerPort {
     return peer;
   }
 
+  private PeerNode resolvePeerByIdentity(String identity) {
+    Objects.requireNonNull(identity, "identity");
+    for (PeerNode peer : node.network().peerNodes()) {
+      if (identity.equals(peer.getIdentityString())) {
+        return peer;
+      }
+    }
+    return null;
+  }
+
   /**
    * Resolves one peer and verifies that it is a darknet peer.
    *
@@ -178,6 +215,18 @@ final class LegacyPeerPort implements PeerPort {
     PeerNode peer = resolvePeer(nodeIdentifier);
     if (!(peer instanceof DarknetPeerNode darknetPeer)) {
       throw new DarknetPeerRequiredException(nodeIdentifier);
+    }
+    return darknetPeer;
+  }
+
+  private DarknetPeerNode resolveDarknetPeerByIdentity(String peerIdentity)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    PeerNode peer = resolvePeerByIdentity(peerIdentity);
+    if (peer == null) {
+      throw new UnknownPeerException(peerIdentity);
+    }
+    if (!(peer instanceof DarknetPeerNode darknetPeer)) {
+      throw new DarknetPeerRequiredException(peerIdentity);
     }
     return darknetPeer;
   }
@@ -300,6 +349,42 @@ final class LegacyPeerPort implements PeerPort {
       Boolean flagValue, java.util.function.Consumer<Boolean> setter) {
     if (flagValue != null) {
       setter.accept(flagValue);
+    }
+  }
+
+  /**
+   * Applies the nullable routing-enabled flag using the legacy routing-status setter.
+   *
+   * @param peer darknet peer to update
+   * @param routingEnabled nullable routing-enabled flag from the detached update DTO
+   */
+  private static void applyRoutingFlag(DarknetPeerNode peer, Boolean routingEnabled) {
+    if (routingEnabled != null) {
+      peer.setRoutingStatus(routingEnabled, true);
+    }
+  }
+
+  /**
+   * Applies the nullable trust update using the legacy darknet trust setter.
+   *
+   * @param peer darknet peer to update
+   * @param trust nullable runtime-spi trust value from the detached update DTO
+   */
+  private static void applyTrust(DarknetPeerNode peer, PeerTrust trust) {
+    if (trust != null) {
+      peer.setTrustLevel(toLegacyTrust(trust));
+    }
+  }
+
+  /**
+   * Applies the nullable visibility update using the legacy darknet visibility setter.
+   *
+   * @param peer darknet peer to update
+   * @param visibility nullable runtime-spi visibility value from the detached update DTO
+   */
+  private static void applyVisibility(DarknetPeerNode peer, PeerVisibility visibility) {
+    if (visibility != null) {
+      peer.setVisibility(toLegacyVisibility(visibility));
     }
   }
 

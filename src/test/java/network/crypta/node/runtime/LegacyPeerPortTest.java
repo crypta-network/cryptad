@@ -239,8 +239,9 @@ class LegacyPeerPortTest {
   }
 
   @Test
-  void updateDarknetPeer_whenFlagsPresent_appliesRequestedMutationsAndReturnsSnapshot()
-      throws Exception {
+  void
+      updateDarknetPeer_whenFlagsTrustAndVisibilityPresent_appliesRequestedMutationsAndReturnsSnapshot()
+          throws Exception {
     LegacyPeerPort port = newPort();
     when(network.getPeerNode("peer-123")).thenReturn(darknetPeer);
     stubPeerExports(darknetPeer, "peer-123", "trustLevel", "NORMAL", "CONNECTED");
@@ -249,14 +250,77 @@ class LegacyPeerPortTest {
         port.updateDarknetPeer(
             "peer-123",
             new DarknetPeerSettingsUpdate(
-                Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE, Boolean.TRUE));
+                Boolean.TRUE,
+                Boolean.FALSE,
+                Boolean.TRUE,
+                Boolean.FALSE,
+                Boolean.TRUE,
+                Boolean.TRUE,
+                PeerTrust.HIGH,
+                PeerVisibility.NO));
 
     verify(darknetPeer).disablePeer();
     verify(darknetPeer).setListenOnly(false);
     verify(darknetPeer).setBurstOnly(true);
     verify(darknetPeer).setIgnoreSourcePort(false);
     verify(darknetPeer).setAllowLocalAddresses(true);
+    verify(darknetPeer).setRoutingStatus(true, true);
+    verify(darknetPeer).setTrustLevel(FRIEND_TRUST.HIGH);
+    verify(darknetPeer).setVisibility(FRIEND_VISIBILITY.NO);
     assertEquals("peer-123", snapshot.root().directValues().get("identity"));
+  }
+
+  @Test
+  void updateDarknetPeer_whenIdentifierUsesIdentityPrefix_usesLegacyLookupSemantics()
+      throws Exception {
+    LegacyPeerPort port = newPort();
+    when(network.getPeerNode("identity:peer-123")).thenReturn(darknetPeer);
+    stubPeerExports(darknetPeer, "peer-123", "trustLevel", "NORMAL", "CONNECTED");
+
+    port.updateDarknetPeer(
+        "identity:peer-123",
+        new DarknetPeerSettingsUpdate(
+            Boolean.TRUE, null, null, null, null, null, null, PeerVisibility.NAME_ONLY));
+
+    verify(network).getPeerNode("identity:peer-123");
+    verify(darknetPeer).disablePeer();
+    verify(darknetPeer).setVisibility(FRIEND_VISIBILITY.NAME_ONLY);
+  }
+
+  @Test
+  void updateDarknetPeerByIdentity_whenIdentityMatchesPeer_resolvesByIdentityOnly()
+      throws Exception {
+    LegacyPeerPort port = newPort();
+    DarknetPeerNode collidingNamePeer = org.mockito.Mockito.mock(DarknetPeerNode.class);
+    when(network.peerNodes()).thenReturn(new PeerNode[] {collidingNamePeer, darknetPeer});
+    when(collidingNamePeer.getIdentityString()).thenReturn("other-peer");
+    when(darknetPeer.getIdentityString()).thenReturn("peer-123");
+    stubPeerExports(darknetPeer, "peer-123", "trustLevel", "NORMAL", "CONNECTED");
+
+    port.updateDarknetPeerByIdentity(
+        "peer-123",
+        new DarknetPeerSettingsUpdate(
+            Boolean.TRUE, null, null, null, null, null, null, PeerVisibility.NAME_ONLY));
+
+    verify(darknetPeer).disablePeer();
+    verify(darknetPeer).setVisibility(FRIEND_VISIBILITY.NAME_ONLY);
+    verify(collidingNamePeer, never()).disablePeer();
+    verify(network, never()).getPeerNode(any());
+  }
+
+  @Test
+  void updateDarknetPeerByIdentity_whenPeerMissing_throwsUnknownPeerException() {
+    LegacyPeerPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {peerOne});
+    when(peerOne.getIdentityString()).thenReturn("other-peer");
+
+    assertThrows(
+        UnknownPeerException.class,
+        () ->
+            port.updateDarknetPeerByIdentity(
+                "peer-123",
+                new DarknetPeerSettingsUpdate(
+                    Boolean.TRUE, null, null, null, null, null, null, null)));
   }
 
   @Test
@@ -300,6 +364,24 @@ class LegacyPeerPortTest {
     String storedNote = port.writePrivateDarknetComment("peer-123", "updated-note");
 
     verify(darknetPeer).setPrivateDarknetCommentNote("updated-note");
+    assertEquals("stored-note", storedNote);
+  }
+
+  @Test
+  void writePrivateDarknetCommentByIdentity_whenIdentityMatchesPeer_resolvesByIdentityOnly()
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    LegacyPeerPort port = newPort();
+    DarknetPeerNode collidingNamePeer = org.mockito.Mockito.mock(DarknetPeerNode.class);
+    when(network.peerNodes()).thenReturn(new PeerNode[] {collidingNamePeer, darknetPeer});
+    when(collidingNamePeer.getIdentityString()).thenReturn("other-peer");
+    when(darknetPeer.getIdentityString()).thenReturn("peer-123");
+    when(darknetPeer.getPrivateDarknetCommentNote()).thenReturn("stored-note");
+
+    String storedNote = port.writePrivateDarknetCommentByIdentity("peer-123", "updated-note");
+
+    verify(darknetPeer).setPrivateDarknetCommentNote("updated-note");
+    verify(collidingNamePeer, never()).setPrivateDarknetCommentNote(any());
+    verify(network, never()).getPeerNode(any());
     assertEquals("stored-note", storedNote);
   }
 

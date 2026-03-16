@@ -21,6 +21,7 @@ package network.crypta.runtime.spi;
  * @see ConfigPort
  * @see ConnectivityPort
  * @see ConnectionsPagePort
+ * @see DarknetConnectionsPort
  * @see DiagnosticPort
  * @see StatisticsPort
  * @see NodeInfoPort
@@ -112,6 +113,18 @@ public interface RuntimePorts {
    * @return connections-page runtime port for detached legacy friends and strangers snapshots
    */
   ConnectionsPagePort connectionsPage();
+
+  /**
+   * Returns the legacy darknet friends-page companion capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers resolve the current hash-based friends-page selection tokens to
+   * detached peer identity, display-name, and private-note data, and export one peer-specific full
+   * noderef without traversing live daemon peers directly. It exists only for the remaining legacy
+   * friends-page POST and download paths that have not yet moved to a more general detached model.
+   *
+   * @return darknet friends-page companion port for detached peer selection and noderef export
+   */
+  DarknetConnectionsPort darknetConnections();
 
   /**
    * Returns the diagnostic-report capability exposed to admin-facing HTTP code.

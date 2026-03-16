@@ -6,11 +6,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
-import network.crypta.runtime.spi.ConfigPort;
-import network.crypta.runtime.spi.ConnectionsPagePort;
-import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceView;
-import network.crypta.runtime.spi.PeerPort;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -49,15 +45,12 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * @param client high-level client for UI links and redirects; expected to be configured for
    *     opennet-safe operations.
    */
-  protected OpennetConnectionsToadlet(
+  OpennetConnectionsToadlet(
       Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage,
-      PeerPort peerPort,
-      NodeInfoPort nodeInfoPort,
-      ConfigPort configPort) {
-    super(core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+      ConnectionsToadletRuntimePorts runtimePorts) {
+    super(core, client, runtimePorts);
     this.node = n;
   }
 
