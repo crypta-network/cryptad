@@ -3,11 +3,15 @@ package network.crypta.clients.http;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
-import network.crypta.node.NodeFile;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.spi.ConnectionsInstallerSnapshot;
+import network.crypta.runtime.spi.ConnectionsSupportPort;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
@@ -25,11 +29,11 @@ import network.crypta.support.io.FileBucket;
  * ToadletContext)} builds the page via {@link PageMaker}, and {@link #getNoderef()} supplies the
  * serialized public fields.
  *
- * <p>Thread safety: the class is stateless beyond references to {@link Node} and the companion
- * toadlet; it relies on the surrounding HTTP framework for synchronization. Instances are usually
- * constructed once at node startup and reused for many requests. It assumes the {@link Node}
- * provides up-to-date installers and noderefs and that callers perform access checks via the
- * provided {@link ToadletContext}.
+ * <p>Thread safety: the class is stateless beyond references to runtime SPI collaborators and the
+ * companion toadlet; it relies on the surrounding HTTP framework for synchronization. Instances are
+ * usually constructed once at node startup and reused for many requests. It assumes those
+ * collaborators provide up-to-date installers and noderefs and that callers perform access checks
+ * via the provided {@link ToadletContext}.
  *
  * <ul>
  *   <li>Renders localized explanations and guidance for adding a friend.
@@ -38,34 +42,41 @@ import network.crypta.support.io.FileBucket;
  * </ul>
  *
  * @see DarknetConnectionsToadlet
- * @see NodeNetworkSubsystem#exportDarknetPublicFieldSet()
+ * @see NodeInfoPort
  */
 public class DarknetAddRefToadlet extends Toadlet {
 
-  private final Node node;
+  private final ConnectionsSupportPort connectionsSupportPort;
+  private final NodeInfoPort nodeInfoPort;
   private final DarknetConnectionsToadlet friendsToadlet;
 
   /**
    * Creates the toadlet with the dependencies required to generate darknet onboarding pages.
    *
-   * <p>The constructor wires the owning {@link Node} for state such as installer paths and noderef
-   * export, the high-level client for inherited toadlet functionality, and the companion
-   * connections toadlet used to draw peer-related UI sections. Callers typically instantiate this
-   * once during HTTP handler setup and keep it alive for the lifetime of the node so that cached
-   * installers remain accessible and localization resources stay loaded.
+   * <p>The constructor wires the runtime SPI collaborators that provide installer metadata and
+   * darknet noderef export, plus the companion connections toadlet used to draw peer-related UI
+   * sections. Callers typically instantiate this once during HTTP handler setup and keep it alive
+   * for the lifetime of the node so that cached installers remain accessible and localization
+   * resources stay loaded.
    *
-   * @param n node instance supplying installer access and noderef export; must not be {@code null}
-   *     and should outlive the toadlet.
+   * @param connectionsSupportPort support port supplying installer metadata; must not be {@code
+   *     null}
+   * @param nodeInfoPort node-info port supplying the public darknet noderef export; must not be
+   *     {@code null}
    * @param client high-level HTTP client the superclass relies on for responses and redirects; may
    *     share the lifecycle of the enclosing HTTP server.
    * @param friendsToadlet companion toadlet used to render friend lists and noderef boxes within
    *     this page; should correspond to the same node instance.
    */
   protected DarknetAddRefToadlet(
-      Node n, HighLevelSimpleClient client, DarknetConnectionsToadlet friendsToadlet) {
+      ConnectionsSupportPort connectionsSupportPort,
+      NodeInfoPort nodeInfoPort,
+      HighLevelSimpleClient client,
+      DarknetConnectionsToadlet friendsToadlet) {
     super(client);
-    this.node = n;
-    this.friendsToadlet = friendsToadlet;
+    this.connectionsSupportPort = Objects.requireNonNull(connectionsSupportPort);
+    this.nodeInfoPort = Objects.requireNonNull(nodeInfoPort);
+    this.friendsToadlet = Objects.requireNonNull(friendsToadlet);
   }
 
   /**
@@ -102,22 +113,19 @@ public class DarknetAddRefToadlet extends Toadlet {
     if (!ctx.checkFullAccess(this)) return;
 
     String path = uri.getPath();
-    if (path.endsWith(NodeFile.INSTALLER_WINDOWS.getFilename())) {
-      File installer = node.services().nodeUpdater().getInstallerWindows();
-      if (installer != null) {
-        FileBucket bucket = new FileBucket(installer, true, false, false, false);
-        this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-msdownload"), bucket);
-        return;
-      }
+    ConnectionsInstallerSnapshot windowsInstaller = connectionsSupportPort.windowsInstaller();
+    if (path.endsWith(windowsInstaller.filename()) && windowsInstaller.localFile() != null) {
+      FileBucket bucket = new FileBucket(windowsInstaller.localFile(), true, false, false, false);
+      this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-msdownload"), bucket);
+      return;
     }
 
-    if (path.endsWith(NodeFile.INSTALLER_NON_WINDOWS.getFilename())) {
-      File installer = node.services().nodeUpdater().getInstallerNonWindows();
-      if (installer != null) {
-        FileBucket bucket = new FileBucket(installer, true, false, false, false);
-        this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-java-archive"), bucket);
-        return;
-      }
+    ConnectionsInstallerSnapshot nonWindowsInstaller = connectionsSupportPort.nonWindowsInstaller();
+    if (path.endsWith(nonWindowsInstaller.filename()) && nonWindowsInstaller.localFile() != null) {
+      FileBucket bucket =
+          new FileBucket(nonWindowsInstaller.localFile(), true, false, false, false);
+      this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-java-archive"), bucket);
+      return;
     }
 
     PageMaker pageMaker = ctx.getPageMaker();
@@ -137,8 +145,8 @@ public class DarknetAddRefToadlet extends Toadlet {
     boxContent.addChild("p", l10n("explainBox1"));
     boxContent.addChild("p", l10n("explainBox2"));
 
-    File installer = node.services().nodeUpdater().getInstallerWindows();
-    String shortFilename = NodeFile.INSTALLER_WINDOWS.getFilename();
+    File installer = windowsInstaller.localFile();
+    String shortFilename = windowsInstaller.filename();
 
     HTMLNode p = boxContent.addChild("p");
 
@@ -157,13 +165,10 @@ public class DarknetAddRefToadlet extends Toadlet {
               p,
               "DarknetAddRefToadlet.explainInstallerWindowsNotYet",
               new String[] {"link"},
-              new HTMLNode[] {
-                HTMLNode.link(
-                    "/" + node.services().nodeUpdater().getInstallerWindowsURI().toString())
-              });
+              new HTMLNode[] {HTMLNode.link("/" + windowsInstaller.sourceUriText())});
 
-    installer = node.services().nodeUpdater().getInstallerNonWindows();
-    shortFilename = NodeFile.INSTALLER_NON_WINDOWS.getFilename();
+    installer = nonWindowsInstaller.localFile();
+    shortFilename = nonWindowsInstaller.filename();
 
     boxContent.addChild("#", " ");
 
@@ -187,8 +192,7 @@ public class DarknetAddRefToadlet extends Toadlet {
               "DarknetAddRefToadlet.explainInstallerNonWindowsNotYet",
               new String[] {"link", "shortfilename"},
               new HTMLNode[] {
-                HTMLNode.link(
-                    "/" + node.services().nodeUpdater().getInstallerNonWindowsURI().toString()),
+                HTMLNode.link("/" + nonWindowsInstaller.sourceUriText()),
                 HTMLNode.text(shortFilename)
               });
 
@@ -203,17 +207,29 @@ public class DarknetAddRefToadlet extends Toadlet {
    * Exposes the public darknet noderef for this node as a field set suitable for embedding in
    * responses.
    *
-   * <p>The returned {@link SimpleFieldSet} contains only public fields and is constructed by the
-   * underlying {@link Node} at call time, ensuring that peers receive up-to-date routing and key
-   * material. Callers should treat the object as read-only and avoid persisting it beyond the
-   * immediate HTTP response, because it reflects the node’s current configuration and may change
-   * when peers or keys are rotated.
+   * <p>The returned {@link SimpleFieldSet} contains only public fields and is rebuilt from the
+   * detached runtime noderef export at call time, ensuring that peers receive up-to-date routing
+   * and key material. Callers should treat the object as read-only and avoid persisting it beyond
+   * the immediate HTTP response, because it reflects the node’s current configuration and may
+   * change when peers or keys are rotated.
    *
-   * @return immutable view of the node’s exported darknet reference fields; ownership remains with
-   *     the caller for serialization but should not be mutated.
+   * @return field set view of the current exported darknet reference; ownership remains with the
+   *     caller for serialization but should not be mutated.
    */
   protected SimpleFieldSet getNoderef() {
-    return node.network().exportDarknetPublicFieldSet();
+    return toSimpleFieldSet(
+        nodeInfoPort.exportReference(NodeReferenceView.DARKNET_PUBLIC, false).root());
+  }
+
+  private static SimpleFieldSet toSimpleFieldSet(NodeFieldSet source) {
+    SimpleFieldSet target = new SimpleFieldSet(true);
+    for (Map.Entry<String, String> entry : source.directValues().entrySet()) {
+      target.putSingle(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, NodeFieldSet> entry : source.directSubsets().entrySet()) {
+      target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
+    }
+    return target;
   }
 
   private static String l10n(String string) {
