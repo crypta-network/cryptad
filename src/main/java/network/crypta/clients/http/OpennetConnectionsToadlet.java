@@ -6,9 +6,12 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.PeerPort;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 
 /**
  * Toadlet that renders the opennet peer list for the FProxy UI, focusing on anonymous stranger
@@ -30,6 +33,7 @@ import network.crypta.support.SimpleFieldSet;
  * collaborators are themselves thread-safe.
  */
 public class OpennetConnectionsToadlet extends ConnectionsToadlet implements LinkEnabledCallback {
+  private final Node node;
 
   /**
    * Builds an opennet-specific toadlet using the shared node components required to render peer
@@ -49,27 +53,28 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
       Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage) {
-    super(n, core, client, connectionsPage);
+      ConnectionsPagePort connectionsPage,
+      PeerPort peerPort,
+      NodeInfoPort nodeInfoPort,
+      ConfigPort configPort) {
+    super(core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+    this.node = n;
   }
 
   /**
-   * Exports the public opennet noderef from the hosting node so that advanced users can copy it.
-   * The returned field set reflects the node's current opennet identity and is fetched fresh for
-   * each request to avoid stale values.
+   * Selects the public opennet noderef view used by the shared base-class export flow.
    *
-   * @return field set containing the opennet noderef, ready for serialization into the response
-   *     page.
+   * @return public opennet noderef view used by the connections page.
    */
   @Override
-  protected SimpleFieldSet getNoderef() {
-    return node.network().exportOpennetPublicFieldSet();
+  protected NodeReferenceView noderefView() {
+    return NodeReferenceView.OPENNET_PUBLIC;
   }
 
   /**
    * Checks whether opennet support is currently enabled on the hosting node before serving the
-   * toadlet. Requests are only allowed when opennet is active, preventing exposure of partial UI
-   * state while the feature is disabled or unavailable.
+   * toadlet. Requests are only allowed when opennet is active, preventing exposure of the partial
+   * UI state while the feature is disabled or unavailable.
    *
    * @param ctx HTTP context passed by the caller; used by the base class for permission checks and
    *     locale selection.
@@ -102,7 +107,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   protected boolean showPeerActionsBox() {
-    // No per-peer actions supported on opennet - there's no point, they'll only reconnect,
+    // No per-peer actions supported on opennet - there's no point; they'll only reconnect,
     // possibly as a different identity. And we don't want to be able to send N2NTM spam either.
     return false;
   }
@@ -137,12 +142,12 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
 
   /**
    * Provides the redirect target used when the toadlet needs to bounce the user after processing a
-   * form or encountering an error. It always returns the opennet landing path to keep navigation
+   * form or encountering an error. It always returns the Opennet landing path to keep navigation
    * consistent.
    *
    * <p>Using a fixed location avoids leaking intermediate URLs and reduces the chance of confusing
    * users with partial states after submitting a noderef. The target matches the canonical entry
-   * point of this page so refreshed state is immediately visible after the redirect completes.
+   * point of this page, so the refreshed state is immediately visible after the redirect completes.
    *
    * @return fixed redirect path {@code "/opennet/"} for opennet UI flows.
    */
@@ -173,7 +178,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * metrics while preserving support for reversed ordering when requested by the caller.
    *
    * <p>The comparator is created per request to encapsulate the active sort key and direction,
-   * ensuring thread-safety and allowing multiple concurrent sorts without shared mutable state.
+   * ensuring thread-safety and allowing multiple concurrent sorts without a shared mutable state.
    */
   protected static class OpennetComparator extends ComparatorByStatus {
 
@@ -190,7 +195,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
      *     {@link OpennetPeerNodeStatus} instance.
      * @param secondNode second peer node considered by the comparison routine; expected to be an
      *     {@link OpennetPeerNodeStatus} instance.
-     * @return negative, zero, or positive according to the configured ordering and reversal flag,
+     * @return negative, zero, or positive, according to the configured ordering and reversal flag,
      *     using last-success timestamps when available.
      */
     @Override

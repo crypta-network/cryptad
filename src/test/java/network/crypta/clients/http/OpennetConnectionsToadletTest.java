@@ -2,19 +2,27 @@ package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceSnapshot;
+import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.PeerPort;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +34,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -41,6 +48,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class OpennetConnectionsToadletTest {
+  private static final String VALID_DARKNET_REFERENCE =
+      "identity=darknet-peer\nlastGoodVersion=1\nEnd\n";
+  private static final String OWN_NODE_IDENTITY = "peer-1";
+  private static final String OWN_NODE_LAST_GOOD_VERSION = "1";
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
@@ -48,7 +59,9 @@ class OpennetConnectionsToadletTest {
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
-  @Mock private SimpleFieldSet noderef;
+  @Mock private PeerPort peerPort;
+  @Mock private NodeInfoPort nodeInfoPort;
+  @Mock private ConfigPort configPort;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
 
@@ -56,20 +69,14 @@ class OpennetConnectionsToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new OpennetConnectionsToadlet(node, core, client, connectionsPage);
+    toadlet =
+        new OpennetConnectionsToadlet(
+            node, core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
   }
 
   @Test
-  void getNoderef_delegatesToNodeExport() {
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.exportOpennetPublicFieldSet()).thenReturn(noderef);
-
-    SimpleFieldSet result = toadlet.getNoderef();
-
-    assertSame(noderef, result);
-    verify(network).exportOpennetPublicFieldSet();
+  void noderefView_returnsPublicOpennetReferenceView() {
+    assertEquals(NodeReferenceView.OPENNET_PUBLIC, toadlet.noderefView());
   }
 
   @Test
@@ -193,6 +200,48 @@ class OpennetConnectionsToadletTest {
     verify(ctx, never()).addFormChild(any(HTMLNode.class), anyString(), anyString());
   }
 
+  @Test
+  void handleMethodGET_whenAdvancedModeEnabled_rendersOwnNoderefFromNodeInfoPort()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
+    when(request.getParam("sortBy", null)).thenReturn(null);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(connectionsPage.render(any()))
+        .thenReturn(
+            new ConnectionsPageSnapshot(
+                "strangers",
+                1,
+                false,
+                "<div id=\"before\">before</div>",
+                "<div>peer-table</div>",
+                ""));
+    when(nodeInfoPort.exportReference(NodeReferenceView.OPENNET_PUBLIC, false))
+        .thenReturn(ownNodeReferenceSnapshot());
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    stubFormChild(ctx);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/strangers/"), request, ctx);
+
+    String html = body.toString(java.nio.charset.StandardCharsets.UTF_8);
+    assertTrue(html.contains("identity=" + OWN_NODE_IDENTITY));
+    assertTrue(html.contains("lastGoodVersion=" + OWN_NODE_LAST_GOOD_VERSION));
+    verify(nodeInfoPort).exportReference(NodeReferenceView.OPENNET_PUBLIC, false);
+  }
+
+  @Test
+  void addNewNode_whenDarknetReferenceSubmittedOnOpennetPage_rejectsWithoutCallingPeerPort()
+      throws Exception {
+    ConnectionsToadlet.PeerAdditionReturnCodes result = invokeAddNewNodeWithDarknetReference();
+
+    assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE, result);
+    verify(peerPort, never()).add(any(), any(), any());
+  }
+
   private OpennetPeerNodeStatus statusWithLastSuccess(long timestamp) {
     OpennetPeerNodeStatus status = mock(OpennetPeerNodeStatus.class);
     setTimeLastSuccess(status, timestamp);
@@ -211,6 +260,20 @@ class OpennetConnectionsToadletTest {
 
   private static LinkageError linkageError(ReflectiveOperationException e) {
     return new LinkageError("Unable to set timeLastSuccess on mock", e);
+  }
+
+  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNodeWithDarknetReference()
+      throws Exception {
+    Method method =
+        ConnectionsToadlet.class.getDeclaredMethod(
+            "addNewNode",
+            String.class,
+            String.class,
+            network.crypta.node.DarknetPeerNode.FRIEND_TRUST.class,
+            network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY.class);
+    method.setAccessible(true);
+    return (ConnectionsToadlet.PeerAdditionReturnCodes)
+        method.invoke(toadlet, VALID_DARKNET_REFERENCE, "", null, null);
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {
@@ -240,5 +303,33 @@ class OpennetConnectionsToadletTest {
         .when(context)
         .writeData(any(byte[].class), anyInt(), anyInt());
     return body;
+  }
+
+  private void stubFormChild(ToadletContext context) {
+    doAnswer(
+            invocation -> {
+              HTMLNode parentNode = invocation.getArgument(0);
+              String target = invocation.getArgument(1);
+              String id = invocation.getArgument(2);
+              return parentNode
+                  .addChild("div")
+                  .addChild(
+                      "form",
+                      new String[] {"action", "method", "enctype", "id", "accept-charset"},
+                      new String[] {target, "post", "multipart/form-data", id, "utf-8"});
+            })
+        .when(context)
+        .addFormChild(any(HTMLNode.class), anyString(), anyString());
+  }
+
+  private static NodeReferenceSnapshot ownNodeReferenceSnapshot() {
+    return new NodeReferenceSnapshot(new NodeFieldSet(ownNodeReferenceValues(), Map.of()));
+  }
+
+  private static Map<String, String> ownNodeReferenceValues() {
+    LinkedHashMap<String, String> values = new LinkedHashMap<>();
+    values.put("identity", OWN_NODE_IDENTITY);
+    values.put("lastGoodVersion", OWN_NODE_LAST_GOOD_VERSION);
+    return values;
   }
 }

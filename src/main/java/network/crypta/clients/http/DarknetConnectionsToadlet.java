@@ -16,7 +16,11 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.PeerPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
@@ -80,13 +84,18 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
           Map.entry("clear_listen_only", pn -> pn.setListenOnly(false)),
           Map.entry("set_allow_local", pn -> pn.setAllowLocalAddresses(true)),
           Map.entry("clear_allow_local", pn -> pn.setAllowLocalAddresses(false)));
+  private final Node node;
 
   DarknetConnectionsToadlet(
       Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage) {
-    super(n, core, client, connectionsPage);
+      ConnectionsPagePort connectionsPage,
+      PeerPort peerPort,
+      NodeInfoPort nodeInfoPort,
+      ConfigPort configPort) {
+    super(core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+    this.node = n;
   }
 
   private static String l10n(String string) {
@@ -169,17 +178,16 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Export the local node's public darknet reference for distribution.
+   * Select the local node's public darknet reference view for distribution.
    *
-   * <p>The exported field set omits private data and contains only the values needed for a remote
-   * peer to add this node as a friend. Callers typically embed the returned structure in the
-   * noderef download box so users can save or transmit it securely.
+   * <p>The shared base class uses this selector to export a detached noderef snapshot through the
+   * runtime SPI before rendering the noderef box or serving `myref.*` downloads.
    *
-   * @return a {@link SimpleFieldSet} containing the sanitized public darknet reference.
+   * @return public darknet noderef view used by the connections page.
    */
   @Override
-  protected SimpleFieldSet getNoderef() {
-    return node.network().exportDarknetPublicFieldSet();
+  protected NodeReferenceView noderefView() {
+    return NodeReferenceView.DARKNET_PUBLIC;
   }
 
   /**

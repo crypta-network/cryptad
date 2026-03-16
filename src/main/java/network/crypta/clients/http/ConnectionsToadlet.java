@@ -8,6 +8,7 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringTokenizer;
@@ -17,25 +18,30 @@ import network.crypta.clients.fcp.AddPeer;
 import network.crypta.clients.http.complexhtmlnodes.PeerTrustInputForAddPeerBoxNode;
 import network.crypta.clients.http.complexhtmlnodes.PeerVisibilityInputForAddPeerBoxNode;
 import network.crypta.config.ConfigException;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.FSParseException;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.PeerManager;
-import network.crypta.node.PeerNode;
 import network.crypta.node.PeerNodeStatus;
-import network.crypta.node.PeerTooOldException;
 import network.crypta.node.Version;
+import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.NodeFieldSet;
+import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.PeerAddFailureReason;
+import network.crypta.runtime.spi.PeerAddRejectedException;
+import network.crypta.runtime.spi.PeerFieldSet;
+import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -52,21 +58,21 @@ import org.slf4j.LoggerFactory;
  * for subclasses that tailor per-network presentation. It centralizes sorting, pagination,
  * validation, and noderef ingestion so downstream pages can focus on the specifics of each
  * topology. Instances are long-lived and reused across requests; state comes from the injected
- * {@link Node} and {@link NodeClientCore} rather than per-request mutability.
+ * runtime ports and {@link NodeClientCore} rather than per-request mutability.
  *
  * <p>Responsibilities include:
  *
  * <ul>
  *   <li>Rendering peer summaries, trust/visibility columns, and message-type breakdowns.
- *   <li>Parsing noderefs from form uploads, pasted text, or URLs, then delegating to {@link Node}
- *       for peer creation.
+ *   <li>Parsing noderefs from form uploads, pasted text, or URLs, then delegating to the runtime
+ *       SPI for peer creation.
  *   <li>Handling redirects and guidance when no peers exist or when access checks fail.
  * </ul>
  *
- * <p>Thread-safety: instances rely on externally synchronized {@link Node}/{@link PeerManager}
- * methods. The toadlet itself holds no mutable request-scoped state except transient flags on the
- * stack, so it can service concurrent requests when the surrounding HTTP server invokes it in
- * parallel. Subclasses should preserve this behavior when adding fields or caching.
+ * <p>Thread-safety: instances hold only long-lived collaborators and no mutable request-scoped
+ * state except transient flags on the stack, so they can service concurrent requests when the
+ * surrounding HTTP server invokes them in parallel. Subclasses should preserve this behavior when
+ * adding fields or caching.
  */
 public abstract class ConnectionsToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(ConnectionsToadlet.class);
@@ -240,17 +246,20 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
   }
 
-  /** Reference to the running node that backs all connection states and operations. */
-  protected final Node node;
-
   /** Core services used for filesystem paths, configuration, and network integration. */
   protected final NodeClientCore core;
 
-  /** Peer manager providing live peer state and addition helpers. */
-  protected final PeerManager peers;
-
   /** Page-oriented runtime port used for detached GET-only connections page rendering. */
   private final ConnectionsPagePort connectionsPage;
+
+  /** Runtime peer-management port used for peer additions and darknet note writes. */
+  private final PeerPort peerPort;
+
+  /** Runtime node-info port used to export this node's own noderef for the UI. */
+  private final NodeInfoPort nodeInfoPort;
+
+  /** Runtime config port used for add-peer flow overrides that previously hit daemon config. */
+  private final ConfigPort configPort;
 
   /**
    * Outcomes returned when attempting to add a peer from a supplied noderef.
@@ -278,23 +287,28 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Creates a toadlet bound to shared node infrastructure used by connection pages.
    *
-   * @param n live {@link Node} supplying peer state and creation helpers; must not be {@code null}.
    * @param core {@link NodeClientCore} providing filesystem access and runtime paths used for
    *     noderef files.
    * @param client high-level client used to retrieve noderefs via Freenet or HTTP when users submit
    *     URLs instead of pasted references.
    * @param connectionsPage read-only runtime page port backing the detached GET render path.
+   * @param peerPort runtime peer-management port used for peer additions and related mutations.
+   * @param nodeInfoPort runtime node-info port used to export this node's own noderef.
+   * @param configPort runtime config port used for add-peer flow overrides.
    */
   protected ConnectionsToadlet(
-      Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
-      ConnectionsPagePort connectionsPage) {
+      ConnectionsPagePort connectionsPage,
+      PeerPort peerPort,
+      NodeInfoPort nodeInfoPort,
+      ConfigPort configPort) {
     super(client);
-    this.node = n;
-    this.core = core;
-    this.peers = n.network().peers();
+    this.core = Objects.requireNonNull(core);
     this.connectionsPage = Objects.requireNonNull(connectionsPage);
+    this.peerPort = Objects.requireNonNull(peerPort);
+    this.nodeInfoPort = Objects.requireNonNull(nodeInfoPort);
+    this.configPort = Objects.requireNonNull(configPort);
     refLink = HTMLNode.link(path() + "myref.fref").setReadOnly();
     reftextLink = HTMLNode.link(path() + "myref.txt").setReadOnly();
   }
@@ -360,7 +374,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
 
     if (shouldDrawNoderefBox(advancedMode)) {
       drawAddPeerBox(contentNode, ctx);
-      drawNoderefBox(contentNode, getNoderef());
+      drawNoderefBox(contentNode, exportOwnNoderef());
     }
 
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
@@ -369,7 +383,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private boolean serveReferenceDownload(String path, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (path.endsWith("myref.fref")) {
-      SimpleFieldSet fs = getNoderef();
+      SimpleFieldSet fs = exportOwnNoderef();
       String noderefString = fs.toOrderedStringWithBase64();
       MultiValueTable<String, String> extraHeaders =
           MultiValueTable.from("Content-Disposition", "attachment; filename=myref.fref");
@@ -381,7 +395,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
 
     if (path.endsWith("myref.txt")) {
-      SimpleFieldSet fs = getNoderef();
+      SimpleFieldSet fs = exportOwnNoderef();
       String noderefString = fs.toOrderedStringWithBase64();
       writeTextReply(ctx, 200, "OK", noderefString);
       return true;
@@ -450,7 +464,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private void handleAddPeer(HTTPRequest request, ToadletContext ctx)
-      throws IOException, ToadletContextClosedException, ConfigException {
+      throws IOException, ToadletContextClosedException {
     AddPeerRequestData data = extractAddPeerRequestData(request);
     if (!validateTrustAndVisibility(ctx, data)) {
       return;
@@ -465,8 +479,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     processReferences(data, ref, ctx);
   }
 
-  private AddPeerRequestData extractAddPeerRequestData(HTTPRequest request)
-      throws IOException, ConfigException {
+  private AddPeerRequestData extractAddPeerRequestData(HTTPRequest request) throws IOException {
     String urltext = request.getPartAsStringFailsafe("url", 200).trim();
     String reftext = request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE).trim();
     if (reftext.length() < 200) {
@@ -482,7 +495,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       if (!peersOffersRefs.isBlank()) {
         reftext = peersOffersRefs;
       }
-      node.getConfig().get("node").set("peersOffersDismissed", true);
+      configPort.applyOverrides(Map.of("node.peersOffersDismissed", "true"));
     }
 
     FRIEND_TRUST trust = parseTrust(request);
@@ -711,29 +724,26 @@ public abstract class ConnectionsToadlet extends Toadlet {
       LOG.error("Internal error adding reference :{}", e.getMessage(), e);
       return PeerAdditionReturnCodes.INTERNAL_ERROR;
     }
-    PeerNode pn;
-    try {
-      if (isOpennet()) {
-        pn = node.network().createNewOpennetNode(fs);
-      } else {
-        pn = node.network().createNewDarknetNode(fs, trust, visibility);
-        ((DarknetPeerNode) pn).setPrivateDarknetCommentNote(privateComment);
-      }
-    } catch (FSParseException | PeerParseException | PeerTooOldException _) {
+
+    if (!matchesExpectedPeerType(fs)) {
+      LOG.warn(
+          "Rejecting {} noderef on {} connections page",
+          fs.getBoolean("opennet", false) ? "opennet" : "darknet",
+          isOpennet() ? "opennet" : "darknet");
       return PeerAdditionReturnCodes.CANT_PARSE;
-    } catch (ReferenceSignatureVerificationException _) {
-      return PeerAdditionReturnCodes.INVALID_SIGNATURE;
+    }
+
+    try {
+      PeerSnapshot addedPeer =
+          peerPort.add(toPeerFieldSet(fs), toPeerTrust(trust), toPeerVisibility(visibility));
+      maybeWritePrivateDarknetComment(addedPeer, privateComment);
+      return PeerAdditionReturnCodes.OK;
+    } catch (PeerAddRejectedException e) {
+      return mapPeerAddFailure(e.reason());
     } catch (Exception e) {
       LOG.error("Internal error adding reference :{}", e.getMessage(), e);
       return PeerAdditionReturnCodes.INTERNAL_ERROR;
     }
-    if (Arrays.equals(pn.peerECDSAPubKeyHash, node.network().darknetPubKeyHash())) {
-      return PeerAdditionReturnCodes.TRY_TO_ADD_SELF;
-    }
-    if (!this.node.network().addPeerConnection(pn)) {
-      return PeerAdditionReturnCodes.ALREADY_IN_REFERENCE;
-    }
-    return PeerAdditionReturnCodes.OK;
   }
 
   private String cleanReferenceText(String reftext) {
@@ -980,11 +990,99 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   /**
-   * Returns the node's own reference for download or display.
+   * Selects which runtime noderef view should back the local-reference UI for this page.
    *
-   * @return immutable {@link SimpleFieldSet} representing this node's noderef.
+   * @return runtime noderef view to export for this toadlet.
    */
-  protected abstract SimpleFieldSet getNoderef();
+  protected abstract NodeReferenceView noderefView();
+
+  private SimpleFieldSet exportOwnNoderef() {
+    return toSimpleFieldSet(nodeInfoPort.exportReference(noderefView(), false).root());
+  }
+
+  private static SimpleFieldSet toSimpleFieldSet(NodeFieldSet source) {
+    SimpleFieldSet target = new SimpleFieldSet(true);
+    for (Map.Entry<String, String> entry : source.directValues().entrySet()) {
+      target.putSingle(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, NodeFieldSet> entry : source.directSubsets().entrySet()) {
+      target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
+    }
+    return target;
+  }
+
+  private static PeerFieldSet toPeerFieldSet(SimpleFieldSet source) {
+    if (source.isEmpty()) {
+      return PeerFieldSet.empty();
+    }
+
+    LinkedHashMap<String, String> directValues = new LinkedHashMap<>(source.directKeyValues());
+    LinkedHashMap<String, PeerFieldSet> directSubsets = new LinkedHashMap<>();
+    for (Map.Entry<String, SimpleFieldSet> entry : source.directSubsets().entrySet()) {
+      PeerFieldSet subset = toPeerFieldSet(entry.getValue());
+      if (!subset.isEmpty()) {
+        directSubsets.put(entry.getKey(), subset);
+      }
+    }
+    return new PeerFieldSet(directValues, directSubsets);
+  }
+
+  private boolean matchesExpectedPeerType(SimpleFieldSet fieldSet) {
+    return fieldSet.getBoolean("opennet", false) == isOpennet();
+  }
+
+  private static PeerTrust toPeerTrust(FRIEND_TRUST trust) {
+    if (trust == null) {
+      return PeerTrust.NORMAL;
+    }
+    return switch (trust) {
+      case LOW -> PeerTrust.LOW;
+      case NORMAL -> PeerTrust.NORMAL;
+      case HIGH -> PeerTrust.HIGH;
+    };
+  }
+
+  private static PeerVisibility toPeerVisibility(FRIEND_VISIBILITY visibility) {
+    if (visibility == null) {
+      return PeerVisibility.YES;
+    }
+    return switch (visibility) {
+      case YES -> PeerVisibility.YES;
+      case NAME_ONLY -> PeerVisibility.NAME_ONLY;
+      case NO -> PeerVisibility.NO;
+    };
+  }
+
+  private static PeerAdditionReturnCodes mapPeerAddFailure(PeerAddFailureReason reason) {
+    return switch (reason) {
+      case REF_PARSE_ERROR -> PeerAdditionReturnCodes.CANT_PARSE;
+      case REF_SIGNATURE_INVALID -> PeerAdditionReturnCodes.INVALID_SIGNATURE;
+      case CANNOT_PEER_WITH_SELF -> PeerAdditionReturnCodes.TRY_TO_ADD_SELF;
+      case DUPLICATE_PEER_REF -> PeerAdditionReturnCodes.ALREADY_IN_REFERENCE;
+      case OPENNET_DISABLED -> PeerAdditionReturnCodes.INTERNAL_ERROR;
+    };
+  }
+
+  private void maybeWritePrivateDarknetComment(PeerSnapshot addedPeer, String privateComment) {
+    if (isOpennet() || privateComment == null || privateComment.isBlank()) {
+      return;
+    }
+
+    String identity = addedPeer.root().directValues().get("identity");
+    if (identity == null || identity.isBlank()) {
+      LOG.warn("Added darknet peer without identity in snapshot; skipping private note write");
+      return;
+    }
+
+    try {
+      peerPort.writePrivateDarknetComment(identity, privateComment);
+    } catch (UnknownPeerException | DarknetPeerRequiredException | RuntimeException e) {
+      LOG.warn(
+          "Added darknet peer {} but failed to write private note; keeping peer addition",
+          identity,
+          e);
+    }
+  }
 
   private static String l10n(String string) {
     return NodeL10n.getBase().getString("DarknetConnectionsToadlet." + string);
