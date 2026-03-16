@@ -117,7 +117,10 @@ public class ModifyPeer extends FCPMessage {
             parseOptionalBoolean(fs.get("IsListenOnly")),
             parseOptionalBoolean(fs.get("IsBurstOnly")),
             parseOptionalBoolean(fs.get("IgnoreSourcePort")),
-            parseOptionalBoolean(fs.get("AllowLocalAddresses")));
+            parseOptionalBoolean(fs.get("AllowLocalAddresses")),
+            null,
+            null,
+            null);
     try {
       PeerSnapshot snapshot =
           handler.getServer().runtime().peer().updateDarknetPeer(nodeIdentifier, update);

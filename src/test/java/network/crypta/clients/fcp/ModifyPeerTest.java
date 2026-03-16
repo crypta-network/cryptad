@@ -163,6 +163,9 @@ class ModifyPeerTest {
     assertEquals(Boolean.FALSE, update.burstOnly());
     assertEquals(Boolean.TRUE, update.ignoreSourcePort());
     assertEquals(Boolean.FALSE, update.allowLocalAddresses());
+    assertNull(update.routingEnabled());
+    assertNull(update.trust());
+    assertNull(update.visibility());
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler, times(1)).send(captor.capture());
@@ -232,6 +235,9 @@ class ModifyPeerTest {
     assertNull(update.burstOnly());
     assertNull(update.ignoreSourcePort());
     assertNull(update.allowLocalAddresses());
+    assertNull(update.routingEnabled());
+    assertNull(update.trust());
+    assertNull(update.visibility());
     verify(handler, times(1)).send(any(PeerMessage.class));
   }
 

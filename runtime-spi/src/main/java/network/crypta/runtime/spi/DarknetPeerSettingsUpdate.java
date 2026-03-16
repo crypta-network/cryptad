@@ -22,13 +22,21 @@ package network.crypta.runtime.spi;
  *     setting unchanged
  * @param allowLocalAddresses optional local-address allowance update; {@code null} leaves the
  *     current setting unchanged
+ * @param routingEnabled optional routing status update; {@code null} leaves the current routing
+ *     state unchanged
+ * @param trust optional trust-level update; {@code null} leaves the current trust unchanged
+ * @param visibility optional visibility update; {@code null} leaves the current visibility
+ *     unchanged
  */
 public record DarknetPeerSettingsUpdate(
     Boolean disabled,
     Boolean listenOnly,
     Boolean burstOnly,
     Boolean ignoreSourcePort,
-    Boolean allowLocalAddresses) {
+    Boolean allowLocalAddresses,
+    Boolean routingEnabled,
+    PeerTrust trust,
+    PeerVisibility visibility) {
   /**
    * Returns whether this update carries no requested changes.
    *
@@ -42,6 +50,9 @@ public record DarknetPeerSettingsUpdate(
         && listenOnly == null
         && burstOnly == null
         && ignoreSourcePort == null
-        && allowLocalAddresses == null;
+        && allowLocalAddresses == null
+        && routingEnabled == null
+        && trust == null
+        && visibility == null;
   }
 }

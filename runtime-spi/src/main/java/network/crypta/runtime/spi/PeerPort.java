@@ -82,6 +82,22 @@ public interface PeerPort {
       throws UnknownPeerException, DarknetPeerRequiredException;
 
   /**
+   * Applies one optional settings update to a darknet peer resolved by exact peer identity.
+   *
+   * <p>This method exists for detached callers that already know the selected peer's unique
+   * identity string and must avoid the legacy nickname or address fallback used by {@link
+   * #updateDarknetPeer(String, DarknetPeerSettingsUpdate)}.
+   *
+   * @param peerIdentity exact peer identity string used for lookup
+   * @param update optional darknet settings update
+   * @return detached snapshot of the updated peer, including metadata and volatile state
+   * @throws UnknownPeerException if the peer cannot be resolved
+   * @throws DarknetPeerRequiredException if the resolved peer is not a darknet peer
+   */
+  PeerSnapshot updateDarknetPeerByIdentity(String peerIdentity, DarknetPeerSettingsUpdate update)
+      throws UnknownPeerException, DarknetPeerRequiredException;
+
+  /**
    * Removes one peer from the runtime.
    *
    * <p>The returned snapshot contains only the removal details needed by the current peer-removal
@@ -120,5 +136,21 @@ public interface PeerPort {
    * @throws DarknetPeerRequiredException if the resolved peer is not a darknet peer
    */
   String writePrivateDarknetComment(String nodeIdentifier, String noteText)
+      throws UnknownPeerException, DarknetPeerRequiredException;
+
+  /**
+   * Writes the private darknet comment note for one peer resolved by exact peer identity.
+   *
+   * <p>This method exists for detached callers that already know the selected peer's unique
+   * identity string and must avoid the legacy nickname or address fallback used by {@link
+   * #writePrivateDarknetComment(String, String)}.
+   *
+   * @param peerIdentity exact peer identity string used for lookup
+   * @param noteText note text to store
+   * @return stored private darknet comment note text
+   * @throws UnknownPeerException if the peer cannot be resolved
+   * @throws DarknetPeerRequiredException if the resolved peer is not a darknet peer
+   */
+  String writePrivateDarknetCommentByIdentity(String peerIdentity, String noteText)
       throws UnknownPeerException, DarknetPeerRequiredException;
 }

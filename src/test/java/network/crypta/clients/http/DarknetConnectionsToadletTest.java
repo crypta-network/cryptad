@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
@@ -21,6 +23,9 @@ import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
@@ -47,6 +52,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,6 +81,7 @@ class DarknetConnectionsToadletTest {
   private static final String OWN_NODE_IDENTITY = "peer-identity";
   private static final String OWN_NODE_LAST_GOOD_VERSION = "1";
   private static final String OWN_NODE_PHYSICAL_UDP = "127.0.0.1:1234";
+  private static final String TEST_NODE_IDENTIFIER = "peer-1";
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
@@ -82,6 +89,7 @@ class DarknetConnectionsToadletTest {
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
+  @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private PeerPort peerPort;
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private ConfigPort configPort;
@@ -93,9 +101,10 @@ class DarknetConnectionsToadletTest {
 
   @BeforeEach
   void setUp() {
+    ConnectionsToadletRuntimePorts runtimePorts =
+        new ConnectionsToadletRuntimePorts(connectionsPage, peerPort, nodeInfoPort, configPort);
     toadlet =
-        new DarknetConnectionsToadlet(
-            node, core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+        new DarknetConnectionsToadlet(node, core, client, runtimePorts, darknetConnectionsPort);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
   }
 
@@ -199,45 +208,91 @@ class DarknetConnectionsToadletTest {
 
   @Test
   void handleAltPost_updateNotes_updatesChangedNotesAndRedirects() throws Exception {
-    DarknetPeerNode peer = mock(DarknetPeerNode.class);
-    when(peer.getPrivateDarknetCommentNote()).thenReturn("old");
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
-
-    int peerHash = peer.hashCode();
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "old")));
     when(request.isPartSet("doAction")).thenReturn(true);
     when(request.getPartAsStringFailsafe("action", 25)).thenReturn("update_notes");
-    when(request.isPartSet("peerPrivateNote_" + peerHash)).thenReturn(true);
-    when(request.getPartAsStringFailsafe("peerPrivateNote_" + peerHash, 250)).thenReturn("new");
+    when(request.isPartSet("peerPrivateNote_" + selectionToken)).thenReturn(true);
+    when(request.getPartAsStringFailsafe("peerPrivateNote_" + selectionToken, 250))
+        .thenReturn("new");
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
     toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
 
-    verify(peer).setPrivateDarknetCommentNote("new");
+    verify(peerPort).writePrivateDarknetCommentByIdentity(TEST_NODE_IDENTIFIER, "new");
+    verifyNoInteractions(node);
     assertRedirectIssued();
   }
 
   @Test
-  void handleAltPost_enableAction_enablesSelectedPeersAndRedirects() throws Exception {
-    DarknetPeerNode peer = mock(DarknetPeerNode.class);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
-
-    int peerHash = peer.hashCode();
+  void handleAltPost_enableAction_updatesSelectedPeersThroughPeerPortAndRedirects()
+      throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
     when(request.isPartSet("doAction")).thenReturn(true);
     when(request.getPartAsStringFailsafe("action", 25)).thenReturn("enable");
-    when(request.isPartSet("node_" + peerHash)).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
     toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
 
-    verify(peer).enablePeer();
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort).updateDarknetPeerByIdentity(eq(TEST_NODE_IDENTIFIER), updateCaptor.capture());
+    assertEquals(Boolean.FALSE, updateCaptor.getValue().disabled());
+    assertNull(updateCaptor.getValue().routingEnabled());
+    verifyNoInteractions(node);
+    assertRedirectIssued();
+  }
+
+  @Test
+  void handleAltPost_changeTrust_updatesSelectedPeersThroughPeerPortAndRedirects()
+      throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
+    when(request.isPartSet("changeTrust")).thenReturn(true);
+    when(request.isPartSet("doChangeTrust")).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
+    when(request.getPartAsStringFailsafe("changeTrust", 10)).thenReturn(FRIEND_TRUST.HIGH.name());
+
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort).updateDarknetPeerByIdentity(eq(TEST_NODE_IDENTIFIER), updateCaptor.capture());
+    assertEquals(PeerTrust.HIGH, updateCaptor.getValue().trust());
+    verifyNoInteractions(node);
+    assertRedirectIssued();
+  }
+
+  @Test
+  void handleAltPost_changeVisibility_updatesSelectedPeersThroughPeerPortAndRedirects()
+      throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
+    when(request.isPartSet("changeVisibility")).thenReturn(true);
+    when(request.isPartSet("doChangeVisibility")).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
+    when(request.getPartAsStringFailsafe("changeVisibility", 10))
+        .thenReturn(FRIEND_VISIBILITY.NAME_ONLY.name());
+
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort).updateDarknetPeerByIdentity(eq(TEST_NODE_IDENTIFIER), updateCaptor.capture());
+    assertEquals(PeerVisibility.NAME_ONLY, updateCaptor.getValue().visibility());
+    verifyNoInteractions(node);
     assertRedirectIssued();
   }
 
@@ -387,18 +442,11 @@ class DarknetConnectionsToadletTest {
 
   @Test
   void tryHandlePeerNoderef_withValidFriendHash_sendsAttachmentResponse() throws Exception {
-    SimpleFieldSet fieldSet = new SimpleFieldSet(false);
-    fieldSet.putSingle("key", "value");
-
-    DarknetPeerNode peer = mock(DarknetPeerNode.class);
-    when(peer.getName()).thenReturn("Friend");
-    when(peer.getFullNoderef()).thenReturn(fieldSet);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
-
-    int peerHash = peer.hashCode();
+    int peerHash = 1234;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(peerHash, "Friend", "")));
+    when(darknetConnectionsPort.exportPeerReference(peerHash))
+        .thenReturn(Optional.of(peerNodeReferenceSnapshot()));
     URI uri = URI.create("http://localhost/friends/friend-" + peerHash + ".fref");
 
     doNothing()
@@ -415,7 +463,8 @@ class DarknetConnectionsToadletTest {
         ArgumentCaptor.forClass(MultiValueTable.class);
     ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
 
-    int expectedLength = fieldSet.toString().getBytes(StandardCharsets.UTF_8).length;
+    int expectedLength =
+        peerNodeReferenceFieldSet().toString().getBytes(StandardCharsets.UTF_8).length;
     verify(ctx)
         .sendReplyHeaders(
             eq(200),
@@ -427,7 +476,11 @@ class DarknetConnectionsToadletTest {
 
     String headerValue = headersCaptor.getValue().getFirst("Content-Disposition");
     assertEquals("attachment; filename=Friend.fref", headerValue);
-    assertEquals(fieldSet.toString(), new String(bodyCaptor.getValue(), StandardCharsets.UTF_8));
+    assertEquals(
+        peerNodeReferenceFieldSet().toString(),
+        new String(bodyCaptor.getValue(), StandardCharsets.UTF_8));
+    verify(darknetConnectionsPort).exportPeerReference(peerHash);
+    verifyNoInteractions(node);
   }
 
   @Test
@@ -545,8 +598,18 @@ class DarknetConnectionsToadletTest {
     return new PeerSnapshot(new PeerFieldSet(Map.of("identity", identity), Map.of()));
   }
 
+  private static DarknetConnectionPeerSnapshot darknetPeerSnapshot(
+      int selectionToken, String displayName, String privateNoteText) {
+    return new DarknetConnectionPeerSnapshot(
+        selectionToken, TEST_NODE_IDENTIFIER, displayName, privateNoteText);
+  }
+
   private static NodeReferenceSnapshot ownNodeReferenceSnapshot() {
     return new NodeReferenceSnapshot(new NodeFieldSet(ownNodeReferenceValues(), Map.of()));
+  }
+
+  private static NodeReferenceSnapshot peerNodeReferenceSnapshot() {
+    return new NodeReferenceSnapshot(new NodeFieldSet(Map.of("key", "value"), Map.of()));
   }
 
   private static Map<String, String> ownNodeReferenceValues() {
@@ -564,6 +627,12 @@ class DarknetConnectionsToadletTest {
     fieldSet.putSingle("identity", OWN_NODE_IDENTITY);
     fieldSet.putSingle("lastGoodVersion", OWN_NODE_LAST_GOOD_VERSION);
     fieldSet.putSingle("physical.udp", OWN_NODE_PHYSICAL_UDP);
+    return fieldSet;
+  }
+
+  private static SimpleFieldSet peerNodeReferenceFieldSet() {
+    SimpleFieldSet fieldSet = new SimpleFieldSet(true);
+    fieldSet.putSingle("key", "value");
     return fieldSet;
   }
 }

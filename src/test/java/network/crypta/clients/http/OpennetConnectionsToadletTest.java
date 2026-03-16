@@ -69,9 +69,9 @@ class OpennetConnectionsToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet =
-        new OpennetConnectionsToadlet(
-            node, core, client, connectionsPage, peerPort, nodeInfoPort, configPort);
+    ConnectionsToadletRuntimePorts runtimePorts =
+        new ConnectionsToadletRuntimePorts(connectionsPage, peerPort, nodeInfoPort, configPort);
+    toadlet = new OpennetConnectionsToadlet(node, core, client, runtimePorts);
   }
 
   @Test

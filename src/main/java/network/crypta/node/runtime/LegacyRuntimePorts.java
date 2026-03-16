@@ -7,6 +7,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectivityPort;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.LifecyclePort;
@@ -42,6 +43,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final ConfigPort configPort;
   private final ConnectivityPort connectivityPort;
   private final ConnectionsPagePort connectionsPagePort;
+  private final DarknetConnectionsPort darknetConnectionsPort;
   private final DiagnosticPort diagnosticPort;
   private final StatisticsPort statisticsPort;
   private final RequestQueuePort requestQueuePort;
@@ -129,6 +131,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.configPort = new LegacyConfigPort(node, core);
     this.connectivityPort = new LegacyConnectivityPort(node);
     this.connectionsPagePort = new LegacyConnectionsPagePort(node, core);
+    this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
@@ -211,6 +214,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public ConnectionsPagePort connectionsPage() {
     return connectionsPagePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the legacy darknet friends-page selection-token traversal and
+   * peer-specific noderef export inside the daemon root module while exposing only detached
+   * SPI-local snapshots upstream.
+   */
+  @Override
+  public DarknetConnectionsPort darknetConnections() {
+    return darknetConnectionsPort;
   }
 
   /**
