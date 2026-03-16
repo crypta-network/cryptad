@@ -13,7 +13,6 @@ import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -103,8 +102,7 @@ class DarknetConnectionsToadletTest {
   void setUp() {
     ConnectionsToadletRuntimePorts runtimePorts =
         new ConnectionsToadletRuntimePorts(connectionsPage, peerPort, nodeInfoPort, configPort);
-    toadlet =
-        new DarknetConnectionsToadlet(node, core, client, runtimePorts, darknetConnectionsPort);
+    toadlet = new DarknetConnectionsToadlet(core, client, runtimePorts, darknetConnectionsPort);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
   }
 
@@ -298,15 +296,9 @@ class DarknetConnectionsToadletTest {
 
   @Test
   void handleAltPost_removeWithForce_removesPeerAndRedirects() throws Exception {
-    DarknetPeerNode peer = mock(DarknetPeerNode.class);
-    when(peer.timeLastConnectionCompleted()).thenReturn(System.currentTimeMillis());
-    when(peer.getPeerNodeStatus()).thenReturn(0);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
-
-    int peerHash = peer.hashCode();
+    int peerHash = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(peerHash, "Alice", "")));
     when(request.isPartSet("remove")).thenReturn(true);
     when(request.isPartSet("node_" + peerHash)).thenReturn(true);
     when(request.isPartSet("forceit")).thenReturn(true);
@@ -315,8 +307,91 @@ class DarknetConnectionsToadletTest {
 
     toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
 
-    verify(network).removePeerConnection(peer);
+    verify(peerPort).removeByIdentity(TEST_NODE_IDENTIFIER);
     assertRedirectIssued();
+  }
+
+  @Test
+  void handleAltPost_removeWithoutForceForNonRemovablePeer_rendersConfirmationAndDoesNotRemove()
+      throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
+    when(request.isPartSet("remove")).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    stubFormChild(ctx);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("Alice"));
+    assertTrue(html.contains("name=\"node_" + selectionToken + '"'));
+    verify(peerPort, Mockito.never()).removeByIdentity(anyString());
+  }
+
+  @Test
+  void handleAltPost_acceptTransfer_usesDarknetConnectionsPortAndRedirects() throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
+    when(request.isPartSet("acceptTransfer")).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
+    when(request.getPartAsStringFailsafe("id", 32)).thenReturn("77");
+
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    verify(darknetConnectionsPort).acceptTransfer(TEST_NODE_IDENTIFIER, 77L);
+    assertRedirectIssued();
+  }
+
+  @Test
+  void handleAltPost_rejectTransfer_usesDarknetConnectionsPortAndRedirects() throws Exception {
+    int selectionToken = 101;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(darknetPeerSnapshot(selectionToken, "Alice", "")));
+    when(request.isPartSet("rejectTransfer")).thenReturn(true);
+    when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
+    when(request.getPartAsStringFailsafe("id", 32)).thenReturn("88");
+
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    verify(darknetConnectionsPort).rejectTransfer(TEST_NODE_IDENTIFIER, 88L);
+    assertRedirectIssued();
+  }
+
+  @Test
+  void handleAltPost_sendMessageToPeers_buildsComposeFormFromDetachedSnapshots() throws Exception {
+    int aliceToken = 101;
+    int bobToken = 202;
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(
+            List.of(
+                darknetPeerSnapshot(aliceToken, "Alice", ""),
+                darknetPeerSnapshot(bobToken, "Bob", "")));
+    when(request.isPartSet("doSendMessageToPeers")).thenReturn(true);
+    when(request.isPartSet("node_" + aliceToken)).thenReturn(true);
+    when(request.isPartSet("node_" + bobToken)).thenReturn(true);
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    stubFormChild(ctx);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("Alice"));
+    assertTrue(html.contains("Bob"));
+    assertTrue(html.contains("name=\"node_" + aliceToken + '"'));
+    assertTrue(html.contains("name=\"node_" + bobToken + '"'));
   }
 
   @Test
@@ -549,7 +624,11 @@ class DarknetConnectionsToadletTest {
         .when(
             pageMaker.getInfobox(
                 anyString(), anyString(), any(HTMLNode.class), anyString(), anyBoolean()))
-        .thenAnswer(_ -> new HTMLNode("div"));
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parentNode = invocation.getArgument(2);
+              return parentNode.addChild("div");
+            });
     return pageMaker;
   }
 
@@ -601,7 +680,7 @@ class DarknetConnectionsToadletTest {
   private static DarknetConnectionPeerSnapshot darknetPeerSnapshot(
       int selectionToken, String displayName, String privateNoteText) {
     return new DarknetConnectionPeerSnapshot(
-        selectionToken, TEST_NODE_IDENTIFIER, displayName, privateNoteText);
+        selectionToken, TEST_NODE_IDENTIFIER, displayName, privateNoteText, false);
   }
 
   private static NodeReferenceSnapshot ownNodeReferenceSnapshot() {

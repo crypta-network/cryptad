@@ -153,6 +153,18 @@ final class LegacyPeerPort implements PeerPort {
 
   /** {@inheritDoc} */
   @Override
+  public RemovedPeerSnapshot removeByIdentity(String peerIdentity) throws UnknownPeerException {
+    PeerNode peer = resolvePeerByIdentity(peerIdentity);
+    if (peer == null) {
+      throw new UnknownPeerException(peerIdentity);
+    }
+    String identity = peer.getIdentityString();
+    node.network().removePeerConnection(peer);
+    return new RemovedPeerSnapshot(identity, peerIdentity);
+  }
+
+  /** {@inheritDoc} */
+  @Override
   public String readPrivateDarknetComment(String nodeIdentifier)
       throws UnknownPeerException, DarknetPeerRequiredException {
     return resolveDarknetPeer(nodeIdentifier).getPrivateDarknetCommentNote();

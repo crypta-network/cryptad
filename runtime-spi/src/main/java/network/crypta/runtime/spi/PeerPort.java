@@ -110,6 +110,19 @@ public interface PeerPort {
   RemovedPeerSnapshot remove(String nodeIdentifier) throws UnknownPeerException;
 
   /**
+   * Removes one peer from the runtime using an exact peer identity match.
+   *
+   * <p>This method exists for detached callers that already know the selected peer's unique
+   * identity string and must avoid the legacy nickname or address fallback used by {@link
+   * #remove(String)}.
+   *
+   * @param peerIdentity exact peer identity string used for lookup
+   * @return detached removal result describing the removed peer
+   * @throws UnknownPeerException if the peer cannot be resolved
+   */
+  RemovedPeerSnapshot removeByIdentity(String peerIdentity) throws UnknownPeerException;
+
+  /**
    * Reads the existing private darknet comment note for one peer.
    *
    * <p>This method intentionally exposes only the currently supported private darknet comment note.

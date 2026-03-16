@@ -6,21 +6,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
+import network.crypta.node.PeerManager;
+import network.crypta.node.PeerNode;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
 
 /**
  * Adapts the legacy darknet friends-page peer traversal to the runtime SPI companion port.
  *
  * <p>This bridge preserves the current friends-page hash-token scheme inside the daemon root module
- * while exposing only detached peer identity, display-name, private-note, and noderef data to the
- * HTTP layer. It is intentionally narrow and exists only to migrate the remaining non-destructive
- * darknet friends-page actions away from direct live-daemon peer access.
+ * while exposing only detached peer identity, display-name, private-note, remove-policy, noderef,
+ * and transfer-decision data to the HTTP layer. It is intentionally narrow and exists only to
+ * migrate the remaining legacy darknet friends-page actions away from direct live-daemon peer
+ * access.
  *
  * <p>The adapter reads the live peer list on demand and immediately converts it into detached
  * values. That means it does not cache peer objects between requests and does not try to hide
@@ -30,6 +36,9 @@ import network.crypta.support.SimpleFieldSet;
  * directly.
  */
 final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
+  /** Age threshold after which the legacy friends page skips the force-remove confirmation. */
+  private static final long REMOVE_WITHOUT_FORCE_AGE_MILLIS = TimeUnit.DAYS.toMillis(7);
+
   /** Live daemon node whose darknet peer inventory backs this adapter. */
   private final Node node;
 
@@ -47,13 +56,15 @@ final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
   public List<DarknetConnectionPeerSnapshot> listPeers() {
     DarknetPeerNode[] peers = node.network().darknetConnections();
     List<DarknetConnectionPeerSnapshot> snapshots = new ArrayList<>(peers.length);
+    long removableWithoutForceCutoff = System.currentTimeMillis() - REMOVE_WITHOUT_FORCE_AGE_MILLIS;
     for (DarknetPeerNode peer : peers) {
       snapshots.add(
           new DarknetConnectionPeerSnapshot(
               peer.hashCode(),
               peer.getIdentityString(),
               Objects.requireNonNullElse(peer.getName(), ""),
-              Objects.requireNonNullElse(peer.getPrivateDarknetCommentNote(), "")));
+              Objects.requireNonNullElse(peer.getPrivateDarknetCommentNote(), ""),
+              removableWithoutForce(peer, removableWithoutForceCutoff)));
     }
     return List.copyOf(snapshots);
   }
@@ -73,6 +84,41 @@ final class LegacyDarknetConnectionsPort implements DarknetConnectionsPort {
       return Optional.of(new NodeReferenceSnapshot(toNodeFieldSet(fieldSet)));
     }
     return Optional.empty();
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void acceptTransfer(String nodeIdentifier, long transferId)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    resolveDarknetPeerByIdentity(nodeIdentifier).acceptTransfer(transferId);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void rejectTransfer(String nodeIdentifier, long transferId)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    resolveDarknetPeerByIdentity(nodeIdentifier).rejectTransfer(transferId);
+  }
+
+  private static boolean removableWithoutForce(
+      DarknetPeerNode peer, long removableWithoutForceCutoff) {
+    return peer.timeLastConnectionCompleted() < removableWithoutForceCutoff
+        || peer.getPeerNodeStatus() == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED;
+  }
+
+  private DarknetPeerNode resolveDarknetPeerByIdentity(String nodeIdentifier)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    Objects.requireNonNull(nodeIdentifier, "nodeIdentifier");
+    for (PeerNode peer : node.network().peerNodes()) {
+      if (!nodeIdentifier.equals(peer.getIdentityString())) {
+        continue;
+      }
+      if (peer instanceof DarknetPeerNode darknetPeer) {
+        return darknetPeer;
+      }
+      throw new DarknetPeerRequiredException(nodeIdentifier);
+    }
+    throw new UnknownPeerException(nodeIdentifier);
   }
 
   /**

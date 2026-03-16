@@ -3,18 +3,15 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.DarknetPeerNodeStatus;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -45,9 +42,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Typical callers route HTTP GET and POST traffic from the node's web interface to this class.
  * The toadlet builds HTML structures with {@link network.crypta.support.HTMLNode} helpers. It
- * delegates non-destructive peer updates through runtime SPI ports. It still relies on the live
- * {@link network.crypta.node.Node} for the legacy destructive and messaging paths that remain in
- * scope for later migration.
+ * delegates friends-page peer lookup, updates, removal, noderef export, and transfer decisions
+ * through runtime SPI ports. The node-to-node message workflow itself remains in {@link
+ * N2NTMToadlet}; this class only builds the detached target map that the legacy compose form still
+ * expects.
  *
  * <ul>
  *   <li>Renders friend metadata, noderef download links, and private notes.
@@ -103,18 +101,15 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
           Map.entry(
               "clear_allow_local",
               peerSettingsUpdate(null, null, null, null, Boolean.FALSE, null)));
-  private final Node node;
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final PeerPort peerPort;
 
   DarknetConnectionsToadlet(
-      Node n,
       NodeClientCore core,
       HighLevelSimpleClient client,
       ConnectionsToadletRuntimePorts runtimePorts,
       DarknetConnectionsPort darknetConnectionsPort) {
     super(core, client, runtimePorts);
-    this.node = n;
     this.darknetConnectionsPort = darknetConnectionsPort;
     this.peerPort = runtimePorts.peerPort();
   }
@@ -447,14 +442,23 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     if (transferId == null) {
       return;
     }
-    DarknetPeerNode peer = findFirstSelectedPeer(request);
+    DarknetConnectionPeerSnapshot peer = findFirstSelectedPeer(request);
     if (peer == null) {
       return;
     }
-    if (acceptTransfer) {
-      peer.acceptTransfer(transferId);
-    } else {
-      peer.rejectTransfer(transferId);
+    try {
+      if (acceptTransfer) {
+        darknetConnectionsPort.acceptTransfer(peer.nodeIdentifier(), transferId);
+      } else {
+        darknetConnectionsPort.rejectTransfer(peer.nodeIdentifier(), transferId);
+      }
+    } catch (UnknownPeerException | DarknetPeerRequiredException e) {
+      LOG.warn(
+          "Failed to {} transfer {} for darknet peer {}",
+          acceptTransfer ? "accept" : "reject",
+          transferId,
+          peer.nodeIdentifier(),
+          e);
     }
   }
 
@@ -470,10 +474,10 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     }
   }
 
-  private DarknetPeerNode findFirstSelectedPeer(HTTPRequest request) {
-    for (DarknetPeerNode pn : node.network().darknetConnections()) {
-      if (request.isPartSet(NODE_PREFIX + pn.hashCode())) {
-        return pn;
+  private DarknetConnectionPeerSnapshot findFirstSelectedPeer(HTTPRequest request) {
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      if (request.isPartSet(NODE_PREFIX + peer.selectionToken())) {
+        return peer;
       }
     }
     return null;
@@ -523,21 +527,34 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       throws ToadletContextClosedException, IOException {
     if (LOG.isDebugEnabled()) LOG.debug("Remove node");
 
-    for (DarknetPeerNode pn : node.network().darknetConnections()) {
-      if (!request.isPartSet(NODE_PREFIX + pn.hashCode())) {
-        if (LOG.isDebugEnabled()) LOG.debug("Part not set: node_{}", pn.hashCode());
-      } else if (shouldRemovePeer(pn, request)) {
-        node.network().removePeerConnection(pn);
-        if (LOG.isDebugEnabled()) LOG.debug("Removed node: node_{}", pn.hashCode());
+    boolean forceRemoval = request.isPartSet("forceit");
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      if (!request.isPartSet(NODE_PREFIX + peer.selectionToken())) {
+        logUnselectedPeer(peer);
+      } else if (forceRemoval || peer.removableWithoutForce()) {
+        removePeer(peer);
       } else {
-        showRemovalConfirmation(ctx, pn);
+        showRemovalConfirmation(ctx, peer);
         return;
       }
     }
     redirectHere(ctx);
   }
 
-  private void showRemovalConfirmation(ToadletContext ctx, DarknetPeerNode pn)
+  private void logUnselectedPeer(DarknetConnectionPeerSnapshot peer) {
+    if (LOG.isDebugEnabled()) LOG.debug("Part not set: node_{}", peer.selectionToken());
+  }
+
+  private void removePeer(DarknetConnectionPeerSnapshot peer) {
+    try {
+      peerPort.removeByIdentity(peer.nodeIdentifier());
+      if (LOG.isDebugEnabled()) LOG.debug("Removed node: node_{}", peer.selectionToken());
+    } catch (UnknownPeerException e) {
+      LOG.warn("Failed to remove darknet peer {}", peer.nodeIdentifier(), e);
+    }
+  }
+
+  private void showRemovalConfirmation(ToadletContext ctx, DarknetConnectionPeerSnapshot peer)
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("confirmRemoveNodeTitle"), ctx);
     HTMLNode contentNode = page.getContentNode();
@@ -557,12 +574,12 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
                 .getString(
                     "DarknetConnectionsToadlet.confirmRemoveNode",
                     new String[] {"name"},
-                    new String[] {pn.getName()}));
+                    new String[] {peer.displayName()}));
     HTMLNode removeForm = ctx.addFormChild(content, path(), "removeConfirmForm");
     removeForm.addChild(
         ELEMENT_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
-        new String[] {"hidden", NODE_PREFIX + pn.hashCode(), REMOVE});
+        new String[] {"hidden", NODE_PREFIX + peer.selectionToken(), REMOVE});
     removeForm.addChild(
         ELEMENT_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
@@ -577,13 +594,6 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
         new String[] {"hidden", "forceit", l10n("forceRemove")});
 
     writeHTMLReply(ctx, 200, "OK", page.generate());
-  }
-
-  private boolean shouldRemovePeer(DarknetPeerNode pn, HTTPRequest request) {
-    long oneWeekAgo = System.currentTimeMillis() - 1000L * 60 * 60 * 24 * 7;
-    return pn.timeLastConnectionCompleted() < oneWeekAgo
-        || (pn.getPeerNodeStatus() == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED)
-        || request.isPartSet("forceit");
   }
 
   private void handleUpdateNotes(HTTPRequest request) {
@@ -635,12 +645,12 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("sendMessageTitle"), ctx);
     HTMLNode contentNode = page.getContentNode();
-    HashMap<String, String> peers = new HashMap<>();
-    for (DarknetPeerNode pn : node.network().darknetConnections()) {
-      String nodePart = NODE_PREFIX + pn.hashCode();
+    Map<String, String> peers = new LinkedHashMap<>();
+    for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+      String nodePart = NODE_PREFIX + peer.selectionToken();
       if (request.isPartSet(nodePart)) {
-        String peerHash = String.valueOf(pn.hashCode());
-        peers.putIfAbsent(peerHash, pn.getName());
+        String peerHash = String.valueOf(peer.selectionToken());
+        peers.putIfAbsent(peerHash, peer.displayName());
       }
     }
     N2NTMToadlet.createN2NTMSendForm(ctx.isAdvancedModeEnabled(), contentNode, ctx, peers);
