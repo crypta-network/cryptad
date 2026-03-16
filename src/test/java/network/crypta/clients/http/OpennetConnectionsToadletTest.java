@@ -8,8 +8,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.ConfigPort;
@@ -17,6 +15,7 @@ import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
+import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
@@ -42,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,12 +53,9 @@ class OpennetConnectionsToadletTest {
   private static final String OWN_NODE_IDENTITY = "peer-1";
   private static final String OWN_NODE_LAST_GOOD_VERSION = "1";
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
+  @Mock private ConnectionsSupportPort connectionsSupportPort;
   @Mock private PeerPort peerPort;
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private ConfigPort configPort;
@@ -70,8 +67,18 @@ class OpennetConnectionsToadletTest {
   @BeforeEach
   void setUp() {
     ConnectionsToadletRuntimePorts runtimePorts =
-        new ConnectionsToadletRuntimePorts(connectionsPage, peerPort, nodeInfoPort, configPort);
-    toadlet = new OpennetConnectionsToadlet(node, core, client, runtimePorts);
+        new ConnectionsToadletRuntimePorts(
+            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+    toadlet = new OpennetConnectionsToadlet(client, runtimePorts);
+  }
+
+  @Test
+  void constructor_withoutNodeOrNodeClientCoreDependency_acceptsRuntimePortsOnly() {
+    ConnectionsToadletRuntimePorts runtimePorts =
+        new ConnectionsToadletRuntimePorts(
+            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+
+    assertDoesNotThrow(() -> new OpennetConnectionsToadlet(client, runtimePorts));
   }
 
   @Test
@@ -80,14 +87,12 @@ class OpennetConnectionsToadletTest {
   }
 
   @Test
-  void isEnabled_returnsNodeFlag() {
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.isOpennetEnabled()).thenReturn(true).thenReturn(false);
+  void isEnabled_whenQueried_usesConnectionsSupportPort() {
+    when(connectionsSupportPort.isOpennetEnabled()).thenReturn(true).thenReturn(false);
 
     assertTrue(toadlet.isEnabled(null));
     assertFalse(toadlet.isEnabled(null));
+    verify(connectionsSupportPort, times(2)).isOpennetEnabled();
   }
 
   @Test

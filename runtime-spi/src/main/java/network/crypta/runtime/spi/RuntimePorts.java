@@ -21,6 +21,7 @@ package network.crypta.runtime.spi;
  * @see ConfigPort
  * @see ConnectivityPort
  * @see ConnectionsPagePort
+ * @see ConnectionsSupportPort
  * @see DarknetConnectionsPort
  * @see DarknetMessagingPort
  * @see DiagnosticPort
@@ -114,6 +115,18 @@ public interface RuntimePorts {
    * @return connections-page runtime port for detached legacy friends and strangers snapshots
    */
   ConnectionsPagePort connectionsPage();
+
+  /**
+   * Returns the legacy connections-page support capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps a small set of remaining live-runtime helpers behind the runtime boundary:
+   * the opennet-enabled flag used to gate the strangers page and the peer-offer reference import
+   * text used by the legacy add-peer flow. It is intentionally page-support-oriented rather than a
+   * general node API.
+   *
+   * @return connections-page support port for opennet enablement and peer-offer reference text
+   */
+  ConnectionsSupportPort connectionsSupport();
 
   /**
    * Returns the legacy darknet friends-page companion capability exposed to admin-facing HTTP code.
