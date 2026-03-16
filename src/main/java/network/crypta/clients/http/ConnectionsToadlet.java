@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -22,7 +21,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.Version;
 import network.crypta.runtime.spi.ConfigPort;
@@ -30,6 +28,7 @@ import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
+import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -47,7 +46,6 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +56,7 @@ import org.slf4j.LoggerFactory;
  * for subclasses that tailor per-network presentation. It centralizes sorting, pagination,
  * validation, and noderef ingestion so downstream pages can focus on the specifics of each
  * topology. Instances are long-lived and reused across requests; state comes from the injected
- * runtime ports and {@link NodeClientCore} rather than per-request mutability.
+ * runtime ports rather than per-request mutability.
  *
  * <p>Responsibilities include:
  *
@@ -76,6 +74,8 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class ConnectionsToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(ConnectionsToadlet.class);
+  private static final String OPENNET = "opennet";
+  private static final String DARKNET = "darknet";
   private static final String ATTR_CLASS = "class";
   private static final String ELEMENT_TABLE = "table";
   private static final String INFOBOX_CLASS = "infobox";
@@ -246,9 +246,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
   }
 
-  /** Core services used for filesystem paths, configuration, and network integration. */
-  protected final NodeClientCore core;
-
   /** Page-oriented runtime port used for detached GET-only connections page rendering. */
   private final ConnectionsPagePort connectionsPage;
 
@@ -260,6 +257,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
 
   /** Runtime config port used for add-peer flow overrides that previously hit daemon config. */
   private final ConfigPort configPort;
+
+  /** Runtime support port used for opennet enablement and peer-offer noderef imports. */
+  private final ConnectionsSupportPort connectionsSupportPort;
 
   /**
    * Outcomes returned when attempting to add a peer from a supplied noderef.
@@ -287,24 +287,19 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Creates a toadlet bound to shared node infrastructure used by connection pages.
    *
-   * @param core {@link NodeClientCore} providing filesystem access and runtime paths used for
-   *     noderef files.
    * @param client high-level client used to retrieve noderefs via Freenet or HTTP when users submit
    *     URLs instead of pasted references.
    * @param runtimePorts shared detached runtime ports backing page rendering, peer changes, noderef
-   *     export, and config lookups.
+   *     export, config lookups, and legacy page-support helpers.
    */
-  protected ConnectionsToadlet(
-      NodeClientCore core,
-      HighLevelSimpleClient client,
-      ConnectionsToadletRuntimePorts runtimePorts) {
+  ConnectionsToadlet(HighLevelSimpleClient client, ConnectionsToadletRuntimePorts runtimePorts) {
     super(client);
     ConnectionsToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
-    this.core = Objects.requireNonNull(core);
     this.connectionsPage = ports.connectionsPage();
     this.peerPort = ports.peerPort();
     this.nodeInfoPort = ports.nodeInfoPort();
     this.configPort = ports.configPort();
+    this.connectionsSupportPort = ports.connectionsSupportPort();
     refLink = HTMLNode.link(path() + "myref.fref").setReadOnly();
     reftextLink = HTMLNode.link(path() + "myref.txt").setReadOnly();
   }
@@ -501,17 +496,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private String readPeersOffersFiles() throws IOException {
-    File[] files = core.getNode().runDir().file("peers-offers").listFiles();
-    if (files == null || files.length == 0) {
-      return "";
-    }
-    StringBuilder peersOffersFilesContent = new StringBuilder();
-    for (final File file : files) {
-      if (file.isFile() && file.getName().endsWith(".fref")) {
-        peersOffersFilesContent.append(FileUtil.readUTF(file));
-      }
-    }
-    return peersOffersFilesContent.toString();
+    return connectionsSupportPort.readPeerOfferReferencesText();
   }
 
   private FRIEND_TRUST parseTrust(HTTPRequest request) {
@@ -724,8 +709,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     if (!matchesExpectedPeerType(fs)) {
       LOG.warn(
           "Rejecting {} noderef on {} connections page",
-          fs.getBoolean("opennet", false) ? "opennet" : "darknet",
-          isOpennet() ? "opennet" : "darknet");
+          fs.getBoolean(OPENNET, false) ? OPENNET : DARKNET,
+          isOpennet() ? OPENNET : DARKNET);
       return PeerAdditionReturnCodes.CANT_PARSE;
     }
 
@@ -1024,7 +1009,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private boolean matchesExpectedPeerType(SimpleFieldSet fieldSet) {
-    return fieldSet.getBoolean("opennet", false) == isOpennet();
+    return fieldSet.getBoolean(OPENNET, false) == isOpennet();
   }
 
   private static PeerTrust toPeerTrust(FRIEND_TRUST trust) {

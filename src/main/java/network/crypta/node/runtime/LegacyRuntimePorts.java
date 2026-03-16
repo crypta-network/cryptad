@@ -6,6 +6,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
+import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.ConnectivityPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -44,6 +45,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final ConfigPort configPort;
   private final ConnectivityPort connectivityPort;
   private final ConnectionsPagePort connectionsPagePort;
+  private final ConnectionsSupportPort connectionsSupportPort;
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
@@ -133,6 +135,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.configPort = new LegacyConfigPort(node, core);
     this.connectivityPort = new LegacyConnectivityPort(node);
     this.connectionsPagePort = new LegacyConnectionsPagePort(node, core);
+    this.connectionsSupportPort = new LegacyConnectionsSupportPort(node);
     this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
@@ -217,6 +220,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public ConnectionsPagePort connectionsPage() {
     return connectionsPagePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining legacy opennet-enabled check and peer-offer file
+   * traversal inside the daemon root module while exposing only JDK-only support values upstream.
+   */
+  @Override
+  public ConnectionsSupportPort connectionsSupport() {
+    return connectionsSupportPort;
   }
 
   /**

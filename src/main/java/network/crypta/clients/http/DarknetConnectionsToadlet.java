@@ -11,7 +11,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.DarknetPeerNodeStatus;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -105,11 +104,10 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private final PeerPort peerPort;
 
   DarknetConnectionsToadlet(
-      NodeClientCore core,
       HighLevelSimpleClient client,
       ConnectionsToadletRuntimePorts runtimePorts,
       DarknetConnectionsPort darknetConnectionsPort) {
-    super(core, client, runtimePorts);
+    super(client, runtimePorts);
     this.darknetConnectionsPort = darknetConnectionsPort;
     this.peerPort = runtimePorts.peerPort();
   }

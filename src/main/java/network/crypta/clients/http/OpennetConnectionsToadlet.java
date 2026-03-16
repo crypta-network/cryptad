@@ -2,10 +2,9 @@ package network.crypta.clients.http;
 
 import java.util.Comparator;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.HTMLNode;
 
@@ -25,33 +24,26 @@ import network.crypta.support.HTMLNode;
  *
  * <p>Thread-safety mirrors the base toadlet: instances are expected to be used on the request
  * thread managed by the HTTP layer, and no shared mutable state is introduced here. It is suitable
- * for multithreaded servlet environments as long as the injected {@link Node} and supporting
+ * for multithreaded servlet environments as long as the injected runtime ports and supporting
  * collaborators are themselves thread-safe.
  */
 public class OpennetConnectionsToadlet extends ConnectionsToadlet implements LinkEnabledCallback {
-  private final Node node;
+  private final ConnectionsSupportPort connectionsSupportPort;
 
   /**
-   * Builds an opennet-specific toadlet using the shared node components required to render peer
-   * state. Callers supply the node, client core, and a high-level client wrapper; the constructor
-   * merely stores them for the base class without adding additional side effects. The instance can
-   * be created eagerly during UI wiring because it defers all data retrieval to per-request
-   * handlers, avoiding heavy startup costs.
+   * Builds an opennet-specific toadlet using the shared runtime ports required to render peer
+   * state. The instance can be created eagerly during UI wiring because it defers all data
+   * retrieval to per-request handlers, avoiding heavy startup costs.
    *
-   * @param n node that owns the peer set and opennet configuration; must remain reachable
-   *     throughout the toadlet lifetime.
-   * @param core client core used by the base toadlet for noderef export and related helpers; not
-   *     null when opennet is enabled.
    * @param client high-level client for UI links and redirects; expected to be configured for
    *     opennet-safe operations.
+   * @param runtimePorts shared detached runtime ports backing page rendering, noderef export, and
+   *     legacy support helpers.
    */
   OpennetConnectionsToadlet(
-      Node n,
-      NodeClientCore core,
-      HighLevelSimpleClient client,
-      ConnectionsToadletRuntimePorts runtimePorts) {
-    super(core, client, runtimePorts);
-    this.node = n;
+      HighLevelSimpleClient client, ConnectionsToadletRuntimePorts runtimePorts) {
+    super(client, runtimePorts);
+    this.connectionsSupportPort = runtimePorts.connectionsSupportPort();
   }
 
   /**
@@ -75,7 +67,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return node.network().isOpennetEnabled();
+    return connectionsSupportPort.isOpennetEnabled();
   }
 
   /**
