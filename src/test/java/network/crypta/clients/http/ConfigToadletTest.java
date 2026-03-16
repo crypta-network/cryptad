@@ -6,8 +6,9 @@ import network.crypta.config.Config;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.LifecyclePort;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,12 +26,18 @@ class ConfigToadletTest {
   @Mock private SubConfig subConfig;
   @Mock private Config config;
   @Mock private HighLevelSimpleClient client;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private NodeClientCore core;
+  @Mock private ConfigPort configPort;
+  @Mock private TransferAccessPort transferAccessPort;
+  @Mock private LifecyclePort lifecyclePort;
   @Mock private ToadletContext ctx;
+
+  private ConfigToadlet createToadlet() {
+    return new ConfigToadlet(
+        client,
+        config,
+        subConfig,
+        new ConfigToadletRuntimePorts(configPort, transferAccessPort, lifecyclePort));
+  }
 
   @Test
   void addTextBox_whenEnabled_setsExpectedAttributes() {
@@ -110,7 +117,7 @@ class ConfigToadletTest {
   void path_returnsPrefixFromSubConfig() {
     when(subConfig.getPrefix()).thenReturn("fproxy");
 
-    ConfigToadlet toadlet = new ConfigToadlet(client, config, subConfig, node, core);
+    ConfigToadlet toadlet = createToadlet();
 
     assertEquals("/config/fproxy", toadlet.path());
   }
@@ -120,7 +127,7 @@ class ConfigToadletTest {
     when(ctx.isAdvancedModeEnabled()).thenReturn(true);
     when(subConfig.getOptions()).thenReturn(new Option<?>[] {});
 
-    ConfigToadlet toadlet = new ConfigToadlet(client, config, subConfig, node, core);
+    ConfigToadlet toadlet = createToadlet();
 
     assertTrue(toadlet.isEnabled(ctx));
   }
@@ -135,7 +142,7 @@ class ConfigToadletTest {
     when(ctx.isAdvancedModeEnabled()).thenReturn(false);
     when(subConfig.getOptions()).thenReturn(new Option<?>[] {expertOption, normalOption});
 
-    ConfigToadlet toadlet = new ConfigToadlet(client, config, subConfig, node, core);
+    ConfigToadlet toadlet = createToadlet();
 
     assertTrue(toadlet.isEnabled(ctx));
   }
@@ -150,7 +157,7 @@ class ConfigToadletTest {
     when(ctx.isAdvancedModeEnabled()).thenReturn(false);
     when(subConfig.getOptions()).thenReturn(new Option<?>[] {expertOption1, expertOption2});
 
-    ConfigToadlet toadlet = new ConfigToadlet(client, config, subConfig, node, core);
+    ConfigToadlet toadlet = createToadlet();
 
     assertFalse(toadlet.isEnabled(ctx));
   }

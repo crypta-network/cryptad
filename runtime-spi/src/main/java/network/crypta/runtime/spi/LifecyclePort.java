@@ -44,6 +44,19 @@ public interface LifecyclePort {
   boolean isStopping();
 
   /**
+   * Reports whether the runtime was launched under the Tanuki wrapper.
+   *
+   * <p>This exposes the daemon's existing wrapper-detection flag without changing its meaning.
+   * Management and HTTP code use it only as runtime metadata when deciding whether wrapper-backed
+   * restart affordances should be shown. A return value of {@code false} therefore means callers
+   * must not assume wrapper restart support is available.
+   *
+   * @return {@code true} when the runtime is using the wrapper according to existing daemon
+   *     semantics, otherwise {@code false}
+   */
+  boolean isUsingWrapper();
+
+  /**
    * Returns the startup timestamp recorded by the runtime in milliseconds.
    *
    * <p>The value is the daemon's own startup time metadata, exposed without reinterpretation. It is

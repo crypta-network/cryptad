@@ -217,6 +217,9 @@ final class FProxyRegistrar {
             true,
             null));
 
+    ConfigToadletRuntimePorts configToadletRuntimePorts =
+        new ConfigToadletRuntimePorts(
+            runtimePorts.config(), runtimePorts.transferAccess(), runtimePorts.lifecycle());
     SubConfig[] sc = config.getConfigs();
     Arrays.sort(sc);
 
@@ -226,7 +229,8 @@ final class FProxyRegistrar {
       LocalDirectoryConfigToadlet localDirectoryConfigToadlet =
           new LocalDirectoryConfigToadlet(core, client, FProxyToadlet.CONFIG_PATH + prefix);
       ConfigToadlet configtoadlet =
-          new ConfigToadlet(localDirectoryConfigToadlet.path(), client, config, cfg, node, core);
+          new ConfigToadlet(
+              localDirectoryConfigToadlet.path(), client, config, cfg, configToadletRuntimePorts);
       server.register(
           configtoadlet,
           ToadletRegistration.menuLink(

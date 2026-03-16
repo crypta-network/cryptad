@@ -128,6 +128,11 @@ public final class LegacyRuntimePorts implements RuntimePorts {
           }
 
           @Override
+          public boolean isUsingWrapper() {
+            return LegacyRuntimePorts.this.node.isUsingWrapper();
+          }
+
+          @Override
           public long startupTimeMillis() {
             return LegacyRuntimePorts.this.node.getStartupTime();
           }
