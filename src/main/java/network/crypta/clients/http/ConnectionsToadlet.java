@@ -5,13 +5,9 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringTokenizer;
@@ -20,12 +16,9 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.AddPeer;
 import network.crypta.clients.http.complexhtmlnodes.PeerTrustInputForAddPeerBoxNode;
 import network.crypta.clients.http.complexhtmlnodes.PeerVisibilityInputForAddPeerBoxNode;
-import network.crypta.clients.http.geoip.IPConverter.Country;
-import network.crypta.clients.http.geoip.IPConverter;
 import network.crypta.config.ConfigException;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
@@ -34,30 +27,23 @@ import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeFile;
-import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
-import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 import network.crypta.node.PeerNodeStatus;
-import network.crypta.node.PeerStatusCounts;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.node.Version;
+import network.crypta.runtime.spi.ConnectionsPageKind;
+import network.crypta.runtime.spi.ConnectionsPagePort;
+import network.crypta.runtime.spi.ConnectionsPageRequest;
+import network.crypta.runtime.spi.ConnectionsPageSnapshot;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.SizeUtil;
-import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Base HTTP toadlet used by both darknet and opennet connection pages.
@@ -91,17 +77,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private static final String INFOBOX_HEADER_CLASS = "infobox-header";
   private static final String INFOBOX_CONTENT_CLASS = "infobox-content";
   private static final String DISPLAY_MESSAGE_TYPES = "displaymessagetypes.html";
-  private static final String DARKNET_CONNECTIONS = "darknet_connections";
-  private static final String ATTR_TITLE = "title";
-  private static final String ATTR_STYLE = "style";
-  private static final String HELP_STYLE = "border-bottom: 1px dotted; cursor: help;";
   private static final String ELEMENT_INPUT = "input";
   private static final String TRUST = "trust";
-  private static final String COUNT = "count";
   private static final String REF_FILE = "reffile";
   private static final String PEER_PRIVATE_NOTE = "peerPrivateNote";
   private static final String REPORT_OF_NODE_ADDITION = "reportOfNodeAddition";
-  private static final String PEER_IDLE_CLASS = "peer-idle";
 
   /**
    * Comparator that orders {@link PeerNodeStatus} instances for table rendering.
@@ -111,7 +91,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * callers can reuse one comparator for ascending and descending views without allocating extra
    * helpers.
    */
-  protected class ComparatorByStatus implements Comparator<PeerNodeStatus> {
+  protected static class ComparatorByStatus implements Comparator<PeerNodeStatus> {
     /** Column key requested by the client, may be {@code null} for default ordering. */
     protected final String sortBy;
 
@@ -138,7 +118,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
      */
     @Override
     public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      isReversed = reversed;
       int result = compareWithSort(firstNode, secondNode);
       if (result == 0) {
         result = compareByStatus(firstNode, secondNode);
@@ -267,17 +246,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /** Core services used for filesystem paths, configuration, and network integration. */
   protected final NodeClientCore core;
 
-  /** Node statistics helper used to populate dashboard sections. */
-  protected final NodeStats stats;
-
   /** Peer manager providing live peer state and addition helpers. */
   protected final PeerManager peers;
 
-  /** Tracks whether the user requested the current comparator reversed flag. */
-  protected boolean isReversed = false;
-
-  /** Whether trivial FOAF connections should be displayed alongside non-trivial groups. */
-  protected boolean showTrivialFoafConnections = false;
+  /** Page-oriented runtime port used for detached GET-only connections page rendering. */
+  private final ConnectionsPagePort connectionsPage;
 
   /**
    * Outcomes returned when attempting to add a peer from a supplied noderef.
@@ -310,27 +283,20 @@ public abstract class ConnectionsToadlet extends Toadlet {
    *     noderef files.
    * @param client high-level client used to retrieve noderefs via Freenet or HTTP when users submit
    *     URLs instead of pasted references.
+   * @param connectionsPage read-only runtime page port backing the detached GET render path.
    */
-  protected ConnectionsToadlet(Node n, NodeClientCore core, HighLevelSimpleClient client) {
+  protected ConnectionsToadlet(
+      Node n,
+      NodeClientCore core,
+      HighLevelSimpleClient client,
+      ConnectionsPagePort connectionsPage) {
     super(client);
     this.node = n;
     this.core = core;
-    this.stats = n.network().stats();
     this.peers = n.network().peers();
+    this.connectionsPage = Objects.requireNonNull(connectionsPage);
     refLink = HTMLNode.link(path() + "myref.fref").setReadOnly();
     reftextLink = HTMLNode.link(path() + "myref.txt").setReadOnly();
-  }
-
-  abstract SimpleColumn[] endColumnHeaders(boolean advancedModeEnabled);
-
-  abstract static class SimpleColumn {
-    protected abstract void drawColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus);
-
-    public abstract String getSortString();
-
-    public abstract String getTitleKey();
-
-    public abstract String getExplanationKey();
   }
 
   /**
@@ -361,39 +327,36 @@ public abstract class ConnectionsToadlet extends Toadlet {
       return;
     }
 
-    DecimalFormat percentageFormat = new DecimalFormat("##0.0%");
     boolean drawMessageTypes = path.endsWith(DISPLAY_MESSAGE_TYPES);
-
-    PeerNodeStatus[] peerNodeStatuses = getPeerNodeStatuses(!drawMessageTypes);
-    Arrays.sort(
-        peerNodeStatuses,
-        comparator(request.getParam("sortBy", null), request.isParameterSet("reversed")));
-
-    PeerStatusCounts counts = computePeerStatusCounts(peerNodeStatuses);
-    String titleCountString = buildTitleCountString(counts);
-
-    PageNode page = ctx.getPageMaker().getPageNode(getPageTitle(titleCountString), ctx);
     boolean advancedMode = ctx.isAdvancedModeEnabled();
+    ConnectionsPageSnapshot snapshot =
+        connectionsPage.render(
+            new ConnectionsPageRequest(
+                isOpennet() ? ConnectionsPageKind.OPENNET : ConnectionsPageKind.DARKNET,
+                advancedMode,
+                drawMessageTypes,
+                request.getParam("sortBy", null),
+                request.isParameterSet("reversed")));
+
+    if (snapshot.peerCount() == 0 && !isOpennet()) {
+      throw new RedirectException(URI.create("/addfriend/"));
+    }
+
+    PageNode page = ctx.getPageMaker().getPageNode(snapshot.pageTitle(), ctx);
     HTMLNode contentNode = page.getContentNode();
-    long now = System.currentTimeMillis();
 
     if (ctx.isAllowedFullAccess()) {
       contentNode.addChild(ctx.getAlertManager().createSummary());
     }
 
-    RenderMode renderMode = new RenderMode(advancedMode, drawMessageTypes);
-    RenderTiming renderTiming = new RenderTiming(now, percentageFormat);
-    RenderContext renderContext =
-        new RenderContext(
-            new RenderPageContext(ctx, path, contentNode),
-            new RenderPeerSnapshot(peerNodeStatuses, counts),
-            renderMode,
-            renderTiming);
-    renderContent(renderContext);
-
-    if (peerNodeStatuses.length == 0) {
-      handleMissingPeers();
+    contentNode.addChild("%", snapshot.contentHtmlBeforePeerTable());
+    if (snapshot.peerActionsEnabled() && snapshot.peerCount() > 0) {
+      HTMLNode peerForm = ctx.addFormChild(contentNode, ".", "peersForm");
+      peerForm.addChild("%", snapshot.peerTableHtml());
+    } else {
+      contentNode.addChild("%", snapshot.peerTableHtml());
     }
+    contentNode.addChild("%", snapshot.contentHtmlAfterPeerTable());
 
     if (shouldDrawNoderefBox(advancedMode)) {
       drawAddPeerBox(contentNode, ctx);
@@ -426,807 +389,12 @@ public abstract class ConnectionsToadlet extends Toadlet {
     return false;
   }
 
-  private PeerStatusCounts computePeerStatusCounts(PeerNodeStatus[] peerNodeStatuses) {
-    int connected =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED);
-    int routingBackedOff =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF);
-    int tooNew =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_NEW);
-    int tooOld =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_OLD);
-    int disconnected =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTED);
-    int neverConnected =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED);
-    int disabled =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISABLED);
-    int bursting =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_BURSTING);
-    int listening =
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTENING);
-    int listenOnly =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTEN_ONLY);
-    int routingDisabled =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_DISABLED);
-    int clockProblem =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CLOCK_PROBLEM);
-    int connError =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONN_ERROR);
-    int disconnecting =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTING);
-    int noLoadStats =
-        PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NO_LOAD_STATS);
-
-    return new PeerStatusCounts(
-        connected,
-        routingBackedOff,
-        tooNew,
-        tooOld,
-        disconnected,
-        neverConnected,
-        disabled,
-        bursting,
-        listening,
-        listenOnly,
-        0,
-        0,
-        routingDisabled,
-        clockProblem,
-        connError,
-        disconnecting,
-        noLoadStats);
-  }
-
-  private String buildTitleCountString(PeerStatusCounts counts) {
-    if (!node.isAdvancedModeEnabled()) {
-      int numberOfSimpleConnected = counts.connected() + counts.routingBackedOff();
-      int numberOfNotConnected = counts.notConnected();
-      return (numberOfNotConnected + numberOfSimpleConnected) > 0
-          ? String.valueOf(numberOfSimpleConnected)
-          : "";
-    }
-
-    return "("
-        + counts.connected()
-        + '/'
-        + counts.routingBackedOff()
-        + '/'
-        + counts.tooNew()
-        + '/'
-        + counts.tooOld()
-        + '/'
-        + counts.noLoadStats()
-        + '/'
-        + counts.routingDisabled()
-        + '/'
-        + counts.notConnected()
-        + ')';
-  }
-
-  private void renderContent(RenderContext renderContext) {
-    if (renderContext.advancedMode()) {
-      addOverviewSection(
-          renderContext.contentNode(),
-          renderContext.percentageFormat(),
-          renderContext.now(),
-          renderContext.counts());
-    }
-
-    addPeerTableSection(renderContext);
-
-    if (renderContext.advancedMode()) {
-      addFoafTable(renderContext.contentNode(), renderContext.peerNodeStatuses());
-    }
-  }
-
-  private void addOverviewSection(
-      HTMLNode contentNode, DecimalFormat percentageFormat, long now, PeerStatusCounts counts) {
-    long nodeUptimeSeconds = SECONDS.convert(now - node.getStartupTime(), MILLISECONDS);
-    int bwlimitDelayTime = (int) stats.getBwlimitDelayTime();
-    int nodeAveragePingTime = (int) stats.getNodeAveragePingTime();
-    int networkSizeEstimateSession = stats.getDarknetSizeEstimate(-1);
-    int networkSizeEstimateRecent = 0;
-    if (nodeUptimeSeconds > HOURS.toSeconds(48)) {
-      networkSizeEstimateRecent = stats.getDarknetSizeEstimate(now - HOURS.toMillis(48));
-    }
-    DecimalFormat routingFormat = new DecimalFormat("0.0000");
-    double routingMissDistanceLocal = stats.routingMissDistanceLocal.currentValue();
-    double routingMissDistanceRemote = stats.routingMissDistanceRemote.currentValue();
-    double routingMissDistanceOverall = stats.routingMissDistanceOverall.currentValue();
-    double routingMissDistanceBulk = stats.routingMissDistanceBulk.currentValue();
-    double routingMissDistanceRT = stats.routingMissDistanceRT.currentValue();
-    double backedOffPercent = stats.backedOffPercent.currentValue();
-    String nodeUptimeString = TimeUtil.formatTime(MILLISECONDS.convert(nodeUptimeSeconds, SECONDS));
-
-    HTMLNode overviewTable = contentNode.addChild(ELEMENT_TABLE, ATTR_CLASS, "column");
-    HTMLNode overviewTableRow = overviewTable.addChild("tr");
-    HTMLNode nextTableCell = overviewTableRow.addChild("td", ATTR_CLASS, "first");
-
-    HTMLNode overviewInfobox = nextTableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
-    overviewInfobox.addChild("div", ATTR_CLASS, INFOBOX_HEADER_CLASS, "Node status overview");
-    HTMLNode overviewInfoboxContent =
-        overviewInfobox.addChild("div", ATTR_CLASS, INFOBOX_CONTENT_CLASS);
-    HTMLNode overviewList = overviewInfoboxContent.addChild("ul");
-    overviewList.addChild("li", "bwlimitDelayTime:\u00a0" + bwlimitDelayTime + "ms");
-    overviewList.addChild("li", "nodeAveragePingTime:\u00a0" + nodeAveragePingTime + "ms");
-    overviewList.addChild(
-        "li", "darknetSizeEstimateSession:\u00a0" + networkSizeEstimateSession + "\u00a0nodes");
-    if (nodeUptimeSeconds > HOURS.toSeconds(48)) {
-      overviewList.addChild(
-          "li", "darknetSizeEstimateRecent:\u00a0" + networkSizeEstimateRecent + "\u00a0nodes");
-    }
-    overviewList.addChild("li", "nodeUptime:\u00a0" + nodeUptimeString);
-    overviewList.addChild(
-        "li", "routingMissDistanceLocal:\u00a0" + routingFormat.format(routingMissDistanceLocal));
-    overviewList.addChild(
-        "li", "routingMissDistanceRemote:\u00a0" + routingFormat.format(routingMissDistanceRemote));
-    overviewList.addChild(
-        "li",
-        "routingMissDistanceOverall:\u00a0" + routingFormat.format(routingMissDistanceOverall));
-    overviewList.addChild(
-        "li", "routingMissDistanceBulk:\u00a0" + routingFormat.format(routingMissDistanceBulk));
-    overviewList.addChild(
-        "li", "routingMissDistanceRT:\u00a0" + routingFormat.format(routingMissDistanceRT));
-    overviewList.addChild(
-        "li", "backedOffPercent:\u00a0" + percentageFormat.format(backedOffPercent));
-    overviewList.addChild(
-        "li", "pInstantReject:\u00a0" + percentageFormat.format(stats.pRejectIncomingInstantly()));
-    nextTableCell = overviewTableRow.addChild("td");
-
-    addActivitySection(nextTableCell, nodeUptimeSeconds);
-    addPeerStatsSection(nextTableCell, counts);
-  }
-
-  private void addActivitySection(HTMLNode tableCell, long nodeUptimeSeconds) {
-    int numARKFetchers = node.network().numArkFetchers();
-
-    HTMLNode activityInfobox = tableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
-    activityInfobox.addChild("div", ATTR_CLASS, INFOBOX_HEADER_CLASS, l10n("activityTitle"));
-    HTMLNode activityInfoboxContent =
-        activityInfobox.addChild("div", ATTR_CLASS, INFOBOX_CONTENT_CLASS);
-    HTMLNode activityList = StatisticsToadlet.drawActivity(activityInfoboxContent, node);
-    if (activityList != null) {
-      if (numARKFetchers > 0) {
-        activityList.addChild("li", "ARK\u00a0Fetch\u00a0Requests:\u00a0" + numARKFetchers);
-      }
-      StatisticsToadlet.drawBandwidth(activityList, node, nodeUptimeSeconds);
-    }
-  }
-
-  private void addPeerStatsSection(HTMLNode tableCell, PeerStatusCounts counts) {
-    HTMLNode peerStatsInfobox = tableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
-    StatisticsToadlet.drawPeerStatsBox(peerStatsInfobox, true, counts, node);
-
-    addBackoffReasonBoxes(tableCell);
-  }
-
-  private void addBackoffReasonBoxes(HTMLNode tableCell) {
-    addBackoffReasonBox(tableCell, true, "Peer backoff reasons (realtime)");
-    addBackoffReasonBox(tableCell, false, "Peer backoff reasons (bulk)");
-  }
-
-  private void addBackoffReasonBox(HTMLNode tableCell, boolean realtime, String headerText) {
-    HTMLNode backoffReasonInfobox = tableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
-    HTMLNode title =
-        backoffReasonInfobox.addChild("div", ATTR_CLASS, INFOBOX_HEADER_CLASS, headerText);
-    HTMLNode backoffReasonContent =
-        backoffReasonInfobox.addChild("div", ATTR_CLASS, INFOBOX_CONTENT_CLASS);
-    String[] routingBackoffReasons = peers.getPeerNodeRoutingBackoffReasons(realtime);
-    int total = 0;
-    if (routingBackoffReasons.length == 0) {
-      backoffReasonContent.addChild(
-          "#", NodeL10n.getBase().getString("StatisticsToadlet.notBackedOff"));
-    } else {
-      HTMLNode reasonList = backoffReasonContent.addChild("ul");
-      for (String routingBackoffReason : routingBackoffReasons) {
-        int reasonCount = peers.getPeerNodeRoutingBackoffReasonSize(routingBackoffReason, realtime);
-        if (reasonCount > 0) {
-          total += reasonCount;
-          reasonList.addChild("li", routingBackoffReason + '\u00a0' + reasonCount);
-        }
-      }
-    }
-    if (total > 0) {
-      title.addChild("#", ": " + total);
-    }
-  }
-
-  private void addPeerTableSection(RenderContext renderContext) {
-    boolean enablePeerActions = showPeerActionsBox();
-    boolean fProxyJavascriptEnabled = node.isFProxyJavascriptEnabled();
-
-    if (fProxyJavascriptEnabled) {
-      injectJavascript(renderContext.contentNode());
-    }
-
-    HTMLNode peerTableInfobox =
-        renderContext.contentNode().addChild("div", ATTR_CLASS, INFOBOX_NORMAL_CLASS);
-    HTMLNode peerTableInfoboxHeader =
-        peerTableInfobox.addChild("div", ATTR_CLASS, INFOBOX_HEADER_CLASS);
-    peerTableInfoboxHeader.addChild("#", getPeerListTitle());
-    if (renderContext.advancedMode() && !renderContext.path().endsWith(DISPLAY_MESSAGE_TYPES)) {
-      peerTableInfoboxHeader.addChild("#", " ");
-      peerTableInfoboxHeader.addChild(
-          "a", "href", DISPLAY_MESSAGE_TYPES, l10n("bracketedMoreDetailed"));
-    }
-    HTMLNode peerTableInfoboxContent =
-        peerTableInfobox.addChild("div", ATTR_CLASS, INFOBOX_CONTENT_CLASS);
-
-    if (!isOpennet()) {
-      addNameSection(peerTableInfoboxContent);
-    }
-
-    if (renderContext.peerNodeStatuses().length == 0) {
-      addNoPeersMessage(peerTableInfoboxContent);
-      return;
-    }
-
-    PeerTableContext peerTableContext =
-        buildPeerTable(
-            renderContext.ctx(),
-            peerTableInfoboxContent,
-            enablePeerActions,
-            fProxyJavascriptEnabled,
-            renderContext.advancedMode());
-
-    fillPeerTable(
-        peerTableContext,
-        renderContext.peerNodeStatuses(),
-        renderContext.drawMessageTypes(),
-        renderContext.percentageFormat(),
-        renderContext.advancedMode(),
-        renderContext.now());
-  }
-
-  private void injectJavascript(HTMLNode contentNode) {
-    String js =
-        """
-          function peerNoteChange() {
-            document.getElementById("action").value = "update_notes";            document.getElementById("peersForm").doAction.click();
-          }
-        """;
-    contentNode.addChild("script", "type", "text/javascript").addChild("%", js);
-    contentNode.addChild(
-        "script",
-        new String[] {"type", "src"},
-        new String[] {"text/javascript", "/static/js/checkall.js"});
-  }
-
-  private void addNameSection(HTMLNode peerTableInfoboxContent) {
-    HTMLNode myName = peerTableInfoboxContent.addChild("p");
-    myName.addChild(
-        "span",
-        NodeL10n.getBase().getString("DarknetConnectionsToadlet.myName", "name", node.getMyName()));
-    myName.addChild("span", " [");
-    myName
-        .addChild("span")
-        .addChild(
-            "a",
-            "href",
-            "/config/node#name",
-            NodeL10n.getBase().getString("DarknetConnectionsToadlet.changeMyName"));
-    myName.addChild("span", "]");
-  }
-
-  private void addNoPeersMessage(HTMLNode peerTableInfoboxContent) {
-    NodeL10n.getBase()
-        .addL10nSubstitution(
-            peerTableInfoboxContent,
-            "DarknetConnectionsToadlet.noPeersWithHomepageLink",
-            new String[] {"link"},
-            new HTMLNode[] {HTMLNode.link("/")});
-  }
-
-  private PeerTableContext buildPeerTable(
-      ToadletContext ctx,
-      HTMLNode peerTableInfoboxContent,
-      boolean enablePeerActions,
-      boolean fProxyJavascriptEnabled,
-      boolean advancedMode) {
-    HTMLNode peerForm = null;
-    HTMLNode peerTable;
-    if (enablePeerActions) {
-      peerForm = ctx.addFormChild(peerTableInfoboxContent, ".", "peersForm");
-      peerTable = peerForm.addChild(ELEMENT_TABLE, ATTR_CLASS, DARKNET_CONNECTIONS);
-    } else {
-      peerTable = peerTableInfoboxContent.addChild(ELEMENT_TABLE, ATTR_CLASS, DARKNET_CONNECTIONS);
-    }
-    HTMLNode peerTableHeaderRow = peerTable.addChild("tr");
-    addPeerTableHeader(
-        enablePeerActions, fProxyJavascriptEnabled, peerTableHeaderRow, advancedMode);
-
-    SimpleColumn[] endCols = endColumnHeaders(advancedMode);
-    if (endCols != null) {
-      for (SimpleColumn col : endCols) {
-        HTMLNode header = peerTableHeaderRow.addChild("th");
-        String sortString = col.getSortString();
-        if (sortString != null) {
-          header = header.addChild("a", "href", sortString(isReversed, sortString));
-        }
-        header.addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {NodeL10n.getBase().getString(col.getExplanationKey()), HELP_STYLE},
-            NodeL10n.getBase().getString(col.getTitleKey()));
-      }
-    }
-
-    List<SimpleColumn> endColsList = endCols == null ? List.of() : List.of(endCols);
-    return new PeerTableContext(peerForm, peerTable, endColsList);
-  }
-
-  private void addPeerTableHeader(
-      boolean enablePeerActions,
-      boolean fProxyJavascriptEnabled,
-      HTMLNode peerTableHeaderRow,
-      boolean advancedMode) {
-    if (enablePeerActions) {
-      if (fProxyJavascriptEnabled) {
-        peerTableHeaderRow
-            .addChild("th")
-            .addChild(
-                ELEMENT_INPUT,
-                new String[] {"type", "onclick"},
-                new String[] {"checkbox", "checkAll(this, 'darknet_connections')"});
-      } else {
-        peerTableHeaderRow.addChild("th");
-      }
-    }
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "status"))
-        .addChild("#", l10n("statusTitle"));
-    if (hasNameColumn()) {
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "name"))
-          .addChild(
-              "span",
-              new String[] {ATTR_TITLE, ATTR_STYLE},
-              new String[] {l10n("nameClickToMessage"), HELP_STYLE},
-              l10n("nameTitle"));
-    }
-    if (hasTrustColumn()) {
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, TRUST))
-          .addChild(
-              "span",
-              new String[] {ATTR_TITLE, ATTR_STYLE},
-              new String[] {l10n("trustMessage"), HELP_STYLE},
-              l10n("trustTitle"));
-    }
-    if (hasVisibilityColumn()) {
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, TRUST))
-          .addChild(
-              "span",
-              new String[] {ATTR_TITLE, ATTR_STYLE},
-              new String[] {
-                l10n("visibilityMessage" + (advancedMode ? "Advanced" : "Simple")), HELP_STYLE
-              },
-              l10n("visibilityTitle"));
-    }
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "address"))
-        .addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {l10n("ipAddress"), HELP_STYLE},
-            l10n("ipAddressTitle"));
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "version"))
-        .addChild("#", l10n("versionTitle"));
-    if (advancedMode) {
-      addAdvancedPeerTableHeaders(peerTableHeaderRow);
-    }
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "idle"))
-        .addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {l10n("idleTime"), HELP_STYLE},
-            l10n("idleTimeTitle"));
-    if (hasPrivateNoteColumn()) {
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "privnote"))
-          .addChild(
-              "span",
-              new String[] {ATTR_TITLE, ATTR_STYLE},
-              new String[] {l10n("privateNote"), HELP_STYLE},
-              l10n("privateNoteTitle"));
-    }
-
-    if (advancedMode) {
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "time_routable"))
-          .addChild("#", "%\u00a0Time Routable");
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "selection_percentage"))
-          .addChild("#", "%\u00a0Selection");
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "total_traffic"))
-          .addChild("#", "Total\u00a0Traffic\u00a0(in/out/resent)");
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "total_traffic_since_startup"))
-          .addChild("#", "Total\u00a0Traffic\u00a0(in/out) since startup");
-      peerTableHeaderRow.addChild("th", "Congestion\u00a0Control");
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "time_delta"))
-          .addChild("#", "Time\u00a0Delta");
-      peerTableHeaderRow
-          .addChild("th")
-          .addChild("a", "href", sortString(isReversed, "uptime"))
-          .addChild("#", "Reported\u00a0Uptime");
-      peerTableHeaderRow.addChild("th", "Transmit\u00a0Queue");
-      peerTableHeaderRow.addChild("th", "Peer\u00a0Capacity\u00a0Bulk");
-      peerTableHeaderRow.addChild("th", "Peer\u00a0Capacity\u00a0Realtime");
-    }
-  }
-
-  private void addAdvancedPeerTableHeaders(HTMLNode peerTableHeaderRow) {
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "location"))
-        .addChild("#", l10n("locationTitle"));
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "backoffRT"))
-        .addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {
-              "Other node busy (realtime)? Display: Percentage of time the node is"
-                  + " overloaded, Current wait time remaining (0=not overloaded)/total/last"
-                  + " overload reason",
-              HELP_STYLE
-            },
-            "Backoff (realtime)");
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "backoffBulk"))
-        .addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {
-              "Other node busy (bulk)? Display: Percentage of time the node is overloaded,"
-                  + " Current wait time remaining (0=not overloaded)/total/last overload"
-                  + " reason",
-              HELP_STYLE
-            },
-            "Backoff (bulk)");
-
-    peerTableHeaderRow
-        .addChild("th")
-        .addChild("a", "href", sortString(isReversed, "overload_p"))
-        .addChild(
-            "span",
-            new String[] {ATTR_TITLE, ATTR_STYLE},
-            new String[] {
-              "Probability of the node rejecting a request due to overload or causing a timeout.",
-              HELP_STYLE
-            },
-            "Overload Probability");
-  }
-
-  private void fillPeerTable(
-      PeerTableContext peerTableContext,
-      PeerNodeStatus[] peerNodeStatuses,
-      boolean drawMessageTypes,
-      DecimalFormat percentageFormat,
-      boolean advancedMode,
-      long now) {
-    double totalSelectionRate = 0.0;
-    RenderMode renderMode = new RenderMode(advancedMode, drawMessageTypes);
-    RenderTiming renderTiming = new RenderTiming(now, percentageFormat);
-    PeerNodeStatus[] allPeerNodeStatuses =
-        node.network().peers().statusBook().getPeerNodeStatuses(true);
-    for (PeerNodeStatus status : allPeerNodeStatuses) {
-      totalSelectionRate += status.getSelectionRate();
-    }
-    for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
-      RowContext rowContext =
-          new RowContext(
-              new PeerRowContext(
-                  peerTableContext.peerTable(), peerNodeStatus, peerTableContext.endCols()),
-              renderMode,
-              new PeerRowFlags(
-                  node.isFProxyJavascriptEnabled(), peerTableContext.peerForm() != null),
-              renderTiming,
-              new PeerSelectionStats(totalSelectionRate));
-      drawRow(rowContext);
-    }
-
-    if (peerTableContext.peerForm() != null) {
-      drawPeerActionSelectBox(peerTableContext.peerForm(), advancedMode);
-    }
-  }
-
-  private void addFoafTable(HTMLNode peerTableInfoboxContent, PeerNodeStatus[] peerNodeStatuses) {
-    FoafGrouping grouping = buildFoafGrouping(peerNodeStatuses);
-    addFoafSummary(peerTableInfoboxContent, grouping);
-    addFoafRows(peerTableInfoboxContent, peerNodeStatuses, grouping);
-  }
-
-  private void addFoafSummary(HTMLNode peerTableInfoboxContent, FoafGrouping grouping) {
-    peerTableInfoboxContent.addChild(
-        "b",
-        l10nCount(
-            "secondDegreeConnectionsCountTitle", Integer.toString(grouping.locations().size())));
-    peerTableInfoboxContent.addChild("br");
-    if (!showTrivialFoafConnections) {
-      peerTableInfoboxContent.addChild(
-          "i",
-          l10nCount("secondDegreeTrivialHiddenCount", Integer.toString(grouping.trivialCount())));
-    } else {
-      peerTableInfoboxContent.addChild(
-          "i",
-          l10nCount("secondDegreeNonTrivialCount", Integer.toString(grouping.nonTrivialCount())));
-    }
-  }
-
-  private void addFoafRows(
-      HTMLNode peerTableInfoboxContent, PeerNodeStatus[] peerNodeStatuses, FoafGrouping grouping) {
-    HTMLNode foafTable =
-        peerTableInfoboxContent.addChild(ELEMENT_TABLE, ATTR_CLASS, DARKNET_CONNECTIONS);
-    HTMLNode foafRow = foafTable.addChild("tr");
-    foafRow.addChild("th", l10n("locationTitle"));
-    foafRow.addChild("th", l10n("countTitle"));
-    foafRow.addChild("th", l10n("foafReachableThroughTitle"));
-    int max = grouping.locations().size();
-    int transitiveCount = 0;
-    for (int i = 0; i < max; i++) {
-      double location = grouping.locations().get(i);
-      List<PeerNodeStatus> peersWithFriend = grouping.peerGroups().get(i);
-      boolean isTransitivePeer = isTransitivePeer(peerNodeStatuses, location);
-      if (peersWithFriend.size() == 1 && !showTrivialFoafConnections && !isTransitivePeer) {
-        continue;
-      }
-      foafRow = foafTable.addChild("tr");
-      if (isTransitivePeer) {
-        foafRow.addChild("td").addChild("b", String.valueOf(location));
-      } else {
-        foafRow.addChild("td", String.valueOf(location));
-      }
-      foafRow.addChild("td", String.valueOf(peersWithFriend.size()));
-      HTMLNode locationCell = foafRow.addChild("td", ATTR_CLASS, "peer-location");
-      for (PeerNodeStatus peerNodeStatus : peersWithFriend) {
-        String address =
-            (peerNodeStatus.getPeerAddress() != null)
-                ? peerNodeStatus.getPeerAddressAndPort()
-                : l10n("unknownAddress");
-        locationCell.addChild("i", address);
-        locationCell.addChild("br");
-      }
-      if (isTransitivePeer) {
-        transitiveCount++;
-      }
-    }
-    if (transitiveCount > 0) {
-      peerTableInfoboxContent.addChild(
-          "i", l10nCount("secondDegreeAlsoOurs", Integer.toString(transitiveCount)));
-    }
-  }
-
-  private FoafGrouping buildFoafGrouping(PeerNodeStatus[] peerNodeStatuses) {
-    List<Double> locations = new ArrayList<>();
-    List<List<PeerNodeStatus>> peerGroups = new ArrayList<>();
-    for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
-      double[] peersLoc = peerNodeStatus.getPeersLocation();
-      if (peersLoc == null) {
-        continue;
-      }
-      for (double location : peersLoc) {
-        int i = 0;
-        int max = locations.size();
-        while (i < max && locations.get(i) < location) {
-          i++;
-        }
-        List<PeerNodeStatus> peerGroup;
-        if (i < max && locations.get(i) == location) {
-          peerGroup = peerGroups.get(i);
-        } else {
-          peerGroup = new ArrayList<>();
-          locations.add(i, location);
-          peerGroups.add(i, peerGroup);
-        }
-        peerGroup.add(peerNodeStatus);
-      }
-    }
-    return new FoafGrouping(locations, peerGroups);
-  }
-
-  private boolean isTransitivePeer(PeerNodeStatus[] peerNodeStatuses, double location) {
-    for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
-      if (location == peerNodeStatus.getLocation()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private void handleMissingPeers() throws RedirectException {
-    if (isOpennet()) {
-      return;
-    }
-    throw new RedirectException(URI.create("/addfriend/"));
-  }
-
-  private record PeerTableContext(
-      HTMLNode peerForm, HTMLNode peerTable, List<SimpleColumn> endCols) {}
-
-  private record FoafGrouping(List<Double> locations, List<List<PeerNodeStatus>> peerGroups) {
-    int trivialCount() {
-      return (int) peerGroups.stream().filter(list -> list.size() == 1).count();
-    }
-
-    int nonTrivialCount() {
-      return (int) peerGroups.stream().filter(list -> list.size() > 1).count();
-    }
-  }
-
   private record AddPeerRequestData(
       String urltext,
       String reftext,
       String privateComment,
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility) {}
-
-  private record RenderPageContext(ToadletContext ctx, String path, HTMLNode contentNode) {}
-
-  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
-  private static final class RenderPeerSnapshot {
-    private final PeerNodeStatus[] peerNodeStatuses;
-    private final PeerStatusCounts counts;
-
-    private RenderPeerSnapshot(PeerNodeStatus[] peerNodeStatuses, PeerStatusCounts counts) {
-      this.peerNodeStatuses = peerNodeStatuses;
-      this.counts = counts;
-    }
-
-    PeerNodeStatus[] peerNodeStatuses() {
-      return peerNodeStatuses;
-    }
-
-    PeerStatusCounts counts() {
-      return counts;
-    }
-  }
-
-  private record RenderMode(boolean advancedModeEnabled, boolean drawMessageTypes) {}
-
-  private record RenderTiming(long now, DecimalFormat percentageFormat) {}
-
-  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
-  private static final class RenderContext {
-    private final RenderPageContext pageContext;
-    private final RenderPeerSnapshot peerSnapshot;
-    private final RenderMode renderMode;
-    private final RenderTiming renderTiming;
-
-    private RenderContext(
-        RenderPageContext pageContext,
-        RenderPeerSnapshot peerSnapshot,
-        RenderMode renderMode,
-        RenderTiming renderTiming) {
-      this.pageContext = pageContext;
-      this.peerSnapshot = peerSnapshot;
-      this.renderMode = renderMode;
-      this.renderTiming = renderTiming;
-    }
-
-    ToadletContext ctx() {
-      return pageContext.ctx();
-    }
-
-    String path() {
-      return pageContext.path();
-    }
-
-    PeerNodeStatus[] peerNodeStatuses() {
-      return peerSnapshot.peerNodeStatuses();
-    }
-
-    boolean drawMessageTypes() {
-      return renderMode.drawMessageTypes();
-    }
-
-    DecimalFormat percentageFormat() {
-      return renderTiming.percentageFormat();
-    }
-
-    boolean advancedMode() {
-      return renderMode.advancedModeEnabled();
-    }
-
-    HTMLNode contentNode() {
-      return pageContext.contentNode();
-    }
-
-    long now() {
-      return renderTiming.now();
-    }
-
-    PeerStatusCounts counts() {
-      return peerSnapshot.counts();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (!(o instanceof RenderContext that)) return false;
-      return Objects.equals(pageContext, that.pageContext)
-          && Objects.equals(renderMode, that.renderMode)
-          && Objects.equals(renderTiming, that.renderTiming)
-          && Objects.equals(peerSnapshot.counts(), that.peerSnapshot.counts())
-          && Arrays.equals(peerSnapshot.peerNodeStatuses(), that.peerSnapshot.peerNodeStatuses());
-    }
-
-    @Override
-    public int hashCode() {
-      int result = Objects.hash(pageContext, renderMode, renderTiming, peerSnapshot.counts());
-      result = 31 * result + Arrays.hashCode(peerSnapshot.peerNodeStatuses());
-      return result;
-    }
-
-    @Override
-    public @NotNull String toString() {
-      return "RenderContext{"
-          + "ctx="
-          + pageContext.ctx()
-          + ", path='"
-          + pageContext.path()
-          + '\''
-          + ", peerNodeStatuses="
-          + Arrays.toString(peerSnapshot.peerNodeStatuses())
-          + ", drawMessageTypes="
-          + renderMode.drawMessageTypes()
-          + ", percentageFormat="
-          + renderTiming.percentageFormat()
-          + ", advancedMode="
-          + renderMode.advancedModeEnabled()
-          + ", contentNode="
-          + pageContext.contentNode()
-          + ", now="
-          + renderTiming.now()
-          + ", counts="
-          + peerSnapshot.counts()
-          + '}';
-    }
-  }
-
-  private record PeerRowContext(
-      HTMLNode peerTable, PeerNodeStatus peerNodeStatus, List<SimpleColumn> endCols) {}
-
-  private record PeerRowFlags(boolean fProxyJavascriptEnabled, boolean enablePeerActions) {}
-
-  private record PeerSelectionStats(double totalSelectionRate) {}
-
-  private record RowContext(
-      PeerRowContext peerRowContext,
-      RenderMode renderMode,
-      PeerRowFlags peerRowFlags,
-      RenderTiming renderTiming,
-      PeerSelectionStats selectionStats) {}
 
   /**
    * Indicates whether noderef POST submissions are accepted for this toadlet.
@@ -1499,7 +667,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
             .addChild(
                 new HTMLNode(
                     "tr",
-                    ATTR_STYLE,
+                    "style",
                     "color:" + (returnCode == PeerAdditionReturnCodes.OK ? "green" : "red")))
             .addChildren(
                 new HTMLNode[] {
@@ -1634,17 +802,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   /**
-   * Supplies the primary heading displayed above the peers table.
-   *
-   * <p>Implementations return a localization key or literal that signals whether the view targets
-   * darknet or opennet users. The value is combined with counts in {@link #buildTitleCountString}
-   * to form the browser-visible page title and the on-page heading.
-   *
-   * @return title text or localization key describing the current connection view.
-   */
-  protected abstract String getPeerListTitle();
-
-  /**
    * Indicates whether bulk peer actions should be presented to the user.
    *
    * <p>When {@code true}, the renderer adds checkboxes next to each peer row and invokes {@link
@@ -1738,18 +895,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   /**
-   * Computes the full page title, optionally including connection counts.
-   *
-   * <p>The title appears in the browser chrome and at the top of the page. Implementations may
-   * append the supplied count string or replace it entirely to match opennet/darknet conventions.
-   * The method should remain deterministic for a given count input to aid testing.
-   *
-   * @param titleCountString preformatted count string built from {@link PeerStatusCounts}.
-   * @return complete title text to render for the current request.
-   */
-  protected abstract String getPageTitle(String titleCountString);
-
-  /**
    * Draws the add-a-peer box that follows the main peers table.
    *
    * <p>The box includes textarea input, file upload control, and an optional private note field.
@@ -1835,469 +980,14 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   /**
-   * Retrieves peer statuses to render, optionally omitting heavy computations.
-   *
-   * @param noHeavy when {@code true}, callers request a lightweight snapshot without expensive
-   *     statistics; used for message-type drill-downs.
-   * @return array of peer statuses; never {@code null}, may be empty when no peers exist.
-   */
-  protected abstract PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy);
-
-  /**
    * Returns the node's own reference for download or display.
    *
    * @return immutable {@link SimpleFieldSet} representing this node's noderef.
    */
   protected abstract SimpleFieldSet getNoderef();
 
-  private void drawRow(RowContext rowContext) {
-    PeerNodeStatus peerNodeStatus = rowContext.peerRowContext().peerNodeStatus();
-    double totalSelectionRate = rowContext.selectionStats().totalSelectionRate();
-    DecimalFormat fix1 = rowContext.renderTiming().percentageFormat();
-    HTMLNode peerTable = rowContext.peerRowContext().peerTable();
-    boolean advancedModeEnabled = rowContext.renderMode().advancedModeEnabled();
-    boolean enablePeerActions = rowContext.peerRowFlags().enablePeerActions();
-    int peerSelectionPercentage = calculateSelectionPercentage(totalSelectionRate, peerNodeStatus);
-    HTMLNode peerRow =
-        peerTable.addChild(
-            "tr",
-            ATTR_CLASS,
-            "darknet_connections_"
-                + (peerSelectionPercentage > PeerNode.SELECTION_PERCENTAGE_WARNING
-                    ? "warning"
-                    : "normal"));
-
-    if (enablePeerActions) {
-      addSelectionCheckbox(peerRow, peerNodeStatus);
-    }
-
-    addStatusColumn(peerRow, peerNodeStatus, advancedModeEnabled);
-
-    drawNameColumn(peerRow, peerNodeStatus, advancedModeEnabled);
-    drawTrustColumn(peerRow, peerNodeStatus);
-    drawVisibilityColumn(peerRow, peerNodeStatus, advancedModeEnabled);
-    addAddressColumn(peerRow, peerNodeStatus);
-    addVersionColumn(peerRow, peerNodeStatus);
-
-    if (advancedModeEnabled) {
-      addLocationColumn(peerRow, peerNodeStatus);
-      addBackoffColumns(peerRow, peerNodeStatus, rowContext.renderTiming().now(), fix1);
-      addPRejectColumn(peerRow, peerNodeStatus, fix1);
-    }
-
-    addIdleColumn(peerRow, peerNodeStatus, rowContext.renderTiming().now());
-
-    if (hasPrivateNoteColumn()) {
-      drawPrivateNoteColumn(
-          peerRow, peerNodeStatus, rowContext.peerRowFlags().fProxyJavascriptEnabled());
-    }
-
-    if (advancedModeEnabled) {
-      addAdvancedStatistics(
-          peerRow, peerNodeStatus, fix1, peerSelectionPercentage, totalSelectionRate);
-    }
-
-    addEndColumns(peerRow, peerNodeStatus, rowContext.peerRowContext().endCols());
-
-    if (rowContext.renderMode().drawMessageTypes()) {
-      drawMessageTypes(peerTable, peerNodeStatus);
-    }
-  }
-
-  private int calculateSelectionPercentage(
-      double totalSelectionRate, PeerNodeStatus peerNodeStatus) {
-    if (totalSelectionRate <= 0) {
-      return 0;
-    }
-    return (int) (peerNodeStatus.getSelectionRate() * 100 / totalSelectionRate);
-  }
-
-  private void addSelectionCheckbox(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    peerRow
-        .addChild("td", ATTR_CLASS, "peer-marker")
-        .addChild(
-            ELEMENT_INPUT,
-            new String[] {"type", "name"},
-            new String[] {"checkbox", "node_" + peerNodeStatus.hashCode()});
-  }
-
-  private void addStatusColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advancedModeEnabled) {
-    String statusString = peerNodeStatus.getStatusName();
-    if (!advancedModeEnabled
-        && (peerNodeStatus.getStatusValue() == PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF)) {
-      statusString = "BUSY";
-    }
-    final String key = "ConnectionsToadlet.nodeStatus." + statusString.replace(' ', '_');
-    peerRow
-        .addChild("td", ATTR_CLASS, "peer-status")
-        .addChild(
-            "span",
-            ATTR_CLASS,
-            peerNodeStatus.getStatusCSSName(),
-            NodeL10n.getBase().getString(key) + (peerNodeStatus.isFetchingARK() ? "*" : ""));
-  }
-
-  private void addAddressColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    String pingTime = "";
-    if (peerNodeStatus.isConnected()) {
-      pingTime =
-          " ("
-              + (int) peerNodeStatus.getAveragePingTime()
-              + "ms / "
-              + (int) peerNodeStatus.getAveragePingTimeCorrected()
-              + "ms)";
-    }
-    HTMLNode addressRow = peerRow.addChild("td", ATTR_CLASS, "peer-address");
-    IPConverter ipc = IPConverter.getInstance(NodeFile.IPV4_TO_COUNTRY.getFile(node));
-    byte[] addr = peerNodeStatus.getPeerAddressBytes();
-
-    Country country = ipc.locateIP(addr);
-    if (country != null) {
-      country.renderFlagIcon(addressRow);
-    }
-
-    String address =
-        peerNodeStatus.getPeerAddress() != null
-            ? peerNodeStatus.getPeerAddressAndPort()
-            : l10n("unknownAddress");
-    addressRow.addChild("#", address + pingTime);
-  }
-
-  private void addVersionColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    HTMLNode versionCell = peerRow.addChild("td", ATTR_CLASS, "peer-version");
-    if (peerNodeStatus.getStatusValue() != PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED
-        && (peerNodeStatus.isPublicInvalidVersion()
-            || peerNodeStatus.isPublicReverseInvalidVersion())) {
-      versionCell.addChild(
-          "span",
-          ATTR_CLASS,
-          "peer_version_problem",
-          Integer.toString(peerNodeStatus.getSimpleVersion()));
-      return;
-    }
-    versionCell.addChild("#", Integer.toString(peerNodeStatus.getSimpleVersion()));
-  }
-
-  private void addLocationColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    HTMLNode locationNode = peerRow.addChild("td", ATTR_CLASS, "peer-location");
-    locationNode.addChild("b", String.valueOf(peerNodeStatus.getLocation()));
-    locationNode.addChild("br");
-    double[] peersLoc = peerNodeStatus.getPeersLocation();
-    if (peersLoc != null) {
-      locationNode.addChild("i", "+" + peersLoc.length + " friends");
-    }
-  }
-
-  private void addBackoffColumns(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, long now, DecimalFormat fix1) {
-    addBackoffColumn(peerRow, peerNodeStatus, now, fix1, true);
-    addBackoffColumn(peerRow, peerNodeStatus, now, fix1, false);
-  }
-
-  private void addBackoffColumn(
-      HTMLNode peerRow,
-      PeerNodeStatus peerNodeStatus,
-      long now,
-      DecimalFormat fix1,
-      boolean realtime) {
-    HTMLNode backoffCell = peerRow.addChild("td", ATTR_CLASS, "peer-backoff");
-    backoffCell.addChild("#", fix1.format(peerNodeStatus.getBackedOffPercent(realtime)));
-    int backoff = (int) Math.max(peerNodeStatus.getRoutingBackedOffUntil(realtime) - now, 0);
-    if ((backoff > 0) && (backoff < 1000)) {
-      backoff = 1000;
-    }
-    backoffCell.addChild(
-        "#",
-        ' '
-            + String.valueOf(backoff / 1000)
-            + '/'
-            + peerNodeStatus.getRoutingBackoffLength(realtime) / 1000);
-    backoffCell.addChild(
-        "#",
-        (peerNodeStatus.getLastBackoffReason(realtime) == null)
-            ? ""
-            : '/' + peerNodeStatus.getLastBackoffReason(realtime));
-  }
-
-  private void addPRejectColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, DecimalFormat fix1) {
-    HTMLNode pRejectCell = peerRow.addChild("td", ATTR_CLASS, "peer-backoff");
-    pRejectCell.addChild("#", fix1.format(peerNodeStatus.getPReject()));
-  }
-
-  private void addIdleColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus, long now) {
-    long idle = peerNodeStatus.getTimeLastRoutable();
-    if (peerNodeStatus.isRoutable()) {
-      idle = peerNodeStatus.getTimeLastConnectionCompleted();
-    } else if (peerNodeStatus.getStatusValue() == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED) {
-      idle = peerNodeStatus.getPeerAddedTime();
-    }
-    HTMLNode idleNode;
-    if (!peerNodeStatus.isConnected() && (now - idle) > (2 * 7 * 24 * 60 * 60 * 1000L)) {
-      idleNode = peerRow.addChild("td", ATTR_CLASS, PEER_IDLE_CLASS);
-      idleNode.addChild("span", ATTR_CLASS, "peer_idle_old", idleToString(now, idle));
-      return;
-    }
-    peerRow.addChild("td", ATTR_CLASS, PEER_IDLE_CLASS, idleToString(now, idle));
-  }
-
-  private void addAdvancedStatistics(
-      HTMLNode peerRow,
-      PeerNodeStatus peerNodeStatus,
-      DecimalFormat fix1,
-      int peerSelectionPercentage,
-      double totalSelectionRate) {
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild("#", fix1.format(peerNodeStatus.getPercentTimeRoutableConnection()));
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild("#", (totalSelectionRate > 0 ? (peerSelectionPercentage + "%") : "N/A"));
-    addTrafficColumns(peerRow, peerNodeStatus, fix1);
-    addTrafficSinceStartupColumn(peerRow, peerNodeStatus);
-    addCongestionControl(peerRow, peerNodeStatus);
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild("#", TimeUtil.formatTime(peerNodeStatus.getClockDelta()));
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild("#", peerNodeStatus.getReportedUptimePercentage() + "%");
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild(
-            "#",
-            SizeUtil.formatSize(peerNodeStatus.getMessageQueueLengthBytes())
-                + ":"
-                + TimeUtil.formatTime(peerNodeStatus.getMessageQueueLengthTime()));
-    addIncomingLoad(peerRow, peerNodeStatus.incomingLoadStatsBulk);
-    addIncomingLoad(peerRow, peerNodeStatus.incomingLoadStatsRealTime);
-  }
-
-  private void addTrafficColumns(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, DecimalFormat fix1) {
-    long sent = peerNodeStatus.getTotalOutputBytes();
-    long resent = peerNodeStatus.getResendBytesSent();
-    long received = peerNodeStatus.getTotalInputBytes();
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild(
-            "#",
-            SizeUtil.formatSize(received)
-                + " / "
-                + SizeUtil.formatSize(sent)
-                + "/"
-                + SizeUtil.formatSize(resent)
-                + " ("
-                + fix1.format(((double) resent) / ((double) sent))
-                + ")");
-  }
-
-  private void addTrafficSinceStartupColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild(
-            "#",
-            SizeUtil.formatSize(peerNodeStatus.getTotalInputSinceStartup())
-                + " / "
-                + SizeUtil.formatSize(peerNodeStatus.getTotalOutputSinceStartup()));
-  }
-
-  private void addCongestionControl(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    PacketThrottle throttle = peerNodeStatus.getThrottle();
-    String val;
-    if (throttle == null) {
-      val = "none";
-    } else {
-      val =
-          (int) throttle.getBandwidth()
-              + "B/sec delay "
-              + throttle.getDelay()
-              + "ms (RTT "
-              + throttle.getRoundTripTime()
-              + "ms window "
-              + throttle.getWindowSize()
-              + ')';
-    }
-    peerRow.addChild("td", ATTR_CLASS, PEER_IDLE_CLASS).addChild("#", val);
-  }
-
-  private void addIncomingLoad(HTMLNode peerRow, IncomingLoadSummaryStats loadStats) {
-    if (loadStats == null) {
-      peerRow.addChild("td", ATTR_CLASS, PEER_IDLE_CLASS);
-      return;
-    }
-    peerRow
-        .addChild("td", ATTR_CLASS, PEER_IDLE_CLASS)
-        .addChild(
-            "#",
-            loadStats.runningRequestsTotal
-                + "reqs:out:"
-                + SizeUtil.formatSize(loadStats.usedCapacityOutputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.othersUsedCapacityOutputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.peerCapacityOutputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.totalCapacityOutputBytes)
-                + ":in:"
-                + SizeUtil.formatSize(loadStats.usedCapacityInputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.othersUsedCapacityInputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.peerCapacityInputBytes)
-                + "/"
-                + SizeUtil.formatSize(loadStats.totalCapacityInputBytes));
-  }
-
-  private void addEndColumns(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, List<SimpleColumn> endCols) {
-    if (endCols == null || endCols.isEmpty()) {
-      return;
-    }
-    for (SimpleColumn col : endCols) {
-      col.drawColumn(peerRow, peerNodeStatus);
-    }
-  }
-
-  /**
-   * Indicates whether the peer table should include a trust column.
-   *
-   * <p>Darknet views usually show user-configurable trust, while opennet hides it. Subclasses
-   * should return a stable value so column layouts remain predictable.
-   *
-   * @return {@code true} when a trust column should be rendered; {@code false} otherwise.
-   */
-  protected boolean hasTrustColumn() {
-    return false;
-  }
-
-  /**
-   * Renders the trust column when enabled by {@link #hasTrustColumn()}.
-   *
-   * @param peerRow row node corresponding to the peer being rendered.
-   * @param peerNodeStatus status snapshot containing trust information to display.
-   */
-  protected void drawTrustColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
-    // Do nothing
-  }
-
-  /**
-   * Indicates whether a visibility column should be shown for peers.
-   *
-   * @return {@code true} to render visibility, {@code false} to omit it from the table.
-   */
-  protected boolean hasVisibilityColumn() {
-    return false;
-  }
-
-  /**
-   * Renders the visibility column when enabled.
-   *
-   * @param peerRow row node receiving the visibility cell.
-   * @param peerNodeStatus peer status with visibility settings.
-   * @param advancedModeEnabled whether advanced UI should expose additional context.
-   */
-  protected void drawVisibilityColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advancedModeEnabled) {
-    // Do nothing
-  }
-
-  /**
-   * Indicates whether a peer name column should be displayed.
-   *
-   * @return {@code true} to show names; {@code false} when names are not applicable.
-   */
-  protected abstract boolean hasNameColumn();
-
-  /**
-   * Draws the name column immediately after the status column when enabled.
-   *
-   * @param peerRow row node to which the name cell should be appended.
-   * @param peerNodeStatus peer status that may contain a user-defined name.
-   * @param advanced flag indicating whether advanced UI elements may be shown.
-   */
-  protected abstract void drawNameColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean advanced);
-
-  /**
-   * Indicates whether a private note column should be rendered for peers.
-   *
-   * @return {@code true} when private notes should appear; {@code false} otherwise.
-   */
-  protected abstract boolean hasPrivateNoteColumn();
-
-  /**
-   * Draws the private note column when enabled by {@link #hasPrivateNoteColumn()}.
-   *
-   * @param peerRow row node receiving the private note cell.
-   * @param peerNodeStatus peer status containing any private notes.
-   * @param fProxyJavascriptEnabled whether JavaScript helpers are available for the view.
-   */
-  protected abstract void drawPrivateNoteColumn(
-      HTMLNode peerRow, PeerNodeStatus peerNodeStatus, boolean fProxyJavascriptEnabled);
-
-  private void drawMessageTypes(HTMLNode peerTable, PeerNodeStatus peerNodeStatus) {
-    HTMLNode messageCountRow = peerTable.addChild("tr", ATTR_CLASS, "message-status");
-    messageCountRow.addChild("td", "colspan", "2");
-    HTMLNode messageCountCell =
-        messageCountRow.addChild(
-            "td", "colspan", "9"); // = total table row width - 2 from the above colspan
-    HTMLNode messageCountTable =
-        messageCountCell.addChild(ELEMENT_TABLE, ATTR_CLASS, "message-count");
-    HTMLNode countHeaderRow = messageCountTable.addChild("tr");
-    countHeaderRow.addChild("th", "Message");
-    countHeaderRow.addChild("th", "Incoming");
-    countHeaderRow.addChild("th", "Outgoing");
-    List<String> messageNames = new ArrayList<>();
-    Map<String, Long[]> messageCounts = new HashMap<>();
-    for (Map.Entry<String, Long> entry : peerNodeStatus.getLocalMessagesReceived().entrySet()) {
-      String messageName = entry.getKey();
-      Long messageCount = entry.getValue();
-      messageNames.add(messageName);
-      messageCounts.put(messageName, new Long[] {messageCount, 0L});
-    }
-    for (Map.Entry<String, Long> entry : peerNodeStatus.getLocalMessagesSent().entrySet()) {
-      String messageName = entry.getKey();
-      Long messageCount = entry.getValue();
-      if (!messageNames.contains(messageName)) {
-        messageNames.add(messageName);
-      }
-      Long[] existingCounts = messageCounts.get(messageName);
-      if (existingCounts == null) {
-        messageCounts.put(messageName, new Long[] {0L, messageCount});
-      } else {
-        existingCounts[1] = messageCount;
-      }
-    }
-    messageNames.sort(String::compareToIgnoreCase);
-    for (String messageName : messageNames) {
-      Long[] messageCount = messageCounts.get(messageName);
-      HTMLNode messageRow = messageCountTable.addChild("tr");
-      messageRow.addChild("td", messageName);
-      messageRow.addChild("td", ATTR_CLASS, "right-align", String.valueOf(messageCount[0]));
-      messageRow.addChild("td", ATTR_CLASS, "right-align", String.valueOf(messageCount[1]));
-    }
-  }
-
-  private String idleToString(long now, long idle) {
-    if (idle <= 0) {
-      return " ";
-    }
-    long idleMilliseconds = now - idle;
-    return TimeUtil.formatTime(idleMilliseconds);
-  }
-
   private static String l10n(String string) {
     return NodeL10n.getBase().getString("DarknetConnectionsToadlet." + string);
-  }
-
-  private static String l10nCount(String string, String value) {
-    return NodeL10n.getBase().getString("DarknetConnectionsToadlet." + string, COUNT, value);
-  }
-
-  private String sortString(boolean isReversed, String type) {
-    return (isReversed ? ("?sortBy=" + type) : ("?sortBy=" + type + "&reversed"));
   }
 
   /**

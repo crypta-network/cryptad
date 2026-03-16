@@ -253,7 +253,8 @@ final class FProxyRegistrar {
     server.register(
         coreActionToadlet, ToadletRegistration.basic(null, CORE_UPDATE_PATH, true, false));
 
-    DarknetConnectionsToadlet friendsToadlet = new DarknetConnectionsToadlet(node, core, client);
+    DarknetConnectionsToadlet friendsToadlet =
+        new DarknetConnectionsToadlet(node, core, client, core.getRuntimePorts().connectionsPage());
     server.register(
         friendsToadlet,
         ToadletRegistration.menuLink(
@@ -277,7 +278,8 @@ final class FProxyRegistrar {
             true,
             null));
 
-    OpennetConnectionsToadlet opennetToadlet = new OpennetConnectionsToadlet(node, core, client);
+    OpennetConnectionsToadlet opennetToadlet =
+        new OpennetConnectionsToadlet(node, core, client, core.getRuntimePorts().connectionsPage());
     server.register(
         opennetToadlet,
         ToadletRegistration.menuLink(

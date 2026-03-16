@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -12,6 +13,10 @@ import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerTooOldException;
+import network.crypta.runtime.spi.ConnectionsPageKind;
+import network.crypta.runtime.spi.ConnectionsPagePort;
+import network.crypta.runtime.spi.ConnectionsPageRequest;
+import network.crypta.runtime.spi.ConnectionsPageSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
@@ -26,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -33,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -42,12 +49,14 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class DarknetConnectionsToadletTest {
+  private static final String TEST_FORM_PASSWORD = "test-form-password";
 
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   private Node node;
 
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
+  @Mock private ConnectionsPagePort connectionsPage;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
 
@@ -55,8 +64,71 @@ class DarknetConnectionsToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new DarknetConnectionsToadlet(node, core, client);
+    toadlet = new DarknetConnectionsToadlet(node, core, client, connectionsPage);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
+  }
+
+  @Test
+  void handleMethodGET_whenUsingDisplayMessageTypes_buildsDarknetRequestAndRedirectsOnZeroPeers()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(request.getParam("sortBy", null)).thenReturn("name");
+    when(request.isParameterSet("reversed")).thenReturn(true);
+    when(connectionsPage.render(any()))
+        .thenReturn(new ConnectionsPageSnapshot("friends", 0, true, "", "", ""));
+
+    ArgumentCaptor<ConnectionsPageRequest> requestCaptor =
+        ArgumentCaptor.forClass(ConnectionsPageRequest.class);
+
+    RedirectException redirect =
+        assertThrows(
+            RedirectException.class,
+            () ->
+                toadlet.handleMethodGET(
+                    URI.create("http://localhost/friends/displaymessagetypes.html"), request, ctx));
+
+    assertEquals(URI.create("/addfriend/"), redirect.getTarget());
+    verify(connectionsPage).render(requestCaptor.capture());
+    ConnectionsPageRequest pageRequest = requestCaptor.getValue();
+    assertEquals(ConnectionsPageKind.DARKNET, pageRequest.kind());
+    assertTrue(pageRequest.advancedMode());
+    assertTrue(pageRequest.drawMessageTypes());
+    assertEquals("name", pageRequest.sortBy());
+    assertTrue(pageRequest.reversed());
+  }
+
+  @Test
+  void handleMethodGET_whenPeerActionsEnabled_wrapsPeerTableInPeersForm() throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(false);
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(connectionsPage.render(any()))
+        .thenReturn(
+            new ConnectionsPageSnapshot(
+                "friends",
+                1,
+                true,
+                "<div id=\"before\">before</div>",
+                "<table id=\"peer-table\"></table><div id=\"actions\">actions</div>",
+                "<div id=\"after\">after</div>"));
+    stubFormChild(ctx);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/friends/"), request, ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("before"));
+    assertTrue(html.contains("peer-table"));
+    assertTrue(html.contains("id=\"peersForm\""));
+    assertTrue(html.contains("formPassword"));
+    assertTrue(html.contains(TEST_FORM_PASSWORD));
+    assertTrue(html.contains("actions"));
+    assertTrue(html.contains("after"));
+    verify(ctx).addFormChild(any(HTMLNode.class), eq("."), eq("peersForm"));
   }
 
   @Test
@@ -92,34 +164,6 @@ class DarknetConnectionsToadletTest {
     int result = comparator.customCompare(first, second);
 
     assertTrue(result < 0, "NAME_ONLY should sort before NO when our visibility matches");
-  }
-
-  @Test
-  void drawPrivateNoteColumn_whenJavascriptEnabled_includesChangeHandler() {
-    HTMLNode row = new HTMLNode("tr");
-    DarknetPeerNodeStatus status = mock(DarknetPeerNodeStatus.class);
-    when(status.getPrivateDarknetCommentNote()).thenReturn("note");
-    int statusHash = System.identityHashCode(status);
-
-    toadlet.drawPrivateNoteColumn(row, status, true);
-
-    String rendered = row.generate();
-    assertTrue(rendered.contains("peerPrivateNote_" + statusHash));
-    assertTrue(rendered.contains("onChange=\"peerNoteChange();\""));
-  }
-
-  @Test
-  void drawPrivateNoteColumn_whenJavascriptDisabled_omitsChangeHandler() {
-    HTMLNode row = new HTMLNode("tr");
-    DarknetPeerNodeStatus status = mock(DarknetPeerNodeStatus.class);
-    when(status.getPrivateDarknetCommentNote()).thenReturn("note");
-    int statusHash = System.identityHashCode(status);
-
-    toadlet.drawPrivateNoteColumn(row, status, false);
-
-    String rendered = row.generate();
-    assertTrue(rendered.contains("peerPrivateNote_" + statusHash));
-    assertFalse(rendered.contains("onChange=\"peerNoteChange();\""));
   }
 
   @Test
@@ -280,5 +324,57 @@ class DarknetConnectionsToadletTest {
         ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
     assertEquals("/friends/", headersCaptor.getValue().getFirst("Location"));
+  }
+
+  private PageMaker stubPageMaker(HTMLNode content) {
+    HTMLNode root = new HTMLNode("html");
+    HTMLNode head = root.addChild("head");
+    root.addChild(content);
+    PageNode page = new PageNode(root, head, content);
+
+    PageMaker pageMaker = mock(PageMaker.class);
+    when(pageMaker.getPageNode(anyString(), any(ToadletContext.class))).thenReturn(page);
+    return pageMaker;
+  }
+
+  private void stubFormChild(ToadletContext context) {
+    doAnswer(
+            invocation -> {
+              HTMLNode parentNode = invocation.getArgument(0);
+              String target = invocation.getArgument(1);
+              String id = invocation.getArgument(2);
+              HTMLNode formNode =
+                  parentNode
+                      .addChild("div")
+                      .addChild(
+                          "form",
+                          new String[] {"action", "method", "enctype", "id", "accept-charset"},
+                          new String[] {target, "post", "multipart/form-data", id, "utf-8"});
+              formNode.addChild(
+                  "input",
+                  new String[] {"type", "name", "value"},
+                  new String[] {"hidden", "formPassword", TEST_FORM_PASSWORD});
+              return formNode;
+            })
+        .when(context)
+        .addFormChild(any(HTMLNode.class), anyString(), anyString());
+  }
+
+  private ByteArrayOutputStream captureBody(ToadletContext context) throws Exception {
+    ByteArrayOutputStream body = new ByteArrayOutputStream();
+    doAnswer(_ -> null)
+        .when(context)
+        .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
+    doAnswer(
+            invocation -> {
+              byte[] data = invocation.getArgument(0);
+              int offset = invocation.getArgument(1);
+              int length = invocation.getArgument(2);
+              body.write(data, offset, length);
+              return null;
+            })
+        .when(context)
+        .writeData(any(byte[].class), anyInt(), anyInt());
+    return body;
   }
 }
