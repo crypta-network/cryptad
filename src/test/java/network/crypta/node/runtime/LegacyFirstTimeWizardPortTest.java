@@ -114,6 +114,7 @@ class LegacyFirstTimeWizardPortTest {
           snapshot.minBandwidthMonthlyLimitGiB());
       assertEquals("1024", snapshot.detectedDownloadLimitKiB());
       assertEquals("512", snapshot.detectedUploadLimitKiB());
+      assertEquals(-1L, snapshot.autodetectedStorageLimitBytes());
     }
   }
 
@@ -151,6 +152,44 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals("100.00", snapshot.initialStorageLimitGiB());
       assertEquals("", snapshot.detectedDownloadLimitKiB());
       assertEquals("", snapshot.detectedUploadLimitKiB());
+      assertEquals(-1L, snapshot.autodetectedStorageLimitBytes());
+    }
+  }
+
+  @Test
+  void snapshot_whenIpDetectorNotInitialized_returnsStorageSuggestionAndEmptyBandwidthHints() {
+    Option<Long> storeSize = mockLongOption();
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    network.crypta.node.subsystem.NodeNetworkSubsystem networkSubsystem =
+        mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    long autodetectedStorageLimitBytes = 3L * DatastoreUtil.ONE_GIB;
+
+    when(node.getConfig()).thenReturn(config);
+    when(config.get("node")).thenReturn(nodeSubConfig);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(securityLevels.getPhysicalThreatLevel())
+        .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    when(node.network()).thenReturn(networkSubsystem);
+    when(networkSubsystem.ipDetector()).thenReturn(null);
+
+    try (MockedStatic<Config> configStatic = mockStatic(Config.class);
+        MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class)) {
+      configStatic.when(() -> Config.longOption(nodeSubConfig, "storeSize")).thenReturn(storeSize);
+      when(storeSize.isDefault()).thenReturn(true);
+      datastore
+          .when(() -> DatastoreUtil.autodetectDatastoreSize(core, config))
+          .thenReturn(autodetectedStorageLimitBytes);
+      datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(10L * DatastoreUtil.ONE_GIB);
+
+      LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+      FirstTimeWizardSnapshot snapshot = port.snapshot();
+
+      assertEquals("3.00", snapshot.initialStorageLimitGiB());
+      assertEquals("", snapshot.detectedDownloadLimitKiB());
+      assertEquals("", snapshot.detectedUploadLimitKiB());
+      assertEquals(autodetectedStorageLimitBytes, snapshot.autodetectedStorageLimitBytes());
     }
   }
 

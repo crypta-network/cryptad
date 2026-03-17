@@ -35,6 +35,8 @@ import java.util.Objects;
  *     string when automatic detection is unavailable
  * @param detectedUploadLimitKiB recommended direct upload limit in KiB/s text or an empty string
  *     when automatic detection is unavailable
+ * @param autodetectedStorageLimitBytes autodetected datastore suggestion in exact bytes, or {@code
+ *     -1} when the legacy datastore page should fall back to its fixed-size defaults
  */
 public record FirstTimeWizardSnapshot(
     boolean passwordAlreadySet,
@@ -47,7 +49,8 @@ public record FirstTimeWizardSnapshot(
     long maxUploadLimitKiB,
     String minBandwidthMonthlyLimitGiB,
     String detectedDownloadLimitKiB,
-    String detectedUploadLimitKiB) {
+    String detectedUploadLimitKiB,
+    long autodetectedStorageLimitBytes) {
   /**
    * Creates an immutable first-time-wizard snapshot.
    *

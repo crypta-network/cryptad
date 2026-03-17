@@ -1,11 +1,11 @@
 package network.crypta.clients.http.wizardsteps;
 
+import java.util.Objects;
+import java.util.function.Supplier;
 import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.IllegalValueException;
 import org.slf4j.Logger;
@@ -20,10 +20,10 @@ import org.slf4j.LoggerFactory;
  * contains a static helper for turning raw indicator-reported bit rates into the {@link
  * BandwidthLimit} value object used by the wizard UI.
  *
- * <p>Instances are lightweight and hold references to a {@link NodeClientCore} and {@link Config}
- * supplied by the surrounding HTTP wizard implementation. This class does not own those objects and
- * does not perform any synchronization; callers are expected to invoke it from the same execution
- * context used to render and handle wizard requests.
+ * <p>Instances are lightweight and hold a reference to the shared {@link Config} supplied by the
+ * surrounding HTTP wizard implementation. This class does not own that object and does not perform
+ * any synchronization; callers are expected to invoke it from the same execution context used to
+ * render and handle wizard requests.
  *
  * <ul>
  *   <li>Applies an input or output limit string to the {@code node.*BandwidthLimit} option.
@@ -34,15 +34,8 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class BandwidthManipulator {
   private static final Logger LOG = LoggerFactory.getLogger(BandwidthManipulator.class);
-
-  /**
-   * Node core used to access the current {@link Node} instance and its configured bandwidth state.
-   *
-   * <p>This reference is provided by the caller and is treated as non-null. The reference itself is
-   * immutable, but the underlying core and node may have state that changes over time as the node
-   * runs and configuration is applied.
-   */
-  protected final NodeClientCore core;
+  private static final String OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
+  private static final String INPUT_BANDWIDTH_LIMIT = "inputBandwidthLimit";
 
   /**
    * Node configuration used to read and update wizard-related options.
@@ -53,21 +46,39 @@ public abstract class BandwidthManipulator {
    */
   protected final Config config;
 
+  private final Supplier<BandwidthLimit> currentBandwidthLimitsSupplier;
+
   /**
-   * Creates a new helper bound to the given core and configuration.
+   * Creates a new helper bound to the given configuration.
    *
    * <p>Subclasses typically call this from their constructors and then use the protected helpers
    * during request handling (rendering pages, validating user input, and persisting wizard state).
    * This constructor performs no I/O and does not persist configuration changes.
    *
-   * @param core Node core used to access the current node and its bandwidth limits; must be
-   *     non-null for subclasses to function correctly.
    * @param config Configuration handle used to read and update wizard options; must be non-null and
    *     should refer to the node's live configuration.
    */
-  protected BandwidthManipulator(NodeClientCore core, Config config) {
+  protected BandwidthManipulator(Config config) {
+    this(config, () -> null);
+  }
+
+  /**
+   * Creates a new helper bound to the given configuration and current-bandwidth supplier.
+   *
+   * <p>The supplier is used only for rendering the legacy “current settings” preset on the
+   * rate-based bandwidth page. Callers should return {@code null} when no current preset row should
+   * be shown.
+   *
+   * @param config Configuration handle used to read and update wizard options; must be non-null and
+   *     should refer to the node's live configuration.
+   * @param currentBandwidthLimitsSupplier supplier for the live current bandwidth limits used by
+   *     the “current settings” row; must be non-null but may return {@code null}
+   */
+  protected BandwidthManipulator(
+      Config config, Supplier<BandwidthLimit> currentBandwidthLimitsSupplier) {
     this.config = config;
-    this.core = core;
+    this.currentBandwidthLimitsSupplier =
+        Objects.requireNonNull(currentBandwidthLimitsSupplier, "currentBandwidthLimitsSupplier");
   }
 
   /**
@@ -86,11 +97,10 @@ public abstract class BandwidthManipulator {
    * @param setOutputLimit Whether to apply the limit to output (true) or input (false) bandwidth.
    * @throws InvalidConfigValueException If the value is rejected by configuration parsing, such as
    *     being negative, unparsable, or too low to be usable for a running node.
-   * @see Node#getMinimumBandwidth()
    */
   protected void setBandwidthLimit(String limit, boolean setOutputLimit)
       throws InvalidConfigValueException {
-    String limitType = setOutputLimit ? "outputBandwidthLimit" : "inputBandwidthLimit";
+    String limitType = setOutputLimit ? OUTPUT_BANDWIDTH_LIMIT : INPUT_BANDWIDTH_LIMIT;
     try {
       config.get("node").set(limitType, limit);
       LOG.info("The {} has been set to {}", limitType, limit);
@@ -129,28 +139,19 @@ public abstract class BandwidthManipulator {
   }
 
   /**
-   * Returns the node's currently effective bandwidth limits when they are explicitly configured.
+   * Returns the node's currently effective bandwidth limits for the legacy “current settings” row.
    *
-   * <p>This helper is used to populate the wizard UI with a “current settings” row when the node is
-   * not using the default bandwidth configuration. If the relevant option is still at its default
-   * value, this method returns {@code null} so callers can omit the “current” section.
+   * <p>This helper delegates to the supplier provided by the surrounding HTTP wiring. Callers
+   * should return {@code null} when the wizard should omit the “current” row.
    *
-   * <p>The returned {@link BandwidthLimit} is constructed from the node's current input/output
-   * values and is intended for display only; it does not imply that the wizard has validated or
-   * re-applied these settings during the current request.
+   * <p>The returned {@link BandwidthLimit} is intended for display only; it does not imply that the
+   * wizard has validated or re-applied these settings during the current request.
    *
    * @return A {@link BandwidthLimit} describing the node's current limits, or {@code null} when the
    *     wizard should treat the node as using defaults.
    */
   protected BandwidthLimit getCurrentBandwidthLimitsOrNull() {
-    if (!config.get("node").getOption("outputBandwidthLimit").isDefault()) {
-      return new BandwidthLimit(
-          core.getNode().network().inputBandwidthLimit(),
-          core.getNode().network().outputBandwidthLimit(),
-          "bandwidthCurrent",
-          false);
-    }
-    return null;
+    return currentBandwidthLimitsSupplier.get();
   }
 
   /**

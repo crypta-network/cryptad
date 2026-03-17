@@ -10,6 +10,8 @@ import network.crypta.clients.http.ajaxpush.PushKeepaliveToadlet;
 import network.crypta.clients.http.ajaxpush.PushLeavingToadlet;
 import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
 import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
+import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.clients.http.wizardsteps.DatastoreSize;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
@@ -386,7 +388,15 @@ final class FProxyRegistrar {
             true,
             null));
 
-    FirstTimeWizardToadlet firstTimeWizardToadlet = new FirstTimeWizardToadlet(client, node, core);
+    FirstTimeWizardToadlet firstTimeWizardToadlet =
+        new FirstTimeWizardToadlet(
+            client,
+            config,
+            core,
+            new FirstTimeWizardToadletRuntimePorts(
+                runtimePorts.firstTimeWizard(),
+                () -> DatastoreSize.maxDatastoreSize(node),
+                () -> legacyCurrentBandwidthLimits(config, node)));
     server.register(
         firstTimeWizardToadlet,
         ToadletRegistration.basic(null, FirstTimeWizardToadlet.TOADLET_URL, true, false));
@@ -442,5 +452,17 @@ final class FProxyRegistrar {
     server.register(
         dismissAlertToadlet,
         ToadletRegistration.basic(null, dismissAlertToadlet.path(), true, false));
+  }
+
+  private static BandwidthLimit legacyCurrentBandwidthLimits(Config config, Node node) {
+    if (config.get("node").getOption("outputBandwidthLimit").isDefault()) {
+      return null;
+    }
+
+    return new BandwidthLimit(
+        node.network().inputBandwidthLimit(),
+        node.network().outputBandwidthLimit(),
+        "bandwidthCurrent",
+        false);
   }
 }

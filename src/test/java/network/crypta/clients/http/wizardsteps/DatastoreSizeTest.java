@@ -7,8 +7,9 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
@@ -47,6 +48,7 @@ class DatastoreSizeTest {
   private static final String KEY_SLASHDOT_CACHE_SIZE = "slashdotCacheSize";
   private static final String KEY_STORE_SIZE = "storeSize";
   private static final String KEY_STORE_TYPE = "storeType";
+  private static final long MAX_STORAGE_LIMIT_BYTES = 5L * 1024 * 1024 * 1024;
   private static final String TAG_OPTION = "option";
   private static final String TAG_SELECT = "select";
   private static final String VALUE_DEFAULT = "default";
@@ -174,8 +176,8 @@ class DatastoreSizeTest {
   @Test
   void postStep_whenFirstTime_expectNextStepBandwidthAndUsesSelected() {
     Config config = newConfigWithNodeDefaults(10, 0, 1000L);
-    NodeClientCore core = mock(NodeClientCore.class);
-    DatastoreSize step = new DatastoreSize(core, config);
+    DatastoreSize step =
+        new DatastoreSize(mock(FirstTimeWizardPort.class), config, () -> MAX_STORAGE_LIMIT_BYTES);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(false);
@@ -203,8 +205,8 @@ class DatastoreSizeTest {
     assertEquals(VALUE_DEFAULT, node.getString(KEY_STORE_TYPE));
     assertEquals(VALUE_DEFAULT, node.getString(KEY_CLIENT_CACHE_TYPE));
 
-    NodeClientCore core = mock(NodeClientCore.class);
-    DatastoreSize step = new DatastoreSize(core, config);
+    DatastoreSize step =
+        new DatastoreSize(mock(FirstTimeWizardPort.class), config, () -> MAX_STORAGE_LIMIT_BYTES);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(true);
@@ -248,11 +250,10 @@ class DatastoreSizeTest {
   @Test
   void getStep_whenAutodetectedIs512MiB_expectNo512MOption() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getNode()).thenReturn(node);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(512L * 1024 * 1024));
 
-    DatastoreSize step = new DatastoreSize(core, config);
+    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -263,18 +264,7 @@ class DatastoreSizeTest {
         .thenReturn(infoboxNode);
     when(helper.addFormChild(eq(infoboxNode), anyString(), anyString())).thenReturn(formNode);
 
-    try (MockedStatic<DatastoreSize> datastoreSizeStatic =
-            mockStatic(DatastoreSize.class, org.mockito.Mockito.CALLS_REAL_METHODS);
-        MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreSizeStatic
-          .when(() -> DatastoreSize.maxDatastoreSize(any(Node.class)))
-          .thenReturn(5L * 1024 * 1024 * 1024);
-      datastoreUtil
-          .when(() -> DatastoreUtil.autodetectDatastoreSize(eq(core), eq(config)))
-          .thenReturn(512L * 1024 * 1024);
-
-      step.getStep(mock(HTTPRequest.class), helper);
-    }
+    step.getStep(mock(HTTPRequest.class), helper);
 
     HTMLNode selectNode = findDatastoreSelect(formNode);
     assertNo512MOption(selectNode);
@@ -284,11 +274,10 @@ class DatastoreSizeTest {
   @Test
   void getStep_whenAutodetectedIsNot512MiB_expect512MOptionPresent() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getNode()).thenReturn(node);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(2L * 1024 * 1024 * 1024));
 
-    DatastoreSize step = new DatastoreSize(core, config);
+    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -299,18 +288,7 @@ class DatastoreSizeTest {
         .thenReturn(infoboxNode);
     when(helper.addFormChild(eq(infoboxNode), anyString(), anyString())).thenReturn(formNode);
 
-    try (MockedStatic<DatastoreSize> datastoreSizeStatic =
-            mockStatic(DatastoreSize.class, org.mockito.Mockito.CALLS_REAL_METHODS);
-        MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreSizeStatic
-          .when(() -> DatastoreSize.maxDatastoreSize(any(Node.class)))
-          .thenReturn(5L * 1024 * 1024 * 1024);
-      datastoreUtil
-          .when(() -> DatastoreUtil.autodetectDatastoreSize(eq(core), eq(config)))
-          .thenReturn(2L * 1024 * 1024 * 1024);
-
-      step.getStep(mock(HTTPRequest.class), helper);
-    }
+    step.getStep(mock(HTTPRequest.class), helper);
 
     HTMLNode selectNode = findDatastoreSelect(formNode);
     assertOptionValuePresent(selectNode, "512M");
@@ -326,11 +304,10 @@ class DatastoreSizeTest {
     nodeConfig.set(KEY_CLIENT_CACHE_SIZE, "512MiB");
     nodeConfig.set(KEY_SLASHDOT_CACHE_SIZE, "256MiB");
 
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getNode()).thenReturn(node);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
 
-    DatastoreSize step = new DatastoreSize(core, config);
+    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -347,18 +324,7 @@ class DatastoreSizeTest {
             + Config.longOption(nodeConfig, KEY_SLASHDOT_CACHE_SIZE).getValue();
     String expectedValue = SizeUtil.formatSize(expectedTotal);
 
-    try (MockedStatic<DatastoreSize> datastoreSizeStatic =
-            mockStatic(DatastoreSize.class, org.mockito.Mockito.CALLS_REAL_METHODS);
-        MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreSizeStatic
-          .when(() -> DatastoreSize.maxDatastoreSize(any(Node.class)))
-          .thenReturn(5L * 1024 * 1024 * 1024);
-      datastoreUtil
-          .when(() -> DatastoreUtil.autodetectDatastoreSize(eq(core), eq(config)))
-          .thenReturn(-1L);
-
-      step.getStep(mock(HTTPRequest.class), helper);
-    }
+    step.getStep(mock(HTTPRequest.class), helper);
 
     HTMLNode selectNode = findDatastoreSelect(formNode);
     HTMLNode selectedOption =
@@ -371,6 +337,55 @@ class DatastoreSizeTest {
     assertEquals(expectedValue, selectedOption.getAttribute(ATTR_VALUE));
     assertTrue(selectedOption.generateChildren().contains(expectedValue));
     assertTrue(selectedOption.generateChildren().contains(WizardL10n.l10n("currentPrefix")));
+  }
+
+  @Test
+  void getStep_whenLegacyCapIsBelowSnapshotMax_expectLegacyThresholdsPreserved() {
+    Config config = newConfigWithNodeDefaults(10, 10, 1000L);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
+
+    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> 4L * 1024 * 1024 * 1024);
+
+    PageHelper helper = mock(PageHelper.class);
+    HTMLNode contentNode = new HTMLNode("div");
+    HTMLNode infoboxNode = new HTMLNode("div");
+    HTMLNode formNode = new HTMLNode("form");
+    when(helper.getPageContent(anyString())).thenReturn(contentNode);
+    when(helper.getInfobox(anyString(), anyString(), eq(contentNode), any(), anyBoolean()))
+        .thenReturn(infoboxNode);
+    when(helper.addFormChild(eq(infoboxNode), anyString(), anyString())).thenReturn(formNode);
+
+    step.getStep(mock(HTTPRequest.class), helper);
+
+    HTMLNode selectNode = findDatastoreSelect(formNode);
+    assertOptionValuePresent(selectNode, "3G");
+    assertOptionValueAbsent(selectNode, "5G");
+  }
+
+  @Test
+  void getStep_whenLegacyCapIsAboveSnapshotMax_expectLegacyThresholdsPreserved() {
+    Config config = newConfigWithNodeDefaults(10, 10, 1000L);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
+
+    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> 50L * 1024 * 1024 * 1024);
+
+    PageHelper helper = mock(PageHelper.class);
+    HTMLNode contentNode = new HTMLNode("div");
+    HTMLNode infoboxNode = new HTMLNode("div");
+    HTMLNode formNode = new HTMLNode("form");
+    when(helper.getPageContent(anyString())).thenReturn(contentNode);
+    when(helper.getInfobox(anyString(), anyString(), eq(contentNode), any(), anyBoolean()))
+        .thenReturn(infoboxNode);
+    when(helper.addFormChild(eq(infoboxNode), anyString(), anyString())).thenReturn(formNode);
+
+    step.getStep(mock(HTTPRequest.class), helper);
+
+    HTMLNode selectNode = findDatastoreSelect(formNode);
+    assertOptionValuePresent(selectNode, "20G");
+    assertOptionValuePresent(selectNode, "50G");
+    assertOptionValueAbsent(selectNode, "200G");
   }
 
   private static Config newConfigWithNodeDefaults(
@@ -416,6 +431,22 @@ class DatastoreSizeTest {
     return config;
   }
 
+  private static FirstTimeWizardSnapshot snapshot(long autodetectedSize) {
+    return new FirstTimeWizardSnapshot(
+        false,
+        "2.00",
+        "1.25",
+        1L,
+        SizeUtil.formatSize(MAX_STORAGE_LIMIT_BYTES),
+        MAX_STORAGE_LIMIT_BYTES,
+        10L,
+        976562L,
+        "49.44",
+        "",
+        "",
+        autodetectedSize);
+  }
+
   private static HTMLNode findDatastoreSelect(HTMLNode formNode) {
     List<HTMLNode> selects =
         formNode.getChildren().stream()
@@ -435,7 +466,10 @@ class DatastoreSizeTest {
   }
 
   private static void assertNo512MOption(HTMLNode selectNode) {
-    String forbiddenValue = "512M";
+    assertOptionValueAbsent(selectNode, "512M");
+  }
+
+  private static void assertOptionValueAbsent(HTMLNode selectNode, String forbiddenValue) {
     assertTrue(
         selectNode.getChildren().stream()
             .filter(child -> TAG_OPTION.equals(child.getName()))

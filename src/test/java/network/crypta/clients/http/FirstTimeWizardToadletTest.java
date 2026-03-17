@@ -16,6 +16,7 @@ import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,12 +50,14 @@ class FirstTimeWizardToadletTest {
   private Node node;
 
   @Mock private NodeClientCore core;
+  @Mock private FirstTimeWizardPort firstTimeWizardPort;
   @Mock private ToadletContext ctx;
+
+  private PersistentConfig config;
 
   @BeforeEach
   void setUp() throws Exception {
-    PersistentConfig config = new PersistentConfig(null);
-    when(node.getConfig()).thenReturn(config);
+    config = new PersistentConfig(null);
     when(core.getNode()).thenReturn(node);
     when(ctx.checkFullAccess(any())).thenReturn(true);
   }
@@ -69,7 +72,14 @@ class FirstTimeWizardToadletTest {
 
   @Test
   void handleMethodGET_browserWarningWithIncognitoChrome_redirectsToMisc() throws Exception {
-    FirstTimeWizardToadlet toadlet = spy(new FirstTimeWizardToadlet(client, node, core));
+    FirstTimeWizardToadlet toadlet =
+        spy(
+            new FirstTimeWizardToadlet(
+                client,
+                config,
+                core,
+                new FirstTimeWizardToadletRuntimePorts(
+                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(true);
     when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
@@ -94,7 +104,14 @@ class FirstTimeWizardToadletTest {
 
   @Test
   void handleMethodGET_securityNetworkWithoutOpennet_redirectsToOpenNet() throws Exception {
-    FirstTimeWizardToadlet toadlet = spy(new FirstTimeWizardToadlet(client, node, core));
+    FirstTimeWizardToadlet toadlet =
+        spy(
+            new FirstTimeWizardToadlet(
+                client,
+                config,
+                core,
+                new FirstTimeWizardToadletRuntimePorts(
+                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(true);
     when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
@@ -118,7 +135,14 @@ class FirstTimeWizardToadletTest {
 
   @Test
   void handleMethodPOST_presetLow_setsThreatLevelsAndRedirects() throws Exception {
-    FirstTimeWizardToadlet toadlet = spy(new FirstTimeWizardToadlet(client, node, core));
+    FirstTimeWizardToadlet toadlet =
+        spy(
+            new FirstTimeWizardToadlet(
+                client,
+                config,
+                core,
+                new FirstTimeWizardToadletRuntimePorts(
+                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe("step", 20)).thenReturn("WELCOME");
@@ -157,7 +181,14 @@ class FirstTimeWizardToadletTest {
 
   @Test
   void handleMethodPOST_whenStepThrowsIOException_returnsInternalErrorPage() throws Exception {
-    FirstTimeWizardToadlet toadlet = spy(new FirstTimeWizardToadlet(client, node, core));
+    FirstTimeWizardToadlet toadlet =
+        spy(
+            new FirstTimeWizardToadlet(
+                client,
+                config,
+                core,
+                new FirstTimeWizardToadletRuntimePorts(
+                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe("step", 20)).thenReturn("MISC");
