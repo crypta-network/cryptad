@@ -205,7 +205,10 @@ final class FProxyRegistrar {
     SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, node);
     server.register(symlinkToadlet, ToadletRegistration.basic(null, "/sl/", true, false));
 
-    SecurityLevelsToadlet seclevels = new SecurityLevelsToadlet(client, node, core);
+    SecurityLevelsToadletRuntimePorts securityLevelsToadletRuntimePorts =
+        new SecurityLevelsToadletRuntimePorts(runtimePorts.securityLevels(), runtimePorts.config());
+    SecurityLevelsToadlet seclevels =
+        new SecurityLevelsToadlet(client, securityLevelsToadletRuntimePorts);
     server.register(
         seclevels,
         ToadletRegistration.menuLink(

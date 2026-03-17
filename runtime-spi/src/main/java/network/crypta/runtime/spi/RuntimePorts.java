@@ -29,6 +29,7 @@ package network.crypta.runtime.spi;
  * @see NodeInfoPort
  * @see PeerPort
  * @see RequestQueuePort
+ * @see SecurityLevelsPort
  */
 public interface RuntimePorts {
   /**
@@ -176,6 +177,17 @@ public interface RuntimePorts {
    * @return statistics-page runtime port for detached overview and requester snapshots
    */
   StatisticsPort statistics();
+
+  /**
+   * Returns the legacy security-levels-page capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining live security-level reads, confirmation-warning generation,
+   * and master-password-file mutations behind the runtime boundary while exposing only SPI-local
+   * enums, snapshots, status values, and plain rendered HTML fragments upstream.
+   *
+   * @return security-levels runtime port for detached page state and mutations
+   */
+  SecurityLevelsPort securityLevels();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.
