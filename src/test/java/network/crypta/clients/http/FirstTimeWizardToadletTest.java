@@ -13,10 +13,9 @@ import network.crypta.clients.http.wizardsteps.SecurityNetwork;
 import network.crypta.clients.http.wizardsteps.SecurityPhysical;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.config.PersistentConfig;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,10 +45,6 @@ class FirstTimeWizardToadletTest {
 
   @Mock private HighLevelSimpleClient client;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private NodeClientCore core;
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
   @Mock private ToadletContext ctx;
 
@@ -58,8 +53,8 @@ class FirstTimeWizardToadletTest {
   @BeforeEach
   void setUp() throws Exception {
     config = new PersistentConfig(null);
-    when(core.getNode()).thenReturn(node);
     when(ctx.checkFullAccess(any())).thenReturn(true);
+    when(firstTimeWizardPort.isOpennetEnabled()).thenReturn(false);
   }
 
   @Test
@@ -77,7 +72,6 @@ class FirstTimeWizardToadletTest {
             new FirstTimeWizardToadlet(
                 client,
                 config,
-                core,
                 new FirstTimeWizardToadletRuntimePorts(
                     firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
@@ -109,7 +103,6 @@ class FirstTimeWizardToadletTest {
             new FirstTimeWizardToadlet(
                 client,
                 config,
-                core,
                 new FirstTimeWizardToadletRuntimePorts(
                     firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
@@ -134,13 +127,41 @@ class FirstTimeWizardToadletTest {
   }
 
   @Test
+  void handleMethodGET_nameSelectionWhenOpennetEnabled_redirectsToDatastoreSize() throws Exception {
+    when(firstTimeWizardPort.isOpennetEnabled()).thenReturn(true);
+    FirstTimeWizardToadlet toadlet =
+        spy(
+            new FirstTimeWizardToadlet(
+                client,
+                config,
+                new FirstTimeWizardToadletRuntimePorts(
+                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+    HTTPRequest request = mock(HTTPRequest.class);
+    when(request.hasParameters()).thenReturn(true);
+    when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
+        .thenReturn("NAME_SELECTION");
+    when(request.getParam("opennet", "false")).thenReturn("false");
+    when(request.getParam("singlestep", "false")).thenReturn("false");
+    when(request.getParam("preset")).thenReturn("");
+
+    ArgumentCaptor<String> locationCaptor = ArgumentCaptor.forClass(String.class);
+    doNothing()
+        .when(toadlet)
+        .writeTemporaryRedirect(eq(ctx), anyString(), locationCaptor.capture());
+
+    toadlet.handleMethodGET(new URI(FirstTimeWizardToadlet.TOADLET_URL), request, ctx);
+
+    verify(toadlet).writeTemporaryRedirect(eq(ctx), eq("Skip name selection"), anyString());
+    assertEquals("/wizard/?step=DATASTORE_SIZE&opennet=false", locationCaptor.getValue());
+  }
+
+  @Test
   void handleMethodPOST_presetLow_setsThreatLevelsAndRedirects() throws Exception {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
                 client,
                 config,
-                core,
                 new FirstTimeWizardToadletRuntimePorts(
                     firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);
@@ -172,8 +193,8 @@ class FirstTimeWizardToadletTest {
     toadlet.handleMethodPOST(new URI(FirstTimeWizardToadlet.TOADLET_URL), request, ctx);
 
     verify(misc).setAutoUpdate(true);
-    verify(securityNetwork).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
-    verify(securityPhysical).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    verify(securityNetwork).setThreatLevel(SecurityNetworkThreatLevel.LOW);
+    verify(securityPhysical).setThreatLevel(SecurityPhysicalThreatLevel.NORMAL);
     assertEquals(
         "/wizard/?step=BROWSER_WARNING&incognito=0&preset=LOW&opennet=true",
         locationCaptor.getValue());
@@ -186,7 +207,6 @@ class FirstTimeWizardToadletTest {
             new FirstTimeWizardToadlet(
                 client,
                 config,
-                core,
                 new FirstTimeWizardToadletRuntimePorts(
                     firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
     HTTPRequest request = mock(HTTPRequest.class);

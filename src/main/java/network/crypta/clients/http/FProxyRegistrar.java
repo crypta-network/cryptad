@@ -392,7 +392,6 @@ final class FProxyRegistrar {
         new FirstTimeWizardToadlet(
             client,
             config,
-            core,
             new FirstTimeWizardToadletRuntimePorts(
                 runtimePorts.firstTimeWizard(),
                 () -> DatastoreSize.maxDatastoreSize(node),

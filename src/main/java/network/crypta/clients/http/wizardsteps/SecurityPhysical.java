@@ -6,11 +6,10 @@ import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.clients.http.SecurityLevelsToadlet;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.MasterKeysFileSizeException;
-import network.crypta.node.MasterKeysWrongPasswordException;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.MasterPasswordMutationStatus;
+import network.crypta.runtime.spi.SecurityLevelsSnapshot;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil.OperatingSystem;
@@ -23,11 +22,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This step renders the “physical security” page in the first-time setup wizard and processes
  * the corresponding form submission. The UI presents the available {@link
- * network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL physical threat levels}, and for the
- * “high” level it additionally collects and validates a master password. On POST, it may prompt
- * again for a password (for example, when upgrading to high with an empty password, when the
- * confirmation does not match, or when downgrading from high requires decrypting existing master
- * keys).
+ * SecurityPhysicalThreatLevel physical threat levels}, and for the “high” level it additionally
+ * collects and validates a master password. On POST, it may prompt again for a password (for
+ * example, when upgrading to high with an empty password, when the confirmation does not match, or
+ * when downgrading from high requires decrypting existing master keys).
  *
  * <p>Notable behaviors:
  *
@@ -55,7 +53,7 @@ public class SecurityPhysical implements Step {
   private static final String INPUT_TYPE_SUBMIT = "submit";
   private static final String PASSWORD_FOR_DECRYPT_TITLE_KEY = "passwordForDecryptTitle";
 
-  private final NodeClientCore core;
+  private final FirstTimeWizardPort wizardPort;
 
   private enum PASSWORD_PROMPT {
     SET_BLANK, // Requested new password was blank
@@ -65,17 +63,17 @@ public class SecurityPhysical implements Step {
   }
 
   /**
-   * Creates a new wizard step handler backed by the provided node client core.
+   * Creates a new wizard step handler backed by the detached first-time-wizard runtime port.
    *
-   * <p>The step reads and mutates security-related node state via {@link NodeClientCore} and the
-   * associated {@link Node}. The instance retains the reference for the lifetime of a single HTTP
-   * request/response cycle; callers typically construct a new step instance per request.
+   * <p>The step reads and mutates security-related runtime state via {@link FirstTimeWizardPort}.
+   * The instance retains the reference for the lifetime of a single HTTP request/response cycle;
+   * callers typically construct a new step instance per request.
    *
-   * @param core core services used to read/write security levels and password state; must be
-   *     non-null and already initialized.
+   * @param wizardPort runtime services used to read/write security levels and password state; must
+   *     be non-null and already initialized.
    */
-  public SecurityPhysical(NodeClientCore core) {
-    this.core = core;
+  public SecurityPhysical(FirstTimeWizardPort wizardPort) {
+    this.wizardPort = wizardPort;
   }
 
   /**
@@ -84,11 +82,11 @@ public class SecurityPhysical implements Step {
    * <p>If the request carries {@code error=} parameters, this method attempts to render a dedicated
    * error or password prompt page via {@link #errorHandler(HTTPRequest, PageHelper)}. Otherwise, it
    * renders the standard selection form, including the swap-file warning text and the available
-   * {@link SecurityLevels.PHYSICAL_THREAT_LEVEL} radio options.
+   * {@link SecurityPhysicalThreatLevel} radio options.
    *
-   * <p>When the user selects the {@link SecurityLevels.PHYSICAL_THREAT_LEVEL#HIGH} option and the
-   * node is not yet at high physical security, the form includes password and confirmation inputs
-   * for setting the master password.
+   * <p>When the user selects the {@link SecurityPhysicalThreatLevel#HIGH} option and the node is
+   * not yet at high physical security, the form includes password and confirmation inputs for
+   * setting the master password.
    *
    * @param request HTTP request providing query parameters that influence rendering (for example
    *     {@code error}, {@code type}, and the requested threat level).
@@ -101,6 +99,7 @@ public class SecurityPhysical implements Step {
       // Error page generated successfully.
       return;
     }
+    SecurityLevelsSnapshot snapshot = wizardPort.securitySnapshot();
 
     HTMLNode contentNode = helper.getPageContent(WizardL10n.l10n("physicalSecurityPageTitle"));
     HTMLNode infoboxContent =
@@ -136,8 +135,7 @@ public class SecurityPhysical implements Step {
     if (os == FileUtil.OperatingSystem.WINDOWS) {
       swapWarning.addChild("#", " " + WizardL10n.l10nSec("physicalThreatLevelSwapfileWindows"));
     }
-    for (SecurityLevels.PHYSICAL_THREAT_LEVEL level :
-        SecurityLevels.PHYSICAL_THREAT_LEVEL.values()) {
+    for (SecurityPhysicalThreatLevel level : SecurityPhysicalThreatLevel.values()) {
       HTMLNode input;
       input =
           div.addChild("p")
@@ -155,8 +153,7 @@ public class SecurityPhysical implements Step {
               "SecurityLevels.physicalThreatLevel.choice." + level,
               new String[] {"bold"},
               new HTMLNode[] {HTMLNode.STRONG});
-      if (level == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH
-          && core.getNode().services().securityLevels().getPhysicalThreatLevel() != level) {
+      if (level == SecurityPhysicalThreatLevel.HIGH && snapshot.physicalThreatLevel() != level) {
         // Add a password form on high security if not already at high security.
         HTMLNode p = div.addChild("p");
         p.addChild(TAG_LABEL, "for", "passwordBox", WizardL10n.l10nSec("setPasswordLabel") + ":");
@@ -196,8 +193,8 @@ public class SecurityPhysical implements Step {
    */
   private boolean errorHandler(HTTPRequest request, PageHelper helper) {
     String physicalThreatLevel = request.getParam("newThreatLevel");
-    SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel =
-        SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
+    SecurityPhysicalThreatLevel newThreatLevel =
+        SecurityPhysicalThreatLevel.parse(physicalThreatLevel);
     String error = request.getParam("error");
     if (newThreatLevel == null && ("pass".equals(error) || "delete".equals(error))) {
       // Render the default page if the threat level is missing/invalid.
@@ -271,12 +268,12 @@ public class SecurityPhysical implements Step {
       case "corrupt" -> {
         // Password file corrupts
         SecurityLevelsToadlet.sendPasswordFileCorruptedPageInner(
-            helper, core.getNode().storage().getMasterKeysFile().getPath());
+            helper, wizardPort.securitySnapshot().masterPasswordFilePath());
         return true;
       }
       case "delete" -> {
         SecurityLevelsToadlet.sendCantDeleteMasterKeysFileInner(
-            helper, core.getNode().storage().getMasterKeysFile().getPath(), newThreatLevel.name());
+            helper, wizardPort.securitySnapshot().masterPasswordFilePath(), newThreatLevel.name());
         return true;
       }
       default -> {
@@ -290,22 +287,22 @@ public class SecurityPhysical implements Step {
    * Returns the currently configured physical threat level for the node.
    *
    * <p>This is a convenience accessor used by wizard templates and other steps that need to reflect
-   * the current state. The returned value is read from {@link SecurityLevels} at call time and
-   * therefore reflects any changes applied earlier in the request.
+   * the current state. The returned value is read from the detached runtime snapshot at call time
+   * and therefore reflects any changes applied earlier in the request.
    *
-   * @return the node's current {@link SecurityLevels.PHYSICAL_THREAT_LEVEL}, never {@code null} in
+   * @return the node's current detached {@link SecurityPhysicalThreatLevel}, never {@code null} in
    *     a correctly initialized node.
    */
-  public SecurityLevels.PHYSICAL_THREAT_LEVEL getCurrentLevel() {
-    return core.getNode().services().securityLevels().getPhysicalThreatLevel();
+  public SecurityPhysicalThreatLevel getCurrentLevel() {
+    return wizardPort.securitySnapshot().physicalThreatLevel();
   }
 
   /**
    * Handles a physical security wizard form submission (HTTP POST).
    *
-   * <p>This method interprets the selected {@link SecurityLevels.PHYSICAL_THREAT_LEVEL} and, when
-   * necessary, validates or prompts for the master password. Depending on the transition requested
-   * by the user, it may:
+   * <p>This method interprets the selected {@link SecurityPhysicalThreatLevel} and, when necessary,
+   * validates or prompts for the master password. Depending on the transition requested by the
+   * user, it may:
    *
    * <ul>
    *   <li>prompt for a non-blank password or a matching confirmation when upgrading to high,
@@ -337,10 +334,10 @@ public class SecurityPhysical implements Step {
     final boolean passwordsDoNotMatch = !pass.equals(confirmPass);
 
     String physicalThreatLevel = request.getPartAsStringFailsafe(PARAM_PHYSICAL_THREAT_LEVEL, 128);
-    SecurityLevels.PHYSICAL_THREAT_LEVEL oldThreatLevel =
-        core.getNode().services().securityLevels().getPhysicalThreatLevel();
-    SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel =
-        SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
+    SecurityPhysicalThreatLevel oldThreatLevel =
+        wizardPort.securitySnapshot().physicalThreatLevel();
+    SecurityPhysicalThreatLevel newThreatLevel =
+        SecurityPhysicalThreatLevel.parse(physicalThreatLevel);
     if (FirstTimeWizardToadlet.shouldLogMinor()) {
       LOG.debug("Old threat level: {} new threat level: {}", oldThreatLevel, newThreatLevel);
     }
@@ -381,22 +378,21 @@ public class SecurityPhysical implements Step {
   }
 
   private static boolean shouldReturnToPhysicalSecurity(
-      HTTPRequest request, SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel) {
+      HTTPRequest request, SecurityPhysicalThreatLevel newThreatLevel) {
     return newThreatLevel == null
         || !request.isPartSet(PARAM_PHYSICAL_THREAT_LEVEL)
         || request.isPartSet("backToMain");
   }
 
   private String handleUpgradeToHigh(
-      SecurityLevels.PHYSICAL_THREAT_LEVEL oldThreatLevel,
-      SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel,
+      SecurityPhysicalThreatLevel oldThreatLevel,
+      SecurityPhysicalThreatLevel newThreatLevel,
       boolean passwordIsBlank,
       boolean passwordsDoNotMatch,
       String pass,
       String errorCorrupt)
       throws IOException {
-    if (newThreatLevel != SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH
-        || oldThreatLevel == newThreatLevel) {
+    if (newThreatLevel != SecurityPhysicalThreatLevel.HIGH || oldThreatLevel == newThreatLevel) {
       return null;
     }
     if (passwordIsBlank) {
@@ -407,72 +403,77 @@ public class SecurityPhysical implements Step {
       // Must Confirm the password before setting it
       return promptPassword(newThreatLevel, PASSWORD_PROMPT.SET_NO_MATCH);
     }
-    try {
-      if (oldThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL
-          || oldThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.LOW) {
-        core.getNode().storage().changeMasterPassword("", pass, true);
-      } else {
-        core.getNode().storage().setMasterPassword(pass, true);
-      }
-    } catch (Node.AlreadySetPasswordException _) {
-      // Do nothing, already set a password.
-    } catch (MasterKeysWrongPasswordException e) {
-      throw new IOException("Incorrect password when changing from another level to high", e);
-    } catch (MasterKeysFileSizeException _) {
-      return errorCorrupt;
+    MasterPasswordMutationStatus status;
+    if (oldThreatLevel == SecurityPhysicalThreatLevel.NORMAL
+        || oldThreatLevel == SecurityPhysicalThreatLevel.LOW) {
+      status = wizardPort.changeMasterPassword("", pass);
+    } else {
+      status = wizardPort.setMasterPassword(pass);
     }
-    return null;
+    switch (status) {
+      case SUCCESS, ALREADY_SET -> {
+        return null;
+      }
+      case WRONG_PASSWORD ->
+          throw new IOException("Incorrect password when changing from another level to high");
+      case CORRUPTED_FILE -> {
+        return errorCorrupt;
+      }
+    }
+    throw new IllegalStateException("Unhandled master password mutation status: " + status);
   }
 
   private String handleDowngradeFromHigh(
-      SecurityLevels.PHYSICAL_THREAT_LEVEL oldThreatLevel,
-      SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel,
+      SecurityPhysicalThreatLevel oldThreatLevel,
+      SecurityPhysicalThreatLevel newThreatLevel,
       boolean passwordIsBlank,
       String pass,
       String errorCorrupt)
       throws IOException {
     boolean isLowOrNormal =
-        newThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.LOW
-            || newThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL;
-    if (!isLowOrNormal || oldThreatLevel != SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH) {
+        newThreatLevel == SecurityPhysicalThreatLevel.LOW
+            || newThreatLevel == SecurityPhysicalThreatLevel.NORMAL;
+    if (!isLowOrNormal || oldThreatLevel != SecurityPhysicalThreatLevel.HIGH) {
       return null;
     }
     if (passwordIsBlank) {
       // Prompt for the old password, which is needed to decrypt
       return promptPassword(newThreatLevel, PASSWORD_PROMPT.DECRYPT_BLANK);
     }
-    if (!core.getNode().storage().getMasterKeysFile().exists()) {
+    if (!wizardPort.securitySnapshot().masterPasswordFileExists()) {
       return null;
     }
     try {
-      core.getNode().storage().changeMasterPassword(pass, "", true);
+      MasterPasswordMutationStatus status = wizardPort.changeMasterPassword(pass, "");
+      return switch (status) {
+        case SUCCESS -> null;
+        case WRONG_PASSWORD -> promptPassword(newThreatLevel, PASSWORD_PROMPT.DECRYPT_WRONG);
+        case CORRUPTED_FILE -> errorCorrupt;
+        case ALREADY_SET -> {
+          LOG.warn(
+              "Already set a password when changing it - maybe master.keys copied in at the wrong"
+                  + " moment???");
+          yield null;
+        }
+      };
     } catch (IOException e) {
-      if (!core.getNode().storage().getMasterKeysFile().exists()) {
+      if (!wizardPort.securitySnapshot().masterPasswordFileExists()) {
         // Ok.
         LOG.info("Master password file no longer exists, assuming this is deliberate");
       } else {
         LOG.error("Cannot change password as cannot write new passwords file", e);
         throw new IOException("cantWriteNewMasterKeysFile", e);
       }
-    } catch (MasterKeysWrongPasswordException _) {
-      return promptPassword(newThreatLevel, PASSWORD_PROMPT.DECRYPT_WRONG);
-    } catch (MasterKeysFileSizeException _) {
-      return errorCorrupt;
-    } catch (Node.AlreadySetPasswordException e) {
-      LOG.warn(
-          "Already set a password when changing it - maybe master.keys copied in at the wrong"
-              + " moment???",
-          e);
     }
     return null;
   }
 
-  private String handleMaximumThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel) {
-    if (newThreatLevel != SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM) {
+  private String handleMaximumThreatLevel(SecurityPhysicalThreatLevel newThreatLevel) {
+    if (newThreatLevel != SecurityPhysicalThreatLevel.MAXIMUM) {
       return null;
     }
     try {
-      core.getNode().storage().killMasterKeysFile();
+      wizardPort.deleteMasterPasswordFile();
     } catch (IOException _) {
       return FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
           + "&error=delete&newThreatLevel="
@@ -488,8 +489,7 @@ public class SecurityPhysical implements Step {
    * @param type what type of prompt needed
    * @return URL to display the requested page
    */
-  private String promptPassword(
-      SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel, PASSWORD_PROMPT type) {
+  private String promptPassword(SecurityPhysicalThreatLevel newThreatLevel, PASSWORD_PROMPT type) {
     if (type == PASSWORD_PROMPT.DECRYPT_WRONG) {
       LOG.warn("Master password verification failed; prompting for password again");
     }
@@ -503,19 +503,17 @@ public class SecurityPhysical implements Step {
   /**
    * Applies the selected physical threat level and persists the change.
    *
-   * <p>This method updates {@link SecurityLevels} in-memory, stores the configuration to disk via
-   * {@link NodeClientCore#storeConfig()}, and triggers late database setup on the node. Callers are
-   * expected to have already validated that {@code newThreatLevel} is a supported choice and, when
-   * moving to or from {@link SecurityLevels.PHYSICAL_THREAT_LEVEL#HIGH}, to have handled any master
-   * password requirements.
+   * <p>This method applies the detached physical threat level through {@link FirstTimeWizardPort},
+   * which preserves the legacy wizard behavior of persisting the config and triggering late
+   * database setup. Callers are expected to have already validated that {@code newThreatLevel} is a
+   * supported choice and, when moving to or from {@link SecurityPhysicalThreatLevel#HIGH}, to have
+   * handled any master password requirements.
    *
    * @param newThreatLevel the threat level to set on the node; must be non-null and represent a
-   *     valid {@link SecurityLevels.PHYSICAL_THREAT_LEVEL} constant.
+   *     valid {@link SecurityPhysicalThreatLevel} constant.
    */
-  public void setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel) {
-    core.getNode().services().securityLevels().setThreatLevel(newThreatLevel);
-    core.storeConfig();
-    core.getNode().storage().lateSetupDatabase(null);
+  public void setThreatLevel(SecurityPhysicalThreatLevel newThreatLevel) {
+    wizardPort.setPhysicalThreatLevel(newThreatLevel);
   }
 
   private void addBackToPhysicalSeclevelsButton(HTMLNode form) {

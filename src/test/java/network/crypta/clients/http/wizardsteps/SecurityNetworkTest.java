@@ -12,10 +12,8 @@ import java.util.stream.Collectors;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
@@ -34,8 +32,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,29 +68,19 @@ class SecurityNetworkTest {
       "SecurityLevels.networkThreatLevel.opennetFriendsWarning";
 
   @Test
-  void setThreatLevel_whenCalled_updatesSecurityLevelsAndStoresConfig() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    SecurityLevels securityLevels = mock(SecurityLevels.class);
-    when(core.getNode()).thenReturn(node);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.securityLevels()).thenReturn(securityLevels);
+  void setThreatLevel_whenCalled_updatesWizardPort() {
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
 
-    SecurityNetwork step = new SecurityNetwork(core);
+    step.setThreatLevel(SecurityNetworkThreatLevel.NORMAL);
 
-    step.setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
-
-    verify(core, times(1)).getNode();
-    verify(node, times(1)).services();
-    verify(securityLevels, times(1)).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
-    verify(core, times(1)).storeConfig();
+    verify(wizardPort).setNetworkThreatLevel(SecurityNetworkThreatLevel.NORMAL);
   }
 
   @Test
   void postStep_whenThreatLevelPartMissing_expectRedirectToSecurityNetwork() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("LOW");
@@ -103,13 +89,13 @@ class SecurityNetworkTest {
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name(), redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenThreatLevelIsInvalid_expectRedirectToSecurityNetwork() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("not-a-level");
@@ -117,53 +103,51 @@ class SecurityNetworkTest {
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name(), redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenReturnFromConfirmWithoutPreset_expectRedisplaySecurityNetwork() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("HIGH");
     when(request.isPartSet(anyString())).thenReturn(false);
     when(request.isPartSet(PART_NETWORK_THREAT_LEVEL)).thenReturn(true);
     when(request.isPartSet(PART_RETURN_FROM_CONFIRM)).thenReturn(true);
-
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe(PART_PRESET, 4)).thenReturn("");
 
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name(), redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenReturnFromConfirmWithPreset_expectRedirectToPreviousStep() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("HIGH");
     when(request.isPartSet(anyString())).thenReturn(false);
     when(request.isPartSet(PART_NETWORK_THREAT_LEVEL)).thenReturn(true);
     when(request.isPartSet(PART_RETURN_FROM_CONFIRM)).thenReturn(true);
-
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe(PART_PRESET, 4)).thenReturn("HIGH");
 
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.name(), redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenHighWithoutConfirm_expectRedirectToConfirmationPage() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("HIGH");
@@ -178,13 +162,13 @@ class SecurityNetworkTest {
         FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name()
             + "&confirm=true&security-levels.networkThreatLevel=HIGH",
         redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenHighTryConfirmWithoutConfirm_expectRedirectToConfirmationPage() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("HIGH");
@@ -200,20 +184,13 @@ class SecurityNetworkTest {
         FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name()
             + "&confirm=true&security-levels.networkThreatLevel=HIGH",
         redirect);
-    verify(step, never()).setThreatLevel(any(SecurityLevels.NETWORK_THREAT_LEVEL.class));
+    verify(wizardPort, never()).setNetworkThreatLevel(any(SecurityNetworkThreatLevel.class));
   }
 
   @Test
   void postStep_whenHighConfirmed_expectSetThreatLevelAndRedirectPhysical() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    SecurityLevels securityLevels = mock(SecurityLevels.class);
-    when(core.getNode()).thenReturn(node);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.securityLevels()).thenReturn(securityLevels);
-
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
 
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn("HIGH");
@@ -226,26 +203,19 @@ class SecurityNetworkTest {
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL.name(), redirect);
-    verify(securityLevels, times(1)).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.HIGH);
-    verify(core, times(1)).storeConfig();
+    verify(wizardPort).setNetworkThreatLevel(SecurityNetworkThreatLevel.HIGH);
   }
 
   @ParameterizedTest
   @EnumSource(
-      value = SecurityLevels.NETWORK_THREAT_LEVEL.class,
+      value = SecurityNetworkThreatLevel.class,
       names = {"LOW", "NORMAL"})
   void postStep_whenThreatLevelDoesNotRequireConfirmation_expectSetThreatLevelAndRedirectPhysical(
-      SecurityLevels.NETWORK_THREAT_LEVEL level) {
-    NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    SecurityLevels securityLevels = mock(SecurityLevels.class);
-    when(core.getNode()).thenReturn(node);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.securityLevels()).thenReturn(securityLevels);
-
-    SecurityNetwork step = spy(new SecurityNetwork(core));
+      SecurityNetworkThreatLevel level) {
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
     HTTPRequest request = mock(HTTPRequest.class);
+
     when(request.getPartAsStringFailsafe(PART_NETWORK_THREAT_LEVEL, 128)).thenReturn(level.name());
     when(request.isPartSet(anyString())).thenReturn(false);
     when(request.isPartSet(PART_NETWORK_THREAT_LEVEL)).thenReturn(true);
@@ -255,14 +225,13 @@ class SecurityNetworkTest {
     String redirect = step.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL.name(), redirect);
-    verify(securityLevels, times(1)).setThreatLevel(level);
-    verify(core, times(1)).storeConfig();
+    verify(wizardPort).setNetworkThreatLevel(level);
   }
 
   @Test
   void getStep_whenOpennetTrue_buildsRadioOptionsForOpennetThreatLevels() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = new SecurityNetwork(core);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -315,8 +284,7 @@ class SecurityNetworkTest {
                     && "radio".equals(node.getAttribute(ATTR_TYPE))
                     && PART_NETWORK_THREAT_LEVEL.equals(node.getAttribute(ATTR_NAME)));
 
-    SecurityLevels.NETWORK_THREAT_LEVEL[] expectedLevels =
-        SecurityLevels.NETWORK_THREAT_LEVEL.getOpennetValues();
+    SecurityNetworkThreatLevel[] expectedLevels = SecurityNetworkThreatLevel.opennetValues();
     assertEquals(expectedLevels.length, radios.size());
     assertTrue(
         radios.stream()
@@ -337,8 +305,8 @@ class SecurityNetworkTest {
 
   @Test
   void getStep_whenOpennetFalse_buildsRadioOptionsForDarknetThreatLevelsAndWarning() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = new SecurityNetwork(core);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -391,8 +359,7 @@ class SecurityNetworkTest {
                     && "radio".equals(node.getAttribute(ATTR_TYPE))
                     && PART_NETWORK_THREAT_LEVEL.equals(node.getAttribute(ATTR_NAME)));
 
-    SecurityLevels.NETWORK_THREAT_LEVEL[] expectedLevels =
-        SecurityLevels.NETWORK_THREAT_LEVEL.getDarknetValues();
+    SecurityNetworkThreatLevel[] expectedLevels = SecurityNetworkThreatLevel.darknetValues();
     assertEquals(expectedLevels.length, radios.size());
     assertTrue(
         radios.stream()
@@ -408,8 +375,8 @@ class SecurityNetworkTest {
 
   @Test
   void getStep_whenConfirmHigh_buildsConfirmationFormWithExpectedInputs() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = new SecurityNetwork(core);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -482,8 +449,8 @@ class SecurityNetworkTest {
 
   @Test
   void getStep_whenCalled_usesExpectedPageHelperWiring() {
-    NodeClientCore core = mock(NodeClientCore.class);
-    SecurityNetwork step = new SecurityNetwork(core);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    SecurityNetwork step = new SecurityNetwork(wizardPort);
 
     HTTPRequest request = mock(HTTPRequest.class);
     PageHelper helper = mock(PageHelper.class);
@@ -548,17 +515,17 @@ class SecurityNetworkTest {
     return false;
   }
 
-  private static Set<String> enumNames(SecurityLevels.NETWORK_THREAT_LEVEL[] values) {
+  private static Set<String> enumNames(SecurityNetworkThreatLevel[] values) {
     Set<String> names = new HashSet<>();
-    for (SecurityLevels.NETWORK_THREAT_LEVEL value : values) {
+    for (SecurityNetworkThreatLevel value : values) {
       names.add(value.name());
     }
     return names;
   }
 
-  private static Set<String> enumIds(SecurityLevels.NETWORK_THREAT_LEVEL[] values) {
+  private static Set<String> enumIds(SecurityNetworkThreatLevel[] values) {
     Set<String> ids = new HashSet<>();
-    for (SecurityLevels.NETWORK_THREAT_LEVEL value : values) {
+    for (SecurityNetworkThreatLevel value : values) {
       ids.add(PART_NETWORK_THREAT_LEVEL + value.name());
     }
     return ids;
