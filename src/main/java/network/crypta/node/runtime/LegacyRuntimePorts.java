@@ -12,6 +12,7 @@ import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.ExecutionPort;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
@@ -52,6 +53,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DiagnosticPort diagnosticPort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
+  private final FirstTimeWizardPort firstTimeWizardPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -148,6 +150,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
+    this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -297,6 +300,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public SecurityLevelsPort securityLevels() {
     return securityLevelsPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the legacy JavaScript first-time wizard defaults, validation bounds,
+   * and submission-side daemon writes inside the root module while exposing only detached SPI-local
+   * values upstream.
+   */
+  @Override
+  public FirstTimeWizardPort firstTimeWizard() {
+    return firstTimeWizardPort;
   }
 
   /**
