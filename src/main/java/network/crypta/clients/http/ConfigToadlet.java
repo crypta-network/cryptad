@@ -12,8 +12,6 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.config.WrapperConfig;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
@@ -30,9 +28,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This toadlet renders and processes the node configuration UI that lives under the {@code
  * /config/<subconfig>} path. It translates {@link Option} metadata into HTML controls, handles form
- * submissions, persists updates to {@link Config}, and surfaces restart requirements through both
- * inline notices and {@link UserAlert} instances. The handler also wires the optional directory
- * chooser loop so users can browse for filesystem paths without manually editing text fields.
+ * submissions, persists updates through runtime config services, and surfaces restart requirements
+ * through both inline notices and {@link UserAlert} instances. The handler also wires the optional
+ * directory chooser loop so users can browse for filesystem paths without manually editing text
+ * fields.
  *
  * <p>Typical call flow is a GET request to display grouped options followed by a POST that either
  * applies changes, redirects to the directory selector, or confirms a reset to defaults. The class
@@ -82,8 +81,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   private String directoryBrowserPath;
   private final SubConfig subConfig;
   private final Config config;
-  private final NodeClientCore core;
-  private final Node node;
+  private final ConfigToadletRuntimePorts runtimePorts;
 
   private boolean needRestart = false;
   private NeedRestartUserAlert needRestartUserAlert;
@@ -116,7 +114,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       HTMLNode alertNode = new HTMLNode("div");
       alertNode.addChild("#", l10n("needRestart"));
 
-      if (node.isUsingWrapper()) {
+      if (isUsingWrapper()) {
         alertNode.addChild("br");
         HTMLNode restartForm =
             alertNode
@@ -192,19 +190,18 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    * @param directoryBrowserPath path segment for directory browsing, with or without slashes; never
    *     {@code null} after normalization.
    * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
-   * @param conf configuration root that persists option values once form submission succeeds.
+   * @param conf configuration root used to traverse and update legacy option metadata.
    * @param subConfig logical configuration group that provides the options to render and update.
-   * @param node running node instance required for restart checks and wrapper awareness.
-   * @param core node client core used to locate directories such as the default downloads path.
+   * @param runtimePorts detached runtime services used for persistence, wrapper-state checks, and
+   *     directory-browser defaults.
    */
-  public ConfigToadlet(
+  ConfigToadlet(
       String directoryBrowserPath,
       HighLevelSimpleClient client,
       Config conf,
       SubConfig subConfig,
-      Node node,
-      NodeClientCore core) {
-    this(client, conf, subConfig, node, core);
+      ConfigToadletRuntimePorts runtimePorts) {
+    this(client, conf, subConfig, runtimePorts);
     this.directoryBrowserPath = normalizeDirectoryBrowserPath(directoryBrowserPath);
   }
 
@@ -216,21 +213,19 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    * supplies a real location via the alternate constructor.
    *
    * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
-   * @param conf configuration root that persists option values once form submission succeeds.
+   * @param conf configuration root used to traverse and update legacy option metadata.
    * @param subConfig logical configuration group that provides the options to render and update.
-   * @param node running node instance required for restart checks and wrapper awareness.
-   * @param core node client core used to locate directories such as the default downloads path.
+   * @param runtimePorts detached runtime services used for persistence, wrapper-state checks, and
+   *     directory-browser defaults.
    */
-  public ConfigToadlet(
+  ConfigToadlet(
       HighLevelSimpleClient client,
       Config conf,
       SubConfig subConfig,
-      Node node,
-      NodeClientCore core) {
+      ConfigToadletRuntimePorts runtimePorts) {
     super(client);
     config = conf;
-    this.core = core;
-    this.node = node;
+    this.runtimePorts = runtimePorts;
     this.subConfig = subConfig;
     this.directoryBrowserPath = normalizeDirectoryBrowserPath(null);
   }
@@ -370,7 +365,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
             directoryBrowserPath
                 + paramsBuilder
                 + "path="
-                + core.getDownloadsDir().getAbsolutePath());
+                + runtimePorts.transferAccessPort().downloadsDir().getAbsolutePath());
     ctx.sendReplyHeaders(302, "Found", headers, null, 0);
     return true;
   }
@@ -391,7 +386,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     applyOptionChanges(request, errbuf, prefix, resetToDefault);
     applyWrapperConfig(request);
 
-    config.store();
+    runtimePorts.configPort().persist();
     writeApplyResult(ctx, errbuf);
   }
 
@@ -528,7 +523,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     content.addChild("br");
     content.addChild("#", l10n("needRestart"));
 
-    if (node.isUsingWrapper()) {
+    if (isUsingWrapper()) {
       content.addChild("br");
       HTMLNode restartForm = ctx.addFormChild(content, "/", "restartForm");
       restartForm.addChild(
@@ -547,6 +542,10 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
 
   private static String l10n(String string) {
     return NodeL10n.getBase().getString("ConfigToadlet." + string);
+  }
+
+  private boolean isUsingWrapper() {
+    return runtimePorts.lifecyclePort().isUsingWrapper();
   }
 
   /**
