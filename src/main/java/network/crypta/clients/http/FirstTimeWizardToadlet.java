@@ -26,8 +26,9 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
@@ -43,8 +44,9 @@ import org.slf4j.LoggerFactory;
  * <p>The toadlet coordinates several step handlers, each responsible for rendering and validating a
  * portion of the workflow. Requests are stateless; the wizard rebuilds its flow from submitted form
  * parameters and redirects between steps instead of maintaining a server-side session state. The
- * remaining live daemon writes flow through the injected {@link NodeClientCore}, while the
- * bandwidth/datastore slice reads detached runtime state through the wizard runtime SPI.
+ * remaining live daemon reads and writes flow through the injected {@link FirstTimeWizardPort},
+ * while a small HTTP-local runtime bundle still carries the legacy datastore and bandwidth
+ * collaborators that have not been folded into the shared wizard snapshot.
  *
  * <p>Concurrency: requests for the same user are serialized by the HTTP layer, but the class does
  * not assume single-threaded execution. All I/O and state changes are delegated to the injected
@@ -55,7 +57,7 @@ import org.slf4j.LoggerFactory;
  */
 public class FirstTimeWizardToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardToadlet.class);
-  private final NodeClientCore core;
+  private final FirstTimeWizardPort wizardPort;
   private final EnumMap<WIZARD_STEP, Step> steps;
   private final Misc stepMISC;
   private final SecurityNetwork stepSecurityNetwork;
@@ -153,12 +155,11 @@ public class FirstTimeWizardToadlet extends Toadlet {
   FirstTimeWizardToadlet(
       HighLevelSimpleClient client,
       Config config,
-      NodeClientCore core,
       FirstTimeWizardToadletRuntimePorts runtimePorts) {
     // Generic Toadlet-related initialization.
     super(client);
-    this.core = core;
     FirstTimeWizardToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
+    wizardPort = ports.firstTimeWizardPort();
 
     addWizardConfiguration(config);
 
@@ -184,10 +185,10 @@ public class FirstTimeWizardToadlet extends Toadlet {
     stepMISC = new Misc(config);
     steps.put(WIZARD_STEP.MISC, stepMISC);
 
-    stepSecurityNetwork = new SecurityNetwork(core);
+    stepSecurityNetwork = new SecurityNetwork(wizardPort);
     steps.put(WIZARD_STEP.SECURITY_NETWORK, stepSecurityNetwork);
 
-    stepSecurityPhysical = new SecurityPhysical(core);
+    stepSecurityPhysical = new SecurityPhysical(wizardPort);
     steps.put(WIZARD_STEP.SECURITY_PHYSICAL, stepSecurityPhysical);
   }
 
@@ -285,8 +286,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
       super.writeTemporaryRedirect(
           ctx, "Need opennet choice", persistFields.appendTo(TOADLET_URL + "?step=OPENNET"));
       return;
-    } else if (currentStep == WIZARD_STEP.NAME_SELECTION
-        && core.getNode().network().isOpennetEnabled()) {
+    } else if (currentStep == WIZARD_STEP.NAME_SELECTION && wizardPort.isOpennetEnabled()) {
       // Skip node name selection if not in darknet mode.
       super.writeTemporaryRedirect(
           ctx,
@@ -387,8 +387,8 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
     if (presetLow) {
       stepMISC.setAutoUpdate(enableAutoUpdater);
-      stepSecurityNetwork.setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
-      stepSecurityPhysical.setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+      stepSecurityNetwork.setThreatLevel(SecurityNetworkThreatLevel.LOW);
+      stepSecurityPhysical.setThreatLevel(SecurityPhysicalThreatLevel.NORMAL);
       redirectTo.append("&preset=LOW&opennet=true");
     } else if (presetHigh) {
       stepMISC.setAutoUpdate(enableAutoUpdater);

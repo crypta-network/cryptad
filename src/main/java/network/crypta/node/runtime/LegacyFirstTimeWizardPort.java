@@ -1,5 +1,6 @@
 package network.crypta.node.runtime;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Objects;
@@ -20,6 +21,10 @@ import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardSubmission;
+import network.crypta.runtime.spi.MasterPasswordMutationStatus;
+import network.crypta.runtime.spi.SecurityLevelsSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalValueException;
 import network.crypta.support.io.DatastoreUtil;
@@ -31,10 +36,10 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 /**
  * Implements the page-oriented first-time-wizard SPI on top of the legacy daemon runtime.
  *
- * <p>This adapter stays in the root module because the JavaScript wizard still depends on several
- * daemon-only behaviors that should not leak across the runtime SPI boundary. It reads the current
- * security state, datastore sizing defaults, storage caps, and bandwidth hints directly from the
- * live node, then exposes those values as detached records for the HTTP layer.
+ * <p>This adapter stays in the root module because the first-time wizard flows still depend on
+ * several daemon-only behaviors that should not leak across the runtime SPI boundary. It reads the
+ * current security state, datastore sizing defaults, storage caps, and bandwidth hints directly
+ * from the live node, then exposes those values as detached records for the HTTP layer.
  *
  * <p>The writing path preserves the existing wizard completion semantics rather than redesigning
  * them. Config writes and password-related failures that historically stayed daemon-local are still
@@ -53,6 +58,9 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   /** Logger for daemon-local wizard failures that should remain in the root module. */
   private static final Logger LOG = LoggerFactory.getLogger(LegacyFirstTimeWizardPort.class);
 
+  /** Shared argument name used when validating detached threat-level setters. */
+  private static final String LEVEL_ARGUMENT = "level";
+
   /** Minimum datastore size exposed by this wizard flow, including the required cache overhead. */
   private static final long MIN_STORAGE_LIMIT = NodeStorageSubsystem.MIN_STORE_SIZE * 5 / 4;
 
@@ -69,7 +77,7 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   private final NodeClientCore core;
 
   /**
-   * Creates a daemon-backed adapter for the JavaScript first-time wizard.
+   * Creates a daemon-backed adapter for the first-time wizard runtime SPI.
    *
    * <p>The adapter keeps stable references to the live {@link Node} and {@link NodeClientCore} so
    * each request can read current runtime values and persist changes through the existing daemon
@@ -105,6 +113,84 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
         detectedBandwidthLimits[0],
         detectedBandwidthLimits[1],
         autodetectedStorageLimitBytes);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public boolean isOpennetEnabled() {
+    return node.network().isOpennetEnabled();
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public SecurityLevelsSnapshot securitySnapshot() {
+    File masterKeysFile = node.storage().getMasterKeysFile();
+    return new SecurityLevelsSnapshot(
+        mapNetworkThreatLevel(node.services().securityLevels().getNetworkThreatLevel()),
+        mapPhysicalThreatLevel(node.services().securityLevels().getPhysicalThreatLevel()),
+        node.hasDatabase(),
+        masterKeysFile != null && masterKeysFile.exists(),
+        masterKeysFile == null ? "" : masterKeysFile.getPath());
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void setNetworkThreatLevel(SecurityNetworkThreatLevel level) {
+    node.services()
+        .securityLevels()
+        .setThreatLevel(mapNetworkThreatLevel(Objects.requireNonNull(level, LEVEL_ARGUMENT)));
+    core.storeConfig();
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void setPhysicalThreatLevel(SecurityPhysicalThreatLevel level) {
+    node.services()
+        .securityLevels()
+        .setThreatLevel(mapPhysicalThreatLevel(Objects.requireNonNull(level, LEVEL_ARGUMENT)));
+    core.storeConfig();
+    node.storage().lateSetupDatabase(null);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public MasterPasswordMutationStatus changeMasterPassword(String oldPassword, String newPassword)
+      throws IOException {
+    try {
+      node.storage()
+          .changeMasterPassword(
+              Objects.requireNonNull(oldPassword, "oldPassword"),
+              Objects.requireNonNull(newPassword, "newPassword"),
+              true);
+      return MasterPasswordMutationStatus.SUCCESS;
+    } catch (MasterKeysWrongPasswordException _) {
+      return MasterPasswordMutationStatus.WRONG_PASSWORD;
+    } catch (Node.AlreadySetPasswordException _) {
+      return MasterPasswordMutationStatus.ALREADY_SET;
+    } catch (MasterKeysFileSizeException _) {
+      return MasterPasswordMutationStatus.CORRUPTED_FILE;
+    }
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public MasterPasswordMutationStatus setMasterPassword(String password) throws IOException {
+    try {
+      node.storage().setMasterPassword(Objects.requireNonNull(password, "password"), true);
+      return MasterPasswordMutationStatus.SUCCESS;
+    } catch (MasterKeysWrongPasswordException _) {
+      return MasterPasswordMutationStatus.WRONG_PASSWORD;
+    } catch (Node.AlreadySetPasswordException _) {
+      return MasterPasswordMutationStatus.ALREADY_SET;
+    } catch (MasterKeysFileSizeException _) {
+      return MasterPasswordMutationStatus.CORRUPTED_FILE;
+    }
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void deleteMasterPasswordFile() throws IOException {
+    node.storage().killMasterKeysFile();
   }
 
   /** {@inheritDoc} */
@@ -299,5 +385,41 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    */
   private static String formatGiB(long sizeBytes) {
     return String.format(Locale.ENGLISH, "%.2f", (float) sizeBytes / DatastoreUtil.ONE_GIB);
+  }
+
+  private static SecurityNetworkThreatLevel mapNetworkThreatLevel(NETWORK_THREAT_LEVEL level) {
+    return switch (level) {
+      case LOW -> SecurityNetworkThreatLevel.LOW;
+      case NORMAL -> SecurityNetworkThreatLevel.NORMAL;
+      case HIGH -> SecurityNetworkThreatLevel.HIGH;
+      case MAXIMUM -> SecurityNetworkThreatLevel.MAXIMUM;
+    };
+  }
+
+  private static NETWORK_THREAT_LEVEL mapNetworkThreatLevel(SecurityNetworkThreatLevel level) {
+    return switch (level) {
+      case LOW -> NETWORK_THREAT_LEVEL.LOW;
+      case NORMAL -> NETWORK_THREAT_LEVEL.NORMAL;
+      case HIGH -> NETWORK_THREAT_LEVEL.HIGH;
+      case MAXIMUM -> NETWORK_THREAT_LEVEL.MAXIMUM;
+    };
+  }
+
+  private static SecurityPhysicalThreatLevel mapPhysicalThreatLevel(PHYSICAL_THREAT_LEVEL level) {
+    return switch (level) {
+      case LOW -> SecurityPhysicalThreatLevel.LOW;
+      case NORMAL -> SecurityPhysicalThreatLevel.NORMAL;
+      case HIGH -> SecurityPhysicalThreatLevel.HIGH;
+      case MAXIMUM -> SecurityPhysicalThreatLevel.MAXIMUM;
+    };
+  }
+
+  private static PHYSICAL_THREAT_LEVEL mapPhysicalThreatLevel(SecurityPhysicalThreatLevel level) {
+    return switch (level) {
+      case LOW -> PHYSICAL_THREAT_LEVEL.LOW;
+      case NORMAL -> PHYSICAL_THREAT_LEVEL.NORMAL;
+      case HIGH -> PHYSICAL_THREAT_LEVEL.HIGH;
+      case MAXIMUM -> PHYSICAL_THREAT_LEVEL.MAXIMUM;
+    };
   }
 }

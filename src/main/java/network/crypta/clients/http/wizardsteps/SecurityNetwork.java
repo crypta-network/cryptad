@@ -2,8 +2,8 @@ package network.crypta.clients.http.wizardsteps;
 
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -11,12 +11,12 @@ import network.crypta.support.api.HTTPRequest;
 /**
  * Renders and processes the First Time Wizard step that configures the node's network threat level.
  *
- * <p>This step presents a small, curated set of {@link SecurityLevels.NETWORK_THREAT_LEVEL network
- * threat levels} based on whether the user is configuring an opennet or a darknet style connection.
- * The UI is intentionally constrained: when opennet is selected, only the lower threat levels are
- * offered; when opennet is not selected, only the higher threat levels are offered. This mirrors
- * the typical setup guidance for those network modes without requiring the user to understand all
- * internal security knobs.
+ * <p>This step presents a small, curated set of {@link SecurityNetworkThreatLevel network threat
+ * levels} based on whether the user is configuring an opennet or a darknet style connection. The UI
+ * is intentionally constrained: when opennet is selected, only the lower threat levels are offered;
+ * when opennet is not selected, only the higher threat levels are offered. This mirrors the typical
+ * setup guidance for those network modes without requiring the user to understand all internal
+ * security knobs.
  *
  * <p>Selection is a two-phase flow for the highest-impact choices. If the user chooses {@code HIGH}
  * or {@code MAXIMUM}, the wizard redirects back to the same step with a confirmation prompt that
@@ -27,11 +27,11 @@ import network.crypta.support.api.HTTPRequest;
  * <ul>
  *   <li>Reads the request parameter {@code opennet} to decide which options to display.
  *   <li>Uses the {@code confirm} flag to display a confirmation page for high-impact selections.
- *   <li>Persists the selection via {@link #setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL)}.
+ *   <li>Persists the selection via {@link #setThreatLevel(SecurityNetworkThreatLevel)}.
  * </ul>
  *
  * @see Step
- * @see SecurityLevels
+ * @see SecurityNetworkThreatLevel
  */
 public class SecurityNetwork implements Step {
 
@@ -44,21 +44,21 @@ public class SecurityNetwork implements Step {
   private static final String PARAM_NETWORK_THREAT_LEVEL_TRY_CONFIRM =
       "security-levels.networkThreatLevel.tryConfirm";
 
-  private final NodeClientCore core;
+  private final FirstTimeWizardPort wizardPort;
 
   /**
-   * Creates a wizard step instance bound to a specific {@link NodeClientCore}.
+   * Creates a wizard step instance bound to the detached first-time-wizard runtime port.
    *
-   * <p>The step is stateful only in that it holds a reference to the core; all user selections and
+   * <p>The step is stateful only in that it holds a reference to the port; all user selections and
    * navigation state are transported via the {@link HTTPRequest} and the wizard redirect mechanism.
-   * The provided core is used to apply the selected {@link SecurityLevels.NETWORK_THREAT_LEVEL} and
-   * persist the updated configuration.
+   * The provided port is used to apply the selected {@link SecurityNetworkThreatLevel} and persist
+   * the updated configuration using the legacy wizard semantics.
    *
-   * @param core the node core used to apply and persist the selected security level; must be
-   *     non-null
+   * @param wizardPort detached runtime used to apply and persist the selected security level; must
+   *     be non-null
    */
-  public SecurityNetwork(NodeClientCore core) {
-    this.core = core;
+  public SecurityNetwork(FirstTimeWizardPort wizardPort) {
+    this.wizardPort = wizardPort;
   }
 
   /**
@@ -66,9 +66,9 @@ public class SecurityNetwork implements Step {
    *
    * <p>This method renders the HTML content for the step. It selects between the opennet and
    * darknet variants based on the {@code opennet} request parameter and generates one radio-button
-   * row per eligible {@link SecurityLevels.NETWORK_THREAT_LEVEL}. When the {@code confirm}
-   * parameter is set, it renders a confirmation page for {@code HIGH} and {@code MAXIMUM}
-   * selections instead of the normal choice page.
+   * row per eligible {@link SecurityNetworkThreatLevel}. When the {@code confirm} parameter is set,
+   * it renders a confirmation page for {@code HIGH} and {@code MAXIMUM} selections instead of the
+   * normal choice page.
    *
    * @param request the current HTTP request carrying wizard parameters and posted form parts
    * @param helper the page helper used to create forms, infoboxes, and page content nodes
@@ -81,8 +81,8 @@ public class SecurityNetwork implements Step {
 
     if (request.isParameterSet("confirm")) {
       String networkThreatLevel = request.getParam(PARAM_NETWORK_THREAT_LEVEL);
-      SecurityLevels.NETWORK_THREAT_LEVEL newThreatLevel =
-          SecurityLevels.parseNetworkThreatLevel(networkThreatLevel);
+      SecurityNetworkThreatLevel newThreatLevel =
+          SecurityNetworkThreatLevel.parse(networkThreatLevel);
 
       HTMLNode infoboxContent =
           helper.getInfobox(
@@ -98,7 +98,7 @@ public class SecurityNetwork implements Step {
           new String[] {"type", "name", ATTR_VALUE},
           new String[] {"hidden", PARAM_NETWORK_THREAT_LEVEL, networkThreatLevel});
       HTMLNode p = formNode.addChild("p");
-      if (newThreatLevel == SecurityLevels.NETWORK_THREAT_LEVEL.MAXIMUM) {
+      if (newThreatLevel == SecurityNetworkThreatLevel.MAXIMUM) {
         NodeL10n.getBase()
             .addL10nSubstitution(
                 p,
@@ -178,8 +178,7 @@ public class SecurityNetwork implements Step {
 
       form = helper.addFormChild(infoboxContent, ".", "networkSecurityForm");
       HTMLNode div = form.addChild("div", "class", "opennetDiv");
-      for (SecurityLevels.NETWORK_THREAT_LEVEL level :
-          SecurityLevels.NETWORK_THREAT_LEVEL.getOpennetValues()) {
+      for (SecurityNetworkThreatLevel level : SecurityNetworkThreatLevel.opennetValues()) {
         securityLevelChoice(div, level);
       }
     } else {
@@ -194,8 +193,7 @@ public class SecurityNetwork implements Step {
 
       form = helper.addFormChild(infoboxContent, ".", "networkSecurityForm");
       HTMLNode div = form.addChild("div", "class", "darknetDiv");
-      for (SecurityLevels.NETWORK_THREAT_LEVEL level :
-          SecurityLevels.NETWORK_THREAT_LEVEL.getDarknetValues()) {
+      for (SecurityNetworkThreatLevel level : SecurityNetworkThreatLevel.darknetValues()) {
         securityLevelChoice(div, level);
       }
       form.addChild("p")
@@ -217,7 +215,7 @@ public class SecurityNetwork implements Step {
    * @param parent to add content to.
    * @param level to add content about.
    */
-  private void securityLevelChoice(HTMLNode parent, SecurityLevels.NETWORK_THREAT_LEVEL level) {
+  private void securityLevelChoice(HTMLNode parent, SecurityNetworkThreatLevel level) {
     HTMLNode input =
         parent
             .addChild("p")
@@ -260,8 +258,8 @@ public class SecurityNetwork implements Step {
    * display (or re-display) the confirmation prompt.
    *
    * <p>On successful completion, the new level is persisted by calling {@link
-   * #setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL)} and the wizard proceeds to the physical
-   * security step.
+   * #setThreatLevel(SecurityNetworkThreatLevel)} and the wizard proceeds to the physical security
+   * step.
    *
    * @param request the current HTTP request carrying the selected level and navigation controls
    * @return the next wizard step name to display, suitable for use as a redirect target
@@ -269,8 +267,8 @@ public class SecurityNetwork implements Step {
   @Override
   public String postStep(HTTPRequest request) {
     String networkThreatLevel = request.getPartAsStringFailsafe(PARAM_NETWORK_THREAT_LEVEL, 128);
-    SecurityLevels.NETWORK_THREAT_LEVEL newThreatLevel =
-        SecurityLevels.parseNetworkThreatLevel(networkThreatLevel);
+    SecurityNetworkThreatLevel newThreatLevel =
+        SecurityNetworkThreatLevel.parse(networkThreatLevel);
 
     // Used in case of redirect either for retry or confirmation.
     StringBuilder redirectTo =
@@ -296,8 +294,8 @@ public class SecurityNetwork implements Step {
       // Not in a preset, redisplay level choice.
       return FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_NETWORK.name();
     }
-    if ((newThreatLevel == SecurityLevels.NETWORK_THREAT_LEVEL.MAXIMUM
-        || newThreatLevel == SecurityLevels.NETWORK_THREAT_LEVEL.HIGH)) {
+    if ((newThreatLevel == SecurityNetworkThreatLevel.MAXIMUM
+        || newThreatLevel == SecurityNetworkThreatLevel.HIGH)) {
       // Make the user aware of the effects of high or maximum network threat if selected.
       // They must check a box acknowledging its effects to proceed.
       boolean confirmationChecked = request.isPartSet(PARAM_NETWORK_THREAT_LEVEL_CONFIRM);
@@ -332,12 +330,11 @@ public class SecurityNetwork implements Step {
    *
    * <p>This is the side-effectful operation for this wizard step: it updates the node's security
    * level and then stores the updated configuration. Callers should only invoke this after the user
-   * has made a valid selection and (when required) has completed any confirmation prompts.
+   * has made a valid choice and (when required) has completed any confirmation prompts.
    *
    * @param level the new network threat level to set; must be a valid enum value
    */
-  public void setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL level) {
-    core.getNode().services().securityLevels().setThreatLevel(level);
-    core.storeConfig();
+  public void setThreatLevel(SecurityNetworkThreatLevel level) {
+    wizardPort.setNetworkThreatLevel(level);
   }
 }

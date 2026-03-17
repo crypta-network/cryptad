@@ -1,5 +1,6 @@
 package network.crypta.node.runtime;
 
+import java.io.File;
 import java.util.Locale;
 import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
@@ -10,6 +11,8 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.node.MasterKeysFileSizeException;
+import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
@@ -18,10 +21,15 @@ import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardSubmission;
+import network.crypta.runtime.spi.MasterPasswordMutationStatus;
+import network.crypta.runtime.spi.SecurityLevelsSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.Fields;
 import network.crypta.support.io.DatastoreUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -31,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -51,6 +60,8 @@ class LegacyFirstTimeWizardPortTest {
   @Mock private SubConfig fproxySubConfig;
   @Mock private SecurityLevels securityLevels;
   @Mock private NodeStorageSubsystem storage;
+
+  @TempDir File tempDir;
 
   @Test
   void snapshot_whenDaemonStateAvailable_returnsDetachedDefaultsAndSuggestions() {
@@ -227,6 +238,124 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals("1.24", snapshot.maxStorageLimitGiB());
       assertEquals(roundedUpMaxStorageLimitBytes, snapshot.maxStorageLimitBytes());
     }
+  }
+
+  @Test
+  void isOpennetEnabled_whenRuntimeReportsEnabled_returnsTrue() {
+    network.crypta.node.subsystem.NodeNetworkSubsystem networkSubsystem =
+        mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(networkSubsystem);
+    when(networkSubsystem.isOpennetEnabled()).thenReturn(true);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    assertTrue(port.isOpennetEnabled());
+  }
+
+  @Test
+  void securitySnapshot_whenDaemonStateAvailable_returnsDetachedSecurityState() throws Exception {
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    File masterKeysFile = new File(tempDir, "master.keys");
+    assertTrue(masterKeysFile.createNewFile());
+
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(securityLevels.getNetworkThreatLevel())
+        .thenReturn(SecurityLevels.NETWORK_THREAT_LEVEL.HIGH);
+    when(securityLevels.getPhysicalThreatLevel())
+        .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM);
+    when(node.storage()).thenReturn(storage);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeysFile);
+    when(node.hasDatabase()).thenReturn(true);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    SecurityLevelsSnapshot snapshot = port.securitySnapshot();
+
+    assertEquals(SecurityNetworkThreatLevel.HIGH, snapshot.networkThreatLevel());
+    assertEquals(SecurityPhysicalThreatLevel.MAXIMUM, snapshot.physicalThreatLevel());
+    assertTrue(snapshot.hasDatabase());
+    assertTrue(snapshot.masterPasswordFileExists());
+    assertEquals(masterKeysFile.getPath(), snapshot.masterPasswordFilePath());
+  }
+
+  @Test
+  void setNetworkThreatLevel_whenCalled_updatesSecurityLevelsAndPersistsConfig() {
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    port.setNetworkThreatLevel(SecurityNetworkThreatLevel.LOW);
+
+    verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
+    verify(core).storeConfig();
+  }
+
+  @Test
+  void setPhysicalThreatLevel_whenCalled_updatesSecurityLevelsPersistsAndInitializesDatabase() {
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(node.storage()).thenReturn(storage);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    port.setPhysicalThreatLevel(SecurityPhysicalThreatLevel.MAXIMUM);
+
+    verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM);
+    verify(core).storeConfig();
+    verify(storage).lateSetupDatabase(null);
+  }
+
+  @Test
+  void changeMasterPassword_whenSuccessful_usesFirstTimeWizardStoragePath() throws Exception {
+    when(node.storage()).thenReturn(storage);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    MasterPasswordMutationStatus status = port.changeMasterPassword("old", "new");
+
+    assertEquals(MasterPasswordMutationStatus.SUCCESS, status);
+    verify(storage).changeMasterPassword("old", "new", true);
+  }
+
+  @Test
+  void changeMasterPassword_whenWrongPassword_returnsWrongPassword() throws Exception {
+    when(node.storage()).thenReturn(storage);
+    doThrow(new MasterKeysWrongPasswordException())
+        .when(storage)
+        .changeMasterPassword("old", "new", true);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    MasterPasswordMutationStatus status = port.changeMasterPassword("old", "new");
+
+    assertEquals(MasterPasswordMutationStatus.WRONG_PASSWORD, status);
+  }
+
+  @Test
+  void setMasterPassword_whenCorruptedFile_returnsCorruptedFile() throws Exception {
+    when(node.storage()).thenReturn(storage);
+    doThrow(new MasterKeysFileSizeException(false)).when(storage).setMasterPassword("secret", true);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    MasterPasswordMutationStatus status = port.setMasterPassword("secret");
+
+    assertEquals(MasterPasswordMutationStatus.CORRUPTED_FILE, status);
+  }
+
+  @Test
+  void deleteMasterPasswordFile_whenCalled_delegatesToStorage() throws Exception {
+    when(node.storage()).thenReturn(storage);
+
+    LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
+
+    port.deleteMasterPasswordFile();
+
+    verify(storage).killMasterKeysFile();
   }
 
   @Test
