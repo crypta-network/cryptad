@@ -3,55 +3,37 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
-import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
-import network.crypta.clients.http.wizardsteps.DatastoreSize;
-import network.crypta.config.Config;
-import network.crypta.config.ConfigException;
-import network.crypta.config.Option;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.MasterKeysFileSizeException;
-import network.crypta.node.MasterKeysWrongPasswordException;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
+import network.crypta.runtime.spi.FirstTimeWizardSubmission;
 import network.crypta.support.Fields;
-import network.crypta.support.IllegalValueException;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.DatastoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * JavaScript-based First-Time-Wizard toadlet that guides new nodes through the minimum secure setup
  * steps. The regular wizard redirects here when both FProxy and the user's browser have JavaScript
  * enabled so that the richer, single-page flow can be used.
  *
- * <p>This toadlet orchestrates the entire first-run experience: it detects recommended bandwidth
- * limits, proposes datastore sizes, optionally enforces a master password based on the configured
- * physical threat level, and persists the resulting configuration. All rendering is delegated to
- * the shared web template system, with localized strings loaded via {@link NodeL10n} and per-page
- * state stored in a simple model map.
- *
- * <p>Instances are tied to a {@link NodeClientCore} and {@link Config}. They are not thread-safe on
- * their own but are typically created once and invoked by the toadlet container on request threads.
- * Error handling is intentionally defensive: invalid input re-renders the form with contextual
- * messages, while unexpected failures are surfaced through structured logging.
+ * <p>This toadlet orchestrates the entire first-run experience using one detached runtime port: it
+ * renders the shared template, validates request-local input, and delegates the remaining daemon
+ * reads and writes to {@link FirstTimeWizardPort}. Instances are not thread-safe on their own but
+ * are typically created once and invoked by the toadlet container on request threads.
  *
  * <ul>
- *   <li>Collects threat-level choices and optionally enforces a master password.
- *   <li>Suggests datastore and bandwidth limits based on detected capabilities.
+ *   <li>Collects threat-level and bandwidth choices through the shared HTML template system.
+ *   <li>Validates submitted values against detached runtime bounds and suggested defaults.
  *   <li>Redirects to {@link WelcomeToadlet#ROOT_PATH} after successful completion.
  * </ul>
  *
  * @see WebTemplateToadlet
  * @see WelcomeToadlet
+ * @see FirstTimeWizardPort
  */
 public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardNewToadlet.class);
@@ -63,18 +45,12 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
    */
   public static final String TOADLET_URL = "/wiz/";
 
-  private static final long MIN_STORAGE_LIMIT =
-      network.crypta.node.subsystem.NodeStorageSubsystem.MIN_STORE_SIZE
-          * 5
-          / 4; // min store size + 10% for client cache + 10% for slashdot cache
-
-  private final NodeClientCore core;
-
-  private final Config config;
+  private final FirstTimeWizardPort wizardPort;
 
   private static final String L10N_PREFIX = "FirstTimeWizardToadlet.";
 
-  private static final int KIB = 1024;
+  private static final long KIB = 1024L;
+  private static final long MAX_INT_BACKED_BANDWIDTH_LIMIT_BYTES = Integer.MAX_VALUE;
 
   private static final String DOWNLOAD_LIMIT_ERROR_KEY = "downloadLimitError";
 
@@ -86,12 +62,9 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   private static final String CHECKED_VALUE = "checked";
 
-  private static final String UNEXPECTED_ERROR_MESSAGE = "Should not happen, please report! {}";
-
-  FirstTimeWizardNewToadlet(HighLevelSimpleClient client, NodeClientCore core, Config config) {
+  FirstTimeWizardNewToadlet(HighLevelSimpleClient client, FirstTimeWizardPort wizardPort) {
     super(client);
-    this.core = core;
-    this.config = config;
+    this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
   }
 
   /**
@@ -121,7 +94,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return;
     }
 
-    showForm(ctx, new FormModel(isPasswordAlreadySet()).toModel());
+    showForm(ctx, new FormModel(wizardPort.snapshot()).toModel());
   }
 
   /**
@@ -151,10 +124,11 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return;
     }
 
-    FormModel formModel = new FormModel(request, isPasswordAlreadySet());
+    FirstTimeWizardSnapshot snapshot = wizardPort.snapshot();
+    FormModel formModel = new FormModel(request, snapshot);
 
     if (formModel.isValid()) {
-      formModel.save();
+      wizardPort.applySubmission(formModel.toSubmission());
       super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.ROOT_PATH);
       return;
     }
@@ -165,7 +139,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   private void showForm(ToadletContext ctx, Map<String, Object> model)
       throws IOException, ToadletContextClosedException {
-    model.put("formPassword", core.getEndpoints().getToadletContainer().getFormPassword());
+    model.put("formPassword", ctx.getFormPassword());
     PageNode page =
         ctx.getPageMaker()
             .getPageNode(
@@ -195,23 +169,17 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     return NodeL10n.getBase().getString(L10N_PREFIX + key);
   }
 
-  private static String l10n(String key, String value) {
-    return NodeL10n.getBase().getString(L10N_PREFIX + key, value);
-  }
-
-  /**
-   * Returns whether physical security policy currently indicates an already-configured password.
-   *
-   * <p>In the wizard flow, HIGH physical threat implies the user has already completed password
-   * setup and should not be prompted to set it again.
-   */
-  private boolean isPasswordAlreadySet() {
-    return core.getNode().services().securityLevels().getPhysicalThreatLevel()
-        == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH;
-  }
-
-  private final class FormModel {
+  private static final class FormModel {
     private final boolean passwordAlreadySet;
+    private final String minStorageLimit;
+    private final long minStorageLimitBytes;
+    private final String maxStorageLimit;
+    private final long maxStorageLimitBytes;
+    private final long minBandwidthKiB;
+    private final long maxUploadLimitKiB;
+    private final String minBandwidthMonthlyLimit;
+    private final String downloadLimitDetected;
+    private final String uploadLimitDetected;
 
     private String knowSomeone = "";
 
@@ -227,55 +195,43 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     private final String storageLimit;
 
-    private final String minStorageLimit =
-        String.format(Locale.ENGLISH, "%.2f", (float) MIN_STORAGE_LIMIT / DatastoreUtil.ONE_GIB);
-
     private String setPassword = "";
 
     private String password = "";
 
-    private String downloadLimitDetected;
-
-    private String uploadLimitDetected;
-
     private final Map<String, String> errors = new HashMap<>();
 
-    FormModel(boolean passwordAlreadySet) {
-      this.passwordAlreadySet = passwordAlreadySet;
-      float storage = 100;
-      Option<Long> sizeOption =
-          network.crypta.config.Config.longOption(config.get("node"), "storeSize");
-      if (!sizeOption.isDefault()) {
-        Option<Long> clientCacheSizeOption =
-            network.crypta.config.Config.longOption(config.get("node"), "clientCacheSize");
-        Option<Long> slashdotCacheSizeOption =
-            network.crypta.config.Config.longOption(config.get("node"), "slashdotCacheSize");
-        long totalSize =
-            sizeOption.getValue()
-                + clientCacheSizeOption.getValue()
-                + slashdotCacheSizeOption.getValue();
-        storage = (float) totalSize / DatastoreUtil.ONE_GIB;
-      } else {
-        long autodetectedDatastoreSize = DatastoreUtil.autodetectDatastoreSize(core, config);
-        if (autodetectedDatastoreSize > 0) {
-          storage = (float) autodetectedDatastoreSize / DatastoreUtil.ONE_GIB;
-        }
-      }
-      // format with English locale to ensure that the decimal point is "." as required for the form
-      // value
-      storageLimit = String.format(Locale.ENGLISH, "%.2f", storage);
-
-      detectBandwidthLimit();
-      if (downloadLimitDetected != null) {
+    FormModel(FirstTimeWizardSnapshot snapshot) {
+      this.passwordAlreadySet = snapshot.passwordAlreadySet();
+      this.storageLimit = snapshot.initialStorageLimitGiB();
+      this.minStorageLimit = snapshot.minStorageLimitGiB();
+      this.minStorageLimitBytes = snapshot.minStorageLimitBytes();
+      this.maxStorageLimit = snapshot.maxStorageLimitGiB();
+      this.maxStorageLimitBytes = snapshot.maxStorageLimitBytes();
+      this.minBandwidthKiB = snapshot.minBandwidthKiB();
+      this.maxUploadLimitKiB = snapshot.maxUploadLimitKiB();
+      this.minBandwidthMonthlyLimit = snapshot.minBandwidthMonthlyLimitGiB();
+      this.downloadLimitDetected = snapshot.detectedDownloadLimitKiB();
+      this.uploadLimitDetected = snapshot.detectedUploadLimitKiB();
+      if (!downloadLimitDetected.isEmpty()) {
         downloadLimit = downloadLimitDetected;
       }
-      if (uploadLimitDetected != null) {
+      if (!uploadLimitDetected.isEmpty()) {
         uploadLimit = uploadLimitDetected;
       }
     }
 
-    FormModel(HTTPRequest request, boolean passwordAlreadySet) {
-      this.passwordAlreadySet = passwordAlreadySet;
+    FormModel(HTTPRequest request, FirstTimeWizardSnapshot snapshot) {
+      this.passwordAlreadySet = snapshot.passwordAlreadySet();
+      this.minStorageLimit = snapshot.minStorageLimitGiB();
+      this.minStorageLimitBytes = snapshot.minStorageLimitBytes();
+      this.maxStorageLimit = snapshot.maxStorageLimitGiB();
+      this.maxStorageLimitBytes = snapshot.maxStorageLimitBytes();
+      this.minBandwidthKiB = snapshot.minBandwidthKiB();
+      this.maxUploadLimitKiB = snapshot.maxUploadLimitKiB();
+      this.minBandwidthMonthlyLimit = snapshot.minBandwidthMonthlyLimitGiB();
+      this.downloadLimitDetected = snapshot.detectedDownloadLimitKiB();
+      this.uploadLimitDetected = snapshot.detectedUploadLimitKiB();
       knowSomeone = request.getPartAsStringFailsafe("knowSomeone", 20);
       connectToStrangers = request.getPartAsStringFailsafe("connectToStrangers", 20);
       haveMonthlyLimit = request.getPartAsStringFailsafe("haveMonthlyLimit", 20);
@@ -312,56 +268,61 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     private void validateDownloadLimit() {
       try {
         long parsedDownloadLimit =
-            downloadLimit.isEmpty() ? 0 : Fields.parseInt(downloadLimit + "KiB");
-        if (parsedDownloadLimit < Node.getMinimumBandwidth()) {
+            downloadLimit.isEmpty() ? 0 : Fields.parseLong(downloadLimit + "KiB");
+        if (parsedDownloadLimit > MAX_INT_BACKED_BANDWIDTH_LIMIT_BYTES) {
+          throw new NumberFormatException("value exceeds the maximum supported bandwidth limit");
+        }
+        if (parsedDownloadLimit < minBandwidthKiB * KIB) {
           errors.put(
               DOWNLOAD_LIMIT_ERROR_KEY,
-              l10n("valid.downloadLimit", Integer.toString(Node.getMinimumBandwidth() / KIB)));
+              l10n("valid.downloadLimit", Long.toString(minBandwidthKiB)));
         }
       } catch (NumberFormatException e) {
         errors.put(
             DOWNLOAD_LIMIT_ERROR_KEY,
-            l10n("valid.number.prefix.downloadLimit") + " " + e.getMessage());
+            FirstTimeWizardNewToadlet.l10n("valid.number.prefix.downloadLimit")
+                + " "
+                + e.getMessage());
       }
     }
 
     private void validateUploadLimit() {
       try {
-        long parsedUploadLimit = uploadLimit.isEmpty() ? 0 : Fields.parseInt(uploadLimit + "KiB");
-        if (parsedUploadLimit < Node.getMinimumBandwidth()) {
+        long parsedUploadLimit = uploadLimit.isEmpty() ? 0 : Fields.parseLong(uploadLimit + "KiB");
+        if (parsedUploadLimit < minBandwidthKiB * KIB) {
           errors.put(
-              UPLOAD_LIMIT_ERROR_KEY,
-              l10n("valid.uploadLimit", Integer.toString(Node.getMinimumBandwidth() / KIB)));
+              UPLOAD_LIMIT_ERROR_KEY, l10n("valid.uploadLimit", Long.toString(minBandwidthKiB)));
         }
-        int nanosInSecond = (int) SECONDS.toNanos(1);
-        if (nanosInSecond < parsedUploadLimit) { // see the Node set outputBandwidthLimit
+        if (maxUploadLimitKiB * KIB < parsedUploadLimit) {
           errors.put(
               UPLOAD_LIMIT_ERROR_KEY,
-              l10n("valid.uploadLimitMax", Integer.toString(nanosInSecond / KIB)));
+              l10n("valid.uploadLimitMax", Long.toString(maxUploadLimitKiB)));
         }
       } catch (NumberFormatException e) {
         errors.put(
-            UPLOAD_LIMIT_ERROR_KEY, l10n("valid.number.prefix.uploadLimit") + " " + e.getMessage());
+            UPLOAD_LIMIT_ERROR_KEY,
+            FirstTimeWizardNewToadlet.l10n("valid.number.prefix.uploadLimit")
+                + " "
+                + e.getMessage());
       }
     }
 
     private void validateMonthlyLimit() {
       try {
-        double monthlyLimitValue = 0;
-        if (!bandwidthMonthlyLimit.isEmpty()) {
-          monthlyLimitValue = Double.parseDouble(bandwidthMonthlyLimit);
-        }
-        if (monthlyLimitValue < BandwidthLimit.MIN_MONTHLY_LIMIT) {
+        long monthlyLimitValue =
+            bandwidthMonthlyLimit.isEmpty() ? 0 : Fields.parseLong(bandwidthMonthlyLimit + "GiB");
+        long minMonthlyLimitValue = Fields.parseLong(minBandwidthMonthlyLimit + "GiB");
+        if (monthlyLimitValue < minMonthlyLimitValue) {
           errors.put(
               "bandwidthMonthlyLimitError",
-              l10n(
-                  "valid.bandwidthMonthlyLimit",
-                  "%.2f".formatted(BandwidthLimit.MIN_MONTHLY_LIMIT)));
+              l10n("valid.bandwidthMonthlyLimit", minBandwidthMonthlyLimit));
         }
       } catch (NumberFormatException e) {
         errors.put(
             "bandwidthMonthlyLimitError",
-            l10n("valid.number.prefix.bandwidthMonthlyLimit") + " " + e.getMessage());
+            FirstTimeWizardNewToadlet.l10n("valid.number.prefix.bandwidthMonthlyLimit")
+                + " "
+                + e.getMessage());
       }
     }
 
@@ -369,26 +330,21 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       try {
         long storageLimitValue =
             storageLimit.isEmpty() ? 0 : Fields.parseLong(storageLimit + "GiB");
-        if (storageLimitValue
-            < MIN_STORAGE_LIMIT) { // min store size + 10% for client cache + 10% for slashdot cache
+        if (storageLimitValue < minStorageLimitBytes) {
           errors.put(
               STORAGE_LIMIT_ERROR_KEY,
               NodeL10n.getBase().getString("Node.invalidMinStoreSizeWithCaches"));
-        } else {
-          long maxDatastoreSize = DatastoreUtil.maxDatastoreSize();
-          if (storageLimitValue > maxDatastoreSize) {
-            errors.put(
-                STORAGE_LIMIT_ERROR_KEY,
-                NodeL10n.getBase()
-                    .getString(
-                        "Node.invalidMaxStoreSize",
-                        "%.2f".formatted((float) maxDatastoreSize / DatastoreUtil.ONE_GIB)));
-          }
+        } else if (storageLimitValue > maxStorageLimitBytes) {
+          errors.put(
+              STORAGE_LIMIT_ERROR_KEY,
+              NodeL10n.getBase().getString("Node.invalidMaxStoreSize", maxStorageLimit));
         }
       } catch (NumberFormatException e) {
         errors.put(
             STORAGE_LIMIT_ERROR_KEY,
-            l10n("valid.number.prefix.storageLimit") + " " + e.getMessage());
+            FirstTimeWizardNewToadlet.l10n("valid.number.prefix.storageLimit")
+                + " "
+                + e.getMessage());
       }
     }
 
@@ -415,20 +371,6 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return errors.isEmpty();
     }
 
-    private void detectBandwidthLimit() {
-      try {
-        BandwidthLimit detected =
-            BandwidthManipulator.detectBandwidthLimits(
-                core.getNode().network().ipDetector().getBandwidthIndicator());
-
-        // Detected limits reasonable; add half of both as a recommended option.
-        downloadLimitDetected = Long.toString(detected.downBytes / 2 / KIB);
-        uploadLimitDetected = Long.toString(detected.upBytes / 2 / KIB);
-      } catch (BandwidthDetectionUnavailableException | IllegalValueException e) {
-        LOG.info(e.getMessage(), e);
-      }
-    }
-
     private Map<String, Object> toModel() {
       HashMap<String, Object> model = new HashMap<>();
       model.put("knowSomeone", !knowSomeone.isEmpty() ? CHECKED_VALUE : "");
@@ -437,103 +379,46 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       model.put("downloadLimit", downloadLimit);
       model.put("uploadLimit", uploadLimit);
       model.put("bandwidthMonthlyLimit", bandwidthMonthlyLimit);
-      model.put("minBandwidthMonthlyLimit", "%.2f".formatted(BandwidthLimit.MIN_MONTHLY_LIMIT));
+      model.put("minBandwidthMonthlyLimit", minBandwidthMonthlyLimit);
       model.put("storageLimit", storageLimit);
       model.put("minStorageLimit", minStorageLimit);
       if (!passwordAlreadySet) {
         model.put("setPassword", !setPassword.isEmpty() ? CHECKED_VALUE : "");
       }
       model.put("isPasswordAlreadySet", passwordAlreadySet);
-
-      if (downloadLimitDetected == null || uploadLimitDetected == null) {
-        detectBandwidthLimit();
-      }
       model.put(
           "downloadLimitDetected",
-          downloadLimitDetected != null
+          !downloadLimitDetected.isEmpty()
               ? downloadLimitDetected
-              : l10n("bandwidthCommonInternetConnectionSpeedsDetectedUnavailable"));
+              : FirstTimeWizardNewToadlet.l10n(
+                  "bandwidthCommonInternetConnectionSpeedsDetectedUnavailable"));
       model.put(
           "uploadLimitDetected",
-          uploadLimitDetected != null
+          !uploadLimitDetected.isEmpty()
               ? uploadLimitDetected
-              : l10n("bandwidthCommonInternetConnectionSpeedsDetectedUnavailable"));
+              : FirstTimeWizardNewToadlet.l10n(
+                  "bandwidthCommonInternetConnectionSpeedsDetectedUnavailable"));
 
       model.put("errors", errors);
 
       return model;
     }
 
-    private void save() {
-      if (knowSomeone.isEmpty()) {
-        // Opennet + Darknet (possible)
-        core.getNode()
-            .services()
-            .securityLevels()
-            .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
-      } else {
-        if (connectToStrangers.isEmpty()) {
-          // Darknet
-          core.getNode()
-              .services()
-              .securityLevels()
-              .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.HIGH);
-        } else {
-          // Opennet + Darknet
-          core.getNode()
-              .services()
-              .securityLevels()
-              .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
-        }
-      }
+    private FirstTimeWizardSubmission toSubmission() {
+      return new FirstTimeWizardSubmission(
+          !knowSomeone.isEmpty(),
+          !connectToStrangers.isEmpty(),
+          !haveMonthlyLimit.isEmpty(),
+          downloadLimit,
+          uploadLimit,
+          bandwidthMonthlyLimit,
+          storageLimit,
+          !setPassword.isEmpty(),
+          password);
+    }
 
-      try {
-        if (haveMonthlyLimit.isEmpty()) { // save download & uploadLimit
-          config.get("node").set("inputBandwidthLimit", downloadLimit + "KiB");
-          config.get("node").set("outputBandwidthLimit", uploadLimit + "KiB");
-        } else { // save bandwidthMonthlyLimit
-          BandwidthLimit bandwidth =
-              new BandwidthLimit(Fields.parseLong(bandwidthMonthlyLimit + "GiB"));
-          config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
-          config.get("node").set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));
-        }
-      } catch (ConfigException e) {
-        LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
-      }
-
-      DatastoreSize.setDatastoreSize(storageLimit + "GiB", config);
-
-      if (!passwordAlreadySet) {
-        try {
-          String newPassword;
-          if (setPassword.isEmpty()) { // no password protection requested
-            core.getNode()
-                .services()
-                .securityLevels()
-                .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
-            newPassword = "";
-          } else {
-            core.getNode()
-                .services()
-                .securityLevels()
-                .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
-            newPassword = password;
-          }
-          core.getNode().storage().changeMasterPassword("", newPassword, true);
-        } catch (Node.AlreadySetPasswordException
-            | MasterKeysWrongPasswordException
-            | MasterKeysFileSizeException
-            | IOException e) {
-          LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
-        }
-      }
-
-      try {
-        config.get("fproxy").set("hasCompletedWizard", true);
-      } catch (ConfigException e) {
-        LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
-      }
-      core.storeConfig();
+    private static String l10n(String key, String value) {
+      return NodeL10n.getBase().getString(L10N_PREFIX + key, value);
     }
   }
 }

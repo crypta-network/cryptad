@@ -392,7 +392,7 @@ final class FProxyRegistrar {
         ToadletRegistration.basic(null, FirstTimeWizardToadlet.TOADLET_URL, true, false));
 
     FirstTimeWizardNewToadlet firstTimeWizardNewToadlet =
-        new FirstTimeWizardNewToadlet(client, core, config);
+        new FirstTimeWizardNewToadlet(client, runtimePorts.firstTimeWizard());
     server.register(
         firstTimeWizardNewToadlet,
         ToadletRegistration.basic(null, FirstTimeWizardNewToadlet.TOADLET_URL, true, false));

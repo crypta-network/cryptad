@@ -30,6 +30,7 @@ package network.crypta.runtime.spi;
  * @see PeerPort
  * @see RequestQueuePort
  * @see SecurityLevelsPort
+ * @see FirstTimeWizardPort
  */
 public interface RuntimePorts {
   /**
@@ -188,6 +189,17 @@ public interface RuntimePorts {
    * @return security-levels runtime port for detached page state and mutations
    */
   SecurityLevelsPort securityLevels();
+
+  /**
+   * Returns the legacy JavaScript first-time-wizard capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining live wizard reads, validation bounds, bandwidth suggestions,
+   * security-level changes, master-password mutations, and config writes inside the daemon root
+   * module while exposing only detached SPI-local snapshot and submission values upstream.
+   *
+   * @return first-time-wizard runtime port for detached page state and submission application
+   */
+  FirstTimeWizardPort firstTimeWizard();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.
