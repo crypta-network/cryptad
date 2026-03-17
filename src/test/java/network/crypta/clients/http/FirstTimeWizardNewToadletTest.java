@@ -52,7 +52,8 @@ class FirstTimeWizardNewToadletTest {
           976562,
           "49.44",
           "",
-          "");
+          "",
+          -1L);
 
   @Mock private HighLevelSimpleClient client;
   @Mock private FirstTimeWizardPort wizardPort;
@@ -115,7 +116,8 @@ class FirstTimeWizardNewToadletTest {
                 976562,
                 "49.44",
                 "1024",
-                "512"));
+                "512",
+                -1L));
 
     withMockedNodeL10n(
         () ->
@@ -252,7 +254,8 @@ class FirstTimeWizardNewToadletTest {
                 976562,
                 "49.44",
                 "",
-                ""));
+                "",
+                -1L));
 
     Map<String, String> parts = new HashMap<>();
     parts.put("haveMonthlyLimit", "");

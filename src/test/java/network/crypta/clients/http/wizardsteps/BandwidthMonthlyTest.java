@@ -7,7 +7,8 @@ import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
@@ -39,6 +40,20 @@ class BandwidthMonthlyTest {
   private static final String PARAM_PARSE_ERROR = "parseError";
   private static final String PARAM_TOO_LOW = "tooLow";
   private static final String FRAGMENT_PARSE_TARGET = "&parseTarget=";
+  private static final FirstTimeWizardSnapshot DEFAULT_SNAPSHOT =
+      new FirstTimeWizardSnapshot(
+          false,
+          "2.00",
+          "1.25",
+          1L,
+          "10.00",
+          10L,
+          10L,
+          976562L,
+          String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT),
+          "",
+          "",
+          -1L);
 
   @Mock HTTPRequest request;
   @Mock PageHelper helper;
@@ -132,7 +147,9 @@ class BandwidthMonthlyTest {
 
   @Test
   void getStep_whenNoErrorParams_rendersCapsCustomInputAndBackButton() {
-    BandwidthMonthly step = new BandwidthMonthly(mock(NodeClientCore.class), mock(Config.class));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
+    BandwidthMonthly step = new BandwidthMonthly(wizardPort, mock(Config.class));
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
 
@@ -174,7 +191,9 @@ class BandwidthMonthlyTest {
 
   @Test
   void getStep_whenParseErrorParamSet_showsCouldNotParseMessage() {
-    BandwidthMonthly step = new BandwidthMonthly(mock(NodeClientCore.class), mock(Config.class));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
+    BandwidthMonthly step = new BandwidthMonthly(wizardPort, mock(Config.class));
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
 
@@ -209,7 +228,9 @@ class BandwidthMonthlyTest {
 
   @Test
   void getStep_whenTooLowParamSet_includesUseMinimumFormWithMinimumValue() {
-    BandwidthMonthly step = new BandwidthMonthly(mock(NodeClientCore.class), mock(Config.class));
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
+    BandwidthMonthly step = new BandwidthMonthly(wizardPort, mock(Config.class));
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
 
@@ -294,7 +315,7 @@ class BandwidthMonthlyTest {
     boolean throwInvalidConfigOnNextSet;
 
     TestableBandwidthMonthly() {
-      super(mock(NodeClientCore.class), mock(Config.class));
+      super(mock(FirstTimeWizardPort.class), mock(Config.class));
     }
 
     @Override

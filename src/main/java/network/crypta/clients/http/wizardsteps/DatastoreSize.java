@@ -1,6 +1,8 @@
 package network.crypta.clients.http.wizardsteps;
 
 import java.io.File;
+import java.util.Objects;
+import java.util.function.LongSupplier;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
@@ -8,8 +10,9 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
@@ -50,23 +53,32 @@ public class DatastoreSize implements Step {
   private static final String ATTR_VALUE = "value";
   private static final String TAG_OPTION = "option";
 
-  private final NodeClientCore core;
+  private final FirstTimeWizardPort wizardPort;
+  private final LongSupplier legacyDatastoreMaxStorageLimitBytes;
   private final Config config;
 
   /**
-   * Creates a wizard step bound to a specific node core and configuration.
+   * Creates a wizard step bound to the detached wizard runtime and legacy datastore cap.
    *
    * <p>The instance is lightweight and holds references to the provided objects; it does not
    * perform any environment detection until {@link #getStep(HTTPRequest, PageHelper)} is called.
    * Callers typically construct this step as part of the wizard flow and reuse it for the lifetime
    * of a single request.
    *
-   * @param core node core used for environment-aware sizing heuristics and store directory access
+   * @param wizardPort detached wizard runtime used for datastore suggestions and size bounds
    * @param config mutable configuration that receives the selected datastore and cache settings
+   * @param legacyDatastoreMaxStorageLimitBytes store-dir-aware cap supplier used to preserve the
+   *     legacy dropdown thresholds
    */
-  public DatastoreSize(NodeClientCore core, Config config) {
+  public DatastoreSize(
+      FirstTimeWizardPort wizardPort,
+      Config config,
+      LongSupplier legacyDatastoreMaxStorageLimitBytes) {
     this.config = config;
-    this.core = core;
+    this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
+    this.legacyDatastoreMaxStorageLimitBytes =
+        Objects.requireNonNull(
+            legacyDatastoreMaxStorageLimitBytes, "legacyDatastoreMaxStorageLimitBytes");
   }
 
   /**
@@ -81,11 +93,12 @@ public class DatastoreSize implements Step {
    * <p>This method does not mutate {@link Config}; it only constructs the HTML content for the
    * current request.
    *
-   * @param request current HTTP request, used only for step context and localization behavior
+   * @param request the current HTTP request, used only for step context and localization behavior
    * @param helper helper responsible for creating page structure and form elements for the wizard
    */
   @Override
   public void getStep(HTTPRequest request, PageHelper helper) {
+    FirstTimeWizardSnapshot snapshot = wizardPort.snapshot();
     HTMLNode contentNode = helper.getPageContent(WizardL10n.l10n("step4Title"));
     HTMLNode bandwidthInfoboxContent =
         helper.getInfobox(
@@ -95,9 +108,8 @@ public class DatastoreSize implements Step {
     HTMLNode bandwidthForm = helper.addFormChild(bandwidthInfoboxContent, ".", "dsForm");
     HTMLNode result = bandwidthForm.addChild("select", "name", "ds");
 
-    long maxSize = maxDatastoreSize(core.getNode());
-
-    long autodetectedSize = canAutoconfigureDatastoreSize();
+    long maxSize = legacyDatastoreMaxStorageLimitBytes.getAsLong();
+    long autodetectedSize = snapshot.autodetectedStorageLimitBytes();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
     Option<Long> sizeOption = Config.longOption(config.get("node"), "storeSize");
@@ -137,7 +149,7 @@ public class DatastoreSize implements Step {
    */
   @Override
   public String postStep(HTTPRequest request) {
-    // drop down options may be 6 chars or fewer, but formatted ones e.g. old value if re-running
+    // drop down options may be 6 chars or fewer, but formatted ones e.g., old value if re-running
     // can
     // be more
     boolean firsttime = !request.isPartSet("singlestep");
@@ -190,10 +202,10 @@ public class DatastoreSize implements Step {
       int limit;
       if (downstreamLimit <= 0) limit = upstreamLimit;
       else limit = Math.min(downstreamLimit, upstreamLimit);
-      // 35KB/sec limit has been seen to have 0.5 store writes per second.
-      // So saying we want to have space to cache everything is only doubling that ...
-      // OTOH most stuff is at low enough HTL to go to the datastore and thus not to
-      // the slashdot cache, so we could probably cut this significantly...
+      // A 35 KiB/sec limit has been seen to have 0.5 store writes per second.
+      // Reserving enough room to cache everything only doubles that rate.
+      // Most traffic is at a low enough HTL to go to the datastore instead.
+      // That means this slashdot cache estimate could probably be smaller.
       long lifetime = config.get("node").getLong("slashdotCacheLifetime");
       long maxSlashdotCacheSize = (lifetime / 1000) * limit;
       long slashdotCacheSize = Math.min(size / 10, maxSlashdotCacheSize);
@@ -328,16 +340,12 @@ public class DatastoreSize implements Step {
     available = available / 2;
     // Slot filters are 4 bytes per slot.
     long slots = available / 4;
-    // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e. the number of
+    // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e., the number of
     // slots in each store.
     slots /= 3;
-    // We return the total size, so we don't need to worry about cache vs store or even client
+    // We return the total size, so we don't need to worry about cache vs. store or even client
     // cache.
     // One key of all 3 types combined uses NodeStorageSubsystem.SIZE_PER_KEY bytes on disk.
     return slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
-  }
-
-  private long canAutoconfigureDatastoreSize() {
-    return DatastoreUtil.autodetectDatastoreSize(core, config);
   }
 }

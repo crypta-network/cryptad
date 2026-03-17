@@ -5,12 +5,10 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
-import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeIPDetector;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
@@ -44,6 +42,9 @@ class BandwidthRateTest {
   private static final String MSG_DOWN_BAD = "down bad";
   private static final String MSG_UP_BAD = "up bad";
   private static final String ATTR_CHECKED = "checked=\"checked\"";
+  private static final FirstTimeWizardSnapshot DEFAULT_SNAPSHOT =
+      new FirstTimeWizardSnapshot(
+          false, "2.00", "1.25", 1L, "10.00", 10L, 10L, 976562L, "49.44", "", "", -1L);
 
   @Mock HTTPRequest request;
   @Mock PageHelper helper;
@@ -213,19 +214,11 @@ class BandwidthRateTest {
 
   @Test
   void getStep_whenParseErrorParamSet_includesParseTargetInHtml() {
-    NodeClientCore core = mock(NodeClientCore.class);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     Config config = mock(Config.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
 
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(core.getNode()).thenReturn(node);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.ipDetector()).thenReturn(ipDetector);
-    when(ipDetector.getBandwidthIndicator()).thenReturn(null);
-
-    BandwidthRate step = new TestableBandwidthRate(core, config, null);
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -244,19 +237,11 @@ class BandwidthRateTest {
 
   @Test
   void getStep_whenNoDetectedOrCurrentLimit_expectMaybeDefaultOptionChecked() {
-    NodeClientCore core = mock(NodeClientCore.class);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     Config config = mock(Config.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
 
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(core.getNode()).thenReturn(node);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.ipDetector()).thenReturn(ipDetector);
-    when(ipDetector.getBandwidthIndicator()).thenReturn(null);
-
-    BandwidthRate step = new TestableBandwidthRate(core, config, null);
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -275,24 +260,53 @@ class BandwidthRateTest {
   }
 
   @Test
-  void getStep_whenDetectedBandwidthAvailable_expectDetectedRecommendedOptionChecked() {
-    NodeClientCore core = mock(NodeClientCore.class);
+  void getStep_whenLiveCurrentLimitAvailable_expectCurrentOptionRendered() {
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     Config config = mock(Config.class);
+    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
 
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(core.getNode()).thenReturn(node);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.ipDetector()).thenReturn(ipDetector);
+    BandwidthRate step =
+        new BandwidthRate(
+            wizardPort, config, () -> new BandwidthLimit(4096L, 1024L, "bandwidthCurrent", false));
 
-    BandwidthIndicator indicator = mock(BandwidthIndicator.class);
-    when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);
-    when(indicator.getDownstreamMaxBitRate()).thenReturn(8_000_000);
-    when(indicator.getUpstreamMaxBitRate()).thenReturn(1_000_000);
+    when(helper.getPageContent(anyString())).thenReturn(pageContent);
+    stubHelperToAttachInfoboxesAndForms();
+    when(request.isParameterSet(anyString())).thenReturn(false);
 
-    BandwidthRate step = new TestableBandwidthRate(core, config, null);
+    step.getStep(request, helper);
+
+    String html = pageContent.generate();
+    String expectedCurrentValue = "4096/1024";
+    Pattern currentPattern =
+        Pattern.compile(
+            "(?s)<input\\b"
+                + "(?=[^>]*\\btype=\"radio\")"
+                + "(?=[^>]*\\bname=\""
+                + Pattern.quote(PARAM_BANDWIDTH)
+                + "\")"
+                + "(?=[^>]*\\bvalue=\""
+                + Pattern.quote(HTMLEncoder.encode(expectedCurrentValue))
+                + "\")"
+                + "[^>]*>");
+    assertTrue(
+        currentPattern.matcher(html).find(),
+        "Missing radio input name=bandwidth value=" + expectedCurrentValue);
+    assertTrue(
+        html.contains(HTMLEncoder.encode(WizardL10n.l10n("bandwidthCurrent"))),
+        "Expected current-bandwidth label to be present");
+  }
+
+  @Test
+  void getStep_whenDetectedBandwidthAvailable_expectDetectedRecommendedOptionChecked() {
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    Config config = mock(Config.class);
+    when(wizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false, "2.00", "1.25", 1L, "10.00", 10L, 10L, 976562L, "49.44", "1024", "512",
+                -1L));
+
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -302,9 +316,7 @@ class BandwidthRateTest {
 
     String html = pageContent.generate();
 
-    long downBytesPerSecond = 8_000_000L / 8;
-    long upBytesPerSecond = 1_000_000L / 8;
-    String expectedSelectedValue = (downBytesPerSecond / 2) + "/" + (upBytesPerSecond / 2);
+    String expectedSelectedValue = (1024L * 1024L) + "/" + (512L * 1024L);
     assertHtmlHasCheckedBandwidthRadio(html, expectedSelectedValue);
 
     String suggestedLabel = WizardL10n.l10n("autodetectedSuggestedLimit");
@@ -403,11 +415,11 @@ class BandwidthRateTest {
     private final BandwidthLimit current;
 
     TestableBandwidthRate() {
-      this(mock(NodeClientCore.class), mock(Config.class), null);
+      this(mock(FirstTimeWizardPort.class), mock(Config.class), null);
     }
 
-    TestableBandwidthRate(NodeClientCore core, Config config, BandwidthLimit current) {
-      super(core, config);
+    TestableBandwidthRate(FirstTimeWizardPort wizardPort, Config config, BandwidthLimit current) {
+      super(wizardPort, config);
       this.current = current;
     }
 

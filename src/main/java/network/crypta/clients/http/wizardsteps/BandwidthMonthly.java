@@ -1,10 +1,12 @@
 package network.crypta.clients.http.wizardsteps;
 
+import java.util.Objects;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
@@ -16,9 +18,9 @@ import network.crypta.support.io.DatastoreUtil;
  * <p>This step presents a small set of common monthly transfer caps (plus a free-form input) and
  * translates the user’s selection into the node’s underlying up/down bandwidth limits. The UI is
  * intentionally phrased in terms of a monthly total because many ISPs describe limits that way,
- * while the underlying configuration is expressed as sustained rates. On submit, the handler parses
- * the requested cap, converts it to bytes, and delegates to {@link BandwidthManipulator} to persist
- * the computed limits in {@link Config}.
+ * while the underlying configuration is expressed as sustained rates. On submitting, the handler
+ * parses the requested cap, converts it to bytes, and delegates to {@link BandwidthManipulator} to
+ * persist the computed limits in {@link Config}.
  *
  * <p>Notable behaviors:
  *
@@ -30,7 +32,7 @@ import network.crypta.support.io.DatastoreUtil;
  * </ul>
  *
  * <p>Thread-safety: instances are intended to be used on the request-handling thread for the wizard
- * UI. This class does not maintain mutable shared state beyond delegating to the configuration
+ * UI. This class does not maintain a mutable shared state beyond delegating to the configuration
  * layer.
  *
  * @see BandwidthManipulator
@@ -45,23 +47,23 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
   private static final String PARAM_CAP_TO = "capTo";
   private static final String TYPE_SUBMIT = "submit";
 
-  private static final long[] caps = {
-    (long) Math.ceil(BandwidthLimit.MIN_MONTHLY_LIMIT), 100, 150, 250, 500
-  };
+  private final FirstTimeWizardPort wizardPort;
 
   /**
-   * Creates a wizard step instance bound to a specific node core and configuration.
+   * Creates a wizard step instance bound to a detached wizard runtime and configuration.
    *
    * <p>The created instance is used to render the HTML form for the step and to apply the submitted
    * selection back into the persistent configuration via {@link BandwidthManipulator}. Callers
-   * typically construct this once during wizard initialization and reuse it for subsequent HTTP
-   * requests for the same node instance.
+   * typically construct this once during wizard initialization and reuse it for later HTTP requests
+   * for the same node instance.
    *
-   * @param core node core used to access services required by the wizard, must be non-null
+   * @param wizardPort detached wizard runtime used for minimum monthly-bandwidth reads must be
+   *     non-null
    * @param config persistent configuration object updated by this step, must be non-null
    */
-  public BandwidthMonthly(NodeClientCore core, Config config) {
-    super(core, config);
+  public BandwidthMonthly(FirstTimeWizardPort wizardPort, Config config) {
+    super(config);
+    this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
   }
 
   /**
@@ -79,6 +81,10 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
    */
   @Override
   public void getStep(HTTPRequest request, PageHelper helper) {
+    FirstTimeWizardSnapshot snapshot = wizardPort.snapshot();
+    double minMonthlyLimitGiB = minimumMonthlyLimitGiB(snapshot);
+    long[] caps = {(long) Math.ceil(minMonthlyLimitGiB), 100, 150, 250, 500};
+
     HTMLNode contentNode = helper.getPageContent(WizardL10n.l10n("bandwidthLimit"));
 
     // Check for and display any errors.
@@ -96,7 +102,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
                   new String[] {"requested", "minimum", "useMinimum"},
                   new String[] {
                     parseTarget,
-                    String.valueOf(Math.round(BandwidthLimit.MIN_MONTHLY_LIMIT)),
+                    String.valueOf(Math.round(minMonthlyLimitGiB)),
                     WizardL10n.l10n("bandwidthMonthlyUseMinimum")
                   }));
 
@@ -104,7 +110,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", "name", ATTR_VALUE},
-          new String[] {"hidden", PARAM_CAP_TO, String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT)});
+          new String[] {"hidden", PARAM_CAP_TO, snapshot.minBandwidthMonthlyLimitGiB()});
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", ATTR_VALUE},
@@ -223,5 +229,13 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
     setWizardComplete();
 
     return FirstTimeWizardToadlet.WIZARD_STEP.COMPLETE.name();
+  }
+
+  private static double minimumMonthlyLimitGiB(FirstTimeWizardSnapshot snapshot) {
+    try {
+      return Double.parseDouble(snapshot.minBandwidthMonthlyLimitGiB());
+    } catch (NumberFormatException _) {
+      return BandwidthLimit.MIN_MONTHLY_LIMIT;
+    }
   }
 }

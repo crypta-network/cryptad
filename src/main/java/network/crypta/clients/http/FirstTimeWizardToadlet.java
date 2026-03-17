@@ -26,7 +26,6 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
 import network.crypta.support.api.BooleanCallback;
@@ -43,16 +42,16 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The toadlet coordinates several step handlers, each responsible for rendering and validating a
  * portion of the workflow. Requests are stateless; the wizard rebuilds its flow from submitted form
- * parameters and redirects between steps instead of maintaining a server-side session state. All
- * mutations funnel through the injected {@link NodeClientCore} instance, so external callers can
- * rely on consistent authorization and threading policies enforced by the core.
+ * parameters and redirects between steps instead of maintaining a server-side session state. The
+ * remaining live daemon writes flow through the injected {@link NodeClientCore}, while the
+ * bandwidth/datastore slice reads detached runtime state through the wizard runtime SPI.
  *
  * <p>Concurrency: requests for the same user are serialized by the HTTP layer, but the class does
- * not assume single-threaded execution. All I/O and state changes are delegated to {@link
- * NodeClientCore#getNode()} executors or configuration APIs, preserving thread safety. Callers
- * should treat instances as request-safe but not share mutable wizard state beyond the persisted
- * form parameters. Typical usage is to register this toadlet at {@link #TOADLET_URL} so the user is
- * redirected there after first launch.
+ * not assume single-threaded execution. All I/O and state changes are delegated to the injected
+ * collaborators or configuration APIs, preserving thread safety. Callers should treat instances as
+ * request-safe but not share mutable wizard state beyond the persisted form parameters. Typical
+ * usage is to register this toadlet at {@link #TOADLET_URL} so the user is redirected there after
+ * first launch.
  */
 public class FirstTimeWizardToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardToadlet.class);
@@ -151,11 +150,15 @@ public class FirstTimeWizardToadlet extends Toadlet {
     HIGH
   }
 
-  FirstTimeWizardToadlet(HighLevelSimpleClient client, Node node, NodeClientCore core) {
+  FirstTimeWizardToadlet(
+      HighLevelSimpleClient client,
+      Config config,
+      NodeClientCore core,
+      FirstTimeWizardToadletRuntimePorts runtimePorts) {
     // Generic Toadlet-related initialization.
     super(client);
     this.core = core;
-    Config config = node.getConfig();
+    FirstTimeWizardToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
 
     addWizardConfiguration(config);
 
@@ -164,11 +167,18 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.WELCOME, new Welcome(config));
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
     steps.put(WIZARD_STEP.NAME_SELECTION, new NameSelection(config));
-    steps.put(WIZARD_STEP.DATASTORE_SIZE, new DatastoreSize(core, config));
+    steps.put(
+        WIZARD_STEP.DATASTORE_SIZE,
+        new DatastoreSize(
+            ports.firstTimeWizardPort(), config, ports.legacyDatastoreMaxStorageLimitBytes()));
     steps.put(WIZARD_STEP.OPENNET, new Opennet());
     steps.put(WIZARD_STEP.BANDWIDTH, new Bandwidth());
-    steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(core, config));
-    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
+    steps.put(
+        WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(ports.firstTimeWizardPort(), config));
+    steps.put(
+        WIZARD_STEP.BANDWIDTH_RATE,
+        new BandwidthRate(
+            ports.firstTimeWizardPort(), config, ports.legacyCurrentBandwidthLimits()));
 
     // Add step handlers that presets set
     stepMISC = new Misc(config);

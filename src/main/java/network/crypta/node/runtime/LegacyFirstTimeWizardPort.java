@@ -90,10 +90,11 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
     Config config = node.getConfig();
     long minStorageLimitBytes = MIN_STORAGE_LIMIT;
     long maxStorageLimitBytes = DatastoreUtil.maxDatastoreSize();
+    long autodetectedStorageLimitBytes = autodetectedStorageLimitBytes(config);
     String[] detectedBandwidthLimits = detectedBandwidthLimits();
     return new FirstTimeWizardSnapshot(
         passwordAlreadySet(),
-        initialStorageLimitGiB(config),
+        initialStorageLimitGiB(config, autodetectedStorageLimitBytes),
         formatGiB(minStorageLimitBytes),
         minStorageLimitBytes,
         formatGiB(maxStorageLimitBytes),
@@ -102,7 +103,8 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
         SECONDS.toNanos(1) / KIB,
         String.format(Locale.ENGLISH, "%.2f", BandwidthLimit.MIN_MONTHLY_LIMIT),
         detectedBandwidthLimits[0],
-        detectedBandwidthLimits[1]);
+        detectedBandwidthLimits[1],
+        autodetectedStorageLimitBytes);
   }
 
   /** {@inheritDoc} */
@@ -143,7 +145,7 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    * @param config live daemon config used to read existing datastore-related options
    * @return initial datastore size formatted as English-locale GiB text for the form field
    */
-  private String initialStorageLimitGiB(Config config) {
+  private String initialStorageLimitGiB(Config config, long autodetectedStorageLimitBytes) {
     float storage = 100;
     Option<Long> sizeOption = Config.longOption(config.get("node"), "storeSize");
     if (!sizeOption.isDefault()) {
@@ -155,13 +157,29 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
               + clientCacheSizeOption.getValue()
               + slashdotCacheSizeOption.getValue();
       storage = (float) totalSize / DatastoreUtil.ONE_GIB;
-    } else {
-      long autodetectedDatastoreSize = DatastoreUtil.autodetectDatastoreSize(core, config);
-      if (autodetectedDatastoreSize > 0) {
-        storage = (float) autodetectedDatastoreSize / DatastoreUtil.ONE_GIB;
-      }
+    } else if (autodetectedStorageLimitBytes > 0) {
+      storage = (float) autodetectedStorageLimitBytes / DatastoreUtil.ONE_GIB;
     }
     return String.format(Locale.ENGLISH, "%.2f", storage);
+  }
+
+  /**
+   * Returns the exact datastore suggestion used by the legacy datastore-size dropdown.
+   *
+   * <p>A negative value preserves the legacy “no suggestion available” flow so the HTTP layer can
+   * keep its existing fixed-size fallback selection behavior.
+   *
+   * @param config live daemon config used to decide whether datastore size is already configured
+   * @return autodetected datastore suggestion in bytes, or {@code -1} when unavailable
+   */
+  private long autodetectedStorageLimitBytes(Config config) {
+    Option<Long> sizeOption = Config.longOption(config.get("node"), "storeSize");
+    if (!sizeOption.isDefault()) {
+      return -1;
+    }
+
+    long autodetectedStorageLimitBytes = DatastoreUtil.autodetectDatastoreSize(core, config);
+    return autodetectedStorageLimitBytes > 0 ? autodetectedStorageLimitBytes : -1;
   }
 
   /**
@@ -174,9 +192,10 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    */
   private String[] detectedBandwidthLimits() {
     try {
+      var ipDetector = node.network().ipDetector();
       BandwidthLimit detected =
           BandwidthManipulator.detectBandwidthLimits(
-              node.network().ipDetector().getBandwidthIndicator());
+              ipDetector == null ? null : ipDetector.getBandwidthIndicator());
       return new String[] {
         Long.toString(detected.downBytes / 2 / KIB), Long.toString(detected.upBytes / 2 / KIB)
       };
