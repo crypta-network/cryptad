@@ -18,6 +18,7 @@ import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.StatisticsPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 
@@ -50,6 +51,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
   private final StatisticsPort statisticsPort;
+  private final SecurityLevelsPort securityLevelsPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -145,6 +147,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
+    this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -282,6 +285,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public StatisticsPort statistics() {
     return statisticsPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps legacy security-level reads, confirmation-warning rendering, and
+   * master-password-file mutation handling inside the daemon root module while exposing only
+   * detached SPI-local values upstream.
+   */
+  @Override
+  public SecurityLevelsPort securityLevels() {
+    return securityLevelsPort;
   }
 
   /**

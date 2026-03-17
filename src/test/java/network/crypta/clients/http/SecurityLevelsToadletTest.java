@@ -1,11 +1,16 @@
 package network.crypta.clients.http;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.ConfigPort;
+import network.crypta.runtime.spi.SecurityLevelsPort;
+import network.crypta.runtime.spi.SecurityLevelsSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
+import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -16,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -27,15 +33,53 @@ class SecurityLevelsToadletTest {
 
   @Test
   void path_whenCalled_returnsSecurityLevelsPath() {
+    SecurityLevelsPort securityLevelsPort = mock(SecurityLevelsPort.class);
+    ConfigPort configPort = mock(ConfigPort.class);
     SecurityLevelsToadlet toadlet =
         new SecurityLevelsToadlet(
             mock(HighLevelSimpleClient.class),
-            mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
-            mock(NodeClientCore.class));
+            new SecurityLevelsToadletRuntimePorts(securityLevelsPort, configPort));
 
     String result = toadlet.path();
 
     assertEquals(SecurityLevelsToadlet.PATH, result);
+  }
+
+  @Test
+  void handleMethodPost_whenNetworkLevelChanges_persistsThroughConfigPort() throws Exception {
+    SecurityLevelsPort securityLevelsPort = mock(SecurityLevelsPort.class);
+    ConfigPort configPort = mock(ConfigPort.class);
+    SecurityLevelsToadlet toadlet =
+        new SecurityLevelsToadlet(
+            mock(HighLevelSimpleClient.class),
+            new SecurityLevelsToadletRuntimePorts(securityLevelsPort, configPort));
+    HTTPRequest request = mock(HTTPRequest.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("seclevels")).thenReturn(true);
+    when(request.isPartSet("security-levels.networkThreatLevel.confirm")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("security-levels.networkThreatLevel", 128))
+        .thenReturn("HIGH");
+    when(request.getPartAsStringFailsafe("security-levels.physicalThreatLevel", 128))
+        .thenReturn("");
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                "/tmp/master.keys"));
+    when(securityLevelsPort.networkThreatLevelConfirmWarningHtml(
+            SecurityNetworkThreatLevel.HIGH, "security-levels.networkThreatLevel.confirm"))
+        .thenReturn(null);
+
+    toadlet.handleMethodPOST(URI.create(SecurityLevelsToadlet.PATH), request, ctx);
+
+    verify(securityLevelsPort).setNetworkThreatLevel(SecurityNetworkThreatLevel.HIGH);
+    verify(configPort).persist();
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), eq(null), eq(0L));
   }
 
   @Test
