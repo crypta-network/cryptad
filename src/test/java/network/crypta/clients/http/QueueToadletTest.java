@@ -42,6 +42,7 @@ import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.node.useralerts.UserEvent;
+import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
@@ -95,6 +96,7 @@ class QueueToadletTest {
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
   @Mock private QueuePagePort queuePagePort;
+  @Mock private QueueMutationPort queueMutationPort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
   @Mock private ClientLayerPersister jobRunner;
@@ -457,7 +459,12 @@ class QueueToadletTest {
         .execute(any(Runnable.class));
 
     QueueToadlet toadlet =
-        new QueueToadlet(core, fcp, client, uploads, new QueueToadletRuntimePorts(queuePagePort));
+        new QueueToadlet(
+            core,
+            fcp,
+            client,
+            uploads,
+            new QueueToadletRuntimePorts(queuePagePort, queueMutationPort));
     toadlet.container = container;
     return toadlet;
   }

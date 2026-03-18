@@ -16,6 +16,7 @@ import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RequestQueuePort;
@@ -53,6 +54,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
   private final QueuePagePort queuePagePort;
+  private final QueueMutationPort queueMutationPort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
@@ -151,6 +153,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.queuePagePort = new LegacyQueuePagePort(core);
+    this.queueMutationPort = new LegacyQueueMutationPort(core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
@@ -292,6 +295,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public QueuePagePort queuePage() {
     return queuePagePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining existing-request queue mutations inside the daemon
+   * root module while exposing only a narrow JDK-only mutation surface upstream.
+   */
+  @Override
+  public QueueMutationPort queueMutation() {
+    return queueMutationPort;
   }
 
   /**
