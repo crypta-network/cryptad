@@ -17,6 +17,7 @@ import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -56,6 +57,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DiagnosticPort diagnosticPort;
   private final QueuePagePort queuePagePort;
   private final QueueDownloadPort queueDownloadPort;
+  private final QueueInsertPort queueInsertPort;
   private final QueueMutationPort queueMutationPort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
@@ -156,6 +158,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.queuePagePort = new LegacyQueuePagePort(core);
     this.queueDownloadPort = new LegacyQueueDownloadPort(core);
+    this.queueInsertPort = new LegacyQueueInsertPort(core);
     this.queueMutationPort = new LegacyQueueMutationPort(core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
@@ -309,6 +312,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public QueueDownloadPort queueDownload() {
     return queueDownloadPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining new-upload and local-insert queue registration inside
+   * the daemon root module while exposing only narrow JDK-only request shapes upstream.
+   */
+  @Override
+  public QueueInsertPort queueInsert() {
+    return queueInsertPort;
   }
 
   /**

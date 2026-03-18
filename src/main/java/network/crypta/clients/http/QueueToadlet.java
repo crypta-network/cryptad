@@ -25,55 +25,49 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.ClientPut;
-import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientPutDir;
-import network.crypta.clients.fcp.ClientPutUpload;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
-import network.crypta.clients.fcp.FcpInsertOptions;
-import network.crypta.clients.fcp.FcpInsertRequest;
-import network.crypta.clients.fcp.FcpInsertTuningOptions;
-import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.RequestStarter;
 import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRejectedException;
 import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueInsertFailureReason;
+import network.crypta.runtime.spi.QueueInsertOptions;
+import network.crypta.runtime.spi.QueueInsertOutcome;
+import network.crypta.runtime.spi.QueueInsertPort;
+import network.crypta.runtime.spi.QueueInsertRejectedException;
+import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
+import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.QueueUploadedFile;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
-import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
@@ -132,8 +126,10 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String GROUPED_DOWNLOADS = "grouped-downloads";
   private static final String FILENAME = "filename";
   private static final String FRED_SUFFIX = "-fred-";
+  private static final String ERROR_ACCESS_DENIED = "errorAccessDenied";
   private static final String ERROR_ACCESS_DENIED_FILE_KEY = "errorAccessDeniedFile";
   private static final String ERROR_NO_FILE_OR_CANNOT_READ = "errorNoFileOrCannotRead";
+  private static final String TOO_MANY_FILES_IN_ONE_FOLDER = "tooManyFilesInOneFolder";
   private static final String COMPRESS_LABEL = ", compress=";
   private static final String CMODE_LABEL = ", cmode=";
   private static final String OVERRIDE_SPLITFILE_KEY_LABEL = ", overrideSplitfileKey=";
@@ -143,6 +139,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final QueuePagePort queuePagePort;
   private final TransferAccessPort transferAccessPort;
   private final QueueDownloadPort queueDownloadPort;
+  private final QueueInsertPort queueInsertPort;
   private final QueueMutationPort queueMutationPort;
   private FileInsertWizardToadlet fiw;
   private final QueuePostHandler postHandler;
@@ -222,6 +219,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     this.queuePagePort = ports.queuePagePort();
     this.transferAccessPort = ports.transferAccessPort();
     this.queueDownloadPort = ports.queueDownloadPort();
+    this.queueInsertPort = ports.queueInsertPort();
     this.queueMutationPort = ports.queueMutationPort();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
@@ -772,36 +770,36 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
     private static final class InsertUploadContext {
-      private final FreenetURI insertURI;
-      private final HTTPUploadedFile file;
+      private final String insertUri;
+      private final QueueUploadedFile file;
       private final boolean compress;
       private final String identifier;
-      private final CompatibilityMode cmode;
+      private final String compatibilityMode;
       private final byte[] overrideSplitfileKey;
       private final String filenameForKey;
 
       private InsertUploadContext(
-          FreenetURI insertURI,
-          HTTPUploadedFile file,
+          String insertUri,
+          QueueUploadedFile file,
           boolean compress,
           String identifier,
-          CompatibilityMode cmode,
+          String compatibilityMode,
           byte[] overrideSplitfileKey,
           String filenameForKey) {
-        this.insertURI = insertURI;
+        this.insertUri = insertUri;
         this.file = file;
         this.compress = compress;
         this.identifier = identifier;
-        this.cmode = cmode;
+        this.compatibilityMode = compatibilityMode;
         this.overrideSplitfileKey = overrideSplitfileKey;
         this.filenameForKey = filenameForKey;
       }
 
-      FreenetURI insertURI() {
-        return insertURI;
+      String insertUri() {
+        return insertUri;
       }
 
-      HTTPUploadedFile file() {
+      QueueUploadedFile file() {
         return file;
       }
 
@@ -813,8 +811,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return identifier;
       }
 
-      CompatibilityMode cmode() {
-        return cmode;
+      String compatibilityMode() {
+        return compatibilityMode;
       }
 
       byte[] overrideSplitfileKey() {
@@ -831,25 +829,26 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           return false;
         }
         return compress == other.compress
-            && Objects.equals(insertURI, other.insertURI)
+            && Objects.equals(insertUri, other.insertUri)
             && Objects.equals(file, other.file)
             && Objects.equals(identifier, other.identifier)
-            && cmode == other.cmode
+            && Objects.equals(compatibilityMode, other.compatibilityMode)
             && Arrays.equals(overrideSplitfileKey, other.overrideSplitfileKey)
             && Objects.equals(filenameForKey, other.filenameForKey);
       }
 
       @Override
       public int hashCode() {
-        int result = Objects.hash(insertURI, file, compress, identifier, cmode, filenameForKey);
+        int result =
+            Objects.hash(insertUri, file, compress, identifier, compatibilityMode, filenameForKey);
         return 31 * result + Arrays.hashCode(overrideSplitfileKey);
       }
 
       @Override
       public @NotNull String toString() {
         return "InsertUploadContext{"
-            + "insertURI="
-            + insertURI
+            + "insertUri="
+            + insertUri
             + ", file="
             + file
             + COMPRESS_LABEL
@@ -858,7 +857,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + identifier
             + '\''
             + CMODE_LABEL
-            + cmode
+            + compatibilityMode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
             + ", filenameForKey='"
@@ -871,14 +870,14 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
     private static final class InsertOptions {
       private final boolean compress;
-      private final CompatibilityMode cmode;
+      private final String compatibilityMode;
       private final byte[] overrideSplitfileKey;
       private final String target;
 
       private InsertOptions(
-          boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
+          boolean compress, String compatibilityMode, byte[] overrideSplitfileKey, String target) {
         this.compress = compress;
-        this.cmode = cmode;
+        this.compatibilityMode = compatibilityMode;
         this.overrideSplitfileKey = overrideSplitfileKey;
         this.target = target;
       }
@@ -887,8 +886,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return compress;
       }
 
-      CompatibilityMode cmode() {
-        return cmode;
+      String compatibilityMode() {
+        return compatibilityMode;
       }
 
       byte[] overrideSplitfileKey() {
@@ -905,14 +904,14 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           return false;
         }
         return compress == other.compress
-            && cmode == other.cmode
+            && Objects.equals(compatibilityMode, other.compatibilityMode)
             && Arrays.equals(overrideSplitfileKey, other.overrideSplitfileKey)
             && Objects.equals(target, other.target);
       }
 
       @Override
       public int hashCode() {
-        int result = Objects.hash(compress, cmode, target);
+        int result = Objects.hash(compress, compatibilityMode, target);
         return 31 * result + Arrays.hashCode(overrideSplitfileKey);
       }
 
@@ -922,7 +921,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + COMPRESS_LABEL
             + compress
             + CMODE_LABEL
-            + cmode
+            + compatibilityMode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
             + ", target='"
@@ -933,14 +932,14 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     private record LocalFileInsertParams(
-        File file, String id, String contentType, FreenetURI uri, InsertOptions options) {
+        File file, String id, String contentType, String uri, InsertOptions options) {
 
       boolean compress() {
         return options.compress();
       }
 
-      CompatibilityMode cmode() {
-        return options.cmode();
+      String compatibilityMode() {
+        return options.compatibilityMode();
       }
 
       byte[] overrideSplitfileKey() {
@@ -996,23 +995,23 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private static final class LocalDirInsertParams {
       private final File file;
       private final String identifier;
-      private final FreenetURI uri;
+      private final String uri;
       private final boolean compress;
-      private final CompatibilityMode cmode;
+      private final String compatibilityMode;
       private final byte[] overrideSplitfileKey;
 
       private LocalDirInsertParams(
           File file,
           String identifier,
-          FreenetURI uri,
+          String uri,
           boolean compress,
-          CompatibilityMode cmode,
+          String compatibilityMode,
           byte[] overrideSplitfileKey) {
         this.file = file;
         this.identifier = identifier;
         this.uri = uri;
         this.compress = compress;
-        this.cmode = cmode;
+        this.compatibilityMode = compatibilityMode;
         this.overrideSplitfileKey = overrideSplitfileKey;
       }
 
@@ -1024,7 +1023,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return identifier;
       }
 
-      FreenetURI uri() {
+      String uri() {
         return uri;
       }
 
@@ -1032,8 +1031,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return compress;
       }
 
-      CompatibilityMode cmode() {
-        return cmode;
+      String compatibilityMode() {
+        return compatibilityMode;
       }
 
       byte[] overrideSplitfileKey() {
@@ -1046,7 +1045,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           return false;
         }
         return compress == other.compress
-            && cmode == other.cmode
+            && Objects.equals(compatibilityMode, other.compatibilityMode)
             && Objects.equals(file, other.file)
             && Objects.equals(identifier, other.identifier)
             && Objects.equals(uri, other.uri)
@@ -1055,7 +1054,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       @Override
       public int hashCode() {
-        int result = Objects.hash(file, identifier, uri, compress, cmode);
+        int result = Objects.hash(file, identifier, uri, compress, compatibilityMode);
         return 31 * result + Arrays.hashCode(overrideSplitfileKey);
       }
 
@@ -1072,7 +1071,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + COMPRESS_LABEL
             + compress
             + CMODE_LABEL
-            + cmode
+            + compatibilityMode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
             + '}';
@@ -1102,22 +1101,34 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return true;
       }
 
-      final RandomAccessBucket copiedBucket = copyUploadedFile(params.file());
-      final SimpleLatch done = new SimpleLatch(1);
-
-      if (!queueInsertUpload(params, copiedBucket, done, ctx)) {
-        return true;
+      try {
+        QueueInsertOutcome outcome =
+            queueInsertPort.enqueueBrowserUploadInsert(
+                new QueueBrowserUploadInsertRequest(
+                    params.insertUri(),
+                    params.identifier(),
+                    params.file(),
+                    new QueueInsertOptions(
+                        params.compress(),
+                        params.compatibilityMode(),
+                        params.overrideSplitfileKey()),
+                    params.filenameForKey()));
+        handleInsertOutcome(outcome, ctx);
+      } catch (QueueInsertRejectedException e) {
+        handleBrowserUploadInsertRejection(e.reason(), params, ctx);
+      } catch (RequestQueueUnavailableException _) {
+        sendPersistenceDisabledError(ctx);
+      } catch (IOException e) {
+        writeInternalError(e, ctx);
       }
-
-      awaitInsertCompletion(done);
       return true;
     }
 
     private InsertUploadContext parseInsertUploadRequest(HTTPRequest request, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
       String keyType = request.getPartAsStringFailsafe("keytype", 10);
-      FreenetURI insertURI = parseInsertURI(keyType, request, ctx);
-      if (insertURI == null) {
+      String insertUri = parseInsertURI(keyType, request, ctx);
+      if (insertUri == null) {
         return null;
       }
 
@@ -1129,33 +1140,39 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       boolean compress = !request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty();
       String identifier = file.getFilename() + FRED_SUFFIX + System.currentTimeMillis();
-      CompatibilityMode cmode = parseCompatibilityMode(request);
+      String compatibilityMode = parseCompatibilityMode(request);
       byte[] overrideSplitfileKey =
           normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
       String filenameForKey =
-          "CHK".equals(insertURI.getKeyType()) || "SSK".equals(keyType) ? file.getFilename() : null;
+          insertUri.startsWith("CHK@") || "SSK".equals(keyType) ? file.getFilename() : null;
 
       return new InsertUploadContext(
-          insertURI, file, compress, identifier, cmode, overrideSplitfileKey, filenameForKey);
+          insertUri,
+          toQueueUploadedFile(file),
+          compress,
+          identifier,
+          compatibilityMode,
+          overrideSplitfileKey,
+          filenameForKey);
     }
 
-    private FreenetURI parseInsertURI(String keyType, HTTPRequest request, ToadletContext ctx)
+    private String parseInsertURI(String keyType, HTTPRequest request, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
       try {
         if ("CHK".equals(keyType)) {
           if (fiw != null) fiw.reportCanonicalInsert();
-          return new FreenetURI("CHK@");
+          return "CHK@";
         }
         if ("SSK".equals(keyType)) {
           if (fiw != null) fiw.reportRandomInsert();
-          return new FreenetURI("SSK@");
+          return "SSK@";
         }
         if ("specify".equals(keyType)) {
           String uri = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
           FreenetURI insertURI = new FreenetURI(uri);
           if (LOG.isDebugEnabled())
             LOG.debug("Insert upload key specified: {} ({})", insertURI, uri);
-          return insertURI;
+          return insertURI.toString();
         }
         writeInsertError(
             l10n("errorMustSpecifyKeyTypeTitle"), l10n("errorMustSpecifyKeyType"), ctx);
@@ -1166,12 +1183,21 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
-    private CompatibilityMode parseCompatibilityMode(HTTPRequest request) {
+    private String parseCompatibilityMode(HTTPRequest request) {
       String compatibilityMode = request.getPartAsStringFailsafe(COMPATIBILITY_MODE_FIELD, 100);
       if (compatibilityMode.isEmpty()) {
-        return CompatibilityMode.COMPAT_DEFAULT.intern();
+        return CompatibilityMode.COMPAT_DEFAULT.intern().name();
       }
-      return CompatibilityMode.valueOf(compatibilityMode).intern();
+      return CompatibilityMode.valueOf(compatibilityMode).intern().name();
+    }
+
+    private QueueUploadedFile toQueueUploadedFile(HTTPUploadedFile file) {
+      Bucket uploadData = file.getData();
+      return new QueueUploadedFile(
+          file.getFilename(),
+          file.getContentType(),
+          uploadData.size(),
+          uploadData::getInputStreamUnbuffered);
     }
 
     private byte[] parseOverrideSplitfileKey(HTTPRequest request) {
@@ -1203,150 +1229,72 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       return out;
     }
 
-    private RandomAccessBucket copyUploadedFile(HTTPUploadedFile file) throws IOException {
-      RandomAccessBucket copiedBucket =
-          core.getPersistentTempBucketFactory().makeBucket(file.getData().size());
-      BucketTools.copy(file.getData(), copiedBucket);
-      return copiedBucket;
-    }
-
-    private boolean queueInsertUpload(
-        InsertUploadContext params,
-        RandomAccessBucket copiedBucket,
-        SimpleLatch done,
-        ToadletContext ctx)
+    private void handleInsertOutcome(QueueInsertOutcome outcome, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
-      try {
-        core.getClientLayerPersister()
-            .queue(
-                new PersistentJob() {
-
-                  @Override
-                  public String toString() {
-                    return "QueueToadlet StartInsert";
-                  }
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    try {
-                      return runInsertUploadJob(params, copiedBucket, ctx);
-                    } catch (IOException | ToadletContextClosedException _) {
-                      return false;
-                    } finally {
-                      done.countDown();
-                    }
-                  }
-                },
-                NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        return true;
-      } catch (PersistenceDisabledException _) {
-        sendPersistenceDisabledError(ctx);
-        return false;
+      switch (outcome) {
+        case STARTED, IDENTIFIER_COLLISION, METADATA_UNRESOLVED ->
+            writePermanentRedirect(ctx, "Done", path());
       }
     }
 
-    private boolean runInsertUploadJob(
-        InsertUploadContext params, RandomAccessBucket copiedBucket, ToadletContext ctx)
-        throws IOException, ToadletContextClosedException {
-      try {
-        ClientPut clientPut = buildClientPut(params, copiedBucket);
-        if (!startClientPut(clientPut, ctx)) {
-          return false;
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return true;
-      } catch (IdentifierCollisionException _) {
-        LOG.error(
-            "Upload insert request collision: cannot put same file twice in same millisecond");
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (NotAllowedException _) {
-        writeInsertError(
-            l10n("errorAccessDenied"),
-            l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().getFilename()),
-            ctx);
-        return false;
-      } catch (FileNotFoundException _) {
-        writeInsertError(
-            l10n(ERROR_NO_FILE_OR_CANNOT_READ),
-            l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().getFilename()),
-            ctx);
-        return false;
-      } catch (MalformedURLException _) {
-        writeInsertError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
-        return false;
-      } catch (MetadataUnresolvedException e) {
-        LOG.error(
-            "Unresolved metadata in starting insert from data uploaded from browser: {}", e, e);
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (Exception e) {
-        writeInternalError(e, ctx);
-        return false;
-      }
-    }
-
-    private ClientPut buildClientPut(InsertUploadContext params, RandomAccessBucket copiedBucket)
-        throws NotAllowedException,
-            MetadataUnresolvedException,
-            IdentifierCollisionException,
-            IOException {
-      return new ClientPut(
-          new FcpInsertRequest(
-              fcp.getGlobalForeverClient(),
-              params.insertURI(),
-              params.identifier(),
-              Integer.MAX_VALUE,
-              null,
-              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-              Persistence.FOREVER,
-              null,
-              true),
-          new FcpInsertOptions(
-              new FcpInsertBehaviorOptions(
-                  false, !params.compress(), false, -1, false, false, false),
-              new FcpInsertTuningOptions(
-                  false,
-                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                  null,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                  params.cmode()),
-              params.overrideSplitfileKey()),
-          new ClientPutUpload(
-              UploadFrom.DIRECT,
-              null,
-              params.file().getContentType(),
-              copiedBucket,
-              null,
-              params.filenameForKey(),
-              false),
-          fcp.getCore());
-    }
-
-    private boolean startClientPut(ClientPut clientPut, ToadletContext ctx)
+    private void handleBrowserUploadInsertRejection(
+        QueueInsertFailureReason reason, InsertUploadContext params, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
-      try {
-        fcp.startBlocking(clientPut);
-        return true;
-      } catch (IdentifierCollisionException _) {
-        LOG.error("Upload insert start collision: cannot put same file twice in same millisecond");
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (PersistenceDisabledException _) {
-        // Impossible???
-        return true;
+      switch (reason) {
+        case ACCESS_DENIED ->
+            writeInsertError(
+                l10n(ERROR_ACCESS_DENIED),
+                l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().filename()),
+                ctx);
+        case SOURCE_NOT_FOUND ->
+            writeInsertError(
+                l10n(ERROR_NO_FILE_OR_CANNOT_READ),
+                l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().filename()),
+                ctx);
+        case TOO_MANY_FILES ->
+            writeInsertError(
+                l10n(TOO_MANY_FILES_IN_ONE_FOLDER), l10n(TOO_MANY_FILES_IN_ONE_FOLDER), ctx);
       }
     }
 
-    private void awaitInsertCompletion(SimpleLatch done) {
-      while (done.getCount() > 0) {
-        try {
-          done.await();
-        } catch (InterruptedException _) {
-          Thread.currentThread().interrupt();
-          break;
-        }
+    private void handleLocalFileInsertRejection(
+        QueueInsertFailureReason reason, LocalFileInsertParams params, ToadletContext ctx)
+        throws ToadletContextClosedException, IOException {
+      switch (reason) {
+        case ACCESS_DENIED ->
+            writeError(
+                l10n(ERROR_ACCESS_DENIED),
+                l10n(
+                    ERROR_ACCESS_DENIED_FILE_KEY,
+                    new String[] {"file"},
+                    new String[] {params.file().getName()}),
+                ctx);
+        case SOURCE_NOT_FOUND ->
+            writeError(
+                l10n(ERROR_NO_FILE_OR_CANNOT_READ),
+                l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.target()),
+                ctx);
+        case TOO_MANY_FILES ->
+            writeError(l10n(TOO_MANY_FILES_IN_ONE_FOLDER), l10n(TOO_MANY_FILES_IN_ONE_FOLDER), ctx);
+      }
+    }
+
+    private void handleLocalDirectoryInsertRejection(
+        QueueInsertFailureReason reason, LocalDirInsertParams params, ToadletContext ctx)
+        throws ToadletContextClosedException, IOException {
+      switch (reason) {
+        case ACCESS_DENIED ->
+            writeError(
+                l10n(ERROR_ACCESS_DENIED),
+                l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().toString()),
+                ctx);
+        case SOURCE_NOT_FOUND ->
+            writeError(
+                l10n(ERROR_NO_FILE_OR_CANNOT_READ),
+                l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().toString()),
+                ctx);
+        case TOO_MANY_FILES ->
+            writeError(l10n(TOO_MANY_FILES_IN_ONE_FOLDER), l10n(TOO_MANY_FILES_IN_ONE_FOLDER), ctx);
       }
     }
 
@@ -1361,12 +1309,27 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return true;
       }
 
-      SimpleLatch done = new SimpleLatch(1);
-      if (!queueLocalFileInsert(params, done, ctx)) {
-        return true;
+      try {
+        QueueInsertOutcome outcome =
+            queueInsertPort.enqueueLocalFileInsert(
+                new QueueLocalFileInsertRequest(
+                    params.file(),
+                    params.uri(),
+                    params.id(),
+                    params.contentType(),
+                    new QueueInsertOptions(
+                        params.compress(),
+                        params.compatibilityMode(),
+                        params.overrideSplitfileKey()),
+                    params.target()));
+        handleInsertOutcome(outcome, ctx);
+      } catch (QueueInsertRejectedException e) {
+        handleLocalFileInsertRejection(e.reason(), params, ctx);
+      } catch (RequestQueueUnavailableException _) {
+        sendPersistenceDisabledError(ctx);
+      } catch (IOException e) {
+        writeInternalError(e, ctx);
       }
-
-      awaitInsertCompletion(done);
       return true;
     }
 
@@ -1380,7 +1343,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       String contentType = DefaultMIMETypes.guessMIMEType(filename, false);
       String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
       boolean compress = request.isPartSet(COMPRESS_FIELD);
-      CompatibilityMode cmode = parseCompatibilityMode(request);
+      String compatibilityMode = parseCompatibilityMode(request);
       byte[] overrideSplitfileKey =
           normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
       FreenetURI furi;
@@ -1396,133 +1359,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
 
       String target = (furi.getDocName() != null) ? null : file.getName();
-      InsertOptions options = new InsertOptions(compress, cmode, overrideSplitfileKey, target);
-      return new LocalFileInsertParams(file, identifier, contentType, furi, options);
-    }
-
-    private boolean queueLocalFileInsert(
-        LocalFileInsertParams params, SimpleLatch done, ToadletContext ctx)
-        throws ToadletContextClosedException, IOException {
-      try {
-        core.getClientLayerPersister()
-            .queue(
-                createLocalFileInsertJob(params, done, ctx),
-                NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        return true;
-      } catch (PersistenceDisabledException _) {
-        sendPersistenceDisabledError(ctx);
-        return false;
-      }
-    }
-
-    private PersistentJob createLocalFileInsertJob(
-        LocalFileInsertParams params, SimpleLatch done, ToadletContext ctx) {
-      return new PersistentJob() {
-
-        @Override
-        public String toString() {
-          return "QueueToadlet StartLocalFileInsert";
-        }
-
-        @Override
-        public boolean run(ClientContext context) {
-          try {
-            return startLocalFileInsert(params, ctx);
-          } catch (IOException | ToadletContextClosedException _) {
-            return false;
-          } finally {
-            done.countDown();
-          }
-        }
-      };
-    }
-
-    private boolean startLocalFileInsert(LocalFileInsertParams params, ToadletContext ctx)
-        throws IOException, ToadletContextClosedException {
-      FileBucket bucket = new FileBucket(params.file(), true, false, false, false);
-      boolean handedOff = false;
-      try {
-        ClientPut clientPut = createLocalFileClientPut(params, bucket);
-        if (LOG.isDebugEnabled()) {
-          LOG.debug(
-              "Started global request to insert {} to CHK@ as {}", params.file(), params.id());
-        }
-        fcp.startBlocking(clientPut);
-        handedOff = true;
-        writePermanentRedirect(ctx, "Done", path());
-        return true;
-      } catch (IdentifierCollisionException _) {
-        LOG.error("Local file insert collision: cannot put same file twice in same millisecond");
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (MalformedURLException _) {
-        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
-        return false;
-      } catch (FileNotFoundException _) {
-        writeError(
-            l10n(ERROR_NO_FILE_OR_CANNOT_READ),
-            l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.target()),
-            ctx);
-        return false;
-      } catch (NotAllowedException _) {
-        writeError(
-            l10n("errorAccessDenied"),
-            l10n(
-                ERROR_ACCESS_DENIED_FILE_KEY,
-                new String[] {"file"},
-                new String[] {params.file().getName()}),
-            ctx);
-        return false;
-      } catch (MetadataUnresolvedException e) {
-        LOG.error("Unresolved metadata in starting insert from data from file: {}", e, e);
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (PersistenceDisabledException _) {
-        sendPersistenceDisabledError(ctx);
-        return false;
-      } finally {
-        if (!handedOff) {
-          bucket.free();
-        }
-      }
-    }
-
-    private ClientPut createLocalFileClientPut(LocalFileInsertParams params, FileBucket bucket)
-        throws NotAllowedException,
-            MetadataUnresolvedException,
-            IdentifierCollisionException,
-            IOException {
-      return new ClientPut(
-          new FcpInsertRequest(
-              fcp.getGlobalForeverClient(),
-              params.uri(),
-              params.id(),
-              Integer.MAX_VALUE,
-              null,
-              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-              Persistence.FOREVER,
-              null,
-              true),
-          new FcpInsertOptions(
-              new FcpInsertBehaviorOptions(
-                  false, !params.compress(), false, -1, false, false, false),
-              new FcpInsertTuningOptions(
-                  false,
-                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                  null,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                  params.cmode()),
-              params.overrideSplitfileKey()),
-          new ClientPutUpload(
-              UploadFrom.DISK,
-              params.file(),
-              params.contentType(),
-              bucket,
-              null,
-              params.target(),
-              false),
-          fcp.getCore());
+      InsertOptions options =
+          new InsertOptions(compress, compatibilityMode, overrideSplitfileKey, target);
+      return new LocalFileInsertParams(file, identifier, contentType, furi.toString(), options);
     }
 
     private boolean handleLocalDirSelection(HTTPRequest request, ToadletContext ctx)
@@ -1536,12 +1375,25 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return true;
       }
 
-      SimpleLatch done = new SimpleLatch(1);
-      if (!queueLocalDirInsert(params, done, ctx)) {
-        return true;
+      try {
+        QueueInsertOutcome outcome =
+            queueInsertPort.enqueueLocalDirectoryInsert(
+                new QueueLocalDirectoryInsertRequest(
+                    params.file(),
+                    params.uri(),
+                    params.identifier(),
+                    new QueueInsertOptions(
+                        params.compress(),
+                        params.compatibilityMode(),
+                        params.overrideSplitfileKey())));
+        handleInsertOutcome(outcome, ctx);
+      } catch (QueueInsertRejectedException e) {
+        handleLocalDirectoryInsertRejection(e.reason(), params, ctx);
+      } catch (RequestQueueUnavailableException _) {
+        sendPersistenceDisabledError(ctx);
+      } catch (IOException e) {
+        writeInternalError(e, ctx);
       }
-
-      awaitInsertCompletion(done);
       return true;
     }
 
@@ -1554,7 +1406,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       String identifier = file.getName() + FRED_SUFFIX + System.currentTimeMillis();
       String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
       boolean compress = request.isPartSet(COMPRESS_FIELD);
-      CompatibilityMode cmode = parseCompatibilityMode(request);
+      String compatibilityMode = parseCompatibilityMode(request);
       byte[] overrideSplitfileKey =
           normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
       FreenetURI furi;
@@ -1569,112 +1421,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         furi = new FreenetURI("CHK@");
       }
       return new LocalDirInsertParams(
-          file, identifier, furi, compress, cmode, overrideSplitfileKey);
-    }
-
-    private boolean queueLocalDirInsert(
-        LocalDirInsertParams params, SimpleLatch done, ToadletContext ctx)
-        throws ToadletContextClosedException, IOException {
-      try {
-        core.getClientLayerPersister()
-            .queue(
-                createLocalDirInsertJob(params, done, ctx),
-                NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        return true;
-      } catch (PersistenceDisabledException _) {
-        sendPersistenceDisabledError(ctx);
-        return false;
-      }
-    }
-
-    private PersistentJob createLocalDirInsertJob(
-        LocalDirInsertParams params, SimpleLatch done, ToadletContext ctx) {
-      return new PersistentJob() {
-
-        @Override
-        public String toString() {
-          return "QueueToadlet StartLocalDirInsert";
-        }
-
-        @Override
-        public boolean run(ClientContext context) {
-          try {
-            return startLocalDirInsert(params, ctx);
-          } catch (IOException | ToadletContextClosedException _) {
-            return false;
-          } finally {
-            done.countDown();
-          }
-        }
-      };
-    }
-
-    private boolean startLocalDirInsert(LocalDirInsertParams params, ToadletContext ctx)
-        throws IOException, ToadletContextClosedException {
-      try {
-        ClientPutDir clientPutDir = createLocalDirPut(params);
-        if (LOG.isDebugEnabled()) {
-          LOG.debug(
-              "Started global request to insert dir {} to {} as {}",
-              params.file(),
-              params.uri(),
-              params.identifier());
-        }
-        fcp.startBlocking(clientPutDir);
-        writePermanentRedirect(ctx, "Done", path());
-        return true;
-      } catch (IdentifierCollisionException _) {
-        LOG.error(
-            "Local directory insert collision: cannot put same file twice in same millisecond");
-        writePermanentRedirect(ctx, "Done", path());
-        return false;
-      } catch (MalformedURLException _) {
-        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
-        return false;
-      } catch (FileNotFoundException _) {
-        writeError(
-            l10n(ERROR_NO_FILE_OR_CANNOT_READ),
-            l10n(ERROR_ACCESS_DENIED_FILE_KEY, "file", params.file().toString()),
-            ctx);
-        return false;
-      } catch (TooManyFilesInsertException _) {
-        writeError(l10n("tooManyFilesInOneFolder"), l10n("tooManyFilesInOneFolder"), ctx);
-        return false;
-      } catch (PersistenceDisabledException _) {
-        sendPersistenceDisabledError(ctx);
-        return false;
-      }
-    }
-
-    private ClientPutDir createLocalDirPut(LocalDirInsertParams params)
-        throws IOException, TooManyFilesInsertException {
-      return new ClientPutDir(
-          new FcpInsertRequest(
-              fcp.getGlobalForeverClient(),
-              params.uri(),
-              params.identifier(),
-              Integer.MAX_VALUE,
-              null,
-              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-              Persistence.FOREVER,
-              null,
-              true),
-          new FcpInsertOptions(
-              new FcpInsertBehaviorOptions(
-                  false, !params.compress(), false, -1, false, false, false),
-              new FcpInsertTuningOptions(
-                  false,
-                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                  null,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                  params.cmode()),
-              params.overrideSplitfileKey()),
-          params.file(),
-          null,
-          false,
-          false,
-          fcp.getCore());
+          file, identifier, furi.toString(), compress, compatibilityMode, overrideSplitfileKey);
     }
 
     private boolean handleRecommendRequest(HTTPRequest request, ToadletContext ctx)
@@ -2111,40 +1858,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       case KEY_LIST_LOCATION -> RequestIntent.KEY_LIST;
       default -> RequestIntent.NORMAL;
     };
-  }
-
-  private static final class SimpleLatch {
-    private int count;
-    private final Object lock = new Object();
-
-    SimpleLatch(int count) {
-      this.count = count;
-    }
-
-    long getCount() {
-      synchronized (lock) {
-        return count;
-      }
-    }
-
-    void await() throws InterruptedException {
-      synchronized (lock) {
-        while (count > 0) {
-          lock.wait();
-        }
-      }
-    }
-
-    void countDown() {
-      synchronized (lock) {
-        if (count > 0) {
-          count--;
-          if (count == 0) {
-            lock.notifyAll();
-          }
-        }
-      }
-    }
   }
 
   private enum RequestIntent {
