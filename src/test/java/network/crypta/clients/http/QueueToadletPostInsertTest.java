@@ -36,6 +36,8 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertFailureReason;
@@ -99,6 +101,8 @@ class QueueToadletPostInsertTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
+  @Mock private DarknetConnectionsPort darknetConnectionsPort;
+  @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
   @Mock private ClientLayerPersister jobRunner;
@@ -369,7 +373,9 @@ class QueueToadletPostInsertTest {
                 transferAccessPort,
                 queueDownloadPort,
                 queueInsertPort,
-                queueMutationPort));
+                queueMutationPort,
+                darknetConnectionsPort,
+                darknetMessagingPort));
     toadlet.container = container;
     return toadlet;
   }

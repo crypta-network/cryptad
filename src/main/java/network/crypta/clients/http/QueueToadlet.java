@@ -40,10 +40,13 @@ import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessagingPort;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRejectedException;
@@ -62,6 +65,7 @@ import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.QueueUploadedFile;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
@@ -141,6 +145,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final QueueDownloadPort queueDownloadPort;
   private final QueueInsertPort queueInsertPort;
   private final QueueMutationPort queueMutationPort;
+  private final DarknetConnectionsPort darknetConnectionsPort;
+  private final DarknetMessagingPort darknetMessagingPort;
   private FileInsertWizardToadlet fiw;
   private final QueuePostHandler postHandler;
 
@@ -221,6 +227,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     this.queueDownloadPort = ports.queueDownloadPort();
     this.queueInsertPort = ports.queueInsertPort();
     this.queueMutationPort = ports.queueMutationPort();
+    this.darknetConnectionsPort = ports.darknetConnectionsPort();
+    this.darknetMessagingPort = ports.darknetMessagingPort();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
     QueueCompletionTracker completionTracker = new QueueCompletionTracker();
@@ -1454,14 +1462,15 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           new String[] {"id", "name", "row", "cols"},
           new String[] {"descB", "description", "3", "70"});
       form.addChild("br");
-      if (core.getNode().isFProxyJavascriptEnabled()) {
+      boolean fProxyJavascriptEnabled = ctx.getContainer().isFProxyJavascriptEnabled();
+      if (fProxyJavascriptEnabled) {
         form.addChild(
             "script",
             new String[] {ATTR_TYPE, "src"},
             new String[] {"text/javascript", "/static/js/checkall.js"});
       }
       HTMLNode peerTable = form.addChild(TAG_TABLE, ATTR_CLASS, "darknet_connections");
-      if (core.getNode().isFProxyJavascriptEnabled()) {
+      if (fProxyJavascriptEnabled) {
         HTMLNode headerRow = peerTable.addChild("tr");
         headerRow
             .addChild("th")
@@ -1473,15 +1482,15 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       } else {
         peerTable.addChild("tr").addChild("th", "colspan", "2", l10n("recommendToFriends"));
       }
-      for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
+      for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
         HTMLNode peerRow = peerTable.addChild("tr", ATTR_CLASS, "darknet_connections_normal");
         peerRow
             .addChild("td", ATTR_CLASS, "peer-marker")
             .addChild(
                 TAG_INPUT,
                 new String[] {ATTR_TYPE, ATTR_NAME},
-                new String[] {INPUT_TYPE_CHECKBOX, "node_" + peer.hashCode()});
-        peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", peer.getName());
+                new String[] {INPUT_TYPE_CHECKBOX, "node_" + peer.selectionToken()});
+        peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", peer.displayName());
       }
 
       form.addChild(
@@ -1560,22 +1569,30 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return false;
       }
       String description = request.getPartAsStringFailsafe("description", 32768);
-      List<FreenetURI> uris = new ArrayList<>();
+      List<String> uris = new ArrayList<>();
       for (String part : request.getParts()) {
         if (!part.startsWith(KEY_PREFIX)) continue;
         String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
         try {
-          FreenetURI furi = new FreenetURI(key);
-          uris.add(furi);
+          new FreenetURI(key);
+          uris.add(key);
         } catch (MalformedURLException _) {
           writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
           return true;
         }
       }
 
-      for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
-        if (request.isPartSet("node_" + peer.hashCode())) {
-          for (FreenetURI furi : uris) peer.sendDownloadFeed(furi, description);
+      if (!uris.isEmpty()) {
+        for (DarknetConnectionPeerSnapshot peer : darknetConnectionsPort.listPeers()) {
+          if (!request.isPartSet("node_" + peer.selectionToken())) {
+            continue;
+          }
+          try {
+            darknetMessagingPort.recommendDownloads(peer.nodeIdentifier(), uris, description);
+          } catch (UnknownPeerException | DarknetPeerRequiredException e) {
+            LOG.warn(
+                "Skipping queue recommendation for unresolved peer {}", peer.nodeIdentifier(), e);
+          }
         }
       }
       writePermanentRedirect(ctx, "Done", path());

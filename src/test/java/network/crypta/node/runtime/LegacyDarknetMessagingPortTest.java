@@ -3,6 +3,8 @@ package network.crypta.node.runtime;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.PeerManager;
@@ -23,9 +25,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -111,6 +116,36 @@ class LegacyDarknetMessagingPortTest {
   }
 
   @Test
+  void recommendDownloads_whenIdentityResolves_sendsEveryUriInOrderWithDescription()
+      throws Exception {
+    LegacyDarknetMessagingPort port = newPort();
+    FreenetURI firstUri = new FreenetURI("CHK@");
+    FreenetURI secondUri = new FreenetURI("SSK@");
+    when(network.peerNodes()).thenReturn(new PeerNode[] {darknetPeer});
+    when(darknetPeer.getIdentityString()).thenReturn("peer-1");
+
+    port.recommendDownloads("peer-1", List.of("CHK@", "SSK@"), "check these out");
+
+    InOrder sendOrder = inOrder(darknetPeer);
+    sendOrder.verify(darknetPeer).sendDownloadFeed(firstUri, "check these out");
+    sendOrder.verify(darknetPeer).sendDownloadFeed(secondUri, "check these out");
+    verify(darknetPeer, never()).sendDownloadFeed(any(FreenetURI.class), eq(null));
+  }
+
+  @Test
+  void recommendDownloads_whenDescriptionIsNull_preservesNullDescription() throws Exception {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {darknetPeer});
+    when(darknetPeer.getIdentityString()).thenReturn("peer-1");
+    ArgumentCaptor<String> descriptionCaptor = ArgumentCaptor.forClass(String.class);
+
+    port.recommendDownloads("peer-1", List.of("CHK@"), null);
+
+    verify(darknetPeer).sendDownloadFeed(any(FreenetURI.class), descriptionCaptor.capture());
+    assertNull(descriptionCaptor.getValue());
+  }
+
+  @Test
   void sendComposedMessage_whenLocalFilePresent_usesOnePeerResolutionForOfferAndText()
       throws Exception {
     LegacyDarknetMessagingPort port = newPort();
@@ -126,6 +161,27 @@ class LegacyDarknetMessagingPortTest {
     InOrder sendOrder = inOrder(darknetPeer);
     sendOrder.verify(darknetPeer).sendFileOffer(file, "message-head");
     sendOrder.verify(darknetPeer).sendTextFeed("hello");
+  }
+
+  @Test
+  void recommendDownloads_whenPeerIdentityIsUnknown_throwsUnknownPeerException() {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[0]);
+
+    assertThrows(
+        UnknownPeerException.class,
+        () -> port.recommendDownloads("missing-peer", List.of("CHK@"), "hello"));
+  }
+
+  @Test
+  void recommendDownloads_whenResolvedPeerIsNotDarknet_throwsDarknetPeerRequiredException() {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {nonDarknetPeer});
+    when(nonDarknetPeer.getIdentityString()).thenReturn("peer-1");
+
+    assertThrows(
+        DarknetPeerRequiredException.class,
+        () -> port.recommendDownloads("peer-1", List.of("CHK@"), "hello"));
   }
 
   @Test

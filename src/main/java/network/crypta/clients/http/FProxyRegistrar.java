@@ -150,7 +150,9 @@ final class FProxyRegistrar {
                 runtimePorts.transferAccess(),
                 runtimePorts.queueDownload(),
                 runtimePorts.queueInsert(),
-                runtimePorts.queueMutation()));
+                runtimePorts.queueMutation(),
+                runtimePorts.darknetConnections(),
+                runtimePorts.darknetMessaging()));
     server.register(
         downloadToadlet,
         ToadletRegistration.menuLink(
@@ -177,7 +179,9 @@ final class FProxyRegistrar {
                 runtimePorts.transferAccess(),
                 runtimePorts.queueDownload(),
                 runtimePorts.queueInsert(),
-                runtimePorts.queueMutation()));
+                runtimePorts.queueMutation(),
+                runtimePorts.darknetConnections(),
+                runtimePorts.darknetMessaging()));
     server.register(
         uploadToadlet,
         ToadletRegistration.menuLink(
