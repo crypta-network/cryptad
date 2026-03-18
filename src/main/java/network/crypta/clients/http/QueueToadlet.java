@@ -73,6 +73,10 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePageRequest;
+import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -265,6 +269,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
   private final NodeClientCore core;
   final FCPServer fcp;
+  private final QueuePagePort queuePagePort;
   private FileInsertWizardToadlet fiw;
   private final QueuePostHandler postHandler;
 
@@ -278,6 +283,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final boolean uploads;
 
   private static final String KEY_LIST_LOCATION = "listKeys.txt";
+  private static final String ALERT_SUMMARY_PLACEHOLDER = "<!--CRYPTA_ALERT_SUMMARY-->";
+  private static final String FORM_PASSWORD_PLACEHOLDER = "<!--CRYPTA_QUEUE_FORM_PASSWORD-->";
+  private static final String PANIC_BOX_PLACEHOLDER = "<!--CRYPTA_QUEUE_PANIC_BOX-->";
   private static final String ERROR_INVALID_URI = "errorInvalidURI";
   private static final String ERROR_INVALID_URI_TO_U = "errorInvalidURIToU";
   private static final String ERROR_INVALID_URI_TO_D = "errorInvalidURIToD";
@@ -336,11 +344,16 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    *     guardrails.
    */
   public QueueToadlet(
-      NodeClientCore core, FCPServer fcp, HighLevelSimpleClient client, boolean uploads) {
+      NodeClientCore core,
+      FCPServer fcp,
+      HighLevelSimpleClient client,
+      boolean uploads,
+      QueueToadletRuntimePorts runtimePorts) {
     requireFcpServer(fcp);
     super(client);
     this.core = core;
     this.fcp = fcp;
+    this.queuePagePort = Objects.requireNonNull(runtimePorts).queuePagePort();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
     QueueCompletionTracker completionTracker = new QueueCompletionTracker();
@@ -2213,143 +2226,65 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       return;
     }
 
-    RequestIntent intent = parseRequestIntent(request);
-    PageMaker pageMaker = ctx.getPageMaker();
-
-    if (intent == RequestIntent.NORMAL) {
-      renderQueuePage(request, ctx, pageMaker);
-      return;
-    }
-
-    OutputWrapper output = enqueueIntentJob(intent, ctx, pageMaker);
-    if (output == null) {
-      return; // error already handled
-    }
-
-    OutputWrapper result = waitForOutput(output);
-    writeOutput(ctx, result);
-  }
-
-  private void renderQueuePage(HTTPRequest request, ToadletContext ctx, PageMaker pageMaker)
-      throws ToadletContextClosedException, IOException {
     try {
-      RequestStatus[] reqs = fcp.getGlobalRequests();
-      HTMLNode pageNode = handleGetInner(pageMaker, reqs, request, ctx);
-      writeHTMLReply(
-          ctx,
-          ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", new MultiValueTable<>()),
-          pageNode.generate());
-    } catch (PersistenceDisabledException _) {
-      sendPersistenceDisabledError(ctx);
-    }
-  }
-
-  private OutputWrapper enqueueIntentJob(
-      RequestIntent intent, ToadletContext ctx, PageMaker pageMaker)
-      throws ToadletContextClosedException, IOException {
-    OutputWrapper ow = new OutputWrapper();
-    boolean count = intent == RequestIntent.COUNT;
-    try {
-      core.getClientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
-
-                @Override
-                public String toString() {
-                  return "QueueToadlet ShowQueue";
-                }
-
-                @Override
-                public boolean run(ClientContext context) {
-                  HTMLNode pageNode = null;
-                  String plainText = null;
-                  try {
-                    if (count) {
-                      pageNode = buildCountPage(pageMaker, ctx);
-                    } else {
-                      plainText = buildKeysList();
-                    }
-                    return false;
-                  } finally {
-                    synchronized (ow.lock) {
-                      ow.done = true;
-                      ow.pageNode = pageNode;
-                      ow.plainText = plainText;
-                      ow.lock.notifyAll();
-                    }
-                  }
-                }
-                // Do not use maximal priority: There may be exceptional cases that have higher
-                // priority than the UI, to get rid of excessive garbage, for example.
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-    } catch (PersistenceDisabledException _) {
-      sendPersistenceDisabledError(ctx);
-      return null;
-    }
-    return ow;
-  }
-
-  private HTMLNode buildCountPage(PageMaker pageMaker, ToadletContext ctx) {
-    long queued =
-        core.getRequestStarters().chkFetchSchedulerBulk.countPersistentWaitingKeys()
-            + core.getRequestStarters().chkFetchSchedulerRT.countPersistentWaitingKeys();
-    LOG.debug("Total waiting CHKs: {}", queued);
-    long reallyQueued =
-        core.getRequestStarters().chkFetchSchedulerBulk.countQueuedRequests()
-            + core.getRequestStarters().chkFetchSchedulerRT.countQueuedRequests();
-    LOG.debug("Total queued CHK requests (including transient): {}", reallyQueued);
-    PageNode page = pageMaker.getPageNode(l10n(ATTR_TITLE), ctx);
-    HTMLNode pageNode = page.getOuterNode();
-    HTMLNode contentNode = page.getContentNode();
-    if (ctx.isAllowedFullAccess()) {
-      contentNode.addChild(ctx.getAlertManager().createSummary());
-    }
-    HTMLNode infoboxContent =
-        pageMaker.getInfobox(
-            INFOBOX_INFORMATION, "Queued requests status", contentNode, null, false);
-    infoboxContent.addChild("p", "Total awaiting CHKs: " + queued);
-    infoboxContent.addChild("p", "Total queued CHK requests: " + reallyQueued);
-    return pageNode;
-  }
-
-  private String buildKeysList() {
-    try {
-      return makeKeysList(uploads);
-    } catch (PersistenceDisabledException _) {
-      return null;
-    }
-  }
-
-  private OutputWrapper waitForOutput(OutputWrapper ow) {
-    synchronized (ow.lock) {
-      while (!ow.done) {
-        try {
-          ow.lock.wait();
-        } catch (InterruptedException _) {
-          Thread.currentThread().interrupt();
-          break;
-        }
+      RequestIntent intent = parseRequestIntent(request);
+      switch (intent) {
+        case NORMAL ->
+            writeQueueSnapshot(
+                ctx,
+                queuePagePort.renderPage(
+                    new QueuePageRequest(
+                        uploads,
+                        ctx.getPageMaker().advancedMode(request, this.container),
+                        request.isParameterSet("sortBy") ? request.getParam("sortBy") : null,
+                        request.isParameterSet("reversed"))));
+        case COUNT -> writeQueueSnapshot(ctx, queuePagePort.renderCountPage(uploads));
+        case KEY_LIST ->
+            this.writeReply(
+                ctx,
+                ReplyHeaders.of(200, "OK", "text/plain"),
+                queuePagePort.renderKeyList(uploads));
       }
-      return ow;
+    } catch (RequestQueueUnavailableException _) {
+      sendPersistenceDisabledError(ctx);
     }
   }
 
-  private void writeOutput(ToadletContext ctx, OutputWrapper result)
+  private void writeQueueSnapshot(ToadletContext ctx, QueuePageSnapshot snapshot)
       throws ToadletContextClosedException, IOException {
-    if (result.pageNode != null) {
-      writeHTMLReply(
-          ctx,
-          ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", new MultiValueTable<>()),
-          result.pageNode.generate());
-    } else if (result.plainText != null) {
-      this.writeReply(ctx, ReplyHeaders.of(200, "OK", "text/plain"), result.plainText);
-    } else if (core.killedDatabase()) {
-      sendPersistenceDisabledError(ctx);
-    } else {
-      this.writeError("Internal error", "Internal error", ctx);
+    PageNode page = ctx.getPageMaker().getPageNode(snapshot.pageTitle(), ctx);
+    page.getContentNode()
+        .addChild("%", injectRuntimePlaceholders(snapshot.contentHtmlTemplate(), ctx));
+    writeHTMLReply(ctx, 200, "OK", page.generate());
+  }
+
+  private String injectRuntimePlaceholders(String contentHtmlTemplate, ToadletContext ctx) {
+    return contentHtmlTemplate
+        .replace(ALERT_SUMMARY_PLACEHOLDER, renderAlertSummary(ctx))
+        .replace(FORM_PASSWORD_PLACEHOLDER, renderFormPasswordInput(ctx))
+        .replace(PANIC_BOX_PLACEHOLDER, renderPanicBox(ctx));
+  }
+
+  private String renderAlertSummary(ToadletContext ctx) {
+    if (!ctx.isAllowedFullAccess()) {
+      return "";
     }
+    return ctx.getAlertManager().createSummary().generate();
+  }
+
+  private String renderFormPasswordInput(ToadletContext ctx) {
+    return new HTMLNode(
+            TAG_INPUT,
+            new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+            new String[] {INPUT_TYPE_HIDDEN, "formPassword", ctx.getFormPassword()})
+        .generate();
+  }
+
+  private String renderPanicBox(ToadletContext ctx) {
+    if (!SimpleToadletServer.isPanicButtonToBeShown) {
+      return "";
+    }
+    return createPanicBox(ctx.getPageMaker(), ctx).generate();
   }
 
   private RequestIntent parseRequestIntent(final HTTPRequest request) {
@@ -2393,13 +2328,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         }
       }
     }
-  }
-
-  private static final class OutputWrapper {
-    final Object lock = new Object();
-    boolean done;
-    HTMLNode pageNode;
-    String plainText;
   }
 
   private enum RequestIntent {
