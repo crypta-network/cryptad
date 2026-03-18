@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Random;
@@ -35,8 +36,14 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueInsertFailureReason;
+import network.crypta.runtime.spi.QueueInsertOutcome;
 import network.crypta.runtime.spi.QueueInsertPort;
+import network.crypta.runtime.spi.QueueInsertRejectedException;
+import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
+import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -45,8 +52,10 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
@@ -64,6 +73,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,7 +90,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 @SuppressWarnings("java:S100")
-class QueueToadletPostMutationTest {
+class QueueToadletPostInsertTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
@@ -107,118 +117,193 @@ class QueueToadletPostMutationTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
+    when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(false);
   }
 
   @Test
-  void handleMethodPOST_whenRemoveRequestSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "remove_request", "yes",
-                "identifier-a", "download-1",
-                "identifier-b", "download-2"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    String location = captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeRequests(java.util.List.of("download-1", "download-2"));
-    assertEquals(QueueToadlet.PATH_DOWNLOADS, location);
-  }
-
-  @Test
-  void handleMethodPOST_whenRestartRequestSelected_callsQueueMutationPortWithDisableFilterData()
+  void handleMethodPOST_whenBrowserUploadInserted_delegatesToQueueInsertPortAndRedirects()
       throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "restart_request", "yes",
-                "disableFilterData", "on",
-                "identifier-a", "download-1"));
+    QueueToadlet toadlet = createQueueToadlet();
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    when(queueInsertPort.enqueueBrowserUploadInsert(any()))
+        .thenReturn(QueueInsertOutcome.METADATA_UNRESOLVED);
 
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(Map.of("insert", "yes", "keytype", "CHK"), uploadedFile),
+        ctx);
 
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).restartRequests(java.util.List.of("download-1"), true);
+    assertEquals(QueueToadlet.PATH_UPLOADS, captureRedirectLocation(ctx));
+    ArgumentCaptor<QueueBrowserUploadInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueBrowserUploadInsertRequest.class);
+    verify(queueInsertPort).enqueueBrowserUploadInsert(requestCaptor.capture());
+    QueueBrowserUploadInsertRequest request = requestCaptor.getValue();
+    assertEquals("CHK@", request.insertUri());
+    assertTrue(request.identifier().startsWith("upload.txt-fred-"));
+    assertEquals(defaultCompatibilityMode(), request.compatibilityMode());
+    assertEquals("upload.txt", request.filenameForKey());
+    assertEquals("upload.txt", request.upload().filename());
+    assertEquals("text/plain", request.upload().contentType());
+    try (var inputStream = request.upload().openStream()) {
+      assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8), inputStream.readAllBytes());
+    }
   }
 
   @Test
-  void handleMethodPOST_whenChangePriorityTopSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "change_priority_top", "yes",
-                "priority_top", "4",
-                "identifier-a", "download-1"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).changePriority(java.util.List.of("download-1"), (short) 4);
-  }
-
-  @Test
-  void handleMethodPOST_whenChangePriorityBottomSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "change_priority_bottom", "yes",
-                "priority_bottom", "2",
-                "identifier-a", "download-1"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).changePriority(java.util.List.of("download-1"), (short) 2);
-  }
-
-  @Test
-  void handleMethodPOST_whenRemoveFinishedUploadsSelected_callsQueueMutationPort()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(true);
-    HTTPRequest request = createRequest(Map.of("remove_finished_uploads_request", "yes"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/uploads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeFinishedUploads();
-  }
-
-  @Test
-  void handleMethodPOST_whenRemoveFinishedDownloadsSelected_callsQueueMutationPort()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request = createRequest(Map.of("remove_finished_downloads_request", "yes"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeFinishedDownloads();
-  }
-
-  @Test
-  void handleMethodPOST_whenQueueMutationUnavailable_returnsPersistenceDisabledErrorPage()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(Map.of("remove_request", "yes", "identifier-a", "download-1"));
-    doThrow(new RequestQueueUnavailableException("queue unavailable"))
-        .when(queueMutationPort)
-        .removeRequests(java.util.List.of("download-1"));
-
+  void handleMethodPOST_whenBrowserUploadRejected_returnsInsertErrorPage() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    doThrow(new QueueInsertRejectedException(QueueInsertFailureReason.ACCESS_DENIED, "denied"))
+        .when(queueInsertPort)
+        .enqueueBrowserUploadInsert(any());
     ByteArrayOutputStream body = captureBody(ctx);
 
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(Map.of("insert", "yes", "keytype", "CHK"), uploadedFile),
+        ctx);
+
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("upload.txt"));
+    verify(ctx).sendReplyHeaders(eq(400), eq("Bad request"), any(), anyString(), anyLong());
+  }
+
+  @Test
+  void handleMethodPOST_whenBrowserUploadQueueUnavailable_returnsPersistenceDisabledPage()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    doThrow(new RequestQueueUnavailableException("queue unavailable"))
+        .when(queueInsertPort)
+        .enqueueBrowserUploadInsert(any());
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(Map.of("insert", "yes", "keytype", "CHK"), uploadedFile),
+        ctx);
 
     String html = body.toString(StandardCharsets.UTF_8);
     assertTrue(html.contains(tempDir.toString()));
     assertTrue(html.contains("queue.db"));
   }
 
-  private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
+  @Test
+  void handleMethodPOST_whenLocalFileSelected_delegatesToQueueInsertPortAndRedirects()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path file = Files.writeString(tempDir.resolve("upload.txt"), "payload");
+    when(queueInsertPort.enqueueLocalFileInsert(any())).thenReturn(QueueInsertOutcome.STARTED);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                LocalFileBrowserToadlet.SELECT_FILE,
+                "yes",
+                "filename",
+                file.toString(),
+                "key",
+                "CHK@",
+                "compress",
+                "on")),
+        ctx);
+
+    assertEquals(QueueToadlet.PATH_UPLOADS, captureRedirectLocation(ctx));
+    ArgumentCaptor<QueueLocalFileInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueLocalFileInsertRequest.class);
+    verify(queueInsertPort).enqueueLocalFileInsert(requestCaptor.capture());
+    QueueLocalFileInsertRequest request = requestCaptor.getValue();
+    assertEquals(file.toFile(), request.sourceFile());
+    assertEquals("CHK@", request.insertUri());
+    assertTrue(request.identifier().startsWith("upload.txt-fred-"));
+    assertEquals(defaultCompatibilityMode(), request.compatibilityMode());
+    assertEquals("upload.txt", request.targetFilename());
+    assertTrue(request.compress());
+  }
+
+  @Test
+  void handleMethodPOST_whenLocalFileSourceMissing_returnsNoFileErrorPage() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path missing = tempDir.resolve("missing.txt");
+    doThrow(new QueueInsertRejectedException(QueueInsertFailureReason.SOURCE_NOT_FOUND, "missing"))
+        .when(queueInsertPort)
+        .enqueueLocalFileInsert(any());
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                LocalFileBrowserToadlet.SELECT_FILE,
+                "yes",
+                "filename",
+                missing.toString(),
+                "key",
+                "CHK@")),
+        ctx);
+
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("missing.txt"));
+    verify(ctx).sendReplyHeaders(eq(400), eq("Bad request"), any(), anyString(), anyLong());
+  }
+
+  @Test
+  void handleMethodPOST_whenLocalDirectorySelected_delegatesToQueueInsertPortAndRedirects()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path dir = Files.createDirectories(tempDir.resolve("site"));
+    when(queueInsertPort.enqueueLocalDirectoryInsert(any())).thenReturn(QueueInsertOutcome.STARTED);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                LocalFileBrowserToadlet.SELECT_DIR,
+                "yes",
+                "filename",
+                dir.toString(),
+                "key",
+                "CHK@")),
+        ctx);
+
+    assertEquals(QueueToadlet.PATH_UPLOADS, captureRedirectLocation(ctx));
+    ArgumentCaptor<QueueLocalDirectoryInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueLocalDirectoryInsertRequest.class);
+    verify(queueInsertPort).enqueueLocalDirectoryInsert(requestCaptor.capture());
+    QueueLocalDirectoryInsertRequest request = requestCaptor.getValue();
+    assertEquals(dir.toFile(), request.sourceDirectory());
+    assertEquals("CHK@", request.insertUri());
+    assertTrue(request.identifier().startsWith("site-fred-"));
+    assertEquals(defaultCompatibilityMode(), request.compatibilityMode());
+  }
+
+  @Test
+  void handleMethodPOST_whenLocalDirectoryRejected_returnsTooManyFilesErrorPage() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path dir = Files.createDirectories(tempDir.resolve("site"));
+    doThrow(
+            new QueueInsertRejectedException(
+                QueueInsertFailureReason.TOO_MANY_FILES, "too many files"))
+        .when(queueInsertPort)
+        .enqueueLocalDirectoryInsert(any());
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                LocalFileBrowserToadlet.SELECT_DIR,
+                "yes",
+                "filename",
+                dir.toString(),
+                "key",
+                "CHK@")),
+        ctx);
+
+    assertTrue(body.size() > 0);
+    verify(ctx).sendReplyHeaders(eq(400), eq("Bad request"), any(), anyString(), anyLong());
+  }
+
+  private QueueToadlet createQueueToadlet() throws Exception {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
@@ -278,7 +363,7 @@ class QueueToadletPostMutationTest {
             core,
             fcp,
             client,
-            uploads,
+            true,
             new QueueToadletRuntimePorts(
                 queuePagePort,
                 transferAccessPort,
@@ -342,13 +427,34 @@ class QueueToadletPostMutationTest {
         new ClientContextDefaults(fetchContext, insertContext, config));
   }
 
+  private HTTPUploadedFile uploadedFile() {
+    HTTPUploadedFile file = org.mockito.Mockito.mock(HTTPUploadedFile.class);
+    when(file.getFilename()).thenReturn("upload.txt");
+    when(file.getContentType()).thenReturn("text/plain");
+    when(file.getData())
+        .thenReturn(new SimpleReadOnlyArrayBucket("payload".getBytes(StandardCharsets.UTF_8)));
+    return file;
+  }
+
+  private String defaultCompatibilityMode() {
+    return InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern().name();
+  }
+
   private HTTPRequest createRequest(Map<String, String> parts) {
+    return createRequest(parts, null);
+  }
+
+  private HTTPRequest createRequest(Map<String, String> parts, HTTPUploadedFile uploadedFile) {
     HTTPRequest request = org.mockito.Mockito.mock(HTTPRequest.class);
     when(request.getParts()).thenReturn(parts.keySet().stream().sorted().toArray(String[]::new));
     when(request.isPartSet(anyString()))
         .thenAnswer(invocation -> parts.containsKey(invocation.getArgument(0, String.class)));
     when(request.getPartAsStringFailsafe(anyString(), anyInt()))
         .thenAnswer(invocation -> parts.getOrDefault(invocation.getArgument(0, String.class), ""));
+    when(request.getUploadedFile(anyString()))
+        .thenAnswer(
+            invocation ->
+                "filename".equals(invocation.getArgument(0, String.class)) ? uploadedFile : null);
     return request;
   }
 

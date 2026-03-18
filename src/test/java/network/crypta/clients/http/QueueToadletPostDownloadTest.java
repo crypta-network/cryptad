@@ -41,6 +41,7 @@ import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRejectedException;
 import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -96,6 +97,7 @@ class QueueToadletPostDownloadTest {
   @Mock private QueuePagePort queuePagePort;
   @Mock private TransferAccessPort transferAccessPort;
   @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
@@ -358,7 +360,11 @@ class QueueToadletPostDownloadTest {
             client,
             false,
             new QueueToadletRuntimePorts(
-                queuePagePort, transferAccessPort, queueDownloadPort, queueMutationPort));
+                queuePagePort,
+                transferAccessPort,
+                queueDownloadPort,
+                queueInsertPort,
+                queueMutationPort));
     toadlet.container = container;
     return toadlet;
   }

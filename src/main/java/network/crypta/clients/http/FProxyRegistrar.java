@@ -149,6 +149,7 @@ final class FProxyRegistrar {
                 runtimePorts.queuePage(),
                 runtimePorts.transferAccess(),
                 runtimePorts.queueDownload(),
+                runtimePorts.queueInsert(),
                 runtimePorts.queueMutation()));
     server.register(
         downloadToadlet,
@@ -175,6 +176,7 @@ final class FProxyRegistrar {
                 runtimePorts.queuePage(),
                 runtimePorts.transferAccess(),
                 runtimePorts.queueDownload(),
+                runtimePorts.queueInsert(),
                 runtimePorts.queueMutation()));
     server.register(
         uploadToadlet,

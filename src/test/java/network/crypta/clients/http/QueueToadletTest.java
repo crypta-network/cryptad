@@ -43,6 +43,7 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.node.useralerts.UserEvent;
 import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
@@ -100,6 +101,7 @@ class QueueToadletTest {
   @Mock private QueuePagePort queuePagePort;
   @Mock private TransferAccessPort transferAccessPort;
   @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
@@ -470,7 +472,11 @@ class QueueToadletTest {
             client,
             uploads,
             new QueueToadletRuntimePorts(
-                queuePagePort, transferAccessPort, queueDownloadPort, queueMutationPort));
+                queuePagePort,
+                transferAccessPort,
+                queueDownloadPort,
+                queueInsertPort,
+                queueMutationPort));
     toadlet.container = container;
     return toadlet;
   }

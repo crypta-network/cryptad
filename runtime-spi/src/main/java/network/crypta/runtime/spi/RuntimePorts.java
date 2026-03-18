@@ -193,6 +193,17 @@ public interface RuntimePorts {
   QueueDownloadPort queueDownload();
 
   /**
+   * Returns the legacy queue-insert capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining new-upload and local-insert queue registration inside the
+   * daemon root module while exposing only narrow JDK-only request shapes upstream. Callers retain
+   * HTTP request parsing, URI validation, redirects, and user-facing error mapping.
+   *
+   * @return queue-insert runtime port for creating new persistent uploads and local inserts
+   */
+  QueueInsertPort queueInsert();
+
+  /**
    * Returns the legacy queue-mutation capability exposed to admin-facing HTTP code.
    *
    * <p>This port keeps the remaining existing-request queue mutations inside the daemon root module
