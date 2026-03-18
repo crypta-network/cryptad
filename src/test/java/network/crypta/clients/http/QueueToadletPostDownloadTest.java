@@ -1,9 +1,12 @@
 package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
@@ -36,6 +39,8 @@ import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueDownloadRejectedException;
+import network.crypta.runtime.spi.QueueDownloadRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -64,6 +69,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -72,14 +79,17 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 @SuppressWarnings("java:S100")
-class QueueToadletPostMutationTest {
+class QueueToadletPostDownloadTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
@@ -105,118 +115,188 @@ class QueueToadletPostMutationTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
+    when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(false);
   }
 
   @Test
-  void handleMethodPOST_whenRemoveRequestSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
+  void handleMethodPOST_whenSingleDownloadRequested_callsQueueDownloadPort() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path downloadsDir = Files.createDirectories(tempDir.resolve("downloads"));
+    String downloadPath = downloadsDir.toString();
+    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
     HTTPRequest request =
         createRequest(
             Map.of(
-                "remove_request", "yes",
-                "identifier-a", "download-1",
-                "identifier-b", "download-2"));
+                "download", "yes",
+                "key", "CHK@",
+                "type", "text/plain",
+                "persistence", "forever",
+                "return-type", "disk",
+                "path", downloadPath,
+                "filterData", "on"));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
 
-    String location = captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeRequests(java.util.List.of("download-1", "download-2"));
-    assertEquals(QueueToadlet.PATH_DOWNLOADS, location);
+    assertEquals(QueueToadlet.PATH_DOWNLOADS, captureRedirectLocation(ctx));
+    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueDownloadRequest.class);
+    verify(queueDownloadPort).enqueueDownload(requestCaptor.capture());
+    QueueDownloadRequest queueRequest = requestCaptor.getValue();
+    assertEquals("CHK@", queueRequest.fetchUri());
+    assertTrue(queueRequest.filterData());
+    assertEquals("text/plain", queueRequest.expectedMimeType());
+    assertEquals("forever", queueRequest.persistenceType());
+    assertEquals("disk", queueRequest.returnType());
+    assertEquals(new File(downloadPath), queueRequest.downloadsDir());
   }
 
   @Test
-  void handleMethodPOST_whenRestartRequestSelected_callsQueueMutationPortWithDisableFilterData()
+  void handleMethodPOST_whenBulkDownloadsRequested_callsQueueDownloadPortOncePerValidKey()
       throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
+    QueueToadlet toadlet = createQueueToadlet();
+    Path downloadsDir = Files.createDirectories(tempDir.resolve("bulk-downloads"));
+    String downloadPath = downloadsDir.toString();
+    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
+    ByteArrayOutputStream body = captureBody(ctx);
     HTTPRequest request =
         createRequest(
             Map.of(
-                "restart_request", "yes",
-                "disableFilterData", "on",
-                "identifier-a", "download-1"));
+                "bulkDownloads", "CHK@\nnot-a-uri\n\nSSK@\n",
+                "target", "disk",
+                "path", downloadPath,
+                "filterData", "on"));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
 
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).restartRequests(java.util.List.of("download-1"), true);
+    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueDownloadRequest.class);
+    verify(queueDownloadPort, times(2)).enqueueDownload(requestCaptor.capture());
+    List<QueueDownloadRequest> requests = requestCaptor.getAllValues();
+    assertEquals("CHK@", requests.getFirst().fetchUri());
+    assertEquals("SSK@", requests.get(1).fetchUri());
+    assertEquals("disk", requests.getFirst().returnType());
+    assertEquals(new File(downloadPath), requests.getFirst().downloadsDir());
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("not-a-uri"));
   }
 
   @Test
-  void handleMethodPOST_whenChangePriorityTopSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
+  void handleMethodPOST_whenSingleDownloadRejected_returnsDiskConfigErrorPage() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    Path downloadsDir = Files.createDirectories(tempDir.resolve("downloads"));
+    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
+    doThrow(new QueueDownloadRejectedException("rejected"))
+        .when(queueDownloadPort)
+        .enqueueDownload(any(QueueDownloadRequest.class));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
         createRequest(
             Map.of(
-                "change_priority_top", "yes",
-                "priority_top", "4",
-                "identifier-a", "download-1"));
+                "download", "yes",
+                "key", "CHK@",
+                "persistence", "forever",
+                "return-type", "disk",
+                "path", downloadsDir.toString())),
+        ctx);
 
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).changePriority(java.util.List.of("download-1"), (short) 4);
+    verify(queueDownloadPort).enqueueDownload(any(QueueDownloadRequest.class));
+    verify(ctx).sendReplyHeaders(eq(400), eq("Bad request"), any(), anyString(), anyLong());
   }
 
   @Test
-  void handleMethodPOST_whenChangePriorityBottomSelected_callsQueueMutationPort() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "change_priority_bottom", "yes",
-                "priority_bottom", "2",
-                "identifier-a", "download-1"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).changePriority(java.util.List.of("download-1"), (short) 2);
-  }
-
-  @Test
-  void handleMethodPOST_whenRemoveFinishedUploadsSelected_callsQueueMutationPort()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(true);
-    HTTPRequest request = createRequest(Map.of("remove_finished_uploads_request", "yes"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/uploads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeFinishedUploads();
-  }
-
-  @Test
-  void handleMethodPOST_whenRemoveFinishedDownloadsSelected_callsQueueMutationPort()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request = createRequest(Map.of("remove_finished_downloads_request", "yes"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    captureRedirectLocation(ctx);
-    verify(queueMutationPort).removeFinishedDownloads();
-  }
-
-  @Test
-  void handleMethodPOST_whenQueueMutationUnavailable_returnsPersistenceDisabledErrorPage()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(false);
-    HTTPRequest request =
-        createRequest(Map.of("remove_request", "yes", "identifier-a", "download-1"));
+  void handleMethodPOST_whenBulkQueueUnavailable_rendersBulkFailureResultPage() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
     doThrow(new RequestQueueUnavailableException("queue unavailable"))
-        .when(queueMutationPort)
-        .removeRequests(java.util.List.of("download-1"));
-
+        .when(queueDownloadPort)
+        .enqueueDownload(any(QueueDownloadRequest.class));
     ByteArrayOutputStream body = captureBody(ctx);
 
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(Map.of("bulkDownloads", "CHK@\n", "target", "direct")),
+        ctx);
 
     String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(tempDir.toString()));
-    assertTrue(html.contains("queue.db"));
+    assertTrue(html.contains("CHK@"));
+    assertFalse(html.contains("queue.db"));
+    verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
   }
 
-  private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
+  @Test
+  void handleMethodPOST_whenBulkQueueUnavailableAfterPartialSuccess_preservesAcceptedKeys()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    doNothing()
+        .doThrow(new RequestQueueUnavailableException("queue unavailable"))
+        .when(queueDownloadPort)
+        .enqueueDownload(any(QueueDownloadRequest.class));
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(Map.of("bulkDownloads", "CHK@\nSSK@\n", "target", "direct")),
+        ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("CHK@"));
+    assertTrue(html.contains("SSK@"));
+    assertFalse(html.contains("queue.db"));
+    verify(queueDownloadPort, times(2)).enqueueDownload(any(QueueDownloadRequest.class));
+    verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
+  }
+
+  @Test
+  void handleMethodPOST_whenDownloadPathDisallowed_returnsDisallowedPageWithoutQueueDownloadCall()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    String downloadPath = tempDir.resolve("blocked").toString();
+    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(false);
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(
+            Map.of(
+                "download", "yes",
+                "key", "CHK@",
+                "persistence", "forever",
+                "return-type", "disk",
+                "path", downloadPath)),
+        ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains(downloadPath));
+    assertTrue(html.contains("disallowed"));
+    verify(queueDownloadPort, never()).enqueueDownload(any(QueueDownloadRequest.class));
+  }
+
+  @Test
+  void handleMethodPOST_whenDiskDownloadsDisabled_fallsBackToDirectReturnWithoutPathCheck()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(true);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(
+            Map.of(
+                "download", "yes",
+                "key", "CHK@",
+                "persistence", "forever",
+                "return-type", "disk",
+                "path", tempDir.resolve("downloads").toString())),
+        ctx);
+
+    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueDownloadRequest.class);
+    verify(queueDownloadPort).enqueueDownload(requestCaptor.capture());
+    QueueDownloadRequest queueRequest = requestCaptor.getValue();
+    assertEquals("direct", queueRequest.returnType());
+    assertNull(queueRequest.downloadsDir());
+    verify(transferAccessPort, never()).allowDownloadTo(any(File.class));
+  }
+
+  private QueueToadlet createQueueToadlet() throws Exception {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
@@ -276,7 +356,7 @@ class QueueToadletPostMutationTest {
             core,
             fcp,
             client,
-            uploads,
+            false,
             new QueueToadletRuntimePorts(
                 queuePagePort, transferAccessPort, queueDownloadPort, queueMutationPort));
     toadlet.container = container;
