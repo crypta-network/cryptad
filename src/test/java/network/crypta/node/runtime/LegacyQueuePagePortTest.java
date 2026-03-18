@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -103,6 +104,26 @@ class LegacyQueuePagePortTest {
   }
 
   @Test
+  void renderPage_whenRequestIsNull_throwsNullPointerException() {
+    assertThrows(NullPointerException.class, () -> port.renderPage(null));
+  }
+
+  @Test
+  void renderPage_whenFcpServerMissing_returnsEmptyDownloadsSnapshot() throws Exception {
+    when(endpoints.getFCPServer()).thenReturn(null);
+    when(core.getDownloadsDir()).thenReturn(new File("downloads"));
+    when(core.allowDownloadTo(any(File.class))).thenReturn(true);
+
+    QueuePageSnapshot snapshot = port.renderPage(new QueuePageRequest(false, false, null, false));
+
+    assertTrue(snapshot.pageTitle().contains("Downloads"));
+    assertTrue(snapshot.contentHtmlTemplate().contains("queue-empty"));
+    assertTrue(snapshot.contentHtmlTemplate().contains("queueDownloadForm"));
+    assertTrue(snapshot.contentHtmlTemplate().contains("<!--CRYPTA_ALERT_SUMMARY-->"));
+    verifyNoInteractions(fcp);
+  }
+
+  @Test
   void renderKeyList_whenDownloadsRequested_returnsOnlyDownloadUris() throws Exception {
     DownloadRequestStatus download = org.mockito.Mockito.mock(DownloadRequestStatus.class);
     UploadRequestStatus upload = org.mockito.Mockito.mock(UploadRequestStatus.class);
@@ -132,6 +153,16 @@ class LegacyQueuePagePortTest {
     String keyList = port.renderKeyList(true);
 
     assertEquals(uploadUri + "\n", keyList);
+  }
+
+  @Test
+  void renderKeyList_whenFcpServerMissing_returnsEmptyString() throws Exception {
+    when(endpoints.getFCPServer()).thenReturn(null);
+
+    String keyList = port.renderKeyList(false);
+
+    assertEquals("", keyList);
+    verifyNoInteractions(fcp);
   }
 
   @Test

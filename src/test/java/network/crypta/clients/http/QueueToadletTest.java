@@ -1,7 +1,10 @@
 package network.crypta.clients.http;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -40,9 +43,14 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.node.useralerts.UserEvent;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePageRequest;
+import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
+import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
@@ -50,6 +58,7 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,11 +72,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -78,15 +90,34 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class QueueToadletTest {
 
+  private static final String TEST_FORM_PASSWORD = "queue-form-password";
+
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
   @Mock private QueuePagePort queuePagePort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
   @Mock private ClientLayerPersister jobRunner;
-  private RequestCompletionCallback completionCallback;
+  @Mock private ToadletContext ctx;
+  @Mock private HTTPRequest request;
+  @Mock private ToadletContainer container;
 
   @TempDir Path tempDir;
+
+  private RequestCompletionCallback completionCallback;
+  private PageMaker pageMaker;
+
+  @BeforeEach
+  void setUp() {
+    pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn(TEST_FORM_PASSWORD);
+    when(ctx.getAlertManager()).thenReturn(alerts);
+    when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
+    when(container.publicGatewayMode()).thenReturn(false);
+    when(fcp.isEnabled()).thenReturn(true);
+  }
 
   @Test
   void constructor_whenInstantiated_setsCompletionCallbackAndQueuesLoadJob() throws Exception {
@@ -102,8 +133,10 @@ class QueueToadletTest {
 
   @Test
   void path_whenUploadsFlagTrue_returnsUploadsPath() throws Exception {
+    // Arrange
     QueueToadlet toadlet = createQueueToadlet(true);
 
+    // Assert
     assertEquals(QueueToadlet.PATH_UPLOADS, toadlet.path());
   }
 
@@ -113,14 +146,14 @@ class QueueToadletTest {
     createQueueToadlet(false);
     clearInvocations(executor, alerts, jobRunner);
 
-    ClientGet request = mock(ClientGet.class);
-    when(request.getIdentifier()).thenReturn("download-1");
-    when(request.hasFinished()).thenReturn(true);
-    when(request.getURI()).thenReturn(sampleUri());
-    when(request.getDataSize()).thenReturn(123L);
+    ClientGet completedRequest = mock(ClientGet.class);
+    when(completedRequest.getIdentifier()).thenReturn("download-1");
+    when(completedRequest.hasFinished()).thenReturn(true);
+    when(completedRequest.getURI()).thenReturn(sampleUri());
+    when(completedRequest.getDataSize()).thenReturn(123L);
 
     // Act
-    getCompletionCallback().notifySuccess(request);
+    getCompletionCallback().notifySuccess(completedRequest);
 
     // Assert
     File completedList = tempDir.resolve("completed.list.downloads").toFile();
@@ -159,17 +192,17 @@ class QueueToadletTest {
     createQueueToadlet(false);
     clearInvocations(executor, alerts, jobRunner);
 
-    ClientGet request = mock(ClientGet.class);
-    when(request.getIdentifier()).thenReturn("download-2");
-    when(request.hasFinished()).thenReturn(true);
-    when(request.getURI()).thenReturn(sampleUri());
-    when(request.getDataSize()).thenReturn(500L);
+    ClientGet completedRequest = mock(ClientGet.class);
+    when(completedRequest.getIdentifier()).thenReturn("download-2");
+    when(completedRequest.hasFinished()).thenReturn(true);
+    when(completedRequest.getURI()).thenReturn(sampleUri());
+    when(completedRequest.getDataSize()).thenReturn(500L);
 
-    getCompletionCallback().notifySuccess(request);
+    getCompletionCallback().notifySuccess(completedRequest);
     clearInvocations(executor, alerts);
 
     // Act
-    getCompletionCallback().onRemove(request);
+    getCompletionCallback().onRemove(completedRequest);
 
     // Assert
     File completedList = tempDir.resolve("completed.list.downloads").toFile();
@@ -181,6 +214,187 @@ class QueueToadletTest {
     verify(executor).execute(any(Runnable.class), anyString());
   }
 
+  @Test
+  void handleMethodGET_whenNormalQueueRequested_delegatesToQueuePagePortRenderPage()
+      throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(pageMaker.advancedMode(request, container)).thenReturn(true);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(true);
+    when(request.getParam("sortBy")).thenReturn("progress");
+    when(request.isParameterSet("reversed")).thenReturn(true);
+    when(queuePagePort.renderPage(any()))
+        .thenReturn(new QueuePageSnapshot("Downloads", "<div id=\"queue-page\">queue</div>"));
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    ArgumentCaptor<QueuePageRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueuePageRequest.class);
+    verify(queuePagePort).renderPage(requestCaptor.capture());
+    QueuePageRequest queuePageRequest = requestCaptor.getValue();
+    assertFalse(queuePageRequest.uploads());
+    assertTrue(queuePageRequest.advancedMode());
+    assertEquals("progress", queuePageRequest.sortBy());
+    assertTrue(queuePageRequest.reversed());
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("queue-page"));
+  }
+
+  @Test
+  void handleMethodGET_whenCountPageRequested_delegatesToRenderCountPage() throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS + "countRequests.html");
+    when(queuePagePort.renderCountPage(false))
+        .thenReturn(new QueuePageSnapshot("Queue", "<div id=\"count-page\">count</div>"));
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/downloads/countRequests.html"), request, ctx);
+
+    // Assert
+    verify(queuePagePort).renderCountPage(false);
+    verify(queuePagePort, never()).renderPage(any());
+    verify(queuePagePort, never()).renderKeyList(anyBoolean());
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("count-page"));
+  }
+
+  @Test
+  void handleMethodGET_whenCountPageHasLeadingSlash_delegatesToRenderCountPage() throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS + "/countRequests.html");
+    when(queuePagePort.renderCountPage(false))
+        .thenReturn(new QueuePageSnapshot("Queue", "<div id=\"count-page\">count</div>"));
+
+    // Act
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/downloads//countRequests.html"), request, ctx);
+
+    // Assert
+    verify(queuePagePort).renderCountPage(false);
+  }
+
+  @Test
+  void handleMethodGET_whenKeyListRequested_delegatesToRenderKeyList() throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(true);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_UPLOADS + "listKeys.txt");
+    when(queuePagePort.renderKeyList(true)).thenReturn("CHK@key\n");
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/uploads/listKeys.txt"), request, ctx);
+
+    // Assert
+    verify(queuePagePort).renderKeyList(true);
+    verify(queuePagePort, never()).renderPage(any());
+    verify(queuePagePort, never()).renderCountPage(anyBoolean());
+    assertEquals("CHK@key\n", body.toString(StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void handleMethodGET_whenSnapshotContainsPlaceholders_replacesRequestContextContent()
+      throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert-summary"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(false);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(queuePagePort.renderPage(any()))
+        .thenReturn(
+            new QueuePageSnapshot(
+                "Downloads",
+                """
+                <div id="detached-queue">queue</div>
+                <!--CRYPTA_ALERT_SUMMARY-->
+                <!--CRYPTA_QUEUE_FORM_PASSWORD-->
+                """));
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("detached-queue"));
+    assertTrue(html.contains("alert-summary"));
+    assertTrue(html.contains("formPassword"));
+    assertTrue(html.contains(TEST_FORM_PASSWORD));
+    assertFalse(html.contains("<!--CRYPTA_ALERT_SUMMARY-->"));
+    assertFalse(html.contains("<!--CRYPTA_QUEUE_FORM_PASSWORD-->"));
+  }
+
+  @Test
+  void handleMethodGET_whenFcpDisabled_returnsBadRequestWithoutDelegating() throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(fcp.isEnabled()).thenReturn(false);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("You need to enable the FCP server to access this page"));
+    verifyNoInteractions(queuePagePort);
+  }
+
+  @Test
+  void handleMethodGET_whenPublicGatewayWithoutFullAccess_returnsUnauthorizedWithoutDelegating()
+      throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(container.publicGatewayMode()).thenReturn(true);
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("You are not permitted access to this page."));
+    verifyNoInteractions(queuePagePort);
+  }
+
+  @Test
+  void handleMethodGET_whenQueuePagePortUnavailable_returnsPersistenceDisabledErrorPage()
+      throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(false);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(queuePagePort.renderPage(any()))
+        .thenThrow(new RequestQueueUnavailableException("queue unavailable"));
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains(tempDir.toString()));
+    assertTrue(html.contains("queue.db"));
+    verify(queuePagePort).renderPage(any());
+  }
+
   private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
@@ -188,11 +402,16 @@ class QueueToadletTest {
     Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.userDir()).thenReturn(userDir);
     when(node.getUserDir()).thenReturn(userDir.dir());
+    when(node.awaitingPassword()).thenReturn(false);
+    when(node.isStopping()).thenReturn(false);
+    when(node.getDatabasePath()).thenReturn(tempDir.resolve("queue.db").toString());
 
     RequestStarterGroup starters = mock(RequestStarterGroup.class);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     when(core.getAlerts()).thenReturn(alerts);
+    when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
+
     NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     when(node.network()).thenReturn(network);
     when(network.executor()).thenReturn(executor);
@@ -237,8 +456,10 @@ class QueueToadletTest {
         .when(executor)
         .execute(any(Runnable.class));
 
-    return new QueueToadlet(
-        core, fcp, client, uploads, new QueueToadletRuntimePorts(queuePagePort));
+    QueueToadlet toadlet =
+        new QueueToadlet(core, fcp, client, uploads, new QueueToadletRuntimePorts(queuePagePort));
+    toadlet.container = container;
+    return toadlet;
   }
 
   private ClientContext createClientContext() {
@@ -316,5 +537,41 @@ class QueueToadletTest {
       throw new IllegalStateException("Completion callback was not captured.");
     }
     return completionCallback;
+  }
+
+  private PageMaker stubPageMaker(HTMLNode content) {
+    HTMLNode root = new HTMLNode("html");
+    HTMLNode head = root.addChild("head");
+    root.addChild(content);
+    PageNode page = new PageNode(root, head, content);
+
+    PageMaker stub = mock(PageMaker.class);
+    when(stub.getPageNode(anyString(), any(ToadletContext.class))).thenReturn(page);
+    doAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(2);
+              return parent.addChild("div");
+            })
+        .when(stub)
+        .getInfobox(anyString(), anyString(), any(HTMLNode.class), any(), anyBoolean());
+    return stub;
+  }
+
+  private ByteArrayOutputStream captureBody(ToadletContext context) throws Exception {
+    ByteArrayOutputStream body = new ByteArrayOutputStream();
+    doAnswer(_ -> null)
+        .when(context)
+        .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
+    doAnswer(
+            invocation -> {
+              byte[] data = invocation.getArgument(0);
+              int offset = invocation.getArgument(1);
+              int length = invocation.getArgument(2);
+              body.write(data, offset, length);
+              return null;
+            })
+        .when(context)
+        .writeData(any(byte[].class), anyInt(), anyInt());
+    return body;
   }
 }
