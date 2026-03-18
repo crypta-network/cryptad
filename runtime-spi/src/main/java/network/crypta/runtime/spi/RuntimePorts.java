@@ -25,6 +25,7 @@ package network.crypta.runtime.spi;
  * @see DarknetConnectionsPort
  * @see DarknetMessagingPort
  * @see DiagnosticPort
+ * @see QueuePagePort
  * @see StatisticsPort
  * @see NodeInfoPort
  * @see PeerPort
@@ -165,6 +166,18 @@ public interface RuntimePorts {
    * @return diagnostic-report runtime port for read-only report snapshots
    */
   DiagnosticPort diagnostic();
+
+  /**
+   * Returns the legacy queue-page read capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached HTML-template snapshot for either the
+   * downloads or uploads queue, together with the count subpage and key-list export, without
+   * depending on daemon-only queue, requester, or HTML builder types. Request-context-only controls
+   * such as alert summaries and form-password injection remain in the HTTP layer.
+   *
+   * @return queue-page runtime port for detached legacy queue snapshots and text exports
+   */
+  QueuePagePort queuePage();
 
   /**
    * Returns the legacy statistics-page capability exposed to admin-facing HTTP code.

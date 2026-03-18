@@ -1,10 +1,9 @@
 package network.crypta.clients.http;
 
-import java.io.File;
-import java.net.MalformedURLException;
-import java.nio.file.Files;
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
@@ -22,27 +21,26 @@ import network.crypta.client.async.HealingQueue;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.fcp.ClientGet;
-import network.crypta.clients.fcp.ClientPut;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.keys.FreenetURI;
 import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.node.useralerts.UserEvent;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePageRequest;
+import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
+import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
@@ -50,6 +48,7 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,20 +62,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class QueueToadletTest {
+@SuppressWarnings("java:S100")
+class QueueToadletGetTest {
+
+  private static final String TEST_FORM_PASSWORD = "queue-form-password";
 
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
@@ -84,101 +85,122 @@ class QueueToadletTest {
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
   @Mock private ClientLayerPersister jobRunner;
-  private RequestCompletionCallback completionCallback;
+  @Mock private ToadletContext ctx;
+  @Mock private HTTPRequest request;
+  @Mock private ToadletContainer container;
 
   @TempDir Path tempDir;
 
-  @Test
-  void constructor_whenInstantiated_setsCompletionCallbackAndQueuesLoadJob() throws Exception {
-    // Arrange
-    QueueToadlet toadlet = createQueueToadlet(false);
+  private QueueToadlet toadlet;
+  private PageMaker pageMaker;
 
-    // Assert
-    RequestCompletionCallback callback = getCompletionCallback();
-    verify(fcp).setCompletionCallback(callback);
-    verify(jobRunner, times(1)).queue(any(PersistentJob.class), anyInt());
-    assertEquals(QueueToadlet.PATH_DOWNLOADS, toadlet.path());
+  @BeforeEach
+  void setUp() throws Exception {
+    toadlet = createQueueToadlet(false);
+    pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn(TEST_FORM_PASSWORD);
+    when(ctx.getAlertManager()).thenReturn(alerts);
+    when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
+    when(container.publicGatewayMode()).thenReturn(false);
+    when(fcp.isEnabled()).thenReturn(true);
   }
 
   @Test
-  void path_whenUploadsFlagTrue_returnsUploadsPath() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet(true);
+  void handleMethodGET_whenNormalQueueRequested_delegatesToQueuePagePortRenderPage()
+      throws Exception {
+    when(pageMaker.advancedMode(request, container)).thenReturn(true);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(true);
+    when(request.getParam("sortBy")).thenReturn("progress");
+    when(request.isParameterSet("reversed")).thenReturn(true);
+    when(queuePagePort.renderPage(any()))
+        .thenReturn(new QueuePageSnapshot("Downloads", "<div id=\"queue-page\">queue</div>"));
 
-    assertEquals(QueueToadlet.PATH_UPLOADS, toadlet.path());
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    ArgumentCaptor<QueuePageRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueuePageRequest.class);
+    verify(queuePagePort).renderPage(requestCaptor.capture());
+    QueuePageRequest queuePageRequest = requestCaptor.getValue();
+    assertFalse(queuePageRequest.uploads());
+    assertTrue(queuePageRequest.advancedMode());
+    assertEquals("progress", queuePageRequest.sortBy());
+    assertTrue(queuePageRequest.reversed());
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("queue-page"));
   }
 
   @Test
-  void notifySuccess_whenDownloadCompleted_recordsIdentifierAndRegistersAlert() throws Exception {
-    // Arrange
-    createQueueToadlet(false);
-    clearInvocations(executor, alerts, jobRunner);
+  void handleMethodGET_whenCountPageRequested_delegatesToRenderCountPage() throws Exception {
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS + "countRequests.html");
+    when(queuePagePort.renderCountPage(false))
+        .thenReturn(new QueuePageSnapshot("Queue", "<div id=\"count-page\">count</div>"));
 
-    ClientGet request = mock(ClientGet.class);
-    when(request.getIdentifier()).thenReturn("download-1");
-    when(request.hasFinished()).thenReturn(true);
-    when(request.getURI()).thenReturn(sampleUri());
-    when(request.getDataSize()).thenReturn(123L);
+    ByteArrayOutputStream body = captureBody(ctx);
 
-    // Act
-    getCompletionCallback().notifySuccess(request);
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/downloads/countRequests.html"), request, ctx);
 
-    // Assert
-    File completedList = tempDir.resolve("completed.list.downloads").toFile();
-    assertTrue(completedList.exists());
-    assertEquals("download-1\n", Files.readString(completedList.toPath()));
-
-    ArgumentCaptor<UserEvent> alertCaptor = ArgumentCaptor.forClass(UserEvent.class);
-    verify(alerts).register(alertCaptor.capture());
-    assertTrue(alertCaptor.getValue().getClass().getSimpleName().contains("GetCompletedEvent"));
-    verify(executor).execute(any(Runnable.class), anyString());
+    verify(queuePagePort).renderCountPage(false);
+    verify(queuePagePort, never()).renderPage(any());
+    verify(queuePagePort, never()).renderKeyList(anyBoolean());
+    assertTrue(body.toString(StandardCharsets.UTF_8).contains("count-page"));
   }
 
   @Test
-  void notifySuccess_whenDirectionMismatch_doesNothing() throws Exception {
-    // Arrange
-    createQueueToadlet(false);
-    clearInvocations(executor, alerts);
+  void handleMethodGET_whenKeyListRequested_delegatesToRenderKeyList() throws Exception {
+    QueueToadlet uploadToadlet = createQueueToadlet(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn(TEST_FORM_PASSWORD);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_UPLOADS + "listKeys.txt");
+    when(queuePagePort.renderKeyList(true)).thenReturn("CHK@key\n");
 
-    ClientPut uploadRequest = mock(ClientPut.class);
+    ByteArrayOutputStream body = captureBody(ctx);
 
-    // Act
-    getCompletionCallback().notifySuccess(uploadRequest);
+    uploadToadlet.handleMethodGET(
+        URI.create("http://localhost/uploads/listKeys.txt"), request, ctx);
 
-    // Assert
-    File completedList = tempDir.resolve("completed.list.downloads").toFile();
-    if (completedList.exists()) {
-      assertEquals(0, Files.size(completedList.toPath()));
-    }
-    verifyNoInteractions(alerts);
-    verify(executor, times(0)).execute(any(Runnable.class), anyString());
+    verify(queuePagePort).renderKeyList(true);
+    verify(queuePagePort, never()).renderPage(any());
+    verify(queuePagePort, never()).renderCountPage(anyBoolean());
+    assertEquals("CHK@key\n", body.toString(StandardCharsets.UTF_8));
   }
 
   @Test
-  void onRemove_whenEntryExists_removesAndPersistsEmptyList() throws Exception {
-    // Arrange
-    createQueueToadlet(false);
-    clearInvocations(executor, alerts, jobRunner);
+  void handleMethodGET_whenSnapshotContainsPlaceholder_replacesRequestContextContent()
+      throws Exception {
+    UserAlertManager alertManager = mock(UserAlertManager.class);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert-summary"));
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(pageMaker.advancedMode(request, container)).thenReturn(false);
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(false);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(queuePagePort.renderPage(any()))
+        .thenReturn(
+            new QueuePageSnapshot(
+                "Downloads",
+                """
+                <div id="detached-queue">queue</div>
+                <!--CRYPTA_ALERT_SUMMARY-->
+                <!--CRYPTA_QUEUE_FORM_PASSWORD-->
+                """));
 
-    ClientGet request = mock(ClientGet.class);
-    when(request.getIdentifier()).thenReturn("download-2");
-    when(request.hasFinished()).thenReturn(true);
-    when(request.getURI()).thenReturn(sampleUri());
-    when(request.getDataSize()).thenReturn(500L);
+    ByteArrayOutputStream body = captureBody(ctx);
 
-    getCompletionCallback().notifySuccess(request);
-    clearInvocations(executor, alerts);
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
 
-    // Act
-    getCompletionCallback().onRemove(request);
-
-    // Assert
-    File completedList = tempDir.resolve("completed.list.downloads").toFile();
-    assertTrue(completedList.exists());
-    assertEquals(0, Files.readAllBytes(completedList.toPath()).length);
-
-    Map<?, ?> completedGets = getCompletedGets();
-    assertFalse(completedGets.containsKey("download-2"));
-    verify(executor).execute(any(Runnable.class), anyString());
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("detached-queue"));
+    assertTrue(html.contains("alert-summary"));
+    assertTrue(html.contains("formPassword"));
+    assertTrue(html.contains(TEST_FORM_PASSWORD));
+    assertFalse(html.contains("<!--CRYPTA_ALERT_SUMMARY-->"));
+    assertFalse(html.contains("<!--CRYPTA_QUEUE_FORM_PASSWORD-->"));
   }
 
   private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
@@ -193,23 +215,15 @@ class QueueToadletTest {
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     when(core.getAlerts()).thenReturn(alerts);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.executor()).thenReturn(executor);
+    when(node.network()).thenReturn(mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class));
+    when(node.network().executor()).thenReturn(executor);
 
     ClientContext context = createClientContext();
     context.init(starters, alerts);
     when(core.getClientContext()).thenReturn(context);
 
     when(fcp.getGlobalRequest(anyString())).thenReturn(null);
-    doAnswer(
-            invocation -> {
-              completionCallback = invocation.getArgument(0);
-              return null;
-            })
-        .when(fcp)
-        .setCompletionCallback(any(RequestCompletionCallback.class));
-
+    doAnswer(_ -> null).when(fcp).setCompletionCallback(any(RequestCompletionCallback.class));
     doAnswer(
             invocation -> {
               PersistentJob job = invocation.getArgument(0);
@@ -218,7 +232,6 @@ class QueueToadletTest {
             })
         .when(jobRunner)
         .queue(any(PersistentJob.class), anyInt());
-
     doAnswer(
             invocation -> {
               Runnable runnable = invocation.getArgument(0);
@@ -227,7 +240,6 @@ class QueueToadletTest {
             })
         .when(executor)
         .execute(any(Runnable.class), anyString());
-
     doAnswer(
             invocation -> {
               Runnable runnable = invocation.getArgument(0);
@@ -237,8 +249,10 @@ class QueueToadletTest {
         .when(executor)
         .execute(any(Runnable.class));
 
-    return new QueueToadlet(
-        core, fcp, client, uploads, new QueueToadletRuntimePorts(queuePagePort));
+    QueueToadlet queueToadlet =
+        new QueueToadlet(core, fcp, client, uploads, new QueueToadletRuntimePorts(queuePagePort));
+    queueToadlet.container = container;
+    return queueToadlet;
   }
 
   private ClientContext createClientContext() {
@@ -290,31 +304,32 @@ class QueueToadletTest {
         new ClientContextDefaults(fetchContext, insertContext, config));
   }
 
-  private FreenetURI sampleUri() {
-    try {
-      return new FreenetURI(
-          "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml");
-    } catch (MalformedURLException e) {
-      throw new IllegalStateException(e);
-    }
+  private PageMaker stubPageMaker(HTMLNode content) {
+    HTMLNode root = new HTMLNode("html");
+    HTMLNode head = root.addChild("head");
+    root.addChild(content);
+    PageNode page = new PageNode(root, head, content);
+
+    PageMaker stub = mock(PageMaker.class);
+    when(stub.getPageNode(anyString(), any(ToadletContext.class))).thenReturn(page);
+    return stub;
   }
 
-  @SuppressWarnings("unchecked")
-  private Map<String, ?> getCompletedGets() throws NoSuchFieldException, IllegalAccessException {
-    Object tracker = getCompletionTracker();
-    var field = tracker.getClass().getDeclaredField("completedGets");
-    field.setAccessible(true);
-    return (Map<String, ?>) field.get(tracker);
-  }
-
-  private RequestCompletionCallback getCompletionCallback() {
-    return (RequestCompletionCallback) getCompletionTracker();
-  }
-
-  private Object getCompletionTracker() {
-    if (completionCallback == null) {
-      throw new IllegalStateException("Completion callback was not captured.");
-    }
-    return completionCallback;
+  private ByteArrayOutputStream captureBody(ToadletContext context) throws Exception {
+    ByteArrayOutputStream body = new ByteArrayOutputStream();
+    doAnswer(_ -> null)
+        .when(context)
+        .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
+    doAnswer(
+            invocation -> {
+              byte[] data = invocation.getArgument(0);
+              int offset = invocation.getArgument(1);
+              int length = invocation.getArgument(2);
+              body.write(data, offset, length);
+              return null;
+            })
+        .when(context)
+        .writeData(any(byte[].class), anyInt(), anyInt());
+    return body;
   }
 }

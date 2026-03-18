@@ -16,6 +16,7 @@ import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -51,6 +52,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
+  private final QueuePagePort queuePagePort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
@@ -148,6 +150,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
+    this.queuePagePort = new LegacyQueuePagePort(core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
@@ -277,6 +280,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DiagnosticPort diagnostic() {
     return diagnosticPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the legacy queue-page traversal, partitioning, sorting, and detached
+   * HTML-template generation inside the daemon root module while exposing only SPI-local snapshots
+   * and plain-text exports upstream.
+   */
+  @Override
+  public QueuePagePort queuePage() {
+    return queuePagePort;
   }
 
   /**
