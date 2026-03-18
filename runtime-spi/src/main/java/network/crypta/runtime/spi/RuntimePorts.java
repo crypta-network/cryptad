@@ -26,6 +26,7 @@ package network.crypta.runtime.spi;
  * @see DarknetMessagingPort
  * @see DiagnosticPort
  * @see QueuePagePort
+ * @see QueueDownloadPort
  * @see QueueMutationPort
  * @see StatisticsPort
  * @see NodeInfoPort
@@ -179,6 +180,17 @@ public interface RuntimePorts {
    * @return queue-page runtime port for detached legacy queue snapshots and text exports
    */
   QueuePagePort queuePage();
+
+  /**
+   * Returns the legacy queue-download capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining live creation of new persistent downloads inside the daemon
+   * root module while exposing only a narrow JDK-only request shape upstream. Callers retain HTTP
+   * request parsing, per-key bulk aggregation, redirects, and user-facing error mapping.
+   *
+   * @return queue-download runtime port for creating new persistent downloads
+   */
+  QueueDownloadPort queueDownload();
 
   /**
    * Returns the legacy queue-mutation capability exposed to admin-facing HTTP code.

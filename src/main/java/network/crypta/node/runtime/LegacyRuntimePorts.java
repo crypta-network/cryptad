@@ -16,6 +16,7 @@ import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -54,6 +55,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
   private final QueuePagePort queuePagePort;
+  private final QueueDownloadPort queueDownloadPort;
   private final QueueMutationPort queueMutationPort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
@@ -153,6 +155,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.queuePagePort = new LegacyQueuePagePort(core);
+    this.queueDownloadPort = new LegacyQueueDownloadPort(core);
     this.queueMutationPort = new LegacyQueueMutationPort(core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
@@ -295,6 +298,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public QueuePagePort queuePage() {
     return queuePagePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining new-download queue registration inside the daemon root
+   * module while exposing only a narrow JDK-only request surface upstream.
+   */
+  @Override
+  public QueueDownloadPort queueDownload() {
+    return queueDownloadPort;
   }
 
   /**

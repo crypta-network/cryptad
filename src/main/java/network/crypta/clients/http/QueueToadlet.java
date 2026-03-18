@@ -48,7 +48,6 @@ import network.crypta.clients.fcp.FcpInsertRequest;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
-import network.crypta.clients.fcp.PersistentGlobalRequestParams;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
@@ -58,11 +57,15 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueDownloadRejectedException;
+import network.crypta.runtime.spi.QueueDownloadRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
@@ -138,6 +141,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final NodeClientCore core;
   final FCPServer fcp;
   private final QueuePagePort queuePagePort;
+  private final TransferAccessPort transferAccessPort;
+  private final QueueDownloadPort queueDownloadPort;
   private final QueueMutationPort queueMutationPort;
   private FileInsertWizardToadlet fiw;
   private final QueuePostHandler postHandler;
@@ -213,8 +218,11 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     super(client);
     this.core = core;
     this.fcp = fcp;
-    this.queuePagePort = Objects.requireNonNull(runtimePorts).queuePagePort();
-    this.queueMutationPort = runtimePorts.queueMutationPort();
+    QueueToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
+    this.queuePagePort = ports.queuePagePort();
+    this.transferAccessPort = ports.transferAccessPort();
+    this.queueDownloadPort = ports.queueDownloadPort();
+    this.queueMutationPort = ports.queueMutationPort();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
     QueueCompletionTracker completionTracker = new QueueCompletionTracker();
@@ -593,9 +601,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       if (request.isPartSet("type")) {
         expectedMIMEType = request.getPartAsStringFailsafe("type", MAX_TYPE_LENGTH);
       }
-      FreenetURI fetchURI;
+      String fetchUri = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
       try {
-        fetchURI = new FreenetURI(request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH));
+        new FreenetURI(fetchUri);
       } catch (MalformedURLException _) {
         writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_D), ctx);
         return true;
@@ -605,7 +613,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       boolean filterData = request.isPartSet(FILTER_DATA);
       String downloadPath;
       File downloadsDir = null;
-      if (request.isPartSet("path") && !FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
+      if (request.isPartSet("path") && !isDiskDownloadDisabledOrUnsafe(ctx)) {
         downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
         try {
           downloadsDir = getDownloadsDir(downloadPath);
@@ -617,19 +625,13 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         returnType = RETURN_TYPE_DIRECT;
       }
       try {
-        fcp.makePersistentGlobalRequestBlocking(
-            new PersistentGlobalRequestParams(
-                fetchURI,
-                filterData,
-                expectedMIMEType,
-                persistence,
-                returnType,
-                false,
-                downloadsDir));
-      } catch (NotAllowedException _) {
+        queueDownloadPort.enqueueDownload(
+            new QueueDownloadRequest(
+                fetchUri, filterData, expectedMIMEType, persistence, returnType, downloadsDir));
+      } catch (QueueDownloadRejectedException _) {
         writeError(l10n("errorDToDisk"), l10n("errorDToDiskConfig"), ctx);
         return true;
-      } catch (PersistenceDisabledException _) {
+      } catch (RequestQueueUnavailableException _) {
         sendPersistenceDisabledError(ctx);
         return true;
       }
@@ -655,7 +657,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       BulkDownloadResult result =
           enqueueBulkDownloads(keys, request.isPartSet(FILTER_DATA), downloadTarget);
-
       renderBulkDownloadResult(ctx, result);
       return true;
     }
@@ -674,10 +675,13 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private DownloadTarget resolveDownloadTarget(HTTPRequest request, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
       String target = request.getPartAsStringFailsafe(TARGET, 128);
-      if (target == null) target = RETURN_TYPE_DIRECT;
+      if (target == null || target.isEmpty()) target = RETURN_TYPE_DIRECT;
 
-      if (!request.isPartSet("path") || FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
+      if (!request.isPartSet("path")) {
         return new DownloadTarget(target, null);
+      }
+      if (isDiskDownloadDisabledOrUnsafe(ctx)) {
+        return new DownloadTarget(RETURN_TYPE_DIRECT, null);
       }
 
       String downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
@@ -702,14 +706,13 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
         try {
           FreenetURI fetchURI = new FreenetURI(currentKey);
-          fcp.makePersistentGlobalRequestBlocking(
-              new PersistentGlobalRequestParams(
-                  fetchURI,
+          queueDownloadPort.enqueueDownload(
+              new QueueDownloadRequest(
+                  currentKey,
                   filterData,
                   null,
                   "forever",
                   downloadTarget.target(),
-                  false,
                   downloadTarget.downloadsDir()));
           success.add(fetchURI.toString(true, false));
         } catch (Exception e) {
@@ -1884,10 +1887,15 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       writeHTMLReply(ctx, 200, "OK", page.generate());
     }
 
+    private boolean isDiskDownloadDisabledOrUnsafe(ToadletContext ctx) {
+      return queueDownloadPort.isDiskDownloadDisabled()
+          || (ctx.getContainer().publicGatewayMode() && !ctx.isAllowedFullAccess());
+    }
+
     private File getDownloadsDir(String downloadPath) throws NotAllowedException {
       File downloadsDir = new File(downloadPath);
       // Invalid if it's disallowed, doesn't exist, isn't a directory, or can't be created.
-      if (!core.allowDownloadTo(downloadsDir)
+      if (!transferAccessPort.allowDownloadTo(downloadsDir)
           || !((downloadsDir.exists() && downloadsDir.isDirectory()) || !downloadsDir.mkdirs())) {
         throw new NotAllowedException();
       }

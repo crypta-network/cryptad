@@ -42,11 +42,13 @@ import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.node.useralerts.UserEvent;
+import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -96,6 +98,8 @@ class QueueToadletTest {
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
   @Mock private QueuePagePort queuePagePort;
+  @Mock private TransferAccessPort transferAccessPort;
+  @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
@@ -116,6 +120,7 @@ class QueueToadletTest {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.getFormPassword()).thenReturn(TEST_FORM_PASSWORD);
     when(ctx.getAlertManager()).thenReturn(alerts);
+    when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
     when(fcp.isEnabled()).thenReturn(true);
@@ -464,7 +469,8 @@ class QueueToadletTest {
             fcp,
             client,
             uploads,
-            new QueueToadletRuntimePorts(queuePagePort, queueMutationPort));
+            new QueueToadletRuntimePorts(
+                queuePagePort, transferAccessPort, queueDownloadPort, queueMutationPort));
     toadlet.container = container;
     return toadlet;
   }
