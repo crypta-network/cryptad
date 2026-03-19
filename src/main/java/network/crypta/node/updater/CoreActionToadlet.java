@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
@@ -22,7 +23,7 @@ import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.fs.AppEnv;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -35,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * <p>Supports three alert-panel actions:
  *
  * <ul>
- *   <li>{@code download}: start package download through {@link CoreUpdater}
+ *   <li>{@code download}: start package download through {@link CoreUpdateActionPort}
  *   <li>{@code install}: launch an OS installer for a previously downloaded package
  *   <li>{@code openStore}: open/store-install package via URL or known package ID
  * </ul>
@@ -89,22 +90,26 @@ public class CoreActionToadlet extends Toadlet {
   private static final List<String> TRUSTED_UNIX_BIN_DIRS =
       List.of("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin");
 
-  private final Node node;
+  private final CoreUpdateActionPort coreUpdateActionPort;
   private final AppEnv appEnv = new AppEnv();
   private final BaseL10n l10n = NodeL10n.getBase();
 
   /**
    * Creates the toadlet that handles core-update action requests from the updater UI.
    *
-   * <p>The provided node is used to access updater services, runtime environment information, and
-   * localization resources for generated response pages.
+   * <p>The provided runtime port is used to access updater availability, download start, and
+   * installer path validation while the toadlet keeps runtime environment and response rendering
+   * behavior in the HTTP layer.
    *
    * @param client high-level client used by the toadlet base class for HTTP operations
-   * @param node node instance that owns updater state and request handling dependencies
+   * @param coreUpdateActionPort runtime port that exposes the remaining daemon-backed updater
+   *     actions needed by this toadlet
    */
-  public CoreActionToadlet(HighLevelSimpleClient client, Node node) {
+  public CoreActionToadlet(
+      HighLevelSimpleClient client, CoreUpdateActionPort coreUpdateActionPort) {
     super(client);
-    this.node = node;
+    this.coreUpdateActionPort =
+        Objects.requireNonNull(coreUpdateActionPort, "coreUpdateActionPort");
   }
 
   @Override
@@ -122,8 +127,10 @@ public class CoreActionToadlet extends Toadlet {
    * Handles action form submissions for core updater operations.
    *
    * <p>Accepted actions include download start, local installer launch, and package-store opening.
-   * Requests are rejected when form-password validation fails, and unknown actions are redirected
-   * back to the updater path.
+   * Requests are rejected when form-password validation fails. Download requests are dispatched
+   * directly through the runtime port, so updater lookup and start happen as one operation, while
+   * the remaining actions still redirect when no core updater is available. Unknown actions are
+   * redirected back to the updater path.
    *
    * @param uri request URI for the POST action endpoint
    * @param request parsed HTTP form request containing action and payload fields
@@ -140,28 +147,28 @@ public class CoreActionToadlet extends Toadlet {
       return;
     }
 
-    CoreUpdater updater = null;
-    if (node.services().nodeUpdater() != null) {
-      updater = node.services().nodeUpdater().getCoreUpdater();
+    String action = request.getPartAsStringFailsafe("action", 32);
+    if (ACTION_DOWNLOAD.equals(action)) {
+      handleDownload(ctx);
+      return;
     }
-    if (updater == null) {
+
+    if (!coreUpdateActionPort.isCoreUpdaterAvailable()) {
       redirect(ctx);
       return;
     }
 
-    String action = request.getPartAsStringFailsafe("action", 32);
     switch (action) {
-      case ACTION_DOWNLOAD -> handleDownload(updater, ctx);
       case ACTION_INSTALL -> handleInstall(request, ctx);
       case ACTION_OPEN_STORE -> handleOpenStore(request, ctx);
       default -> redirect(ctx);
     }
   }
 
-  private void handleDownload(CoreUpdater updater, ToadletContext ctx)
+  private void handleDownload(ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     logInfo("POST /core-update action=download");
-    updater.startDownloadFromUI();
+    coreUpdateActionPort.startCoreDownloadFromUi();
     redirect(ctx);
   }
 
@@ -170,7 +177,8 @@ public class CoreActionToadlet extends Toadlet {
     String path = request.getPartAsStringFailsafe("path", 4096);
     logInfo("POST /core-update action=" + ACTION_INSTALL + " path=" + path);
 
-    File candidate = validatePath(path);
+    File candidate =
+        coreUpdateActionPort.resolveDownloadedInstaller(path).map(Path::toFile).orElse(null);
     if (candidate == null) {
       logInfo("install rejected: invalid path");
       writeMessage(ctx, false, t("invalidPath"));
@@ -236,22 +244,6 @@ public class CoreActionToadlet extends Toadlet {
 
     if (delegate instanceof InstallerDelegate.Manual(LocalMessage message)) {
       writeMessage(ctx, false, message.render(this));
-    }
-  }
-
-  private File validatePath(String rawPath) {
-    if (rawPath == null || rawPath.isBlank()) {
-      return null;
-    }
-
-    try {
-      File base = new File(node.getNodeDir(), "updates/core").getCanonicalFile();
-      File candidate = new File(rawPath).getCanonicalFile();
-      Path basePath = base.toPath();
-      Path candidatePath = candidate.toPath();
-      return candidatePath.startsWith(basePath) ? candidate : null;
-    } catch (IOException _) {
-      return null;
     }
   }
 

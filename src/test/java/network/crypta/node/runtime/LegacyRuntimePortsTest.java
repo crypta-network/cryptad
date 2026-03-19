@@ -81,7 +81,8 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.darknetConnectionsPort(), ports.darknetConnections()),
         () -> assertSame(snapshot.darknetMessagingPort(), ports.darknetMessaging()),
         () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()),
-        () -> assertSame(snapshot.pageChromePort(), ports.pageChrome()));
+        () -> assertSame(snapshot.pageChromePort(), ports.pageChrome()),
+        () -> assertSame(snapshot.coreUpdateActionPort(), ports.coreUpdateAction()));
   }
 
   private void assertStableFeaturePorts(PortsSnapshot snapshot) {
@@ -95,6 +96,7 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.statisticsPort(), ports.statistics()),
         () -> assertSame(snapshot.securityLevelsPort(), ports.securityLevels()),
         () -> assertSame(snapshot.firstTimeWizardPort(), ports.firstTimeWizard()),
+        () -> assertSame(snapshot.toadletSymlinkPort(), ports.toadletSymlinks()),
         () -> assertSame(snapshot.welcomePagePort(), ports.welcomePage()),
         () -> assertSame(snapshot.welcomeActionPort(), ports.welcomeAction()),
         () -> assertSame(snapshot.requestQueuePort(), ports.requestQueue()),
@@ -117,6 +119,7 @@ class LegacyRuntimePortsTest {
         () -> assertInstanceOf(LegacyDarknetMessagingPort.class, snapshot.darknetMessagingPort()),
         () -> assertInstanceOf(LegacyDiagnosticPort.class, snapshot.diagnosticPort()),
         () -> assertInstanceOf(LegacyPageChromePort.class, snapshot.pageChromePort()),
+        () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()),
         () -> assertInstanceOf(LegacyQueueSupportPort.class, snapshot.queueSupportPort()),
         () -> assertInstanceOf(LegacyQueueCompletionPort.class, snapshot.queueCompletionPort()),
         () -> assertInstanceOf(LegacyQueuePagePort.class, snapshot.queuePagePort()),
@@ -126,6 +129,7 @@ class LegacyRuntimePortsTest {
         () -> assertInstanceOf(LegacyStatisticsPort.class, snapshot.statisticsPort()),
         () -> assertInstanceOf(LegacySecurityLevelsPort.class, snapshot.securityLevelsPort()),
         () -> assertInstanceOf(LegacyFirstTimeWizardPort.class, snapshot.firstTimeWizardPort()),
+        () -> assertInstanceOf(LegacyToadletSymlinkPort.class, snapshot.toadletSymlinkPort()),
         () -> assertInstanceOf(LegacyWelcomePagePort.class, snapshot.welcomePagePort()),
         () -> assertInstanceOf(LegacyWelcomeActionPort.class, snapshot.welcomeActionPort()),
         () -> assertInstanceOf(LegacyRequestQueuePort.class, snapshot.requestQueuePort()),
@@ -199,6 +203,7 @@ class LegacyRuntimePortsTest {
         ports.darknetMessaging(),
         ports.diagnostic(),
         ports.pageChrome(),
+        ports.coreUpdateAction(),
         ports.queueSupport(),
         ports.queueCompletion(),
         ports.queuePage(),
@@ -208,6 +213,7 @@ class LegacyRuntimePortsTest {
         ports.statistics(),
         ports.securityLevels(),
         ports.firstTimeWizard(),
+        ports.toadletSymlinks(),
         ports.welcomePage(),
         ports.welcomeAction(),
         ports.requestQueue(),
@@ -228,6 +234,7 @@ class LegacyRuntimePortsTest {
       Object darknetMessagingPort,
       Object diagnosticPort,
       Object pageChromePort,
+      Object coreUpdateActionPort,
       Object queueSupportPort,
       Object queueCompletionPort,
       Object queuePagePort,
@@ -237,6 +244,7 @@ class LegacyRuntimePortsTest {
       Object statisticsPort,
       Object securityLevelsPort,
       Object firstTimeWizardPort,
+      Object toadletSymlinkPort,
       Object welcomePagePort,
       Object welcomeActionPort,
       Object requestQueuePort,
