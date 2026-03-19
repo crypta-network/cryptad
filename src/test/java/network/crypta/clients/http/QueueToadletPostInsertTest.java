@@ -48,6 +48,8 @@ import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
 import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -101,6 +103,7 @@ class QueueToadletPostInsertTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
+  @Mock private QueueSupportPort queueSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
@@ -122,6 +125,11 @@ class QueueToadletPostInsertTest {
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
     when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(false);
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false, false, tempDir.toFile(), tempDir.resolve("queue.db").toString()));
   }
 
   @Test
@@ -374,6 +382,7 @@ class QueueToadletPostInsertTest {
                 queueDownloadPort,
                 queueInsertPort,
                 queueMutationPort,
+                queueSupportPort,
                 darknetConnectionsPort,
                 darknetMessagingPort));
     toadlet.container = container;

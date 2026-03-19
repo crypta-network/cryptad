@@ -62,6 +62,8 @@ import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.QueueUploadedFile;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -145,6 +147,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final QueueDownloadPort queueDownloadPort;
   private final QueueInsertPort queueInsertPort;
   private final QueueMutationPort queueMutationPort;
+  private final QueueSupportPort queueSupportPort;
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private FileInsertWizardToadlet fiw;
@@ -227,6 +230,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     this.queueDownloadPort = ports.queueDownloadPort();
     this.queueInsertPort = ports.queueInsertPort();
     this.queueMutationPort = ports.queueMutationPort();
+    this.queueSupportPort = ports.queueSupportPort();
     this.darknetConnectionsPort = ports.darknetConnectionsPort();
     this.darknetMessagingPort = ports.darknetMessagingPort();
     this.uploads = uploads;
@@ -571,10 +575,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return false;
       }
       if (SimpleToadletServer.noConfirmPanic) {
-        core.getNode().storage().killMasterKeysFile();
-        core.getNode().panic();
+        queueSupportPort.beginPanic();
         sendPanicingPage(ctx);
-        core.getNode().finishPanic();
+        queueSupportPort.finishPanic();
       } else {
         sendConfirmPanicPage(ctx);
       }
@@ -587,10 +590,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           || request.getPartAsStringFailsafe(CONFIRM_PANIC, 128).isEmpty()) {
         return false;
       }
-      core.getNode().storage().killMasterKeysFile();
-      core.getNode().panic();
+      queueSupportPort.beginPanic();
       sendPanicingPage(ctx);
-      core.getNode().finishPanic();
+      queueSupportPort.finishPanic();
       return true;
     }
 
@@ -1709,8 +1711,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
   private void sendPersistenceDisabledError(ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
+    QueuePersistenceStatusSnapshot persistenceStatus = queueSupportPort.persistenceStatus();
     String title = l10n("awaitingPasswordTitle" + (uploads ? "Uploads" : "Downloads"));
-    if (core.getNode().awaitingPassword()) {
+    if (persistenceStatus.awaitingPassword()) {
       PageNode page = ctx.getPageMaker().getPageNode(title, ctx);
       HTMLNode contentNode = page.getContentNode();
 
@@ -1727,7 +1730,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       writeHTMLReply(ctx, 500, "Internal Server Error", page.generate());
       return;
     }
-    if (core.getNode().isStopping())
+    if (persistenceStatus.stopping())
       sendErrorPage(ctx, 200, l10n("shuttingDownTitle"), l10n("shuttingDown"));
     else
       sendErrorPage(
@@ -1738,8 +1741,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               "persistenceBroken",
               new String[] {"TEMPDIR", "DBFILE"},
               new String[] {
-                FileUtil.getCanonicalFile(core.getPersistentTempDir()).toString() + File.separator,
-                core.getNode().getDatabasePath()
+                FileUtil.getCanonicalFile(persistenceStatus.persistentTempDir()).toString()
+                    + File.separator,
+                persistenceStatus.databasePath()
               }));
   }
 
@@ -1797,7 +1801,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   public void handleMethodGET(URI uri, final HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
 
-    if (!fcp.isEnabled()) {
+    if (!queueSupportPort.isQueueBackendEnabled()) {
       writeError(l10n("fcpIsMissing"), l10n("pleaseEnableFCP"), ctx, false, false);
       return;
     }
