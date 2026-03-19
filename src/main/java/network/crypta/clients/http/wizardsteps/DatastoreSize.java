@@ -1,16 +1,12 @@
 package network.crypta.clients.http.wizardsteps;
 
-import java.io.File;
 import java.util.Objects;
-import java.util.function.LongSupplier;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
-import network.crypta.node.NodeStarter;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.Fields;
@@ -29,12 +25,12 @@ import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
  * <p>This step is used by the HTTP first-time wizard to present a dropdown of sensible datastore
  * sizes based on the local environment. The UI is populated from the current {@link Config} (when
  * present) and from a best-effort auto-detection via {@link DatastoreUtil}; it also considers hard
- * limits derived from available disk space and a memory-based upper bound for slot filters.
+ * limits exported through the detached first-time-wizard snapshot.
  *
  * <p>When the user submits the form, this step updates multiple related configuration keys under
  * {@code node.*} (datastore size and cache sizes) in a consistent way. On the first run it also
- * sets the corresponding {@code *Type} options to the expected defaults. No I/O is performed beyond
- * querying the node's store directory for free space.
+ * sets the corresponding {@code *Type} options to the expected defaults. No live daemon reads are
+ * performed here beyond consuming the detached wizard snapshot.
  *
  * <p><b>Notable behaviors</b>
  *
@@ -54,11 +50,10 @@ public class DatastoreSize implements Step {
   private static final String TAG_OPTION = "option";
 
   private final FirstTimeWizardPort wizardPort;
-  private final LongSupplier legacyDatastoreMaxStorageLimitBytes;
   private final Config config;
 
   /**
-   * Creates a wizard step bound to the detached wizard runtime and legacy datastore cap.
+   * Creates a wizard step bound to the detached wizard runtime.
    *
    * <p>The instance is lightweight and holds references to the provided objects; it does not
    * perform any environment detection until {@link #getStep(HTTPRequest, PageHelper)} is called.
@@ -67,18 +62,10 @@ public class DatastoreSize implements Step {
    *
    * @param wizardPort detached wizard runtime used for datastore suggestions and size bounds
    * @param config mutable configuration that receives the selected datastore and cache settings
-   * @param legacyDatastoreMaxStorageLimitBytes store-dir-aware cap supplier used to preserve the
-   *     legacy dropdown thresholds
    */
-  public DatastoreSize(
-      FirstTimeWizardPort wizardPort,
-      Config config,
-      LongSupplier legacyDatastoreMaxStorageLimitBytes) {
-    this.config = config;
+  public DatastoreSize(FirstTimeWizardPort wizardPort, Config config) {
+    this.config = Objects.requireNonNull(config, "config");
     this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
-    this.legacyDatastoreMaxStorageLimitBytes =
-        Objects.requireNonNull(
-            legacyDatastoreMaxStorageLimitBytes, "legacyDatastoreMaxStorageLimitBytes");
   }
 
   /**
@@ -87,8 +74,8 @@ public class DatastoreSize implements Step {
    * <p>This method populates a {@code <select>} element with options derived from three sources:
    * the current configured sizes (when non-default), a best-effort auto-detected size (when
    * available), and a set of fixed fallback sizes. The resulting options are additionally bounded
-   * by {@link #maxDatastoreSize(Node)} to avoid offering sizes that exceed current disk or
-   * memory-based constraints.
+   * by the detached legacy datastore cap from {@link FirstTimeWizardSnapshot} so the page preserves
+   * its historical dropdown thresholds without consulting live daemon objects directly.
    *
    * <p>This method does not mutate {@link Config}; it only constructs the HTML content for the
    * current request.
@@ -108,7 +95,7 @@ public class DatastoreSize implements Step {
     HTMLNode bandwidthForm = helper.addFormChild(bandwidthInfoboxContent, ".", "dsForm");
     HTMLNode result = bandwidthForm.addChild("select", "name", "ds");
 
-    long maxSize = legacyDatastoreMaxStorageLimitBytes.getAsLong();
+    long maxSize = snapshot.legacyMaxStorageLimitBytes();
     long autodetectedSize = snapshot.autodetectedStorageLimitBytes();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
@@ -290,62 +277,5 @@ public class DatastoreSize implements Step {
       result.addChild(TAG_OPTION, ATTR_VALUE, "200G", "200GiB");
     if (maxSize >= 500L * 1024 * 1024 * 1024)
       result.addChild(TAG_OPTION, ATTR_VALUE, "500G", "500GiB");
-  }
-
-  /**
-   * Computes an upper bound for the datastore size for the given node.
-   *
-   * <p>The returned value is expressed in bytes and is derived from two independent constraints: a
-   * memory-based cap (used to avoid over-allocating slot filters) and the usable free space in the
-   * node's store directory. When free space is considered, the implementation assumes the datastore
-   * is currently empty and adds the sizes of existing files in the store directory back into the
-   * free-space estimate. A margin of 1&nbsp;GiB is reserved to reduce the chance of exhausting the
-   * filesystem.
-   *
-   * @param node node whose store directory and runtime constraints are used for the calculation
-   * @return maximum datastore size in bytes based on current environment constraints
-   */
-  public static long maxDatastoreSize(Node node) {
-    long maxMemory = NodeStarter.getMemoryLimitBytes();
-    if (maxMemory == Long.MAX_VALUE) return ONE_GIB; // Treat as don't know.
-    if (maxMemory < 128L * 1024 * 1024)
-      return ONE_GIB; // 1GB default if you don't know or very small memory.
-    long maxSize = maxDatastoreSizeFromMemory(maxMemory);
-
-    // Datastore can never be larger than free disk space, assuming datastore is zero now.
-    File storeDir = node.getStoreDir();
-    long freeSpace = storeDir.getUsableSpace();
-    File[] files = storeDir.listFiles();
-
-    if (files != null) {
-      for (File file : files) {
-        freeSpace += file.length();
-      }
-    }
-
-    if (freeSpace < maxSize) {
-      maxSize = freeSpace;
-    }
-
-    // Leave some margin.
-    maxSize = maxSize - ONE_GIB;
-
-    return maxSize;
-  }
-
-  private static long maxDatastoreSizeFromMemory(long maxMemory) {
-    // Don't use the first 100MB for slot filters.
-    long available = maxMemory - 100L * 1024 * 1024;
-    // Don't use more than 50% of available memory for slot filters.
-    available = available / 2;
-    // Slot filters are 4 bytes per slot.
-    long slots = available / 4;
-    // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e., the number of
-    // slots in each store.
-    slots /= 3;
-    // We return the total size, so we don't need to worry about cache vs. store or even client
-    // cache.
-    // One key of all 3 types combined uses NodeStorageSubsystem.SIZE_PER_KEY bytes on disk.
-    return slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
   }
 }

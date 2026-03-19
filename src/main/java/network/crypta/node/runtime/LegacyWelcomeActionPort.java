@@ -38,7 +38,7 @@ final class LegacyWelcomeActionPort implements WelcomeActionPort {
   private static final String INPUT_BANDWIDTH_LIMIT = "inputBandwidthLimit";
 
   /** Config key for the welcome-page upload-bandwidth upgrade field. */
-  private static final String OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
+  static final String OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
 
   /** Live daemon node that still owns the underlying welcome-page maintenance behaviors. */
   private final Node node;

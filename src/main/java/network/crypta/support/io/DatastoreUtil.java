@@ -1,5 +1,6 @@
 package network.crypta.support.io;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,6 +9,7 @@ import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
+import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
 import org.slf4j.Logger;
@@ -81,6 +83,40 @@ public final class DatastoreUtil {
     }
 
     return maxDatastoreSize;
+  }
+
+  /**
+   * Computes the legacy first-time-wizard datastore cap for a specific live node.
+   *
+   * <p>The legacy multipage wizard and related alerting code historically bounded datastore sizes
+   * against the current store directory rather than the broader data directory. This helper
+   * preserves that behavior by combining the memory-derived cap with the store directory's usable
+   * space, adding back the sizes of existing files under the assumption that the datastore may be
+   * resized in place, and then reserving a 1&nbsp;GiB margin.
+   *
+   * @param node live node whose store directory should bound the legacy datastore size options
+   * @return maximum datastore size in bytes using the legacy store-directory heuristic
+   */
+  public static long maxDatastoreSize(Node node) {
+    long maxMemory = NodeStarter.getMemoryLimitBytes();
+    if (maxMemory == Long.MAX_VALUE || maxMemory < 128L * ONE_MIB) {
+      return ONE_GIB;
+    }
+
+    long maxDatastoreSize = getMaxDatastoreSize();
+
+    File storeDir = node.getStoreDir();
+    long freeSpace = storeDir.getUsableSpace();
+    File[] files = storeDir.listFiles();
+
+    if (files != null) {
+      for (File file : files) {
+        freeSpace += file.length();
+      }
+    }
+
+    long boundedSize = Math.min(freeSpace, maxDatastoreSize);
+    return boundedSize - ONE_GIB;
   }
 
   private static long getMaxDatastoreSize() {

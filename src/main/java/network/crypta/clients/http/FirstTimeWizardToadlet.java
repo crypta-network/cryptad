@@ -44,9 +44,7 @@ import org.slf4j.LoggerFactory;
  * <p>The toadlet coordinates several step handlers, each responsible for rendering and validating a
  * portion of the workflow. Requests are stateless; the wizard rebuilds its flow from submitted form
  * parameters and redirects between steps instead of maintaining a server-side session state. The
- * remaining live daemon reads and writes flow through the injected {@link FirstTimeWizardPort},
- * while a small HTTP-local runtime bundle still carries the legacy datastore and bandwidth
- * collaborators that have not been folded into the shared wizard snapshot.
+ * remaining live daemon reads and writes flow through the injected {@link FirstTimeWizardPort}.
  *
  * <p>Concurrency: requests for the same user are serialized by the HTTP layer, but the class does
  * not assume single-threaded execution. All I/O and state changes are delegated to the injected
@@ -168,18 +166,12 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.WELCOME, new Welcome(config));
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
     steps.put(WIZARD_STEP.NAME_SELECTION, new NameSelection(config));
-    steps.put(
-        WIZARD_STEP.DATASTORE_SIZE,
-        new DatastoreSize(
-            ports.firstTimeWizardPort(), config, ports.legacyDatastoreMaxStorageLimitBytes()));
+    steps.put(WIZARD_STEP.DATASTORE_SIZE, new DatastoreSize(ports.firstTimeWizardPort(), config));
     steps.put(WIZARD_STEP.OPENNET, new Opennet());
     steps.put(WIZARD_STEP.BANDWIDTH, new Bandwidth());
     steps.put(
         WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(ports.firstTimeWizardPort(), config));
-    steps.put(
-        WIZARD_STEP.BANDWIDTH_RATE,
-        new BandwidthRate(
-            ports.firstTimeWizardPort(), config, ports.legacyCurrentBandwidthLimits()));
+    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(ports.firstTimeWizardPort(), config));
 
     // Add step handlers that presets set
     stepMISC = new Misc(config);
