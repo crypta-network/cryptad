@@ -36,6 +36,7 @@ package network.crypta.runtime.spi;
  * @see RequestQueuePort
  * @see SecurityLevelsPort
  * @see FirstTimeWizardPort
+ * @see WelcomePagePort
  */
 public interface RuntimePorts {
   /**
@@ -273,6 +274,18 @@ public interface RuntimePorts {
    * @return first-time-wizard runtime port for detached page state and submission application
    */
   FirstTimeWizardPort firstTimeWizard();
+
+  /**
+   * Returns the legacy welcome-page read capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining welcome-page config reads and latest-log tail file selection
+   * inside the daemon root module while exposing only a tiny detached snapshot and one text export
+   * upstream. It is intentionally read-only and should not grow to cover the welcome page's POST
+   * actions.
+   *
+   * @return welcome-page runtime port for detached read-only page state and latest-log export
+   */
+  WelcomePagePort welcomePage();
 
   /**
    * Returns the persistent-request queue-control capability exposed to infrastructure code.

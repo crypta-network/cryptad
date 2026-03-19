@@ -85,6 +85,7 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.statisticsPort(), ports.statistics()),
         () -> assertSame(snapshot.securityLevelsPort(), ports.securityLevels()),
         () -> assertSame(snapshot.firstTimeWizardPort(), ports.firstTimeWizard()),
+        () -> assertSame(snapshot.welcomePagePort(), ports.welcomePage()),
         () -> assertSame(snapshot.requestQueuePort(), ports.requestQueue()),
         () -> assertSame(snapshot.nodeInfoPort(), ports.nodeInfo()),
         () -> assertSame(snapshot.peerPort(), ports.peer()));
@@ -113,6 +114,7 @@ class LegacyRuntimePortsTest {
         () -> assertInstanceOf(LegacyStatisticsPort.class, snapshot.statisticsPort()),
         () -> assertInstanceOf(LegacySecurityLevelsPort.class, snapshot.securityLevelsPort()),
         () -> assertInstanceOf(LegacyFirstTimeWizardPort.class, snapshot.firstTimeWizardPort()),
+        () -> assertInstanceOf(LegacyWelcomePagePort.class, snapshot.welcomePagePort()),
         () -> assertInstanceOf(LegacyRequestQueuePort.class, snapshot.requestQueuePort()),
         () -> assertInstanceOf(LegacyNodeInfoPort.class, snapshot.nodeInfoPort()),
         () -> assertInstanceOf(LegacyPeerPort.class, snapshot.peerPort()));
@@ -192,6 +194,7 @@ class LegacyRuntimePortsTest {
         ports.statistics(),
         ports.securityLevels(),
         ports.firstTimeWizard(),
+        ports.welcomePage(),
         ports.requestQueue(),
         ports.nodeInfo(),
         ports.peer());
@@ -218,6 +221,7 @@ class LegacyRuntimePortsTest {
       Object statisticsPort,
       Object securityLevelsPort,
       Object firstTimeWizardPort,
+      Object welcomePagePort,
       Object requestQueuePort,
       Object nodeInfoPort,
       Object peerPort) {}
