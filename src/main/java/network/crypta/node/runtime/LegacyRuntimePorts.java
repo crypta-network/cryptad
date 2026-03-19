@@ -15,6 +15,7 @@ import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
+import network.crypta.runtime.spi.PageChromePort;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
@@ -59,6 +60,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
+  private final PageChromePort pageChromePort;
   private final QueueCompletionPort queueCompletionPort;
   private final QueuePagePort queuePagePort;
   private final QueueDownloadPort queueDownloadPort;
@@ -164,6 +166,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
+    this.pageChromePort = new LegacyPageChromePort(node);
     this.queueCompletionPort = new LegacyQueueCompletionPort(core);
     this.queuePagePort = new LegacyQueuePagePort(core);
     this.queueDownloadPort = new LegacyQueueDownloadPort(core);
@@ -301,6 +304,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DiagnosticPort diagnostic() {
     return diagnosticPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining shared status-bar security-level and peer-count reads
+   * inside the daemon root module while exposing only detached SPI-local values upstream.
+   */
+  @Override
+  public PageChromePort pageChrome() {
+    return pageChromePort;
   }
 
   /**

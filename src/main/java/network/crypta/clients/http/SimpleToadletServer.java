@@ -32,6 +32,7 @@ import network.crypta.node.PrioRunnable;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -480,13 +481,17 @@ public final class SimpleToadletServer
    *
    * <p>The core reference is written with volatile semantics so that listener threads see it after
    * startup. Call this exactly once, immediately after the node finishes constructing its {@link
-   * NodeClientCore}, and before invoking {@link #createFproxy()} or {@link #start()}. Passing
-   * {@code null} is not supported and leaves the server unable to service requests.
+   * NodeClientCore}, and before invoking {@link #createFproxy()} or {@link #start()}. When the core
+   * exposes runtime SPI ports, this method also late-injects the detached page-chrome port into the
+   * shared {@link PageMaker}. Passing {@code null} is not supported and leaves the server unable to
+   * service requests.
    *
    * @param core fully constructed {@link NodeClientCore}; must not be {@code null}.
    */
   public void setCore(NodeClientCore core) {
     this.core = core;
+    RuntimePorts runtimePorts = core == null ? null : core.getRuntimePorts();
+    pageMaker.setPageChromePort(runtimePorts == null ? null : runtimePorts.pageChrome());
   }
 
   /**
@@ -504,15 +509,11 @@ public final class SimpleToadletServer
    *     later replace it via {@link #setBucketFactory(BucketFactory)}.
    * @param executor executor that runs HTTP worker threads with priority awareness; ownership stays
    *     with the caller.
-   * @param node parent {@link Node} providing global services such as logging and runtime state.
    * @throws InvalidConfigValueException if any configuration entry is invalid or fails validation
    *     during registration.
    */
   public SimpleToadletServer(
-      SubConfig fproxyConfig,
-      BucketFactory bucketFactory,
-      PriorityAwareExecutor executor,
-      Node node)
+      SubConfig fproxyConfig, BucketFactory bucketFactory, PriorityAwareExecutor executor)
       throws InvalidConfigValueException {
 
     this.executor = executor;
@@ -547,7 +548,7 @@ public final class SimpleToadletServer
     if ((cssName.indexOf(':') != -1) || (cssName.indexOf('/') != -1))
       throw new InvalidConfigValueException("CSS name must not contain slashes or colons!");
     cssTheme = THEME.themeFromName(cssName);
-    pageMaker = new PageMaker(cssTheme, node);
+    pageMaker = new PageMaker(cssTheme);
 
     if (!fproxyConfig.getOption(CSS_OVERRIDE_KEY).isDefault()) {
       cssOverride = new File(fproxyConfig.getString(CSS_OVERRIDE_KEY));

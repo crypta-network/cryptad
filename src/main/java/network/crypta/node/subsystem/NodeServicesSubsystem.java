@@ -94,7 +94,7 @@ public final class NodeServicesSubsystem {
       throws NodeInitException {
     SubConfig fproxyConfig = config.createSubConfig("fproxy");
     try {
-      toadlets = new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor, node);
+      toadlets = new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor);
       fproxyConfig.finishedInitialization();
       toadlets.start();
     } catch (InvalidConfigValueException e4) {

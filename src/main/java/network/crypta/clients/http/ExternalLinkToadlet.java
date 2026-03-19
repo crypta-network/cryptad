@@ -6,7 +6,6 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -16,8 +15,8 @@ import network.crypta.support.api.HTTPRequest;
  *
  * <p>The toadlet is invoked when a user action would open a non-FProxy URL. It renders a warning
  * page that summarizes the destination and asks the user to continue or cancel. The class keeps no
- * mutable state beyond a reference to the running {@link Node}, so it can be reused safely across
- * requests as long as the surrounding toadlet container manages threading correctly.
+ * mutable state beyond its inherited client reference, so it can be reused safely across requests
+ * as long as the surrounding toadlet container manages threading correctly.
  *
  * <p>Typical flow:
  *
@@ -56,11 +55,8 @@ public class ExternalLinkToadlet extends Toadlet {
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
 
-  private final Node node;
-
-  ExternalLinkToadlet(HighLevelSimpleClient client, Node node) {
+  ExternalLinkToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.node = node;
   }
 
   @Override
@@ -90,7 +86,7 @@ public class ExternalLinkToadlet extends Toadlet {
     Objects.requireNonNull(uri, "uri");
     String url = request.getPartAsStringFailsafe(MAGIC_HTTP_ESCAPE_STRING, MAX_URL_LENGTH);
     // If the user clicked cancel, or the URL is not defined, return to the main page.
-    // Redirecting here restarts the welcome flow when it is still in progress; that behaviour is
+    // Redirecting here restarts the welcome flow when it is still in progress; that behavior is
     // intentional until the wizard gains partial-resume support.
     if (request.getPartAsStringFailsafe("Go", 32).isEmpty() || url.isEmpty()) {
       url = WelcomeToadlet.ROOT_PATH;
@@ -106,14 +102,14 @@ public class ExternalLinkToadlet extends Toadlet {
    * <p>The method requires a query parameter named {@link #MAGIC_HTTP_ESCAPE_STRING}; when missing
    * it redirects back to the welcome page to avoid issuing open redirects. When present, it
    * generates a warning infobox that shows the destination, offers cancel/continue buttons, and
-   * optionally includes navigation/status bars if the setup wizard already completed. No network
+   * optionally includes navigation/status bars if the setup wizard is already completed. No network
    * access is attempted at this stage.
    *
    * @param uri request URI of this toadlet; must not be {@code null}.
    * @param request inbound HTTP request providing the external URL parameter and localization
    *     context.
    * @param ctx toadlet context used for building the page and writing the HTML response.
-   * @throws ToadletContextClosedException if the connection closes before the response is fully
+   * @throws ToadletContextClosedException if the connection closes before, the response is fully
    *     written.
    * @throws IOException if rendering or sending the response fails.
    */
@@ -132,12 +128,8 @@ public class ExternalLinkToadlet extends Toadlet {
 
     // Confirm whether the user really means to access an HTTP link.
     // Only render status and navigation bars if the user has completed the wizard.
-    boolean renderBars =
-        node.services()
-            .clientCore()
-            .getEndpoints()
-            .getToadletContainer()
-            .fproxyHasCompletedWizard();
+    ToadletContainer container = ctx.getContainer();
+    boolean renderBars = container != null && container.fproxyHasCompletedWizard();
     PageNode page =
         ctx.getPageMaker()
             .getPageNode(

@@ -9,9 +9,10 @@ import java.util.Map;
 import network.crypta.client.filter.PushingTagReplacerCallback;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.Node;
-import network.crypta.node.SecurityLevels;
+import network.crypta.runtime.spi.PageChromePort;
+import network.crypta.runtime.spi.PageChromeSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
@@ -26,10 +27,11 @@ import org.slf4j.LoggerFactory;
  * {@link PageNode} for each response via {@link #getPageNode(String, ToadletContext)}, injecting
  * their own content into the returned container.
  *
- * <p>State is limited to configured menus and the active {@linkplain #setTheme(THEME) theme};
- * rendering itself is stateless and produces fresh node trees on each invocation. The class is safe
- * to use from multiple threads provided callers synchronize mutations to shared navigation
- * configuration. Expensive assets are loaded lazily and reused through standard browser caching.
+ * <p>State is limited to configured menus, the active {@linkplain #setTheme(THEME) theme}, and an
+ * optional late-injected {@link PageChromePort} used for status-bar rendering. Rendering itself is
+ * otherwise stateless and produces fresh node trees on each invocation. The class is safe to use
+ * from multiple threads provided callers synchronize mutations to shared navigation configuration.
+ * Expensive assets are loaded lazily and reused through standard browser caching.
  *
  * <ul>
  *   <li>Composes page heads with optional web-push bootstrap and theme assets.
@@ -166,9 +168,21 @@ public final class PageMaker {
     }
   }
 
-  PageMaker(THEME t, Node n) {
+  PageMaker(THEME t) {
     setTheme(t);
-    this.node = n;
+  }
+
+  /**
+   * Installs or clears the detached page-chrome collaborator used for status-bar rendering.
+   *
+   * <p>This setter supports the startup sequence where {@link PageMaker} is created before the
+   * runtime SPI is fully available. Passing {@code null} leaves status-bar rendering disabled; once
+   * a port is injected, future renders will include the existing status-bar shell again.
+   *
+   * @param pageChromePort detached page-chrome runtime port, or {@code null} to hide the status bar
+   */
+  void setPageChromePort(PageChromePort pageChromePort) {
+    this.pageChromePort = pageChromePort;
   }
 
   /**
@@ -582,17 +596,19 @@ public final class PageMaker {
 
   private void renderStatusBar(
       HTMLNode pageDiv, ToadletContext ctx, RenderParameters renderParameters) {
-    if (node == null || node.services().clientCore() == null) {
+    PageChromePort chromePort = pageChromePort;
+    if (chromePort == null) {
       return;
     }
+    PageChromeSnapshot chromeSnapshot = chromePort.snapshot();
     HTMLNode statusBarDiv =
         pageDiv.addChild(TAG_DIV, "id", "statusbar-container").addChild(TAG_DIV, "id", "statusbar");
 
     addAlerts(statusBarDiv, ctx);
     addLanguageSelector(statusBarDiv);
     addModeSwitch(statusBarDiv, ctx, renderParameters);
-    addSecurityLevels(statusBarDiv);
-    addPeerStatus(statusBarDiv);
+    addSecurityLevels(statusBarDiv, chromeSnapshot);
+    addPeerStatus(statusBarDiv, chromeSnapshot);
   }
 
   private void addAlerts(HTMLNode statusBarDiv, ToadletContext ctx) {
@@ -615,9 +631,7 @@ public final class PageMaker {
 
   private void addModeSwitch(
       HTMLNode statusBarDiv, ToadletContext ctx, RenderParameters renderParameters) {
-    if (node.services().clientCore() == null
-        || ctx == null
-        || !renderParameters.isRenderModeSwitch()) {
+    if (ctx == null || !renderParameters.isRenderModeSwitch()) {
       return;
     }
     boolean isAdvancedMode = ctx.isAdvancedModeEnabled();
@@ -639,7 +653,7 @@ public final class PageMaker {
             : NodeL10n.getBase().getString("StatusBar.switchToAdvancedMode"));
   }
 
-  private void addSecurityLevels(HTMLNode statusBarDiv) {
+  private void addSecurityLevels(HTMLNode statusBarDiv, PageChromeSnapshot chromeSnapshot) {
     addSeparator(statusBarDiv);
     HTMLNode secLevels =
         statusBarDiv.addChild(
@@ -653,45 +667,33 @@ public final class PageMaker {
             TAG_A,
             "href",
             "/seclevels/",
-            SecurityLevels.localisedName(node.services().securityLevels().getNetworkThreatLevel())
-                + "\u00a0");
+            localiseNetworkThreatLevel(chromeSnapshot.networkThreatLevel()) + "\u00a0");
     network.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.networkThreatLevelShort"));
     network.addAttribute(
-        ATTR_CLASS,
-        node.services()
-            .securityLevels()
-            .getNetworkThreatLevel()
-            .toString()
-            .toLowerCase(Locale.ROOT));
+        ATTR_CLASS, chromeSnapshot.networkThreatLevel().name().toLowerCase(Locale.ROOT));
 
     HTMLNode physical =
         secLevels.addChild(
             TAG_A,
             "href",
             "/seclevels/",
-            SecurityLevels.localisedName(
-                node.services().securityLevels().getPhysicalThreatLevel()));
+            localisePhysicalThreatLevel(chromeSnapshot.physicalThreatLevel()));
     physical.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.physicalThreatLevelShort"));
     physical.addAttribute(
-        ATTR_CLASS,
-        node.services()
-            .securityLevels()
-            .getPhysicalThreatLevel()
-            .toString()
-            .toLowerCase(Locale.ROOT));
+        ATTR_CLASS, chromeSnapshot.physicalThreatLevel().name().toLowerCase(Locale.ROOT));
   }
 
-  private void addPeerStatus(HTMLNode statusBarDiv) {
+  private void addPeerStatus(HTMLNode statusBarDiv, PageChromeSnapshot chromeSnapshot) {
     addSeparator(statusBarDiv);
-    int connectedPeers = node.network().peers().countConnectedPeers();
-    int darknetTotal = countEnabledDarknetPeers();
-    int connectedDarknetPeers = node.network().peers().countConnectedDarknetPeers();
+    int connectedPeers = chromeSnapshot.connectedPeerCount();
+    int darknetTotal = chromeSnapshot.enabledDarknetPeerCount();
+    int connectedDarknetPeers = chromeSnapshot.connectedDarknetPeerCount();
     int totalPeers =
-        node.network().opennet() == null
-            ? determineDarknetTotal(darknetTotal)
-            : node.network().opennet().getNumberOfConnectedPeersToAimIncludingDarknet();
+        chromeSnapshot.opennetEnabled()
+            ? chromeSnapshot.opennetTargetIncludingDarknetPeerCount()
+            : determineDarknetTotal(darknetTotal);
     double connectedRatio = ((double) connectedPeers) / (double) totalPeers;
     String additionalClass =
         classifyPeerStatus(connectedPeers, connectedDarknetPeers, connectedRatio);
@@ -715,11 +717,21 @@ public final class PageMaker {
                   "StatusBar.connectedPeers",
                   new String[] {"X", "Y"},
                   new String[] {
-                    Integer.toString(node.network().peers().countConnectedDarknetPeers()),
-                    Integer.toString(node.network().peers().countConnectedOpennetPeers())
+                    Integer.toString(chromeSnapshot.connectedDarknetPeerCount()),
+                    Integer.toString(chromeSnapshot.connectedOpennetPeerCount())
                   })
         },
         connectedPeers + ((totalPeers != Integer.MAX_VALUE) ? " / " + totalPeers : ""));
+  }
+
+  private String localiseNetworkThreatLevel(SecurityNetworkThreatLevel networkThreatLevel) {
+    return NodeL10n.getBase()
+        .getString("SecurityLevels.networkThreatLevel.name." + networkThreatLevel.name());
+  }
+
+  private String localisePhysicalThreatLevel(SecurityPhysicalThreatLevel physicalThreatLevel) {
+    return NodeL10n.getBase()
+        .getString("SecurityLevels.physicalThreatLevel.name." + physicalThreatLevel.name());
   }
 
   private String classifyPeerStatus(
@@ -751,16 +763,6 @@ public final class PageMaker {
 
   private int determineDarknetTotal(int darknetTotal) {
     return darknetTotal > 0 ? darknetTotal : Integer.MAX_VALUE;
-  }
-
-  private int countEnabledDarknetPeers() {
-    int darknetTotal = 0;
-    for (DarknetPeerNode peer : node.network().peers().roster().getDarknetPeers()) {
-      if (peer != null && !peer.isDisabled()) {
-        darknetTotal++;
-      }
-    }
-    return darknetTotal;
   }
 
   private void addSeparator(HTMLNode statusBarDiv) {
@@ -1392,9 +1394,12 @@ public final class PageMaker {
   /** Parameter for simple/advanced mode switch. */
   private static final String MODE_SWITCH_PARAMETER = "fproxyAdvancedMode";
 
-  private final Node node;
   private final List<SubMenu> menuList = new ArrayList<>();
   private final Map<String, SubMenu> subMenus = new HashMap<>();
+
+  @SuppressWarnings("java:S3077")
+  private volatile PageChromePort pageChromePort;
+
   private THEME theme;
   private String override;
 }

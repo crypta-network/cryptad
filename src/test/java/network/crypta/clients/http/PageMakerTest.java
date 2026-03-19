@@ -1,5 +1,9 @@
 package network.crypta.clients.http;
 
+import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.PageChromeSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -18,9 +22,10 @@ class PageMakerTest {
   @Mock private HTTPRequest request;
   @Mock private ToadletContainer container;
   @Mock private ToadletContext context;
+  @Mock private UserAlertManager alertManager;
 
   private PageMaker newPageMaker() {
-    return new PageMaker(PageMaker.THEME.CRYPTAFORGE, null);
+    return new PageMaker(PageMaker.THEME.CRYPTAFORGE);
   }
 
   @Test
@@ -152,11 +157,56 @@ class PageMakerTest {
 
   @Test
   void setTheme_whenPassedNull_resetsToDefault() {
-    PageMaker maker = new PageMaker(PageMaker.THEME.CRYPTAFORGE, null);
+    PageMaker maker = new PageMaker(PageMaker.THEME.CRYPTAFORGE);
 
     maker.setTheme(null);
 
     assertEquals(PageMaker.THEME.getDefault(), maker.getTheme());
+  }
+
+  @Test
+  void getPageNode_whenPageChromePortMissing_hidesStatusBar() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+
+    PageNode page =
+        maker.getPageNode(
+            "Status",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    assertFalse(page.generate().contains("statusbar-container"));
+  }
+
+  @Test
+  void getPageNode_whenPageChromeSnapshotProvided_rendersStatusBarShell() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(true);
+    maker.setPageChromePort(
+        () ->
+            new PageChromeSnapshot(
+                SecurityNetworkThreatLevel.HIGH,
+                SecurityPhysicalThreatLevel.MAXIMUM,
+                4,
+                2,
+                2,
+                5,
+                true,
+                10));
+
+    PageNode page =
+        maker.getPageNode(
+            "Status",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("statusbar-container"));
+    assertTrue(html.contains("statusbar-seclevels"));
+    assertTrue(html.contains("progressbar-peers"));
+    assertTrue(html.contains("/seclevels/"));
+    assertTrue(html.contains("4 / 10"));
   }
 
   @Test
@@ -191,5 +241,17 @@ class PageMakerTest {
     assertThrows(
         NullPointerException.class,
         () -> maker.addNavigationLink("missing", "/path", "name", "title", false, null));
+  }
+
+  private void stubPageRenderingContext(boolean renderStatusBar) {
+    when(context.isAllowedFullAccess()).thenReturn(true);
+    when(context.getContainer()).thenReturn(container);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(false);
+    when(container.sendAllThemes()).thenReturn(false);
+    when(context.activeToadlet()).thenReturn(null);
+    if (renderStatusBar) {
+      when(context.getAlertManager()).thenReturn(alertManager);
+      when(alertManager.createSummary(true)).thenReturn(null);
+    }
   }
 }

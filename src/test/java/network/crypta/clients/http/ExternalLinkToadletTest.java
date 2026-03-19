@@ -7,9 +7,6 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.ClientEndpoints;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -47,11 +44,6 @@ import static org.mockito.Mockito.when;
 class ExternalLinkToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock private NodeClientCore nodeClientCore;
   @Mock private SimpleToadletServer toadletContainer;
   @Mock private ToadletContext context;
   @Mock private PageMaker pageMaker;
@@ -61,16 +53,10 @@ class ExternalLinkToadletTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    toadlet = new ExternalLinkToadlet(client, node);
+    toadlet = new ExternalLinkToadlet(client);
 
     when(context.getPageMaker()).thenReturn(pageMaker);
-    network.crypta.node.subsystem.NodeServicesSubsystem services =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(nodeClientCore);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
-    when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
+    when(context.getContainer()).thenReturn(toadletContainer);
 
     doNothing()
         .when(context)
@@ -157,6 +143,29 @@ class ExternalLinkToadletTest {
     when(request.getParam(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING)).thenReturn(target);
     when(toadletContainer.fproxyHasCompletedWizard()).thenReturn(false);
 
+    RenderParameters params = renderConfirmationPage(target);
+
+    assertNotNull(params);
+    assertFalse(params.isRenderNavigationLinks());
+    assertFalse(params.isRenderStatus());
+  }
+
+  @Test
+  void handleMethodGET_whenWizardCompleted_rendersConfirmationFormWithBars() throws Exception {
+    String target = "http://external.example/path";
+    when(request.getParam(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING)).thenReturn(target);
+    when(toadletContainer.fproxyHasCompletedWizard()).thenReturn(true);
+
+    RenderParameters params = renderConfirmationPage(target);
+
+    assertNotNull(params);
+    assertTrue(params.isRenderNavigationLinks());
+    assertTrue(params.isRenderStatus());
+  }
+
+  private RenderParameters renderConfirmationPage(String target) throws Exception {
+    when(request.getParam(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING)).thenReturn(target);
+
     HTMLNode page = new HTMLNode("html");
     HTMLNode head = new HTMLNode("head");
     HTMLNode content = new HTMLNode("div");
@@ -221,11 +230,7 @@ class ExternalLinkToadletTest {
     String html = new String(dataCaptor.getValue(), StandardCharsets.UTF_8);
     assertTrue(html.contains(target));
     assertTrue(html.contains(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING));
-
-    RenderParameters params = renderParameters.get();
-    assertNotNull(params);
-    assertFalse(params.isRenderNavigationLinks());
-    assertFalse(params.isRenderStatus());
+    return renderParameters.get();
   }
 
   @SuppressWarnings("unchecked")
