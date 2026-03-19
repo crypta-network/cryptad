@@ -7,6 +7,7 @@ import java.util.regex.Pattern;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLEncoder;
@@ -218,7 +219,7 @@ class BandwidthRateTest {
     Config config = mock(Config.class);
     when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
 
-    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -241,7 +242,7 @@ class BandwidthRateTest {
     Config config = mock(Config.class);
     when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
 
-    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -260,14 +261,12 @@ class BandwidthRateTest {
   }
 
   @Test
-  void getStep_whenLiveCurrentLimitAvailable_expectCurrentOptionRendered() {
+  void getStep_whenSnapshotHasCurrentLimit_expectCurrentOptionRendered() {
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     Config config = mock(Config.class);
-    when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
+    when(wizardPort.snapshot()).thenReturn(snapshotWithCurrentBandwidth());
 
-    BandwidthRate step =
-        new BandwidthRate(
-            wizardPort, config, () -> new BandwidthLimit(4096L, 1024L, "bandwidthCurrent", false));
+    BandwidthRate step = new BandwidthRate(wizardPort, config);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -306,7 +305,7 @@ class BandwidthRateTest {
                 false, "2.00", "1.25", 1L, "10.00", 10L, 10L, 976562L, "49.44", "1024", "512",
                 -1L));
 
-    BandwidthRate step = new TestableBandwidthRate(wizardPort, config, null);
+    BandwidthRate step = new TestableBandwidthRate(wizardPort, config);
 
     when(helper.getPageContent(anyString())).thenReturn(pageContent);
     stubHelperToAttachInfoboxesAndForms();
@@ -412,15 +411,12 @@ class BandwidthRateTest {
     String rejectNextDownSetWithMessage;
     String rejectNextUpSetWithMessage;
 
-    private final BandwidthLimit current;
-
     TestableBandwidthRate() {
-      this(mock(FirstTimeWizardPort.class), mock(Config.class), null);
+      this(mock(FirstTimeWizardPort.class), mock(Config.class));
     }
 
-    TestableBandwidthRate(FirstTimeWizardPort wizardPort, Config config, BandwidthLimit current) {
+    TestableBandwidthRate(FirstTimeWizardPort wizardPort, Config config) {
       super(wizardPort, config);
-      this.current = current;
     }
 
     @Override
@@ -445,12 +441,25 @@ class BandwidthRateTest {
     protected void setWizardComplete() {
       wizardComplete = true;
     }
-
-    @Override
-    protected BandwidthLimit getCurrentBandwidthLimitsOrNull() {
-      return current;
-    }
   }
 
   private record SetCall(String limit, boolean setOutputLimit) {}
+
+  private static FirstTimeWizardSnapshot snapshotWithCurrentBandwidth() {
+    return new FirstTimeWizardSnapshot(
+        false,
+        "2.00",
+        "1.25",
+        1L,
+        "10.00",
+        10L,
+        10L,
+        10L,
+        976562L,
+        "49.44",
+        "",
+        "",
+        new FirstTimeWizardCurrentBandwidthLimits(4096L, 1024L),
+        -1L);
+  }
 }

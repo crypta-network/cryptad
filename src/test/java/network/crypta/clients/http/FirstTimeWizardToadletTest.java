@@ -70,10 +70,7 @@ class FirstTimeWizardToadletTest {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
-                client,
-                config,
-                new FirstTimeWizardToadletRuntimePorts(
-                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+                client, config, new FirstTimeWizardToadletRuntimePorts(firstTimeWizardPort)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(true);
     when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
@@ -101,10 +98,7 @@ class FirstTimeWizardToadletTest {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
-                client,
-                config,
-                new FirstTimeWizardToadletRuntimePorts(
-                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+                client, config, new FirstTimeWizardToadletRuntimePorts(firstTimeWizardPort)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(true);
     when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
@@ -132,10 +126,7 @@ class FirstTimeWizardToadletTest {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
-                client,
-                config,
-                new FirstTimeWizardToadletRuntimePorts(
-                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+                client, config, new FirstTimeWizardToadletRuntimePorts(firstTimeWizardPort)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(true);
     when(request.getParam("step", FirstTimeWizardToadlet.WIZARD_STEP.WELCOME.toString()))
@@ -160,10 +151,7 @@ class FirstTimeWizardToadletTest {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
-                client,
-                config,
-                new FirstTimeWizardToadletRuntimePorts(
-                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+                client, config, new FirstTimeWizardToadletRuntimePorts(firstTimeWizardPort)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe("step", 20)).thenReturn("WELCOME");
@@ -205,10 +193,7 @@ class FirstTimeWizardToadletTest {
     FirstTimeWizardToadlet toadlet =
         spy(
             new FirstTimeWizardToadlet(
-                client,
-                config,
-                new FirstTimeWizardToadletRuntimePorts(
-                    firstTimeWizardPort, () -> Long.MAX_VALUE, () -> null)));
+                client, config, new FirstTimeWizardToadletRuntimePorts(firstTimeWizardPort)));
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.hasParameters()).thenReturn(false);
     when(request.getPartAsStringFailsafe("step", 20)).thenReturn("MISC");

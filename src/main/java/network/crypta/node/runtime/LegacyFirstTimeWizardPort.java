@@ -18,6 +18,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
+import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardSubmission;
@@ -98,8 +99,10 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
     Config config = node.getConfig();
     long minStorageLimitBytes = MIN_STORAGE_LIMIT;
     long maxStorageLimitBytes = DatastoreUtil.maxDatastoreSize();
+    long legacyMaxStorageLimitBytes = DatastoreUtil.maxDatastoreSize(node);
     long autodetectedStorageLimitBytes = autodetectedStorageLimitBytes(config);
     String[] detectedBandwidthLimits = detectedBandwidthLimits();
+    FirstTimeWizardCurrentBandwidthLimits currentBandwidthLimits = currentBandwidthLimits(config);
     return new FirstTimeWizardSnapshot(
         passwordAlreadySet(),
         initialStorageLimitGiB(config, autodetectedStorageLimitBytes),
@@ -107,11 +110,13 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
         minStorageLimitBytes,
         formatGiB(maxStorageLimitBytes),
         maxStorageLimitBytes,
+        legacyMaxStorageLimitBytes,
         Node.getMinimumBandwidth() / KIB,
         SECONDS.toNanos(1) / KIB,
         String.format(Locale.ENGLISH, "%.2f", BandwidthLimit.MIN_MONTHLY_LIMIT),
         detectedBandwidthLimits[0],
         detectedBandwidthLimits[1],
+        currentBandwidthLimits,
         autodetectedStorageLimitBytes);
   }
 
@@ -292,6 +297,25 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   }
 
   /**
+   * Returns the legacy rate-page current-bandwidth row when the node is not using defaults.
+   *
+   * <p>The old multipage wizard showed a detached "current settings" row only when the upload limit
+   * had been explicitly configured. That behavior is preserved here so the HTTP layer can render
+   * the row without directly consulting live daemon config or network state.
+   *
+   * @param config live daemon config used to determine whether the current-bandwidth row is needed
+   * @return detached current-bandwidth row, or {@code null} when the legacy page should omit it
+   */
+  private FirstTimeWizardCurrentBandwidthLimits currentBandwidthLimits(Config config) {
+    if (config.get("node").getOption(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT).isDefault()) {
+      return null;
+    }
+
+    return new FirstTimeWizardCurrentBandwidthLimits(
+        node.network().inputBandwidthLimit(), node.network().outputBandwidthLimit());
+  }
+
+  /**
    * Applies the submission's bandwidth settings through the legacy config keys.
    *
    * <p>Direct per-second limits are written back as KiB-formatted strings. Monthly transfer budgets
@@ -306,14 +330,20 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
     try {
       if (!submission.haveMonthlyLimit()) {
         config.get("node").set("inputBandwidthLimit", submission.downloadLimitKiB() + "KiB");
-        config.get("node").set("outputBandwidthLimit", submission.uploadLimitKiB() + "KiB");
+        config
+            .get("node")
+            .set(
+                LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT,
+                submission.uploadLimitKiB() + "KiB");
         return;
       }
 
       BandwidthLimit bandwidth =
           new BandwidthLimit(Fields.parseLong(submission.bandwidthMonthlyLimitGiB() + "GiB"));
       config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
-      config.get("node").set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));
+      config
+          .get("node")
+          .set(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT, Long.toString(bandwidth.upBytes));
     } catch (ConfigException e) {
       LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
     }

@@ -27,6 +27,8 @@ import java.util.Objects;
  *     display and error messages
  * @param maxStorageLimitBytes maximum datastore size accepted by the page, expressed in exact bytes
  *     for validation
+ * @param legacyMaxStorageLimitBytes store-dir-aware maximum datastore size used by the legacy
+ *     multipage wizard dropdown thresholds
  * @param minBandwidthKiB minimum direct download or upload limit accepted by the page, in KiB/s
  * @param maxUploadLimitKiB maximum direct upload limit accepted by the page, in KiB/s
  * @param minBandwidthMonthlyLimitGiB minimum monthly transfer budget accepted by the page,
@@ -35,6 +37,8 @@ import java.util.Objects;
  *     string when automatic detection is unavailable
  * @param detectedUploadLimitKiB recommended direct upload limit in KiB/s text or an empty string
  *     when automatic detection is unavailable
+ * @param currentBandwidthLimits detached effective bandwidth row for the legacy rate page, or
+ *     {@code null} when the page should omit the current-settings row
  * @param autodetectedStorageLimitBytes autodetected datastore suggestion in exact bytes, or {@code
  *     -1} when the legacy datastore page should fall back to its fixed-size defaults
  */
@@ -45,11 +49,13 @@ public record FirstTimeWizardSnapshot(
     long minStorageLimitBytes,
     String maxStorageLimitGiB,
     long maxStorageLimitBytes,
+    long legacyMaxStorageLimitBytes,
     long minBandwidthKiB,
     long maxUploadLimitKiB,
     String minBandwidthMonthlyLimitGiB,
     String detectedDownloadLimitKiB,
     String detectedUploadLimitKiB,
+    FirstTimeWizardCurrentBandwidthLimits currentBandwidthLimits,
     long autodetectedStorageLimitBytes) {
   /**
    * Creates an immutable first-time-wizard snapshot.
@@ -67,5 +73,43 @@ public record FirstTimeWizardSnapshot(
     Objects.requireNonNull(minBandwidthMonthlyLimitGiB, "minBandwidthMonthlyLimitGiB");
     Objects.requireNonNull(detectedDownloadLimitKiB, "detectedDownloadLimitKiB");
     Objects.requireNonNull(detectedUploadLimitKiB, "detectedUploadLimitKiB");
+  }
+
+  /**
+   * Creates a first-time-wizard snapshot without legacy-only detached fields.
+   *
+   * <p>This compatibility constructor keeps existing call sites concise when they do not care about
+   * the legacy datastore dropdown cap or the optional current-bandwidth row. The legacy datastore
+   * bound defaults to {@code maxStorageLimitBytes}, and the current-bandwidth row defaults to
+   * {@code null}.
+   */
+  public FirstTimeWizardSnapshot(
+      boolean passwordAlreadySet,
+      String initialStorageLimitGiB,
+      String minStorageLimitGiB,
+      long minStorageLimitBytes,
+      String maxStorageLimitGiB,
+      long maxStorageLimitBytes,
+      long minBandwidthKiB,
+      long maxUploadLimitKiB,
+      String minBandwidthMonthlyLimitGiB,
+      String detectedDownloadLimitKiB,
+      String detectedUploadLimitKiB,
+      long autodetectedStorageLimitBytes) {
+    this(
+        passwordAlreadySet,
+        initialStorageLimitGiB,
+        minStorageLimitGiB,
+        minStorageLimitBytes,
+        maxStorageLimitGiB,
+        maxStorageLimitBytes,
+        maxStorageLimitBytes,
+        minBandwidthKiB,
+        maxUploadLimitKiB,
+        minBandwidthMonthlyLimitGiB,
+        detectedDownloadLimitKiB,
+        detectedUploadLimitKiB,
+        null,
+        autodetectedStorageLimitBytes);
   }
 }

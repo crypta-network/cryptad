@@ -1,7 +1,6 @@
 package network.crypta.clients.http.wizardsteps;
 
 import java.util.Objects;
-import java.util.function.Supplier;
 import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
@@ -28,7 +27,6 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Applies an input or output limit string to the {@code node.*BandwidthLimit} option.
  *   <li>Builds a warning infobox for invalid or rejected bandwidth inputs.
- *   <li>Optionally displays “current” limits when the node is configured non-default.
  *   <li>Persists {@code fproxy.hasCompletedWizard} at the end of the wizard flow.
  * </ul>
  */
@@ -46,8 +44,6 @@ public abstract class BandwidthManipulator {
    */
   protected final Config config;
 
-  private final Supplier<BandwidthLimit> currentBandwidthLimitsSupplier;
-
   /**
    * Creates a new helper bound to the given configuration.
    *
@@ -59,26 +55,7 @@ public abstract class BandwidthManipulator {
    *     should refer to the node's live configuration.
    */
   protected BandwidthManipulator(Config config) {
-    this(config, () -> null);
-  }
-
-  /**
-   * Creates a new helper bound to the given configuration and current-bandwidth supplier.
-   *
-   * <p>The supplier is used only for rendering the legacy “current settings” preset on the
-   * rate-based bandwidth page. Callers should return {@code null} when no current preset row should
-   * be shown.
-   *
-   * @param config Configuration handle used to read and update wizard options; must be non-null and
-   *     should refer to the node's live configuration.
-   * @param currentBandwidthLimitsSupplier supplier for the live current bandwidth limits used by
-   *     the “current settings” row; must be non-null but may return {@code null}
-   */
-  protected BandwidthManipulator(
-      Config config, Supplier<BandwidthLimit> currentBandwidthLimitsSupplier) {
-    this.config = config;
-    this.currentBandwidthLimitsSupplier =
-        Objects.requireNonNull(currentBandwidthLimitsSupplier, "currentBandwidthLimitsSupplier");
+    this.config = Objects.requireNonNull(config, "config");
   }
 
   /**
@@ -136,22 +113,6 @@ public abstract class BandwidthManipulator {
     infoBox.addChild("p", message);
 
     return infoBox;
-  }
-
-  /**
-   * Returns the node's currently effective bandwidth limits for the legacy “current settings” row.
-   *
-   * <p>This helper delegates to the supplier provided by the surrounding HTTP wiring. Callers
-   * should return {@code null} when the wizard should omit the “current” row.
-   *
-   * <p>The returned {@link BandwidthLimit} is intended for display only; it does not imply that the
-   * wizard has validated or re-applied these settings during the current request.
-   *
-   * @return A {@link BandwidthLimit} describing the node's current limits, or {@code null} when the
-   *     wizard should treat the node as using defaults.
-   */
-  protected BandwidthLimit getCurrentBandwidthLimitsOrNull() {
-    return currentBandwidthLimitsSupplier.get();
   }
 
   /**

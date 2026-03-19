@@ -19,6 +19,7 @@ import network.crypta.node.NodeIPDetector;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
+import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardSubmission;
 import network.crypta.runtime.spi.MasterPasswordMutationStatus;
@@ -37,8 +38,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -68,6 +72,7 @@ class LegacyFirstTimeWizardPortTest {
     Option<Long> storeSize = mockLongOption();
     Option<Long> clientCache = mockLongOption();
     Option<Long> slashdotCache = mockLongOption();
+    Option<?> outputBandwidthLimit = mockOption();
     BandwidthIndicator bandwidthIndicator = mock(BandwidthIndicator.class);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
     NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
@@ -81,8 +86,12 @@ class LegacyFirstTimeWizardPortTest {
     when(node.network()).thenReturn(networkSubsystem);
     when(networkSubsystem.ipDetector()).thenReturn(ipDetector);
     when(ipDetector.getBandwidthIndicator()).thenReturn(bandwidthIndicator);
+    when(networkSubsystem.inputBandwidthLimit()).thenReturn(2048);
+    when(networkSubsystem.outputBandwidthLimit()).thenReturn(1024);
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
+    doReturn(outputBandwidthLimit).when(nodeSubConfig).getOption("outputBandwidthLimit");
+    when(outputBandwidthLimit.isDefault()).thenReturn(false);
     when(storeSize.isDefault()).thenReturn(false);
     when(storeSize.getValue()).thenReturn(2L * DatastoreUtil.ONE_GIB);
     when(clientCache.getValue()).thenReturn(0L);
@@ -99,6 +108,9 @@ class LegacyFirstTimeWizardPortTest {
           .when(() -> Config.longOption(nodeSubConfig, "slashdotCacheSize"))
           .thenReturn(slashdotCache);
       datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(10L * DatastoreUtil.ONE_GIB);
+      datastore
+          .when(() -> DatastoreUtil.maxDatastoreSize(node))
+          .thenReturn(8L * DatastoreUtil.ONE_GIB);
       bandwidth
           .when(() -> BandwidthManipulator.detectBandwidthLimits(bandwidthIndicator))
           .thenReturn(new BandwidthLimit(2097152L, 1048576L, "desc", false));
@@ -118,6 +130,7 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals(NodeStorageSubsystem.MIN_STORE_SIZE * 5 / 4, snapshot.minStorageLimitBytes());
       assertEquals("10.00", snapshot.maxStorageLimitGiB());
       assertEquals(10L * DatastoreUtil.ONE_GIB, snapshot.maxStorageLimitBytes());
+      assertEquals(8L * DatastoreUtil.ONE_GIB, snapshot.legacyMaxStorageLimitBytes());
       assertEquals(Node.getMinimumBandwidth() / 1024L, snapshot.minBandwidthKiB());
       assertEquals(SECONDS.toNanos(1) / 1024L, snapshot.maxUploadLimitKiB());
       assertEquals(
@@ -125,6 +138,11 @@ class LegacyFirstTimeWizardPortTest {
           snapshot.minBandwidthMonthlyLimitGiB());
       assertEquals("1024", snapshot.detectedDownloadLimitKiB());
       assertEquals("512", snapshot.detectedUploadLimitKiB());
+      FirstTimeWizardCurrentBandwidthLimits currentBandwidthLimits =
+          snapshot.currentBandwidthLimits();
+      assertNotNull(currentBandwidthLimits);
+      assertEquals(2048L, currentBandwidthLimits.downloadBytes());
+      assertEquals(1024L, currentBandwidthLimits.uploadBytes());
       assertEquals(-1L, snapshot.autodetectedStorageLimitBytes());
     }
   }
@@ -132,6 +150,7 @@ class LegacyFirstTimeWizardPortTest {
   @Test
   void snapshot_whenAutodetectAndDetectionUnavailable_returnsFallbackAndEmptySuggestions() {
     Option<Long> storeSize = mockLongOption();
+    Option<?> outputBandwidthLimit = mockOption();
     NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
 
     when(node.getConfig()).thenReturn(config);
@@ -140,6 +159,8 @@ class LegacyFirstTimeWizardPortTest {
     when(services.securityLevels()).thenReturn(securityLevels);
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    doReturn(outputBandwidthLimit).when(nodeSubConfig).getOption("outputBandwidthLimit");
+    when(outputBandwidthLimit.isDefault()).thenReturn(true);
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
@@ -148,6 +169,9 @@ class LegacyFirstTimeWizardPortTest {
       when(storeSize.isDefault()).thenReturn(true);
       datastore.when(() -> DatastoreUtil.autodetectDatastoreSize(core, config)).thenReturn(0L);
       datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(10L * DatastoreUtil.ONE_GIB);
+      datastore
+          .when(() -> DatastoreUtil.maxDatastoreSize(node))
+          .thenReturn(9L * DatastoreUtil.ONE_GIB);
       bandwidth
           .when(
               () ->
@@ -163,6 +187,8 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals("100.00", snapshot.initialStorageLimitGiB());
       assertEquals("", snapshot.detectedDownloadLimitKiB());
       assertEquals("", snapshot.detectedUploadLimitKiB());
+      assertEquals(9L * DatastoreUtil.ONE_GIB, snapshot.legacyMaxStorageLimitBytes());
+      assertNull(snapshot.currentBandwidthLimits());
       assertEquals(-1L, snapshot.autodetectedStorageLimitBytes());
     }
   }
@@ -170,6 +196,7 @@ class LegacyFirstTimeWizardPortTest {
   @Test
   void snapshot_whenIpDetectorNotInitialized_returnsStorageSuggestionAndEmptyBandwidthHints() {
     Option<Long> storeSize = mockLongOption();
+    Option<?> outputBandwidthLimit = mockOption();
     NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
     network.crypta.node.subsystem.NodeNetworkSubsystem networkSubsystem =
         mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
@@ -183,6 +210,8 @@ class LegacyFirstTimeWizardPortTest {
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     when(node.network()).thenReturn(networkSubsystem);
     when(networkSubsystem.ipDetector()).thenReturn(null);
+    doReturn(outputBandwidthLimit).when(nodeSubConfig).getOption("outputBandwidthLimit");
+    when(outputBandwidthLimit.isDefault()).thenReturn(true);
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class)) {
@@ -192,6 +221,9 @@ class LegacyFirstTimeWizardPortTest {
           .when(() -> DatastoreUtil.autodetectDatastoreSize(core, config))
           .thenReturn(autodetectedStorageLimitBytes);
       datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(10L * DatastoreUtil.ONE_GIB);
+      datastore
+          .when(() -> DatastoreUtil.maxDatastoreSize(node))
+          .thenReturn(6L * DatastoreUtil.ONE_GIB);
 
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
 
@@ -200,6 +232,8 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals("3.00", snapshot.initialStorageLimitGiB());
       assertEquals("", snapshot.detectedDownloadLimitKiB());
       assertEquals("", snapshot.detectedUploadLimitKiB());
+      assertEquals(6L * DatastoreUtil.ONE_GIB, snapshot.legacyMaxStorageLimitBytes());
+      assertNull(snapshot.currentBandwidthLimits());
       assertEquals(autodetectedStorageLimitBytes, snapshot.autodetectedStorageLimitBytes());
     }
   }
@@ -207,6 +241,7 @@ class LegacyFirstTimeWizardPortTest {
   @Test
   void snapshot_whenStorageCapNeedsRounding_preservesExactStorageBytes() {
     Option<Long> storeSize = mockLongOption();
+    Option<?> outputBandwidthLimit = mockOption();
     NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
     long roundedUpMaxStorageLimitBytes = Fields.parseLong("1.235GiB");
 
@@ -216,6 +251,8 @@ class LegacyFirstTimeWizardPortTest {
     when(services.securityLevels()).thenReturn(securityLevels);
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    doReturn(outputBandwidthLimit).when(nodeSubConfig).getOption("outputBandwidthLimit");
+    when(outputBandwidthLimit.isDefault()).thenReturn(true);
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
@@ -224,6 +261,9 @@ class LegacyFirstTimeWizardPortTest {
       when(storeSize.isDefault()).thenReturn(true);
       datastore.when(() -> DatastoreUtil.autodetectDatastoreSize(core, config)).thenReturn(0L);
       datastore.when(DatastoreUtil::maxDatastoreSize).thenReturn(roundedUpMaxStorageLimitBytes);
+      datastore
+          .when(() -> DatastoreUtil.maxDatastoreSize(node))
+          .thenReturn(5L * DatastoreUtil.ONE_GIB);
       bandwidth
           .when(
               () ->
@@ -237,6 +277,8 @@ class LegacyFirstTimeWizardPortTest {
 
       assertEquals("1.24", snapshot.maxStorageLimitGiB());
       assertEquals(roundedUpMaxStorageLimitBytes, snapshot.maxStorageLimitBytes());
+      assertEquals(5L * DatastoreUtil.ONE_GIB, snapshot.legacyMaxStorageLimitBytes());
+      assertNull(snapshot.currentBandwidthLimits());
     }
   }
 
@@ -501,5 +543,9 @@ class LegacyFirstTimeWizardPortTest {
     @SuppressWarnings("unchecked")
     Option<Long> option = (Option<Long>) mock(Option.class);
     return option;
+  }
+
+  private static Option<?> mockOption() {
+    return mock(Option.class);
   }
 }

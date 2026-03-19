@@ -1,30 +1,19 @@
 package network.crypta.clients.http;
 
 import java.util.Objects;
-import java.util.function.LongSupplier;
-import java.util.function.Supplier;
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 
 /**
  * Shared runtime-port bundle used by the legacy first-time wizard toadlet.
  *
  * <p>The legacy multipage wizard still owns its HTTP routing, redirects, and most config writes,
- * but the remaining live daemon interactions now route through the existing first-time-wizard SPI.
- * It also needs the legacy datastore dropdown cap, which still comes from the live store-directory
- * heuristic rather than the shared wizard snapshot. Grouping those collaborators keeps the toadlet
- * constructor narrow without threading the full runtime aggregate through the HTTP layer.
+ * but its remaining live daemon interactions now route through the existing first-time-wizard SPI.
+ * Grouping that collaborator keeps the toadlet constructor narrow without threading the full
+ * runtime aggregate through the HTTP layer.
  *
  * @param firstTimeWizardPort detached wizard runtime used by the legacy multipage wizard
- * @param legacyDatastoreMaxStorageLimitBytes store-dir-aware cap supplier used by the legacy
- *     datastore dropdown to preserve its historical thresholds
- * @param legacyCurrentBandwidthLimits supplier for the legacy rate-page “current settings” row,
- *     backed by the live network subsystem instead of config-derived defaults
  */
-record FirstTimeWizardToadletRuntimePorts(
-    FirstTimeWizardPort firstTimeWizardPort,
-    LongSupplier legacyDatastoreMaxStorageLimitBytes,
-    Supplier<BandwidthLimit> legacyCurrentBandwidthLimits) {
+record FirstTimeWizardToadletRuntimePorts(FirstTimeWizardPort firstTimeWizardPort) {
   /**
    * Creates the legacy wizard's HTTP-local runtime bundle.
    *
@@ -37,7 +26,5 @@ record FirstTimeWizardToadletRuntimePorts(
    */
   FirstTimeWizardToadletRuntimePorts {
     Objects.requireNonNull(firstTimeWizardPort);
-    Objects.requireNonNull(legacyDatastoreMaxStorageLimitBytes);
-    Objects.requireNonNull(legacyCurrentBandwidthLimits);
   }
 }

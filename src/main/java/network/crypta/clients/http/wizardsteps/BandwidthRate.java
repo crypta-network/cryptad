@@ -2,11 +2,11 @@ package network.crypta.clients.http.wizardsteps;
 
 import java.text.DecimalFormat;
 import java.util.Objects;
-import java.util.function.Supplier;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLNode;
@@ -53,29 +53,12 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
    * PageHelper)}. Construction does not apply configuration changes; persistence occurs only after
    * a successful {@link #postStep(HTTPRequest)} submission.
    *
-   * @param wizardPort detached wizard runtime used for detected-bandwidth suggestions
+   * @param wizardPort detached wizard runtime used for detected-bandwidth suggestions and the
+   *     optional current-bandwidth row
    * @param config node configuration instance that receives the selected bandwidth limits
    */
   public BandwidthRate(FirstTimeWizardPort wizardPort, Config config) {
-    this(wizardPort, config, () -> null);
-  }
-
-  /**
-   * Creates a new bandwidth-rate wizard step with a fixed set of preset profiles.
-   *
-   * <p>The extra supplier is used only for the legacy “current settings” row, so the page can
-   * render the node's live effective limits instead of reconstructing them from config defaults.
-   *
-   * @param wizardPort detached wizard runtime used for detected-bandwidth suggestions
-   * @param config node configuration instance that receives the selected bandwidth limits
-   * @param currentBandwidthLimitsSupplier supplier for the live current-bandwidth row; must be
-   *     non-null but may return {@code null}
-   */
-  public BandwidthRate(
-      FirstTimeWizardPort wizardPort,
-      Config config,
-      Supplier<BandwidthLimit> currentBandwidthLimitsSupplier) {
-    super(config, currentBandwidthLimitsSupplier);
+    super(config);
     this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
     final long KiB = 1024L;
     limits =
@@ -151,7 +134,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
       addedDefault = true;
     }
 
-    BandwidthLimit current = getCurrentBandwidthLimitsOrNull();
+    BandwidthLimit current = currentBandwidthLimitOrNull(snapshot);
     if (current != null) {
       addLimitRow(table, current, false, !addedDefault);
       addedDefault = true;
@@ -264,6 +247,16 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
       LOG.info("Ignoring malformed detected bandwidth suggestion.", e);
       return null;
     }
+  }
+
+  private static BandwidthLimit currentBandwidthLimitOrNull(FirstTimeWizardSnapshot snapshot) {
+    FirstTimeWizardCurrentBandwidthLimits current = snapshot.currentBandwidthLimits();
+    if (current == null) {
+      return null;
+    }
+
+    return new BandwidthLimit(
+        current.downloadBytes(), current.uploadBytes(), "bandwidthCurrent", false);
   }
 
   /**

@@ -1,13 +1,11 @@
 package network.crypta.clients.http;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
@@ -17,6 +15,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -36,8 +35,6 @@ import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.atLeastOnce;
@@ -68,15 +65,15 @@ class FProxyRegistrarTest {
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private LifecyclePort lifecyclePort;
   @Mock private WelcomeActionPort welcomeActionPort;
+  @Mock private FirstTimeWizardPort firstTimeWizardPort;
   @Mock private SimpleToadletServer server;
 
   private Config config;
-  private SubConfig nodeConfig;
 
   @BeforeEach
   void setUp() {
     config = new Config();
-    nodeConfig = config.createSubConfig("node");
+    SubConfig nodeConfig = config.createSubConfig("node");
     registerBandwidthOption(nodeConfig, "outputBandwidthLimit", 1024);
     registerBandwidthOption(nodeConfig, "inputBandwidthLimit", 2048);
     nodeConfig.finishedInitialization();
@@ -98,6 +95,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
     when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
     when(runtimePorts.welcomeAction()).thenReturn(welcomeActionPort);
+    when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
   }
 
   @Test
@@ -161,6 +159,16 @@ class FProxyRegistrarTest {
                 registered ->
                     FirstTimeWizardToadlet.TOADLET_URL.equals(
                         registered.registration().urlPrefix())));
+    RegisteredToadlet wizardRegistration =
+        registrations.stream()
+            .filter(
+                registered ->
+                    FirstTimeWizardToadlet.TOADLET_URL.equals(
+                        registered.registration().urlPrefix()))
+            .findFirst()
+            .orElseThrow();
+    assertSame(firstTimeWizardPort, readWizardPortField(wizardRegistration.toadlet()));
+    verify(runtimePorts, atLeastOnce()).firstTimeWizard();
   }
 
   @Test
@@ -179,30 +187,6 @@ class FProxyRegistrarTest {
     assertFalse(configToadletPrefixes.contains(FProxyToadlet.CONFIG_PATH + "security-levels"));
   }
 
-  @Test
-  void legacyCurrentBandwidthLimits_whenOutputBandwidthLimitIsDefault_returnsNull()
-      throws Exception {
-    BandwidthLimit bandwidthLimit = invokeLegacyCurrentBandwidthLimits(config, node);
-
-    assertNull(bandwidthLimit);
-  }
-
-  @Test
-  void legacyCurrentBandwidthLimits_whenOutputBandwidthLimitIsConfigured_returnsCurrentLimit()
-      throws Exception {
-    nodeConfig.set("outputBandwidthLimit", "8192");
-    when(node.network().inputBandwidthLimit()).thenReturn(2048);
-    when(node.network().outputBandwidthLimit()).thenReturn(4096);
-
-    BandwidthLimit bandwidthLimit = invokeLegacyCurrentBandwidthLimits(config, node);
-
-    assertNotNull(bandwidthLimit);
-    assertEquals(2048L, bandwidthLimit.downBytes);
-    assertEquals(4096L, bandwidthLimit.upBytes);
-    assertEquals("bandwidthCurrent", bandwidthLimit.descriptionKey);
-    assertFalse(bandwidthLimit.maybeDefault);
-  }
-
   private static void registerBandwidthOption(
       SubConfig subConfig, String optionName, int defaultValue) {
     subConfig.register(optionName, defaultValue, optionMeta(), new MemoryIntCallback(defaultValue));
@@ -210,15 +194,6 @@ class FProxyRegistrarTest {
 
   private static Option.Meta optionMeta() {
     return new Option.Meta(0, false, false, "", "");
-  }
-
-  private BandwidthLimit invokeLegacyCurrentBandwidthLimits(Config config, Node node)
-      throws Exception {
-    Method method =
-        FProxyRegistrar.class.getDeclaredMethod(
-            "legacyCurrentBandwidthLimits", Config.class, Node.class);
-    method.setAccessible(true);
-    return (BandwidthLimit) method.invoke(null, config, node);
   }
 
   private List<RegisteredToadlet> capturedRegistrations() {
@@ -234,6 +209,16 @@ class FProxyRegistrarTest {
       registrations.add(new RegisteredToadlet(toadlets.get(i), registrationValues.get(i)));
     }
     return registrations;
+  }
+
+  private static FirstTimeWizardPort readWizardPortField(Object target) {
+    try {
+      java.lang.reflect.Field field = target.getClass().getDeclaredField("wizardPort");
+      field.setAccessible(true);
+      return (FirstTimeWizardPort) field.get(target);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   private static final class MemoryIntCallback extends IntCallback {

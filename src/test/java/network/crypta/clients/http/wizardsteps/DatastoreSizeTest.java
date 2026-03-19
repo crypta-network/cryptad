@@ -60,7 +60,7 @@ class DatastoreSizeTest {
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
       nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(Long.MAX_VALUE);
 
-      long result = DatastoreSize.maxDatastoreSize(node);
+      long result = DatastoreUtil.maxDatastoreSize(node);
 
       assertEquals(1024L * 1024 * 1024, result);
     }
@@ -72,7 +72,7 @@ class DatastoreSizeTest {
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
       nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(127L * 1024 * 1024);
 
-      long result = DatastoreSize.maxDatastoreSize(node);
+      long result = DatastoreUtil.maxDatastoreSize(node);
 
       assertEquals(1024L * 1024 * 1024, result);
     }
@@ -107,7 +107,7 @@ class DatastoreSizeTest {
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
       nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(mockedMaxMemoryBytes);
 
-      long result = DatastoreSize.maxDatastoreSize(node);
+      long result = DatastoreUtil.maxDatastoreSize(node);
 
       assertEquals(expectedCap - 1024L * 1024 * 1024, result);
     }
@@ -176,8 +176,7 @@ class DatastoreSizeTest {
   @Test
   void postStep_whenFirstTime_expectNextStepBandwidthAndUsesSelected() {
     Config config = newConfigWithNodeDefaults(10, 0, 1000L);
-    DatastoreSize step =
-        new DatastoreSize(mock(FirstTimeWizardPort.class), config, () -> MAX_STORAGE_LIMIT_BYTES);
+    DatastoreSize step = new DatastoreSize(mock(FirstTimeWizardPort.class), config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(false);
@@ -205,8 +204,7 @@ class DatastoreSizeTest {
     assertEquals(VALUE_DEFAULT, node.getString(KEY_STORE_TYPE));
     assertEquals(VALUE_DEFAULT, node.getString(KEY_CLIENT_CACHE_TYPE));
 
-    DatastoreSize step =
-        new DatastoreSize(mock(FirstTimeWizardPort.class), config, () -> MAX_STORAGE_LIMIT_BYTES);
+    DatastoreSize step = new DatastoreSize(mock(FirstTimeWizardPort.class), config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(true);
@@ -253,7 +251,7 @@ class DatastoreSizeTest {
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     when(wizardPort.snapshot()).thenReturn(snapshot(512L * 1024 * 1024));
 
-    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -277,7 +275,7 @@ class DatastoreSizeTest {
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     when(wizardPort.snapshot()).thenReturn(snapshot(2L * 1024 * 1024 * 1024));
 
-    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -307,7 +305,7 @@ class DatastoreSizeTest {
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
     when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
 
-    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> MAX_STORAGE_LIMIT_BYTES);
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -343,9 +341,9 @@ class DatastoreSizeTest {
   void getStep_whenLegacyCapIsBelowSnapshotMax_expectLegacyThresholdsPreserved() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
-    when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
+    when(wizardPort.snapshot()).thenReturn(snapshot(4L * 1024 * 1024 * 1024, -1L));
 
-    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> 4L * 1024 * 1024 * 1024);
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -367,9 +365,9 @@ class DatastoreSizeTest {
   void getStep_whenLegacyCapIsAboveSnapshotMax_expectLegacyThresholdsPreserved() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
     FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
-    when(wizardPort.snapshot()).thenReturn(snapshot(-1L));
+    when(wizardPort.snapshot()).thenReturn(snapshot(50L * 1024 * 1024 * 1024, -1L));
 
-    DatastoreSize step = new DatastoreSize(wizardPort, config, () -> 50L * 1024 * 1024 * 1024);
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     PageHelper helper = mock(PageHelper.class);
     HTMLNode contentNode = new HTMLNode("div");
@@ -432,6 +430,11 @@ class DatastoreSizeTest {
   }
 
   private static FirstTimeWizardSnapshot snapshot(long autodetectedSize) {
+    return snapshot(MAX_STORAGE_LIMIT_BYTES, autodetectedSize);
+  }
+
+  private static FirstTimeWizardSnapshot snapshot(
+      long legacyMaxStorageLimitBytes, long autodetectedSize) {
     return new FirstTimeWizardSnapshot(
         false,
         "2.00",
@@ -439,11 +442,13 @@ class DatastoreSizeTest {
         1L,
         SizeUtil.formatSize(MAX_STORAGE_LIMIT_BYTES),
         MAX_STORAGE_LIMIT_BYTES,
+        legacyMaxStorageLimitBytes,
         10L,
         976562L,
         "49.44",
         "",
         "",
+        null,
         autodetectedSize);
   }
 
