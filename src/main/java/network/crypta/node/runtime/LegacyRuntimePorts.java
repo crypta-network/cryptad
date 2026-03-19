@@ -28,6 +28,7 @@ import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.StatisticsPort;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.runtime.spi.WelcomePagePort;
 
 /**
  * Bridges the current daemon implementation into the JDK-only runtime SPI.
@@ -66,6 +67,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
+  private final WelcomePagePort welcomePagePort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -169,6 +171,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
+    this.welcomePagePort = new LegacyWelcomePagePort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -399,6 +402,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public FirstTimeWizardPort firstTimeWizard() {
     return firstTimeWizardPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining welcome-page config reads and latest-log tail
+   * selection inside the daemon root module while exposing only detached read-only values upstream.
+   */
+  @Override
+  public WelcomePagePort welcomePage() {
+    return welcomePagePort;
   }
 
   /**

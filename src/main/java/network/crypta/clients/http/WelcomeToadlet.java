@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
@@ -23,11 +24,12 @@ import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.BandwidthManager;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.WelcomePageSnapshot;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -46,12 +48,12 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * landing page with alerts, bookmarks, search integration, and version/environment diagnostics so
  * users can assess node health at a glance.
  *
- * <p>The class is intentionally state-light: it holds only a {@link Node} reference and delegates
- * persistence, alerts, and configuration to their respective services. Requests are processed
- * sequentially by the container, so the toadlet itself does not create additional threads; any
- * asynchronous behavior is queued through node subsystems. Form-password checks gate all actions
- * that mutate state or reveal privileged information, while public users see a trimmed bookmark
- * view.
+ * <p>The class is intentionally state-light: it retains the live {@link Node} only for legacy
+ * POST/action paths and uses a small runtime-port bundle for the detached GET/read helpers.
+ * Requests are processed sequentially by the container, so the toadlet itself does not create
+ * additional threads; any asynchronous behavior is queued through node subsystems. Form-password
+ * checks gate all actions that mutate state or reveal privileged information, while public users
+ * see a trimmed bookmark view.
  *
  * <ul>
  *   <li>Homepage rendering combines alerts, bookmark trees, fetch boxes, and version details.
@@ -91,19 +93,20 @@ public class WelcomeToadlet extends Toadlet {
   private static final String PARAM_OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
   private static final String PARAM_FILENAME = "filename";
   private static final String PARAM_RESTART = "restart";
-  private static final long LOG_TAIL_BYTE_LIMIT = 100000L;
   private static final String TAG_LABEL = "label";
   private static final String TEXTAREA_DESC_B = "descB";
   private static final String STYLE_BORDER_NONE = "border: none";
   private static final String TARGET_BLANK = "_blank";
 
   final Node node;
+  private final WelcomeToadletRuntimePorts runtimePorts;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
-  WelcomeToadlet(HighLevelSimpleClient client, Node node) {
+  WelcomeToadlet(HighLevelSimpleClient client, Node node, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
-    this.node = node;
+    this.node = Objects.requireNonNull(node, "node");
+    this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
   }
 
   void redirectToRoot(ToadletContext ctx) throws ToadletContextClosedException, IOException {
@@ -115,11 +118,12 @@ public class WelcomeToadlet extends Toadlet {
       BookmarkCategory cat, HTMLNode list, boolean noActiveLinks, ToadletContext ctx) {
     boolean disableActiveLinks = !ctx.getPageMaker().getTheme().forceActivelinks && noActiveLinks;
 
-    addCategoryItems(cat, list, disableActiveLinks);
+    addCategoryItems(cat, list, disableActiveLinks, ctx);
     addSubCategories(cat, list, disableActiveLinks, ctx);
   }
 
-  private void addCategoryItems(BookmarkCategory cat, HTMLNode list, boolean noActiveLinks) {
+  private void addCategoryItems(
+      BookmarkCategory cat, HTMLNode list, boolean noActiveLinks, ToadletContext ctx) {
     List<BookmarkItem> items = cat.getItems();
     if (items.isEmpty()) {
       return;
@@ -132,11 +136,12 @@ public class WelcomeToadlet extends Toadlet {
                 new String[] {"border", ATTR_STYLE},
                 new String[] {"0", STYLE_BORDER_NONE});
     for (BookmarkItem item : items) {
-      addBookmarkItemRow(noActiveLinks, table, item);
+      addBookmarkItemRow(noActiveLinks, table, item, ctx);
     }
   }
 
-  private void addBookmarkItemRow(boolean noActiveLinks, HTMLNode table, BookmarkItem item) {
+  private void addBookmarkItemRow(
+      boolean noActiveLinks, HTMLNode table, BookmarkItem item, ToadletContext ctx) {
     HTMLNode row = table.addChild("tr");
     HTMLNode cell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE + ';');
     if (item.hasAnActivelink() && !noActiveLinks) {
@@ -159,9 +164,7 @@ public class WelcomeToadlet extends Toadlet {
     if (updated) {
       HTMLNode alertCell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE);
       alertCell.addChild(
-          node.services()
-              .clientCore()
-              .getAlerts()
+          ctx.getAlertManager()
               .renderDismissButton(item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
     }
   }
@@ -783,17 +786,18 @@ public class WelcomeToadlet extends Toadlet {
 
     PageNode page = ctx.getPageMaker().getPageNode(l10n("homepageFullTitle"), ctx);
     HTMLNode contentNode = page.getContentNode();
+    WelcomePageSnapshot welcomePageSnapshot = runtimePorts.welcomePagePort().snapshot();
 
     String userAgent = ctx.getHeaders().getFirst("user-agent");
 
     addUserAgentWarnings(ctx, contentNode, userAgent);
     addAlerts(ctx, contentNode);
-    addFetchKeyBoxAboveBookmarks(ctx, contentNode);
+    addFetchKeyBoxAboveBookmarks(ctx, contentNode, welcomePageSnapshot);
     addBookmarksSection(ctx, contentNode, userAgent);
     if (showSearchBox()) {
       addSearchBox(contentNode);
     }
-    addFetchKeyBoxBelowBookmarks(ctx, contentNode);
+    addFetchKeyBoxBelowBookmarks(ctx, contentNode, welcomePageSnapshot);
     addVersionInfoSection(ctx, contentNode);
 
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
@@ -835,12 +839,7 @@ public class WelcomeToadlet extends Toadlet {
 
   private void serveLatestLog(ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    File logDir = new File(node.getConfig().get("logger").getString("dirname"));
-    File crypta = new File(logDir, "crypta-latest.log");
-    File freenet = new File(logDir, "freenet-latest.log");
-    File logs = crypta.exists() ? crypta : freenet;
-    String text = readLogTail(logs);
-    this.writeTextReply(ctx, 200, "OK", text);
+    this.writeTextReply(ctx, 200, "OK", runtimePorts.welcomePagePort().latestNodeLogTail());
   }
 
   private boolean isValidFormPassword(HTTPRequest request, ToadletContext ctx) {
@@ -917,7 +916,7 @@ public class WelcomeToadlet extends Toadlet {
         "textarea",
         new String[] {"id", "name", "row", "cols"},
         new String[] {TEXTAREA_DESC_B, TEXTAREA_DESC_B, "3", "70"});
-    appendDarknetPeersSection(addForm);
+    appendDarknetPeersSection(ctx, addForm);
     addForm.addChild("br");
 
     addForm.addChild(
@@ -932,13 +931,15 @@ public class WelcomeToadlet extends Toadlet {
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }
 
-  private void appendDarknetPeersSection(HTMLNode addForm) {
-    if (node.network().darknetConnections().length == 0) {
+  private void appendDarknetPeersSection(ToadletContext ctx, HTMLNode addForm) {
+    List<DarknetConnectionPeerSnapshot> peers = runtimePorts.darknetConnectionsPort().listPeers();
+    if (peers.isEmpty()) {
       return;
     }
     addForm.addChild("br");
     addForm.addChild("br");
-    if (node.isFProxyJavascriptEnabled()) {
+    boolean fProxyJavascriptEnabled = ctx.getContainer().isFProxyJavascriptEnabled();
+    if (fProxyJavascriptEnabled) {
       addForm.addChild(
           "script",
           new String[] {ATTR_TYPE, "src"},
@@ -946,7 +947,7 @@ public class WelcomeToadlet extends Toadlet {
     }
 
     HTMLNode peerTable = addForm.addChild("table", ATTR_CLASS, "darknet_connections");
-    if (node.isFProxyJavascriptEnabled()) {
+    if (fProxyJavascriptEnabled) {
       HTMLNode headerRow = peerTable.addChild("tr");
       headerRow
           .addChild("th")
@@ -964,15 +965,15 @@ public class WelcomeToadlet extends Toadlet {
               "2",
               NodeL10n.getBase().getString("QueueToadlet.recommendToFriends"));
     }
-    for (DarknetPeerNode peer : node.network().darknetConnections()) {
+    for (DarknetConnectionPeerSnapshot peer : peers) {
       HTMLNode peerRow = peerTable.addChild("tr", ATTR_CLASS, "darknet_connections_normal");
       peerRow
           .addChild("td", ATTR_CLASS, "peer-marker")
           .addChild(
               ELEMENT_INPUT,
               new String[] {ATTR_TYPE, "name"},
-              new String[] {"checkbox", "node_" + peer.hashCode()});
-      peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", peer.getName());
+              new String[] {"checkbox", "node_" + peer.selectionToken()});
+      peerRow.addChild("td", ATTR_CLASS, "peer-name").addChild("#", peer.displayName());
     }
 
     addForm.addChild(
@@ -1007,14 +1008,16 @@ public class WelcomeToadlet extends Toadlet {
     }
   }
 
-  private void addFetchKeyBoxAboveBookmarks(ToadletContext ctx, HTMLNode contentNode) {
-    if (node.getConfig().get("fproxy").getBoolean("fetchKeyBoxAboveBookmarks")) {
+  private void addFetchKeyBoxAboveBookmarks(
+      ToadletContext ctx, HTMLNode contentNode, WelcomePageSnapshot welcomePageSnapshot) {
+    if (welcomePageSnapshot.fetchKeyBoxAboveBookmarks()) {
       this.putFetchKeyBox(ctx, contentNode);
     }
   }
 
-  private void addFetchKeyBoxBelowBookmarks(ToadletContext ctx, HTMLNode contentNode) {
-    if (!node.getConfig().get("fproxy").getBoolean("fetchKeyBoxAboveBookmarks")) {
+  private void addFetchKeyBoxBelowBookmarks(
+      ToadletContext ctx, HTMLNode contentNode, WelcomePageSnapshot welcomePageSnapshot) {
+    if (!welcomePageSnapshot.fetchKeyBoxAboveBookmarks()) {
       this.putFetchKeyBox(ctx, contentNode);
     }
   }
@@ -1112,7 +1115,7 @@ public class WelcomeToadlet extends Toadlet {
         ELEMENT_INPUT,
         new String[] {ATTR_TYPE, ATTR_VALUE},
         new String[] {INPUT_SUBMIT, l10n("shutdownNode")});
-    if (node.isUsingWrapper()) {
+    if (runtimePorts.lifecyclePort().isUsingWrapper()) {
       HTMLNode restartForm = ctx.addFormChild(versionContent, ".", "restartForm");
       restartForm.addChild(
           ELEMENT_INPUT,
@@ -1210,22 +1213,6 @@ public class WelcomeToadlet extends Toadlet {
       } catch (IOException e) {
         LOG.debug("Failed to read wrapper log tail", e);
       }
-    }
-  }
-
-  /**
-   * Reads and returns the trailing portion of {@code logfile}, constrained by {@link
-   * #LOG_TAIL_BYTE_LIMIT}. When the file is larger than the limit, the leading bytes are skipped so
-   * only the newest content is returned; a partial first line is discarded to keep line boundaries
-   * intact.
-   *
-   * @param logfile the file to read; must exist and be readable for a meaningful result
-   * @return the UTF-8 decoded tail of the file, limited to the configured byte budget
-   * @throws IOException if an I/O error occurs while opening or reading the file
-   */
-  private static String readLogTail(File logfile) throws IOException {
-    try (LineReadingInputStream stream = FileUtil.getLogTailReader(logfile, LOG_TAIL_BYTE_LIMIT)) {
-      return FileUtil.readUTF(stream).toString();
     }
   }
 
