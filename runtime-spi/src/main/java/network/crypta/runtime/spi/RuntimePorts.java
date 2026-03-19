@@ -25,6 +25,7 @@ package network.crypta.runtime.spi;
  * @see DarknetConnectionsPort
  * @see DarknetMessagingPort
  * @see DiagnosticPort
+ * @see CoreUpdateActionPort
  * @see QueueCompletionPort
  * @see QueuePagePort
  * @see QueueDownloadPort
@@ -37,6 +38,7 @@ package network.crypta.runtime.spi;
  * @see RequestQueuePort
  * @see SecurityLevelsPort
  * @see FirstTimeWizardPort
+ * @see ToadletSymlinkPort
  * @see WelcomePagePort
  * @see WelcomeActionPort
  */
@@ -187,6 +189,18 @@ public interface RuntimePorts {
   PageChromePort pageChrome();
 
   /**
+   * Returns the legacy core-update action capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining live core-updater availability checks, UI-triggered download
+   * start, and downloaded-installer containment validation inside the daemon root module while
+   * leaving request parsing, redirects, and OS-specific launcher logic in the HTTP layer.
+   *
+   * @return core-update action runtime port for updater availability, download start, and installer
+   *     path validation
+   */
+  CoreUpdateActionPort coreUpdateAction();
+
+  /**
    * Returns the legacy queue support capability exposed to admin-facing HTTP code.
    *
    * <p>This port keeps the remaining queue-oriented live-runtime helpers behind the runtime
@@ -288,6 +302,17 @@ public interface RuntimePorts {
    * @return first-time-wizard runtime port for detached page state and submission application
    */
   FirstTimeWizardPort firstTimeWizard();
+
+  /**
+   * Returns the legacy symlinker persistence capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining configuration-backed load and save behavior for short admin
+   * shell aliases inside the daemon root module while leaving the symlinker toadlet's in-memory
+   * alias map and redirect semantics in the HTTP layer.
+   *
+   * @return symlinker runtime port for loading and persisting alias mappings
+   */
+  ToadletSymlinkPort toadletSymlinks();
 
   /**
    * Returns the legacy welcome-page read capability exposed to admin-facing HTTP code.

@@ -8,6 +8,7 @@ import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.ConnectivityPort;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.DiagnosticPort;
@@ -28,6 +29,7 @@ import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.StatisticsPort;
+import network.crypta.runtime.spi.ToadletSymlinkPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.runtime.spi.WelcomePagePort;
@@ -61,6 +63,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
   private final PageChromePort pageChromePort;
+  private final CoreUpdateActionPort coreUpdateActionPort;
   private final QueueCompletionPort queueCompletionPort;
   private final QueuePagePort queuePagePort;
   private final QueueDownloadPort queueDownloadPort;
@@ -70,6 +73,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
+  private final ToadletSymlinkPort toadletSymlinkPort;
   private final WelcomePagePort welcomePagePort;
   private final WelcomeActionPort welcomeActionPort;
   private final RequestQueuePort requestQueuePort;
@@ -167,6 +171,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
     this.pageChromePort = new LegacyPageChromePort(node);
+    this.coreUpdateActionPort = new LegacyCoreUpdateActionPort(node);
     this.queueCompletionPort = new LegacyQueueCompletionPort(core);
     this.queuePagePort = new LegacyQueuePagePort(core);
     this.queueDownloadPort = new LegacyQueueDownloadPort(core);
@@ -176,6 +181,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
+    this.toadletSymlinkPort = new LegacyToadletSymlinkPort(node, core);
     this.welcomePagePort = new LegacyWelcomePagePort(node);
     this.welcomeActionPort = new LegacyWelcomeActionPort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
@@ -320,6 +326,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   /**
    * {@inheritDoc}
    *
+   * <p>The returned port keeps the remaining core-updater availability checks, UI-triggered
+   * download start, and downloaded-installer path validation inside the daemon root module while
+   * exposing only JDK-only values upstream.
+   */
+  @Override
+  public CoreUpdateActionPort coreUpdateAction() {
+    return coreUpdateActionPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
    * <p>The returned port keeps the remaining queue backend-enabled check, persistence-support state
    * reads, and panic actions inside the daemon root module while exposing only JDK-only values
    * upstream.
@@ -419,6 +437,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public FirstTimeWizardPort firstTimeWizard() {
     return firstTimeWizardPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining symlinker configuration load and persistence behavior
+   * inside the daemon root module while exposing only detached JDK-only alias entries upstream.
+   */
+  @Override
+  public ToadletSymlinkPort toadletSymlinks() {
+    return toadletSymlinkPort;
   }
 
   /**

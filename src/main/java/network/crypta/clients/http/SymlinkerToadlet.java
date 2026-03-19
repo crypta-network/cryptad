@@ -3,16 +3,16 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.Option;
-import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
+import network.crypta.runtime.spi.ToadletSymlinkEntry;
+import network.crypta.runtime.spi.ToadletSymlinkPort;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.api.StringArrCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,9 +22,9 @@ import org.slf4j.LoggerFactory;
  * <p>This toadlet keeps a synchronized in-memory map of aliases and redirects any request whose
  * path starts with a known alias to the mapped target. It bootstraps from persisted configuration
  * and can persist later edits on demand. Synchronization on the internal {@link Map} keeps link
- * updates and lookups thread-safe. Callers typically create one instance per node, let it register
- * its configuration, and rely on {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} to
- * perform the resolution work.
+ * updates and lookups thread-safe. Callers typically create one instance per node, let it load its
+ * persisted aliases through the runtime SPI, and rely on {@link #handleMethodGET(URI, HTTPRequest,
+ * ToadletContext)} to perform the resolution work.
  *
  * <p>Responsibilities include:
  *
@@ -42,68 +42,36 @@ public class SymlinkerToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(SymlinkerToadlet.class);
 
   private final HashMap<String, String> linkMap = new HashMap<>();
-  private final Node node;
-  SubConfig tslconfig;
+  private final ToadletSymlinkPort symlinkPort;
 
   /**
-   * Creates a new symlinker toadlet and registers its configuration.
+   * Creates a new symlinker toadlet backed by detached symlink persistence.
    *
-   * <p>The constructor reads the {@code toadletsymlinker.symlinks} array from the node
-   * configuration, populates the in-memory map, and finalizes the configuration section to prevent
-   * external modifications. Construction is not thread-safe, but further alias access is
-   * synchronized on the internal map.
+   * <p>The constructor loads the current configured alias mappings through the provided runtime
+   * port and populates the in-memory map. Construction is not thread-safe, but further alias access
+   * is synchronized on the internal map.
    *
    * @param client high-level HTTP client used to write responses and redirects for requests.
-   * @param node node instance supplying configuration storage and persistence hooks for aliases.
+   * @param symlinkPort runtime port supplying a configuration-backed alias load and persistence.
    */
-  public SymlinkerToadlet(HighLevelSimpleClient client, final Node node) {
+  public SymlinkerToadlet(HighLevelSimpleClient client, ToadletSymlinkPort symlinkPort) {
     super(client);
-    this.node = node;
-    tslconfig = node.getConfig().createSubConfig("toadletsymlinker");
-    tslconfig.register(
-        "symlinks",
-        null,
-        new Option.Meta(
-            9, true, false, "SymlinkerToadlet.symlinks", "SymlinkerToadlet.symlinksLong"),
-        new StringArrCallback() {
-          @Override
-          public String[] get() {
-            return getConfigLoadString();
-          }
-
-          @Override
-          public void set(String[] val) throws InvalidConfigValueException {
-            throw new InvalidConfigValueException("Cannot set loaded symlinks directly.");
-          }
-
-          @Override
-          public boolean isReadOnly() {
-            return true;
-          }
-        });
-
-    String[] fns = tslconfig.getStringArr("symlinks");
-    if (fns != null) {
-      for (String fn : fns) {
-        int hashIndex = fn.indexOf('#');
-        if (hashIndex > 0 && hashIndex == fn.lastIndexOf('#') && hashIndex < fn.length() - 1) {
-          addLink(fn.substring(0, hashIndex), fn.substring(hashIndex + 1), false);
-        }
-      }
+    this.symlinkPort = Objects.requireNonNull(symlinkPort, "symlinkPort");
+    for (ToadletSymlinkEntry entry : symlinkPort.loadConfiguredSymlinks()) {
+      addLink(entry.alias(), entry.target(), false);
     }
-
-    tslconfig.finishedInitialization();
   }
 
   /**
    * Inserts or updates an alias mapping in memory and optionally persists it to disk.
    *
    * <p>The method acquires a monitor on the alias map, updates the mapping for {@code alias} to the
-   * provided {@code target}, and logs the operation. When {@code store} is {@code true}, the node's
-   * configuration is requested to persist current aliases. No validation or normalization of path
-   * components is performed; callers should pass canonical prefixes, including trailing slashes, to
-   * avoid ambiguous matches. The boolean return indicates whether the previous mapping value was
-   * identical to the alias string before replacement.
+   * provided {@code target}, and logs the operation. When {@code store} is {@code true}, the full
+   * current alias list is persisted through the runtime port before releasing the map monitor so
+   * persisted state follows the same mutation order as the in-memory alias map. No validation or
+   * normalization of path components is performed; callers should pass canonical prefixes,
+   * including trailing slashes, to avoid ambiguous matches. The boolean return indicates whether
+   * the previous mapping value was identical to the alias string before replacement.
    *
    * @param alias request path prefix to match; typically starts and ends with a slash.
    * @param target destination prefix that replaces the alias in constructed redirect paths.
@@ -115,8 +83,10 @@ public class SymlinkerToadlet extends Toadlet {
     synchronized (linkMap) {
       ret = alias.equals(linkMap.put(alias, target));
       LOG.info("Adding link: {} => {}", alias, target);
+      if (store) {
+        symlinkPort.persistConfiguredSymlinks(snapshotEntries());
+      }
     }
-    if (store) node.services().clientCore().storeConfig();
     return ret;
   }
 
@@ -125,9 +95,10 @@ public class SymlinkerToadlet extends Toadlet {
    *
    * <p>The method synchronizes on the alias map, deletes the mapping for {@code alias} when
    * present, and logs the removal together with the previous target. No validation is performed on
-   * the alias format, and requesting persistence only affects configuration storage, not runtime
-   * behavior. Calls are idempotent with respect to non-existent aliases and return a boolean to
-   * signal whether removal occurred.
+   * the alias format, and requesting persistence stores the remaining full alias list through the
+   * runtime port before releasing the map monitor so the persisted state follows in-memory mutation
+   * order. Calls are idempotent with respect to non-existent aliases and return a boolean to signal
+   * whether removal occurred.
    *
    * @param alias path prefix identifying the mapping to delete from the symlinker.
    * @param store whether to trigger configuration persistence after the removal attempt.
@@ -140,20 +111,19 @@ public class SymlinkerToadlet extends Toadlet {
       ret = (o = linkMap.remove(alias)) != null;
 
       LOG.info("Removing link: {} => {}", alias, o);
+      if (store) {
+        symlinkPort.persistConfiguredSymlinks(snapshotEntries());
+      }
     }
-    if (store) node.services().clientCore().storeConfig();
     return ret;
   }
 
-  private String[] getConfigLoadString() {
-    String[] retarr = new String[linkMap.size()];
-    synchronized (linkMap) {
-      int i = 0;
-      for (Map.Entry<String, String> entry : linkMap.entrySet()) {
-        retarr[i++] = entry.getKey() + '#' + entry.getValue();
-      }
+  private List<ToadletSymlinkEntry> snapshotEntries() {
+    List<ToadletSymlinkEntry> entries = new ArrayList<>(linkMap.size());
+    for (Map.Entry<String, String> entry : linkMap.entrySet()) {
+      entries.add(new ToadletSymlinkEntry(entry.getKey(), entry.getValue()));
     }
-    return retarr;
+    return List.copyOf(entries);
   }
 
   /**

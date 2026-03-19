@@ -26,7 +26,6 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
@@ -458,13 +457,12 @@ public final class SimpleToadletServer
    * <p>Call this after {@link #setCore(NodeClientCore)} and before accepting requests to install
    * bookmark handling, interval push scheduling, and UI registration against the active node. This
    * method is idempotent; later calls are ignored after the first successful invocation. It
-   * captures the current {@link #core} and {@link Node} references, wires the push managers to the
-   * shared {@link Ticker}, and delegates to {@link FProxyRegistrar} to create request handlers and
-   * configuration entries.
+   * captures the current {@link #core} reference, wires the push managers to the shared {@link
+   * Ticker}, and delegates to {@link FProxyRegistrar} to create request handlers and configuration
+   * entries.
    */
   public void createFproxy() {
     NodeClientCore coreRef = this.core;
-    Node node = coreRef.getNode();
     synchronized (this) {
       if (haveCalledFProxy) return;
       haveCalledFProxy = true;
@@ -473,7 +471,7 @@ public final class SimpleToadletServer
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
     bookmarkManager = new BookmarkManager(coreRef, publicGatewayMode());
-    FProxyRegistrar.maybeCreateFProxyEtc(coreRef, node, node.getConfig(), this);
+    FProxyRegistrar.maybeCreateFProxyEtc(coreRef, coreRef.getNode().getConfig(), this);
   }
 
   /**
@@ -1773,7 +1771,7 @@ public final class SimpleToadletServer
    * Provides the ticker used to schedule periodic tasks.
    *
    * <p>The ticker is shared across push managers and other time-based components. It is owned by
-   * the {@link Node} and exposed here for convenience.
+   * the node instance and exposed here for convenience.
    *
    * @return {@link Ticker} from the node; never {@code null} after the core is set.
    */

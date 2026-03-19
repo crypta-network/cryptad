@@ -11,14 +11,15 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.ClientEndpoints;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.ToadletSymlinkPort;
 import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.runtime.spi.WelcomePagePort;
 import network.crypta.support.api.IntCallback;
@@ -51,9 +52,6 @@ class FProxyRegistrarTest {
   private NodeClientCore core;
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private RuntimePorts runtimePorts;
 
   @Mock private HighLevelSimpleClient client;
@@ -66,6 +64,8 @@ class FProxyRegistrarTest {
   @Mock private LifecyclePort lifecyclePort;
   @Mock private WelcomeActionPort welcomeActionPort;
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
+  @Mock private CoreUpdateActionPort coreUpdateActionPort;
+  @Mock private ToadletSymlinkPort toadletSymlinkPort;
   @Mock private SimpleToadletServer server;
 
   private Config config;
@@ -96,11 +96,14 @@ class FProxyRegistrarTest {
     when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
     when(runtimePorts.welcomeAction()).thenReturn(welcomeActionPort);
     when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
+    when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
+    when(runtimePorts.toadletSymlinks()).thenReturn(toadletSymlinkPort);
+    when(toadletSymlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
   }
 
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
-    FProxyRegistrar.maybeCreateFProxyEtc(core, node, config, server);
+    FProxyRegistrar.maybeCreateFProxyEtc(core, config, server);
 
     ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
     verify(randomSource).nextBytes(randomCaptor.capture());
@@ -168,12 +171,27 @@ class FProxyRegistrarTest {
             .findFirst()
             .orElseThrow();
     assertSame(firstTimeWizardPort, readWizardPortField(wizardRegistration.toadlet()));
+    RegisteredToadlet symlinkerRegistration =
+        registrations.stream()
+            .filter(registered -> registered.toadlet() instanceof SymlinkerToadlet)
+            .findFirst()
+            .orElseThrow();
+    assertSame(toadletSymlinkPort, readField(symlinkerRegistration.toadlet(), "symlinkPort"));
+    RegisteredToadlet coreActionRegistration =
+        registrations.stream()
+            .filter(
+                registered ->
+                    registered.toadlet() instanceof network.crypta.node.updater.CoreActionToadlet)
+            .findFirst()
+            .orElseThrow();
+    assertSame(
+        coreUpdateActionPort, readField(coreActionRegistration.toadlet(), "coreUpdateActionPort"));
     verify(runtimePorts, atLeastOnce()).firstTimeWizard();
   }
 
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
-    FProxyRegistrar.maybeCreateFProxyEtc(core, node, config, server);
+    FProxyRegistrar.maybeCreateFProxyEtc(core, config, server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()
@@ -212,10 +230,14 @@ class FProxyRegistrarTest {
   }
 
   private static FirstTimeWizardPort readWizardPortField(Object target) {
+    return (FirstTimeWizardPort) readField(target, "wizardPort");
+  }
+
+  private static Object readField(Object target, String fieldName) {
     try {
-      java.lang.reflect.Field field = target.getClass().getDeclaredField("wizardPort");
+      java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
       field.setAccessible(true);
-      return (FirstTimeWizardPort) field.get(target);
+      return field.get(target);
     } catch (NoSuchFieldException | IllegalAccessException e) {
       throw new IllegalStateException(e);
     }

@@ -4,20 +4,19 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.fs.AppEnv;
-import network.crypta.node.Node;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -44,8 +43,7 @@ class CoreActionToadletTest {
   @Test
   void path_whenCalled_expectCoreUpdatePath() {
     CoreActionToadlet toadlet =
-        new CoreActionToadlet(
-            mock(HighLevelSimpleClient.class), mock(Node.class, Answers.RETURNS_DEEP_STUBS));
+        new CoreActionToadlet(mock(HighLevelSimpleClient.class), mock(CoreUpdateActionPort.class));
 
     assertEquals(UpdaterPaths.CORE_UPDATE_PATH, toadlet.path());
   }
@@ -55,8 +53,7 @@ class CoreActionToadletTest {
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
     CoreActionToadlet toadlet =
-        new CoreActionToadlet(
-            mock(HighLevelSimpleClient.class), mock(Node.class, Answers.RETURNS_DEEP_STUBS));
+        new CoreActionToadlet(mock(HighLevelSimpleClient.class), mock(CoreUpdateActionPort.class));
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
@@ -72,33 +69,29 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenFormPasswordInvalid_expectNoRedirect() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(false);
 
     toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
 
-    verify(node, never()).services();
+    verify(coreUpdateActionPort, never()).isCoreUpdaterAvailable();
     verify(ctx, never()).sendReplyHeaders(anyInt(), anyString(), any(), any(), anyLong());
   }
 
   @Test
   void handleMethodPOST_whenCoreUpdaterMissing_expectRedirect() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    NodeUpdateManager nodeUpdater = mock(NodeUpdateManager.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(node.services()).thenReturn(services);
-    when(services.nodeUpdater()).thenReturn(nodeUpdater);
-    when(nodeUpdater.getCoreUpdater()).thenReturn(null);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(false);
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
@@ -113,24 +106,19 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenDownloadAction_expectStartDownloadAndRedirect() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    NodeUpdateManager nodeUpdater = mock(NodeUpdateManager.class);
-    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(node.services()).thenReturn(services);
-    when(services.nodeUpdater()).thenReturn(nodeUpdater);
-    when(nodeUpdater.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("download");
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
 
-    verify(coreUpdater).startDownloadFromUI();
+    verify(coreUpdateActionPort).startCoreDownloadFromUi();
     ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
@@ -141,25 +129,18 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenInstallPathInvalid_expectFailurePage() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    NodeUpdateManager nodeUpdater = mock(NodeUpdateManager.class);
-    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
-    File baseDir = tempDir.resolve("node").toFile();
     String invalidPath = tempDir.resolve("outside/installer.deb").toFile().getAbsolutePath();
-    assertTrue(baseDir.mkdirs() || baseDir.isDirectory());
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(node.services()).thenReturn(services);
-    when(services.nodeUpdater()).thenReturn(nodeUpdater);
-    when(nodeUpdater.getCoreUpdater()).thenReturn(coreUpdater);
-    when(node.getNodeDir()).thenReturn(baseDir);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt())).thenReturn(invalidPath);
+    when(coreUpdateActionPort.resolveDownloadedInstaller(invalidPath)).thenReturn(Optional.empty());
 
     stubHtmlContext(ctx);
 
@@ -173,13 +154,10 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenInstallPathValidInServiceMode_expectFailurePage() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    NodeUpdateManager nodeUpdater = mock(NodeUpdateManager.class);
-    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     File baseDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(baseDir, "updates/core");
@@ -188,13 +166,12 @@ class CoreActionToadletTest {
     assertTrue(installer.createNewFile());
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(node.services()).thenReturn(services);
-    when(services.nodeUpdater()).thenReturn(nodeUpdater);
-    when(nodeUpdater.getCoreUpdater()).thenReturn(coreUpdater);
-    when(node.getNodeDir()).thenReturn(baseDir);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
         .thenReturn(installer.getAbsolutePath());
+    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
+        .thenReturn(Optional.of(installer.toPath()));
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -213,18 +190,13 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenOpenStoreUnknown_expectFailurePage() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    NodeUpdateManager nodeUpdater = mock(NodeUpdateManager.class);
-    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(node.services()).thenReturn(services);
-    when(services.nodeUpdater()).thenReturn(nodeUpdater);
-    when(nodeUpdater.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("openStore");
     when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("unknown");
     when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("");

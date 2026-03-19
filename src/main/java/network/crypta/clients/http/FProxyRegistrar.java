@@ -12,7 +12,6 @@ import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
 import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
@@ -29,8 +28,8 @@ import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
  * the {@link SimpleToadletServer}. Callers invoke it once during node startup to ensure all public
  * endpoints—browsing, queue management, configuration, alerts, and update actions—are available
  * before handling requests. The registrar is intentionally package-private and stateless; it relies
- * on the provided {@link NodeClientCore}, {@link Node}, and {@link Config} instances for runtime
- * settings and threat posture.
+ * on the provided {@link NodeClientCore} and {@link Config} instances for runtime settings and
+ * threat posture.
  *
  * <p>Responsibilities include:
  *
@@ -60,12 +59,10 @@ final class FProxyRegistrar {
    *
    * @param core node client core supplying security levels, download directories, and RNG access;
    *     must be initialized and non-null.
-   * @param node running node instance providing transport and runtime data; never null.
    * @param config composite configuration used to enumerate sub-configs for dynamic toadlets.
    * @param server toadlet server that exposes HTTP endpoints; expected to be in registration phase.
    */
-  static void maybeCreateFProxyEtc(
-      NodeClientCore core, Node node, Config config, SimpleToadletServer server) {
+  static void maybeCreateFProxyEtc(NodeClientCore core, Config config, SimpleToadletServer server) {
 
     HighLevelSimpleClient client =
         core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
@@ -226,7 +223,7 @@ final class FProxyRegistrar {
         localFileFilterToadlet,
         ToadletRegistration.basic(null, LocalFileFilterToadlet.BROWSE_PATH, true, false));
 
-    SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, node);
+    SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, runtimePorts.toadletSymlinks());
     server.register(symlinkToadlet, ToadletRegistration.basic(null, "/sl/", true, false));
 
     SecurityLevelsToadletRuntimePorts securityLevelsToadletRuntimePorts =
@@ -288,7 +285,8 @@ final class FProxyRegistrar {
         externalLinkToadlet,
         ToadletRegistration.basic(null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false));
 
-    CoreActionToadlet coreActionToadlet = new CoreActionToadlet(client, node);
+    CoreActionToadlet coreActionToadlet =
+        new CoreActionToadlet(client, runtimePorts.coreUpdateAction());
     server.register(
         coreActionToadlet, ToadletRegistration.basic(null, CORE_UPDATE_PATH, true, false));
 
