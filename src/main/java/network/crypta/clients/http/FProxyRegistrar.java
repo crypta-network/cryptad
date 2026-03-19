@@ -283,7 +283,7 @@ final class FProxyRegistrar {
     server.register(
         welcometoadlet, ToadletRegistration.basic(null, FProxyToadlet.WELCOME_PATH, true, false));
 
-    ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client, node);
+    ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client);
     server.register(
         externalLinkToadlet,
         ToadletRegistration.basic(null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false));

@@ -19,9 +19,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
@@ -137,6 +145,7 @@ class SimpleToadletServerTest {
   }
 
   @Test
+  @SuppressWarnings("resource")
   void allowedHostsFullAccess_whenLoadedFromPersistentConfig_expectConfiguredValueRetained()
       throws Exception {
     // Arrange
@@ -145,7 +154,6 @@ class SimpleToadletServerTest {
     initial.putSingle("fproxy.allowedHostsFullAccess", configuredHost);
     PersistentConfig rootConfig = new PersistentConfig(initial);
     SubConfig config = rootConfig.createSubConfig("fproxy");
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     BucketFactory bucketFactory = mock(BucketFactory.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
 
@@ -159,7 +167,7 @@ class SimpleToadletServerTest {
       sslMock
           .when(() -> SSLNetworkInterface.createSsl(anyInt(), any(), any(), any(), anyBoolean()))
           .thenReturn(iface);
-      server = new SimpleToadletServer(config, bucketFactory, executor, node);
+      server = new SimpleToadletServer(config, bucketFactory, executor);
     }
 
     // Act
@@ -176,7 +184,6 @@ class SimpleToadletServerTest {
   private SimpleToadletServer newServerWithDefaults() throws Exception {
     Config rootConfig = new Config();
     SubConfig config = rootConfig.createSubConfig("fproxy");
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     BucketFactory bucketFactory = mock(BucketFactory.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
 
@@ -189,7 +196,7 @@ class SimpleToadletServerTest {
       sslMock
           .when(() -> SSLNetworkInterface.createSsl(anyInt(), any(), any(), any(), anyBoolean()))
           .thenReturn(iface);
-      return new SimpleToadletServer(config, bucketFactory, executor, node);
+      return new SimpleToadletServer(config, bucketFactory, executor);
     }
   }
 

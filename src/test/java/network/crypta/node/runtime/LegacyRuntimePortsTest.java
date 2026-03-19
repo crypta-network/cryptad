@@ -80,7 +80,8 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.connectionsSupportPort(), ports.connectionsSupport()),
         () -> assertSame(snapshot.darknetConnectionsPort(), ports.darknetConnections()),
         () -> assertSame(snapshot.darknetMessagingPort(), ports.darknetMessaging()),
-        () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()));
+        () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()),
+        () -> assertSame(snapshot.pageChromePort(), ports.pageChrome()));
   }
 
   private void assertStableFeaturePorts(PortsSnapshot snapshot) {
@@ -115,6 +116,7 @@ class LegacyRuntimePortsTest {
             assertInstanceOf(LegacyDarknetConnectionsPort.class, snapshot.darknetConnectionsPort()),
         () -> assertInstanceOf(LegacyDarknetMessagingPort.class, snapshot.darknetMessagingPort()),
         () -> assertInstanceOf(LegacyDiagnosticPort.class, snapshot.diagnosticPort()),
+        () -> assertInstanceOf(LegacyPageChromePort.class, snapshot.pageChromePort()),
         () -> assertInstanceOf(LegacyQueueSupportPort.class, snapshot.queueSupportPort()),
         () -> assertInstanceOf(LegacyQueueCompletionPort.class, snapshot.queueCompletionPort()),
         () -> assertInstanceOf(LegacyQueuePagePort.class, snapshot.queuePagePort()),
@@ -196,6 +198,7 @@ class LegacyRuntimePortsTest {
         ports.darknetConnections(),
         ports.darknetMessaging(),
         ports.diagnostic(),
+        ports.pageChrome(),
         ports.queueSupport(),
         ports.queueCompletion(),
         ports.queuePage(),
@@ -224,6 +227,7 @@ class LegacyRuntimePortsTest {
       Object darknetConnectionsPort,
       Object darknetMessagingPort,
       Object diagnosticPort,
+      Object pageChromePort,
       Object queueSupportPort,
       Object queueCompletionPort,
       Object queuePagePort,

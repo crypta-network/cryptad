@@ -31,6 +31,7 @@ package network.crypta.runtime.spi;
  * @see QueueMutationPort
  * @see QueueSupportPort
  * @see StatisticsPort
+ * @see PageChromePort
  * @see NodeInfoPort
  * @see PeerPort
  * @see RequestQueuePort
@@ -172,6 +173,18 @@ public interface RuntimePorts {
    * @return diagnostic-report runtime port for read-only report snapshots
    */
   DiagnosticPort diagnostic();
+
+  /**
+   * Returns the shared admin page-chrome capability exposed to HTTP shell rendering code.
+   *
+   * <p>This port lets higher layers request one detached status-bar snapshot containing the current
+   * detached security levels plus peer-progress counts without depending on daemon-only node, peer,
+   * opennet, or security-level classes. The HTTP layer still owns alerts, language selection, mode
+   * switching, menu rendering, and all HTML structures.
+   *
+   * @return page-chrome runtime port for detached shared shell state
+   */
+  PageChromePort pageChrome();
 
   /**
    * Returns the legacy queue support capability exposed to admin-facing HTTP code.
