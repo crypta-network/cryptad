@@ -17,11 +17,13 @@ import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.HealingQueue;
+import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientPut;
+import network.crypta.clients.fcp.ClientPutDir;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.clients.fcp.RequestCompletionCallback;
@@ -57,15 +59,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -153,15 +161,48 @@ class LegacyQueueCompletionPortTest {
   }
 
   @Test
+  void ensureTrackingStarted_whenUploadsRequestedAfterDownloads_registersIndependentTracker()
+      throws Exception {
+    port.ensureTrackingStarted(false);
+    RequestCompletionCallback downloadCallback = completionCallback;
+
+    port.ensureTrackingStarted(true);
+
+    assertNotNull(completionCallback);
+    assertNotSame(downloadCallback, completionCallback);
+    verify(fcp, times(2)).setCompletionCallback(any(RequestCompletionCallback.class));
+    verify(jobRunner, times(2)).queue(any(PersistentJob.class), anyInt());
+  }
+
+  @Test
+  void ensureTrackingStarted_whenPersistenceDisabledDuringLoad_ignoresException() throws Exception {
+    doThrow(new PersistenceDisabledException())
+        .when(jobRunner)
+        .queue(any(PersistentJob.class), anyInt());
+
+    assertDoesNotThrow(() -> port.ensureTrackingStarted(false));
+
+    assertNotNull(completionCallback);
+    verify(fcp).setCompletionCallback(any(RequestCompletionCallback.class));
+    verify(jobRunner).queue(any(PersistentJob.class), anyInt());
+  }
+
+  @Test
+  void ensureTrackingStarted_whenFcpServerUnavailable_throwsIllegalStateException() {
+    when(endpoints.getFCPServer()).thenReturn(null);
+
+    IllegalStateException thrown =
+        assertThrows(IllegalStateException.class, () -> port.ensureTrackingStarted(false));
+
+    assertEquals("FCP server unavailable", thrown.getMessage());
+  }
+
+  @Test
   void notifySuccess_whenDownloadCompleted_writesIdentifierAndRegistersAlert() throws Exception {
     port.ensureTrackingStarted(false);
     clearInvocations(executor, alerts);
 
-    ClientGet completedRequest = org.mockito.Mockito.mock(ClientGet.class);
-    when(completedRequest.getIdentifier()).thenReturn("download-1");
-    when(completedRequest.hasFinished()).thenReturn(true);
-    when(completedRequest.getURI()).thenReturn(sampleUri());
-    when(completedRequest.getDataSize()).thenReturn(123L);
+    ClientGet completedRequest = mockCompletedDownload("download-1", 123L);
 
     completionCallback.notifySuccess(completedRequest);
 
@@ -172,6 +213,24 @@ class LegacyQueueCompletionPortTest {
     ArgumentCaptor<UserEvent> alertCaptor = ArgumentCaptor.forClass(UserEvent.class);
     verify(alerts).register(alertCaptor.capture());
     assertTrue(alertCaptor.getValue().getClass().getSimpleName().contains("GetCompletedEvent"));
+    verify(executor).execute(any(Runnable.class), anyString());
+  }
+
+  @Test
+  void notifySuccess_whenDownloadNotFinished_persistsIdentifierWithoutRegisteringAlert()
+      throws Exception {
+    port.ensureTrackingStarted(false);
+    clearInvocations(executor, alerts);
+
+    ClientGet incompleteRequest = org.mockito.Mockito.mock(ClientGet.class);
+    when(incompleteRequest.getIdentifier()).thenReturn("download-pending");
+    when(incompleteRequest.hasFinished()).thenReturn(false);
+
+    completionCallback.notifySuccess(incompleteRequest);
+
+    assertEquals(
+        "download-pending\n", Files.readString(tempDir.resolve("completed.list.downloads")));
+    verifyNoInteractions(alerts);
     verify(executor).execute(any(Runnable.class), anyString());
   }
 
@@ -193,14 +252,63 @@ class LegacyQueueCompletionPortTest {
   }
 
   @Test
+  void notifySuccess_whenUploadCompleted_writesIdentifierAndRegistersUploadAlert()
+      throws Exception {
+    port.ensureTrackingStarted(true);
+    clearInvocations(executor, alerts);
+
+    ClientPut completedRequest = org.mockito.Mockito.mock(ClientPut.class);
+    when(completedRequest.getIdentifier()).thenReturn("upload-1");
+    when(completedRequest.hasFinished()).thenReturn(true);
+    when(completedRequest.getFinalURI()).thenReturn(sampleUri());
+    when(completedRequest.getDataSize()).thenReturn(456L);
+
+    completionCallback.notifySuccess(completedRequest);
+
+    assertEquals("upload-1\n", Files.readString(tempDir.resolve("completed.list.uploads")));
+    ArgumentCaptor<UserEvent> alertCaptor = ArgumentCaptor.forClass(UserEvent.class);
+    verify(alerts).register(alertCaptor.capture());
+    UserEvent alert = alertCaptor.getValue();
+    assertEquals(UserEvent.Type.PUT_COMPLETED, alert.getEventType());
+    assertTrue(alert.getTitle().contains(sampleUri().getPreferredFilename()));
+    assertTrue(alert.getHTMLText().generate().contains(sampleUri().getPreferredFilename()));
+    verify(executor).execute(any(Runnable.class), anyString());
+  }
+
+  @Test
+  void notifySuccess_whenDirectoryUploadDismissed_clearsIdentifierAndInvalidatesAlert()
+      throws Exception {
+    port.ensureTrackingStarted(true);
+    clearInvocations(executor, alerts);
+
+    ClientPutDir completedRequest = org.mockito.Mockito.mock(ClientPutDir.class);
+    when(completedRequest.getIdentifier()).thenReturn("site-1");
+    when(completedRequest.hasFinished()).thenReturn(true);
+    when(completedRequest.getFinalURI()).thenReturn(sampleUri());
+    when(completedRequest.getTotalDataSize()).thenReturn(789L);
+    when(completedRequest.getNumberOfFiles()).thenReturn(4);
+
+    completionCallback.notifySuccess(completedRequest);
+
+    ArgumentCaptor<UserEvent> alertCaptor = ArgumentCaptor.forClass(UserEvent.class);
+    verify(alerts).register(alertCaptor.capture());
+    UserEvent alert = alertCaptor.getValue();
+    assertEquals(UserEvent.Type.PUT_DIR_COMPLETED, alert.getEventType());
+    assertTrue(alert.getTitle().contains(sampleUri().getPreferredFilename()));
+
+    clearInvocations(executor);
+    alert.onDismiss();
+
+    assertEquals("", Files.readString(tempDir.resolve("completed.list.uploads")));
+    assertFalse(alert.isValid());
+    verify(executor).execute(any(Runnable.class), anyString());
+  }
+
+  @Test
   void onRemove_whenEntryExists_clearsIdentifierAndPersistsChange() throws Exception {
     port.ensureTrackingStarted(false);
 
-    ClientGet completedRequest = org.mockito.Mockito.mock(ClientGet.class);
-    when(completedRequest.getIdentifier()).thenReturn("download-2");
-    when(completedRequest.hasFinished()).thenReturn(true);
-    when(completedRequest.getURI()).thenReturn(sampleUri());
-    when(completedRequest.getDataSize()).thenReturn(500L);
+    ClientGet completedRequest = mockCompletedDownload("download-2", 500L);
 
     completionCallback.notifySuccess(completedRequest);
     clearInvocations(executor, alerts);
@@ -240,6 +348,45 @@ class LegacyQueueCompletionPortTest {
     verify(fcp).getGlobalRequest("download-stale");
     verify(fcp).getGlobalRequest("upload-wrong-side");
     verify(alerts).register(any(UserEvent.class));
+  }
+
+  @Test
+  void ensureTrackingStarted_whenLegacyCompletedListExists_migratesToSideSpecificFile()
+      throws Exception {
+    Files.writeString(tempDir.resolve("completed.list"), "download-legacy\n");
+    ClientGet replayedDownload = mockCompletedDownload("download-legacy", 654L);
+    when(fcp.getGlobalRequest("download-legacy")).thenReturn(replayedDownload);
+
+    port.ensureTrackingStarted(false);
+
+    assertEquals(
+        "download-legacy\n", Files.readString(tempDir.resolve("completed.list.downloads")));
+    verify(fcp).getGlobalRequest("download-legacy");
+    verify(alerts).register(any(UserEvent.class));
+  }
+
+  @Test
+  void ensureTrackingStarted_whenSideSpecificListExists_deletesLegacyCompletedList()
+      throws Exception {
+    Files.writeString(tempDir.resolve("completed.list.downloads"), "download-current\n");
+    Files.writeString(tempDir.resolve("completed.list"), "download-legacy\n");
+    ClientGet replayedDownload = mockCompletedDownload("download-current", 111L);
+    when(fcp.getGlobalRequest("download-current")).thenReturn(replayedDownload);
+
+    port.ensureTrackingStarted(false);
+
+    assertFalse(Files.exists(tempDir.resolve("completed.list")));
+    assertEquals(
+        "download-current\n", Files.readString(tempDir.resolve("completed.list.downloads")));
+  }
+
+  private ClientGet mockCompletedDownload(String identifier, long size) {
+    ClientGet completedRequest = org.mockito.Mockito.mock(ClientGet.class);
+    when(completedRequest.getIdentifier()).thenReturn(identifier);
+    when(completedRequest.hasFinished()).thenReturn(true);
+    when(completedRequest.getURI()).thenReturn(sampleUri());
+    when(completedRequest.getDataSize()).thenReturn(size);
+    return completedRequest;
   }
 
   private ClientContext createClientContext() {
