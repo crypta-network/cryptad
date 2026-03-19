@@ -41,6 +41,8 @@ import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -56,11 +58,13 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -75,6 +79,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,6 +96,7 @@ class QueueToadletPostMutationTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
+  @Mock private QueueSupportPort queueSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
@@ -100,6 +106,7 @@ class QueueToadletPostMutationTest {
   @Mock private ToadletContainer container;
 
   @TempDir Path tempDir;
+  private boolean originalNoConfirmPanic;
 
   @BeforeEach
   void setUp() {
@@ -111,6 +118,17 @@ class QueueToadletPostMutationTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false, false, tempDir.toFile(), tempDir.resolve("queue.db").toString()));
+    originalNoConfirmPanic = SimpleToadletServer.noConfirmPanic;
+  }
+
+  @AfterEach
+  void tearDown() {
+    SimpleToadletServer.noConfirmPanic = originalNoConfirmPanic;
   }
 
   @Test
@@ -207,8 +225,16 @@ class QueueToadletPostMutationTest {
   void handleMethodPOST_whenQueueMutationUnavailable_returnsPersistenceDisabledErrorPage()
       throws Exception {
     QueueToadlet toadlet = createQueueToadlet(false);
+    Path detachedTempDir = tempDir.resolve("detached-persistent-temp");
     HTTPRequest request =
         createRequest(Map.of("remove_request", "yes", "identifier-a", "download-1"));
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false,
+                false,
+                detachedTempDir.toFile(),
+                tempDir.resolve("detached-queue.db").toString()));
     doThrow(new RequestQueueUnavailableException("queue unavailable"))
         .when(queueMutationPort)
         .removeRequests(java.util.List.of("download-1"));
@@ -218,8 +244,45 @@ class QueueToadletPostMutationTest {
     toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
 
     String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(tempDir.toString()));
-    assertTrue(html.contains("queue.db"));
+    assertTrue(html.contains(detachedTempDir.toString()));
+    assertTrue(html.contains("detached-queue.db"));
+    verify(queueSupportPort).persistenceStatus();
+  }
+
+  @Test
+  void handleMethodPOST_whenPanicSelectedAndNoConfirmPanic_callsSupportPortAndRendersBeforeFinish()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet(false);
+    SimpleToadletServer.noConfirmPanic = true;
+    HTTPRequest request = createRequest(Map.of("panic", "yes"));
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
+
+    InOrder inOrder = org.mockito.Mockito.inOrder(queueSupportPort, ctx);
+    inOrder.verify(queueSupportPort).beginPanic();
+    inOrder.verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
+    inOrder.verify(ctx).writeData(any(byte[].class), anyInt(), anyInt());
+    inOrder.verify(queueSupportPort).finishPanic();
+    assertTrue(body.size() > 0);
+  }
+
+  @Test
+  void handleMethodPOST_whenConfirmPanicSelected_callsSupportPortAndRendersBeforeFinish()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet(false);
+    SimpleToadletServer.noConfirmPanic = false;
+    HTTPRequest request = createRequest(Map.of("confirmpanic", "yes"));
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
+
+    InOrder inOrder = org.mockito.Mockito.inOrder(queueSupportPort, ctx);
+    inOrder.verify(queueSupportPort).beginPanic();
+    inOrder.verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
+    inOrder.verify(ctx).writeData(any(byte[].class), anyInt(), anyInt());
+    inOrder.verify(queueSupportPort).finishPanic();
+    assertTrue(body.size() > 0);
   }
 
   private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
@@ -289,6 +352,7 @@ class QueueToadletPostMutationTest {
                 queueDownloadPort,
                 queueInsertPort,
                 queueMutationPort,
+                queueSupportPort,
                 darknetConnectionsPort,
                 darknetMessagingPort));
     toadlet.container = container;
@@ -393,7 +457,10 @@ class QueueToadletPostMutationTest {
     PageNode page = new PageNode(root, head, content);
 
     PageMaker stub = org.mockito.Mockito.mock(PageMaker.class);
-    when(stub.getPageNode(anyString(), any(ToadletContext.class))).thenReturn(page);
+    doReturn(page).when(stub).getPageNode(anyString(), any(ToadletContext.class));
+    doReturn(page)
+        .when(stub)
+        .getPageNode(anyString(), any(ToadletContext.class), any(PageMaker.RenderParameters.class));
     doAnswer(
             invocation -> {
               HTMLNode parent = invocation.getArgument(2);

@@ -151,6 +151,7 @@ final class FProxyRegistrar {
                 runtimePorts.queueDownload(),
                 runtimePorts.queueInsert(),
                 runtimePorts.queueMutation(),
+                runtimePorts.queueSupport(),
                 runtimePorts.darknetConnections(),
                 runtimePorts.darknetMessaging()));
     server.register(
@@ -180,6 +181,7 @@ final class FProxyRegistrar {
                 runtimePorts.queueDownload(),
                 runtimePorts.queueInsert(),
                 runtimePorts.queueMutation(),
+                runtimePorts.queueSupport(),
                 runtimePorts.darknetConnections(),
                 runtimePorts.darknetMessaging()));
     server.register(

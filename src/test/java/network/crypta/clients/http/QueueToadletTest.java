@@ -50,6 +50,8 @@ import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -82,6 +84,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -105,6 +108,7 @@ class QueueToadletTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
+  @Mock private QueueSupportPort queueSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
@@ -129,7 +133,14 @@ class QueueToadletTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
-    when(fcp.isEnabled()).thenReturn(true);
+    doAnswer(invocation -> invocation.getArgument(0, HTMLNode.class).addChild("form"))
+        .when(container)
+        .addFormChild(any(HTMLNode.class), anyString(), anyString());
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false, false, tempDir.toFile(), tempDir.resolve("queue.db").toString()));
   }
 
   @Test
@@ -350,10 +361,12 @@ class QueueToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenFcpDisabled_returnsBadRequestWithoutDelegating() throws Exception {
+  void handleMethodGET_whenQueueBackendDisabled_returnsBadRequestWithoutDelegating()
+      throws Exception {
     // Arrange
     QueueToadlet toadlet = createQueueToadlet(false);
-    when(fcp.isEnabled()).thenReturn(false);
+    when(fcp.isEnabled()).thenReturn(true);
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(false);
 
     ByteArrayOutputStream body = captureBody(ctx);
 
@@ -363,6 +376,8 @@ class QueueToadletTest {
     // Assert
     String html = body.toString(StandardCharsets.UTF_8);
     assertTrue(html.contains("You need to enable the FCP server to access this page"));
+    verify(queueSupportPort).isQueueBackendEnabled();
+    verify(fcp, never()).isEnabled();
     verifyNoInteractions(queuePagePort);
   }
 
@@ -390,6 +405,13 @@ class QueueToadletTest {
       throws Exception {
     // Arrange
     QueueToadlet toadlet = createQueueToadlet(false);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false,
+                false,
+                tempDir.resolve("detached-persistent-temp").toFile(),
+                tempDir.resolve("snapshot-only.db").toString()));
     when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
     when(request.isParameterSet("sortBy")).thenReturn(false);
     when(request.isParameterSet("reversed")).thenReturn(false);
@@ -403,9 +425,36 @@ class QueueToadletTest {
 
     // Assert
     String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(tempDir.toString()));
-    assertTrue(html.contains("queue.db"));
+    assertTrue(html.contains("detached-persistent-temp"));
+    assertTrue(html.contains("snapshot-only.db"));
+    verify(queueSupportPort).persistenceStatus();
     verify(queuePagePort).renderPage(any());
+  }
+
+  @Test
+  void handleMethodGET_whenQueueUnavailableAndAwaitingPassword_rendersPasswordPageWithoutPaths()
+      throws Exception {
+    // Arrange
+    QueueToadlet toadlet = createQueueToadlet(false);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(new QueuePersistenceStatusSnapshot(true, false, null, null));
+    when(request.getPath()).thenReturn(QueueToadlet.PATH_DOWNLOADS);
+    when(request.isParameterSet("sortBy")).thenReturn(false);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(queuePagePort.renderPage(any()))
+        .thenThrow(new RequestQueueUnavailableException("queue unavailable"));
+
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    // Act
+    toadlet.handleMethodGET(URI.create("http://localhost/downloads/"), request, ctx);
+
+    // Assert
+    assertTrue(body.size() > 0);
+    verify(ctx)
+        .sendReplyHeaders(eq(500), eq("Internal Server Error"), any(), anyString(), anyLong());
+    verify(container).addFormChild(any(HTMLNode.class), anyString(), anyString());
+    verify(queueSupportPort).persistenceStatus();
   }
 
   private QueueToadlet createQueueToadlet(boolean uploads) throws Exception {
@@ -481,6 +530,7 @@ class QueueToadletTest {
                 queueDownloadPort,
                 queueInsertPort,
                 queueMutationPort,
+                queueSupportPort,
                 darknetConnectionsPort,
                 darknetMessagingPort));
     toadlet.container = container;

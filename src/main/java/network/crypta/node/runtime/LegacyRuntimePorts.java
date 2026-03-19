@@ -20,6 +20,7 @@ import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -59,6 +60,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final QueueDownloadPort queueDownloadPort;
   private final QueueInsertPort queueInsertPort;
   private final QueueMutationPort queueMutationPort;
+  private final QueueSupportPort queueSupportPort;
   private final StatisticsPort statisticsPort;
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
@@ -160,6 +162,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.queueDownloadPort = new LegacyQueueDownloadPort(core);
     this.queueInsertPort = new LegacyQueueInsertPort(core);
     this.queueMutationPort = new LegacyQueueMutationPort(core);
+    this.queueSupportPort = new LegacyQueueSupportPort(core);
     this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
@@ -289,6 +292,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DiagnosticPort diagnostic() {
     return diagnosticPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining queue backend-enabled check, persistence-support state
+   * reads, and panic actions inside the daemon root module while exposing only JDK-only values
+   * upstream.
+   */
+  @Override
+  public QueueSupportPort queueSupport() {
+    return queueSupportPort;
   }
 
   /**

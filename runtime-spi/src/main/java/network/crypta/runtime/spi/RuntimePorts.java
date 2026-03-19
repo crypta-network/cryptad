@@ -28,6 +28,7 @@ package network.crypta.runtime.spi;
  * @see QueuePagePort
  * @see QueueDownloadPort
  * @see QueueMutationPort
+ * @see QueueSupportPort
  * @see StatisticsPort
  * @see NodeInfoPort
  * @see PeerPort
@@ -168,6 +169,18 @@ public interface RuntimePorts {
    * @return diagnostic-report runtime port for read-only report snapshots
    */
   DiagnosticPort diagnostic();
+
+  /**
+   * Returns the legacy queue support capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining queue-oriented live-runtime helpers behind the runtime
+   * boundary: the backend-enabled gate, the persistence-disabled support snapshot, and the panic
+   * start / finish actions. It is intentionally page-support-oriented rather than a general queue
+   * API.
+   *
+   * @return queue support port for backend enablement, persistence state, and panic actions
+   */
+  QueueSupportPort queueSupport();
 
   /**
    * Returns the legacy queue-page read capability exposed to admin-facing HTTP code.

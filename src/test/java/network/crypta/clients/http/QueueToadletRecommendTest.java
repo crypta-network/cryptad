@@ -45,6 +45,8 @@ import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
@@ -99,6 +101,7 @@ class QueueToadletRecommendTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
+  @Mock private QueueSupportPort queueSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
@@ -126,6 +129,11 @@ class QueueToadletRecommendTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queueSupportPort.persistenceStatus())
+        .thenReturn(
+            new QueuePersistenceStatusSnapshot(
+                false, false, tempDir.toFile(), tempDir.resolve("queue.db").toString()));
     when(ctx.addFormChild(any(HTMLNode.class), anyString(), anyString()))
         .thenAnswer(
             invocation -> {
@@ -320,6 +328,7 @@ class QueueToadletRecommendTest {
                 queueDownloadPort,
                 queueInsertPort,
                 queueMutationPort,
+                queueSupportPort,
                 darknetConnectionsPort,
                 darknetMessagingPort));
     toadlet.container = container;

@@ -7,6 +7,7 @@ import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 
 /**
@@ -15,10 +16,11 @@ import network.crypta.runtime.spi.TransferAccessPort;
  * <p>The download and upload queue pages share the same detached read-path, mutation, and
  * transfer-policy runtime ports, the download side also uses the queue-download creation port, and
  * the upload side uses the queue-insert creation port. The shared queue UI also still exposes the
- * legacy "recommend to friends" action, so the bundle now carries the detached darknet peer-list
- * and messaging ports used by that path. Grouping them in one small record keeps constructor
- * signatures stable while preserving the option to add other queue-specific ports later without
- * widening the main toadlet constructor again.
+ * remaining support-oriented availability, persistence, and panic helpers, plus the legacy
+ * "recommend to friends" action, so the bundle now carries the detached queue-support, darknet
+ * peer-list, and messaging ports used by those paths. Grouping them in one small record keeps
+ * constructor signatures stable while preserving the option to add other queue-specific ports later
+ * without widening the main toadlet constructor again.
  *
  * <p>This record lives in the HTTP layer because it models HTTP wiring rather than a daemon-side
  * runtime capability. The queue toadlets can accept one stable parameter today and still grow to
@@ -30,6 +32,8 @@ import network.crypta.runtime.spi.TransferAccessPort;
  * @param queueInsertPort detached queue-insert port used for new persistent uploads and local
  *     inserts
  * @param queueMutationPort detached queue-mutation port
+ * @param queueSupportPort detached queue-support port used for backend enablement, persistence
+ *     state, and panic actions
  * @param darknetConnectionsPort detached darknet friends-page companion port used by queue
  *     recommendation rendering
  * @param darknetMessagingPort detached darknet messaging port used by queue recommendation sends
@@ -40,6 +44,7 @@ public record QueueToadletRuntimePorts(
     QueueDownloadPort queueDownloadPort,
     QueueInsertPort queueInsertPort,
     QueueMutationPort queueMutationPort,
+    QueueSupportPort queueSupportPort,
     DarknetConnectionsPort darknetConnectionsPort,
     DarknetMessagingPort darknetMessagingPort) {
   /**
@@ -53,6 +58,8 @@ public record QueueToadletRuntimePorts(
    * @param queueInsertPort detached queue-insert port shared by the download and upload toadlets
    * @param queueMutationPort detached queue-mutation port shared by the download and upload
    *     toadlets
+   * @param queueSupportPort detached queue-support port shared by the download and upload toadlets
+   *     for backend enablement, persistence state, and panic actions
    * @param darknetConnectionsPort detached darknet friends-page companion port shared by the
    *     download and upload toadlets for queue recommendation rendering
    * @param darknetMessagingPort detached darknet messaging port shared by the download and upload
@@ -65,6 +72,7 @@ public record QueueToadletRuntimePorts(
     Objects.requireNonNull(queueDownloadPort);
     Objects.requireNonNull(queueInsertPort);
     Objects.requireNonNull(queueMutationPort);
+    Objects.requireNonNull(queueSupportPort);
     Objects.requireNonNull(darknetConnectionsPort);
     Objects.requireNonNull(darknetMessagingPort);
   }
