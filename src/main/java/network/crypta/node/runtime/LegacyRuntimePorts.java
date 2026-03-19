@@ -16,6 +16,7 @@ import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
@@ -56,6 +57,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
+  private final QueueCompletionPort queueCompletionPort;
   private final QueuePagePort queuePagePort;
   private final QueueDownloadPort queueDownloadPort;
   private final QueueInsertPort queueInsertPort;
@@ -158,6 +160,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
     this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
     this.diagnosticPort = new LegacyDiagnosticPort(node, core);
+    this.queueCompletionPort = new LegacyQueueCompletionPort(core);
     this.queuePagePort = new LegacyQueuePagePort(core);
     this.queueDownloadPort = new LegacyQueueDownloadPort(core);
     this.queueInsertPort = new LegacyQueueInsertPort(core);
@@ -304,6 +307,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public QueueSupportPort queueSupport() {
     return queueSupportPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps legacy queue-completion callback registration, persisted completed
+   * request recovery, and completion-alert registration inside the daemon root module while
+   * exposing only an idempotent startup hook upstream.
+   */
+  @Override
+  public QueueCompletionPort queueCompletion() {
+    return queueCompletionPort;
   }
 
   /**

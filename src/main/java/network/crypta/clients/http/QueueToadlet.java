@@ -1,48 +1,22 @@
 package network.crypta.clients.http;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.EOFException;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.client.events.SplitfileProgressCounts;
-import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
-import network.crypta.clients.fcp.ClientPut;
-import network.crypta.clients.fcp.ClientPutDir;
-import network.crypta.clients.fcp.ClientRequest;
-import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.NotAllowedException;
-import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.useralerts.StoringUserEvent;
-import network.crypta.node.useralerts.UserAlert;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -70,12 +44,10 @@ import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
-import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.io.FileUtil;
-import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,25 +55,22 @@ import org.slf4j.LoggerFactory;
 /**
  * Presents and mutates the FProxy request queues for both downloads and uploads.
  *
- * <p>This toadlet serves queue HTML pages, processes form submissions for starting, stopping,
- * deleting, or restarting requests, and emits user alerts when completed transfers need attention.
- * It coordinates with the {@link network.crypta.clients.fcp.FCPServer} to get live request state,
- * persists completed identifiers so notifications survive restarts, and delegates file-browsing
- * workflows to the dedicated local toadlets. Instances are bound either to the download or upload
- * queue and reuse shared rendering helpers that build tables, progress cells, and bulk action
- * forms.
+ * <p>This toadlet serves queue HTML pages and processes form submissions for starting, stopping,
+ * deleting, or restarting requests. Live queue reads, mutations, creation paths, support checks,
+ * and completion-tracker startup are delegated to runtime ports, while the HTTP layer retains only
+ * request parsing, response rendering, and request-context-only placeholders such as alert
+ * summaries and form passwords. Instances are bound either to the download or upload queue and
+ * reuse shared rendering helpers that build tables, progress cells, and bulk action forms.
  *
- * <p>The class is stateful and not thread-safe; it caches completed identifiers and keeps
- * per-request bookkeeping to avoid double-signaling events. The HTTP server invokes all
- * request-handling entry points on the same thread that processes the incoming toadlet request;
- * longer-running operations are kept minimal to avoid blocking the request pipeline. Callers should
- * therefore avoid expensive per-request work and rely on the existing asynchronous FCP callbacks to
- * feed fresh status.
+ * <p>The class keeps only a lightweight HTTP-facing state: the selected queue side, the optional
+ * file-insert wizard link, and the runtime-port bundle used by request handlers. The HTTP server
+ * invokes all request-handling entry points on the thread that processes the incoming request, so
+ * the toadlet avoids heavyweight daemon work directly and hands that off through the runtime SPI.
  *
  * <ul>
  *   <li>Renders queue pages with sortable columns and per-item actions.
  *   <li>Enforces public-gateway restrictions before mutating queue state.
- *   <li>Persists completion alerts per queue side to survive restarts.
+ *   <li>Ensures queue completion tracking has been started for the selected side.
  *   <li>Provides utility helpers used by other UI components, such as progress cells.
  * </ul>
  *
@@ -140,8 +109,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String CMODE_LABEL = ", cmode=";
   private static final String OVERRIDE_SPLITFILE_KEY_LABEL = ", overrideSplitfileKey=";
 
-  private final NodeClientCore core;
-  final FCPServer fcp;
   private final QueuePagePort queuePagePort;
   private final TransferAccessPort transferAccessPort;
   private final QueueDownloadPort queueDownloadPort;
@@ -193,37 +160,25 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String SORT_BY = "sortBy";
   private static final String UNKNOWN = "unknown";
   private static final String CSS_WIDTH_PREFIX = "width: ";
-  private static final String COMPLETED_LIST_PREFIX = "completed.list.";
   private static final String QUEUE_TOADLET_PREFIX = "QueueToadlet.";
-  private static final String USER_ALERT_HIDE = "UserAlert.hide";
 
   /**
    * Creates a queue toadlet bound to either the upload or download side of the node.
    *
-   * <p>The instance immediately registers itself as an FCP completion callback, loads any persisted
-   * completion identifiers, and retains references to the networking core and HTTP client used for
-   * serving pages. Construction performs no heavyweight work beyond setup and persistence reads, so
-   * it is safe to create during HTTP server initialization. The {@code uploads} flag permanently
-   * selects which queue this instance renders and which operations it allows; callers should create
-   * one instance per queue side.
+   * <p>The instance immediately ensures daemon-side completion tracking is active for the selected
+   * queue side and retains the detached runtime ports needed by the legacy HTTP handlers.
+   * Construction performs no heavyweight queue traversal in the HTTP layer, so it is safe to create
+   * during HTTP server initialization. The {@code uploads} flag permanently selects which queue
+   * this instance renders and which operations it allows; callers should create one instance per
+   * queue side.
    *
-   * @param core node client core for config, persistence, and permission checks.
-   * @param fcp FCP server used to read and mutate queue state.
    * @param client HTTP client used by {@link Toadlet} for replies and navigation.
    * @param uploads {@code true} for upload queues, {@code false} for download queues.
-   * @throws NullPointerException if {@code fcp} is {@code null}, mirroring existing constructor
-   *     guardrails.
+   * @param runtimePorts queue-specific runtime-port bundle used by the legacy HTTP handlers
    */
   public QueueToadlet(
-      NodeClientCore core,
-      FCPServer fcp,
-      HighLevelSimpleClient client,
-      boolean uploads,
-      QueueToadletRuntimePorts runtimePorts) {
-    requireFcpServer(fcp);
+      HighLevelSimpleClient client, boolean uploads, QueueToadletRuntimePorts runtimePorts) {
     super(client);
-    this.core = core;
-    this.fcp = fcp;
     QueueToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
     this.queuePagePort = ports.queuePagePort();
     this.transferAccessPort = ports.transferAccessPort();
@@ -235,17 +190,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     this.darknetMessagingPort = ports.darknetMessagingPort();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
-    QueueCompletionTracker completionTracker = new QueueCompletionTracker();
-    fcp.setCompletionCallback(completionTracker);
-    try {
-      completionTracker.loadCompletedIdentifiers();
-    } catch (PersistenceDisabledException _) {
-      // The user will know soon enoughUpdate Toadlet.java
-    }
-  }
-
-  private static void requireFcpServer(FCPServer fcp) {
-    if (fcp == null) throw new NullPointerException();
+    ports.queueCompletionPort().ensureTrackingStarted(uploads);
   }
 
   /**
@@ -2078,7 +2023,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   }
 
   private static final String DEFAULT_UPLOADS_SEGMENT = "uploads";
-  private static final String DEFAULT_DOWNLOADS_SEGMENT = "downloads";
 
   static final String PATH_UPLOADS =
       normalizePath(System.getProperty("queue.uploads.path", DEFAULT_UPLOADS_SEGMENT));
@@ -2108,514 +2052,5 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       normalized = normalized + '/';
     }
     return normalized;
-  }
-
-  /**
-   * Tracks completed requests, persists acknowledgements, and registers user alerts for finished
-   * transfers. Registered as the FCP completion callback for this toadlet.
-   */
-  private final class QueueCompletionTracker implements RequestCompletionCallback {
-    /** List of completed request identifiers which the user hasn't acknowledged yet. */
-    private final HashSet<String> completedRequestIdentifiers = new HashSet<>();
-
-    private final Map<String, GetCompletedEvent> completedGets = new LinkedHashMap<>();
-    private final Map<String, PutCompletedEvent> completedPuts = new LinkedHashMap<>();
-    private final Map<String, PutDirCompletedEvent> completedPutDirs = new LinkedHashMap<>();
-
-    @Override
-    public void notifyFailure(ClientRequest req) {
-      LOG.debug(
-          "Request {} failed; no further action registered in QueueToadlet", req.getIdentifier());
-    }
-
-    @Override
-    public void notifySuccess(ClientRequest req) {
-      if (uploads == req instanceof ClientGet) return;
-      synchronized (completedRequestIdentifiers) {
-        completedRequestIdentifiers.add(req.getIdentifier());
-      }
-      registerAlert(req); // should be safe here
-      saveCompletedIdentifiersOffThread();
-    }
-
-    private void saveCompletedIdentifiersOffThread() {
-      core.getNode()
-          .network()
-          .executor()
-          .execute(this::saveCompletedIdentifiers, "Save completed identifiers");
-    }
-
-    private void loadCompletedIdentifiers() throws PersistenceDisabledException {
-      String dl = uploads ? DEFAULT_UPLOADS_SEGMENT : DEFAULT_DOWNLOADS_SEGMENT;
-      File completedIdentifiersList = core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl);
-      File completedIdentifiersListNew =
-          core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl + ".bak");
-      File oldCompletedIdentifiersList = core.getNode().userDir().file("completed.list");
-      boolean migrated = false;
-      if (!readCompletedIdentifiers(completedIdentifiersList)) {
-        if (!readCompletedIdentifiers(completedIdentifiersListNew)) {
-          readCompletedIdentifiers(oldCompletedIdentifiersList);
-          migrated = true;
-        }
-      } else {
-        deleteIfExists(
-            oldCompletedIdentifiersList,
-            "legacy completed identifiers list " + oldCompletedIdentifiersList);
-      }
-      final boolean writeAnyway = migrated;
-      core.getClientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
-
-                @Override
-                public String toString() {
-                  return "QueueToadlet LoadCompletedIdentifiers";
-                }
-
-                @Override
-                public boolean run(ClientContext context) {
-                  String[] identifiers;
-                  boolean changed = writeAnyway;
-                  synchronized (completedRequestIdentifiers) {
-                    identifiers = completedRequestIdentifiers.toArray(new String[0]);
-                  }
-                  for (String identifier : identifiers) {
-                    ClientRequest req = fcp.getGlobalRequest(identifier);
-                    if (req == null || req instanceof ClientGet == uploads) {
-                      synchronized (completedRequestIdentifiers) {
-                        completedRequestIdentifiers.remove(identifier);
-                      }
-                      changed = true;
-                      continue;
-                    }
-                    registerAlert(req);
-                  }
-                  if (changed) saveCompletedIdentifiers();
-                  return false;
-                }
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-    }
-
-    private boolean readCompletedIdentifiers(File file) {
-      try (FileInputStream fis = new FileInputStream(file);
-          BufferedInputStream bis = new BufferedInputStream(fis);
-          InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
-          BufferedReader br = new BufferedReader(isr)) {
-        synchronized (completedRequestIdentifiers) {
-          completedRequestIdentifiers.clear();
-          while (true) {
-            String identifier = br.readLine();
-            if (identifier == null) return true;
-            completedRequestIdentifiers.add(identifier);
-          }
-        }
-      } catch (EOFException _) {
-        // Normal
-        return true;
-      } catch (FileNotFoundException _) {
-        // Normal
-        return false;
-      } catch (IOException _) {
-        LOG.error("Could not read completed identifiers list from {}", file);
-        return false;
-      }
-    }
-
-    private void saveCompletedIdentifiers() {
-      String dl = uploads ? DEFAULT_UPLOADS_SEGMENT : DEFAULT_DOWNLOADS_SEGMENT;
-      File completedIdentifiersList = core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl);
-      File completedIdentifiersListNew =
-          core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl + ".bak");
-      File temp = createTemporaryCompletedListFile();
-      if (temp == null) {
-        return;
-      }
-      if (!writeCompletedIdentifiers(temp)) {
-        return;
-      }
-      replaceCompletedListFiles(completedIdentifiersList, completedIdentifiersListNew, temp);
-    }
-
-    private File createTemporaryCompletedListFile() {
-      try {
-        File temp = File.createTempFile("completed.list", ".tmp", core.getNode().getUserDir());
-        temp.deleteOnExit();
-        return temp;
-      } catch (IOException e) {
-        LOG.error(
-            "Unable to create temporary completed requests list (node dir missing?): {}", e, e);
-        return null;
-      }
-    }
-
-    private boolean writeCompletedIdentifiers(File temp) {
-      try (FileOutputStream fos = new FileOutputStream(temp);
-          OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-          BufferedWriter bw = new BufferedWriter(osw)) {
-        String[] identifiers;
-        synchronized (completedRequestIdentifiers) {
-          identifiers = completedRequestIdentifiers.toArray(new String[0]);
-        }
-        for (String identifier : identifiers) {
-          bw.write(identifier);
-          bw.write('\n');
-        }
-        return true;
-      } catch (FileNotFoundException e) {
-        LOG.error(
-            "Unable to open completed requests temp list for writing (node dir missing?): {}",
-            e,
-            e);
-        return false;
-      } catch (IOException e) {
-        LOG.error("Unable to save completed requests list: {}", e, e);
-        return false;
-      }
-    }
-
-    private void replaceCompletedListFiles(
-        File completedIdentifiersList, File completedIdentifiersListNew, File temp) {
-      deleteIfExists(
-          completedIdentifiersListNew,
-          "backup completed identifiers list " + completedIdentifiersListNew);
-      boolean renamedToBackup = temp.renameTo(completedIdentifiersListNew);
-      if (!renamedToBackup) {
-        LOG.error(
-            "Unable to move completed identifiers list temp {} to backup {}",
-            temp,
-            completedIdentifiersListNew);
-        return;
-      }
-      if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
-        deleteIfExists(
-            completedIdentifiersList,
-            "existing completed identifiers list " + completedIdentifiersList);
-        if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
-          LOG.error(
-              "Unable to move completed identifiers list backup {} to final {}",
-              completedIdentifiersListNew,
-              completedIdentifiersList);
-        }
-      }
-    }
-
-    private void deleteIfExists(File file, String description) {
-      if (file.exists()) {
-        try {
-          Files.delete(file.toPath());
-        } catch (IOException e) {
-          LOG.warn("Unable to delete {}", description, e);
-        }
-      }
-    }
-
-    private void registerAlert(ClientRequest req) {
-      final String identifier = req.getIdentifier();
-      if (LOG.isDebugEnabled()) LOG.debug("Registering alert for {}", identifier);
-      if (!req.hasFinished()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Request hasn't finished: {} for {}", req, identifier);
-        return;
-      }
-      switch (req) {
-        case ClientGet get -> {
-          FreenetURI uri = get.getURI();
-          if (uri == null) {
-            LOG.error("No URI for finished GET request {}", req);
-            return;
-          }
-          long size = get.getDataSize();
-          GetCompletedEvent event = new GetCompletedEvent(identifier, uri, size);
-          synchronized (completedGets) {
-            completedGets.put(identifier, event);
-          }
-          core.getAlerts().register(event);
-        }
-        case ClientPut put -> {
-          FreenetURI uri = put.getFinalURI();
-          if (uri == null) {
-            LOG.error("No URI for finished PUT request {}", req);
-            return;
-          }
-          long size = put.getDataSize();
-          PutCompletedEvent event = new PutCompletedEvent(identifier, uri, size);
-          synchronized (completedPuts) {
-            completedPuts.put(identifier, event);
-          }
-          core.getAlerts().register(event);
-        }
-        case ClientPutDir dir -> {
-          FreenetURI uri = dir.getFinalURI();
-          if (uri == null) {
-            LOG.error("No URI for finished PUTDIR request {}", req);
-            return;
-          }
-          long size = dir.getTotalDataSize();
-          int files = dir.getNumberOfFiles();
-          PutDirCompletedEvent event = new PutDirCompletedEvent(identifier, uri, size, files);
-          synchronized (completedPutDirs) {
-            completedPutDirs.put(identifier, event);
-          }
-          core.getAlerts().register(event);
-        }
-        default -> {
-          // No extra bookkeeping needed for other request types.
-        }
-      }
-    }
-
-    @Override
-    public void onRemove(ClientRequest req) {
-      String identifier = req.getIdentifier();
-      synchronized (completedRequestIdentifiers) {
-        completedRequestIdentifiers.remove(identifier);
-      }
-      switch (req) {
-        case ClientGet _ -> {
-          synchronized (completedGets) {
-            completedGets.remove(identifier);
-          }
-        }
-        case ClientPut _ -> {
-          synchronized (completedPuts) {
-            completedPuts.remove(identifier);
-          }
-        }
-        case ClientPutDir _ -> {
-          synchronized (completedPutDirs) {
-            completedPutDirs.remove(identifier);
-          }
-        }
-        default -> {
-          // Nothing to remove for other request types.
-        }
-      }
-      saveCompletedIdentifiersOffThread();
-    }
-
-    private class GetCompletedEvent extends StoringUserEvent<GetCompletedEvent> {
-
-      private final String identifier;
-      private final FreenetURI uri;
-      private final long size;
-
-      public GetCompletedEvent(String identifier, FreenetURI uri, long size) {
-        super(
-            new UserEventDetails(
-                Type.GET_COMPLETED,
-                true,
-                null,
-                Body.of(null, null, null),
-                UserAlert.MINOR,
-                true,
-                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
-            completedGets);
-        this.identifier = identifier;
-        this.uri = uri;
-        this.size = size;
-      }
-
-      @Override
-      public void onDismiss() {
-        super.onDismiss();
-        saveCompletedIdentifiersOffThread();
-      }
-
-      @Override
-      public void onEventDismiss() {
-        synchronized (completedRequestIdentifiers) {
-          completedRequestIdentifiers.remove(identifier);
-        }
-      }
-
-      @Override
-      public HTMLNode getEventHTMLText() {
-        HTMLNode text = new HTMLNode("div");
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                text,
-                QUEUE_TOADLET_PREFIX + "downloadSucceeded",
-                new String[] {"link", "origlink", FILENAME, "size"},
-                new HTMLNode[] {
-                  HTMLNode.link("/" + uri.toASCIIString() + "?max-size=" + size),
-                  HTMLNode.link("/" + uri.toASCIIString()),
-                  HTMLNode.text(uri.getPreferredFilename()),
-                  HTMLNode.text(SizeUtil.formatSize(size))
-                });
-        return text;
-      }
-
-      @Override
-      public String getTitle() {
-        String title;
-        synchronized (events) {
-          if (events.size() == 1)
-            title = l10n("downloadSucceededTitle", FILENAME, uri.getPreferredFilename());
-          else title = l10n("downloadsSucceededTitle", "nr", Integer.toString(events.size()));
-        }
-        return title;
-      }
-
-      @Override
-      public String getShortText() {
-        return getTitle();
-      }
-
-      @Override
-      public String getEventText() {
-        return l10n("downloadSucceededTitle", FILENAME, uri.getPreferredFilename());
-      }
-    }
-
-    private class PutCompletedEvent extends StoringUserEvent<PutCompletedEvent> {
-
-      private final String identifier;
-      private final FreenetURI uri;
-      private final long size;
-
-      public PutCompletedEvent(String identifier, FreenetURI uri, long size) {
-        super(
-            new UserEventDetails(
-                Type.PUT_COMPLETED,
-                true,
-                null,
-                Body.of(null, null, null),
-                UserAlert.MINOR,
-                true,
-                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
-            completedPuts);
-        this.identifier = identifier;
-        this.uri = uri;
-        this.size = size;
-      }
-
-      @Override
-      public void onDismiss() {
-        super.onDismiss();
-        saveCompletedIdentifiersOffThread();
-      }
-
-      @Override
-      public void onEventDismiss() {
-        synchronized (completedRequestIdentifiers) {
-          completedRequestIdentifiers.remove(identifier);
-        }
-      }
-
-      @Override
-      public HTMLNode getEventHTMLText() {
-        HTMLNode text = new HTMLNode("div");
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                text,
-                QUEUE_TOADLET_PREFIX + "uploadSucceeded",
-                new String[] {"link", FILENAME, "size"},
-                new HTMLNode[] {
-                  HTMLNode.link("/" + uri.toASCIIString()),
-                  HTMLNode.text(uri.getPreferredFilename()),
-                  HTMLNode.text(SizeUtil.formatSize(size))
-                });
-        return text;
-      }
-
-      @Override
-      public String getTitle() {
-        String title;
-        synchronized (events) {
-          if (events.size() == 1)
-            title = l10n("uploadSucceededTitle", FILENAME, uri.getPreferredFilename());
-          else title = l10n("uploadsSucceededTitle", "nr", Integer.toString(events.size()));
-        }
-        return title;
-      }
-
-      @Override
-      public String getShortText() {
-        return getTitle();
-      }
-
-      @Override
-      public String getEventText() {
-        return l10n("uploadSucceededTitle", FILENAME, uri.getPreferredFilename());
-      }
-    }
-
-    private class PutDirCompletedEvent extends StoringUserEvent<PutDirCompletedEvent> {
-
-      private final String identifier;
-      private final FreenetURI uri;
-      private final long size;
-      private final int files;
-
-      public PutDirCompletedEvent(String identifier, FreenetURI uri, long size, int files) {
-        super(
-            new UserEventDetails(
-                Type.PUT_DIR_COMPLETED,
-                true,
-                null,
-                Body.of(null, null, null),
-                UserAlert.MINOR,
-                true,
-                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
-            completedPutDirs);
-        this.identifier = identifier;
-        this.uri = uri;
-        this.size = size;
-        this.files = files;
-      }
-
-      @Override
-      public void onDismiss() {
-        super.onDismiss();
-        saveCompletedIdentifiersOffThread();
-      }
-
-      @Override
-      public void onEventDismiss() {
-        synchronized (completedRequestIdentifiers) {
-          completedRequestIdentifiers.remove(identifier);
-        }
-      }
-
-      @Override
-      public HTMLNode getEventHTMLText() {
-        String name = uri.getPreferredFilename();
-        HTMLNode text = new HTMLNode("div");
-        NodeL10n.getBase()
-            .addL10nSubstitution(
-                text,
-                QUEUE_TOADLET_PREFIX + "siteUploadSucceeded",
-                new String[] {"link", FILENAME, "size", "files"},
-                new HTMLNode[] {
-                  HTMLNode.link("/" + uri.toASCIIString()),
-                  HTMLNode.text(name),
-                  HTMLNode.text(SizeUtil.formatSize(size)),
-                  HTMLNode.text(files)
-                });
-        return text;
-      }
-
-      @Override
-      public String getTitle() {
-        String title;
-        synchronized (events) {
-          if (events.size() == 1)
-            title = l10n("siteUploadSucceededTitle", FILENAME, uri.getPreferredFilename());
-          else title = l10n("sitesUploadSucceededTitle", "nr", Integer.toString(events.size()));
-        }
-        return title;
-      }
-
-      @Override
-      public String getShortText() {
-        return getTitle();
-      }
-
-      @Override
-      public String getEventText() {
-        return l10n("siteUploadSucceededTitle", FILENAME, uri.getPreferredFilename());
-      }
-    }
   }
 }

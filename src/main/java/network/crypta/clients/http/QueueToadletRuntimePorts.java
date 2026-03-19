@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.util.Objects;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
+import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
@@ -34,6 +35,8 @@ import network.crypta.runtime.spi.TransferAccessPort;
  * @param queueMutationPort detached queue-mutation port
  * @param queueSupportPort detached queue-support port used for backend enablement, persistence
  *     state, and panic actions
+ * @param queueCompletionPort detached queue-completion port used for per-side completion-tracker
+ *     startup
  * @param darknetConnectionsPort detached darknet friends-page companion port used by queue
  *     recommendation rendering
  * @param darknetMessagingPort detached darknet messaging port used by queue recommendation sends
@@ -45,6 +48,7 @@ public record QueueToadletRuntimePorts(
     QueueInsertPort queueInsertPort,
     QueueMutationPort queueMutationPort,
     QueueSupportPort queueSupportPort,
+    QueueCompletionPort queueCompletionPort,
     DarknetConnectionsPort darknetConnectionsPort,
     DarknetMessagingPort darknetMessagingPort) {
   /**
@@ -60,6 +64,8 @@ public record QueueToadletRuntimePorts(
    *     toadlets
    * @param queueSupportPort detached queue-support port shared by the download and upload toadlets
    *     for backend enablement, persistence state, and panic actions
+   * @param queueCompletionPort detached queue-completion port shared by the download and upload
+   *     toadlets for per-side completion-tracker startup
    * @param darknetConnectionsPort detached darknet friends-page companion port shared by the
    *     download and upload toadlets for queue recommendation rendering
    * @param darknetMessagingPort detached darknet messaging port shared by the download and upload
@@ -73,6 +79,7 @@ public record QueueToadletRuntimePorts(
     Objects.requireNonNull(queueInsertPort);
     Objects.requireNonNull(queueMutationPort);
     Objects.requireNonNull(queueSupportPort);
+    Objects.requireNonNull(queueCompletionPort);
     Objects.requireNonNull(darknetConnectionsPort);
     Objects.requireNonNull(darknetMessagingPort);
   }

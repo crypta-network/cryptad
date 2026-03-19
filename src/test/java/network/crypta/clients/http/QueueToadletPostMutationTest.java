@@ -37,6 +37,7 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
+import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
@@ -86,7 +87,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "MockNotUsedInProduction"})
 class QueueToadletPostMutationTest {
 
   @Mock private HighLevelSimpleClient client;
@@ -97,6 +98,7 @@ class QueueToadletPostMutationTest {
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private QueueSupportPort queueSupportPort;
+  @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private UserAlertManager alerts;
@@ -342,8 +344,6 @@ class QueueToadletPostMutationTest {
 
     QueueToadlet toadlet =
         new QueueToadlet(
-            core,
-            fcp,
             client,
             uploads,
             new QueueToadletRuntimePorts(
@@ -353,6 +353,7 @@ class QueueToadletPostMutationTest {
                 queueInsertPort,
                 queueMutationPort,
                 queueSupportPort,
+                queueCompletionPort,
                 darknetConnectionsPort,
                 darknetMessagingPort));
     toadlet.container = container;

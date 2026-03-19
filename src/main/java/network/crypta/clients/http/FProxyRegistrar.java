@@ -141,8 +141,6 @@ final class FProxyRegistrar {
 
     QueueToadlet downloadToadlet =
         new QueueToadlet(
-            core,
-            core.getEndpoints().getFCPServer(),
             client,
             false,
             new QueueToadletRuntimePorts(
@@ -152,6 +150,7 @@ final class FProxyRegistrar {
                 runtimePorts.queueInsert(),
                 runtimePorts.queueMutation(),
                 runtimePorts.queueSupport(),
+                runtimePorts.queueCompletion(),
                 runtimePorts.darknetConnections(),
                 runtimePorts.darknetMessaging()));
     server.register(
@@ -171,8 +170,6 @@ final class FProxyRegistrar {
         ToadletRegistration.basic(null, localDownloadDirectoryToadlet.path(), true, false));
     QueueToadlet uploadToadlet =
         new QueueToadlet(
-            core,
-            core.getEndpoints().getFCPServer(),
             client,
             true,
             new QueueToadletRuntimePorts(
@@ -182,6 +179,7 @@ final class FProxyRegistrar {
                 runtimePorts.queueInsert(),
                 runtimePorts.queueMutation(),
                 runtimePorts.queueSupport(),
+                runtimePorts.queueCompletion(),
                 runtimePorts.darknetConnections(),
                 runtimePorts.darknetMessaging()));
     server.register(
