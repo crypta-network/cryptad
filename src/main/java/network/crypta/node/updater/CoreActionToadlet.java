@@ -127,8 +127,10 @@ public class CoreActionToadlet extends Toadlet {
    * Handles action form submissions for core updater operations.
    *
    * <p>Accepted actions include download start, local installer launch, and package-store opening.
-   * Requests are rejected when form-password validation fails, and unknown actions are redirected
-   * back to the updater path.
+   * Requests are rejected when form-password validation fails. Download requests are dispatched
+   * directly through the runtime port so updater lookup and start happen as one operation, while
+   * the remaining actions still redirect when no core updater is available. Unknown actions are
+   * redirected back to the updater path.
    *
    * @param uri request URI for the POST action endpoint
    * @param request parsed HTTP form request containing action and payload fields
@@ -145,14 +147,18 @@ public class CoreActionToadlet extends Toadlet {
       return;
     }
 
+    String action = request.getPartAsStringFailsafe("action", 32);
+    if (ACTION_DOWNLOAD.equals(action)) {
+      handleDownload(ctx);
+      return;
+    }
+
     if (!coreUpdateActionPort.isCoreUpdaterAvailable()) {
       redirect(ctx);
       return;
     }
 
-    String action = request.getPartAsStringFailsafe("action", 32);
     switch (action) {
-      case ACTION_DOWNLOAD -> handleDownload(ctx);
       case ACTION_INSTALL -> handleInstall(request, ctx);
       case ACTION_OPEN_STORE -> handleOpenStore(request, ctx);
       default -> redirect(ctx);

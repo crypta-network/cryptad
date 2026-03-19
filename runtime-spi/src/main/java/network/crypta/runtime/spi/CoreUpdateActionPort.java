@@ -37,8 +37,9 @@ public interface CoreUpdateActionPort {
    * Starts the current core-package download from the updater UI.
    *
    * <p>Implementations preserve the daemon-side selection and in-progress checks used by the legacy
-   * updater flow. Callers are expected to check {@link #isCoreUpdaterAvailable()} before invoking
-   * this method and to treat the call as a trigger, not as a completion signal. Follow-up status,
+   * updater flow. Callers may invoke this method directly for one download request so the updater
+   * lookup and the download trigger use the same daemon snapshot instead of being split across two
+   * separate calls. The method remains a trigger rather than a completion signal; follow-up status,
    * redirects, or operator-visible errors still come from the HTTP layer and the updater itself.
    */
   void startCoreDownloadFromUi();

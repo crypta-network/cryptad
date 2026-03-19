@@ -112,13 +112,13 @@ class CoreActionToadletTest {
     CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
-    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("download");
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
 
     verify(coreUpdateActionPort).startCoreDownloadFromUi();
+    verify(coreUpdateActionPort, never()).isCoreUpdaterAvailable();
     ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
