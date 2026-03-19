@@ -10,12 +10,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.bookmark.BookmarkItem;
-import network.crypta.node.Node;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.LifecyclePort;
+import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.runtime.spi.WelcomePagePort;
 import network.crypta.runtime.spi.WelcomePageSnapshot;
 import network.crypta.support.HTMLNode;
@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,12 +54,10 @@ class WelcomeToadletTest {
 
   @Mock private HighLevelSimpleClient client;
 
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
-
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private LifecyclePort lifecyclePort;
+  @Mock private WelcomeActionPort welcomeActionPort;
   @Mock private ToadletContext ctx;
   @Mock private ToadletContainer container;
   @Mock private UserAlertManager alertManager;
@@ -71,8 +70,9 @@ class WelcomeToadletTest {
   @BeforeEach
   void setUp() {
     runtimePorts =
-        new WelcomeToadletRuntimePorts(welcomePagePort, darknetConnectionsPort, lifecyclePort);
-    toadlet = new WelcomeToadlet(client, node, runtimePorts);
+        new WelcomeToadletRuntimePorts(
+            welcomePagePort, darknetConnectionsPort, lifecyclePort, welcomeActionPort);
+    toadlet = new WelcomeToadlet(client, runtimePorts);
     toadlet.container = container;
     originalUserDir = System.getProperty("user.dir");
 
@@ -85,6 +85,8 @@ class WelcomeToadletTest {
     when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert-summary"));
     when(alertManager.renderDismissButton(any(), anyString())).thenReturn(new HTMLNode("button"));
     when(request.getParam("newbookmark")).thenReturn("");
+    when(request.getPartAsStringFailsafe("updateconfirm", 32)).thenReturn("");
+    when(request.getPartAsStringFailsafe("update", 32)).thenReturn("");
     when(ctx.addFormChild(any(HTMLNode.class), anyString(), anyString()))
         .thenAnswer(
             invocation -> {
@@ -130,6 +132,14 @@ class WelcomeToadletTest {
   @Test
   void path_returnsRootSlash() {
     assertEquals(WelcomeToadlet.ROOT_PATH, toadlet.path());
+  }
+
+  @Test
+  void constructor_whenRuntimePortsProvided_noLongerNeedsNodeDependency() {
+    assertEquals(1, WelcomeToadlet.class.getDeclaredConstructors().length);
+    assertArrayEquals(
+        new Class<?>[] {HighLevelSimpleClient.class, WelcomeToadletRuntimePorts.class},
+        WelcomeToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
   }
 
   @Test
@@ -201,6 +211,88 @@ class WelcomeToadletTest {
     assertTrue(body.contains("id=\"keyfetchbox\""));
     assertTrue(body.indexOf("id=\"keyfetchbox\"") > body.indexOf("id=\"bookmarks\""));
     verify(welcomePagePort).snapshot();
+  }
+
+  @Test
+  void handleMethodPOST_whenUpdateConfirmed_delegatesToWelcomeActionPort() throws Exception {
+    WelcomeToadlet spyToadlet = createSpyToadlet();
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(request.getPartAsStringFailsafe("updateconfirm", 32)).thenReturn("update-now");
+    captureHtmlReply(spyToadlet);
+
+    spyToadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    verify(welcomeActionPort).armNodeUpdate();
+  }
+
+  @Test
+  void handleMethodPOST_whenShutdownConfirmed_redirectsAndDelegatesToWelcomeActionPort()
+      throws Exception {
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(request.isPartSet("shutdownconfirm")).thenReturn(true);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), eq(null), eq(0L));
+    assertEquals(
+        "/?terminated&formPassword=form-password", headersCaptor.getValue().getFirst("Location"));
+    verify(welcomeActionPort).queueShutdownFromWelcome();
+  }
+
+  @Test
+  void handleMethodPOST_whenRestartConfirmed_redirectsAndDelegatesToWelcomeActionPort()
+      throws Exception {
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(request.isPartSet("restartconfirm")).thenReturn(true);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), eq(null), eq(0L));
+    assertEquals(
+        "/?restarted&formPassword=form-password", headersCaptor.getValue().getFirst("Location"));
+    verify(welcomeActionPort).queueRestartFromWelcome();
+  }
+
+  @Test
+  void handleMethodPOST_whenUpgradeConnectionSpeedSubmitted_delegatesToWelcomeActionPort()
+      throws Exception {
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(request.isPartSet("upgradeConnectionSpeed")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("inputBandwidthLimit", Byte.MAX_VALUE)).thenReturn("4KiB");
+    when(request.getPartAsStringFailsafe("outputBandwidthLimit", Byte.MAX_VALUE))
+        .thenReturn("1KiB");
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    verify(welcomeActionPort).applyUpgradeConnectionSpeed("4KiB", "1KiB");
+  }
+
+  @Test
+  void handleMethodPOST_whenThreadDumpRequested_checksLifecyclePort() throws Exception {
+    WelcomeToadlet spyToadlet = createSpyToadlet();
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    when(request.isPartSet("getThreadDump")).thenReturn(true);
+    when(lifecyclePort.isUsingWrapper()).thenReturn(false);
+    captureHtmlReply(spyToadlet);
+
+    spyToadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    verify(lifecyclePort).isUsingWrapper();
   }
 
   @Test
@@ -353,7 +445,7 @@ class WelcomeToadletTest {
   }
 
   private WelcomeToadlet createSpyToadlet() {
-    WelcomeToadlet spyToadlet = spy(new WelcomeToadlet(client, node, runtimePorts));
+    WelcomeToadlet spyToadlet = spy(new WelcomeToadlet(client, runtimePorts));
     spyToadlet.container = container;
     return spyToadlet;
   }

@@ -18,19 +18,13 @@ import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.bookmark.BookmarkCategory;
 import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.NodeNeedRestartException;
 import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.BandwidthManager;
-import network.crypta.node.Node;
 import network.crypta.node.Version;
-import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.WelcomePageSnapshot;
-import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -48,12 +42,12 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * landing page with alerts, bookmarks, search integration, and version/environment diagnostics so
  * users can assess node health at a glance.
  *
- * <p>The class is intentionally state-light: it retains the live {@link Node} only for legacy
- * POST/action paths and uses a small runtime-port bundle for the detached GET/read helpers.
- * Requests are processed sequentially by the container, so the toadlet itself does not create
- * additional threads; any asynchronous behavior is queued through node subsystems. Form-password
- * checks gate all actions that mutate state or reveal privileged information, while public users
- * see a trimmed bookmark view.
+ * <p>The class is intentionally state-light: it uses a small runtime-port bundle for both detached
+ * welcome-page reads and the remaining maintenance POST/action helpers. Requests are processed
+ * sequentially by the container, so the toadlet itself does not create additional threads; any
+ * asynchronous behavior is queued through the runtime layer. Form-password checks gate all actions
+ * that mutate state or reveal privileged information, while public users see a trimmed bookmark
+ * view.
  *
  * <ul>
  *   <li>Homepage rendering combines alerts, bookmark trees, fetch boxes, and version details.
@@ -98,14 +92,12 @@ public class WelcomeToadlet extends Toadlet {
   private static final String STYLE_BORDER_NONE = "border: none";
   private static final String TARGET_BLANK = "_blank";
 
-  final Node node;
   private final WelcomeToadletRuntimePorts runtimePorts;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
-  WelcomeToadlet(HighLevelSimpleClient client, Node node, WelcomeToadletRuntimePorts runtimePorts) {
+  WelcomeToadlet(HighLevelSimpleClient client, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
-    this.node = Objects.requireNonNull(node, "node");
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
   }
 
@@ -350,7 +342,7 @@ public class WelcomeToadlet extends Toadlet {
     content.addChild("p").addChild("#", l10n("thanks"));
     writeHTMLReply(ctx, 200, "OK", page.generate());
     LOG.info("Node is updating/restarting");
-    node.services().nodeUpdater().arm();
+    runtimePorts.welcomeActionPort().armNodeUpdate();
     return true;
   }
 
@@ -396,7 +388,7 @@ public class WelcomeToadlet extends Toadlet {
     }
     PageNode page = ctx.getPageMaker().getPageNode(l10n("threadDumpTitle"), ctx);
     HTMLNode contentNode = page.getContentNode();
-    if (node.isUsingWrapper()) {
+    if (runtimePorts.lifecyclePort().isUsingWrapper()) {
       ctx.getPageMaker()
           .getInfobox("#", l10n("threadDumpSubTitle"), contentNode, "thread-dump-generation", true)
           .addChild(
@@ -600,7 +592,7 @@ public class WelcomeToadlet extends Toadlet {
         MultiValueTable.from(
             HEADER_LOCATION, "/?terminated&" + PARAM_FORM_PASSWORD + '=' + ctx.getFormPassword());
     ctx.sendReplyHeaders(302, STATUS_FOUND, headers, null, 0);
-    node.network().ticker().queueTimedJob(() -> node.exit("Shutdown from fproxy"), 1);
+    runtimePorts.welcomeActionPort().queueShutdownFromWelcome();
     return true;
   }
 
@@ -643,7 +635,7 @@ public class WelcomeToadlet extends Toadlet {
         MultiValueTable.from(
             HEADER_LOCATION, "/?restarted&" + PARAM_FORM_PASSWORD + '=' + ctx.getFormPassword());
     ctx.sendReplyHeaders(302, STATUS_FOUND, headers, null, 0);
-    node.network().ticker().queueTimedJob(() -> node.getNodeStarter().restart(), 1);
+    runtimePorts.welcomeActionPort().queueRestartFromWelcome();
     return true;
   }
 
@@ -672,92 +664,14 @@ public class WelcomeToadlet extends Toadlet {
     if (!ctx.checkFormPassword(request)) {
       return true;
     }
-
-    UpgradeConnectionSpeedUserAlert upgradeConnectionSpeedAlert = findUpgradeConnectionSpeedAlert();
-
-    String errorMessage = validateBandwidthLimits(request);
-
-    if (errorMessage == null) {
-      applyBandwidthLimits(request, upgradeConnectionSpeedAlert);
-    } else if (upgradeConnectionSpeedAlert != null) {
-      upgradeConnectionSpeedAlert.setError(errorMessage);
-    }
+    runtimePorts
+        .welcomeActionPort()
+        .applyUpgradeConnectionSpeed(
+            request.getPartAsStringFailsafe(PARAM_INPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE),
+            request.getPartAsStringFailsafe(PARAM_OUTPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
 
     redirectToRoot(ctx);
     return true;
-  }
-
-  private UpgradeConnectionSpeedUserAlert findUpgradeConnectionSpeedAlert() {
-    for (UserAlert alert : node.services().clientCore().getAlerts().getAlerts()) {
-      if (alert instanceof UpgradeConnectionSpeedUserAlert userAlert) {
-        return userAlert;
-      }
-    }
-    return null;
-  }
-
-  private String validateBandwidthLimits(HTTPRequest request) {
-    String errorMessage = null;
-    try {
-      int outputBandwidthLimit =
-          Fields.parseInt(
-              request.getPartAsStringFailsafe(PARAM_OUTPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
-      BandwidthManager.checkOutputBandwidthLimit(outputBandwidthLimit);
-    } catch (NumberFormatException _) {
-      errorMessage =
-          NodeL10n.getBase()
-              .getString("UpgradeConnectionSpeedUserAlert.InvalidValue", "type", "upload");
-    } catch (InvalidConfigValueException e) {
-      errorMessage = e.getMessage();
-    }
-    try {
-      int inputBandwidthLimit =
-          Fields.parseInt(
-              request.getPartAsStringFailsafe(PARAM_INPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
-      BandwidthManager.checkInputBandwidthLimit(inputBandwidthLimit);
-    } catch (NumberFormatException _) {
-      errorMessage =
-          combineErrorMessage(
-              errorMessage,
-              NodeL10n.getBase()
-                  .getString("UpgradeConnectionSpeedUserAlert.InvalidValue", "type", "download"));
-    } catch (InvalidConfigValueException e) {
-      errorMessage = combineErrorMessage(errorMessage, e.getMessage());
-    }
-    return errorMessage;
-  }
-
-  private String combineErrorMessage(String existing, String newMessage) {
-    if (existing == null) {
-      return newMessage;
-    }
-    return existing + " " + newMessage;
-  }
-
-  private void applyBandwidthLimits(
-      HTTPRequest request, UpgradeConnectionSpeedUserAlert upgradeConnectionSpeedAlert) {
-    try {
-      node.getConfig()
-          .get("node")
-          .set(
-              PARAM_INPUT_BANDWIDTH_LIMIT,
-              request.getPartAsStringFailsafe(PARAM_INPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
-      node.getConfig()
-          .get("node")
-          .set(
-              PARAM_OUTPUT_BANDWIDTH_LIMIT,
-              request.getPartAsStringFailsafe(PARAM_OUTPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
-
-      if (upgradeConnectionSpeedAlert != null) {
-        upgradeConnectionSpeedAlert.setUpgraded(true);
-      }
-    } catch (InvalidConfigValueException e) {
-      if (upgradeConnectionSpeedAlert != null) {
-        upgradeConnectionSpeedAlert.setError(e.getMessage());
-      }
-    } catch (NodeNeedRestartException _) {
-      // The user will restart later if necessary.
-    }
   }
 
   /**

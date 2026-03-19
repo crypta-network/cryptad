@@ -16,8 +16,12 @@ import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.WelcomeActionPort;
+import network.crypta.runtime.spi.WelcomePagePort;
 import network.crypta.support.api.IntCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +64,10 @@ class FProxyRegistrarTest {
   @Mock private RandomSource randomSource;
   @Mock private ClientEndpoints endpoints;
   @Mock private QueueCompletionPort queueCompletionPort;
+  @Mock private WelcomePagePort welcomePagePort;
+  @Mock private DarknetConnectionsPort darknetConnectionsPort;
+  @Mock private LifecyclePort lifecyclePort;
+  @Mock private WelcomeActionPort welcomeActionPort;
   @Mock private SimpleToadletServer server;
 
   private Config config;
@@ -86,6 +94,10 @@ class FProxyRegistrarTest {
     when(core.getEndpoints()).thenReturn(endpoints);
     when(client.getFetchContext()).thenReturn(fetchContext);
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
+    when(runtimePorts.welcomePage()).thenReturn(welcomePagePort);
+    when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
+    when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
+    when(runtimePorts.welcomeAction()).thenReturn(welcomeActionPort);
   }
 
   @Test

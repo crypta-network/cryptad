@@ -279,8 +279,9 @@ final class FProxyRegistrar {
         new WelcomeToadletRuntimePorts(
             runtimePorts.welcomePage(),
             runtimePorts.darknetConnections(),
-            runtimePorts.lifecycle());
-    WelcomeToadlet welcometoadlet = new WelcomeToadlet(client, node, welcomeToadletRuntimePorts);
+            runtimePorts.lifecycle(),
+            runtimePorts.welcomeAction());
+    WelcomeToadlet welcometoadlet = new WelcomeToadlet(client, welcomeToadletRuntimePorts);
     server.register(
         welcometoadlet, ToadletRegistration.basic(null, FProxyToadlet.WELCOME_PATH, true, false));
 
