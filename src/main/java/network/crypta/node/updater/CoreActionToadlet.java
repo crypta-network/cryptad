@@ -128,7 +128,7 @@ public class CoreActionToadlet extends Toadlet {
    *
    * <p>Accepted actions include download start, local installer launch, and package-store opening.
    * Requests are rejected when form-password validation fails. Download requests are dispatched
-   * directly through the runtime port so updater lookup and start happen as one operation, while
+   * directly through the runtime port, so updater lookup and start happen as one operation, while
    * the remaining actions still redirect when no core updater is available. Unknown actions are
    * redirected back to the updater path.
    *
