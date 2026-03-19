@@ -5,8 +5,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.MalformedURLException;
+import java.util.List;
 import java.util.Objects;
 import network.crypta.client.async.ClientContext;
+import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.PeerManager;
@@ -76,6 +79,17 @@ final class LegacyDarknetMessagingPort implements DarknetMessagingPort {
 
   /** {@inheritDoc} */
   @Override
+  public void recommendDownloads(String nodeIdentifier, List<String> uris, String description)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    Objects.requireNonNull(uris, "uris");
+    DarknetPeerNode peer = peerResolver.resolveByIdentity(nodeIdentifier);
+    for (String uri : uris) {
+      peer.sendDownloadFeed(toFreenetUri(uri), description);
+    }
+  }
+
+  /** {@inheritDoc} */
+  @Override
   public DarknetMessageSendStatus sendComposedMessage(
       String nodeIdentifier,
       String message,
@@ -105,6 +119,26 @@ final class LegacyDarknetMessagingPort implements DarknetMessagingPort {
       case PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF -> DarknetMessageSendStatus.DELAYED;
       default -> DarknetMessageSendStatus.QUEUED;
     };
+  }
+
+  /**
+   * Converts one validated detached URI string into the daemon URI type.
+   *
+   * <p>Queue recommendations validate URI syntax in the HTTP layer before crossing the runtime
+   * boundary. A malformed value at this stage therefore indicates caller misuse or a regression in
+   * that validation path, so the adapter reports it as an unchecked failure instead of widening the
+   * SPI contract with queue-specific parsing errors.
+   *
+   * @param uri detached URI string supplied by the caller
+   * @return daemon URI object ready for the legacy download-feed API
+   */
+  private static FreenetURI toFreenetUri(String uri) {
+    Objects.requireNonNull(uri, "uri");
+    try {
+      return new FreenetURI(uri);
+    } catch (MalformedURLException e) {
+      throw new IllegalArgumentException("Malformed recommendation URI: " + uri, e);
+    }
   }
 
   /**

@@ -2,6 +2,7 @@ package network.crypta.runtime.spi;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Exposes the legacy node-to-node message compose/send capability.
@@ -72,6 +73,30 @@ public interface DarknetMessagingPort {
    */
   void sendUploadedFileOffer(String nodeIdentifier, DarknetUploadedFile upload, String messageHead)
       throws UnknownPeerException, DarknetPeerRequiredException, IOException;
+
+  /**
+   * Sends one or more download recommendations to the selected detached darknet peer.
+   *
+   * <p>This is the detached equivalent of the legacy queue "recommend to friends" path. Callers
+   * keep request parsing, URI validation, checkbox selection, and user-facing error handling in the
+   * HTTP layer. They then pass the validated URI strings in encounter order. The implementation
+   * resolves the detached peer identity on demand, converts the strings into daemon URI objects,
+   * and delegates to the existing download-feed send API.
+   *
+   * <p>The implementation should preserve the caller-provided URI order and description value
+   * exactly for the selected peer. As with the other methods on this port, detached identity
+   * resolution is request-scoped and may fail if the peer roster changes between form render and
+   * submit.
+   *
+   * @param nodeIdentifier detached peer identity selected from the legacy friends page and used for
+   *     request-scoped peer lookup
+   * @param uris validated URI strings to recommend to the resolved peer, in encounter order
+   * @param description optional human-readable description sent with each recommendation
+   * @throws UnknownPeerException if the detached peer identity no longer resolves at sending time
+   * @throws DarknetPeerRequiredException if the resolved peer exists but is not a darknet peer
+   */
+  void recommendDownloads(String nodeIdentifier, List<String> uris, String description)
+      throws UnknownPeerException, DarknetPeerRequiredException;
 
   /**
    * Sends one composed N2NTM to the selected detached darknet peer.

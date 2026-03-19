@@ -1,10 +1,8 @@
 package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -31,23 +29,24 @@ import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.l10n.NodeL10n;
 import network.crypta.node.ClientContextResources;
+import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
-import network.crypta.runtime.spi.QueueDownloadRejectedException;
-import network.crypta.runtime.spi.QueueDownloadRequest;
 import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
-import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.MultiValueTable;
@@ -61,6 +60,7 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,7 +73,6 @@ import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -82,17 +81,16 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 @SuppressWarnings("java:S100")
-class QueueToadletPostDownloadTest {
+class QueueToadletRecommendTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
@@ -111,6 +109,13 @@ class QueueToadletPostDownloadTest {
 
   @TempDir Path tempDir;
 
+  private Node node;
+
+  @BeforeAll
+  static void initL10n() {
+    new NodeL10n();
+  }
+
   @BeforeEach
   void setUp() {
     PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
@@ -121,197 +126,142 @@ class QueueToadletPostDownloadTest {
     when(ctx.getContainer()).thenReturn(container);
     when(alerts.createSummary()).thenReturn(new HTMLNode("div", "id", "default-alert-summary"));
     when(container.publicGatewayMode()).thenReturn(false);
-    when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(false);
+    when(ctx.addFormChild(any(HTMLNode.class), anyString(), anyString()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(0);
+              HTMLNode form = new HTMLNode("form");
+              parent.addChild(form);
+              return form;
+            });
   }
 
   @Test
-  void handleMethodPOST_whenSingleDownloadRequested_callsQueueDownloadPort() throws Exception {
+  void handleMethodPOST_whenRecommendFormRequested_rendersDetachedPeersAndLegacyCheckboxNames()
+      throws Exception {
     QueueToadlet toadlet = createQueueToadlet();
-    Path downloadsDir = Files.createDirectories(tempDir.resolve("downloads"));
-    String downloadPath = downloadsDir.toString();
-    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
-    HTTPRequest request =
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(node.isFProxyJavascriptEnabled()).thenReturn(false);
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(alicePeer(), bobPeer()));
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(
+            Map.of("recommend_request", "yes", "identifier-a", "download-1", "key-a", "CHK@")),
+        ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains("Alice"));
+    assertTrue(html.contains("Bob"));
+    assertTrue(html.contains("node_42"));
+    assertTrue(html.contains("node_99"));
+    assertTrue(html.contains("recommend_uri"));
+    assertTrue(html.contains("darknet_connections"));
+    verify(darknetConnectionsPort).listPeers();
+  }
+
+  @Test
+  void handleMethodPOST_whenRecommendFormRequestedAndJavascriptDisabled_omitsCheckAllScript()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    when(container.isFProxyJavascriptEnabled()).thenReturn(false);
+    when(node.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(alicePeer()));
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(
+            Map.of("recommend_request", "yes", "identifier-a", "download-1", "key-a", "CHK@")),
+        ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertFalse(html.contains("/static/js/checkall.js"));
+    assertFalse(html.contains("checkAll(this, 'darknet_connections')"));
+  }
+
+  @Test
+  void handleMethodPOST_whenRecommendSubmitted_callsRuntimePortOnlyForSelectedPeers()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(alicePeer(), bobPeer()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
         createRequest(
             Map.of(
-                "download", "yes",
-                "key", "CHK@",
-                "type", "text/plain",
-                "persistence", "forever",
-                "return-type", "disk",
-                "path", downloadPath,
-                "filterData", "on"));
+                "recommend_uri", "yes",
+                "description", "look at these",
+                "key-0", "CHK@",
+                "key-1", "SSK@",
+                "node_42", "on")),
+        ctx);
 
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
+    verify(darknetMessagingPort)
+        .recommendDownloads("peer-1", List.of("CHK@", "SSK@"), "look at these");
+    verify(darknetMessagingPort, never()).recommendDownloads(eq("peer-2"), any(), anyString());
     assertEquals(QueueToadlet.PATH_DOWNLOADS, captureRedirectLocation(ctx));
-    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
-        ArgumentCaptor.forClass(QueueDownloadRequest.class);
-    verify(queueDownloadPort).enqueueDownload(requestCaptor.capture());
-    QueueDownloadRequest queueRequest = requestCaptor.getValue();
-    assertEquals("CHK@", queueRequest.fetchUri());
-    assertTrue(queueRequest.filterData());
-    assertEquals("text/plain", queueRequest.expectedMimeType());
-    assertEquals("forever", queueRequest.persistenceType());
-    assertEquals("disk", queueRequest.returnType());
-    assertEquals(new File(downloadPath), queueRequest.downloadsDir());
   }
 
   @Test
-  void handleMethodPOST_whenBulkDownloadsRequested_callsQueueDownloadPortOncePerValidKey()
+  void handleMethodPOST_whenSelectedPeerDisappears_continuesBestEffortAndRedirects()
       throws Exception {
     QueueToadlet toadlet = createQueueToadlet();
-    Path downloadsDir = Files.createDirectories(tempDir.resolve("bulk-downloads"));
-    String downloadPath = downloadsDir.toString();
-    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
-    ByteArrayOutputStream body = captureBody(ctx);
-    HTTPRequest request =
-        createRequest(
-            Map.of(
-                "bulkDownloads", "CHK@\nnot-a-uri\n\nSSK@\n",
-                "target", "disk",
-                "path", downloadPath,
-                "filterData", "on"));
-
-    toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
-
-    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
-        ArgumentCaptor.forClass(QueueDownloadRequest.class);
-    verify(queueDownloadPort, times(2)).enqueueDownload(requestCaptor.capture());
-    List<QueueDownloadRequest> requests = requestCaptor.getAllValues();
-    assertEquals("CHK@", requests.getFirst().fetchUri());
-    assertEquals("SSK@", requests.get(1).fetchUri());
-    assertEquals("disk", requests.getFirst().returnType());
-    assertEquals(new File(downloadPath), requests.getFirst().downloadsDir());
-    assertTrue(body.toString(StandardCharsets.UTF_8).contains("not-a-uri"));
-  }
-
-  @Test
-  void handleMethodPOST_whenSingleDownloadRejected_returnsDiskConfigErrorPage() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet();
-    Path downloadsDir = Files.createDirectories(tempDir.resolve("downloads"));
-    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(true);
-    doThrow(new QueueDownloadRejectedException("rejected"))
-        .when(queueDownloadPort)
-        .enqueueDownload(any(QueueDownloadRequest.class));
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(alicePeer(), bobPeer()));
+    doThrow(new UnknownPeerException("peer-1"))
+        .when(darknetMessagingPort)
+        .recommendDownloads("peer-1", List.of("CHK@"), "look at these");
 
     toadlet.handleMethodPOST(
         URI.create("http://localhost/downloads/"),
         createRequest(
             Map.of(
-                "download", "yes",
-                "key", "CHK@",
-                "persistence", "forever",
-                "return-type", "disk",
-                "path", downloadsDir.toString())),
+                "recommend_uri", "yes",
+                "description", "look at these",
+                "key-0", "CHK@",
+                "node_42", "on",
+                "node_99", "on")),
         ctx);
 
-    verify(queueDownloadPort).enqueueDownload(any(QueueDownloadRequest.class));
+    verify(darknetMessagingPort).recommendDownloads("peer-1", List.of("CHK@"), "look at these");
+    verify(darknetMessagingPort).recommendDownloads("peer-2", List.of("CHK@"), "look at these");
+    assertEquals(QueueToadlet.PATH_DOWNLOADS, captureRedirectLocation(ctx));
+  }
+
+  @Test
+  void handleMethodPOST_whenRecommendationUriIsMalformed_returnsInvalidUriErrorWithoutSend()
+      throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/downloads/"),
+        createRequest(
+            Map.of(
+                "recommend_uri", "yes",
+                "description", "broken",
+                "key-0", "not-a-uri",
+                "node_42", "on")),
+        ctx);
+
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertFalse(html.isBlank());
     verify(ctx).sendReplyHeaders(eq(400), eq("Bad request"), any(), anyString(), anyLong());
-  }
-
-  @Test
-  void handleMethodPOST_whenBulkQueueUnavailable_rendersBulkFailureResultPage() throws Exception {
-    QueueToadlet toadlet = createQueueToadlet();
-    doThrow(new RequestQueueUnavailableException("queue unavailable"))
-        .when(queueDownloadPort)
-        .enqueueDownload(any(QueueDownloadRequest.class));
-    ByteArrayOutputStream body = captureBody(ctx);
-
-    toadlet.handleMethodPOST(
-        URI.create("http://localhost/downloads/"),
-        createRequest(Map.of("bulkDownloads", "CHK@\n", "target", "direct")),
-        ctx);
-
-    String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains("CHK@"));
-    assertFalse(html.contains("queue.db"));
-    verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
-  }
-
-  @Test
-  void handleMethodPOST_whenBulkQueueUnavailableAfterPartialSuccess_preservesAcceptedKeys()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet();
-    doNothing()
-        .doThrow(new RequestQueueUnavailableException("queue unavailable"))
-        .when(queueDownloadPort)
-        .enqueueDownload(any(QueueDownloadRequest.class));
-    ByteArrayOutputStream body = captureBody(ctx);
-
-    toadlet.handleMethodPOST(
-        URI.create("http://localhost/downloads/"),
-        createRequest(Map.of("bulkDownloads", "CHK@\nSSK@\n", "target", "direct")),
-        ctx);
-
-    String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains("CHK@"));
-    assertTrue(html.contains("SSK@"));
-    assertFalse(html.contains("queue.db"));
-    verify(queueDownloadPort, times(2)).enqueueDownload(any(QueueDownloadRequest.class));
-    verify(ctx).sendReplyHeaders(eq(200), eq("OK"), any(), anyString(), anyLong());
-  }
-
-  @Test
-  void handleMethodPOST_whenDownloadPathDisallowed_returnsDisallowedPageWithoutQueueDownloadCall()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet();
-    String downloadPath = tempDir.resolve("blocked").toString();
-    when(transferAccessPort.allowDownloadTo(any(File.class))).thenReturn(false);
-    ByteArrayOutputStream body = captureBody(ctx);
-
-    toadlet.handleMethodPOST(
-        URI.create("http://localhost/downloads/"),
-        createRequest(
-            Map.of(
-                "download", "yes",
-                "key", "CHK@",
-                "persistence", "forever",
-                "return-type", "disk",
-                "path", downloadPath)),
-        ctx);
-
-    String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(downloadPath));
-    assertTrue(html.contains("disallowed"));
-    verify(queueDownloadPort, never()).enqueueDownload(any(QueueDownloadRequest.class));
-  }
-
-  @Test
-  void handleMethodPOST_whenDiskDownloadsDisabled_fallsBackToDirectReturnWithoutPathCheck()
-      throws Exception {
-    QueueToadlet toadlet = createQueueToadlet();
-    when(queueDownloadPort.isDiskDownloadDisabled()).thenReturn(true);
-
-    toadlet.handleMethodPOST(
-        URI.create("http://localhost/downloads/"),
-        createRequest(
-            Map.of(
-                "download", "yes",
-                "key", "CHK@",
-                "persistence", "forever",
-                "return-type", "disk",
-                "path", tempDir.resolve("downloads").toString())),
-        ctx);
-
-    ArgumentCaptor<QueueDownloadRequest> requestCaptor =
-        ArgumentCaptor.forClass(QueueDownloadRequest.class);
-    verify(queueDownloadPort).enqueueDownload(requestCaptor.capture());
-    QueueDownloadRequest queueRequest = requestCaptor.getValue();
-    assertEquals("direct", queueRequest.returnType());
-    assertNull(queueRequest.downloadsDir());
-    verify(transferAccessPort, never()).allowDownloadTo(any(File.class));
+    verifyNoInteractions(darknetMessagingPort);
   }
 
   private QueueToadlet createQueueToadlet() throws Exception {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
-    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.userDir()).thenReturn(userDir);
     when(node.getUserDir()).thenReturn(userDir.dir());
     when(node.awaitingPassword()).thenReturn(false);
     when(node.isStopping()).thenReturn(false);
     when(node.getDatabasePath()).thenReturn(tempDir.resolve("queue.db").toString());
+    when(node.isFProxyJavascriptEnabled()).thenReturn(false);
 
     RequestStarterGroup starters = org.mockito.Mockito.mock(RequestStarterGroup.class);
     NodeClientCore core = org.mockito.Mockito.mock(NodeClientCore.class);
@@ -322,6 +272,7 @@ class QueueToadletPostDownloadTest {
     NodeNetworkSubsystem network = org.mockito.Mockito.mock(NodeNetworkSubsystem.class);
     when(node.network()).thenReturn(network);
     when(network.executor()).thenReturn(executor);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[0]);
 
     ClientContext context = createClientContext();
     context.init(starters, alerts);
@@ -482,5 +433,13 @@ class QueueToadletPostDownloadTest {
         .when(stub)
         .getInfobox(anyString(), anyString(), any(HTMLNode.class), any(), anyBoolean());
     return stub;
+  }
+
+  private static DarknetConnectionPeerSnapshot alicePeer() {
+    return new DarknetConnectionPeerSnapshot(42, "peer-1", "Alice", "", false);
+  }
+
+  private static DarknetConnectionPeerSnapshot bobPeer() {
+    return new DarknetConnectionPeerSnapshot(99, "peer-2", "Bob", "", false);
   }
 }
