@@ -28,6 +28,7 @@ import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.StatisticsPort;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.runtime.spi.WelcomePagePort;
 
 /**
@@ -68,6 +69,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final SecurityLevelsPort securityLevelsPort;
   private final FirstTimeWizardPort firstTimeWizardPort;
   private final WelcomePagePort welcomePagePort;
+  private final WelcomeActionPort welcomeActionPort;
   private final RequestQueuePort requestQueuePort;
   private final NodeInfoPort nodeInfoPort;
   private final PeerPort peerPort;
@@ -172,6 +174,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
     this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
     this.welcomePagePort = new LegacyWelcomePagePort(node);
+    this.welcomeActionPort = new LegacyWelcomeActionPort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
@@ -413,6 +416,18 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public WelcomePagePort welcomePage() {
     return welcomePagePort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port keeps the remaining welcome-page update, restart, shutdown, and
+   * bandwidth-upgrade actions inside the daemon root module while exposing only the narrow legacy
+   * action surface upstream.
+   */
+  @Override
+  public WelcomeActionPort welcomeAction() {
+    return welcomeActionPort;
   }
 
   /**

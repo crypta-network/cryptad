@@ -64,6 +64,11 @@ class LegacyRuntimePortsTest {
   void getters_whenRequested_expectStablePortReferences() {
     PortsSnapshot snapshot = capturePorts();
 
+    assertStableInfrastructurePorts(snapshot);
+    assertStableFeaturePorts(snapshot);
+  }
+
+  private void assertStableInfrastructurePorts(PortsSnapshot snapshot) {
     assertAll(
         () -> assertSame(snapshot.executionPort(), ports.execution()),
         () -> assertSame(snapshot.randomnessPort(), ports.randomness()),
@@ -75,7 +80,11 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.connectionsSupportPort(), ports.connectionsSupport()),
         () -> assertSame(snapshot.darknetConnectionsPort(), ports.darknetConnections()),
         () -> assertSame(snapshot.darknetMessagingPort(), ports.darknetMessaging()),
-        () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()),
+        () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()));
+  }
+
+  private void assertStableFeaturePorts(PortsSnapshot snapshot) {
+    assertAll(
         () -> assertSame(snapshot.queueSupportPort(), ports.queueSupport()),
         () -> assertSame(snapshot.queueCompletionPort(), ports.queueCompletion()),
         () -> assertSame(snapshot.queuePagePort(), ports.queuePage()),
@@ -86,6 +95,7 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.securityLevelsPort(), ports.securityLevels()),
         () -> assertSame(snapshot.firstTimeWizardPort(), ports.firstTimeWizard()),
         () -> assertSame(snapshot.welcomePagePort(), ports.welcomePage()),
+        () -> assertSame(snapshot.welcomeActionPort(), ports.welcomeAction()),
         () -> assertSame(snapshot.requestQueuePort(), ports.requestQueue()),
         () -> assertSame(snapshot.nodeInfoPort(), ports.nodeInfo()),
         () -> assertSame(snapshot.peerPort(), ports.peer()));
@@ -115,6 +125,7 @@ class LegacyRuntimePortsTest {
         () -> assertInstanceOf(LegacySecurityLevelsPort.class, snapshot.securityLevelsPort()),
         () -> assertInstanceOf(LegacyFirstTimeWizardPort.class, snapshot.firstTimeWizardPort()),
         () -> assertInstanceOf(LegacyWelcomePagePort.class, snapshot.welcomePagePort()),
+        () -> assertInstanceOf(LegacyWelcomeActionPort.class, snapshot.welcomeActionPort()),
         () -> assertInstanceOf(LegacyRequestQueuePort.class, snapshot.requestQueuePort()),
         () -> assertInstanceOf(LegacyNodeInfoPort.class, snapshot.nodeInfoPort()),
         () -> assertInstanceOf(LegacyPeerPort.class, snapshot.peerPort()));
@@ -195,6 +206,7 @@ class LegacyRuntimePortsTest {
         ports.securityLevels(),
         ports.firstTimeWizard(),
         ports.welcomePage(),
+        ports.welcomeAction(),
         ports.requestQueue(),
         ports.nodeInfo(),
         ports.peer());
@@ -222,6 +234,7 @@ class LegacyRuntimePortsTest {
       Object securityLevelsPort,
       Object firstTimeWizardPort,
       Object welcomePagePort,
+      Object welcomeActionPort,
       Object requestQueuePort,
       Object nodeInfoPort,
       Object peerPort) {}
