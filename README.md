@@ -170,8 +170,8 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:foundation-fs` owns `network.crypta.fs`.
 - `:foundation-compat` owns `network.crypta.compat`.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
-  by higher layers, including the migrated FCP peer-management and admin-HTTP connections-family
-  slices.
+  by higher layers, including the migrated FCP peer-management plus the admin-HTTP config,
+  connections, queue, security-levels, and first-time-wizard slices.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -179,8 +179,12 @@ Cryptad now uses a partial multi-project Gradle build.
 - The large cyclic daemon core remains in the root project for now, and all tests still live there.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, implemented in the root project by
-  `network.crypta.node.runtime.LegacyRuntimePorts`, plus a few HTTP-local wiring records such as
-  `network.crypta.clients.http.ConnectionsToadletRuntimePorts`.
+  `network.crypta.node.runtime.LegacyRuntimePorts`, plus HTTP-local wiring records such as
+  `network.crypta.clients.http.ConfigToadletRuntimePorts`,
+  `network.crypta.clients.http.ConnectionsToadletRuntimePorts`,
+  `network.crypta.clients.http.FirstTimeWizardToadletRuntimePorts`,
+  `network.crypta.clients.http.QueueToadletRuntimePorts`, and
+  `network.crypta.clients.http.SecurityLevelsToadletRuntimePorts`.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
@@ -507,13 +511,18 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   (`network.crypta.clients.http`). FCP now consumes execution, randomness, transfer policy,
   lifecycle, config access, and detached peer mutations through `RuntimePorts` and FCP-local
   adapters instead of reaching directly into daemon internals for those concerns. The migrated HTTP
-  management slices now also consume detached runtime ports for connectivity, friends/strangers
-  page snapshots, add-friend installer metadata, local noderef export, selected-peer actions, and
-  N2NTM compose/send flows.
+  management/configuration slices now also consume detached runtime ports for config export and
+  persistence, connectivity and friends/strangers page snapshots, add-friend installer metadata,
+  local noderef export, selected-peer actions, queue page/download/insert/mutation/support and
+  completion flows, security-level state and warnings, first-time-wizard snapshot/submission
+  handling, and N2NTM compose/send flows.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
   `RuntimePorts`, `ConfigPort`, `NodeInfoPort`, `PeerPort`, `ConnectionsPagePort`,
-  `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `ConfigSnapshot`,
-  and `ConfigFieldSet`.
+  `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `QueuePagePort`,
+  `QueueDownloadPort`, `QueueInsertPort`, `QueueMutationPort`, `QueueSupportPort`,
+  `QueueCompletionPort`, `SecurityLevelsPort`, `FirstTimeWizardPort`, `ConfigSnapshot`,
+  `ConfigFieldSet`, `QueuePageSnapshot`, `QueueInsertOutcome`, `SecurityLevelsSnapshot`, and
+  `FirstTimeWizardSnapshot`.
 - Config (`network.crypta.config`): type‑safe persisted configuration retained in the root daemon
   and exposed upstream through `network.crypta.node.runtime.LegacyConfigPort` via
   `RuntimePorts#config()`.

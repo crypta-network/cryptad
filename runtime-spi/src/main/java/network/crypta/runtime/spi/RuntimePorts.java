@@ -25,6 +25,7 @@ package network.crypta.runtime.spi;
  * @see DarknetConnectionsPort
  * @see DarknetMessagingPort
  * @see DiagnosticPort
+ * @see QueueCompletionPort
  * @see QueuePagePort
  * @see QueueDownloadPort
  * @see QueueMutationPort
@@ -181,6 +182,17 @@ public interface RuntimePorts {
    * @return queue support port for backend enablement, persistence state, and panic actions
    */
   QueueSupportPort queueSupport();
+
+  /**
+   * Returns the legacy queue-completion tracking capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port keeps the remaining completion callback registration, persisted completed-request
+   * recovery, and completion alert registration inside the daemon root module while exposing only a
+   * minimal idempotent startup hook upstream.
+   *
+   * @return queue-completion runtime port for per-side completion-tracker startup
+   */
+  QueueCompletionPort queueCompletion();
 
   /**
    * Returns the legacy queue-page read capability exposed to admin-facing HTTP code.
