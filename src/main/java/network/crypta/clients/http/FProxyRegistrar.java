@@ -365,7 +365,11 @@ final class FProxyRegistrar {
         localFileN2NMToadlet,
         ToadletRegistration.basic(null, LocalFileN2NMToadlet.BROWSE_PATH, true, false));
 
-    BookmarkEditorToadlet bookmarkEditorToadlet = new BookmarkEditorToadlet(client, core);
+    BookmarkEditorToadlet bookmarkEditorToadlet =
+        new BookmarkEditorToadlet(
+            client,
+            new BookmarkEditorToadletRuntimePorts(
+                runtimePorts.darknetConnections(), runtimePorts.darknetMessaging()));
     server.register(
         bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
 

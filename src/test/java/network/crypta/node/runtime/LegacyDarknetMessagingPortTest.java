@@ -146,6 +146,40 @@ class LegacyDarknetMessagingPortTest {
   }
 
   @Test
+  void shareBookmark_whenIdentityResolves_delegatesToLegacyBookmarkFeed() throws Exception {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {darknetPeer});
+    when(darknetPeer.getIdentityString()).thenReturn("peer-1");
+
+    port.shareBookmark("peer-1", "KSK@bookmark", "bookmark-name", "public description", true);
+
+    verify(darknetPeer)
+        .sendBookmarkFeed(
+            new FreenetURI("KSK@bookmark"), "bookmark-name", "public description", true);
+  }
+
+  @Test
+  void shareBookmark_whenPeerIdentityIsUnknown_throwsUnknownPeerException() {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[0]);
+
+    assertThrows(
+        UnknownPeerException.class,
+        () -> port.shareBookmark("missing-peer", "KSK@bookmark", "bookmark-name", null, false));
+  }
+
+  @Test
+  void shareBookmark_whenResolvedPeerIsNotDarknet_throwsDarknetPeerRequiredException() {
+    LegacyDarknetMessagingPort port = newPort();
+    when(network.peerNodes()).thenReturn(new PeerNode[] {nonDarknetPeer});
+    when(nonDarknetPeer.getIdentityString()).thenReturn("peer-1");
+
+    assertThrows(
+        DarknetPeerRequiredException.class,
+        () -> port.shareBookmark("peer-1", "KSK@bookmark", "bookmark-name", null, false));
+  }
+
+  @Test
   void sendComposedMessage_whenLocalFilePresent_usesOnePeerResolutionForOfferAndText()
       throws Exception {
     LegacyDarknetMessagingPort port = newPort();

@@ -2,13 +2,16 @@ package network.crypta.clients.http;
 
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.bookmark.BookmarkCategory;
 import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +25,7 @@ import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -42,31 +46,30 @@ class BookmarkEditorToadletTest {
   private static final URI DUMMY_URI = URI.create("http://localhost/bookmarkEditor/");
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private NodeClientCore core;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private DarknetConnectionsPort darknetConnectionsPort;
+  @Mock private DarknetMessagingPort darknetMessagingPort;
 
   @Mock private BookmarkManager bookmarkManager;
   @Mock private PageMaker pageMaker;
   @Mock private ToadletContext context;
+  @Mock private ToadletContainer container;
 
   private BookmarkEditorToadlet toadlet;
 
   @BeforeEach
   void setUp() throws Exception {
-    toadlet = new BookmarkEditorToadlet(client, core);
+    toadlet =
+        new BookmarkEditorToadlet(
+            client,
+            new BookmarkEditorToadletRuntimePorts(darknetConnectionsPort, darknetMessagingPort));
 
-    when(core.getNode()).thenReturn(node);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    when(network.darknetConnections()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
-    when(node.isFProxyJavascriptEnabled()).thenReturn(false);
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of());
 
     when(context.getPageMaker()).thenReturn(pageMaker);
     when(context.getBookmarkManager()).thenReturn(bookmarkManager);
+    when(context.getContainer()).thenReturn(container);
     when(context.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(false);
     when(context.addFormChild(any(HTMLNode.class), anyString(), anyString()))
         .thenAnswer(
             invocation -> {
@@ -85,7 +88,7 @@ class BookmarkEditorToadletTest {
     doNothing().when(context).writeData(any(byte[].class), anyInt(), anyInt());
 
     when(pageMaker.getPageNode(anyString(), any(ToadletContext.class)))
-        .thenAnswer(invocation -> createPageNode());
+        .thenAnswer(_ -> createPageNode());
     when(pageMaker.getInfobox(
             anyString(), anyString(), any(HTMLNode.class), anyString(), anyBoolean()))
         .thenAnswer(
@@ -172,6 +175,40 @@ class BookmarkEditorToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenShareActionSelected_delegatesBookmarkSharesViaRuntimePorts()
+      throws Exception {
+    String bookmarkPath = "/parent/item";
+    BookmarkItem item = mock(BookmarkItem.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    DarknetConnectionPeerSnapshot selectedPeer =
+        new DarknetConnectionPeerSnapshot(101, "peer-1", "Alice", "", false);
+    DarknetConnectionPeerSnapshot unselectedPeer =
+        new DarknetConnectionPeerSnapshot(202, "peer-2", "Bob", "", false);
+
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(selectedPeer, unselectedPeer));
+    when(request.isPartSet("AddDefaultBookmarks")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("bookmark", 5000)).thenReturn(bookmarkPath);
+    when(request.getPartAsStringFailsafe("action", 20)).thenReturn("share");
+    when(request.isPartSet("confirmdelete")).thenReturn(false);
+    when(request.isPartSet("cancelCut")).thenReturn(false);
+    when(request.isPartSet("node_101")).thenReturn(true);
+    when(request.isPartSet("node_202")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("publicDescB", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("publicDesc");
+    when(bookmarkManager.getItemByPath(bookmarkPath)).thenReturn(item);
+    when(item.getURI()).thenReturn(new FreenetURI("KSK@shared"));
+    when(item.getName()).thenReturn("shared-name");
+    when(item.hasAnActivelink()).thenReturn(true);
+
+    toadlet.handleMethodPOST(DUMMY_URI, request, context);
+
+    verify(darknetMessagingPort)
+        .shareBookmark("peer-1", "KSK@shared", "shared-name", "publicDesc", true);
+    verify(darknetMessagingPort, never())
+        .shareBookmark(eq("peer-2"), anyString(), anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
   void handleMethodGET_whenPasteAction_movesBookmarkAndClearsCutBuffer() throws Exception {
     setCutedPathToSource(toadlet);
 
@@ -201,6 +238,40 @@ class BookmarkEditorToadletTest {
 
     verify(bookmarkManager).getItemByPath("/missing");
     verify(bookmarkManager, never()).moveBookmark(anyString(), anyString());
+  }
+
+  @Test
+  void handleMethodGET_whenShareActionAndJavascriptEnabled_rendersDetachedFriendCheckboxes()
+      throws Exception {
+    BookmarkItem item = mock(BookmarkItem.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    DarknetConnectionPeerSnapshot peer =
+        new DarknetConnectionPeerSnapshot(101, "peer-1", "Alice", "", false);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(darknetConnectionsPort.listPeers()).thenReturn(List.of(peer));
+    when(request.getParam("action")).thenReturn("share");
+    when(request.getParam("bookmark")).thenReturn("/item");
+    when(bookmarkManager.getItemByPath("/item")).thenReturn(item);
+    when(item.getVisibleName()).thenReturn("Item");
+    when(item.getKey()).thenReturn("KSK@item");
+    when(item.hasAnActivelink()).thenReturn(true);
+    when(item.getDescription()).thenReturn("description");
+
+    toadlet.handleMethodGET(DUMMY_URI, request, context);
+
+    ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> offsetCaptor = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<Integer> lengthCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(context).writeData(bodyCaptor.capture(), offsetCaptor.capture(), lengthCaptor.capture());
+    String html =
+        new String(
+            bodyCaptor.getValue(),
+            offsetCaptor.getValue(),
+            lengthCaptor.getValue(),
+            StandardCharsets.UTF_8);
+    assertTrue(html.contains("name=\"node_101\""));
+    assertTrue(html.contains("Alice"));
+    assertTrue(html.contains("/static/js/checkall.js"));
   }
 
   private PageNode createPageNode() {
