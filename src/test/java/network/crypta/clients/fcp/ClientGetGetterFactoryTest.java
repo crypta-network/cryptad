@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -182,10 +183,7 @@ class ClientGetGetterFactoryTest {
             request,
             mock(FreenetURI.class),
             fetchContext,
-            (short) 1,
             returnBucket,
-            null,
-            null,
             false,
             true,
             false,
@@ -209,46 +207,41 @@ class ClientGetGetterFactoryTest {
         NullPointerException.class,
         () ->
             createGetter(
-                request,
-                mock(FreenetURI.class),
-                fetchContext,
-                (short) 1,
-                null,
-                null,
-                null,
-                false,
-                true,
-                false,
-                null));
+                request, mock(FreenetURI.class), fetchContext, null, false, true, false, null));
   }
 
   @Test
   void createGetter_whenBinaryBlobTrueAndReturnBucketNull_allocatesBucket() throws Exception {
     ClientGet request = mockRequestWithClient();
     FetchContext fetchContext = mock(FetchContext.class);
-    Bucket createdBucket = mock(Bucket.class);
 
-    when(fetchContext.getMaxOutputLength()).thenReturn(128L);
-    when(fetchRuntimeSupport.allocateBinaryBlobBucket(128L, true)).thenReturn(createdBucket);
+    try (Bucket createdBucket = new NullBucket()) {
+      when(fetchContext.getMaxOutputLength()).thenReturn(128L);
+      when(fetchRuntimeSupport.allocateBinaryBlobBucket(128L, true)).thenReturn(createdBucket);
 
-    ClientGetter getter =
-        createGetter(
-            request,
-            mock(FreenetURI.class),
-            fetchContext,
-            (short) 1,
-            null,
-            null,
-            null,
-            false,
-            true,
-            true,
-            fetchRuntimeSupport);
+      ClientGetter getter =
+          createGetter(
+              request,
+              mock(FreenetURI.class),
+              fetchContext,
+              null,
+              false,
+              true,
+              true,
+              fetchRuntimeSupport);
 
-    BinaryBlobWriter writer = (BinaryBlobWriter) readField(getter, "binaryBlobWriter");
-    assertNotNull(writer);
-    assertSame(createdBucket, readField(writer, "out"));
-    verify(fetchRuntimeSupport).allocateBinaryBlobBucket(128L, true);
+      BinaryBlobWriter writer = (BinaryBlobWriter) readField(getter, "binaryBlobWriter");
+      assertNotNull(writer);
+      assertSame(createdBucket, readField(writer, "out"));
+      assertEquals(
+          1,
+          mockingDetails(fetchRuntimeSupport).getInvocations().stream()
+              .filter(
+                  invocation -> invocation.getMethod().getName().equals("allocateBinaryBlobBucket"))
+              .filter(invocation -> invocation.getArguments()[0].equals(128L))
+              .filter(invocation -> invocation.getArguments()[1].equals(true))
+              .count());
+    }
   }
 
   @Test
@@ -262,10 +255,7 @@ class ClientGetGetterFactoryTest {
             request,
             mock(FreenetURI.class),
             fetchContext,
-            (short) 1,
             returnBucket,
-            null,
-            null,
             true,
             false,
             false,
@@ -288,10 +278,7 @@ class ClientGetGetterFactoryTest {
             request,
             mock(FreenetURI.class),
             fetchContext,
-            (short) 1,
             returnBucket,
-            null,
-            null,
             false,
             false,
             false,
@@ -324,9 +311,6 @@ class ClientGetGetterFactoryTest {
             request,
             mock(FreenetURI.class),
             fetchContext,
-            (short) 1,
-            null,
-            null,
             null,
             false,
             false,
@@ -355,19 +339,15 @@ class ClientGetGetterFactoryTest {
       ClientGet request,
       FreenetURI uri,
       FetchContext fetchContext,
-      short priorityClass,
       Bucket returnBucket,
-      Bucket initialMetadata,
-      String extensionCheck,
       boolean discardData,
       boolean binaryBlob,
       boolean persistenceForever,
       FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IOException {
     ClientGetterRequest getterRequest =
-        ClientGetGetterFactory.createGetterRequest(request, uri, fetchContext, priorityClass);
-    ClientGetterOptions options =
-        new ClientGetterOptions(returnBucket, null, false, initialMetadata, extensionCheck);
+        ClientGetGetterFactory.createGetterRequest(request, uri, fetchContext, (short) 1);
+    ClientGetterOptions options = new ClientGetterOptions(returnBucket, null, false, null, null);
     ClientGetGetterFlags flags =
         new ClientGetGetterFlags(discardData, binaryBlob, persistenceForever);
     return ClientGetGetterFactory.createGetter(getterRequest, options, flags, fetchRuntimeSupport);

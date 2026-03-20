@@ -63,7 +63,7 @@ record CoreFcpFetchRuntimeSupport(NodeClientCore core, TransferAccessPort transf
    * Returns the default persistent fetch context supplied by the wrapped daemon core.
    *
    * <p>Factories typically adjust the returned context immediately for one request, but the
-   * baseline always comes from the live core so persistent GET defaults remain unchanged.
+   * baseline always comes from the live core, so persistent GET defaults remain unchanged.
    *
    * @return default persistent fetch context template from the daemon core
    */

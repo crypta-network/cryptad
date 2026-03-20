@@ -516,7 +516,7 @@ public class FCPConnectionHandler implements Closeable {
 
   private ClientGet buildClientGet(ClientGetMessage message) {
     try {
-      return ClientGetFactory.fromMessage(this, message, server.fetchRuntimeSupport());
+      return ClientGetFactory.fromMessage(this, message, server.messageFetchRuntimeSupport());
     } catch (IdentifierCollisionException _) {
       handleIdentifierCollision(message.identifier, message.global);
     } catch (MessageInvalidException e) {

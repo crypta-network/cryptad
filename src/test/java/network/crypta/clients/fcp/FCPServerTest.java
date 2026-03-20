@@ -25,6 +25,7 @@ class FCPServerTest {
 
   @Mock private NodeClientCore core;
   @Mock private RuntimePorts runtimePorts;
+  @Mock private RuntimePorts coreRuntimePorts;
   @Mock private ExecutionPort executionPort;
   @Mock private TransferAccessPort serverTransferAccess;
   @Mock private TransferAccessPort coreTransferAccess;
@@ -32,6 +33,8 @@ class FCPServerTest {
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     when(runtimePorts.execution()).thenReturn(executionPort);
     when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
+    lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
+    lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -173,6 +176,19 @@ class FCPServerTest {
     // Assert
     assertSame(serverTransferAccess, actual);
     assertNotSame(coreTransferAccess, actual);
+  }
+
+  @Test
+  void messageFetchRuntimeSupport_whenTransferAccessQueried_usesCoreRuntimePorts() {
+    // Arrange
+    FCPServer server = newServer(false, false);
+
+    // Act
+    TransferAccessPort actual = server.messageFetchRuntimeSupport().transferAccess();
+
+    // Assert
+    assertSame(coreTransferAccess, actual);
+    assertNotSame(serverTransferAccess, actual);
   }
 
   @Test

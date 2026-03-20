@@ -738,13 +738,29 @@ public class FCPServer implements Runnable, DownloadCache {
    * Returns the package-local runtime support used by the FCP GET/fetch path.
    *
    * <p>This seam keeps fetch request construction and getter setup independent of direct {@link
-   * NodeClientCore} access while preserving current runtime behavior. It is package-private because
-   * it is an internal wiring detail of {@code clients.fcp}, not a public server API.
+   * NodeClientCore} access while preserving current runtime behavior. This accessor is used for the
+   * server-owned persistent/global GET flow, so its transfer policy stays aligned with {@link
+   * #runtime()}. It is package-private because it is an internal wiring detail of {@code
+   * clients.fcp}, not a public server API.
    *
    * @return fetch runtime support backing GET request construction and execution
    */
   FcpFetchRuntimeSupport fetchRuntimeSupport() {
     return fetchRuntimeSupport;
+  }
+
+  /**
+   * Returns fetch runtime support for GET requests created directly from inbound FCP messages.
+   *
+   * <p>Socket/message request validation historically consulted the core runtime's transfer policy,
+   * even when the enclosing {@link FCPServer} was constructed with a different {@link RuntimePorts}
+   * facade. Preserving that behavior keeps connection, reboot, and forever message-based GETs on
+   * the same DDA policy they used before the GET seam refactor.
+   *
+   * @return fetch runtime support that uses the core runtime's transfer policy for message flows
+   */
+  FcpFetchRuntimeSupport messageFetchRuntimeSupport() {
+    return new CoreFcpFetchRuntimeSupport(core, core.getRuntimePorts().transferAccess());
   }
 
   /**
