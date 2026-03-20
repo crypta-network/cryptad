@@ -10,14 +10,13 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
@@ -93,11 +92,7 @@ public final class ClientGet extends ClientRequest {
   @SuppressWarnings("java:S1948")
   private final Bucket initialMetadata;
 
-  private transient ClientGetMessageReplay messageReplay;
-  private transient ClientGetLifecycle lifecycle;
-  private transient ClientGetStatusSnapshotBuilder statusSnapshotBuilder;
-  private transient ClientGetRestartCoordinator restartCoordinator;
-  private transient ClientGetStatusReporter statusReporter;
+  private transient ClientGetHelpers helpers;
 
   // Verbosity bitmasks
   static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
@@ -190,66 +185,6 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
-   * Bundles configuration for persistent global GET requests to keep constructors concise.
-   *
-   * <p>Instances capture all per-request tuning parameters that are otherwise passed positionally.
-   * The record is intentionally immutable, so callers can safely reuse it across retries or
-   * validation steps without worrying about concurrent mutation. Callers typically populate it from
-   * parsed FCP messages or persisted metadata before invoking the global-queue constructor, and the
-   * values are meant to be safe for logging or storage because they avoid holding live buckets.
-   *
-   * <ul>
-   *   <li>Queue scope: persistence flags, identifiers, and real-time scheduling hints.
-   *   <li>Data handling: maximum output sizes, return type, and disk destination path.
-   *   <li>Behavior flags: datastore reachability, filtering, and cache-write preferences.
-   * </ul>
-   *
-   * @param dsOnly true to restrict fetches to the local datastore only.
-   * @param ignoreDS true to bypass datastore reads when evaluating availability hints.
-   * @param filterData true to apply content filtering before delivery or disk write.
-   * @param maxSplitfileRetries maximum retry count per splitfile block; must be non-negative.
-   * @param maxNonSplitfileRetries maximum retry count for non-splitfile requests; must be
-   *     non-negative.
-   * @param maxOutputLength maximum bytes allowed for payload and temporary storage.
-   * @param returnType delivery mode describing how payload bytes are surfaced.
-   * @param persistRebootOnly true to persist across reboots, false for forever.
-   * @param identifier caller-supplied identifier echoed in progress and status messages.
-   * @param verbosity bitmask controlling which progress events are emitted.
-   * @param prioClass priority class guiding scheduler ordering and bandwidth share.
-   * @param returnFilename disk destination path used only when ReturnType.DISK applies.
-   * @param charset legacy charset hint; ignored but preserved for compatibility logging.
-   * @param writeToClientCache true to allow writing the payload into the client cache.
-   * @param realTimeFlag true for realtime scheduler lane, false for bulk queue.
-   * @param binaryBlob true to return BinaryBlob output instead of a raw bucket.
-   */
-  public record GlobalRequestConfig(
-      boolean dsOnly,
-      boolean ignoreDS,
-      boolean filterData,
-      int maxSplitfileRetries,
-      int maxNonSplitfileRetries,
-      long maxOutputLength,
-      ReturnType returnType,
-      boolean persistRebootOnly,
-      String identifier,
-      int verbosity,
-      short prioClass,
-      File returnFilename,
-      String charset,
-      boolean writeToClientCache,
-      boolean realTimeFlag,
-      boolean binaryBlob) {}
-
-  /** Bundles construction inputs to keep request constructors compact. */
-  record ClientGetSetup(
-      FetchContext fetchContext,
-      ClientGetReturnPlanner.ReturnSetup returnSetup,
-      ReturnType returnType,
-      boolean binaryBlob,
-      Bucket initialMetadata,
-      NodeClientCore core) {}
-
-  /**
    * Creates a new request that has already been validated and configured by {@link
    * ClientGetFactory}.
    *
@@ -269,7 +204,7 @@ public final class ClientGet extends ClientRequest {
     this.targetFile = returnSetup.targetFile();
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
-    getter = makeGetter(setup.core(), returnSetup.bucket());
+    getter = makeGetter(setup.fetchRuntimeSupport(), returnSetup.bucket());
     applyDiagnosticIdentifier(getter);
     initHelpers();
   }
@@ -290,7 +225,7 @@ public final class ClientGet extends ClientRequest {
     this.targetFile = returnSetup.targetFile();
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
-    getter = makeGetter(setup.core(), returnSetup.bucket());
+    getter = makeGetter(setup.fetchRuntimeSupport(), returnSetup.bucket());
     applyDiagnosticIdentifier(getter);
     initHelpers();
   }
@@ -299,8 +234,9 @@ public final class ClientGet extends ClientRequest {
     return makeGetter(null, ret);
   }
 
-  private ClientGetter makeGetter(NodeClientCore core, Bucket ret) throws IOException {
-    return ClientGetGetterFactory.createGetterForRequest(this, ret, core);
+  private ClientGetter makeGetter(FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret)
+      throws IOException {
+    return ClientGetGetterFactory.createGetterForRequest(this, ret, fetchRuntimeSupport);
   }
 
   ClientGetter makeGetterForPersistence(Bucket ret) throws IOException {
@@ -330,46 +266,14 @@ public final class ClientGet extends ClientRequest {
   }
 
   private void initHelpers() {
-    if (messageReplay == null) {
-      messageReplay = new ClientGetMessageReplay(this);
-    }
-    if (lifecycle == null) {
-      lifecycle = new ClientGetLifecycle(this);
-    }
-    if (statusSnapshotBuilder == null) {
-      statusSnapshotBuilder = new ClientGetStatusSnapshotBuilder(this);
-    }
-    if (restartCoordinator == null) {
-      restartCoordinator = new ClientGetRestartCoordinator(this);
-    }
-    if (statusReporter == null) {
-      statusReporter = new ClientGetStatusReporter(this);
+    if (helpers == null) {
+      helpers = new ClientGetHelpers(this);
     }
   }
 
-  private ClientGetMessageReplay messageReplay() {
+  private ClientGetHelpers helpers() {
     initHelpers();
-    return messageReplay;
-  }
-
-  private ClientGetLifecycle lifecycle() {
-    initHelpers();
-    return lifecycle;
-  }
-
-  private ClientGetStatusSnapshotBuilder statusSnapshotBuilder() {
-    initHelpers();
-    return statusSnapshotBuilder;
-  }
-
-  private ClientGetRestartCoordinator restartCoordinator() {
-    initHelpers();
-    return restartCoordinator;
-  }
-
-  private ClientGetStatusReporter statusReporter() {
-    initHelpers();
-    return statusReporter;
+    return helpers;
   }
 
   ClientGetState state() {
@@ -518,7 +422,7 @@ public final class ClientGet extends ClientRequest {
    * @param state client getter instance used to access BinaryBlob payload buckets.
    */
   public void onSuccess(FetchResult result, ClientGetter state) {
-    lifecycle().onSuccess(result, state);
+    helpers().lifecycle().onSuccess(result, state);
   }
 
   /**
@@ -543,20 +447,20 @@ public final class ClientGet extends ClientRequest {
   @SuppressWarnings("unused")
   public void setSuccessForMigration(ClientContext context, long completionTime, Bucket data)
       throws ResumeFailedException {
-    lifecycle().setSuccessForMigration(context, completionTime, data);
+    helpers().lifecycle().setSuccessForMigration(context, completionTime, data);
   }
 
   void trySendDataFoundOrGetFailed(
       FCPConnectionOutputHandler handler, String listRequestIdentifier) {
-    messageReplay().trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
+    helpers().messageReplay().trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
   }
 
   void trySendAllDataMessage(FCPConnectionOutputHandler handler, String listRequestIdentifier) {
-    messageReplay().trySendAllDataMessage(handler, listRequestIdentifier);
+    helpers().messageReplay().trySendAllDataMessage(handler, listRequestIdentifier);
   }
 
   void queueProgressMessageInner(FCPMessage msg, int verbosityMask) {
-    messageReplay().queueProgressMessageInner(msg, verbosityMask);
+    helpers().messageReplay().queueProgressMessageInner(msg, verbosityMask);
   }
 
   /**
@@ -585,11 +489,13 @@ public final class ClientGet extends ClientRequest {
       String listRequestIdentifier,
       boolean includeData,
       boolean onlyData) {
-    messageReplay().sendPendingMessages(handler, listRequestIdentifier, includeData, onlyData);
+    helpers()
+        .messageReplay()
+        .sendPendingMessages(handler, listRequestIdentifier, includeData, onlyData);
   }
 
   FCPMessage persistentTagMessage() {
-    return statusSnapshotBuilder().persistentTagMessage();
+    return helpers().statusSnapshotBuilder().persistentTagMessage();
   }
 
   // Mirrors ClientPut/ClientPutDir to keep low-level scheduling flags accessible to subclasses.
@@ -618,7 +524,7 @@ public final class ClientGet extends ClientRequest {
    * @param e failure descriptor that supplies the expected size, MIME type, and mode.
    */
   public void onFailure(FetchException e) {
-    lifecycle().onFailure(e);
+    helpers().lifecycle().onFailure(e);
   }
 
   /**
@@ -637,7 +543,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public void requestWasRemoved(ClientContext context) {
-    lifecycle().requestWasRemoved();
+    helpers().lifecycle().requestWasRemoved();
     super.requestWasRemoved(context);
   }
 
@@ -860,7 +766,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getSuccessFraction() {
-    return statusReporter().getSuccessFraction();
+    return helpers().statusReporter().getSuccessFraction();
   }
 
   /**
@@ -874,7 +780,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getTotalBlocks() {
-    return statusReporter().getTotalBlocks();
+    return helpers().statusReporter().getTotalBlocks();
   }
 
   /**
@@ -888,7 +794,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getMinBlocks() {
-    return statusReporter().getMinBlocks();
+    return helpers().statusReporter().getMinBlocks();
   }
 
   /**
@@ -902,7 +808,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getFailedBlocks() {
-    return statusReporter().getFailedBlocks();
+    return helpers().statusReporter().getFailedBlocks();
   }
 
   /**
@@ -916,7 +822,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getFatalyFailedBlocks() {
-    return statusReporter().getFatalyFailedBlocks();
+    return helpers().statusReporter().getFatalyFailedBlocks();
   }
 
   /**
@@ -931,7 +837,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public double getFetchedBlocks() {
-    return statusReporter().getFetchedBlocks();
+    return helpers().statusReporter().getFetchedBlocks();
   }
 
   /**
@@ -944,7 +850,7 @@ public final class ClientGet extends ClientRequest {
    *
    * @return array of compatibility modes; may be empty but never {@code null}.
    */
-  public InsertContext.CompatibilityMode[] getCompatibilityMode() {
+  public CompatibilityMode[] getCompatibilityMode() {
     return state.getCompatibilityMode();
   }
 
@@ -992,7 +898,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public String getFailureReason(boolean longDescription) {
-    return statusReporter().getFailureReason(longDescription);
+    return helpers().statusReporter().getFailureReason(longDescription);
   }
 
   GetFailedMessage getFailureMessage() {
@@ -1012,7 +918,7 @@ public final class ClientGet extends ClientRequest {
    * @return failure classification mode, or {@code null} when no failure exists.
    */
   public FetchExceptionMode getFailureReasonCode() {
-    return statusReporter().getFailureReasonCode();
+    return helpers().statusReporter().getFailureReasonCode();
   }
 
   /**
@@ -1029,7 +935,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public boolean isTotalFinalized() {
-    return statusReporter().isTotalFinalized();
+    return helpers().statusReporter().isTotalFinalized();
   }
 
   /**
@@ -1075,7 +981,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public boolean canRestart() {
-    return restartCoordinator().canRestart();
+    return helpers().restartCoordinator().canRestart();
   }
 
   /**
@@ -1096,7 +1002,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   public boolean restart(ClientContext context, final boolean disableFilterData) {
-    return restartCoordinator().restart(context, disableFilterData);
+    return helpers().restartCoordinator().restart(context, disableFilterData);
   }
 
   /**
@@ -1114,7 +1020,7 @@ public final class ClientGet extends ClientRequest {
    * @return {@code true} when a permanent redirect URI is stored in failure state.
    */
   public synchronized boolean hasPermRedirect() {
-    return restartCoordinator().hasPermRedirect();
+    return helpers().restartCoordinator().hasPermRedirect();
   }
 
   /**
@@ -1137,7 +1043,7 @@ public final class ClientGet extends ClientRequest {
   @Override
   RequestStatus getStatus() {
     synchronized (persistenceLock()) {
-      return statusReporter().getStatus();
+      return helpers().statusReporter().getStatus();
     }
   }
 

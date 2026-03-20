@@ -24,7 +24,6 @@ import network.crypta.client.async.PersistentClientCallback;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
@@ -50,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * is effectively stateless. Thread-safety is therefore determined by the collaborators passed in,
  * not by this factory. The method contracts favor explicit inputs (for example, whether to discard
  * data or enable Binary Blob recording) and will fail fast when required dependencies such as
- * {@link NodeClientCore} are missing.
+ * {@link FcpFetchRuntimeSupport} are missing.
  *
  * <ul>
  *   <li>Wires request callbacks via an adapter that implements persistence interfaces.
@@ -484,12 +483,13 @@ final class ClientGetGetterFactory {
    *
    * @param request owning request that receives fetch callbacks.
    * @param returnBucket bucket holding returned data when not discarded.
-   * @param core node core used to allocate buckets when required.
+   * @param fetchRuntimeSupport fetch runtime support used to allocate buckets when required.
    * @return a configured {@link ClientGetter} ready to run.
    * @throws IOException if bucket allocation fails.
    */
   static ClientGetter createGetterForRequest(
-      ClientGet request, Bucket returnBucket, NodeClientCore core) throws IOException {
+      ClientGet request, Bucket returnBucket, FcpFetchRuntimeSupport fetchRuntimeSupport)
+      throws IOException {
     ClientGetterRequest getterRequest =
         createGetterRequest(
             request, request.getURI(), request.fetchContextForGetter(), request.getPriority());
@@ -506,7 +506,7 @@ final class ClientGetGetterFactory {
             returnType == ClientGet.ReturnType.NONE,
             request.binaryBlobRequested(),
             request.persistence == ClientRequest.Persistence.FOREVER);
-    return createGetter(getterRequest, options, flags, core);
+    return createGetter(getterRequest, options, flags, fetchRuntimeSupport);
   }
 
   /**
@@ -514,25 +514,25 @@ final class ClientGetGetterFactory {
    *
    * <p>The factory chooses the correct return bucket strategy and optionally sets up a {@link
    * BinaryBlobWriter} when Binary Blob recording is requested. If Binary Blob recording is enabled
-   * and the options do not specify a return bucket, the method uses {@code core} to allocate a
-   * bucket sized to {@link FetchContext#getMaxOutputLength()}. When {@link
+   * and the options do not specify a return bucket, the method uses {@code fetchRuntimeSupport} to
+   * allocate a bucket sized to {@link FetchContext#getMaxOutputLength()}. When {@link
    * ClientGetGetterFlags#discardData()} is true and Binary Blob is disabled, the returned fetcher
    * writes into a shared {@link NullBucket} instead of the provided bucket.
    *
    * @param request request parameters including the callback, URI, and fetch context.
    * @param options return bucket, metadata, and extension options for the fetcher.
    * @param flags behavior flags for Binary Blob recording and discard handling.
-   * @param core node core used to allocate buckets when needed; required if Binary Blob recording
-   *     is enabled and no return bucket is supplied.
+   * @param fetchRuntimeSupport fetch runtime support used to allocate buckets when needed; required
+   *     if Binary Blob recording is enabled and no return bucket is supplied.
    * @return a fully constructed {@link ClientGetter} ready to start.
    * @throws IOException if bucket allocation fails or underlying stream setup fails.
-   * @throws NullPointerException if {@code core} is required but not provided.
+   * @throws NullPointerException if {@code fetchRuntimeSupport} is required but not provided.
    */
   static ClientGetter createGetter(
       ClientGetterRequest request,
       ClientGetterOptions options,
       ClientGetGetterFlags flags,
-      NodeClientCore core)
+      FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IOException {
     Bucket returnBucket = options.returnBucket();
     Bucket initialMetadata = options.initialMetadata();
@@ -540,11 +540,10 @@ final class ClientGetGetterFactory {
     Bucket blobBucket = returnBucket;
     if (flags.binaryBlob()) {
       if (blobBucket == null) {
-        Objects.requireNonNull(core, "core");
+        Objects.requireNonNull(fetchRuntimeSupport, "fetchRuntimeSupport");
         blobBucket =
-            core.getClientContext()
-                .getBucketFactory(flags.persistenceForever())
-                .makeBucket(request.ctx().getMaxOutputLength());
+            fetchRuntimeSupport.allocateBinaryBlobBucket(
+                request.ctx().getMaxOutputLength(), flags.persistenceForever());
       }
       return new ClientGetter(
           request,

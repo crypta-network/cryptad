@@ -7,6 +7,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,9 +26,12 @@ class FCPServerTest {
   @Mock private NodeClientCore core;
   @Mock private RuntimePorts runtimePorts;
   @Mock private ExecutionPort executionPort;
+  @Mock private TransferAccessPort serverTransferAccess;
+  @Mock private TransferAccessPort coreTransferAccess;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     when(runtimePorts.execution()).thenReturn(executionPort);
+    when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -95,6 +99,7 @@ class FCPServerTest {
     // Arrange
     PersistentRequestRoot root = spy(new PersistentRequestRoot());
     when(runtimePorts.execution()).thenReturn(executionPort);
+    when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -141,6 +146,33 @@ class FCPServerTest {
     FCPServer server = newServer(false, false);
 
     assertSame(runtimePorts, server.runtime());
+  }
+
+  @Test
+  void fetchRuntimeSupport_whenQueried_returnsConfiguredAdapter() {
+    // Arrange
+    FCPServer server = newServer(false, false);
+    FcpFetchRuntimeSupport first = server.fetchRuntimeSupport();
+
+    // Act
+    FcpFetchRuntimeSupport second = server.fetchRuntimeSupport();
+
+    // Assert
+    assertNotNull(first);
+    assertSame(first, second);
+  }
+
+  @Test
+  void fetchRuntimeSupport_whenTransferAccessQueried_usesServerRuntimePorts() {
+    // Arrange
+    FCPServer server = newServer(false, false);
+
+    // Act
+    TransferAccessPort actual = server.fetchRuntimeSupport().transferAccess();
+
+    // Assert
+    assertSame(serverTransferAccess, actual);
+    assertNotSame(coreTransferAccess, actual);
   }
 
   @Test

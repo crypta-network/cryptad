@@ -52,6 +52,8 @@ public class FCPServer implements Runnable, DownloadCache {
   /* It’s not the field that is deprecated, but accessing it directly is. */
   private final NodeClientCore core;
 
+  private final FcpFetchRuntimeSupport fetchRuntimeSupport;
+
   private final RuntimePorts runtime;
 
   final int port;
@@ -107,6 +109,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.enabled = config.enabled();
     this.core = dependencies.core();
     this.runtime = dependencies.runtimePorts();
+    this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime.transferAccess());
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
@@ -729,6 +732,19 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public NodeClientCore getCore() {
     return core;
+  }
+
+  /**
+   * Returns the package-local runtime support used by the FCP GET/fetch path.
+   *
+   * <p>This seam keeps fetch request construction and getter setup independent of direct {@link
+   * NodeClientCore} access while preserving current runtime behavior. It is package-private because
+   * it is an internal wiring detail of {@code clients.fcp}, not a public server API.
+   *
+   * @return fetch runtime support backing GET request construction and execution
+   */
+  FcpFetchRuntimeSupport fetchRuntimeSupport() {
+    return fetchRuntimeSupport;
   }
 
   /**

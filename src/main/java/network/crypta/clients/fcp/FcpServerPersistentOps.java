@@ -608,9 +608,10 @@ final class FcpServerPersistentOps implements DownloadCache {
 
   private void innerMakePersistentGlobalRequest(PersistentGlobalRequestSpec spec)
       throws IdentifierCollisionException, NotAllowedException, IOException {
-    FetchContext defaultFetchContext = core.getClientContext().getDefaultPersistentFetchContext();
-    ClientGet.GlobalRequestConfig requestConfig =
-        new ClientGet.GlobalRequestConfig(
+    FcpFetchRuntimeSupport fetchRuntimeSupport = server.fetchRuntimeSupport();
+    FetchContext defaultFetchContext = fetchRuntimeSupport.defaultPersistentFetchContext();
+    ClientGetGlobalRequestConfig requestConfig =
+        new ClientGetGlobalRequestConfig(
             defaultFetchContext.getLocalRequestOnly(),
             defaultFetchContext.getIgnoreStore(),
             spec.filterData(),
@@ -632,10 +633,9 @@ final class FcpServerPersistentOps implements DownloadCache {
             spec.persistRebootOnly() ? globalRebootClient : globalForeverClient,
             spec.fetchURI(),
             requestConfig,
-            core,
-            transferAccess());
+            fetchRuntimeSupport);
     cg.register(false);
-    cg.start(core.getClientContext());
+    cg.start(fetchRuntimeSupport.clientContext());
   }
 
   PersistentRequestClient getGlobalForeverClient() {

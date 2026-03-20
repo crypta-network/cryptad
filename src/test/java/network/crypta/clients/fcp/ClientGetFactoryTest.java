@@ -9,17 +9,14 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.events.ClientEventProducer;
-import network.crypta.clients.fcp.ClientGet.GlobalRequestConfig;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.BucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,11 +41,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ClientGetFactoryTest {
 
-  @Mock private NodeClientCore core;
-  @Mock private ClientContext clientContext;
+  @Mock private FcpFetchRuntimeSupport fetchRuntimeSupport;
   @Mock private FetchContext fetchContext;
   @Mock private ClientEventProducer eventProducer;
-  @Mock private RuntimePorts runtimePorts;
   @Mock private TransferAccessPort transferAccess;
 
   @Test
@@ -57,8 +52,8 @@ class ClientGetFactoryTest {
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     client.register(new StubClientRequest(client, "dup-global"));
 
-    GlobalRequestConfig config =
-        new GlobalRequestConfig(
+    ClientGetGlobalRequestConfig config =
+        new ClientGetGlobalRequestConfig(
             false,
             false,
             false,
@@ -80,19 +75,19 @@ class ClientGetFactoryTest {
         IdentifierCollisionException.class,
         () ->
             ClientGetFactory.fromGlobal(
-                client, new FreenetURI("KSK@global-collision"), config, core, transferAccess));
+                client, new FreenetURI("KSK@global-collision"), config, fetchRuntimeSupport));
   }
 
   @ParameterizedTest
   @CsvSource({"true,false", "false,true"})
   void fromGlobal_whenValidConfig_buildsRequestAndAppliesFetchContext(
       boolean persistRebootOnly, boolean expectedForever) throws Exception {
-    configureCoreWithFetchContext();
+    configureFetchRuntimeSupportWithFetchContext();
     PersistentRequestClient client =
         newPersistentClient(persistRebootOnly ? Persistence.REBOOT : Persistence.FOREVER);
     FreenetURI uri = new FreenetURI("KSK@global-ok-" + persistRebootOnly);
-    GlobalRequestConfig config =
-        new GlobalRequestConfig(
+    ClientGetGlobalRequestConfig config =
+        new ClientGetGlobalRequestConfig(
             true,
             true,
             true,
@@ -110,7 +105,7 @@ class ClientGetFactoryTest {
             true,
             false);
 
-    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, core, transferAccess);
+    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, fetchRuntimeSupport);
 
     assertNotNull(request);
     assertEquals(config.identifier(), request.getIdentifier());
@@ -133,18 +128,19 @@ class ClientGetFactoryTest {
     verify(fetchContext).setMaxOutputLength(config.maxOutputLength());
     verify(fetchContext).setMaxTempLength(config.maxOutputLength());
     verify(fetchContext).setCanWriteClientCache(config.writeToClientCache());
+    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
+    verify(fetchRuntimeSupport).transferAccess();
     verify(eventProducer).addEventListener(any(ClientGetEventHandling.class));
   }
 
   @Test
   void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir) {
-    when(core.getClientContext()).thenReturn(clientContext);
-    when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
+    configureFetchRuntimeSupportDefaults();
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     File target = tempDir.resolve("target.bin").toFile();
     when(transferAccess.allowDownloadTo(target)).thenReturn(false);
-    GlobalRequestConfig config =
-        new GlobalRequestConfig(
+    ClientGetGlobalRequestConfig config =
+        new ClientGetGlobalRequestConfig(
             false,
             false,
             false,
@@ -166,7 +162,7 @@ class ClientGetFactoryTest {
         NotAllowedException.class,
         () ->
             ClientGetFactory.fromGlobal(
-                client, new FreenetURI("KSK@global-disk"), config, core, transferAccess));
+                client, new FreenetURI("KSK@global-disk"), config, fetchRuntimeSupport));
   }
 
   @Test
@@ -179,7 +175,7 @@ class ClientGetFactoryTest {
 
       assertThrows(
           IdentifierCollisionException.class,
-          () -> ClientGetFactory.fromMessage(handler, message, core));
+          () -> ClientGetFactory.fromMessage(handler, message, fetchRuntimeSupport));
       handler.requestsByIdentifier.clear();
     }
   }
@@ -187,8 +183,7 @@ class ClientGetFactoryTest {
   @Test
   void fromMessage_whenValidConnectionMessage_buildsRequestAndAppliesFetchContext()
       throws Exception {
-    configureCoreWithFetchContext();
-    configureRuntimePorts();
+    configureFetchRuntimeSupportWithFetchContext();
     SimpleFieldSet fs = baseMessageFieldSet("message-ok");
     fs.putOverwrite("DSOnly", "true");
     fs.putOverwrite("IgnoreDS", "true");
@@ -202,7 +197,7 @@ class ClientGetFactoryTest {
     fs.putOverwrite("RealTimeFlag", "true");
     ClientGetMessage message = new ClientGetMessage(fs);
 
-    ClientGet request = ClientGetFactory.fromMessage(null, message, core);
+    ClientGet request = ClientGetFactory.fromMessage(null, message, fetchRuntimeSupport);
 
     assertNotNull(request);
     assertEquals("message-ok", request.getIdentifier());
@@ -223,19 +218,18 @@ class ClientGetFactoryTest {
     verify(fetchContext).setCanWriteClientCache(false);
     verify(fetchContext).setFilterData(true);
     verify(fetchContext).setIgnoreUSKDatehints(true);
+    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
+    verify(fetchRuntimeSupport).transferAccess();
     verify(eventProducer).addEventListener(any(ClientGetEventHandling.class));
   }
 
   @Test
   void fromMessage_whenBinaryBlobBucketCreationFails_wrapsIntoMessageInvalidException()
       throws Exception {
-    configureCoreWithFetchContext();
-    configureRuntimePorts();
-    BucketFactory bucketFactory = mock(BucketFactory.class);
+    configureFetchRuntimeSupportWithFetchContext();
     IOException ioFailure = new IOException("disk-full");
     when(fetchContext.getMaxOutputLength()).thenReturn(333L);
-    when(clientContext.getBucketFactory(false)).thenReturn(bucketFactory);
-    when(bucketFactory.makeBucket(333L)).thenThrow(ioFailure);
+    when(fetchRuntimeSupport.allocateBinaryBlobBucket(333L, false)).thenThrow(ioFailure);
 
     SimpleFieldSet fs = baseMessageFieldSet("blob-io");
     fs.putOverwrite("BinaryBlob", "true");
@@ -243,24 +237,26 @@ class ClientGetFactoryTest {
 
     MessageInvalidException exception =
         assertThrows(
-            MessageInvalidException.class, () -> ClientGetFactory.fromMessage(null, message, core));
+            MessageInvalidException.class,
+            () -> ClientGetFactory.fromMessage(null, message, fetchRuntimeSupport));
 
     assertEquals(ProtocolErrorMessage.INTERNAL_ERROR, exception.protocolCode);
     assertEquals("blob-io", exception.ident);
     assertFalse(exception.global);
     assertSame(ioFailure, exception.getCause());
     assertTrue(exception.getMessage().contains("Cannot create bucket for temporary storage"));
+    //noinspection resource
+    verify(fetchRuntimeSupport).allocateBinaryBlobBucket(333L, false);
   }
 
-  private void configureCoreWithFetchContext() {
-    when(core.getClientContext()).thenReturn(clientContext);
-    when(clientContext.getDefaultPersistentFetchContext()).thenReturn(fetchContext);
+  private void configureFetchRuntimeSupportWithFetchContext() {
+    configureFetchRuntimeSupportDefaults();
     when(fetchContext.getEventProducer()).thenReturn(eventProducer);
   }
 
-  private void configureRuntimePorts() {
-    when(core.getRuntimePorts()).thenReturn(runtimePorts);
-    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+  private void configureFetchRuntimeSupportDefaults() {
+    when(fetchRuntimeSupport.defaultPersistentFetchContext()).thenReturn(fetchContext);
+    when(fetchRuntimeSupport.transferAccess()).thenReturn(transferAccess);
   }
 
   private FCPConnectionHandler newConnectionHandler() {
