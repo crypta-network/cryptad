@@ -4,7 +4,6 @@ import java.lang.reflect.Method;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +26,7 @@ class FProxyToadletTest {
 
   @Mock private HighLevelSimpleClient client;
 
-  @Mock private NodeClientCore core;
+  @Mock private FProxyRuntimeSupport runtimeSupport;
 
   @Mock private FProxyFetchTracker fetchTracker;
 
@@ -35,12 +34,13 @@ class FProxyToadletTest {
 
   @Test
   void constructor_setsMaxLengthsOnClient() {
-    when(core.getClientContext()).thenReturn(clientContext);
+    when(runtimeSupport.clientContext()).thenReturn(clientContext);
 
-    new FProxyToadlet(client, core, fetchTracker);
+    new FProxyToadlet(client, runtimeSupport, fetchTracker);
 
     verify(client).setMaxLength(FProxyToadlet.getMaxLengthNoProgress());
     verify(client).setMaxIntermediateLength(FProxyToadlet.getMaxLengthNoProgress());
+    verify(runtimeSupport).clientContext();
   }
 
   @Test
@@ -121,8 +121,8 @@ class FProxyToadletTest {
   }
 
   private FProxyToadlet newFProxy() {
-    when(core.getClientContext()).thenReturn(clientContext);
-    return new FProxyToadlet(client, core, fetchTracker);
+    when(runtimeSupport.clientContext()).thenReturn(clientContext);
+    return new FProxyToadlet(client, runtimeSupport, fetchTracker);
   }
 
   private long[] invokeParseRange(String value) throws Exception {

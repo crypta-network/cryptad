@@ -271,7 +271,7 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(fetchContext, fetchTrackerArguments.get().get(1));
       assertNotNull(fetchTrackerArguments.get().get(2));
       assertSame(client, fproxyArguments.get().get(0));
-      assertSame(core, fproxyArguments.get().get(1));
+      assertInstanceOf(CoreFProxyRuntimeSupport.class, fproxyArguments.get().get(1));
       assertSame(fetchTrackers.constructed().getFirst(), fproxyArguments.get().get(2));
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
       assertSame(client, bootstrap.client());

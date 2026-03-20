@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -38,12 +39,9 @@ import network.crypta.crypt.SHA256;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
-import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
-import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -141,7 +139,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   static final String CATEGORY_CONFIG = L10N_PREFIX + "categoryConfig";
 
   static byte[] random;
-  final NodeClientCore core;
+  final FProxyRuntimeSupport runtimeSupport;
   final ClientContext context;
   final FProxyFetchTracker fetchTracker;
 
@@ -264,20 +262,24 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * Creates a toadlet bound to the given client and node services.
    *
    * <p>The constructor wires the high-level client with size limits suitable for non-progress
-   * transfers and caches references to the node core, client context, and fetch tracker. Instances
-   * are expected to be registered once with the container and reused across requests.
+   * transfers and caches references to the local runtime support, client context, and fetch
+   * tracker. Instances are expected to be registered once with the container and reused across
+   * requests.
    *
    * @param client high-level fetch client used to perform HTTP-facing retrievals.
-   * @param core node core providing configuration, security levels, and download paths.
+   * @param runtimeSupport local runtime support providing configuration, security levels, and
+   *     download paths.
    * @param tracker shared fetch tracker coordinating progress reporting and reuse.
    */
-  public FProxyToadlet(
-      final HighLevelSimpleClient client, NodeClientCore core, FProxyFetchTracker tracker) {
+  FProxyToadlet(
+      final HighLevelSimpleClient client,
+      FProxyRuntimeSupport runtimeSupport,
+      FProxyFetchTracker tracker) {
     super(client);
     client.setMaxLength(getMaxLengthNoProgress());
     client.setMaxIntermediateLength(getMaxLengthNoProgress());
-    this.core = core;
-    this.context = core.getClientContext();
+    this.runtimeSupport = runtimeSupport;
+    this.context = runtimeSupport.clientContext();
     fetchTracker = tracker;
   }
 
@@ -323,24 +325,25 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       String mimeType,
       boolean disableFiltration,
       boolean dontShowFilter,
-      NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel =
-        core.getNode().services().securityLevels().getPhysicalThreatLevel();
-    NETWORK_THREAT_LEVEL netLevel =
-        core.getNode().services().securityLevels().getNetworkThreatLevel();
+      FProxyRuntimeSupport runtimeSupport) {
+    FProxyRuntimeSupport.PhysicalThreatLevel threatLevel = runtimeSupport.physicalThreatLevel();
+    FProxyRuntimeSupport.NetworkThreatLevel netLevel = runtimeSupport.networkThreatLevel();
     boolean filterChecked = shouldEnableFilter(mimeType, disableFiltration, threatLevel, netLevel);
 
-    addDownloadToDiskOption(ctx, optionList, key, mimeType, filterChecked, dontShowFilter, core);
-    addDirectFetchOption(ctx, optionList, key, mimeType, filterChecked, dontShowFilter, core);
+    addDownloadToDiskOption(
+        ctx, optionList, key, mimeType, filterChecked, dontShowFilter, runtimeSupport);
+    addDirectFetchOption(
+        ctx, optionList, key, mimeType, filterChecked, dontShowFilter, runtimeSupport);
   }
 
   private static boolean shouldEnableFilter(
       String mimeType,
       boolean disableFiltration,
-      PHYSICAL_THREAT_LEVEL threatLevel,
-      NETWORK_THREAT_LEVEL netLevel) {
+      FProxyRuntimeSupport.PhysicalThreatLevel threatLevel,
+      FProxyRuntimeSupport.NetworkThreatLevel netLevel) {
     boolean filterChecked =
-        !((threatLevel == PHYSICAL_THREAT_LEVEL.LOW && netLevel == NETWORK_THREAT_LEVEL.LOW)
+        !((threatLevel == FProxyRuntimeSupport.PhysicalThreatLevel.LOW
+                && netLevel == FProxyRuntimeSupport.NetworkThreatLevel.LOW)
             || disableFiltration);
     if (filterChecked
         && mimeType != null
@@ -348,10 +351,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         && !mimeType.isEmpty()) {
       FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
       if ((type == null || !(type.safeToRead || type.readFilter != null))
-          && !(threatLevel == PHYSICAL_THREAT_LEVEL.HIGH
-              || threatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM
-              || netLevel == NETWORK_THREAT_LEVEL.HIGH
-              || netLevel == NETWORK_THREAT_LEVEL.MAXIMUM)) {
+          && !(threatLevel == FProxyRuntimeSupport.PhysicalThreatLevel.HIGH
+              || threatLevel == FProxyRuntimeSupport.PhysicalThreatLevel.MAXIMUM
+              || netLevel == FProxyRuntimeSupport.NetworkThreatLevel.HIGH
+              || netLevel == FProxyRuntimeSupport.NetworkThreatLevel.MAXIMUM)) {
         filterChecked = false;
       }
     }
@@ -365,10 +368,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       String mimeType,
       boolean filterChecked,
       boolean dontShowFilter,
-      NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel =
-        core.getNode().services().securityLevels().getPhysicalThreatLevel();
-    if (threatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM || isDownloadDisabledOrUnsafe(ctx, core)) {
+      FProxyRuntimeSupport runtimeSupport) {
+    FProxyRuntimeSupport.PhysicalThreatLevel threatLevel = runtimeSupport.physicalThreatLevel();
+    if (threatLevel == FProxyRuntimeSupport.PhysicalThreatLevel.MAXIMUM
+        || isDownloadDisabledOrUnsafe(ctx, runtimeSupport)) {
       return;
     }
     HTMLNode option = optionList.addChild("li");
@@ -395,9 +398,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         TAG_INPUT,
         new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {TYPE_SUBMIT, "download", l10n("downloadInBackgroundToDiskButton")});
-    String downloadLocation = core.getDownloadsDir().getAbsolutePath();
-    if (!core.allowDownloadTo(core.getDownloadsDir())) {
-      downloadLocation = core.getAllowedDownloadDirs()[0].getAbsolutePath();
+    File downloadsDir = runtimeSupport.downloadsDir();
+    String downloadLocation = downloadsDir.getAbsolutePath();
+    if (!runtimeSupport.allowDownloadTo(downloadsDir)) {
+      downloadLocation = runtimeSupport.allowedDownloadDirs()[0].getAbsolutePath();
     }
     NodeL10n.getBase()
         .addL10nSubstitution(
@@ -435,7 +439,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     if (!dontShowFilter) {
       addFilterControl(optionForm, filterChecked);
     }
-    if (threatLevel == PHYSICAL_THREAT_LEVEL.HIGH) {
+    if (threatLevel == FProxyRuntimeSupport.PhysicalThreatLevel.HIGH) {
       optionForm.addChild("br");
       NodeL10n.getBase()
           .addL10nSubstitution(
@@ -453,10 +457,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       String mimeType,
       boolean filterChecked,
       boolean dontShowFilter,
-      NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel =
-        core.getNode().services().securityLevels().getPhysicalThreatLevel();
-    if (threatLevel != PHYSICAL_THREAT_LEVEL.LOW || isDownloadDisabledOrUnsafe(ctx, core)) {
+      FProxyRuntimeSupport runtimeSupport) {
+    FProxyRuntimeSupport.PhysicalThreatLevel threatLevel = runtimeSupport.physicalThreatLevel();
+    if (threatLevel != FProxyRuntimeSupport.PhysicalThreatLevel.LOW
+        || isDownloadDisabledOrUnsafe(ctx, runtimeSupport)) {
       HTMLNode option = optionList.addChild("li");
       HTMLNode optionForm = ctx.addFormChild(option, DOWNLOADS_PATH, "tooBigQueueForm");
       optionForm.addChild(
@@ -506,10 +510,11 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     filterControl.addChild("div", l10n("filterDataMessage"));
   }
 
-  static boolean isDownloadDisabledOrUnsafe(ToadletContext ctx, NodeClientCore core) {
+  static boolean isDownloadDisabledOrUnsafe(
+      ToadletContext ctx, FProxyRuntimeSupport runtimeSupport) {
     return
     // download is either disabled fully on this node
-    core.isDownloadDisabled()
+    runtimeSupport.isDownloadDisabled()
         // or we're accessing in public gateway mode and do not have full access
         || (ctx.getContainer().publicGatewayMode() && !ctx.isAllowedFullAccess());
   }
@@ -808,9 +813,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         fctx.setPrefetchHook(createPrefetchHook());
       }
       if (container.isFProxyWebPushingEnabled()) {
-        fctx.setTagReplacer(
-            new PushingTagReplacerCallback(
-                core.getEndpoints().getFProxy().fetchTracker, defaultMaxSize, ctx));
+        fctx.setTagReplacer(new PushingTagReplacerCallback(fetchTracker, defaultMaxSize, ctx));
       }
     }
 
@@ -850,16 +853,12 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
         @Override
         public void onFinishedPage() {
-          core.getNode()
-              .network()
-              .executor()
-              .execute(
-                  () -> {
-                    for (FreenetURI uri1 : uris) {
-                      client.prefetch(
-                          uri1, SECONDS.toMillis(60), 512L * 1024, prefetchAllowedTypes);
-                    }
-                  });
+          runtimeSupport.executeBackground(
+              () -> {
+                for (FreenetURI uri1 : uris) {
+                  client.prefetch(uri1, SECONDS.toMillis(60), 512L * 1024, prefetchAllowedTypes);
+                }
+              });
         }
       };
     }
@@ -978,7 +977,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       HTMLNode optionList = infoboxContent.addChild("ul");
       optionList.addChild("li").addChild("p", l10n("progressOptionZero"));
 
-      addDownloadOptions(ctx, optionList, key, mimeType, false, false, core);
+      addDownloadOptions(ctx, optionList, key, mimeType, false, false, runtimeSupport);
 
       optionList
           .addChild("li")
@@ -1198,7 +1197,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
                         + extras),
                 HTMLNode.STRONG
               });
-      addDownloadOptions(ctx, optionList, key, mimeType, true, false, core);
+      addDownloadOptions(ctx, optionList, key, mimeType, true, false, runtimeSupport);
       if (referrer != null) {
         option = optionList.addChild("li");
         NodeL10n.getBase()
@@ -1472,7 +1471,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {TYPE_SUBMIT, "fetch", l10n("fetchLargeFileAnywayAndDisplayButton")});
       optionForm.addChild("#", " - " + l10n("fetchLargeFileAnywayAndDisplay"));
-      addDownloadOptions(ctx, optionList, key, mime, false, false, core);
+      addDownloadOptions(ctx, optionList, key, mime, false, false, runtimeSupport);
     }
 
     private void handleGenericFetchException(FetchException e, String msg)
@@ -1616,7 +1615,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             mimeType,
             e.getCause() instanceof UnsafeContentTypeException,
             e.getCause() instanceof UnsafeContentTypeException,
-            core);
+            runtimeSupport);
         if (!(e.getCause() instanceof UnsafeContentTypeException)) {
           optionList
               .addChild("li")
@@ -1660,7 +1659,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private String getSchemeHostAndPort(ToadletContext ctx) {
       // retrieve config from froxy
-      SubConfig fProxyConfig = core.getNode().getConfig().get("fproxy");
+      SubConfig fProxyConfig = runtimeSupport.fproxyConfig();
 
       Option<?> fProxyPort = fProxyConfig.getOption("port");
       Option<?> fProxyBindTo = fProxyConfig.getOption("bindTo");

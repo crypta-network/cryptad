@@ -117,7 +117,8 @@ record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRunt
             core.getClientContext(),
             client.getFetchContext(),
             new RequestClientBuilder().realTime().build());
-    FProxyToadlet fproxy = new FProxyToadlet(client, core, fetchTracker);
+    FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
+    FProxyToadlet fproxy = new FProxyToadlet(client, fproxyRuntimeSupport, fetchTracker);
     core.getEndpoints().setFProxy(fproxy);
     return new HttpShellFProxyBootstrap(bookmarkManager, client, fproxy);
   }
