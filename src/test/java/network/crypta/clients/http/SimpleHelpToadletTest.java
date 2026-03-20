@@ -4,7 +4,6 @@ import java.net.URI;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -12,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,8 +32,7 @@ class SimpleHelpToadletTest {
   @Test
   void handleMethodGET_whenFullAccess_addsSummaryAndWritesHtml() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    NodeClientCore core = mock(NodeClientCore.class);
-    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client, core));
+    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client));
 
     ToadletContext ctx = mock(ToadletContext.class);
     PageMaker pageMaker = mock(PageMaker.class);
@@ -51,7 +50,7 @@ class SimpleHelpToadletTest {
     when(ctx.getAlertManager()).thenReturn(alertManager);
     when(alertManager.createSummary()).thenReturn(summaryNode);
     when(pageMaker.getInfobox(anyString(), anyString(), eq(contentNode), anyString(), anyBoolean()))
-        .thenAnswer(invocation -> new HTMLNode("div"));
+        .thenAnswer(_ -> new HTMLNode("div"));
 
     AtomicReference<Integer> statusCode = new AtomicReference<>();
     AtomicReference<String> reasonPhrase = new AtomicReference<>();
@@ -80,8 +79,7 @@ class SimpleHelpToadletTest {
   @Test
   void handleMethodGET_whenRestricted_doesNotAddSummary() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    NodeClientCore core = mock(NodeClientCore.class);
-    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client, core));
+    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client));
 
     ToadletContext ctx = mock(ToadletContext.class);
     PageMaker pageMaker = mock(PageMaker.class);
@@ -97,11 +95,9 @@ class SimpleHelpToadletTest {
     when(pageNode.generate()).thenReturn("generated-page");
     when(ctx.isAllowedFullAccess()).thenReturn(false);
     when(pageMaker.getInfobox(anyString(), anyString(), eq(contentNode), anyString(), anyBoolean()))
-        .thenAnswer(invocation -> new HTMLNode("div"));
+        .thenAnswer(_ -> new HTMLNode("div"));
 
-    doAnswer(invocation -> null)
-        .when(toadlet)
-        .writeHTMLReply(eq(ctx), anyInt(), anyString(), anyString());
+    doAnswer(_ -> null).when(toadlet).writeHTMLReply(eq(ctx), anyInt(), anyString(), anyString());
 
     toadlet.handleMethodGET(new URI("http://localhost/help/"), request, ctx);
 
@@ -110,9 +106,16 @@ class SimpleHelpToadletTest {
   }
 
   @Test
+  void constructor_withoutCoreDependency_acceptsClientOnly() {
+    assertEquals(1, SimpleHelpToadlet.class.getDeclaredConstructors().length);
+    assertArrayEquals(
+        new Class<?>[] {HighLevelSimpleClient.class},
+        SimpleHelpToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
+  }
+
+  @Test
   void path_whenCalled_returnsHelpPath() {
-    SimpleHelpToadlet toadlet =
-        new SimpleHelpToadlet(mock(HighLevelSimpleClient.class), mock(NodeClientCore.class));
+    SimpleHelpToadlet toadlet = new SimpleHelpToadlet(mock(HighLevelSimpleClient.class));
     assertEquals("/help/", toadlet.path());
   }
 }

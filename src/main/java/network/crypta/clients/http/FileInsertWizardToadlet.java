@@ -2,14 +2,14 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.clients.http.ContentFilterToadlet.ResultHandling;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
@@ -30,34 +30,36 @@ import network.crypta.support.api.HTTPRequest;
  *   <li>{@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} builds the HTML page and
  *       enforces access rules.
  *   <li>{@link #reportCanonicalInsert()} or {@link #reportRandomInsert()} record the user’s last
- *       selection to bias subsequent renders.
+ *       selection to bias further renders.
  * </ul>
  *
- * <p>The toadlet relies on {@link NodeClientCore} to derive security defaults, {@link PageMaker} to
- * assemble infoboxes, and the surrounding {@link ToadletContext} for permissions and localization.
- * It performs no I/O beyond HTML generation and delegates upload handling to queue endpoints.
+ * <p>The toadlet relies on a detached security-level snapshot to derive security defaults, {@link
+ * PageMaker} to assemble infoboxes, and the surrounding {@link ToadletContext} for permissions and
+ * localization. It performs no I/O beyond HTML generation and delegates upload handling to queue
+ * endpoints.
  */
 public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallback {
 
   /**
-   * Creates the toadlet that renders the file-insert wizard for the given client and node core. The
-   * instance keeps only lightweight preferences and is intended to be short-lived; callers
-   * typically construct one per incoming HTTP request or per handler registration. The constructor
-   * does not perform I/O, and all dependencies are assumed to remain valid for the lifetime of the
-   * toadlet. State stored in the instance is not synchronized and should not be shared across
-   * threads without external coordination.
+   * Creates the toadlet that renders the file-insert wizard for the given client and detached
+   * runtime ports. The instance keeps only lightweight preferences and is intended to be
+   * short-lived; callers typically construct one per incoming HTTP request or per handler
+   * registration. The constructor does not perform I/O, and all dependencies are assumed to remain
+   * valid for the lifetime of the toadlet. State stored in the instance is not synchronized and
+   * should not be shared across threads without external coordination.
    *
    * @param client high-level client used to bind uploads to the current session; never {@code
    *     null}.
-   * @param clientCore backing node core providing security defaults and queue endpoints; never
-   *     {@code null}.
+   * @param runtimePorts detached runtime collaborators used to read the current network threat
+   *     level; never {@code null}.
    */
-  protected FileInsertWizardToadlet(HighLevelSimpleClient client, NodeClientCore clientCore) {
+  FileInsertWizardToadlet(
+      HighLevelSimpleClient client, FileInsertWizardToadletRuntimePorts runtimePorts) {
     super(client);
-    this.core = clientCore;
+    this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
   }
 
-  final NodeClientCore core;
+  private final FileInsertWizardToadletRuntimePorts runtimePorts;
 
   // IMHO there isn't much point synchronizing these.
   private boolean rememberedLastTime;
@@ -86,9 +88,9 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
   }
 
   /**
-   * Records that the most recent insert used a canonical CHK key so the next rendered form defaults
-   * to the same choice. The hint influences only UI defaults; it does not persist beyond this
-   * instance and does not bypass explicit user selections on later requests. This method only
+   * Records that the most recent insert used a canonical CHK key, so the next rendered form
+   * defaults to the same choice. The hint influences only UI defaults; it does not persist beyond
+   * this instance and does not bypass explicit user selections on later requests. This method only
    * updates in-memory hints and is safe to call after a successful queue submission.
    */
   public void reportCanonicalInsert() {
@@ -97,7 +99,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
   }
 
   /**
-   * Records that the most recent insert used a random SSK key so subsequent renders bias toward the
+   * Records that the most recent insert used a random SSK key, so further renders bias toward the
    * same option. The flag affects only default radio-button selection and never forces a key type
    * when the caller provides explicit form data. State is retained only for the lifetime of this
    * toadlet instance.
@@ -157,14 +159,14 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
     HTMLNode insertBox = infobox.getOuterNode();
     HTMLNode insertContent = infobox.getContentNode();
     insertContent.addChild("p", l10n("insertIntro"));
-    NETWORK_THREAT_LEVEL seclevel =
-        core.getNode().services().securityLevels().getNetworkThreatLevel();
+    SecurityNetworkThreatLevel seclevel =
+        runtimePorts.securityLevelsPort().snapshot().networkThreatLevel();
     HTMLNode insertForm =
         ctx.addFormChild(insertContent, QueueToadlet.PATH_UPLOADS, "queueInsertForm");
     boolean preselectSsk =
-        (!rememberedLastTime && seclevel != NETWORK_THREAT_LEVEL.LOW)
+        (!rememberedLastTime && seclevel != SecurityNetworkThreatLevel.LOW)
             || (rememberedLastTime && !wasCanonicalLastTime)
-            || seclevel == NETWORK_THREAT_LEVEL.MAXIMUM;
+            || seclevel == SecurityNetworkThreatLevel.MAXIMUM;
 
     addKeyTypeOptions(insertForm, preselectSsk, isAdvancedModeEnabled);
     addCompressionOption(insertForm, isAdvancedModeEnabled);

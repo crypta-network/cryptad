@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
@@ -21,10 +20,9 @@ import network.crypta.support.api.HTTPRequest;
  * Output is rendered as standard HTML and returned as a 200 OK response suitable for embedding into
  * the FProxy navigation flow.
  *
- * <p>Instances are effectively stateless apart from the injected {@link NodeClientCore} reference
- * used for client interactions, so they can be shared across requests without additional
- * synchronization. The class does not mutate the core, and callers register it at the {@link
- * #path()} URI to expose the documentation to users.
+ * <p>Instances are effectively stateless apart from the inherited client binding, so they can be
+ * shared across requests without additional synchronization. Callers register the toadlet at the
+ * {@link #path()} URI to expose the documentation to users.
  *
  * <ul>
  *   <li>Responsibilities: render localized help, outline key types, and summarize connectivity
@@ -41,24 +39,21 @@ import network.crypta.support.api.HTTPRequest;
 public class SimpleHelpToadlet extends Toadlet {
   private static final String INFOBOX_CONTENT = "infobox-content";
 
-  SimpleHelpToadlet(HighLevelSimpleClient client, NodeClientCore c) {
+  SimpleHelpToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.core = c;
   }
-
-  final NodeClientCore core;
 
   /**
    * Handles HTTP GET requests by rendering the offline help page and streaming it to the client.
    * The method builds a page composed of descriptive and connectivity-focused infoboxes, injects
    * alert summaries when the requester has full access, and finalizes the response with a 200 OK
-   * status. It performs no modification of server state, making repeated calls idempotent and safe
-   * for refresh or bookmark access patterns.
+   * status. It performs no modification of the server state, making repeated calls idempotent and
+   * safe for refresh or bookmark access patterns.
    *
    * <p>All content is derived from localization bundles so that translations remain consistent with
    * the node's configured language. The returned HTML explains core key types (CHK, SSK, USK) and
    * offers short guidance on tasks such as port forwarding to improve reachability. Should the
-   * toadlet context close mid-write or an I/O fault occur, the method surfaces the corresponding
+   * toadlet context close mid-write or an I/O fault occurs, the method surfaces the corresponding
    * exception to the caller for upstream handling.
    *
    * <pre>{@code
@@ -69,7 +64,7 @@ public class SimpleHelpToadlet extends Toadlet {
    * @param uri requested help page URI; provided for signature parity and logging context.
    * @param request inbound HTTP request containing headers and parameters; never modified here.
    * @param ctx active toadlet context that supplies page construction utilities and access checks.
-   * @throws ToadletContextClosedException if the context is closed before the response is flushed.
+   * @throws ToadletContextClosedException if the context is closed before, the response is flushed.
    * @throws IOException if writing the generated HTML to the client output stream fails.
    */
   @Override
