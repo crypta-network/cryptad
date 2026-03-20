@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 
 /**
  * Serves the local file browser used by FProxy uploads, wiring user selections to the queue on a
@@ -14,7 +14,7 @@ import network.crypta.node.NodeClientCore;
  * listings, enforces upload permissions, and forwards form submissions to the upload queue toadlet.
  * The browse and POST targets default to <code>/insert-browse/</code> and <code>/uploads/</code>
  * but can be overridden via system properties; paths are normalized to include leading and trailing
- * slashes to match toadlet registration. Instances rely on {@link NodeClientCore} to validate
+ * slashes to match toadlet registration. Instances rely on {@link TransferAccessPort} to validate
  * directories and to derive the default starting location so users land in a permitted folder. The
  * class is not intended to be thread-safe by itself; the surrounding HTTP framework allocates and
  * synchronizes access per request lifecycle.
@@ -74,13 +74,14 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
    * constructor does not perform I/O; callers should register the instance with the HTTP server to
    * make it reachable.
    *
-   * @param core node client core used for permission checks and default directory resolution; must
-   *     not be {@code null}.
+   * @param transferAccess transfer-access runtime port used for permission checks and default
+   *     directory resolution; must not be {@code null}.
    * @param highLevelSimpleClient client wrapper that binds uploads to the current user session;
    *     must not be {@code null}.
    */
-  public LocalFileInsertToadlet(NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
-    super(core, highLevelSimpleClient);
+  public LocalFileInsertToadlet(
+      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
+    super(transferAccess, highLevelSimpleClient);
   }
 
   /**
@@ -90,7 +91,7 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
    * wiring the toadlet into the HTTP server or when generating anchors that lead users back to the
    * local file browser from other queue pages.
    *
-   * @return browse endpoint path with leading and trailing slashes preserved for routing.
+   * @return the browse endpoint path with leading and trailing slashes preserved for routing.
    */
   @Override
   public String path() {
@@ -103,7 +104,7 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
    * registration performed by {@link FProxyRegistrar}. Callers may override the endpoint through
    * {@code cryptad.http.uploadsPath}; the normalization step ensures user-supplied values cannot
    * omit slashes and accidentally diverge from the queue toadlet registration. The path is consumed
-   * by HTML form generation so it should remain reachable to avoid 404 responses.
+   * by HTML form generation, so it should remain reachable to avoid 404 responses.
    *
    * @return normalized upload queue path that the form action should target.
    */
@@ -114,18 +115,19 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
 
   /**
    * Determines whether a directory can be displayed for uploads. Delegates to {@link
-   * NodeClientCore#allowUploadFrom(File)} to enforce operator-configured allow-lists and gateway
+   * TransferAccessPort#allowUploadFrom(File)} to enforce operator-configured allowlists and gateway
    * restrictions before the listing is shown. The method performs no normalization or
-   * canonicalization; it forwards the caller-provided path directly to the core, which decides if
-   * the directory falls within the allowed root, respects public gateway limitations, or should be
-   * rejected. Returning {@code false} prevents the browser from rendering the directory contents.
+   * canonicalization; it forwards the caller-provided path directly to the runtime policy, which
+   * decides if the directory falls within the allowed root, respects public gateway limitations, or
+   * should be rejected. Returning {@code false} prevents the browser from rendering the directory
+   * contents.
    *
    * @param path candidate directory selected by the user; must be an existing filesystem path.
    * @return {@code true} when uploads from the directory are permitted; {@code false} otherwise.
    */
   @Override
   protected boolean allowedDir(File path) {
-    return core.allowUploadFrom(path);
+    return transferAccess.allowUploadFrom(path);
   }
 
   /**

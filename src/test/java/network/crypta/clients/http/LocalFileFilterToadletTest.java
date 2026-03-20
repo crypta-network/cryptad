@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,14 +26,15 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class LocalFileFilterToadletTest {
 
-  @Mock private NodeClientCore core;
+  @Mock private TransferAccessPort transferAccess;
   @Mock private HighLevelSimpleClient client;
 
   private LocalFileFilterToadlet toadlet;
 
   @BeforeEach
   void setUp() {
-    toadlet = new LocalFileFilterToadlet(core, client);
+    lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
+    toadlet = new LocalFileFilterToadlet(transferAccess, client);
   }
 
   @Test
@@ -53,12 +55,12 @@ class LocalFileFilterToadletTest {
   @CsvSource({"/tmp/upload,true", "/var/forbidden,false"})
   void allowedDir_whenDelegatesToCore_returnsCoreDecision(String rawPath, boolean allowed) {
     File path = new File(rawPath);
-    when(core.allowUploadFrom(path)).thenReturn(allowed);
+    when(transferAccess.allowUploadFrom(path)).thenReturn(allowed);
 
     boolean result = toadlet.allowedDir(path);
 
     assertEquals(allowed, result);
-    verify(core).allowUploadFrom(path);
+    verify(transferAccess).allowUploadFrom(path);
   }
 
   @Test
@@ -117,7 +119,7 @@ class LocalFileFilterToadletTest {
 
   @Test
   void startingDir_whenAllowedDirsEmpty_returnsUserHome() {
-    when(core.getAllowedUploadDirs()).thenReturn(new File[0]);
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[0]);
 
     String result = toadlet.startingDir();
 
@@ -127,7 +129,7 @@ class LocalFileFilterToadletTest {
   @Test
   void startingDir_whenAllowedDirsConfigured_returnsFirstPath() {
     File first = new File("/path/one");
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {first, new File("/path/two")});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {first, new File("/path/two")});
 
     String result = toadlet.startingDir();
 
@@ -136,7 +138,7 @@ class LocalFileFilterToadletTest {
 
   @Test
   void startingDir_whenUploadDirsAllowAll_returnsUserHome() {
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {new File("all")});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {new File("all")});
 
     String result = toadlet.startingDir();
 

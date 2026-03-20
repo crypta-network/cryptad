@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,7 +25,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class LocalFileN2NMToadletTest {
 
-  @Mock private NodeClientCore core;
+  @Mock private TransferAccessPort transferAccess;
 
   @Mock private HighLevelSimpleClient highLevelSimpleClient;
 
@@ -32,7 +33,8 @@ class LocalFileN2NMToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new LocalFileN2NMToadlet(core, highLevelSimpleClient);
+    lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
+    toadlet = new LocalFileN2NMToadlet(transferAccess, highLevelSimpleClient);
   }
 
   @Test
@@ -48,17 +50,17 @@ class LocalFileN2NMToadletTest {
   @Test
   void allowedDir_whenDelegated_usesCoreCheck() {
     File sample = new File("some/path");
-    when(core.allowUploadFrom(sample)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(sample)).thenReturn(true);
 
     boolean result = toadlet.allowedDir(sample);
 
     assertTrue(result);
-    verify(core).allowUploadFrom(sample);
+    verify(transferAccess).allowUploadFrom(sample);
   }
 
   @Test
   void startingDir_whenUploadsUnrestricted_returnsUserHome() {
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {new File("all")});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {new File("all")});
 
     String result = toadlet.startingDir();
 
@@ -67,7 +69,7 @@ class LocalFileN2NMToadletTest {
 
   @Test
   void startingDir_whenNoUploadDirsConfigured_returnsUserHome() {
-    when(core.getAllowedUploadDirs()).thenReturn(new File[0]);
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[0]);
 
     String result = toadlet.startingDir();
 
@@ -81,7 +83,7 @@ class LocalFileN2NMToadletTest {
     Path secondPath = Files.createDirectories(tempDir.resolve("second"));
     File first = firstPath.toFile();
     File second = secondPath.toFile();
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {first, second});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {first, second});
 
     String result = toadlet.startingDir();
 
