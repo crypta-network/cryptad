@@ -53,6 +53,7 @@ public class FCPServer implements Runnable, DownloadCache {
   private final NodeClientCore core;
 
   private final FcpFetchRuntimeSupport fetchRuntimeSupport;
+  private final FcpInsertRuntimeSupport insertRuntimeSupport;
 
   private final RuntimePorts runtime;
 
@@ -110,6 +111,8 @@ public class FCPServer implements Runnable, DownloadCache {
     this.core = dependencies.core();
     this.runtime = dependencies.runtimePorts();
     this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime::transferAccess);
+    this.insertRuntimeSupport =
+        new CoreFcpInsertRuntimeSupport(core, () -> core.getRuntimePorts().transferAccess());
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
@@ -747,6 +750,22 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   FcpFetchRuntimeSupport fetchRuntimeSupport() {
     return fetchRuntimeSupport;
+  }
+
+  /**
+   * Returns the package-local runtime support used by the FCP insert and USK path.
+   *
+   * <p>This seam keeps put request construction, upload bucket allocation, and USK subscription
+   * wiring independent of direct {@link NodeClientCore} access while preserving current runtime
+   * behavior. Insert validation historically consulted the core runtime's transfer policy for both
+   * live message puts and queued local-file inserts, so this seam keeps upload checks aligned with
+   * {@code core.getRuntimePorts()}. It is package-private because it is an internal wiring detail
+   * of {@code clients.fcp}, not a public server API.
+   *
+   * @return insert runtime support backing put construction and USK subscriptions
+   */
+  FcpInsertRuntimeSupport insertRuntimeSupport() {
+    return insertRuntimeSupport;
   }
 
   /**

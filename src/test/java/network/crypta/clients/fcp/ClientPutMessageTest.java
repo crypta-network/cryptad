@@ -5,13 +5,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -130,15 +128,12 @@ class ClientPutMessageTest {
     ClientPutMessage message = newForeverMessage("put-forever", 64L);
     BucketFactory transientFactory = Mockito.mock(BucketFactory.class);
     FCPServer server = Mockito.mock(FCPServer.class);
-    NodeClientCore core = Mockito.mock(NodeClientCore.class);
-    PersistentTempBucketFactory persistentFactory = Mockito.mock(PersistentTempBucketFactory.class);
+    FcpInsertRuntimeSupport runtimeSupport = Mockito.mock(FcpInsertRuntimeSupport.class);
 
-    Mockito.when(server.getCore()).thenReturn(core);
-    Mockito.when(core.killedDatabase()).thenReturn(false);
-    Mockito.when(core.getPersistentTempBucketFactory()).thenReturn(persistentFactory);
+    Mockito.when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
 
     try (RandomAccessBucket expectedBucket = Mockito.mock(RandomAccessBucket.class)) {
-      Mockito.when(persistentFactory.makeBucket(64L)).thenReturn(expectedBucket);
+      Mockito.when(runtimeSupport.allocatePersistentUploadBucket(64L)).thenReturn(expectedBucket);
 
       try (RandomAccessBucket bucket = message.createBucket(transientFactory, 64L, server)) {
         assertSame(expectedBucket, bucket);
@@ -149,14 +144,17 @@ class ClientPutMessageTest {
 
   @Test
   void createBucket_whenPersistentForeverAndDatabaseKilled_expectPersistenceDisabled()
-      throws MessageInvalidException {
+      throws Exception {
     ClientPutMessage message = newForeverMessage("put-forever-disabled", 16L);
     BucketFactory transientFactory = Mockito.mock(BucketFactory.class);
     FCPServer server = Mockito.mock(FCPServer.class);
-    NodeClientCore core = Mockito.mock(NodeClientCore.class);
+    FcpInsertRuntimeSupport runtimeSupport = Mockito.mock(FcpInsertRuntimeSupport.class);
 
-    Mockito.when(server.getCore()).thenReturn(core);
-    Mockito.when(core.killedDatabase()).thenReturn(true);
+    Mockito.when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
+    //noinspection resource
+    Mockito.doThrow(new PersistenceDisabledException())
+        .when(runtimeSupport)
+        .allocatePersistentUploadBucket(16L);
 
     assertThrows(
         PersistenceDisabledException.class,
@@ -165,7 +163,6 @@ class ClientPutMessageTest {
             fail("PersistenceDisabledException expected before bucket allocation");
           }
         });
-    Mockito.verify(core, Mockito.never()).getPersistentTempBucketFactory();
     Mockito.verifyNoInteractions(transientFactory);
   }
 

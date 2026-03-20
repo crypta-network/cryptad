@@ -30,11 +30,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -185,6 +188,61 @@ class ClientPutTest {
   }
 
   @Test
+  void register_whenPersistentAndTagsRequested_registersAndQueuesTagMessage() throws Exception {
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    FCPMessage tagMessage = mock(FCPMessage.class);
+    ClientPut put = spy(clientPut);
+    setField(ClientRequest.class, put, "persistence", Persistence.FOREVER);
+    setField(ClientRequest.class, put, "client", client);
+    doReturn(tagMessage).when(put).persistentTagMessage();
+
+    put.register(false);
+
+    verify(client).register(put);
+    verify(client).queueClientRequestMessage(tagMessage, 0);
+  }
+
+  @Test
+  void start_whenPersistentRequestStarts_updatesCacheAndQueuesTag() throws Exception {
+    ClientPutter putter = mock(ClientPutter.class);
+    ClientContext context = mock(ClientContext.class);
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    RequestStatusCache cache = mock(RequestStatusCache.class);
+    FCPMessage tagMessage = mock(FCPMessage.class);
+    ClientPut put = spy(clientPut);
+    when(client.getRequestStatusCache()).thenReturn(cache);
+    setField(ClientPut.class, put, "putter", putter);
+    setField(ClientRequest.class, put, "identifier", "start-id");
+    setField(ClientRequest.class, put, "persistence", Persistence.REBOOT);
+    setField(ClientRequest.class, put, "client", client);
+    doReturn(tagMessage).when(put).persistentTagMessage();
+
+    put.start(context);
+
+    verify(putter).start(false, context);
+    verify(client).queueClientRequestMessage(tagMessage, 0);
+    verify(cache).updateStarted("start-id", true);
+    assertTrue((boolean) getField(ClientRequest.class, put, "started"));
+  }
+
+  @Test
+  void start_whenPutterThrowsInsertException_invokesOnFailure() throws Exception {
+    ClientPutter putter = mock(ClientPutter.class);
+    ClientContext context = mock(ClientContext.class);
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    InsertException failure = new InsertException(InsertExceptionMode.INTERNAL_ERROR, "boom", null);
+    ClientPut put = spy(clientPut);
+    setField(ClientPut.class, put, "putter", putter);
+    setField(ClientRequest.class, put, "persistence", Persistence.REBOOT);
+    setField(ClientRequest.class, put, "client", client);
+    doThrow(failure).when(putter).start(false, context);
+
+    put.start(context);
+
+    verify(put).onFailure(failure, null);
+  }
+
+  @Test
   void innerResume_whenBucketPresent_delegatesToBucket() throws Exception {
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     setField(ClientPut.class, clientPut, "data", bucket);
@@ -292,6 +350,38 @@ class ClientPutTest {
 
     assertFalse(restarted);
     verify(spyPut).onFailure(failure, null);
+  }
+
+  @Test
+  void setVarsRestart_whenClientHasCache_updatesCompressionStatus() throws Exception {
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    RequestStatusCache cache = mock(RequestStatusCache.class);
+    when(client.getRequestStatusCache()).thenReturn(cache);
+    setField(ClientRequest.class, clientPut, "client", client);
+
+    clientPut.setVarsRestart();
+
+    verify(cache).updateCompressionStatus("test-id", COMPRESS_STATE.WAITING);
+    assertFalse((boolean) getField(ClientRequest.class, clientPut, "started"));
+    assertNull(getField(ClientPutBase.class, clientPut, "putFailedMessage"));
+    assertNull(getField(ClientPutBase.class, clientPut, "progressMessage"));
+  }
+
+  @Test
+  void requestWasRemoved_whenForeverPersistence_clearsPutter() throws Exception {
+    ClientPutter putter = mock(ClientPutter.class);
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    setField(ClientPut.class, clientPut, "putter", putter);
+    setField(ClientRequest.class, clientPut, "persistence", Persistence.FOREVER);
+    setField(ClientRequest.class, clientPut, "client", client);
+    setField(ClientRequest.class, clientPut, "finished", true);
+
+    clientPut.requestWasRemoved(mock(ClientContext.class));
+
+    assertNull(getField(ClientPut.class, clientPut, "putter"));
+    verify(client)
+        .queueClientRequestMessage(Mockito.any(PersistentRequestRemovedMessage.class), eq(0));
+    verifyNoInteractions(putter);
   }
 
   @Test

@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.async.USKManager;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
@@ -36,7 +35,7 @@ class SubscribeUSKMessageTest {
       "USK@0I8gctpUE32CM0iQhXaYpCMvtPPGfT4pjXm01oid5Zc,"
           + "3dAcn4fX2LyxO6uCnWFTx-2HKZ89uruurcKwLSCxbZ4,AQACAAE/Ultimate-Freenet-Index/55/";
 
-  @Mock private NodeClientCore nodeClientCore;
+  @Mock private FcpInsertRuntimeSupport runtimeSupport;
   @Mock private USKManager uskManager;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
@@ -138,8 +137,8 @@ class SubscribeUSKMessageTest {
     SubscribeUSKMessage message = new SubscribeUSKMessage(baseFields());
 
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(nodeClientCore);
-    when(nodeClientCore.getUskManager()).thenReturn(uskManager);
+    when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
+    when(runtimeSupport.uskManager()).thenReturn(uskManager);
     doNothing().when(uskManager).subscribe(any(), any(), anyBoolean(), anyBoolean(), any());
 
     message.run(handler);
@@ -154,7 +153,7 @@ class SubscribeUSKMessageTest {
   @Test
   void run_whenIdentifierCollides_sendsIdentifierCollisionMessage() throws Exception {
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(nodeClientCore);
+    when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
     doThrow(new IdentifierCollisionException())
         .when(handler)
         .addUSKSubscription(any(), any(SubscribeUSK.class));
@@ -178,7 +177,7 @@ class SubscribeUSKMessageTest {
     lenient().when(handler.getRebootClient()).thenReturn(rebootClient);
     lenient().when(rebootClient.lowLevelClient(false)).thenReturn(requestClient);
     lenient().when(handler.getServer()).thenReturn(server);
-    lenient().when(server.getCore()).thenReturn(nodeClientCore);
+    lenient().when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
     doNothing().when(handler).addUSKSubscription(any(), any(SubscribeUSK.class));
   }
 }

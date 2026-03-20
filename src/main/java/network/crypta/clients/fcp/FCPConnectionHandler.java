@@ -10,6 +10,7 @@ import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -579,7 +580,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(server.insertRuntimeSupport().clientContext());
   }
 
   private void startRebootClientPut(ClientPutMessage message) {
@@ -591,7 +592,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(server.insertRuntimeSupport().clientContext());
   }
 
   private void startForeverClientPut(ClientPutMessage message) {
@@ -660,16 +661,17 @@ public class FCPConnectionHandler implements Closeable {
       return;
     }
     RegistrationResult registration = registerConnectionScopedRequest(message.identifier, request);
+    ClientContext clientContext = server.insertRuntimeSupport().clientContext();
     if (registration == RegistrationResult.DUPLICATE) {
-      request.cancel(server.getCore().getClientContext());
+      request.cancel(clientContext);
       handleIdentifierCollision(message.identifier, message.global);
       return;
     }
     if (registration == RegistrationResult.CLOSED) {
-      request.cancel(server.getCore().getClientContext());
+      request.cancel(clientContext);
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(clientContext);
   }
 
   private void startRebootClientPutDir(
@@ -678,11 +680,12 @@ public class FCPConnectionHandler implements Closeable {
     if (request == null) {
       return;
     }
+    ClientContext clientContext = server.insertRuntimeSupport().clientContext();
     if (!registerPersistentRequest(request, message.identifier, message.global)) {
-      request.cancel(server.getCore().getClientContext());
+      request.cancel(clientContext);
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(clientContext);
   }
 
   private void startForeverClientPutDir(

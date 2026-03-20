@@ -1,7 +1,10 @@
 package network.crypta.clients.fcp;
 
+import network.crypta.client.InsertContext;
 import network.crypta.client.async.CacheFetchResult;
+import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
@@ -29,12 +32,18 @@ class FCPServerTest {
   @Mock private ExecutionPort executionPort;
   @Mock private TransferAccessPort serverTransferAccess;
   @Mock private TransferAccessPort coreTransferAccess;
+  @Mock private ClientContext clientContext;
+  @Mock private InsertContext insertContext;
+  @Mock private USKManager uskManager;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     when(runtimePorts.execution()).thenReturn(executionPort);
     lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
     lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
     lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
+    lenient().when(core.getClientContext()).thenReturn(clientContext);
+    lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
+    lenient().when(core.getUskManager()).thenReturn(uskManager);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -192,6 +201,50 @@ class FCPServerTest {
     // Assert
     assertSame(updatedServerTransferAccess, actual);
     assertNotSame(serverTransferAccess, actual);
+  }
+
+  @Test
+  void insertRuntimeSupport_whenQueried_returnsConfiguredAdapter() {
+    FCPServer server = newServer(false, false);
+    FcpInsertRuntimeSupport first = server.insertRuntimeSupport();
+
+    FcpInsertRuntimeSupport second = server.insertRuntimeSupport();
+
+    assertNotNull(first);
+    assertSame(first, second);
+  }
+
+  @Test
+  void insertRuntimeSupport_whenTransferAccessQueried_usesCoreRuntimePorts() {
+    FCPServer server = newServer(false, false);
+
+    TransferAccessPort actual = server.insertRuntimeSupport().transferAccess();
+
+    assertSame(coreTransferAccess, actual);
+    assertNotSame(serverTransferAccess, actual);
+  }
+
+  @Test
+  void insertRuntimeSupport_whenCoreTransferPolicyChanges_readsLatestCoreRuntimePort() {
+    FCPServer server = newServer(false, false);
+    FcpInsertRuntimeSupport support = server.insertRuntimeSupport();
+    TransferAccessPort updatedCoreTransferAccess = mock(TransferAccessPort.class);
+    when(coreRuntimePorts.transferAccess()).thenReturn(updatedCoreTransferAccess);
+
+    TransferAccessPort actual = support.transferAccess();
+
+    assertSame(updatedCoreTransferAccess, actual);
+    assertNotSame(coreTransferAccess, actual);
+  }
+
+  @Test
+  void insertRuntimeSupport_whenContextServicesQueried_delegatesToCore() {
+    FCPServer server = newServer(false, false);
+    FcpInsertRuntimeSupport support = server.insertRuntimeSupport();
+
+    assertSame(clientContext, support.clientContext());
+    assertSame(insertContext, support.defaultPersistentInsertContext());
+    assertSame(uskManager, support.uskManager());
   }
 
   @Test

@@ -18,7 +18,6 @@ import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.InsertRequestParams;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
@@ -118,7 +117,7 @@ public final class ClientPut extends ClientPutBase {
    *     {@code null} and should be consistent with the request type.
    * @param upload upload payload metadata describing source and content hints; must not be {@code
    *     null} and should include a readable bucket if required.
-   * @param core owning {@link NodeClientCore} providing policies, factories, and scheduler hooks;
+   * @param server owning server providing insert runtime support, policies, and scheduler hooks;
    *     must not be {@code null}.
    * @throws IdentifierCollisionException when the chosen identifier already exists in persistence.
    * @throws NotAllowedException when the configured upload source violates server-side policy.
@@ -126,17 +125,15 @@ public final class ClientPut extends ClientPutBase {
    * @throws IOException when filesystem or bucket reads fail during preparation.
    */
   public ClientPut(
-      FcpInsertRequest request,
-      FcpInsertOptions options,
-      ClientPutUpload upload,
-      NodeClientCore core)
+      FcpInsertRequest request, FcpInsertOptions options, ClientPutUpload upload, FCPServer server)
       throws IdentifierCollisionException,
           NotAllowedException,
           MetadataUnresolvedException,
           IOException {
+    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(request.uri(), upload.targetFilename(), core.getClientContext()),
+            checkEmptySSK(request.uri(), upload.targetFilename(), runtimeSupport.clientContext()),
             ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
             request.verbosity(),
             request.priorityClass(),
@@ -150,7 +147,7 @@ public final class ClientPut extends ClientPutBase {
         options,
         null,
         request.client(),
-        core,
+        runtimeSupport,
         derivePublicURI(requestParams.uri()));
     UploadFrom uploadFromType = upload.uploadFromType();
     File uploadOrigFilename = upload.origFilename();
@@ -160,7 +157,7 @@ public final class ClientPut extends ClientPutBase {
 
     if (uploadFromType == UploadFrom.DISK) {
       ClientPutDiskUploadValidator.validatePersistentDiskUpload(
-          core.getRuntimePorts().transferAccess(), uploadOrigFilename);
+          runtimeSupport.transferAccess(), uploadOrigFilename);
     }
 
     this.binaryBlob = upload.binaryBlob();
@@ -175,7 +172,12 @@ public final class ClientPut extends ClientPutBase {
     if (LOG.isDebugEnabled()) LOG.debug(PERSISTENT_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
     PreparedData preparedData =
         ClientPutPreparedDataFactory.prepareForPersistentUpload(
-            uploadFrom, cm, tempData, upload.redirectTarget(), core, isPersistentForever());
+            uploadFrom,
+            cm,
+            tempData,
+            upload.redirectTarget(),
+            runtimeSupport,
+            isPersistentForever());
     this.data = preparedData.bucket();
     this.clientMetadata = cm;
     this.targetURI = preparedData.targetUri();
@@ -211,8 +213,8 @@ public final class ClientPut extends ClientPutBase {
    *     rights; must not be {@code null} and should represent the active socket.
    * @param message parsed {@link ClientPutMessage} containing payload descriptors and metadata;
    *     must not be {@code null} and should already have validated field syntax.
-   * @param server owning server providing {@link NodeClientCore} accessors and capability checks;
-   *     must not be {@code null}.
+   * @param server owning server providing insert runtime support and capability checks; must not be
+   *     {@code null}.
    * @throws IdentifierCollisionException if another request on the connection already uses the
    *     identifier.
    * @throws MessageInvalidException when client supplied fields (hashes, MIME, permissions) are
@@ -221,6 +223,7 @@ public final class ClientPut extends ClientPutBase {
    */
   public ClientPut(FCPConnectionHandler handler, ClientPutMessage message, FCPServer server)
       throws IdentifierCollisionException, MessageInvalidException, IOException {
+    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     FcpInsertOptions options =
         new FcpInsertOptions(
             new FcpInsertBehaviorOptions(
@@ -241,7 +244,7 @@ public final class ClientPut extends ClientPutBase {
             message.overrideSplitfileCryptoKey);
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(message.uri, message.targetFilename, server.getCore().getClientContext()),
+            checkEmptySSK(message.uri, message.targetFilename, runtimeSupport.clientContext()),
             ensureConnectionIdentifierAvailable(handler, message),
             message.verbosity,
             message.priorityClass,
@@ -249,9 +252,15 @@ public final class ClientPut extends ClientPutBase {
             options.realTimeFlag(),
             message.clientToken,
             message.global);
-    super(requestParams, null, options, handler, server, derivePublicURI(requestParams.uri()));
+    super(
+        requestParams,
+        null,
+        options,
+        handler,
+        runtimeSupport,
+        derivePublicURI(requestParams.uri()));
     binaryBlob = message.binaryBlob;
-    TransferAccessPort transferAccess = server.getCore().getRuntimePorts().transferAccess();
+    TransferAccessPort transferAccess = runtimeSupport.transferAccess();
 
     DiskUploadContext diskContext =
         ClientPutDiskUploadValidator.validateDiskUpload(
@@ -274,7 +283,7 @@ public final class ClientPut extends ClientPutBase {
     ClientMetadata cm = new ClientMetadata(mimeType);
     PreparedData preparedData =
         ClientPutPreparedDataFactory.prepareForMessage(
-            message, cm, server, isPersistentForever(), uploadFrom, identifier, global);
+            message, cm, runtimeSupport, isPersistentForever(), uploadFrom, identifier, global);
     this.data = preparedData.bucket();
     this.clientMetadata = cm;
     this.targetURI = preparedData.targetUri();
