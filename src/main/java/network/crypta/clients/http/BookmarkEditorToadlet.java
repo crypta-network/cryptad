@@ -12,8 +12,9 @@ import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetPeerRequiredException;
+import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
@@ -121,14 +122,15 @@ public class BookmarkEditorToadlet extends Toadlet {
 
   private static final int MAX_EXPLANATION_LENGTH = 1024;
 
-  private final NodeClientCore core;
+  private final BookmarkEditorToadletRuntimePorts runtimePorts;
   private String cutedPath;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
-  BookmarkEditorToadlet(HighLevelSimpleClient client, NodeClientCore core) {
+  BookmarkEditorToadlet(
+      HighLevelSimpleClient client, BookmarkEditorToadletRuntimePorts runtimePorts) {
     super(client);
-    this.core = core;
+    this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
     this.cutedPath = null;
   }
 
@@ -145,7 +147,7 @@ public class BookmarkEditorToadlet extends Toadlet {
             NodeL10n.getBase().getString("BookmarkEditorToadlet.paste"),
             NodeL10n.getBase().getString("BookmarkEditorToadlet.addBookmark"),
             NodeL10n.getBase().getString("BookmarkEditorToadlet.addCategory"),
-            core.getNode().network().darknetConnections().length > 0);
+            hasDarknetPeers());
     List<BookmarkItem> items = cat.getItems();
     for (int i = 0; i < items.size(); i++) {
       addBookmarkItemToList(items, path, list, labels, i);
@@ -318,11 +320,28 @@ public class BookmarkEditorToadlet extends Toadlet {
     return ACTION_QUERY_PREFIX + action + BOOKMARK_QUERY_PARAM + bookmarkPath;
   }
 
+  private boolean hasDarknetPeers() {
+    return !runtimePorts.darknetConnectionsPort().listPeers().isEmpty();
+  }
+
   private void sendBookmarkFeeds(HTTPRequest req, BookmarkItem item, String publicDescription) {
-    for (DarknetPeerNode peer : core.getNode().network().darknetConnections())
-      if (req.isPartSet("node_" + peer.hashCode()))
-        peer.sendBookmarkFeed(
-            item.getURI(), item.getName(), publicDescription, item.hasAnActivelink());
+    for (DarknetConnectionPeerSnapshot peer : runtimePorts.darknetConnectionsPort().listPeers()) {
+      if (!req.isPartSet("node_" + peer.selectionToken())) {
+        continue;
+      }
+      try {
+        runtimePorts
+            .darknetMessagingPort()
+            .shareBookmark(
+                peer.nodeIdentifier(),
+                item.getURI().toString(),
+                item.getName(),
+                publicDescription,
+                item.hasAnActivelink());
+      } catch (UnknownPeerException | DarknetPeerRequiredException e) {
+        LOG.warn("Skipping bookmark share for unresolved peer {}", peer.nodeIdentifier(), e);
+      }
+    }
   }
 
   private HTMLNode getBookmarksList(BookmarkManager bookmarkManager) {
@@ -364,12 +383,14 @@ public class BookmarkEditorToadlet extends Toadlet {
    * Handles GET requests for the bookmark editor page, rendering the current tree and any pending
    * action forms.
    *
-   * <p>The method enforces full-access checks, decodes and validates the requested bookmark path,
-   * dispatches lightweight actions (move, cut, paste, delete confirmation, edit/share forms), and
-   * finally emits an HTML page containing the bookmark list plus auxiliary controls such as the
+   * <p>The method enforces full-access checks and validates the requested bookmark path. It also
+   * dispatches lightweight actions such as move, cut, paste, delete confirmation, and edit/share
+   * forms.
+   *
+   * <p>It then emits an HTML page containing the bookmark list plus auxiliary controls such as the
    * “Add default bookmarks” button. Responses are written directly to the provided {@link
-   * ToadletContext}, and no storage mutation occurs unless an action explicitly requires it (for
-   * example, moving a bookmark up/down).
+   * ToadletContext}. No storage mutation occurs unless an action explicitly requires it, for
+   * example, when moving a bookmark up or down.
    *
    * @param uri request target URI; only the path is relevant and must match {@link #path()}.
    * @param req HTTP request containing query parameters such as {@code action} and {@code
@@ -561,7 +582,7 @@ public class BookmarkEditorToadlet extends Toadlet {
     HTMLNode form = ctx.addFormChild(actionBoxContent, "", "editBookmarkForm");
     addNameField(form, isNew, bookmark);
     addItemSectionIfNeeded(action, isNew, bookmark, form);
-    addShareSectionIfNeeded(action, isNew, bookmark, form);
+    addShareSectionIfNeeded(action, isNew, bookmark, form, ctx);
 
     addHiddenFields(form, bookmarkPath, req.getParam(PARAM_ACTION));
     addSubmitButton(form, action);
@@ -656,46 +677,43 @@ public class BookmarkEditorToadlet extends Toadlet {
         "for",
         ACTIVE_LINK_FIELD,
         (NodeL10n.getBase().getString("BookmarkEditorToadlet.hasAnActivelinkLabel") + ' '));
+    HTMLNode activeLinkInput =
+        form.addChild(
+            TAG_INPUT,
+            new String[] {"type", "id", "name"},
+            new String[] {CHECKBOX, ACTIVE_LINK_FIELD, ACTIVE_LINK_FIELD});
     if (!isNew && item.hasAnActivelink()) {
-      form.addChild(
-          TAG_INPUT,
-          new String[] {"type", "id", "name", "checked"},
-          new String[] {
-            CHECKBOX, ACTIVE_LINK_FIELD, ACTIVE_LINK_FIELD, String.valueOf(item.hasAnActivelink())
-          });
-    } else {
-      form.addChild(
-          TAG_INPUT,
-          new String[] {"type", "id", "name"},
-          new String[] {CHECKBOX, ACTIVE_LINK_FIELD, ACTIVE_LINK_FIELD});
+      activeLinkInput.addAttribute("checked", "checked");
     }
   }
 
   private void addShareSectionIfNeeded(
-      String action, boolean isNew, Bookmark bookmark, HTMLNode form) {
-    if (!shouldDisplayShareSection(action)) {
+      String action, boolean isNew, Bookmark bookmark, HTMLNode form, ToadletContext ctx) {
+    List<DarknetConnectionPeerSnapshot> peers = runtimePorts.darknetConnectionsPort().listPeers();
+    if (!shouldDisplayShareSection(action, peers)) {
       return;
     }
     BookmarkItem item = isNew ? null : (BookmarkItem) bookmark;
     form.addChild("br");
     form.addChild("br");
-    if (core.getNode().isFProxyJavascriptEnabled()) {
+    boolean fProxyJavascriptEnabled = ctx.getContainer().isFProxyJavascriptEnabled();
+    if (fProxyJavascriptEnabled) {
       form.addChild(
           "script",
           new String[] {"type", "src"},
           new String[] {"text/javascript", "/static/js/checkall.js"});
     }
     HTMLNode peerTable = form.addChild("table", ATTRIBUTE_CLASS, "darknet_connections");
-    addPeerTableHeader(peerTable);
-    for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
+    addPeerTableHeader(peerTable, fProxyJavascriptEnabled);
+    for (DarknetConnectionPeerSnapshot peer : peers) {
       HTMLNode peerRow = peerTable.addChild("tr", ATTRIBUTE_CLASS, "darknet_connections_normal");
       peerRow
           .addChild("td", ATTRIBUTE_CLASS, "peer-marker")
           .addChild(
               TAG_INPUT,
               new String[] {"type", "name"},
-              new String[] {CHECKBOX, "node_" + peer.hashCode()});
-      peerRow.addChild("td", ATTRIBUTE_CLASS, "peer-name").addChild("#", peer.getName());
+              new String[] {CHECKBOX, "node_" + peer.selectionToken()});
+      peerRow.addChild("td", ATTRIBUTE_CLASS, "peer-name").addChild("#", peer.displayName());
     }
     form.addChild(
         TAG_LABEL,
@@ -711,8 +729,8 @@ public class BookmarkEditorToadlet extends Toadlet {
     form.addChild("br");
   }
 
-  private void addPeerTableHeader(HTMLNode peerTable) {
-    if (core.getNode().isFProxyJavascriptEnabled()) {
+  private void addPeerTableHeader(HTMLNode peerTable, boolean fProxyJavascriptEnabled) {
+    if (fProxyJavascriptEnabled) {
       HTMLNode headerRow = peerTable.addChild("tr");
       headerRow
           .addChild("th")
@@ -732,9 +750,9 @@ public class BookmarkEditorToadlet extends Toadlet {
     }
   }
 
-  private boolean shouldDisplayShareSection(String action) {
-    return core.getNode().network().darknetConnections().length > 0
-        && (ACTION_ADD_ITEM.equals(action) || ACTION_SHARE.equals(action));
+  private boolean shouldDisplayShareSection(
+      String action, List<DarknetConnectionPeerSnapshot> peers) {
+    return !peers.isEmpty() && (ACTION_ADD_ITEM.equals(action) || ACTION_SHARE.equals(action));
   }
 
   private void addHiddenFields(HTMLNode form, String bookmarkPath, String action) {
@@ -1037,13 +1055,13 @@ public class BookmarkEditorToadlet extends Toadlet {
   /**
    * Returns the mount path used to register this toadlet within the HTTP dispatcher.
    *
-   * <p>The value is constant and includes leading and trailing slashes so it can be concatenated
+   * <p>The value is constant and includes leading and trailing slashes, so it can be concatenated
    * directly with relative resource links in generated pages. Callers typically read this during
    * registration with the router and when building redirects or form actions from other toadlets.
-   * The string is immutable, contains only ASCII characters, and does not reflect runtime state,
-   * making it safe to cache across requests. Any incoming request whose {@link URI#getPath()} does
-   * not match this value will be rejected by the surrounding dispatcher before reaching the
-   * handler.
+   * The string is immutable, contains only ASCII characters, and does not reflect the runtime
+   * state, making it safe to cache across requests. Any incoming request whose {@link
+   * URI#getPath()} does not match this value will be rejected by the surrounding dispatcher before
+   * reaching the handler.
    *
    * @return fixed path segment {@code "/bookmarkEditor/"} identifying the editor endpoint.
    */

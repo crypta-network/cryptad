@@ -99,6 +99,33 @@ public interface DarknetMessagingPort {
       throws UnknownPeerException, DarknetPeerRequiredException;
 
   /**
+   * Sends one bookmark recommendation to the selected detached darknet peer.
+   *
+   * <p>This is the detached equivalent of the legacy bookmark-editor share action. Callers keep
+   * bookmark lookup, checkbox selection, and HTTP form handling in the web layer, then pass only
+   * the detached peer identity plus bookmark fields that are already ready for the legacy message
+   * format. Implementations resolve the detached identity on demand, convert the URI string back to
+   * the daemon URI type, and delegate to the existing bookmark-feed send path.
+   *
+   * <p>The operation intentionally stays narrow: it shares exactly one bookmark to exactly one
+   * selected peer, preserving the current page semantics and avoiding bookmark-domain types in the
+   * SPI. As with other detached peer actions, identity resolution is request-scoped and may fail if
+   * the peer roster changes between form render and submit.
+   *
+   * @param nodeIdentifier detached peer identity selected from the legacy friends page and used for
+   *     request-scoped peer lookup
+   * @param uri validated bookmark URI string to share with the resolved peer
+   * @param name bookmark display name to include in the shared feed entry
+   * @param description optional human-readable public description to include in the shared feed
+   * @param hasActiveLink whether the shared bookmark should be marked as having an active link
+   * @throws UnknownPeerException if the detached peer identity no longer resolves at sending time
+   * @throws DarknetPeerRequiredException if the resolved peer exists but is not a darknet peer
+   */
+  void shareBookmark(
+      String nodeIdentifier, String uri, String name, String description, boolean hasActiveLink)
+      throws UnknownPeerException, DarknetPeerRequiredException;
+
+  /**
    * Sends one composed N2NTM to the selected detached darknet peer.
    *
    * <p>Implementations must resolve the peer once for the whole operation, then send the optional

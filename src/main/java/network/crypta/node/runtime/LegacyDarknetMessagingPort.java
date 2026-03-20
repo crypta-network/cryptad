@@ -90,6 +90,17 @@ final class LegacyDarknetMessagingPort implements DarknetMessagingPort {
 
   /** {@inheritDoc} */
   @Override
+  public void shareBookmark(
+      String nodeIdentifier, String uri, String name, String description, boolean hasActiveLink)
+      throws UnknownPeerException, DarknetPeerRequiredException {
+    Objects.requireNonNull(name, "name");
+    peerResolver
+        .resolveByIdentity(nodeIdentifier)
+        .sendBookmarkFeed(toFreenetUri(uri), name, description, hasActiveLink);
+  }
+
+  /** {@inheritDoc} */
+  @Override
   public DarknetMessageSendStatus sendComposedMessage(
       String nodeIdentifier,
       String message,

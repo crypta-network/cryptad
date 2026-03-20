@@ -15,6 +15,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
@@ -63,6 +64,7 @@ class FProxyRegistrarTest {
   @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
+  @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private LifecyclePort lifecyclePort;
   @Mock private WelcomeActionPort welcomeActionPort;
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
@@ -97,6 +99,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
     when(runtimePorts.welcomePage()).thenReturn(welcomePagePort);
     when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
+    when(runtimePorts.darknetMessaging()).thenReturn(darknetMessagingPort);
     when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
     when(runtimePorts.welcomeAction()).thenReturn(welcomeActionPort);
     when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
@@ -203,6 +206,16 @@ class FProxyRegistrarTest {
         (FileInsertWizardToadletRuntimePorts)
             readField(fileInsertWizardRegistration.toadlet(), "runtimePorts");
     assertSame(securityLevelsPort, fileInsertWizardRuntimePorts.securityLevelsPort());
+    RegisteredToadlet bookmarkEditorRegistration =
+        registrations.stream()
+            .filter(registered -> registered.toadlet() instanceof BookmarkEditorToadlet)
+            .findFirst()
+            .orElseThrow();
+    BookmarkEditorToadletRuntimePorts bookmarkRuntimePorts =
+        (BookmarkEditorToadletRuntimePorts)
+            readField(bookmarkEditorRegistration.toadlet(), "runtimePorts");
+    assertSame(darknetConnectionsPort, bookmarkRuntimePorts.darknetConnectionsPort());
+    assertSame(darknetMessagingPort, bookmarkRuntimePorts.darknetMessagingPort());
     verify(runtimePorts, atLeastOnce()).firstTimeWizard();
   }
 
