@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -25,7 +24,6 @@ import static org.mockito.Mockito.when;
 class DecodeToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private NodeClientCore core;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
   @Mock private PageMaker pageMaker;
@@ -38,7 +36,7 @@ class DecodeToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = spy(new DecodeToadlet(client, core));
+    toadlet = spy(new DecodeToadlet(client));
   }
 
   private void mockPageRenderingChain() {
@@ -110,7 +108,7 @@ class DecodeToadletTest {
 
   @Test
   void path_whenInvoked_returnsDecodePath() {
-    DecodeToadlet freshToadlet = new DecodeToadlet(mock(HighLevelSimpleClient.class), core);
+    DecodeToadlet freshToadlet = new DecodeToadlet(mock(HighLevelSimpleClient.class));
 
     assertEquals("/decode/", freshToadlet.path());
   }

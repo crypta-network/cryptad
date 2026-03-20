@@ -15,9 +15,9 @@ import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
+import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
@@ -47,8 +47,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Responsibilities: render UI, validate parameters, feed data into the filter, report
  *       outcomes.
- *   <li>Notable behaviors: respects configurable endpoint path, enforces advanced-mode access, and
- *       cleans up upload parts to conserve memory.
+ *   <li>Notable behaviors: respects the configurable endpoint path, enforces advanced-mode access,
+ *       and cleans up upload parts to conserve memory.
  * </ul>
  *
  * @see LocalFileFilterToadlet
@@ -90,23 +90,18 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   public enum ResultHandling {
     /** Render the filtered content directly back to the browser in the HTTP response. */
     DISPLAY,
-    /** Save the filtered content to disk using the node's standard download location. */
+    /** Save the filtered content to the disk using the node's standard download location. */
     SAVE
   }
 
-  private final NodeClientCore core;
-
   /**
-   * Creates a content filter toadlet bound to the given client core and HTTP client abstraction.
+   * Creates a content filter toadlet bound to the given HTTP client abstraction.
    *
    * @param client HTTP client utility used for link-aware rendering and helper operations; must not
    *     be {@code null}.
-   * @param clientCore node client core providing access to filtering services and access-control
-   *     checks; must not be {@code null}.
    */
-  public ContentFilterToadlet(HighLevelSimpleClient client, NodeClientCore clientCore) {
+  public ContentFilterToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.core = clientCore;
   }
 
   private static String resolvePath() {
@@ -152,7 +147,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
    * @param request parsed HTTP request carrying query parameters; must not be {@code null}.
    * @param ctx toadlet context used for authorization, localization, and response writing; must not
    *     be {@code null}.
-   * @throws ToadletContextClosedException if the client connection closes before the response is
+   * @throws ToadletContextClosedException if the client connection closes before, the response is
    *     fully written.
    * @throws IOException if the response cannot be streamed to the caller.
    * @throws RedirectException if a redirect is required by the underlying framework while building
@@ -186,8 +181,8 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
    * parameters between steps, and frees request parts in a {@code finally} block to avoid resource
    * leaks. Access control mirrors {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)}.
    *
-   * @param uri target URI of the request, retained for compatibility with the Toadlet contract; may
-   *     be unused by some branches.
+   * @param uri the target URI of the request, retained for compatibility with the Toadlet contract,
+   *     may be unused by some branches.
    * @param request multipart POST request containing user input and optional file data; must not be
    *     {@code null} and is released after processing.
    * @param ctx context for permission checks, localization, and response handling; must not be
@@ -203,7 +198,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
       return;
     }
     try {
-      // Browse... button on filter page
+      // Browse... button on the filter page
       if (request.isPartSet("filter-local")) {
         try {
           FilterOperation filterOperation = getFilterOperation(request);
@@ -231,10 +226,10 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
         }
         // Filter button on local file browser
       } else if (request.isPartSet(LocalFileBrowserToadlet.SELECT_FILE)) {
-        handleFilterRequest(request, ctx, core, true);
-        // Filter File button on filter page
+        handleFilterRequest(request, ctx, true);
+        // Filter File button on the filter page
       } else if (request.isPartSet("filter-upload")) {
-        handleFilterRequest(request, ctx, core, false);
+        handleFilterRequest(request, ctx, false);
       } else {
         handleMethodGET(uri, new HTTPRequestImpl(uri, "GET"), ctx);
       }
@@ -363,17 +358,16 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   }
 
   /** Handle a request to filter a file. */
-  private void handleFilterRequest(
-      HTTPRequest request, ToadletContext ctx, NodeClientCore core, boolean localFile)
+  private void handleFilterRequest(HTTPRequest request, ToadletContext ctx, boolean localFile)
       throws ToadletContextClosedException, IOException {
     try {
       FilterOperation filterOperation = getFilterOperation(request);
       ResultHandling resultHandling = getResultHandling(request);
       String mimeType = request.getPartAsStringFailsafe(MIME_TYPE_PART, 100);
       if (localFile) {
-        handleLocalFilterRequest(request, ctx, core, filterOperation, resultHandling, mimeType);
+        handleLocalFilterRequest(request, ctx, filterOperation, resultHandling, mimeType);
       } else {
-        handleUploadedFilterRequest(request, ctx, core, filterOperation, resultHandling, mimeType);
+        handleUploadedFilterRequest(request, ctx, filterOperation, resultHandling, mimeType);
       }
     } catch (BadRequestException e) {
       handleInvalidPart(e.getInvalidRequestPart(), ctx);
@@ -383,7 +377,6 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   private void handleLocalFilterRequest(
       HTTPRequest request,
       ToadletContext ctx,
-      NodeClientCore core,
       FilterOperation filterOperation,
       ResultHandling resultHandling,
       String mimeType)
@@ -397,7 +390,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     }
     File file = new File(filename);
     try (Bucket bucket = new FileBucket(file, true, false, false, false)) {
-      processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx, core);
+      processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx);
     } catch (FileNotFoundException _) {
       writeBadRequestError(
           l10n("errorNoFileOrCannotReadTitle"), cannotReadFileMessage(filename), ctx);
@@ -407,7 +400,6 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   private void handleUploadedFilterRequest(
       HTTPRequest request,
       ToadletContext ctx,
-      NodeClientCore core,
       FilterOperation filterOperation,
       ResultHandling resultHandling,
       String mimeType)
@@ -422,7 +414,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
       throw new BadRequestException(FILENAME_PART);
     }
     try (Bucket bucket = file.getData()) {
-      processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx, core);
+      processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx);
     } catch (FileNotFoundException _) {
       writeBadRequestError(
           l10n("errorNoFileOrCannotReadTitle"), cannotReadFileMessage(filename), ctx);
@@ -453,11 +445,10 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
       String mimeType,
       FilterOperation filterOperation,
       ResultHandling resultHandling,
-      ToadletContext ctx,
-      NodeClientCore core)
+      ToadletContext ctx)
       throws ToadletContextClosedException, IOException, BadRequestException {
     String resultFilename = makeResultFilename(filename, mimeType);
-    handleFilter(bucket, mimeType, filterOperation, resultHandling, resultFilename, ctx, core);
+    handleFilter(bucket, mimeType, filterOperation, resultHandling, resultFilename, ctx);
   }
 
   private String makeResultFilename(String originalFilename, String mimeType) {
@@ -479,14 +470,13 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
       FilterOperation operation,
       ResultHandling resultHandling,
       String resultFilename,
-      ToadletContext ctx,
-      NodeClientCore core)
+      ToadletContext ctx)
       throws ToadletContextClosedException, IOException, BadRequestException {
     Bucket resultBucket = ctx.getBucketFactory().makeBucket(-1);
     String resultMimeType = null;
     boolean unsafe = false;
     try {
-      FilterStatus status = applyFilter(data, resultBucket, mimeType, operation, core);
+      FilterStatus status = applyFilter(data, resultBucket, mimeType, operation);
       resultMimeType = status.mimeType;
     } catch (UnsafeContentTypeException _) {
       unsafe = true;
@@ -518,28 +508,34 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   }
 
   private FilterStatus applyFilter(
-      Bucket input, Bucket output, String mimeType, FilterOperation operation, NodeClientCore core)
-      throws IOException {
+      Bucket input, Bucket output, String mimeType, FilterOperation operation) throws IOException {
     try (InputStream inputStream = input.getInputStream();
         OutputStream outputStream = output.getOutputStream()) {
-      return applyFilter(inputStream, outputStream, mimeType, operation, core);
+      return applyFilter(inputStream, outputStream, mimeType, operation);
     }
   }
 
   private FilterStatus applyFilter(
-      InputStream input,
-      OutputStream output,
-      String mimeType,
-      FilterOperation operation,
-      NodeClientCore core)
+      InputStream input, OutputStream output, String mimeType, FilterOperation operation)
       throws IOException {
     validateOperation(operation);
     URI fakeUri = resolveFilterUri();
     ContentFilterRequest request =
         new ContentFilterRequest(input, output, mimeType, null, null, null);
     ContentFilterCallbacks callbacks =
-        new ContentFilterCallbacks(fakeUri, null, null, core.getEndpoints().getToadletContainer());
+        new ContentFilterCallbacks(fakeUri, null, null, getLinkFilterExceptionProvider());
     return ContentFilter.filter(request, callbacks);
+  }
+
+  private LinkFilterExceptionProvider getLinkFilterExceptionProvider() {
+    if (container == null) {
+      throw new IllegalStateException("ContentFilterToadlet requires a registered container");
+    }
+    if (container instanceof LinkFilterExceptionProvider provider) {
+      return provider;
+    }
+    throw new IllegalStateException(
+        "ContentFilterToadlet container must implement LinkFilterExceptionProvider");
   }
 
   private void validateOperation(FilterOperation operation) {
