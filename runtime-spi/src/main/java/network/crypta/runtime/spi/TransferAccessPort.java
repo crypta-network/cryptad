@@ -84,6 +84,26 @@ public interface TransferAccessPort {
   File[] allowedUploadDirs();
 
   /**
+   * Computes the legacy default starting directory for upload-oriented file browsers.
+   *
+   * <p>The helper preserves the longstanding behavior used by the HTTP local-file browsers: when
+   * uploads are effectively unrestricted (represented by a single {@code "all"} entry) or when no
+   * explicit upload roots are configured, it falls back to the current JVM user's home directory.
+   * Otherwise, it returns the first configured upload directory unchanged except for converting it
+   * to an absolute-path string.
+   *
+   * @return legacy default upload browser directory
+   */
+  default String defaultUploadDir() {
+    File[] allowedUploadDirs = allowedUploadDirs();
+    if ((allowedUploadDirs.length == 1 && allowedUploadDirs[0].toString().equals("all"))
+        || allowedUploadDirs.length == 0) {
+      return System.getProperty("user.home");
+    }
+    return allowedUploadDirs[0].getAbsolutePath();
+  }
+
+  /**
    * Returns the directories that the runtime currently allows as download roots.
    *
    * <p>The returned array reflects the daemon's current download policy using plain {@link File}
@@ -95,4 +115,24 @@ public interface TransferAccessPort {
    */
   @SuppressWarnings("unused")
   File[] allowedDownloadDirs();
+
+  /**
+   * Computes the legacy default starting directory for download-oriented file browsers.
+   *
+   * <p>The helper preserves the existing local-browser behavior: when downloads are effectively
+   * unrestricted (represented by a single {@code "all"} entry) or when no explicit download roots
+   * are configured, it prefers the configured "downloads" directory. Otherwise, it returns the
+   * first configured download directory unchanged except for converting it to an absolute-path
+   * string.
+   *
+   * @return legacy default download browser directory
+   */
+  default String defaultDownloadDir() {
+    File[] allowedDownloadDirs = allowedDownloadDirs();
+    if ((allowedDownloadDirs.length == 1 && allowedDownloadDirs[0].toString().equals("all"))
+        || allowedDownloadDirs.length == 0) {
+      return downloadsDir().getAbsolutePath();
+    }
+    return allowedDownloadDirs[0].getAbsolutePath();
+  }
 }

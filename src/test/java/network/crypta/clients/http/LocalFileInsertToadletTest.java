@@ -4,7 +4,7 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,7 +24,7 @@ class LocalFileInsertToadletTest {
 
   private static final String VALID_KEY = "KSK@unit-test";
 
-  @Mock private NodeClientCore core;
+  @Mock private TransferAccessPort transferAccess;
 
   @Mock private HighLevelSimpleClient highLevelSimpleClient;
 
@@ -31,7 +32,8 @@ class LocalFileInsertToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new LocalFileInsertToadlet(core, highLevelSimpleClient);
+    lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
+    toadlet = new LocalFileInsertToadlet(transferAccess, highLevelSimpleClient);
   }
 
   @Test
@@ -51,28 +53,28 @@ class LocalFileInsertToadletTest {
   @Test
   void allowedDir_whenDelegatedToCore_returnsCoreDecision() {
     File path = new File("/tmp/allowed");
-    when(core.allowUploadFrom(path)).thenReturn(true);
+    when(transferAccess.allowUploadFrom(path)).thenReturn(true);
 
     boolean result = toadlet.allowedDir(path);
 
     assertTrue(result);
-    verify(core).allowUploadFrom(path);
+    verify(transferAccess).allowUploadFrom(path);
   }
 
   @Test
   void allowedDir_whenCoreDisallows_returnsFalse() {
     File path = new File("/tmp/disallowed");
-    when(core.allowUploadFrom(path)).thenReturn(false);
+    when(transferAccess.allowUploadFrom(path)).thenReturn(false);
 
     boolean result = toadlet.allowedDir(path);
 
     assertFalse(result);
-    verify(core).allowUploadFrom(path);
+    verify(transferAccess).allowUploadFrom(path);
   }
 
   @Test
   void startingDir_whenUploadsAllowedEverywhere_returnsUserHome() {
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {new File("all")});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {new File("all")});
 
     String result = toadlet.startingDir();
 
@@ -82,7 +84,7 @@ class LocalFileInsertToadletTest {
   @Test
   void startingDir_whenExplicitUploadDirectoryConfigured_returnsFirstEntry() {
     File preferred = new File("/var/uploads");
-    when(core.getAllowedUploadDirs()).thenReturn(new File[] {preferred});
+    when(transferAccess.allowedUploadDirs()).thenReturn(new File[] {preferred});
 
     String result = toadlet.startingDir();
 

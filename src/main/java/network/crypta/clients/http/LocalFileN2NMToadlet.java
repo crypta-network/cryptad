@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -13,8 +13,8 @@ import network.crypta.support.HTMLNode;
  *
  * <p>This toadlet exposes a narrow surface that mirrors {@link LocalFileBrowserToadlet} but tailors
  * the navigation and form posting targets to the N2NM workflow. It renders a directory listing
- * rooted at the default upload directory and refuses to expose a directory picker so the browser
- * remains scoped to administrator-approved paths. Each request is handled without shared mutable
+ * rooted at the default upload directory and refuses to expose a directory picker, so the browser
+ * remains scoped to administrator-approved paths. Each request is handled without a shared mutable
  * state; thread safety therefore matches the servlet container model provided by the underlying
  * toadlet infrastructure.
  *
@@ -22,7 +22,7 @@ import network.crypta.support.HTMLNode;
  * submissions to {@link #POST_TARGET}. The handler preserves message and node-selection form fields
  * via {@link #persistenceFields(Map)} so that form reloads keep user intent intact even after
  * validation errors. Clients should favor this toadlet when embedding N2NM attachments because it
- * enforces the same directory allow-list that governs general uploads while keeping the UI minimal.
+ * enforces the same directory allowlist that governs general uploads while keeping the UI minimal.
  *
  * <ul>
  *   <li>Provides a browse endpoint for N2NM attachments.
@@ -57,13 +57,14 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
    * superclass. Callers should provide the same instances used for other toadlets so upload policy
    * and session handling remain consistent across the HTTP interface.
    *
-   * @param core node client core that supplies configuration and upload permission checks; must not
-   *     be {@code null}.
+   * @param transferAccess transfer-access runtime port that supplies configuration and upload
+   *     permission checks; must not be {@code null}.
    * @param highLevelSimpleClient helper used to build client requests and responses for this
    *     toadlet; expected to be initialized by the surrounding HTTP layer.
    */
-  public LocalFileN2NMToadlet(NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
-    super(core, highLevelSimpleClient);
+  public LocalFileN2NMToadlet(
+      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
+    super(transferAccess, highLevelSimpleClient);
   }
 
   /**
@@ -99,8 +100,8 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
    *
    * <p>The implementation defers to {@link #defaultUploadDir()} from the superclass, ensuring the
    * same initial folder as other upload toadlets. The directory should already respect the node's
-   * configured upload policy, but subsequent checks still run through {@link #allowedDir(File)} to
-   * guard against policy changes after initialization.
+   * configured upload policy, but later checks still run through {@link #allowedDir(File)} to guard
+   * against policy changes after initialization.
    *
    * @return absolute path of the initial directory shown to the user, never {@code null}.
    */
@@ -112,17 +113,17 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
   /**
    * Verifies that a requested directory is eligible for browsing and upload in the N2NM context.
    *
-   * <p>The method delegates to {@link NodeClientCore#allowUploadFrom(File)} to honor the global
-   * upload allow-list. Callers should supply canonicalized paths to avoid duplicate traversals; the
-   * method itself does not resolve symlinks. Null inputs are treated as disallowed by the core
-   * helper.
+   * <p>The method delegates to {@link TransferAccessPort#allowUploadFrom(File)} to honor the global
+   * upload allowlist. Callers should supply canonicalized paths to avoid duplicate traversals; the
+   * method itself does not resolve symlinks. Null inputs are treated as disallowed by the runtime
+   * policy helper.
    *
    * @param path candidate directory to expose in the browser; expected to exist and be readable.
    * @return {@code true} when the core permits uploads from the directory, {@code false} otherwise.
    */
   @Override
   protected boolean allowedDir(File path) {
-    return core.allowUploadFrom(path);
+    return transferAccess.allowUploadFrom(path);
   }
 
   /**
@@ -130,8 +131,8 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
    *
    * <p>N2NM flows intentionally constrain users to the default upload directory to reduce
    * accidental disclosure of unrelated files. By overriding this hook with a no-op, the UI omits
-   * the button that would normally allow choosing alternative directories, while still
-   * participating in the rendering pipeline of the parent class.
+   * the button that would normally allow choosing alternative directories while still participating
+   * in the rendering pipeline of the parent class.
    *
    * @param fileRow HTML row element representing the current file entry; untouched by this method.
    * @param path path string associated with the row; retained for interface parity.
@@ -151,7 +152,7 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
    * safely mutated by callers.
    *
    * @param set original submitted parameters keyed by form field name; may include null values.
-   * @return new map containing only message content and node-selection flags suitable for reuse.
+   * @return a new map containing only message content and node-selection flags suitable for reuse.
    */
   @Override
   protected Map<String, String> persistenceFields(Map<String, String> set) {

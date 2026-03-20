@@ -20,6 +20,7 @@ import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.ToadletSymlinkPort;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.runtime.spi.WelcomePagePort;
 import network.crypta.support.api.IntCallback;
@@ -66,6 +67,7 @@ class FProxyRegistrarTest {
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
   @Mock private CoreUpdateActionPort coreUpdateActionPort;
   @Mock private ToadletSymlinkPort toadletSymlinkPort;
+  @Mock private TransferAccessPort transferAccess;
   @Mock private SimpleToadletServer server;
 
   private Config config;
@@ -98,6 +100,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
     when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
     when(runtimePorts.toadletSymlinks()).thenReturn(toadletSymlinkPort);
+    when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     when(toadletSymlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
   }
 

@@ -4,7 +4,7 @@ import java.io.File;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -41,8 +41,8 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    * the public URL for this toadlet and is also used as the redirect target when a directory is
    * chosen.
    *
-   * @param core initialized node client core used for permission checks and default directory
-   *     resolution; must be non-null and remain reachable for the lifetime of the instance.
+   * @param transferAccess initialized transfer-access runtime port carried by the shared local
+   *     browser base; must be non-null and remain reachable for the lifetime of the instance.
    * @param highLevelSimpleClient HTTP client helper passed to the parent {@link Toadlet}; must be
    *     non-null and thread-safe for concurrent request handling.
    * @param postTo relative URL segment (beginning with a slash) that identifies the handler to
@@ -50,8 +50,10 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    *     redirects.
    */
   public LocalDirectoryConfigToadlet(
-      NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient, String postTo) {
-    super(core, highLevelSimpleClient, postTo);
+      TransferAccessPort transferAccess,
+      HighLevelSimpleClient highLevelSimpleClient,
+      String postTo) {
+    super(transferAccess, highLevelSimpleClient, postTo);
   }
 
   /**
@@ -66,7 +68,7 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    */
   @Override
   protected String startingDir() {
-    // Start out in user home directory.
+    // Start out in the user home directory.
     return System.getProperty("user.home");
   }
 
@@ -89,9 +91,9 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
   }
 
   /**
-   * Renders a submit control that posts the currently browsed directory to the caller.
+   * Renders a submission control that posts the currently browsed directory to the caller.
    *
-   * <p>The method appends three children to {@code formNode}: a submit button with the localized
+   * <p>The method appends three children to {@code formNode}: a Submit button with the localized
    * label from {@code ConfigToadlet.selectDirectory}, a hidden field holding the absolute directory
    * path, and the provided {@code persist} node containing additional hidden fields. The structure
    * matches the expectations of {@link LocalFileBrowserToadlet#SELECT_DIR} so the base class can
@@ -101,7 +103,7 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    *     non-null.
    * @param path absolute directory path to insert into the hidden filename field; callers should
    *     pass the canonical path used for navigation to avoid ambiguity.
-   * @param persist pre-rendered hidden fields that preserve request context (for example CSRF
+   * @param persist pre-rendered hidden fields that preserve request context (for example, CSRF
    *     tokens or previous query parameters); the node is appended unmodified.
    */
   @Override
@@ -123,7 +125,7 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    * Filters persisted request fields before rendering hidden inputs.
    *
    * <p>Configuration browsing does not retain the current {@code path} or {@code formPassword}
-   * fields between views to avoid leaking navigation state or password material into subsequent
+   * fields between views to avoid leaking navigation state or password material into the following
    * posts. All other entries in the supplied map are left intact and returned to the caller for
    * serialization.
    *

@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,23 +29,24 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class LocalDownloadDirectoryToadletTest {
 
-  @Mock NodeClientCore core;
+  @Mock TransferAccessPort transferAccess;
   @Mock HighLevelSimpleClient client;
 
   private LocalDownloadDirectoryToadlet toadlet;
 
   @BeforeEach
   void setUp() {
-    toadlet = new LocalDownloadDirectoryToadlet(core, client, "/post");
+    lenient().doCallRealMethod().when(transferAccess).defaultDownloadDir();
+    toadlet = new LocalDownloadDirectoryToadlet(transferAccess, client, "/post");
   }
 
   @ParameterizedTest
   @MethodSource("startingDirScenarios")
   void startingDir_selectsExpectedDefault(File[] allowedDirs, File downloadsDir, String expected) {
-    when(core.getAllowedDownloadDirs()).thenReturn(allowedDirs);
+    when(transferAccess.allowedDownloadDirs()).thenReturn(allowedDirs);
     if (allowedDirs.length == 0
         || (allowedDirs.length == 1 && "all".equals(allowedDirs[0].toString()))) {
-      when(core.getDownloadsDir()).thenReturn(downloadsDir);
+      when(transferAccess.downloadsDir()).thenReturn(downloadsDir);
     }
 
     String result = toadlet.startingDir();
@@ -65,12 +67,12 @@ class LocalDownloadDirectoryToadletTest {
   @Test
   void allowedDir_delegatesToCore() {
     File target = new File("/tmp/downloads");
-    when(core.allowDownloadTo(target)).thenReturn(true);
+    when(transferAccess.allowDownloadTo(target)).thenReturn(true);
 
     boolean allowed = toadlet.allowedDir(target);
 
     assertTrue(allowed);
-    verify(core).allowDownloadTo(target);
+    verify(transferAccess).allowDownloadTo(target);
   }
 
   @Test

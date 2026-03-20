@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -13,7 +13,7 @@ import network.crypta.support.HTMLNode;
  *
  * <p>The toadlet renders a directory browser rooted at the node's configured download locations and
  * exposes submission controls that hand the chosen path back to higher-level download flows. It
- * keeps all behavior stateless and defers validation to {@link NodeClientCore} so multiple HTTP
+ * keeps all behavior stateless and defers validation to {@link TransferAccessPort} so multiple HTTP
  * requests can be served concurrently without locking or per-request allocation beyond the form
  * nodes themselves. Typical usage pairs the toadlet with bulk-download pages or FProxy handlers
  * that need a user-confirmed destination before fetching content, while still preserving the
@@ -33,8 +33,8 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
   private static final String FILTER_DATA = "filterData";
 
   LocalDownloadDirectoryToadlet(
-      NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient, String post) {
-    super(core, highLevelSimpleClient, post);
+      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient, String post) {
+    super(transferAccess, highLevelSimpleClient, post);
   }
 
   /**
@@ -57,13 +57,14 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
   }
 
   /**
-   * Verifies that a candidate download directory is permitted by node policy.
+   * Verifies that node policy permits a candidate download directory.
    *
-   * <p>The method defers to {@link NodeClientCore#allowDownloadTo(File)} so directory validation
-   * remains consistent with the rest of the HTTP UI and command-line tools. It performs no
-   * normalization itself, allowing the core to enforce canonicalization, drive-space rules, or any
-   * sandboxing constraints. The result is deterministic for a given path and configuration and is
-   * safe for repeated invocation during navigation or form submission handling.
+   * <p>The method defers to {@link TransferAccessPort#allowDownloadTo(File)} so directory
+   * validation remains consistent with the rest of the HTTP UI and command-line tools. It performs
+   * no normalization itself, allowing the runtime policy to enforce canonicalization, drive-space
+   * rules, or any sandboxing constraints. The result is deterministic for a given path and
+   * configuration and is safe for repeated invocation during navigation or form submission
+   * handling.
    *
    * @param path absolute or canonical directory path proposed by the user interface; must not be
    *     {@code null} and should reference an existing directory.
@@ -72,7 +73,7 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
    */
   @Override
   protected boolean allowedDir(File path) {
-    return core.allowDownloadTo(path);
+    return transferAccess.allowDownloadTo(path);
   }
 
   /**
@@ -94,9 +95,9 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
   }
 
   /**
-   * Adds a localized submit control that posts the currently viewed directory as the selection.
+   * Adds a localized submission control that posts the currently viewed directory as the selection.
    *
-   * <p>The method injects a submit button labeled with {@link NodeL10n#getBase()} text, a hidden
+   * <p>The method injects a Submit button labeled with {@link NodeL10n#getBase()} text, a hidden
    * field containing the directory path under {@link #filenameField()}, and any persistent form
    * fields supplied by the caller. It performs no validation of {@code path} beyond embedding it in
    * the generated inputs, relying on later handlers to call {@link #allowedDir(File)} before
@@ -108,7 +109,7 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
    * createSelectDirectoryButton(row, directory.getAbsolutePath(), hiddenState);
    * }</pre>
    *
-   * @param formNode HTML container to receive the submit and hidden inputs; must not be {@code
+   * @param formNode HTML container to receive the submitting and hidden inputs; must not be {@code
    *     null}.
    * @param path absolute directory path to post back when the button is pressed; must not be empty.
    * @param persist collection of hidden persistence nodes to append unchanged; callers should build
@@ -138,13 +139,13 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
    *
    * @param set request parameter map obtained from the current navigation step; values are read but
    *     never modified.
-   * @return new map containing only the persistence-relevant key/value pairs to include as hidden
-   *     inputs in subsequent forms.
+   * @return a new map containing only the persistence-relevant key/value pairs to include as hidden
+   *     inputs in later forms.
    */
   @Override
   protected Map<String, String> persistenceFields(Map<String, String> set) {
     Map<String, String> fieldPairs = new HashMap<>();
-    // From bulk downloads, set download button.
+    // From bulk downloads, set the download button.
     if (set.containsKey(BULK_DOWNLOADS)) {
       fieldPairs.put(BULK_DOWNLOADS, set.get(BULK_DOWNLOADS));
       fieldPairs.put("insert", "1");

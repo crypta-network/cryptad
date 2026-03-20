@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
@@ -41,11 +41,11 @@ import network.crypta.support.api.HTTPRequest;
 public abstract class LocalFileBrowserToadlet extends Toadlet {
 
   /**
-   * Node client core used to derive allowed upload/download directories and to resolve default
-   * starting points for new browser sessions. The reference is immutable after construction and is
-   * expected to enforce any necessary synchronization or permission checks externally.
+   * Transfer-access runtime port used to derive allowed upload/download directories and to resolve
+   * default starting points for new browser sessions. The reference is immutable after construction
+   * and is expected to enforce any necessary synchronization or permission checks externally.
    */
-  protected final NodeClientCore core;
+  protected final TransferAccessPort transferAccess;
 
   private static final int MAX_POST_SIZE = 1024 * 1024;
   private static final String INPUT = "input";
@@ -60,22 +60,22 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
   /**
    * Creates a browser toadlet that renders listings and redirects selections using the supplied
-   * core services.
+   * transfer-access services.
    *
    * <p>The constructor wires the immutable dependencies required for directory permission checks
    * and HTTP response handling. It does not perform I/O or validation beyond storing references, so
    * the surrounding wiring code should ensure the arguments are fully initialized and safe to reuse
    * across concurrent requests.
    *
-   * @param core node client core that exposes allowed directories and download defaults; must not
-   *     be {@code null}.
+   * @param transferAccess transfer-access runtime port that exposes allowed directories and
+   *     download defaults; must not be {@code null}.
    * @param highLevelSimpleClient HTTP client passed to the {@link Toadlet} base for responding to
    *     user requests; must not be {@code null}.
    */
   protected LocalFileBrowserToadlet(
-      NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
+      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
     super(highLevelSimpleClient);
-    this.core = core;
+    this.transferAccess = transferAccess;
   }
 
   /**
@@ -186,47 +186,26 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
   /**
    * Computes a starting directory when the user is browsing for a file to upload.
    *
-   * <p>The helper first checks whether uploads are unrestricted or unspecified and falls back to
-   * the user's home directory for familiarity. When explicit upload directories are configured, it
-   * chooses the first entry, assuming the configuration is already ordered by preference.
+   * <p>The helper delegates to {@link TransferAccessPort#defaultUploadDir()} to preserve the
+   * browser family's legacy selection semantics while keeping the policy logic on the transfer SPI.
    *
-   * @return user's home directory when uploads are globally allowed or unspecified; otherwise the
-   *     first explicitly allowed upload directory.
+   * @return legacy default upload browser directory derived from the transfer-access runtime port.
    */
   protected String defaultUploadDir() {
-    if ((core.getAllowedUploadDirs().length == 1
-            && core.getAllowedUploadDirs()[0].toString().equals("all"))
-        || core.getAllowedUploadDirs().length == 0) {
-      /* If all directories are allowed, or none are, go for the home directory.
-       * If none is allowed, any directory will result in an error anyway.
-       */
-      return System.getProperty("user.home");
-    }
-    // If locations are explicitly specified, take the first one.
-    return core.getAllowedUploadDirs()[0].getAbsolutePath();
+    return transferAccess.defaultUploadDir();
   }
 
   /**
    * Computes a starting directory when browsing for a destination to download into.
    *
-   * <p>The helper mirrors {@link #defaultUploadDir()} but uses download directory settings. It
-   * avoids accessing the filesystem beyond reading configuration values, keeping initialization
-   * lightweight while still producing a stable, canonical starting point.
+   * <p>The helper delegates to {@link TransferAccessPort#defaultDownloadDir()} to preserve the
+   * browser family's legacy selection semantics while keeping the policy logic on the transfer SPI.
    *
-   * @return node's default download directory when downloads are globally allowed or unspecified;
-   *     otherwise the first explicitly allowed download directory.
+   * @return legacy default download browser directory derived from the transfer-access runtime
+   *     port.
    */
   protected String defaultDownloadDir() {
-    if ((core.getAllowedDownloadDirs().length == 1
-            && core.getAllowedDownloadDirs()[0].toString().equals("all"))
-        || core.getAllowedDownloadDirs().length == 0) {
-      /* If all directories are allowed, or none are, go for the default download directory.
-       * If none is allowed, any directory will result in an error anyway.
-       */
-      return core.getDownloadsDir().getAbsolutePath();
-    }
-    // If locations are explicitly specified, take the first one.
-    return core.getAllowedDownloadDirs()[0].getAbsolutePath();
+    return transferAccess.defaultDownloadDir();
   }
 
   /**

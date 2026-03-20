@@ -17,6 +17,7 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.TransferAccessPort;
 
 import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
 
@@ -67,6 +68,7 @@ final class FProxyRegistrar {
     HighLevelSimpleClient client =
         core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
     RuntimePorts runtimePorts = core.getRuntimePorts();
+    TransferAccessPort transferAccess = runtimePorts.transferAccess();
 
     FProxyToadlet.random = new byte[32];
     core.getRandom().nextBytes(FProxyToadlet.random);
@@ -159,7 +161,7 @@ final class FProxyRegistrar {
             false,
             downloadToadlet));
     LocalDownloadDirectoryToadlet localDownloadDirectoryToadlet =
-        new LocalDownloadDirectoryToadlet(core, client, QueueToadlet.PATH_DOWNLOADS);
+        new LocalDownloadDirectoryToadlet(transferAccess, client, QueueToadlet.PATH_DOWNLOADS);
     server.register(
         localDownloadDirectoryToadlet,
         ToadletRegistration.basic(null, localDownloadDirectoryToadlet.path(), true, false));
@@ -201,7 +203,8 @@ final class FProxyRegistrar {
             fiw));
     uploadToadlet.setFIW(fiw);
 
-    LocalFileInsertToadlet localFileInsertToadlet = new LocalFileInsertToadlet(core, client);
+    LocalFileInsertToadlet localFileInsertToadlet =
+        new LocalFileInsertToadlet(transferAccess, client);
     server.register(
         localFileInsertToadlet,
         ToadletRegistration.basic(null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false));
@@ -218,7 +221,8 @@ final class FProxyRegistrar {
             false,
             contentFilterToadlet));
 
-    LocalFileFilterToadlet localFileFilterToadlet = new LocalFileFilterToadlet(core, client);
+    LocalFileFilterToadlet localFileFilterToadlet =
+        new LocalFileFilterToadlet(transferAccess, client);
     server.register(
         localFileFilterToadlet,
         ToadletRegistration.basic(null, LocalFileFilterToadlet.BROWSE_PATH, true, false));
@@ -251,7 +255,8 @@ final class FProxyRegistrar {
       String prefix = cfg.getPrefix();
       if (prefix.equals("security-levels")) continue;
       LocalDirectoryConfigToadlet localDirectoryConfigToadlet =
-          new LocalDirectoryConfigToadlet(core, client, FProxyToadlet.CONFIG_PATH + prefix);
+          new LocalDirectoryConfigToadlet(
+              transferAccess, client, FProxyToadlet.CONFIG_PATH + prefix);
       ConfigToadlet configtoadlet =
           new ConfigToadlet(
               localDirectoryConfigToadlet.path(), client, config, cfg, configToadletRuntimePorts);
@@ -351,7 +356,7 @@ final class FProxyRegistrar {
             true,
             chatForumsToadlet));
 
-    LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(core, client);
+    LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(transferAccess, client);
     N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(runtimePorts, localFileN2NMToadlet, client);
     server.register(n2ntmToadlet, ToadletRegistration.basic(null, "/send_n2ntm/", true, true));
     server.register(
