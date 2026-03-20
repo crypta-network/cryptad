@@ -15,6 +15,7 @@ import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.clients.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
@@ -474,7 +475,9 @@ public final class SimpleToadletServer
 
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
-    bookmarkManager = new BookmarkManager(coreRef, publicGatewayMode());
+    bookmarkManager =
+        new BookmarkManager(
+            new CoreBookmarkRuntimeSupport(coreRef), coreRef.getAlerts(), publicGatewayMode());
 
     HighLevelSimpleClient client =
         coreRef.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);

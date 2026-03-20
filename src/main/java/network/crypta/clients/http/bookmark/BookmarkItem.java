@@ -8,7 +8,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -302,7 +301,7 @@ public final class BookmarkItem extends Bookmark {
    * <p>This method is synchronized to provide a consistent view of the underlying URI during
    * concurrent updates. If callers retain the returned reference, they should re-fetch via this
    * method if they require the latest value after {@link #update(FreenetURI, boolean, String,
-   * String)} or {@link #setEdition(long, NodeClientCore)}.
+   * String)} or {@link #setEdition(long)}.
    *
    * @return the current {@link FreenetURI} instance for this bookmark; never {@code null}
    */
@@ -372,13 +371,12 @@ public final class BookmarkItem extends Bookmark {
    *
    * @param ed the new suggested edition to apply; must be greater than the current suggested
    *     edition
-   * @param node the node context used for diagnostic logging; may be {@code null}
    * @return {@code true} if the edition was updated; {@code false} if {@code ed} was not newer
    */
-  public synchronized boolean setEdition(long ed, NodeClientCore node) {
+  public synchronized boolean setEdition(long ed) {
     if (key.getSuggestedEdition() >= ed) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Edition {} is too old, not updating {} (nodePresent={})", ed, key, node != null);
+        LOG.debug("Edition {} is too old, not updating {}", ed, key);
       }
       return false;
     }
@@ -444,9 +442,9 @@ public final class BookmarkItem extends Bookmark {
    * Returns whether this bookmark is currently marked as updated.
    *
    * <p>The updated flag is used to decide whether the per-item {@link UserAlert} should be
-   * considered valid and shown to the user. The flag is typically set via {@link #setEdition(long,
-   * NodeClientCore)} for USKs and cleared when the user dismisses the notification or when the
-   * bookmark no longer represents a USK.
+   * considered valid and shown to the user. The flag is typically set via {@link #setEdition(long)}
+   * for USKs and cleared when the user dismisses the notification or when the bookmark no longer
+   * represents a USK.
    *
    * @return {@code true} if the bookmark is marked updated; {@code false} otherwise
    */

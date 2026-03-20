@@ -18,10 +18,9 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -56,7 +55,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  *   <li>Subscribe/unsubscribe to USK updates for USK-typed bookmark items.
  * </ul>
  */
-public class BookmarkManager implements RequestClient {
+public class BookmarkManager {
   private static final Logger LOG = LoggerFactory.getLogger(BookmarkManager.class);
 
   /**
@@ -67,7 +66,8 @@ public class BookmarkManager implements RequestClient {
    */
   public static final SimpleFieldSet DEFAULT_BOOKMARKS;
 
-  private final NodeClientCore node;
+  private final BookmarkRuntimeSupport runtime;
+  private final UserAlertManager alerts;
   private final USKUpdatedCallback uskCB = new USKUpdatedCallback();
 
   /**
@@ -123,14 +123,17 @@ public class BookmarkManager implements RequestClient {
    * <p>When {@code publicGateway} is enabled, the manager also initializes {@link
    * #DEFAULT_CATEGORY} and applies the bundled defaults under that category.
    *
-   * @param n the node core used for filesystem access, scheduling, alerts, and USK subscriptions
+   * @param runtime bookmark-specific runtime support for persistence, scheduling, and USK polling
+   * @param alerts user alert manager associated with the active node context
    * @param publicGateway whether to initialize a secondary default category for gateway-mode hosts
    */
-  public BookmarkManager(NodeClientCore n, boolean publicGateway) {
+  public BookmarkManager(
+      BookmarkRuntimeSupport runtime, UserAlertManager alerts, boolean publicGateway) {
     putPaths("/", MAIN_CATEGORY);
-    this.node = n;
-    this.bookmarksFile = n.getNode().userDir().file("bookmarks.dat");
-    this.backupBookmarksFile = n.getNode().userDir().file("bookmarks.dat.bak");
+    this.runtime = runtime;
+    this.alerts = alerts;
+    this.bookmarksFile = runtime.bookmarksFile();
+    this.backupBookmarksFile = runtime.backupBookmarksFile();
 
     boolean loadedPrimary = false;
     if (!bookmarksFile.exists() || bookmarksFile.length() == 0) {
@@ -215,13 +218,7 @@ public class BookmarkManager implements RequestClient {
     public void onFoundEdition(USKFoundEdition foundEdition) {
       if (!foundEdition.newKnownGood()) {
         FreenetURI uri = foundEdition.key().copy(foundEdition.edition()).getURI();
-        node.makeClient(PRIORITY_PROGRESS, false, false)
-            .prefetch(
-                uri,
-                MINUTES.toMillis(60),
-                FProxyToadlet.getMaxLengthWithProgress(),
-                null,
-                PRIORITY_PROGRESS);
+        runtime.prefetchUpdatedEdition(uri, FProxyToadlet.getMaxLengthWithProgress());
         return;
       }
       long edition = foundEdition.edition();
@@ -240,7 +237,7 @@ public class BookmarkManager implements RequestClient {
             if (LOG.isDebugEnabled())
               LOG.debug("Updating bookmark for {} to edition {}", furi, edition);
             matched = true;
-            updated |= bookmarkItem.setEdition(edition, node);
+            updated |= bookmarkItem.setEdition(edition);
             // We may have bookmarked the same site twice, so continue the search.
           }
         } catch (MalformedURLException _) {
@@ -496,7 +493,7 @@ public class BookmarkManager implements RequestClient {
     try {
       USK u = item.getUSK();
       if (!wantUSK(u, item)) {
-        node.getUskManager().unsubscribe(u, uskCB);
+        runtime.unsubscribeFromUsk(u, uskCB);
       }
     } catch (MalformedURLException _) {
       // Malformed bookmark key; there is nothing to unsubscribe from.
@@ -617,18 +614,15 @@ public class BookmarkManager implements RequestClient {
     synchronized (bookmarks) {
       if (isSavingBookmarksLazy) return;
       isSavingBookmarksLazy = true;
-      node.getNode()
-          .network()
-          .ticker()
-          .queueTimedJob(
-              () -> {
-                try {
-                  storeBookmarks();
-                } finally {
-                  isSavingBookmarksLazy = false;
-                }
-              },
-              MINUTES.toMillis(5));
+      runtime.queueLazyStore(
+          () -> {
+            try {
+              storeBookmarks();
+            } finally {
+              isSavingBookmarksLazy = false;
+            }
+          },
+          MINUTES.toMillis(5));
     }
   }
 
@@ -677,7 +671,7 @@ public class BookmarkManager implements RequestClient {
     if (!"USK".equals(item.getKeyType())) return;
     try {
       USK u = item.getUSK();
-      this.node.getUskManager().subscribe(u, this.uskCB, true, this);
+      runtime.subscribeToUsk(u, this.uskCB);
     } catch (MalformedURLException _) {
       // Malformed bookmark key; ignore and do not subscribe.
     }
@@ -723,7 +717,7 @@ public class BookmarkManager implements RequestClient {
       String prefix, BookmarkCategory category, SimpleFieldSet subset, boolean isRoot)
       throws FSParseException {
     try {
-      BookmarkItem item = new BookmarkItem(subset, this, node.getAlerts());
+      BookmarkItem item = new BookmarkItem(subset, this, alerts);
       String name = (isRoot ? "" : prefix + category.name) + '/' + item.name;
       putPaths(name, item);
       category.addBookmark(item);
@@ -804,30 +798,5 @@ public class BookmarkManager implements RequestClient {
     sfs.put(BookmarkItem.BOOKMARK_PREFIX, bi.size());
 
     return sfs;
-  }
-
-  /**
-   * {@inheritDoc}
-   *
-   * <p>This manager does not represent a persistent request client; it is used for UI-driven helper
-   * requests (such as USK polling) and does not require restart persistence at the request layer.
-   *
-   * @return always {@code false}
-   */
-  @Override
-  public boolean persistent() {
-    return false;
-  }
-
-  /**
-   * {@inheritDoc}
-   *
-   * <p>This client does not treat bookmark-related requests as real-time traffic.
-   *
-   * @return always {@code false}
-   */
-  @Override
-  public boolean realTimeFlag() {
-    return false;
   }
 }

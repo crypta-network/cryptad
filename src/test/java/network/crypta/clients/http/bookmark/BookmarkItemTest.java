@@ -5,7 +5,6 @@ import java.util.Locale;
 import java.util.stream.Stream;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
@@ -57,7 +56,6 @@ class BookmarkItemTest {
 
   @Mock BookmarkManager bookmarkManager;
   @Mock UserAlertManager userAlertManager;
-  @Mock NodeClientCore nodeClientCore;
 
   private static FreenetURI uri(String uri) {
     try {
@@ -246,7 +244,7 @@ class BookmarkItemTest {
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", false);
 
     // Act
-    boolean updated = item.setEdition(25, nodeClientCore);
+    boolean updated = item.setEdition(25);
 
     // Assert
     assertTrue(updated);
@@ -263,7 +261,7 @@ class BookmarkItemTest {
     long currentEdition = item.getURI().getSuggestedEdition();
 
     // Act
-    boolean updated = item.setEdition(currentEdition, nodeClientCore);
+    boolean updated = item.setEdition(currentEdition);
 
     // Assert
     assertFalse(updated);
@@ -278,8 +276,8 @@ class BookmarkItemTest {
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", false);
 
     // Act
-    assertTrue(item.setEdition(25, nodeClientCore));
-    assertTrue(item.setEdition(26, nodeClientCore));
+    assertTrue(item.setEdition(25));
+    assertTrue(item.setEdition(26));
 
     // Assert
     assertEquals(26, item.getURI().getSuggestedEdition());
@@ -291,7 +289,7 @@ class BookmarkItemTest {
   void update_whenNewKeyIsNotUSK_expectDisablesBookmarkAndUnregistersAlert() {
     // Arrange
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", true);
-    assertTrue(item.setEdition(25, nodeClientCore));
+    assertTrue(item.setEdition(25));
     verify(userAlertManager).register(same(item.getUserAlert()));
 
     // Act
@@ -311,7 +309,7 @@ class BookmarkItemTest {
   void clearUpdated_whenUpdated_expectClearsFlagButDoesNotUnregister() {
     // Arrange
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", false);
-    assertTrue(item.setEdition(25, nodeClientCore));
+    assertTrue(item.setEdition(25));
     verify(userAlertManager).register(same(item.getUserAlert()));
 
     // Act
@@ -327,7 +325,7 @@ class BookmarkItemTest {
   void userAlert_whenMarkedInvalid_expectUnregistersAndClearsUpdated() {
     // Arrange
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", false);
-    assertTrue(item.setEdition(25, nodeClientCore));
+    assertTrue(item.setEdition(25));
     verify(userAlertManager).register(same(item.getUserAlert()));
 
     // Act
@@ -343,7 +341,7 @@ class BookmarkItemTest {
   void userAlert_onDismiss_expectUnregistersClearsUpdatedAndStoresBookmarks() {
     // Arrange
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", false);
-    assertTrue(item.setEdition(25, nodeClientCore));
+    assertTrue(item.setEdition(25));
     verify(userAlertManager).register(same(item.getUserAlert()));
 
     // Act
@@ -412,7 +410,7 @@ class BookmarkItemTest {
   void getSimpleFieldSet_whenCalled_expectContainsPersistedFields() {
     // Arrange
     BookmarkItem item = newBookmarkItem(uri(USK_24), "N", "D", "S", true);
-    assertTrue(item.setEdition(25, nodeClientCore));
+    assertTrue(item.setEdition(25));
     verify(userAlertManager).register(same(item.getUserAlert()));
 
     // Act

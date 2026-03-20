@@ -9,14 +9,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import network.crypta.client.async.USKManager;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -38,7 +33,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -70,7 +64,7 @@ class BookmarkManagerTest {
   @ParameterizedTest
   @CsvSource({"/,/", "/a,/", "/a/,/", "/a/b,/a/", "/a/b/,/a/", "/a/b/c/,/a/b/"})
   void parentPath_whenGivenPath_expectParent(String input, String expected) {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
 
     String parent = manager.parentPath(input);
 
@@ -79,7 +73,7 @@ class BookmarkManagerTest {
 
   @Test
   void getCategoryByPath_whenPathIsCategory_expectCategoryInstance() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkCategory category = new BookmarkCategory("cat");
     manager.addBookmark("/", category);
 
@@ -90,7 +84,7 @@ class BookmarkManagerTest {
 
   @Test
   void getCategoryByPath_whenPathIsItem_expectNull() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkItem item = mockBookmarkItem("item", "KSK");
     manager.addBookmark("/", item);
 
@@ -101,7 +95,7 @@ class BookmarkManagerTest {
 
   @Test
   void getItemByPath_whenPathIsItem_expectItemInstance() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkItem item = mockBookmarkItem("item", "KSK");
     manager.addBookmark("/", item);
 
@@ -112,7 +106,7 @@ class BookmarkManagerTest {
 
   @Test
   void getItemByPath_whenPathIsCategory_expectNull() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkCategory category = new BookmarkCategory("cat");
     manager.addBookmark("/", category);
 
@@ -123,8 +117,8 @@ class BookmarkManagerTest {
 
   @Test
   void addBookmark_whenAddingUskItem_expectSubscribeCalled() throws Exception {
-    USKManager uskManager = mock(USKManager.class);
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir, uskManager);
+    ManagerFixture fixture = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = fixture.manager();
 
     USK usk = mock(USK.class);
     BookmarkItem item = mockBookmarkItem("site", "USK");
@@ -133,12 +127,12 @@ class BookmarkManagerTest {
     manager.addBookmark("/", item);
 
     assertSame(item, manager.getItemByPath(SITE_PATH));
-    verify(uskManager).subscribe(eq(usk), any(), eq(true), eq(manager));
+    verify(fixture.runtime()).subscribeToUsk(eq(usk), any());
   }
 
   @Test
   void renameBookmark_whenRenamingCategory_expectPathsUpdatedForSubtree() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkCategory category = new BookmarkCategory("cat");
     manager.addBookmark("/", category);
     BookmarkItem item = mockBookmarkItem("item", "KSK");
@@ -153,7 +147,7 @@ class BookmarkManagerTest {
 
   @Test
   void moveBookmark_whenMovingItem_expectPathAndParentUpdated() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkCategory from = new BookmarkCategory("from");
     BookmarkCategory to = new BookmarkCategory("to");
     manager.addBookmark("/", from);
@@ -171,7 +165,7 @@ class BookmarkManagerTest {
 
   @Test
   void removeBookmark_whenPathUnknown_expectNoop() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
 
     manager.removeBookmark("/missing");
 
@@ -180,8 +174,8 @@ class BookmarkManagerTest {
 
   @Test
   void removeBookmark_whenRemovingUskItem_expectUnsubscribeWhenNoOtherWantsUsk() throws Exception {
-    USKManager uskManager = mock(USKManager.class);
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir, uskManager);
+    ManagerFixture fixture = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = fixture.manager();
 
     USK usk = mock(USK.class);
     BookmarkItem item = mockBookmarkItem("site", "USK");
@@ -191,12 +185,12 @@ class BookmarkManagerTest {
     manager.removeBookmark(SITE_PATH);
 
     assertNull(manager.getBookmarkByPath(SITE_PATH));
-    verify(uskManager).unsubscribe(eq(usk), any());
+    verify(fixture.runtime()).unsubscribeFromUsk(eq(usk), any());
   }
 
   @Test
   void moveBookmarkDown_whenStoreFalse_expectReorderedWithoutSaving() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkItem a = mockBookmarkItem("a", "KSK");
     BookmarkItem b = mockBookmarkItem("b", "KSK");
     BookmarkItem c = mockBookmarkItem("c", "KSK");
@@ -211,7 +205,7 @@ class BookmarkManagerTest {
 
   @Test
   void moveBookmarkUp_whenStoreFalse_expectReorderedWithoutSaving() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkItem a = mockBookmarkItem("a", "KSK");
     BookmarkItem b = mockBookmarkItem("b", "KSK");
     BookmarkItem c = mockBookmarkItem("c", "KSK");
@@ -226,7 +220,7 @@ class BookmarkManagerTest {
 
   @Test
   void getBookmarkURIs_whenItemsPresent_expectUrisInTraversalOrder() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     FreenetURI uri1 = mock(FreenetURI.class);
     FreenetURI uri2 = mock(FreenetURI.class);
     BookmarkItem item1 = mockKskBookmarkItemWithUri("one", uri1);
@@ -241,15 +235,16 @@ class BookmarkManagerTest {
 
   @Test
   void storeBookmarksLazy_whenCalledTwiceBeforeJobRuns_expectQueuedOnce() {
-    Ticker ticker = mock(Ticker.class);
-    BookmarkManager manager = spy(newManagerWithEmptyBookmarksFile(testDir, ticker));
+    ManagerFixture fixture = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = spy(fixture.manager());
     doNothing().when(manager).storeBookmarks();
     ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
 
     manager.storeBookmarksLazy();
     manager.storeBookmarksLazy();
 
-    verify(ticker, times(1)).queueTimedJob(runnableCaptor.capture(), eq(5L * 60L * 1000L));
+    verify(fixture.runtime(), times(1))
+        .queueLazyStore(runnableCaptor.capture(), eq(5L * 60L * 1000L));
     verify(manager, never()).storeBookmarks();
 
     runnableCaptor.getValue().run();
@@ -259,24 +254,24 @@ class BookmarkManagerTest {
 
   @Test
   void storeBookmarksLazy_whenJobCompleted_expectSubsequentCallQueuesAgain() {
-    Ticker ticker = mock(Ticker.class);
-    BookmarkManager manager = spy(newManagerWithEmptyBookmarksFile(testDir, ticker));
+    ManagerFixture fixture = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = spy(fixture.manager());
     doNothing().when(manager).storeBookmarks();
     ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
 
     manager.storeBookmarksLazy();
-    verify(ticker).queueTimedJob(runnableCaptor.capture(), anyLong());
+    verify(fixture.runtime()).queueLazyStore(runnableCaptor.capture(), anyLong());
 
     runnableCaptor.getValue().run();
 
     manager.storeBookmarksLazy();
 
-    verify(ticker, times(2)).queueTimedJob(any(Runnable.class), anyLong());
+    verify(fixture.runtime(), times(2)).queueLazyStore(any(Runnable.class), anyLong());
   }
 
   @Test
   void toSimpleFieldSet_whenEmpty_expectVersionAndZeroCounts() throws Exception {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
 
     SimpleFieldSet sfs = manager.toSimpleFieldSet();
 
@@ -287,7 +282,7 @@ class BookmarkManagerTest {
 
   @Test
   void toSimpleFieldSet_whenCategoryAndItemPresent_expectCountsMatch() throws Exception {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     BookmarkCategory category = new BookmarkCategory("cat");
     manager.addBookmark("/", category);
     BookmarkItem item = mockBookmarkItem("item", "KSK");
@@ -307,7 +302,7 @@ class BookmarkManagerTest {
   void reAddDefaultBookmarks_whenDefaultBookmarksAvailable_expectCategoryAdded() throws Exception {
     assertNotNull(BookmarkManager.DEFAULT_BOOKMARKS);
 
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
 
     manager.reAddDefaultBookmarks();
 
@@ -328,7 +323,7 @@ class BookmarkManagerTest {
 
   @Test
   void storeBookmarks_whenCalled_expectBookmarksFileWritten() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
+    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir).manager();
     manager.addBookmark("/", new BookmarkCategory("cat"));
 
     manager.storeBookmarks();
@@ -336,20 +331,6 @@ class BookmarkManagerTest {
     File bookmarksFile = testDir.resolve("bookmarks.dat").toFile();
     assertTrue(bookmarksFile.isFile());
     assertTrue(bookmarksFile.length() > 0);
-  }
-
-  @Test
-  void persistent_whenCalled_expectFalse() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
-
-    assertFalse(manager.persistent());
-  }
-
-  @Test
-  void realTimeFlag_whenCalled_expectFalse() {
-    BookmarkManager manager = newManagerWithEmptyBookmarksFile(testDir);
-
-    assertFalse(manager.realTimeFlag());
   }
 
   private static BookmarkItem mockBookmarkItem(String name, String keyType) {
@@ -365,22 +346,20 @@ class BookmarkManagerTest {
     return item;
   }
 
-  private static BookmarkManager newManagerWithEmptyBookmarksFile(Path tmp) {
-    return newManagerWithEmptyBookmarksFile(tmp, mock(Ticker.class), mock(USKManager.class));
+  private static ManagerFixture newManagerWithEmptyBookmarksFile(Path tmp) {
+    return newManagerWithEmptyBookmarksFile(tmp, mock(BookmarkRuntimeSupport.class));
   }
 
-  private static BookmarkManager newManagerWithEmptyBookmarksFile(Path tmp, USKManager uskManager) {
-    return newManagerWithEmptyBookmarksFile(tmp, mock(Ticker.class), uskManager);
+  private static ManagerFixture newManagerWithEmptyBookmarksFile(
+      Path tmp, BookmarkRuntimeSupport runtime) {
+    return newManagerWithEmptyBookmarksFile(tmp, runtime, mock(UserAlertManager.class));
   }
 
-  private static BookmarkManager newManagerWithEmptyBookmarksFile(Path tmp, Ticker ticker) {
-    return newManagerWithEmptyBookmarksFile(tmp, ticker, mock(USKManager.class));
-  }
-
-  private static BookmarkManager newManagerWithEmptyBookmarksFile(
-      Path tmp, Ticker ticker, USKManager uskManager) {
+  private static ManagerFixture newManagerWithEmptyBookmarksFile(
+      Path tmp, BookmarkRuntimeSupport runtime, UserAlertManager alerts) {
+    File bookmarksFile = tmp.resolve("bookmarks.dat").toFile();
+    File backupBookmarksFile = tmp.resolve("bookmarks.dat.bak").toFile();
     try {
-      File bookmarksFile = tmp.resolve("bookmarks.dat").toFile();
       SimpleFieldSet empty = new SimpleFieldSet(true);
       empty.put(BookmarkItem.BOOKMARK_PREFIX, 0);
       empty.put(BookmarkCategory.SFS_KEY, 0);
@@ -389,27 +368,14 @@ class BookmarkManagerTest {
       throw new IllegalStateException("Failed to write initial bookmarks file for test", e);
     }
 
-    NodeClientCore core = mock(NodeClientCore.class);
-    UserAlertManager alerts = mock(UserAlertManager.class);
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.ProgramDirectory userDir = new network.crypta.node.ProgramDirectory();
-    try {
-      userDir.move(tmp.toString());
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to initialize ProgramDirectory for test", e);
-    }
+    when(runtime.bookmarksFile()).thenReturn(bookmarksFile);
+    when(runtime.backupBookmarksFile()).thenReturn(backupBookmarksFile);
 
-    when(node.userDir()).thenReturn(userDir);
-    network.crypta.node.subsystem.NodeNetworkSubsystem network =
-        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
-    lenient().when(network.ticker()).thenReturn(ticker);
-    when(core.getNode()).thenReturn(node);
-    lenient().when(core.getUskManager()).thenReturn(uskManager);
-    lenient().when(core.getAlerts()).thenReturn(alerts);
-
-    return new BookmarkManager(core, false);
+    return new ManagerFixture(new BookmarkManager(runtime, alerts, false), runtime, alerts);
   }
+
+  private record ManagerFixture(
+      BookmarkManager manager, BookmarkRuntimeSupport runtime, UserAlertManager alerts) {}
 
   private static void writeSimpleFieldSet(File file, SimpleFieldSet sfs) throws IOException {
     try (FileOutputStream out = new FileOutputStream(file)) {
