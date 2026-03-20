@@ -19,6 +19,7 @@ import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.ToadletSymlinkPort;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.runtime.spi.WelcomeActionPort;
@@ -65,6 +66,7 @@ class FProxyRegistrarTest {
   @Mock private LifecyclePort lifecyclePort;
   @Mock private WelcomeActionPort welcomeActionPort;
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
+  @Mock private SecurityLevelsPort securityLevelsPort;
   @Mock private CoreUpdateActionPort coreUpdateActionPort;
   @Mock private ToadletSymlinkPort toadletSymlinkPort;
   @Mock private TransferAccessPort transferAccess;
@@ -98,6 +100,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
     when(runtimePorts.welcomeAction()).thenReturn(welcomeActionPort);
     when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
+    when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
     when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
     when(runtimePorts.toadletSymlinks()).thenReturn(toadletSymlinkPort);
     when(runtimePorts.transferAccess()).thenReturn(transferAccess);
@@ -189,6 +192,17 @@ class FProxyRegistrarTest {
             .orElseThrow();
     assertSame(
         coreUpdateActionPort, readField(coreActionRegistration.toadlet(), "coreUpdateActionPort"));
+    RegisteredToadlet fileInsertWizardRegistration =
+        registrations.stream()
+            .filter(
+                registered ->
+                    FileInsertWizardToadlet.PATH.equals(registered.registration().urlPrefix()))
+            .findFirst()
+            .orElseThrow();
+    FileInsertWizardToadletRuntimePorts fileInsertWizardRuntimePorts =
+        (FileInsertWizardToadletRuntimePorts)
+            readField(fileInsertWizardRegistration.toadlet(), "runtimePorts");
+    assertSame(securityLevelsPort, fileInsertWizardRuntimePorts.securityLevelsPort());
     verify(runtimePorts, atLeastOnce()).firstTimeWizard();
   }
 

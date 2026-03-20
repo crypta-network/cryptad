@@ -190,7 +190,9 @@ final class FProxyRegistrar {
             false,
             uploadToadlet));
 
-    FileInsertWizardToadlet fiw = new FileInsertWizardToadlet(client, core);
+    FileInsertWizardToadlet fiw =
+        new FileInsertWizardToadlet(
+            client, new FileInsertWizardToadletRuntimePorts(runtimePorts.securityLevels()));
     server.register(
         fiw,
         ToadletRegistration.menuLink(
@@ -432,7 +434,7 @@ final class FProxyRegistrar {
         firstTimeWizardNewToadlet,
         ToadletRegistration.basic(null, FirstTimeWizardNewToadlet.TOADLET_URL, true, false));
 
-    SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet(client, core);
+    SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet(client);
     server.register(simpleHelpToadlet, ToadletRegistration.basic(null, "/help/", true, false));
 
     PushDataToadlet pushDataToadlet = new PushDataToadlet(client);

@@ -6,12 +6,11 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.time.Instant;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
-import network.crypta.node.SecurityLevels;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.SecurityLevelsPort;
+import network.crypta.runtime.spi.SecurityLevelsSnapshot;
+import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
+import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
@@ -20,12 +19,12 @@ import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -44,8 +43,7 @@ class FileInsertWizardToadletTest {
 
   @Mock HighLevelSimpleClient client;
 
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  NodeClientCore core;
+  @Mock SecurityLevelsPort securityLevelsPort;
 
   @Mock ToadletContainer container;
 
@@ -53,13 +51,23 @@ class FileInsertWizardToadletTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    toadlet = new FileInsertWizardToadlet(client, core);
+    toadlet =
+        new FileInsertWizardToadlet(
+            client, new FileInsertWizardToadletRuntimePorts(securityLevelsPort));
     setContainer(toadlet, container);
   }
 
   @Test
   void path_returnsConfiguredPath() {
     assertEquals(FileInsertWizardToadlet.PATH, toadlet.path());
+  }
+
+  @Test
+  void constructor_whenRuntimePortsProvided_noLongerNeedsNodeClientCore() {
+    assertEquals(1, FileInsertWizardToadlet.class.getDeclaredConstructors().length);
+    assertArrayEquals(
+        new Class<?>[] {HighLevelSimpleClient.class, FileInsertWizardToadletRuntimePorts.class},
+        FileInsertWizardToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
   }
 
   @Test
@@ -86,13 +94,8 @@ class FileInsertWizardToadletTest {
   @Test
   void handleMethodGET_whenLowThreat_prefersCanonicalRadio() throws Exception {
     when(container.publicGatewayMode()).thenReturn(false);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    SecurityLevels securityLevels = mock(SecurityLevels.class);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    when(core.getNode()).thenReturn(node);
-    when(node.services()).thenReturn(services);
-    when(services.securityLevels()).thenReturn(securityLevels);
-    when(securityLevels.getNetworkThreatLevel()).thenReturn(NETWORK_THREAT_LEVEL.LOW);
+    when(securityLevelsPort.snapshot())
+        .thenReturn(securitySnapshot(SecurityNetworkThreatLevel.LOW));
 
     PageHolder holder = new PageHolder();
     PageMaker pageMaker = buildPageMaker(holder);
@@ -112,19 +115,35 @@ class FileInsertWizardToadletTest {
   @Test
   void handleMethodGET_afterRandomInsert_prefersSskRadio() throws Exception {
     when(container.publicGatewayMode()).thenReturn(false);
-    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
-    SecurityLevels securityLevels = mock(SecurityLevels.class);
-    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
-    when(core.getNode()).thenReturn(node);
-    when(node.services()).thenReturn(services);
-    when(services.securityLevels()).thenReturn(securityLevels);
-    when(securityLevels.getNetworkThreatLevel()).thenReturn(NETWORK_THREAT_LEVEL.LOW);
+    when(securityLevelsPort.snapshot())
+        .thenReturn(securitySnapshot(SecurityNetworkThreatLevel.LOW));
 
     PageHolder holder = new PageHolder();
     PageMaker pageMaker = buildPageMaker(holder);
     CapturingContext ctx = new CapturingContext(pageMaker, true, false);
 
     toadlet.reportRandomInsert();
+
+    toadlet.handleMethodGET(new URI("http://localhost/insertfile/"), mock(HTTPRequest.class), ctx);
+
+    HTMLNode chkInput = findById(holder.page.getContentNode(), "keytypeChk");
+    HTMLNode sskInput = findById(holder.page.getContentNode(), "keytypeSsk");
+
+    assertNotNull(chkInput);
+    assertNotNull(sskInput);
+    assertNull(chkInput.getAttribute("checked"));
+    assertEquals("checked", sskInput.getAttribute("checked"));
+  }
+
+  @Test
+  void handleMethodGET_whenMaximumThreat_prefersSskRadio() throws Exception {
+    when(container.publicGatewayMode()).thenReturn(false);
+    when(securityLevelsPort.snapshot())
+        .thenReturn(securitySnapshot(SecurityNetworkThreatLevel.MAXIMUM));
+
+    PageHolder holder = new PageHolder();
+    PageMaker pageMaker = buildPageMaker(holder);
+    CapturingContext ctx = new CapturingContext(pageMaker, true, false);
 
     toadlet.handleMethodGET(new URI("http://localhost/insertfile/"), mock(HTTPRequest.class), ctx);
 
@@ -170,6 +189,10 @@ class FileInsertWizardToadletTest {
     return null;
   }
 
+  private static SecurityLevelsSnapshot securitySnapshot(SecurityNetworkThreatLevel level) {
+    return new SecurityLevelsSnapshot(level, SecurityPhysicalThreatLevel.NORMAL, false, false, "");
+  }
+
   private static final class PageHolder {
     PageNode page;
   }
@@ -178,7 +201,7 @@ class FileInsertWizardToadletTest {
     PageMaker pageMaker = mock(PageMaker.class);
     when(pageMaker.getPageNode(anyString(), any(ToadletContext.class)))
         .thenAnswer(
-            invocation -> {
+            _ -> {
               HTMLNode outer = new HTMLNode("div");
               HTMLNode head = new HTMLNode("head");
               HTMLNode content = new HTMLNode("div");
@@ -187,7 +210,7 @@ class FileInsertWizardToadletTest {
             });
     when(pageMaker.getInfobox(anyString(), anyString(), anyBoolean()))
         .thenAnswer(
-            invocation -> {
+            _ -> {
               HTMLNode outer = new HTMLNode("div");
               HTMLNode content = outer.addChild("div");
               return new InfoboxNode(outer, content);
@@ -206,8 +229,7 @@ class FileInsertWizardToadletTest {
   }
 
   /**
-   * Captures response data while providing just enough context behaviour for the toadlet under
-   * test.
+   * Captures response data while providing just enough context behavior for the toadlet under test.
    */
   private static final class CapturingContext implements ToadletContext {
 
