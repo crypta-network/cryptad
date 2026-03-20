@@ -2,12 +2,14 @@ package network.crypta.clients.http;
 
 import java.net.InetAddress;
 import java.net.URI;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.clients.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -17,6 +19,7 @@ import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
@@ -35,6 +38,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,10 +112,12 @@ class SimpleToadletServerTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeClientCore core = mock(NodeClientCore.class, Answers.RETURNS_DEEP_STUBS);
+    UserAlertManager alerts = mock(UserAlertManager.class);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
     when(core.getRuntimePorts()).thenReturn(runtimePorts);
     when(core.getEndpoints()).thenReturn(endpoints);
+    when(core.getAlerts()).thenReturn(alerts);
     when(core.getNode().getConfig()).thenReturn(nodeConfig);
     when(core.getNode().network().ticker()).thenReturn(ticker);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
@@ -120,8 +126,11 @@ class SimpleToadletServerTest {
 
     AtomicInteger registrarCalls = new AtomicInteger();
     AtomicReference<FProxyRegistrarDependencies> dependenciesRef = new AtomicReference<>();
+    AtomicReference<List<Object>> bookmarkManagerCtorArgs = new AtomicReference<>();
     try (MockedConstruction<BookmarkManager> bookmarkManagers =
-            mockConstruction(BookmarkManager.class);
+            mockConstruction(
+                BookmarkManager.class,
+                (_, context) -> bookmarkManagerCtorArgs.set(List.copyOf(context.arguments())));
         MockedStatic<FProxyRegistrar> registrarMock = mockStatic(FProxyRegistrar.class)) {
       registrarMock
           .when(
@@ -139,6 +148,9 @@ class SimpleToadletServerTest {
       server.createFproxy();
 
       assertEquals(1, bookmarkManagers.constructed().size());
+      assertInstanceOf(CoreBookmarkRuntimeSupport.class, bookmarkManagerCtorArgs.get().get(0));
+      assertSame(alerts, bookmarkManagerCtorArgs.get().get(1));
+      assertEquals(server.publicGatewayMode(), bookmarkManagerCtorArgs.get().get(2));
     }
 
     ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -148,6 +160,7 @@ class SimpleToadletServerTest {
     assertSame(FProxyToadlet.random, randomCaptor.getValue());
     assertEquals(32, randomCaptor.getValue().length);
     verify(core, times(1)).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    verify(core, times(1)).getAlerts();
     verify(core, never()).getRandom();
     verify(endpoints, times(1)).setFProxy(fproxyCaptor.capture());
     assertEquals(1, registrarCalls.get());
