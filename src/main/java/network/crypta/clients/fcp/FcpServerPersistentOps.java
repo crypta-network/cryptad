@@ -21,7 +21,6 @@ import network.crypta.client.async.PersistentJob;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.Base64;
@@ -67,8 +66,8 @@ final class FcpServerPersistentOps implements DownloadCache {
   /** The owning server used for queue coordination and callback wiring. */
   private final FCPServer server;
 
-  /** Client core providing contexts, RNG, and bucket factories. */
-  private final NodeClientCore core;
+  /** Runtime support providing contexts, RNG, and bucket factories. */
+  private final FcpServerRuntimeSupport runtimeSupport;
 
   /** Root registry for forever-persistent clients. */
   private final PersistentRequestRoot persistentRoot;
@@ -83,20 +82,23 @@ final class FcpServerPersistentOps implements DownloadCache {
   private final PersistentRequestClient globalForeverClient;
 
   /**
-   * Creates a persistence helper bound to the provided server, core, and persistent root.
+   * Creates a persistence helper bound to the provided server, runtime support, and persistent
+   * root.
    *
    * <p>The constructor initializes the reboot-client map, wires the forever-global client from the
    * provided root, and allocates the reboot-global client used for temporary persistence. No
    * network operations occur here; the helper is ready for use immediately after construction.
    *
    * @param server owning server used when scheduling global queue operations.
-   * @param core client core supplying contexts, RNG, and storage factories.
+   * @param runtimeSupport runtime support supplying contexts, RNG, and storage factories.
    * @param persistentRoot registry for forever-persistent clients and queues.
    */
   FcpServerPersistentOps(
-      FCPServer server, NodeClientCore core, PersistentRequestRoot persistentRoot) {
+      FCPServer server,
+      FcpServerRuntimeSupport runtimeSupport,
+      PersistentRequestRoot persistentRoot) {
     this.server = server;
-    this.core = core;
+    this.runtimeSupport = runtimeSupport;
     this.persistentRoot = persistentRoot;
     this.rebootClientsByName = new WeakHashMap<>();
     this.globalForeverClient = persistentRoot.globalForeverClient;
@@ -205,7 +207,7 @@ final class FcpServerPersistentOps implements DownloadCache {
    * @throws PersistenceDisabledException when persistence is unavailable or disabled.
    */
   RequestStatus[] getGlobalRequests() throws PersistenceDisabledException {
-    if (core.killedDatabase()) throw new PersistenceDisabledException();
+    if (runtimeSupport.persistenceDisabled()) throw new PersistenceDisabledException();
     List<RequestStatus> v = new ArrayList<>();
     globalRebootClient.addPersistentRequestStatus(v);
     if (globalForeverClient != null) globalForeverClient.addPersistentRequestStatus(v);
@@ -224,10 +226,10 @@ final class FcpServerPersistentOps implements DownloadCache {
    * @throws PersistenceDisabledException when persistence is unavailable or disabled.
    */
   boolean removeGlobalRequestBlocking(final String identifier) throws PersistenceDisabledException {
-    if (!globalRebootClient.removeByIdentifier(identifier, true, server, core.getClientContext())) {
+    if (!globalRebootClient.removeByIdentifier(identifier, true, server, clientContext())) {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicBoolean success = new AtomicBoolean();
-      core.getClientContext()
+      clientContext()
           .jobRunner
           .queue(
               new PersistentJob() {
@@ -243,7 +245,7 @@ final class FcpServerPersistentOps implements DownloadCache {
                   try {
                     succeeded =
                         globalForeverClient.removeByIdentifier(
-                            identifier, true, server, core.getClientContext());
+                            identifier, true, server, clientContext());
                   } catch (Exception e) {
                     LOG.error("Caught removing identifier {}: {}", identifier, e, e);
                   } finally {
@@ -277,7 +279,7 @@ final class FcpServerPersistentOps implements DownloadCache {
     globalRebootClient.removeAll();
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicBoolean success = new AtomicBoolean();
-    core.getClientContext()
+    clientContext()
         .jobRunner
         .queue(
             new PersistentJob() {
@@ -337,7 +339,7 @@ final class FcpServerPersistentOps implements DownloadCache {
         boolean done;
       }
       final OutputWrapper ow = new OutputWrapper();
-      core.getClientContext()
+      clientContext()
           .jobRunner
           .queue(
               new PersistentJob() {
@@ -399,7 +401,7 @@ final class FcpServerPersistentOps implements DownloadCache {
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicReference<NotAllowedException> notAllowed = new AtomicReference<>();
     final AtomicReference<IOException> ioException = new AtomicReference<>();
-    core.getClientContext()
+    clientContext()
         .jobRunner
         .queue(
             new PersistentJob() {
@@ -511,7 +513,7 @@ final class FcpServerPersistentOps implements DownloadCache {
 
     while (true) {
       byte[] buf = new byte[8];
-      core.getRandom().nextBytes(buf);
+      runtimeSupport.fillSecureRandom(buf);
       String id = FPROXY_PREFIX + Base64.encode(buf);
       PersistentGlobalRequestSpec spec =
           new PersistentGlobalRequestSpec(
@@ -656,11 +658,11 @@ final class FcpServerPersistentOps implements DownloadCache {
   void startBlocking(final ClientRequest req)
       throws IdentifierCollisionException, PersistenceDisabledException {
     if (req.persistence == Persistence.REBOOT) {
-      req.start(core.getClientContext());
+      req.start(clientContext());
     } else {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicReference<IdentifierCollisionException> collision = new AtomicReference<>();
-      core.getClientContext()
+      clientContext()
           .jobRunner
           .queue(
               new PersistentJob() {
@@ -700,13 +702,13 @@ final class FcpServerPersistentOps implements DownloadCache {
       throws PersistenceDisabledException {
     ClientRequest req = globalRebootClient.getRequest(identifier);
     if (req != null) {
-      req.restart(core.getClientContext(), disableFilterData);
+      req.restart(clientContext(), disableFilterData);
       return true;
     } else {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicBoolean success = new AtomicBoolean();
       if (LOG.isDebugEnabled()) LOG.debug("Queueing restart of {}", identifier);
-      core.getClientContext()
+      clientContext()
           .jobRunner
           .queue(
               new PersistentJob() {
@@ -761,7 +763,7 @@ final class FcpServerPersistentOps implements DownloadCache {
 
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicReference<FetchResult> resultRef = new AtomicReference<>();
-    core.getClientContext()
+    clientContext()
         .jobRunner
         .queue(
             new PersistentJob() {
@@ -825,7 +827,9 @@ final class FcpServerPersistentOps implements DownloadCache {
 
     Bucket newData = preferred;
     try {
-      if (newData == null) newData = core.getTempBucketFactory().makeBucket(origData.size());
+      if (newData == null) {
+        newData = runtimeSupport.tempBucketFactory().makeBucket(origData.size());
+      }
       BucketTools.copy(origData, newData);
       if (origData.size() != newData.size()) {
         LOG.info("Maybe it disappeared under us?");
@@ -852,7 +856,7 @@ final class FcpServerPersistentOps implements DownloadCache {
       if (newData == null) {
         try {
           if (preferred != null) newData = preferred;
-          else newData = core.getTempBucketFactory().makeBucket(origData.size());
+          else newData = runtimeSupport.tempBucketFactory().makeBucket(origData.size());
           BucketTools.copy(origData, newData);
         } catch (IOException e) {
           LOG.error("Unable to copy data: {}", e, e);
@@ -877,5 +881,9 @@ final class FcpServerPersistentOps implements DownloadCache {
 
   PersistentRequestClient getGlobalRebootClient() {
     return globalRebootClient;
+  }
+
+  private ClientContext clientContext() {
+    return runtimeSupport.clientContext();
   }
 }

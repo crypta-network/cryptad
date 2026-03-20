@@ -6,12 +6,15 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
+import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.io.PersistentTempBucketFactory;
+import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,6 +38,9 @@ class FCPServerTest {
   @Mock private ClientContext clientContext;
   @Mock private InsertContext insertContext;
   @Mock private USKManager uskManager;
+  @Mock private TempBucketFactory tempBucketFactory;
+  @Mock private PersistentTempBucketFactory persistentTempBucketFactory;
+  @Mock private RandomSource randomSource;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     when(runtimePorts.execution()).thenReturn(executionPort);
@@ -44,6 +50,9 @@ class FCPServerTest {
     lenient().when(core.getClientContext()).thenReturn(clientContext);
     lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
     lenient().when(core.getUskManager()).thenReturn(uskManager);
+    lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
+    lenient().when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
+    lenient().when(core.getRandom()).thenReturn(randomSource);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -158,6 +167,33 @@ class FCPServerTest {
     FCPServer server = newServer(false, false);
 
     assertSame(runtimePorts, server.runtime());
+  }
+
+  @Test
+  void serverRuntimeSupport_whenQueried_returnsConfiguredAdapter() {
+    FCPServer server = newServer(false, false);
+    FcpServerRuntimeSupport first = server.serverRuntimeSupport();
+
+    FcpServerRuntimeSupport second = server.serverRuntimeSupport();
+
+    assertNotNull(first);
+    assertSame(first, second);
+  }
+
+  @Test
+  void serverRuntimeSupport_whenServicesQueried_delegatesToCore() {
+    when(core.killedDatabase()).thenReturn(true);
+    FCPServer server = newServer(false, false);
+    byte[] bytes = new byte[4];
+
+    FcpServerRuntimeSupport support = server.serverRuntimeSupport();
+
+    assertSame(clientContext, support.clientContext());
+    assertTrue(support.persistenceDisabled());
+    assertSame(tempBucketFactory, support.tempBucketFactory());
+    assertSame(persistentTempBucketFactory, support.persistentTempBucketFactory());
+    support.fillSecureRandom(bytes);
+    verify(randomSource).nextBytes(bytes);
   }
 
   @Test

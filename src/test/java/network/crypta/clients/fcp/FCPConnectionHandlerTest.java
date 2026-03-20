@@ -13,12 +13,10 @@ import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EntropySource;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,9 +44,8 @@ import static org.mockito.Mockito.when;
 class FCPConnectionHandlerTest {
 
   @Mock private FCPServer server;
-  @Mock private NodeClientCore core;
+  @Mock private FcpServerRuntimeSupport serverRuntimeSupport;
   @Mock private ClientContext clientContext;
-  @Mock private TempBucketFactory tempBucketFactory;
   @Mock private Socket socket;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RandomnessPort randomnessPort;
@@ -61,8 +58,8 @@ class FCPConnectionHandlerTest {
     DeterministicRandomSource randomSource = new DeterministicRandomSource(1234L);
     Random fastRandom = new Random(5678L);
 
-    lenient().when(server.getCore()).thenReturn(core);
-    lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
+    lenient().when(server.serverRuntimeSupport()).thenReturn(serverRuntimeSupport);
+    lenient().when(serverRuntimeSupport.clientContext()).thenReturn(clientContext);
     lenient().when(server.runtime()).thenReturn(runtimePorts);
     lenient().when(server.insertRuntimeSupport()).thenReturn(insertRuntimeSupport);
     lenient().when(runtimePorts.randomness()).thenReturn(randomnessPort);
@@ -129,7 +126,6 @@ class FCPConnectionHandlerTest {
   void removeRequestByIdentifier_whenKillTrue_cancelsAndNotifies() {
     ClientRequest request = mock(ClientRequest.class);
     handler.requestsByIdentifier.put("id", request);
-    when(core.getClientContext()).thenReturn(clientContext);
 
     ClientRequest removed = handler.removeRequestByIdentifier("id", true);
 
@@ -143,7 +139,6 @@ class FCPConnectionHandlerTest {
   void removeRequestByIdentifier_whenKillFalse_onlyNotifies() {
     ClientRequest request = mock(ClientRequest.class);
     handler.requestsByIdentifier.put("id", request);
-    when(core.getClientContext()).thenReturn(clientContext);
 
     ClientRequest removed = handler.removeRequestByIdentifier("id", false);
 

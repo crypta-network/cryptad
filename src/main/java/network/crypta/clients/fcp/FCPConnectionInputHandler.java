@@ -216,11 +216,12 @@ public class FCPConnectionInputHandler implements Runnable {
     if (LOG.isTraceEnabled()) {
       LOG.trace("Incoming FCP message:\n{}\n{}", messageType, fs);
     }
+    FcpServerRuntimeSupport runtimeSupport = handler.getServer().serverRuntimeSupport();
     return FCPMessage.create(
         messageType,
         fs,
-        handler.getServer().getCore().getTempBucketFactory(),
-        handler.getServer().getCore().getPersistentTempBucketFactory());
+        runtimeSupport.tempBucketFactory(),
+        runtimeSupport.persistentTempBucketFactory());
   }
 
   private boolean readPayloadIfRequired(FCPMessage msg, LineReadingInputStream lis)
@@ -228,7 +229,9 @@ public class FCPConnectionInputHandler implements Runnable {
     if (msg instanceof BaseDataCarryingMessage message) {
       try {
         message.readFrom(
-            lis, handler.getServer().getCore().getTempBucketFactory(), handler.getServer());
+            lis,
+            handler.getServer().serverRuntimeSupport().tempBucketFactory(),
+            handler.getServer());
       } catch (MessageInvalidException e) {
         sendProtocolError(e);
         return false;

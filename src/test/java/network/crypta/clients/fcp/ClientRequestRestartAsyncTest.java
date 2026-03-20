@@ -5,7 +5,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -40,11 +39,11 @@ class ClientRequestRestartAsyncTest {
     when(runtimePorts.execution()).thenReturn(executionPort);
     PersistentJobRunner jobRunner = mock(PersistentJobRunner.class);
     ClientContext context = newContextWithJobRunner(jobRunner);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getClientContext()).thenReturn(context);
+    FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
+    when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.runtime()).thenReturn(runtimePorts);
-    when(server.getCore()).thenReturn(core);
+    when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     TestClientRequest request = TestClientRequest.connection();
     request.markStarted();
 
@@ -76,11 +75,11 @@ class ClientRequestRestartAsyncTest {
     when(runtimePorts.execution()).thenReturn(executionPort);
     PersistentJobRunner jobRunner = mock(PersistentJobRunner.class);
     ClientContext context = newContextWithJobRunner(jobRunner);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getClientContext()).thenReturn(context);
+    FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
+    when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.runtime()).thenReturn(runtimePorts);
-    when(server.getCore()).thenReturn(core);
+    when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     TestClientRequest request = TestClientRequest.forever();
     request.markStarted();
 

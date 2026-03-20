@@ -268,8 +268,9 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   private void notifyLostRequests(ClientRequest[] requests) {
+    ClientContext clientContext = serverClientContext();
     for (ClientRequest request : requests) {
-      request.onLostConnection(server.getCore().getClientContext());
+      request.onLostConnection(clientContext);
     }
   }
 
@@ -281,9 +282,7 @@ public class FCPConnectionHandler implements Closeable {
 
   private void enqueueClientCleanup() {
     try {
-      server
-          .getCore()
-          .getClientContext()
+      serverClientContext()
           .jobRunner
           .queue(
               (PersistentJob)
@@ -697,7 +696,7 @@ public class FCPConnectionHandler implements Closeable {
             return false;
           }
           if (!registerPersistentRequest(request, message.identifier, message.global)) {
-            request.cancel(server.getCore().getClientContext());
+            request.cancel(serverClientContext());
             return false;
           }
           request.start(context);
@@ -803,9 +802,7 @@ public class FCPConnectionHandler implements Closeable {
 
   private void queuePersistentJob(PersistentJob job, String identifier, boolean global) {
     try {
-      server
-          .getCore()
-          .getClientContext()
+      serverClientContext()
           .jobRunner
           .queue(job, NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
     } catch (PersistenceDisabledException _) {
@@ -1005,8 +1002,9 @@ public class FCPConnectionHandler implements Closeable {
       req = requestsByIdentifier.remove(identifier);
     }
     if (req != null) {
-      if (kill) req.cancel(server.getCore().getClientContext());
-      req.requestWasRemoved(server.getCore().getClientContext());
+      ClientContext clientContext = serverClientContext();
+      if (kill) req.cancel(clientContext);
+      req.requestWasRemoved(clientContext);
     }
     return req;
   }
@@ -1025,7 +1023,7 @@ public class FCPConnectionHandler implements Closeable {
     PersistentRequestClient client = global ? server.getGlobalRebootClient() : getRebootClient();
     ClientRequest req = client.getRequest(identifier);
     if (req != null) {
-      client.removeByIdentifier(identifier, true, server, server.getCore().getClientContext());
+      client.removeByIdentifier(identifier, true, server, serverClientContext());
     }
     return req;
   }
@@ -1034,9 +1032,13 @@ public class FCPConnectionHandler implements Closeable {
     PersistentRequestClient client = global ? server.getGlobalForeverClient() : getForeverClient();
     ClientRequest req = client.getRequest(identifier);
     if (req != null) {
-      client.removeByIdentifier(identifier, true, server, server.getCore().getClientContext());
+      client.removeByIdentifier(identifier, true, server, serverClientContext());
     }
     return req;
+  }
+
+  private ClientContext serverClientContext() {
+    return server.serverRuntimeSupport().clientContext();
   }
 
   /**
