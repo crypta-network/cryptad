@@ -9,13 +9,12 @@ import java.security.SecureRandom;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
-import network.crypta.client.HighLevelSimpleClient;
+import java.util.Objects;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.clients.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
@@ -30,10 +29,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
-import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
-import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
-import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -57,18 +52,20 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * <p>SimpleToadletServer owns the embedded HTTP listener that exposes FProxy and assorted control
  * endpoints to browsers and local tools. It wires configuration callbacks, constructs the network
  * interface, and manages registration of individual {@link Toadlet} handlers. Typical lifecycle:
- * construct the server with the node configuration, call {@link #setCore(NodeClientCore)} once the
- * node core becomes available, start the listener, and invoke {@link #finishStart()} after startup
- * housekeeping completes. The server keeps track of theme selection, panic button visibility,
- * gateway mode, and access controls. It also delegates bookmark management, push managers, and
- * theme overrides to the core and supporting helper classes.
+ * construct the server with the node configuration, publish runtime support through {@link
+ * #setCore(NodeClientCore)} or {@link #setRuntimeSupport(HttpShellRuntimeSupport)} once the daemon
+ * is ready, start the listener, and invoke {@link #finishStart()} after startup housekeeping
+ * completes. The server keeps track of theme selection, panic button visibility, gateway mode, and
+ * access controls. It also delegates bookmark management, push managers, and theme overrides to the
+ * HTTP-local runtime adapter and supporting helper classes.
  *
  * <p>Concurrency: the network listener and request handling threads read shared state such as the
- * {@link #core} reference, panic flags, and theme settings. The core reference is published through
- * a volatile write-in {@link #setCore(NodeClientCore)} so request threads see it once set.
- * Mutability: most configuration is thread-safe via synchronized blocks or volatile fields; URL
- * registration is guarded by the server monitor. Extended configuration callbacks are invoked on
- * the configuration thread; request handlers run on the executor.
+ * {@link #runtimeSupport} reference, panic flags, and theme settings. The runtime support reference
+ * is published through a volatile write-in {@link #setCore(NodeClientCore)} or {@link
+ * #setRuntimeSupport(HttpShellRuntimeSupport)} so request threads see it once set. Mutability: most
+ * configuration is thread-safe via synchronized blocks or volatile fields; URL registration is
+ * guarded by the server monitor. Extended configuration callbacks are invoked on the configuration
+ * thread; request handlers run on the executor.
  *
  * <ul>
  *   <li>Responsibilities: bind sockets, dispatch toadlets, surface configuration, and relay alerts.
@@ -135,7 +132,7 @@ public final class SimpleToadletServer
   private BucketFactory bf;
 
   @SuppressWarnings("java:S3077")
-  private volatile NodeClientCore core;
+  private volatile HttpShellRuntimeSupport runtimeSupport;
 
   // HTTP Option
   private boolean doRobots;
@@ -313,12 +310,12 @@ public final class SimpleToadletServer
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
-      NodeClientCore coreRef = SimpleToadletServer.this.core;
-      if (coreRef == null) return;
+      HttpShellRuntimeSupport runtimeSupportRef = SimpleToadletServer.this.runtimeSupport;
+      if (runtimeSupportRef == null) return;
       if (val.equals(get()) || val.isEmpty()) cssOverride = null;
       else {
         File tmp = new File(val.trim());
-        if (!coreRef.allowUploadFrom(tmp))
+        if (!runtimeSupportRef.allowUploadFrom(tmp))
           throw new InvalidConfigValueException(
               l10n("cssOverrideNotInUploads", FILENAME_KEY, tmp.toString()));
         else if (!tmp.canRead() || !tmp.isFile())
@@ -459,41 +456,32 @@ public final class SimpleToadletServer
   /**
    * Builds the FProxy runtime structures once the core is ready.
    *
-   * <p>Call this after {@link #setCore(NodeClientCore)} and before accepting requests to install
-   * bookmark handling, interval push scheduling, and UI registration against the active node. This
-   * method is idempotent; later calls are ignored after the first successful invocation. It
-   * captures the current {@link #core} reference, wires the push managers to the shared {@link
-   * Ticker}, assembles the daemon-only root FProxy collaborators, and delegates to {@link
-   * FProxyRegistrar} for the remaining HTTP shell registration.
+   * <p>Call this after {@link #setCore(NodeClientCore)} or {@link
+   * #setRuntimeSupport(HttpShellRuntimeSupport)} and before accepting requests to install bookmark
+   * handling, interval push scheduling, and UI registration against the active node. This method is
+   * idempotent; later calls are ignored after the first successful invocation. It captures the
+   * current runtime support reference, wires the push managers to the shared {@link Ticker},
+   * assembles the daemon-only root FProxy collaborators, and delegates to {@link FProxyRegistrar}
+   * for the remaining HTTP shell registration.
    */
   public void createFproxy() {
-    NodeClientCore coreRef = this.core;
     synchronized (this) {
       if (haveCalledFProxy) return;
       haveCalledFProxy = true;
     }
 
+    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
-    bookmarkManager =
-        new BookmarkManager(
-            new CoreBookmarkRuntimeSupport(coreRef), coreRef.getAlerts(), publicGatewayMode());
-
-    HighLevelSimpleClient client =
-        coreRef.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
-    RuntimePorts runtimePorts = coreRef.getRuntimePorts();
+    HttpShellFProxyBootstrap bootstrap =
+        runtimeSupportRef.createFProxyBootstrap(publicGatewayMode());
+    bookmarkManager = bootstrap.bookmarkManager();
+    RuntimePorts runtimePorts = runtimeSupportRef.runtimePorts();
     initializeFProxyRandom(runtimePorts.randomness());
-    FProxyFetchTracker fetchTracker =
-        new FProxyFetchTracker(
-            coreRef.getClientContext(),
-            client.getFetchContext(),
-            new RequestClientBuilder().realTime().build());
-    FProxyToadlet fproxy = new FProxyToadlet(client, coreRef, fetchTracker);
-    coreRef.getEndpoints().setFProxy(fproxy);
 
     FProxyRegistrar.maybeCreateFProxyEtc(
         new FProxyRegistrarDependencies(
-            client, runtimePorts, coreRef.getNode().getConfig(), fproxy),
+            bootstrap.client(), runtimePorts, runtimeSupportRef.config(), bootstrap.fproxy()),
         this);
   }
 
@@ -503,20 +491,25 @@ public final class SimpleToadletServer
   }
 
   /**
-   * Publishes the initialized node core to request handlers.
+   * Publishes the initialized node core to request handlers through the HTTP-local runtime adapter.
    *
-   * <p>The core reference is written with volatile semantics so that listener threads see it after
+   * <p>This compatibility shim wraps the supplied core in {@link CoreHttpShellRuntimeSupport}. The
+   * runtime support reference is written with volatile semantics, so listener threads see it after
    * startup. Call this exactly once, immediately after the node finishes constructing its {@link
-   * NodeClientCore}, and before invoking {@link #createFproxy()} or {@link #start()}. When the core
-   * exposes runtime SPI ports, this method also late-injects the detached page-chrome port into the
-   * shared {@link PageMaker}. Passing {@code null} is not supported and leaves the server unable to
-   * service requests.
+   * NodeClientCore}, and before invoking {@link #createFproxy()} or {@link #start()}. When the
+   * runtime support exposes runtime SPI ports, this method also late-injects the detached
+   * page-chrome port into the shared {@link PageMaker}. Passing {@code null} leaves the server
+   * unable to service requests.
    *
    * @param core fully constructed {@link NodeClientCore}; must not be {@code null}.
    */
   public void setCore(NodeClientCore core) {
-    this.core = core;
-    RuntimePorts runtimePorts = core == null ? null : core.getRuntimePorts();
+    setRuntimeSupport(core == null ? null : new CoreHttpShellRuntimeSupport(core));
+  }
+
+  void setRuntimeSupport(HttpShellRuntimeSupport runtimeSupport) {
+    this.runtimeSupport = runtimeSupport;
+    RuntimePorts runtimePorts = runtimeSupport == null ? null : runtimeSupport.runtimePorts();
     pageMaker.setPageChromePort(runtimePorts == null ? null : runtimePorts.pageChrome());
   }
 
@@ -524,10 +517,11 @@ public final class SimpleToadletServer
    * Creates a SimpleToadletServer bound to the given FProxy configuration.
    *
    * <p>The constructor performs lightweight configuration registration, initializes option
-   * callbacks, and defers expensive wiring (core assignment, network listener startup) to later
-   * calls. It seeds random sources, sets the initial access control list, and records whether the
-   * server should start enabled. The {@link #core} is left {@code null}; callers must invoke {@link
-   * #setCore(NodeClientCore)} before servicing requests.
+   * callbacks, and defers expensive wiring (runtime support assignment, network listener startup)
+   * to later calls. It seeds random sources, sets the initial access control list, and records
+   * whether the server should start enabled. The {@link #runtimeSupport} is left {@code null};
+   * callers must invoke {@link #setCore(NodeClientCore)} or {@link
+   * #setRuntimeSupport(HttpShellRuntimeSupport)} before servicing requests.
    *
    * @param fproxyConfig configuration subsection containing fproxy.* keys that drive listener
    *     options, theme settings, limits, and ACLs; must be non-null.
@@ -543,7 +537,7 @@ public final class SimpleToadletServer
       throws InvalidConfigValueException {
 
     this.executor = executor;
-    this.core = null; // setCore() will be called later.
+    this.runtimeSupport = null; // setCore() or setRuntimeSupport() will be called later.
     this.random = new SecureRandom();
 
     int configItemOrder = registerInitialOptions(fproxyConfig);
@@ -1262,11 +1256,11 @@ public final class SimpleToadletServer
   /**
    * Starts the HTTP listener thread if it has been initialized.
    *
-   * <p>Callers should ensure {@link #setCore(NodeClientCore)} and {@link #createFproxy()} have
-   * completed before invoking this method. When {@link #myThread} is non-null, the network
-   * interface is lazily created and the thread is started, logging the bind address and port. This
-   * call is idempotent when {@link #myThread} is already {@code null} or the thread has previously
-   * been started.
+   * <p>Callers should ensure {@link #setCore(NodeClientCore)} or {@link
+   * #setRuntimeSupport(HttpShellRuntimeSupport)} and {@link #createFproxy()} have completed before
+   * invoking this method. When {@link #myThread} is non-null, the network interface is lazily
+   * created and the thread is started, logging the bind address and port. This call is idempotent
+   * when {@link #myThread} is already {@code null} or the thread has previously been started.
    */
   @SuppressWarnings("java:S106")
   public void start() {
@@ -1292,31 +1286,27 @@ public final class SimpleToadletServer
    * succeeds, {@link #finishedStartup} becomes true, allowing deferred operations to proceed.
    */
   public void finishStart() {
-    core.getNode()
-        .services()
-        .securityLevels()
-        .addNetworkThreatLevelListener(
-            (oldLevel, newLevel) -> {
-              // At LOW, we do ACCEPT_OLD.
-              // Otherwise, we do RE_FILTER.
-              // But we don't change it unless it changes from LOW to not LOW.
-              if (newLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
-                refilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
-              } else if (oldLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
-                refilterPolicy = REFILTER_POLICY.RE_FILTER;
-              }
-            });
-    core.getNode()
-        .services()
-        .securityLevels()
-        .addPhysicalThreatLevelListener(
-            (oldLevel, newLevel) -> {
-              if (newLevel != oldLevel && newLevel == PHYSICAL_THREAT_LEVEL.LOW) {
-                setPanicButtonVisibility(false);
-              } else if (newLevel != oldLevel) {
-                setPanicButtonVisibility(true);
-              }
-            });
+    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
+    runtimeSupportRef.addNetworkThreatLevelListener(
+        (oldLevel, newLevel) -> {
+          // At LOW, we do ACCEPT_OLD.
+          // Otherwise, we do RE_FILTER.
+          // But we don't change it unless it changes from LOW to not LOW.
+          if (newLevel == HttpShellRuntimeSupport.NetworkThreatLevel.LOW && newLevel != oldLevel) {
+            refilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
+          } else if (oldLevel == HttpShellRuntimeSupport.NetworkThreatLevel.LOW
+              && newLevel != oldLevel) {
+            refilterPolicy = REFILTER_POLICY.RE_FILTER;
+          }
+        });
+    runtimeSupportRef.addPhysicalThreatLevelListener(
+        (oldLevel, newLevel) -> {
+          if (newLevel != oldLevel && newLevel == HttpShellRuntimeSupport.PhysicalThreatLevel.LOW) {
+            setPanicButtonVisibility(false);
+          } else if (newLevel != oldLevel) {
+            setPanicButtonVisibility(true);
+          }
+        });
     synchronized (this) {
       finishedStartup = true;
     }
@@ -1402,8 +1392,10 @@ public final class SimpleToadletServer
   }
 
   private boolean shouldRedirectToWizard(String path) {
-    NodeClientCore coreLocal = this.core;
-    if (coreLocal == null || coreLocal.getNode() == null || fproxyHasCompletedWizard) {
+    HttpShellRuntimeSupport runtimeSupportLocal = this.runtimeSupport;
+    if (runtimeSupportLocal == null
+        || !runtimeSupportLocal.canRedirectToWizard()
+        || fproxyHasCompletedWizard) {
       return false;
     }
     return !isWizardPathAllowed(path);
@@ -1549,18 +1541,19 @@ public final class SimpleToadletServer
   }
 
   /**
-   * Returns the user alert manager associated with the current core.
+   * Returns the user alert manager associated with the current runtime support.
    *
    * <p>The alert manager surfaces node warnings and informational banners to the UI and handles
-   * their dismissal state. When the core has not yet been assigned this method returns {@code
-   * null}; callers should therefore wait until after {@link #setCore(NodeClientCore)} is invoked.
+   * their dismissal state. When runtime support has not yet been assigned this method returns
+   * {@code null}; callers should therefore wait until after {@link #setCore(NodeClientCore)} or
+   * {@link #setRuntimeSupport(HttpShellRuntimeSupport)} is invoked.
    *
-   * @return active {@link UserAlertManager} from the core, or {@code null} when unavailable.
+   * @return active {@link UserAlertManager}, or {@code null} when unavailable.
    */
   public UserAlertManager getUserAlertManager() {
-    NodeClientCore coreRef = this.core;
-    if (coreRef == null) return null;
-    return coreRef.getAlerts();
+    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
+    if (runtimeSupportRef == null) return null;
+    return runtimeSupportRef.userAlerts();
   }
 
   /**
@@ -1592,7 +1585,7 @@ public final class SimpleToadletServer
       if (advancedModeEnabled == enabled) return;
       advancedModeEnabled = enabled;
     }
-    core.getNode().getConfig().store();
+    requireRuntimeSupport().storeConfig();
   }
 
   @Override
@@ -1635,8 +1628,9 @@ public final class SimpleToadletServer
 
   @Override
   public String getFormPassword() {
-    if (core == null) return "";
-    return core.getFormPassword();
+    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
+    if (runtimeSupportRef == null) return "";
+    return runtimeSupportRef.formPassword();
   }
 
   @Override
@@ -1804,19 +1798,28 @@ public final class SimpleToadletServer
    * @return {@link Ticker} from the node; never {@code null} after the core is set.
    */
   public Ticker getTicker() {
-    return core.getNode().network().ticker();
+    return requireRuntimeSupport().ticker();
   }
 
   /**
-   * Returns the currently bound node core.
+   * Returns the currently bound node core when runtime support is core-backed.
    *
-   * <p>Callers must not mutate the core state in ways that violate server invariants. The reference
-   * may change only through {@link #setCore(NodeClientCore)} during startup.
+   * <p>This compatibility accessor is retained for callers that still expect a {@link
+   * NodeClientCore}. When the server was initialized with a non-core-backed runtime adapter, this
+   * method returns {@code null}.
    *
    * @return {@link NodeClientCore} instance or {@code null} when unset.
    */
   public NodeClientCore getCore() {
-    return core;
+    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
+    if (runtimeSupportRef instanceof CoreHttpShellRuntimeSupport(NodeClientCore core)) {
+      return core;
+    }
+    return null;
+  }
+
+  private HttpShellRuntimeSupport requireRuntimeSupport() {
+    return Objects.requireNonNull(runtimeSupport);
   }
 
   private REFILTER_POLICY refilterPolicy;
