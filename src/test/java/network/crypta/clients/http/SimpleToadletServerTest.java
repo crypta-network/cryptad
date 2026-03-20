@@ -2,20 +2,34 @@ package network.crypta.clients.http;
 
 import java.net.InetAddress;
 import java.net.URI;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.client.FetchContext;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.async.ClientContext;
+import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.Ticker;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,8 +41,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -75,6 +94,67 @@ class SimpleToadletServerTest {
             () -> server.findToadlet(new URI("http://localhost/hidden")));
 
     assertEquals(FirstTimeWizardToadlet.TOADLET_URL, ex.newuri.getPath());
+  }
+
+  @Test
+  void createFproxy_whenInvoked_buildsDaemonDependenciesAndDelegatesOnce() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    PersistentConfig nodeConfig = new PersistentConfig(new SimpleFieldSet(true));
+    Ticker ticker = mock(Ticker.class);
+    ClientContext clientContext = mock(ClientContext.class);
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
+    NodeClientCore core = mock(NodeClientCore.class, Answers.RETURNS_DEEP_STUBS);
+    when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
+    when(core.getClientContext()).thenReturn(clientContext);
+    when(core.getRuntimePorts()).thenReturn(runtimePorts);
+    when(core.getEndpoints()).thenReturn(endpoints);
+    when(core.getNode().getConfig()).thenReturn(nodeConfig);
+    when(core.getNode().network().ticker()).thenReturn(ticker);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    when(client.getFetchContext()).thenReturn(fetchContext);
+    server.setCore(core);
+
+    AtomicInteger registrarCalls = new AtomicInteger();
+    AtomicReference<FProxyRegistrarDependencies> dependenciesRef = new AtomicReference<>();
+    try (MockedConstruction<BookmarkManager> bookmarkManagers =
+            mockConstruction(BookmarkManager.class);
+        MockedStatic<FProxyRegistrar> registrarMock = mockStatic(FProxyRegistrar.class)) {
+      registrarMock
+          .when(
+              () ->
+                  FProxyRegistrar.maybeCreateFProxyEtc(
+                      any(FProxyRegistrarDependencies.class), same(server)))
+          .thenAnswer(
+              invocation -> {
+                registrarCalls.incrementAndGet();
+                dependenciesRef.set(invocation.getArgument(0));
+                return null;
+              });
+
+      server.createFproxy();
+      server.createFproxy();
+
+      assertEquals(1, bookmarkManagers.constructed().size());
+    }
+
+    ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<FProxyToadlet> fproxyCaptor = ArgumentCaptor.forClass(FProxyToadlet.class);
+    verify(runtimePorts, times(1)).randomness();
+    verify(randomnessPort, times(1)).fillSecureRandom(randomCaptor.capture());
+    assertSame(FProxyToadlet.random, randomCaptor.getValue());
+    assertEquals(32, randomCaptor.getValue().length);
+    verify(core, times(1)).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    verify(core, never()).getRandom();
+    verify(endpoints, times(1)).setFProxy(fproxyCaptor.capture());
+    assertEquals(1, registrarCalls.get());
+    assertSame(client, dependenciesRef.get().client());
+    assertSame(runtimePorts, dependenciesRef.get().runtimePorts());
+    assertSame(nodeConfig, dependenciesRef.get().config());
+    assertSame(fproxyCaptor.getValue(), dependenciesRef.get().fproxy());
   }
 
   @Test

@@ -9,6 +9,7 @@ import java.security.SecureRandom;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
+import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
@@ -28,9 +29,12 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
+import network.crypta.node.RequestClientBuilder;
+import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -458,8 +462,8 @@ public final class SimpleToadletServer
    * bookmark handling, interval push scheduling, and UI registration against the active node. This
    * method is idempotent; later calls are ignored after the first successful invocation. It
    * captures the current {@link #core} reference, wires the push managers to the shared {@link
-   * Ticker}, and delegates to {@link FProxyRegistrar} to create request handlers and configuration
-   * entries.
+   * Ticker}, assembles the daemon-only root FProxy collaborators, and delegates to {@link
+   * FProxyRegistrar} for the remaining HTTP shell registration.
    */
   public void createFproxy() {
     NodeClientCore coreRef = this.core;
@@ -471,7 +475,28 @@ public final class SimpleToadletServer
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
     bookmarkManager = new BookmarkManager(coreRef, publicGatewayMode());
-    FProxyRegistrar.maybeCreateFProxyEtc(coreRef, coreRef.getNode().getConfig(), this);
+
+    HighLevelSimpleClient client =
+        coreRef.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    RuntimePorts runtimePorts = coreRef.getRuntimePorts();
+    initializeFProxyRandom(runtimePorts.randomness());
+    FProxyFetchTracker fetchTracker =
+        new FProxyFetchTracker(
+            coreRef.getClientContext(),
+            client.getFetchContext(),
+            new RequestClientBuilder().realTime().build());
+    FProxyToadlet fproxy = new FProxyToadlet(client, coreRef, fetchTracker);
+    coreRef.getEndpoints().setFProxy(fproxy);
+
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        new FProxyRegistrarDependencies(
+            client, runtimePorts, coreRef.getNode().getConfig(), fproxy),
+        this);
+  }
+
+  private static synchronized void initializeFProxyRandom(RandomnessPort randomnessPort) {
+    FProxyToadlet.random = new byte[32];
+    randomnessPort.fillSecureRandom(FProxyToadlet.random);
   }
 
   /**

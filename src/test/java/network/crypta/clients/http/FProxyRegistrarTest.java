@@ -4,15 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
-import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientEndpoints;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -52,15 +47,10 @@ import static org.mockito.Mockito.when;
 class FProxyRegistrarTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private NodeClientCore core;
-
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private RuntimePorts runtimePorts;
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private FetchContext fetchContext;
-  @Mock private RandomSource randomSource;
-  @Mock private ClientEndpoints endpoints;
+  @Mock private FProxyToadlet fproxy;
   @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
@@ -89,13 +79,6 @@ class FProxyRegistrarTest {
     SubConfig securityLevelsConfig = config.createSubConfig("security-levels");
     securityLevelsConfig.finishedInitialization();
 
-    when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
-    when(core.getRuntimePorts()).thenReturn(runtimePorts);
-    when(core.getRandom()).thenReturn(randomSource);
-    when(core.getClientContext())
-        .thenReturn(org.mockito.Mockito.mock(network.crypta.client.async.ClientContext.class));
-    when(core.getEndpoints()).thenReturn(endpoints);
-    when(client.getFetchContext()).thenReturn(fetchContext);
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
     when(runtimePorts.welcomePage()).thenReturn(welcomePagePort);
     when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
@@ -112,16 +95,8 @@ class FProxyRegistrarTest {
 
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
-    FProxyRegistrar.maybeCreateFProxyEtc(core, config, server);
-
-    ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
-    verify(randomSource).nextBytes(randomCaptor.capture());
-    assertSame(FProxyToadlet.random, randomCaptor.getValue());
-    assertEquals(32, randomCaptor.getValue().length);
-
-    ArgumentCaptor<FProxyToadlet> fproxyCaptor = ArgumentCaptor.forClass(FProxyToadlet.class);
-    verify(endpoints).setFProxy(fproxyCaptor.capture());
-    FProxyToadlet fproxyToadlet = fproxyCaptor.getValue();
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
 
     verify(server)
         .registerMenu("/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
@@ -153,7 +128,7 @@ class FProxyRegistrarTest {
         registrations.stream()
             .anyMatch(
                 registered ->
-                    registered.toadlet() == fproxyToadlet
+                    registered.toadlet() == fproxy
                         && "/".equals(registered.registration().urlPrefix())));
     assertTrue(
         registrations.stream()
@@ -221,7 +196,8 @@ class FProxyRegistrarTest {
 
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
-    FProxyRegistrar.maybeCreateFProxyEtc(core, config, server);
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()

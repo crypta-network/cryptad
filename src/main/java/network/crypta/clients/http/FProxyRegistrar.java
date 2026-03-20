@@ -12,9 +12,6 @@ import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
 import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -24,18 +21,17 @@ import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
 /**
  * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.
  *
- * <p>This helper centralizes the wiring of the HTTP user interface: it constructs shared
- * client-side helpers, instantiates each toadlet, assigns menu categories, and publishes them on
- * the {@link SimpleToadletServer}. Callers invoke it once during node startup to ensure all public
- * endpoints—browsing, queue management, configuration, alerts, and update actions—are available
- * before handling requests. The registrar is intentionally package-private and stateless; it relies
- * on the provided {@link NodeClientCore} and {@link Config} instances for runtime settings and
- * threat posture.
+ * <p>This helper centralizes the wiring of the HTTP user interface after daemon-only composition
+ * has already happened elsewhere. It assigns menu categories, instantiates secondary toadlets,
+ * connects them to prebuilt collaborators, and publishes them on the {@link SimpleToadletServer}.
+ * Callers invoke it once during node startup to ensure all public endpoints for browsing, queue
+ * management, configuration, alerts, and update actions are available before handling requests. The
+ * registrar is intentionally package-private and stateless; it relies only on the narrow
+ * dependencies bundle assembled by the HTTP shell.
  *
  * <p>Responsibilities include:
  *
  * <ul>
- *   <li>Creating a shared {@link HighLevelSimpleClient} and fetch tracker used by toadlets.
  *   <li>Registering navigation menus under canonical categories for consistent UI grouping.
  *   <li>Instantiating functional toadlets for downloads, uploads, security, chat, stats,
  *       connectivity, first-time wizard flows, and core updates.
@@ -51,36 +47,23 @@ final class FProxyRegistrar {
   /**
    * Builds and registers the full FProxy toadlet set if the environment supports it.
    *
-   * <p>The method seeds shared randomness, prepares a high-level client with interactive priority,
-   * wires a {@link FProxyFetchTracker}, and then registers every relevant toadlet with the provided
-   * server. Registration order aligns with menu placement: browsing first, followed by queue
-   * handlers, configuration, status/alerts, chat, and maintenance endpoints. This method must be
-   * called exactly once during startup; it performs no deduplication and assumes the server is
+   * <p>The method assumes the root FProxy toadlet, interactive client, and runtime ports have
+   * already been assembled by the caller and then registers every relevant toadlet with the
+   * provided server. Registration order aligns with menu placement: browsing first, followed by
+   * queue handlers, configuration, status/alerts, chat, and maintenance endpoints. This method must
+   * be called exactly once during startup; it performs no deduplication and assumes the server is
    * empty.
    *
-   * @param core node client core supplying security levels, download directories, and RNG access;
-   *     must be initialized and non-null.
-   * @param config composite configuration used to enumerate sub-configs for dynamic toadlets.
+   * @param dependencies prebuilt shell dependencies required to register the FProxy HTTP surface
    * @param server toadlet server that exposes HTTP endpoints; expected to be in registration phase.
    */
-  static void maybeCreateFProxyEtc(NodeClientCore core, Config config, SimpleToadletServer server) {
-
-    HighLevelSimpleClient client =
-        core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
-    RuntimePorts runtimePorts = core.getRuntimePorts();
+  static void maybeCreateFProxyEtc(
+      FProxyRegistrarDependencies dependencies, SimpleToadletServer server) {
+    HighLevelSimpleClient client = dependencies.client();
+    RuntimePorts runtimePorts = dependencies.runtimePorts();
+    Config config = dependencies.config();
+    FProxyToadlet fproxy = dependencies.fproxy();
     TransferAccessPort transferAccess = runtimePorts.transferAccess();
-
-    FProxyToadlet.random = new byte[32];
-    core.getRandom().nextBytes(FProxyToadlet.random);
-
-    FProxyFetchTracker fetchTracker =
-        new FProxyFetchTracker(
-            core.getClientContext(),
-            client.getFetchContext(),
-            new RequestClientBuilder().realTime().build());
-
-    FProxyToadlet fproxy = new FProxyToadlet(client, core, fetchTracker);
-    core.getEndpoints().setFProxy(fproxy);
 
     server.registerMenu(
         "/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
