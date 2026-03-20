@@ -134,7 +134,10 @@ class LegacyFirstTimeWizardPortTest {
       assertEquals(Node.getMinimumBandwidth() / 1024L, snapshot.minBandwidthKiB());
       assertEquals(SECONDS.toNanos(1) / 1024L, snapshot.maxUploadLimitKiB());
       assertEquals(
-          String.format(Locale.ENGLISH, "%.2f", BandwidthLimit.MIN_MONTHLY_LIMIT),
+          String.format(
+              Locale.ENGLISH,
+              "%.2f",
+              BandwidthLimit.minimumMonthlyLimitGiB(Node.getMinimumBandwidth())),
           snapshot.minBandwidthMonthlyLimitGiB());
       assertEquals("1024", snapshot.detectedDownloadLimitKiB());
       assertEquals("512", snapshot.detectedUploadLimitKiB());
@@ -449,7 +452,8 @@ class LegacyFirstTimeWizardPortTest {
       port.applySubmission(
           new FirstTimeWizardSubmission(false, true, true, "", "", "500", "3", true, "secret"));
 
-      BandwidthLimit bandwidth = new BandwidthLimit(Fields.parseLong("500GiB"));
+      BandwidthLimit bandwidth =
+          BandwidthLimit.fromMonthlyBudget(Fields.parseLong("500GiB"), Node.getMinimumBandwidth());
       verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
       verify(nodeSubConfig).set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
       verify(nodeSubConfig).set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));

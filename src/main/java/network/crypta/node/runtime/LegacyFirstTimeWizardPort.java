@@ -97,6 +97,7 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   @Override
   public FirstTimeWizardSnapshot snapshot() {
     Config config = node.getConfig();
+    long minimumBandwidthBytesPerSecond = Node.getMinimumBandwidth();
     long minStorageLimitBytes = MIN_STORAGE_LIMIT;
     long maxStorageLimitBytes = DatastoreUtil.maxDatastoreSize();
     long legacyMaxStorageLimitBytes = DatastoreUtil.maxDatastoreSize(node);
@@ -111,9 +112,12 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
         formatGiB(maxStorageLimitBytes),
         maxStorageLimitBytes,
         legacyMaxStorageLimitBytes,
-        Node.getMinimumBandwidth() / KIB,
+        minimumBandwidthBytesPerSecond / KIB,
         SECONDS.toNanos(1) / KIB,
-        String.format(Locale.ENGLISH, "%.2f", BandwidthLimit.MIN_MONTHLY_LIMIT),
+        String.format(
+            Locale.ENGLISH,
+            "%.2f",
+            BandwidthLimit.minimumMonthlyLimitGiB(minimumBandwidthBytesPerSecond)),
         detectedBandwidthLimits[0],
         detectedBandwidthLimits[1],
         currentBandwidthLimits,
@@ -339,7 +343,9 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
       }
 
       BandwidthLimit bandwidth =
-          new BandwidthLimit(Fields.parseLong(submission.bandwidthMonthlyLimitGiB() + "GiB"));
+          BandwidthLimit.fromMonthlyBudget(
+              Fields.parseLong(submission.bandwidthMonthlyLimitGiB() + "GiB"),
+              Node.getMinimumBandwidth());
       config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
       config
           .get("node")

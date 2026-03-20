@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +36,10 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100"})
 class BandwidthMonthlyTest {
 
+  private static final long KIB = 1024L;
+  private static final long MIN_BANDWIDTH_KIB = 256L;
+  private static final double MIN_MONTHLY_LIMIT_GIB =
+      BandwidthLimit.minimumMonthlyLimitGiB(MIN_BANDWIDTH_KIB * KIB);
   private static final String PARAM_CAP_TO = "capTo";
   private static final String PARAM_PARSE_TARGET = "parseTarget";
   private static final String PARAM_PARSE_ERROR = "parseError";
@@ -48,9 +53,9 @@ class BandwidthMonthlyTest {
           1L,
           "10.00",
           10L,
-          10L,
-          976562L,
-          String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT),
+          MIN_BANDWIDTH_KIB,
+          976_562L,
+          String.valueOf(MIN_MONTHLY_LIMIT_GIB),
           "",
           "",
           -1L);
@@ -98,7 +103,8 @@ class BandwidthMonthlyTest {
     assertTrue(step.wizardComplete, "Wizard must be marked complete on success");
 
     long bytesPerMonth = Math.round(Double.parseDouble(capTo) * DatastoreUtil.ONE_GIB);
-    BandwidthLimit expected = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit expected =
+        BandwidthLimit.fromMonthlyBudget(bytesPerMonth, DEFAULT_SNAPSHOT.minBandwidthKiB() * KIB);
 
     assertEquals(2, step.setBandwidthCalls.size(), "Should set download and upload bandwidth");
     assertEquals(
@@ -178,8 +184,7 @@ class BandwidthMonthlyTest {
 
     String html = pageContent.generate();
 
-    long[] expectedCaps =
-        new long[] {(long) Math.ceil(BandwidthLimit.MIN_MONTHLY_LIMIT), 100, 150, 250, 500};
+    long[] expectedCaps = new long[] {(long) Math.ceil(MIN_MONTHLY_LIMIT_GIB), 100, 150, 250, 500};
     for (long cap : expectedCaps) {
       assertHtmlHasHiddenCapToInput(html, String.valueOf(cap));
       assertTrue(html.contains(cap + " GB"), "Missing display label for cap " + cap);
@@ -259,9 +264,47 @@ class BandwidthMonthlyTest {
     step.getStep(request, helper);
 
     String html = pageContent.generate();
-    assertHtmlHasHiddenCapToInput(html, String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT));
+    assertHtmlHasHiddenCapToInput(html, String.valueOf(MIN_MONTHLY_LIMIT_GIB));
     String expectedSubmitLabel = WizardL10n.l10n("bandwidthMonthlyUseMinimum");
     assertTrue(html.contains(HTMLEncoder.encode(expectedSubmitLabel)));
+  }
+
+  @Test
+  void getStep_whenMinimumMonthlyLimitMalformed_usesMinBandwidthKiBFallback() {
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    FirstTimeWizardSnapshot snapshot =
+        new FirstTimeWizardSnapshot(
+            false, "2.00", "1.25", 1L, "10.00", 10L, 128L, 1_024L, "not-a-number", "", "", -1L);
+    when(wizardPort.snapshot()).thenReturn(snapshot);
+    BandwidthMonthly step = new BandwidthMonthly(wizardPort, mock(Config.class));
+
+    when(helper.getPageContent(anyString())).thenReturn(pageContent);
+    when(helper.getInfobox(anyString(), anyString(), any(HTMLNode.class), any(), anyBoolean()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(2, HTMLNode.class);
+              HTMLNode box = new HTMLNode("div");
+              parent.addChild(box);
+              return box;
+            });
+    when(helper.addFormChild(any(HTMLNode.class), anyString(), anyString()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(0, HTMLNode.class);
+              HTMLNode form = new HTMLNode("form");
+              parent.addChild(form);
+              return form;
+            });
+    when(request.getParam(PARAM_PARSE_TARGET)).thenReturn("1");
+    when(request.isParameterSet(PARAM_PARSE_ERROR)).thenReturn(false);
+    when(request.isParameterSet(PARAM_TOO_LOW)).thenReturn(true);
+
+    step.getStep(request, helper);
+
+    String html = pageContent.generate();
+    assertHtmlHasHiddenCapToInput(
+        html,
+        Double.toString(BandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB)));
   }
 
   private static void assertHtmlHasHiddenCapToInput(String html, String value) {
@@ -315,7 +358,12 @@ class BandwidthMonthlyTest {
     boolean throwInvalidConfigOnNextSet;
 
     TestableBandwidthMonthly() {
-      super(mock(FirstTimeWizardPort.class), mock(Config.class));
+      this(mock(FirstTimeWizardPort.class));
+    }
+
+    private TestableBandwidthMonthly(FirstTimeWizardPort wizardPort) {
+      super(wizardPort, mock(Config.class));
+      lenient().when(wizardPort.snapshot()).thenReturn(DEFAULT_SNAPSHOT);
     }
 
     @Override
