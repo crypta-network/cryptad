@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EntropySource;
@@ -15,12 +17,14 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -47,6 +52,7 @@ class FCPConnectionHandlerTest {
   @Mock private Socket socket;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RandomnessPort randomnessPort;
+  @Mock private FcpInsertRuntimeSupport insertRuntimeSupport;
 
   private FCPConnectionHandler handler;
 
@@ -58,7 +64,9 @@ class FCPConnectionHandlerTest {
     lenient().when(server.getCore()).thenReturn(core);
     lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
     lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(server.insertRuntimeSupport()).thenReturn(insertRuntimeSupport);
     lenient().when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    lenient().when(insertRuntimeSupport.clientContext()).thenReturn(clientContext);
     lenient()
         .doAnswer(
             invocation -> {
@@ -259,6 +267,81 @@ class FCPConnectionHandlerTest {
 
     assertFalse(client.realTimeFlag());
     assertFalse(client.persistent());
+  }
+
+  @Test
+  void startClientPut_whenConnectionPersistence_startsWithInsertRuntimeContext() throws Exception {
+    ClientPutMessage message = newClientPutMessage("put-connection", "connection");
+
+    try (MockedConstruction<ClientPut> ignored = mockConstruction(ClientPut.class)) {
+      handler.startClientPut(message);
+
+      ClientPut request = ignored.constructed().getFirst();
+      verify(request).start(clientContext);
+    }
+  }
+
+  @Test
+  void startClientPut_whenRebootPersistence_startsWithInsertRuntimeContext() throws Exception {
+    ClientPutMessage message = newClientPutMessage("put-reboot", "reboot");
+
+    try (MockedConstruction<ClientPut> ignored = mockConstruction(ClientPut.class)) {
+      handler.startClientPut(message);
+
+      ClientPut request = ignored.constructed().getFirst();
+      verify(request).register(false);
+      verify(request).start(clientContext);
+    }
+  }
+
+  @Test
+  void startClientPutDir_whenConnectionPersistence_startsWithInsertRuntimeContext(
+      @TempDir Path tempDir) throws Exception {
+    ClientPutDiskDirMessage message = newClientPutDirMessage(tempDir, "connection");
+    Map<String, Object> buckets = new HashMap<>();
+
+    try (MockedConstruction<ClientPutDir> ignored = mockConstruction(ClientPutDir.class)) {
+      handler.startClientPutDir(message, buckets, true);
+
+      ClientPutDir request = ignored.constructed().getFirst();
+      verify(request).start(clientContext);
+    }
+  }
+
+  @Test
+  void startClientPutDir_whenRebootPersistence_startsWithInsertRuntimeContext(@TempDir Path tempDir)
+      throws Exception {
+    ClientPutDiskDirMessage message = newClientPutDirMessage(tempDir, "reboot");
+    Map<String, Object> buckets = new HashMap<>();
+
+    try (MockedConstruction<ClientPutDir> ignored = mockConstruction(ClientPutDir.class)) {
+      handler.startClientPutDir(message, buckets, true);
+
+      ClientPutDir request = ignored.constructed().getFirst();
+      verify(request).register(false);
+      verify(request).start(clientContext);
+    }
+  }
+
+  private static ClientPutMessage newClientPutMessage(String identifier, String persistence)
+      throws MessageInvalidException {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle("Identifier", identifier);
+    fs.putSingle("URI", "CHK@");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 4L);
+    fs.putSingle("Persistence", persistence);
+    return new ClientPutMessage(fs);
+  }
+
+  private static ClientPutDiskDirMessage newClientPutDirMessage(Path dir, String persistence)
+      throws MessageInvalidException {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle("Identifier", "dir-id");
+    fs.putSingle("URI", "KSK@site");
+    fs.putSingle("Filename", dir.toString());
+    fs.putSingle("Persistence", persistence);
+    return new ClientPutDiskDirMessage(fs);
   }
 
   private static final class DeterministicRandomSource extends RandomSource {
