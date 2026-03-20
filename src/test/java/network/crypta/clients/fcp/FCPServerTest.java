@@ -32,7 +32,7 @@ class FCPServerTest {
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     when(runtimePorts.execution()).thenReturn(executionPort);
-    when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
     lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
     lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
     FcpServerConfig config =
@@ -102,7 +102,7 @@ class FCPServerTest {
     // Arrange
     PersistentRequestRoot root = spy(new PersistentRequestRoot());
     when(runtimePorts.execution()).thenReturn(executionPort);
-    when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -176,6 +176,22 @@ class FCPServerTest {
     // Assert
     assertSame(serverTransferAccess, actual);
     assertNotSame(coreTransferAccess, actual);
+  }
+
+  @Test
+  void fetchRuntimeSupport_whenServerTransferPolicyChanges_readsLatestRuntimePort() {
+    // Arrange
+    FCPServer server = newServer(false, false);
+    FcpFetchRuntimeSupport support = server.fetchRuntimeSupport();
+    TransferAccessPort updatedServerTransferAccess = mock(TransferAccessPort.class);
+    when(runtimePorts.transferAccess()).thenReturn(updatedServerTransferAccess);
+
+    // Act
+    TransferAccessPort actual = support.transferAccess();
+
+    // Assert
+    assertSame(updatedServerTransferAccess, actual);
+    assertNotSame(serverTransferAccess, actual);
   }
 
   @Test

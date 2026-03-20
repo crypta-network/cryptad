@@ -109,7 +109,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.enabled = config.enabled();
     this.core = dependencies.core();
     this.runtime = dependencies.runtimePorts();
-    this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime.transferAccess());
+    this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime::transferAccess);
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
@@ -760,7 +760,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * @return fetch runtime support that uses the core runtime's transfer policy for message flows
    */
   FcpFetchRuntimeSupport messageFetchRuntimeSupport() {
-    return new CoreFcpFetchRuntimeSupport(core, core.getRuntimePorts().transferAccess());
+    return new CoreFcpFetchRuntimeSupport(core, () -> core.getRuntimePorts().transferAccess());
   }
 
   /**

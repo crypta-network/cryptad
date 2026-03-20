@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.node.NodeClientCore;
@@ -14,20 +15,21 @@ import network.crypta.support.api.Bucket;
  * <p>This adapter is the GET-path assembly seam between {@code clients.fcp} and the broader daemon
  * runtime. It keeps the fetch-specific wiring local to this package by translating the small set of
  * GET dependencies into direct delegations on the wrapped {@link NodeClientCore} plus the owning
- * server's transfer-access policy. The adapter is immutable after construction and observes the
- * live daemon state on each call.
+ * server's transfer-access policy supplier. The adapter is immutable after construction and
+ * observes the live daemon state on each call.
  *
- * <p>The split between {@code core} and {@code transferAccess} is intentional. Fetch creation still
- * needs the live client context and bucket factories from the daemon core, while DDA checks and
- * default download locations must remain aligned with the {@link FCPServer} runtime that owns the
- * request flow. Keeping both collaborators here preserves that behavior without letting the GET
- * classes depend on {@code NodeClientCore} directly.
+ * <p>The split between {@code core} and {@code transferAccessSupplier} is intentional. Fetch
+ * creation still needs the live client context and bucket factories from the daemon core, while DDA
+ * checks and default download locations must remain aligned with the {@link FCPServer} runtime that
+ * owns the request flow. Keeping both collaborators here preserves that behavior without letting
+ * the GET classes depend on {@code NodeClientCore} directly.
  *
  * @param core live daemon core used for fetch contexts, client starts, and bucket allocation
- * @param transferAccess transfer policy from the owning server runtime, used for DDA checks and
- *     download-path defaults
+ * @param transferAccessSupplier live transfer-policy lookup from the owning runtime, used for DDA
+ *     checks and download-path defaults
  */
-record CoreFcpFetchRuntimeSupport(NodeClientCore core, TransferAccessPort transferAccess)
+record CoreFcpFetchRuntimeSupport(
+    NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier)
     implements FcpFetchRuntimeSupport {
 
   /**
@@ -35,15 +37,16 @@ record CoreFcpFetchRuntimeSupport(NodeClientCore core, TransferAccessPort transf
    *
    * <p>The adapter is a thin wrapper and does not snapshot mutable daemon state. Later method calls
    * continue to observe the live client context and bucket factories exposed by {@code core}, while
-   * transfer checks continue to use the server-owned {@code transferAccess} instance passed here.
+   * transfer checks continue to read the current port from the supplied runtime lookup.
    *
    * @param core live daemon core providing fetch contexts and bucket allocation
-   * @param transferAccess transfer policy from the owning server runtime, used for DDA checks and
-   *     default download locations
+   * @param transferAccessSupplier live transfer-policy lookup from the owning runtime, used for DDA
+   *     checks and default download locations
    */
-  CoreFcpFetchRuntimeSupport(NodeClientCore core, TransferAccessPort transferAccess) {
+  CoreFcpFetchRuntimeSupport(
+      NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier) {
     this.core = Objects.requireNonNull(core);
-    this.transferAccess = Objects.requireNonNull(transferAccess);
+    this.transferAccessSupplier = Objects.requireNonNull(transferAccessSupplier);
   }
 
   /**
@@ -75,15 +78,15 @@ record CoreFcpFetchRuntimeSupport(NodeClientCore core, TransferAccessPort transf
   /**
    * Returns the transfer-access policy owned by the surrounding FCP server runtime.
    *
-   * <p>This intentionally does not read from {@code core.getRuntimePorts()}. Persistent global GET
-   * request planning must stay aligned with the server runtime that supplied the download policy
-   * and default directories.
+   * <p>This intentionally resolves the transfer policy on each call instead of caching a
+   * constructor-time reference. Persistent global GET request planning must stay aligned with the
+   * runtime that supplied the current download policy and default directories.
    *
    * @return transfer policy used for DDA checks and default download resolution
    */
   @Override
   public TransferAccessPort transferAccess() {
-    return transferAccess;
+    return Objects.requireNonNull(transferAccessSupplier.get());
   }
 
   /**
