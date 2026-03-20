@@ -16,7 +16,6 @@ import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.ClientEndpoints;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -39,6 +38,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,6 +46,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
@@ -85,19 +86,19 @@ class SimpleToadletServerTest {
   }
 
   @Test
-  void findToadlet_whenWizardIncomplete_redirectsToWizard() throws Exception {
+  void findToadlet_whenWizardIncomplete_redirectsToWizardAndPreservesQuery() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getNode()).thenReturn(node);
-    server.setCore(core);
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    when(runtimeSupport.canRedirectToWizard()).thenReturn(true);
+    server.setRuntimeSupport(runtimeSupport);
 
     PermanentRedirectException ex =
         assertThrows(
             PermanentRedirectException.class,
-            () -> server.findToadlet(new URI("http://localhost/hidden")));
+            () -> server.findToadlet(new URI("http://localhost/hidden?step=1")));
 
     assertEquals(FirstTimeWizardToadlet.TOADLET_URL, ex.newuri.getPath());
+    assertEquals("step=1", ex.newuri.getQuery());
   }
 
   @Test
@@ -191,11 +192,79 @@ class SimpleToadletServerTest {
   }
 
   @Test
-  void addFormChild_whenCoreProvidesPassword_includesHiddenInput() throws Exception {
+  void finishStart_whenThreatLevelsChange_updatesRefilterPolicyAndPanicVisibility()
+      throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
-    NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getFormPassword()).thenReturn("secret-token");
-    server.setCore(core);
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    AtomicReference<
+            HttpShellRuntimeSupport.ThreatLevelListener<HttpShellRuntimeSupport.NetworkThreatLevel>>
+        networkListener = new AtomicReference<>();
+    AtomicReference<
+            HttpShellRuntimeSupport.ThreatLevelListener<
+                HttpShellRuntimeSupport.PhysicalThreatLevel>>
+        physicalListener = new AtomicReference<>();
+    doAnswer(
+            invocation -> {
+              networkListener.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(runtimeSupport)
+        .addNetworkThreatLevelListener(any());
+    doAnswer(
+            invocation -> {
+              physicalListener.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(runtimeSupport)
+        .addPhysicalThreatLevelListener(any());
+    server.setRuntimeSupport(runtimeSupport);
+    boolean originalPanicButtonState = SimpleToadletServer.isPanicButtonToBeShown;
+    try {
+      SimpleToadletServer.isPanicButtonToBeShown = true;
+
+      server.finishStart();
+
+      assertNotNull(networkListener.get());
+      assertNotNull(physicalListener.get());
+
+      networkListener
+          .get()
+          .onChange(
+              HttpShellRuntimeSupport.NetworkThreatLevel.NORMAL,
+              HttpShellRuntimeSupport.NetworkThreatLevel.LOW);
+      assertEquals(FProxyFetchInProgress.REFILTER_POLICY.ACCEPT_OLD, server.getReFilterPolicy());
+
+      networkListener
+          .get()
+          .onChange(
+              HttpShellRuntimeSupport.NetworkThreatLevel.LOW,
+              HttpShellRuntimeSupport.NetworkThreatLevel.NORMAL);
+      assertEquals(FProxyFetchInProgress.REFILTER_POLICY.RE_FILTER, server.getReFilterPolicy());
+
+      physicalListener
+          .get()
+          .onChange(
+              HttpShellRuntimeSupport.PhysicalThreatLevel.NORMAL,
+              HttpShellRuntimeSupport.PhysicalThreatLevel.LOW);
+      assertFalse(SimpleToadletServer.isPanicButtonToBeShown);
+
+      physicalListener
+          .get()
+          .onChange(
+              HttpShellRuntimeSupport.PhysicalThreatLevel.LOW,
+              HttpShellRuntimeSupport.PhysicalThreatLevel.NORMAL);
+      assertTrue(SimpleToadletServer.isPanicButtonToBeShown);
+    } finally {
+      SimpleToadletServer.isPanicButtonToBeShown = originalPanicButtonState;
+    }
+  }
+
+  @Test
+  void addFormChild_whenRuntimeSupportProvidesPassword_includesHiddenInput() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    when(runtimeSupport.formPassword()).thenReturn("secret-token");
+    server.setRuntimeSupport(runtimeSupport);
 
     HTMLNode parent = new HTMLNode("div");
 
