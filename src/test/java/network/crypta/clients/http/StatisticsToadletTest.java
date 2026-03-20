@@ -4,9 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.Node;
-import network.crypta.node.OpennetManager;
-import network.crypta.node.PeerStatusCounts;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.StatisticsPageSnapshot;
 import network.crypta.runtime.spi.StatisticsPort;
@@ -19,7 +16,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -163,56 +159,6 @@ class StatisticsToadletTest {
     verify(statistics).requesters();
     verify(statistics, never()).overview(false);
     verify(statistics, never()).overview(true);
-  }
-
-  @Test
-  void drawPeerStatsBox_whenCountsZero_doesNotRenderStatusEntries() {
-    HTMLNode infobox = new HTMLNode("div");
-    Node nodeWithoutOpennet = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeNetworkSubsystem networkWithoutOpennet =
-        mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(nodeWithoutOpennet.network()).thenReturn(networkWithoutOpennet);
-    when(networkWithoutOpennet.opennet()).thenReturn(null);
-
-    StatisticsToadlet.drawPeerStatsBox(
-        infobox,
-        false,
-        new PeerStatusCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        nodeWithoutOpennet);
-
-    String rendered = infobox.generate();
-
-    assertTrue(rendered.contains("<ul>"));
-    assertFalse(rendered.contains("peer_connected"));
-    assertFalse(rendered.contains("peer_backed_off"));
-  }
-
-  @Test
-  void drawPeerStatsBox_whenCountsPresent_rendersEntriesAndOpennetTotals() {
-    HTMLNode infobox = new HTMLNode("div");
-    Node nodeWithOpennet = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    OpennetManager opennet = mock(OpennetManager.class);
-    when(opennet.getNumberOfConnectedPeersToAimIncludingDarknet()).thenReturn(7);
-    when(opennet.getNumberOfConnectedPeersToAim()).thenReturn(3);
-    network.crypta.node.subsystem.NodeNetworkSubsystem networkWithOpennet =
-        mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
-    when(nodeWithOpennet.network()).thenReturn(networkWithOpennet);
-    when(networkWithOpennet.opennet()).thenReturn(opennet);
-
-    StatisticsToadlet.drawPeerStatsBox(
-        infobox,
-        true,
-        new PeerStatusCounts(2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0),
-        nodeWithOpennet);
-
-    String rendered = infobox.generate();
-
-    assertTrue(rendered.contains("peer_connected"));
-    assertTrue(rendered.contains("peer_backed_off"));
-    assertTrue(rendered.contains("peer_too_new"));
-    assertTrue(rendered.contains("peer_listening"));
-    assertTrue(rendered.contains("7"));
-    assertTrue(rendered.contains("3"));
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {

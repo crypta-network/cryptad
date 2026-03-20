@@ -41,6 +41,7 @@ import network.crypta.support.io.DatastoreUtil;
  */
 public class BandwidthMonthly extends BandwidthManipulator implements Step {
 
+  private static final long KIB = 1024L;
   private static final String L10N_KEY_BANDWIDTH_SELECT = "bandwidthSelect";
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
@@ -110,7 +111,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", "name", ATTR_VALUE},
-          new String[] {"hidden", PARAM_CAP_TO, snapshot.minBandwidthMonthlyLimitGiB()});
+          new String[] {"hidden", PARAM_CAP_TO, minimumMonthlyLimitGiBText(snapshot)});
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", ATTR_VALUE},
@@ -215,7 +216,8 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
       target.append("&parseError=true");
       return target.toString();
     }
-    BandwidthLimit bandwidth = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit bandwidth =
+        BandwidthLimit.fromMonthlyBudget(bytesPerMonth, snapshotMinBandwidthBytesPerSecond());
 
     try {
       setBandwidthLimit(Long.toString(bandwidth.downBytes), false);
@@ -235,7 +237,20 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
     try {
       return Double.parseDouble(snapshot.minBandwidthMonthlyLimitGiB());
     } catch (NumberFormatException _) {
-      return BandwidthLimit.MIN_MONTHLY_LIMIT;
+      return BandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB);
     }
+  }
+
+  private static String minimumMonthlyLimitGiBText(FirstTimeWizardSnapshot snapshot) {
+    try {
+      Double.parseDouble(snapshot.minBandwidthMonthlyLimitGiB());
+      return snapshot.minBandwidthMonthlyLimitGiB();
+    } catch (NumberFormatException _) {
+      return Double.toString(minimumMonthlyLimitGiB(snapshot));
+    }
+  }
+
+  private long snapshotMinBandwidthBytesPerSecond() {
+    return wizardPort.snapshot().minBandwidthKiB() * KIB;
   }
 }

@@ -1,6 +1,5 @@
 package network.crypta.clients.http.wizardsteps;
 
-import network.crypta.node.Node;
 import network.crypta.support.io.DatastoreUtil;
 
 /**
@@ -20,10 +19,11 @@ import network.crypta.support.io.DatastoreUtil;
  * <ul>
  *   <li><b>Presets:</b> Use {@link #BandwidthLimit(long, long, String, boolean)} to provide
  *       explicit per-second caps and a UI description key.
- *   <li><b>Derived:</b> Use {@link #BandwidthLimit(long)} to derive per-second caps from a monthly
- *       budget while respecting the node's minimum bandwidth.
+ *   <li><b>Derived:</b> Use {@link #fromMonthlyBudget(long, long)} to derive per-second caps from a
+ *       monthly budget while respecting an explicit minimum bandwidth.
  * </ul>
  */
+@SuppressWarnings("ClassCanBeRecord")
 public class BandwidthLimit {
 
   /**
@@ -36,27 +36,12 @@ public class BandwidthLimit {
    */
   public static final double SECONDS_PER_MONTH = 2592000d;
 
-  /*
-   * Bandwidth used if both the upload and download limit are at the minimum. In GB. Assumes 24/7 uptime.
-   * 49.4384765625 GiB
-   */
-  /**
-   * Monthly total transfer (in GiB) implied by the minimum upload and download limits.
-   *
-   * <p>This value is derived from {@link Node#getMinimumBandwidth()} for both directions,
-   * multiplied by {@link #SECONDS_PER_MONTH} and converted to GiB using {@link
-   * DatastoreUtil#ONE_GIB}. It is used by the wizard's limit heuristics and UI messaging, and
-   * assumes continuous (24/7) uptime.
-   */
-  public static final Double MIN_MONTHLY_LIMIT =
-      2 * Node.getMinimumBandwidth() * SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
-
   /**
    * Download rate limit, expressed as bytes per second.
    *
    * <p>This value is intended to be applied as a steady-state cap by the node's bandwidth limiter.
-   * It is computed by {@link #BandwidthLimit(long)} from a monthly budget and otherwise provided
-   * directly by callers constructing presets.
+   * It is computed by {@link #fromMonthlyBudget(long, long)} from a monthly budget and otherwise
+   * provided directly by callers constructing presets.
    */
   public final long downBytes;
 
@@ -106,20 +91,36 @@ public class BandwidthLimit {
   }
 
   /**
+   * Calculates the minimum monthly transfer budget implied by a per-direction minimum rate.
+   *
+   * <p>The returned value assumes both download and upload are pinned to {@code minBytesPerSecond}
+   * for a fixed 30-day month and converts the total to GiB.
+   *
+   * @param minBytesPerSecond minimum per-direction bandwidth in bytes per second
+   * @return minimum monthly transfer budget in GiB implied by the provided minimum rate
+   */
+  public static double minimumMonthlyLimitGiB(long minBytesPerSecond) {
+    return 2d * minBytesPerSecond * SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
+  }
+
+  /**
    * Calculates per-direction rate caps from a monthly transfer budget.
    *
    * <p>The implementation derives a bytes-per-second budget by dividing {@code bytesPerMonth} by a
-   * fixed 30-day month ({@link #SECONDS_PER_MONTH}). It then reserves at least the node minimum for
-   * both upload and download and splits any remaining budget asymmetrically, favoring download as
-   * the total budget increases. The computed values are rounded up to whole bytes per second.
+   * fixed 30-day month ({@link #SECONDS_PER_MONTH}). It then reserves at least the provided minimum
+   * rate for both upload and download and splits any remaining budget asymmetrically, favoring
+   * download as the total budget increases. The computed values are rounded up to whole bytes per
+   * second.
    *
    * @param bytesPerMonth monthly total transfer budget in bytes, used to derive per-second caps
+   * @param minBytesPerSecond minimum per-direction bandwidth in bytes per second
+   * @return derived upload and download limits for the wizard
    */
-  public BandwidthLimit(long bytesPerMonth) {
+  public static BandwidthLimit fromMonthlyBudget(long bytesPerMonth, long minBytesPerSecond) {
     /*
-     * Fraction of total limit used for download. Asymptotically from 0.5 at the minimum cap to 0.8.
+     * Fraction of the total limit used for download. Asymptotically from 0.5 at the minimum cap to 0.8.
      *
-     * Q: Why do we do this? It does not actually work, since download cannot be larger than upload
+     * Q: Why do we do this? It does not work, since download cannot be larger than upload
      *  for any long amount of time.
      * A: Upload is limited because maxing it out increases latency... http://bufferbloat.net/
      *  And fred (line most layered P2Ps) deals very poorly with high-latency links
@@ -128,14 +129,11 @@ public class BandwidthLimit {
      * download limits are equal.
      */
     double bytesPerSecond = bytesPerMonth / SECONDS_PER_MONTH;
-    double minBytesPerSecond = Node.getMinimumBandwidth();
     double bwinc = bytesPerSecond - 2 * minBytesPerSecond; // min for up and min for down
     double asymptoticDlFraction = 4. / 5.;
     double dllimit = minBytesPerSecond + (bwinc * asymptoticDlFraction);
     double ullimit = minBytesPerSecond + (bwinc * (1 - asymptoticDlFraction));
-    downBytes = (long) Math.ceil(dllimit);
-    upBytes = (long) Math.ceil(ullimit);
-    descriptionKey = "Monthly bandwidth limit";
-    maybeDefault = false;
+    return new BandwidthLimit(
+        (long) Math.ceil(dllimit), (long) Math.ceil(ullimit), "Monthly bandwidth limit", false);
   }
 }

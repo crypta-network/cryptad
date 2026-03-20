@@ -1,6 +1,5 @@
 package network.crypta.clients.http.wizardsteps;
 
-import network.crypta.node.Node;
 import network.crypta.support.io.DatastoreUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,7 +10,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings({"java:S100"}) // test naming convention: method_whenCondition_expectOutcome
 class BandwidthLimitTest {
 
+  private static final long MIN_BYTES_PER_SECOND = 32L * 1024L;
   private static final long SECONDS_PER_MONTH = 2_592_000L;
 
   private static long bytesPerMonthFromBytesPerSecond(long bytesPerSecond) {
@@ -26,15 +25,14 @@ class BandwidthLimitTest {
   }
 
   @Test
-  @SuppressWarnings({"MisorderedAssertEqualsArguments", "java:S3415"})
-  void constants_whenMinMonthlyLimitCalculated_expectMatchesFormula() {
-    assertNotNull(BandwidthLimit.MIN_MONTHLY_LIMIT, "MIN_MONTHLY_LIMIT must be initialized");
-
+  @SuppressWarnings({"java:S3415"})
+  void minimumMonthlyLimitGiB_whenCalculated_expectMatchesFormula() {
     double expectedGiB =
-        2 * Node.getMinimumBandwidth() * BandwidthLimit.SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
+        2 * MIN_BYTES_PER_SECOND * BandwidthLimit.SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
+    double minimumMonthlyLimitGiB = BandwidthLimit.minimumMonthlyLimitGiB(MIN_BYTES_PER_SECOND);
 
-    assertEquals(expectedGiB, BandwidthLimit.MIN_MONTHLY_LIMIT, 1e-12d);
-    assertTrue(BandwidthLimit.MIN_MONTHLY_LIMIT > 0, "Minimum monthly limit should be positive");
+    assertEquals(expectedGiB, minimumMonthlyLimitGiB, 1e-12d);
+    assertTrue(minimumMonthlyLimitGiB > 0, "Minimum monthly limit should be positive");
   }
 
   @Test
@@ -61,57 +59,55 @@ class BandwidthLimitTest {
   }
 
   @Test
-  void constructor_whenBytesPerMonthAtMinimum_expectUpAndDownAtMinimum() {
-    int minBps = Node.getMinimumBandwidth();
-    long bytesPerSecond = 2L * minBps;
+  void fromMonthlyBudget_whenBytesPerMonthAtMinimum_expectUpAndDownAtMinimum() {
+    long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(minBps, limit.downBytes);
-    assertEquals(minBps, limit.upBytes);
+    assertEquals(MIN_BYTES_PER_SECOND, limit.downBytes);
+    assertEquals(MIN_BYTES_PER_SECOND, limit.upBytes);
     assertEquals("Monthly bandwidth limit", limit.descriptionKey);
     assertFalse(limit.maybeDefault);
   }
 
   @Test
-  void constructor_whenBytesPerMonthAddsTenBytesPerSecond_expect80_20Split() {
-    int minBps = Node.getMinimumBandwidth();
-    long bytesPerSecond = 2L * minBps + 10L;
+  void fromMonthlyBudget_whenBytesPerMonthAddsTenBytesPerSecond_expect80_20Split() {
+    long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + 10L;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(minBps + 8L, limit.downBytes);
-    assertEquals(minBps + 2L, limit.upBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 8L, limit.downBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 2L, limit.upBytes);
   }
 
   @Test
-  void constructor_whenBytesPerMonthAddsOneBytePerSecond_expectCeilMakesLimitsEqual() {
-    int minBps = Node.getMinimumBandwidth();
-    long bytesPerSecond = 2L * minBps + 1L;
+  void fromMonthlyBudget_whenBytesPerMonthAddsOneBytePerSecond_expectCeilMakesLimitsEqual() {
+    long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + 1L;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(minBps + 1L, limit.downBytes);
-    assertEquals(minBps + 1L, limit.upBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.downBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.upBytes);
   }
 
   @ParameterizedTest
-  @DisplayName("BandwidthLimit(bytesPerMonth): min+ -> down>=up and >= minimum")
+  @DisplayName(
+      "BandwidthLimit.fromMonthlyBudget(bytesPerMonth, min): min+ -> down>=up and >= minimum")
   @ValueSource(longs = {0L, 1L, 2L, 10L, 123L, 999L})
-  void constructor_whenBytesPerMonthAtOrAboveMinimum_expectDownAtLeastUpAndSumWithinCeilBounds(
-      long extraBytesPerSecond) {
-    int minBps = Node.getMinimumBandwidth();
-    long bytesPerSecond = 2L * minBps + extraBytesPerSecond;
+  void
+      fromMonthlyBudget_whenBytesPerMonthAtOrAboveMinimum_expectDownAtLeastUpAndSumWithinCeilBounds(
+          long extraBytesPerSecond) {
+    long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + extraBytesPerSecond;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = new BandwidthLimit(bytesPerMonth);
+    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
     assertTrue(limit.downBytes >= limit.upBytes, "Expected downBytes >= upBytes");
-    assertTrue(limit.downBytes >= minBps, "Expected downBytes >= minimum");
-    assertTrue(limit.upBytes >= minBps, "Expected upBytes >= minimum");
+    assertTrue(limit.downBytes >= MIN_BYTES_PER_SECOND, "Expected downBytes >= minimum");
+    assertTrue(limit.upBytes >= MIN_BYTES_PER_SECOND, "Expected upBytes >= minimum");
 
     long sum = limit.downBytes + limit.upBytes;
     assertTrue(sum >= bytesPerSecond, "Ceil should not under-allocate total bandwidth");
