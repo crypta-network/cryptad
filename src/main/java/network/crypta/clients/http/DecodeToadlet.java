@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
@@ -18,7 +17,8 @@ import network.crypta.support.api.HTTPRequest;
  *
  * <p>Instances rely on {@link ToadletContext} for request-scoped state and keep no mutable fields.
  * Deployments typically register one instance and let the dispatcher invoke it concurrently; no
- * internal synchronization is necessary because state lives in the supplied context and page maker.
+ * internal synchronization is necessary because the state lives in the supplied context and page
+ * maker.
  *
  * <ul>
  *   <li>Responsible for translating {@code /decode/<key>} to the {@code /<key>} target.
@@ -30,12 +30,9 @@ import network.crypta.support.api.HTTPRequest;
  * @see ToadletContext
  */
 public class DecodeToadlet extends Toadlet {
-  DecodeToadlet(HighLevelSimpleClient client, NodeClientCore c) {
+  DecodeToadlet(HighLevelSimpleClient client) {
     super(client);
-    this.core = c;
   }
-
-  final NodeClientCore core;
 
   /**
    * Handles GET requests under {@code /decode/} by emitting a 301 redirect and a manual fallback
@@ -44,13 +41,13 @@ public class DecodeToadlet extends Toadlet {
    * <p>The method preserves the request path after the toadlet mount point, prepends a leading
    * slash to form a Freenet key, and builds a small HTML page that includes both an automatic
    * redirect and a clickable anchor. When full access is permitted, any configured alert summary is
-   * added to the page so callers still see status banners while being forwarded. The method writes
+   * added to the page, so callers still see status banners while being forwarded. The method writes
    * the response immediately; callers should not attempt further output after invocation.
    *
    * @param uri fully qualified request URI supplied by the HTTP stack; never mutated by this
    *     handler
-   * @param request HTTP request wrapper containing the original path segment after the decode mount
-   *     point
+   * @param request HTTP request wrapper containing the original path segment after the decoding
+   *     mount point
    * @param ctx toadlet context used for permission checks, page creation, and response streaming
    * @throws ToadletContextClosedException if the context output channel closes before the reply is
    *     written
@@ -81,7 +78,7 @@ public class DecodeToadlet extends Toadlet {
   /**
    * Returns the mount path used to dispatch decode requests to this toadlet.
    *
-   * <p>The path is a constant {@code /decode/} with a trailing slash so that subsequent path
+   * <p>The path is a constant {@code /decode/} with a trailing slash so that the following path
    * segments are treated as the encoded key to redirect. Dispatchers rely on this value to strip
    * the prefix before handing the remaining portion to {@link #handleMethodGET(URI, HTTPRequest,
    * ToadletContext)}; callers should avoid trimming or normalizing it further to preserve

@@ -13,8 +13,6 @@ import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
-import network.crypta.node.ClientEndpoints;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -37,7 +35,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -49,7 +46,6 @@ import static org.mockito.Mockito.when;
 class ContentFilterToadletTest {
 
   private HighLevelSimpleClient client;
-  private NodeClientCore core;
   private SimpleToadletServer container;
   private ToadletContext ctx;
   private BucketFactory bucketFactory;
@@ -57,18 +53,14 @@ class ContentFilterToadletTest {
   @BeforeEach
   void setUp() {
     client = mock(HighLevelSimpleClient.class);
-    core = mock(NodeClientCore.class);
     container = mock(SimpleToadletServer.class);
     ctx = mock(ToadletContext.class);
     bucketFactory = mock(BucketFactory.class);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
-    lenient().when(core.getEndpoints()).thenReturn(endpoints);
-    lenient().when(endpoints.getToadletContainer()).thenReturn(container);
   }
 
   @Test
   void isEnabled_whenAdvancedAndPrivateMode_returnsTrue() {
-    ContentFilterToadlet toadlet = new ContentFilterToadlet(client, core);
+    ContentFilterToadlet toadlet = new ContentFilterToadlet(client);
     toadlet.container = container;
 
     when(container.publicGatewayMode()).thenReturn(false);
@@ -79,7 +71,7 @@ class ContentFilterToadletTest {
 
   @Test
   void isEnabled_whenPublicGatewayWithoutFullAccess_returnsFalse() {
-    ContentFilterToadlet toadlet = new ContentFilterToadlet(client, core);
+    ContentFilterToadlet toadlet = new ContentFilterToadlet(client);
     toadlet.container = container;
 
     when(container.publicGatewayMode()).thenReturn(true);
@@ -91,7 +83,7 @@ class ContentFilterToadletTest {
 
   @Test
   void getFilterOperation_whenInvalidValue_throwsBadRequestException() throws Exception {
-    ContentFilterToadlet toadlet = new ContentFilterToadlet(client, core);
+    ContentFilterToadlet toadlet = new ContentFilterToadlet(client);
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.getPartAsStringFailsafe("filter-operation", 100)).thenReturn("not-an-enum");
 
@@ -104,7 +96,7 @@ class ContentFilterToadletTest {
 
   @Test
   void handleFilter_whenDisplayHandling_writesHeadersAndBucket() throws Exception {
-    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client, core));
+    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client));
     toadlet.container = container;
     try (ArrayBucket inputBucket = new ArrayBucket("input".getBytes(StandardCharsets.UTF_8));
         ArrayBucket resultBucket = new ArrayBucket()) {
@@ -123,6 +115,7 @@ class ContentFilterToadletTest {
             .thenAnswer(
                 invocation -> {
                   ContentFilterRequest request = invocation.getArgument(0);
+                  //noinspection resource
                   OutputStream output = request.output();
                   output.write(filtered);
                   try {
@@ -149,7 +142,7 @@ class ContentFilterToadletTest {
 
   @Test
   void handleFilter_whenSaveHandling_setsAttachmentHeaders() throws Exception {
-    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client, core));
+    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client));
     toadlet.container = container;
     try (ArrayBucket inputBucket = new ArrayBucket("input".getBytes(StandardCharsets.UTF_8));
         ArrayBucket resultBucket = new ArrayBucket()) {
@@ -168,6 +161,7 @@ class ContentFilterToadletTest {
             .thenAnswer(
                 invocation -> {
                   ContentFilterRequest request = invocation.getArgument(0);
+                  //noinspection resource
                   OutputStream output = request.output();
                   output.write(filtered);
                   try {
@@ -207,7 +201,7 @@ class ContentFilterToadletTest {
 
   @Test
   void handleFilter_whenResultHandlingUnknown_throwsBadRequestException() throws Exception {
-    ContentFilterToadlet toadlet = new ContentFilterToadlet(client, core);
+    ContentFilterToadlet toadlet = new ContentFilterToadlet(client);
     toadlet.container = container;
     try (ArrayBucket inputBucket = new ArrayBucket();
         ArrayBucket resultBucket = new ArrayBucket()) {
@@ -224,7 +218,7 @@ class ContentFilterToadletTest {
 
   @Test
   void handleFilter_whenFilterMarksUnsafe_sendsErrorPage() throws Exception {
-    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client, core));
+    ContentFilterToadlet toadlet = spy(new ContentFilterToadlet(client));
     toadlet.container = container;
     try (ArrayBucket inputBucket = new ArrayBucket();
         ArrayBucket resultBucket = new ArrayBucket()) {
@@ -297,11 +291,10 @@ class ContentFilterToadletTest {
             FilterOperation.class,
             ContentFilterToadlet.ResultHandling.class,
             String.class,
-            ToadletContext.class,
-            NodeClientCore.class);
+            ToadletContext.class);
     method.setAccessible(true);
     try {
-      method.invoke(toadlet, data, mimeType, operation, handling, resultFilename, ctx, core);
+      method.invoke(toadlet, data, mimeType, operation, handling, resultFilename, ctx);
     } catch (InvocationTargetException e) {
       Throwable cause = e.getCause();
       if (cause instanceof Exception exception) {

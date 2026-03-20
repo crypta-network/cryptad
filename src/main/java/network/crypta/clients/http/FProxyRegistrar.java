@@ -109,7 +109,7 @@ final class FProxyRegistrar {
             false,
             null));
 
-    DecodeToadlet decodeKeywordURL = new DecodeToadlet(client, core);
+    DecodeToadlet decodeKeywordURL = new DecodeToadlet(client);
     server.register(decodeKeywordURL, ToadletRegistration.basic(null, "/decode/", true, false));
 
     InsertFreesiteToadlet siteinsert = new InsertFreesiteToadlet(client);
@@ -211,7 +211,7 @@ final class FProxyRegistrar {
         localFileInsertToadlet,
         ToadletRegistration.basic(null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false));
 
-    ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client, core);
+    ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client);
     server.register(
         contentFilterToadlet,
         ToadletRegistration.menuLink(
