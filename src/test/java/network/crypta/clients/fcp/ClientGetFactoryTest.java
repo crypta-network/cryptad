@@ -134,6 +134,39 @@ class ClientGetFactoryTest {
   }
 
   @Test
+  void fromGlobal_whenUsingLegacyPublicConfigAlias_buildsRequest() throws Exception {
+    configureFetchRuntimeSupportWithFetchContext();
+    PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
+    FreenetURI uri = new FreenetURI("KSK@legacy-global-config");
+    ClientGet.GlobalRequestConfig config =
+        new ClientGet.GlobalRequestConfig(
+            false,
+            true,
+            false,
+            4,
+            5,
+            2048,
+            ReturnType.DIRECT,
+            true,
+            "legacy-global",
+            7,
+            (short) 3,
+            null,
+            "UTF-8",
+            true,
+            false,
+            false);
+
+    ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, fetchRuntimeSupport);
+
+    assertNotNull(request);
+    assertEquals(config.identifier(), request.getIdentifier());
+    assertSame(uri, request.getURI());
+    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
+    verify(fetchRuntimeSupport).transferAccess();
+  }
+
+  @Test
   void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir) {
     configureFetchRuntimeSupportDefaults();
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);

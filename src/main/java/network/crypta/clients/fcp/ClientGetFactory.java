@@ -62,6 +62,32 @@ final class ClientGetFactory {
   static ClientGet fromGlobal(
       PersistentRequestClient globalClient,
       FreenetURI uri,
+      ClientGet.GlobalRequestConfig requestConfig,
+      FcpFetchRuntimeSupport fetchRuntimeSupport)
+      throws IdentifierCollisionException, NotAllowedException, IOException {
+    return fromGlobal(globalClient, uri, requestConfig.toInternalConfig(), fetchRuntimeSupport);
+  }
+
+  /**
+   * Creates a persistent, global-queue {@link ClientGet} from the package-local configuration
+   * record used by the refactored GET path.
+   *
+   * <p>This overload keeps the internal seam narrow while the public {@link
+   * ClientGet.GlobalRequestConfig} compatibility alias remains available for external callers.
+   *
+   * @param globalClient persistent client used for global-queue ownership and id checks.
+   * @param uri target {@link FreenetURI} describing the key to fetch; must be non-null.
+   * @param requestConfig immutable configuration with limits, flags, and return preferences.
+   * @param fetchRuntimeSupport fetch runtime support providing fetch defaults, planners, and bucket
+   *     allocation.
+   * @return configured {@link ClientGet} instance ready for registration and start.
+   * @throws IdentifierCollisionException if the identifier is already registered globally.
+   * @throws NotAllowedException if disk output violates policy or DDA restrictions.
+   * @throws IOException if bucket or file initialization fails during setup.
+   */
+  static ClientGet fromGlobal(
+      PersistentRequestClient globalClient,
+      FreenetURI uri,
       ClientGetGlobalRequestConfig requestConfig,
       FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IdentifierCollisionException, NotAllowedException, IOException {

@@ -7,7 +7,6 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
-import network.crypta.runtime.spi.TransferAccessPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -20,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -39,7 +37,6 @@ class FcpServerConfigRegistrarTest {
     Config config = new Config();
     PersistentRequestRoot root = new PersistentRequestRoot();
     when(runtimePorts.execution()).thenReturn(executionPort);
-    when(runtimePorts.transferAccess()).thenReturn(mock(TransferAccessPort.class));
 
     // Act
     FCPServer server = FcpServerConfigRegistrar.maybeCreate(core, runtimePorts, config, root);
@@ -224,7 +221,6 @@ class FcpServerConfigRegistrarTest {
 
   private FCPServer newServer() {
     when(runtimePorts.execution()).thenReturn(executionPort);
-    when(runtimePorts.transferAccess()).thenReturn(mock(TransferAccessPort.class));
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",

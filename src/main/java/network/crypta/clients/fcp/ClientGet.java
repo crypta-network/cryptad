@@ -185,6 +185,72 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
+   * Public compatibility alias for global GET request configuration.
+   *
+   * <p>This nested record existed before the GET-path seam refactor and remains part of the public
+   * {@code ClientGet} API so out-of-package code can continue to compile against {@code
+   * ClientGet.GlobalRequestConfig}. Internally, the GET factory now uses the package-local {@link
+   * ClientGetGlobalRequestConfig} record for the refactored assembly path; this type bridges the
+   * legacy public surface to that internal representation without changing request semantics.
+   *
+   * @param dsOnly whether the fetch is restricted to local datastore lookups only
+   * @param ignoreDS whether the datastore should be skipped in favor of network retrieval
+   * @param filterData whether fetched content should be filtered before delivery
+   * @param maxSplitfileRetries maximum retry count applied to splitfile block fetches
+   * @param maxNonSplitfileRetries maximum retry count applied to non-splitfile fetches
+   * @param maxOutputLength upper bound, in bytes, for the returned payload and temp data
+   * @param returnType delivery mode describing whether data is returned directly, discarded, or
+   *     written to disk
+   * @param persistRebootOnly whether the request should survive only until the next node restart
+   * @param identifier stable request identifier used for queue ownership and collision checks
+   * @param verbosity bitmask controlling which FCP progress messages are emitted to clients
+   * @param prioClass scheduler priority class used when the request is started
+   * @param returnFilename target file for disk-return requests, or {@code null} when not applicable
+   * @param charset optional charset hint preserved for compatibility with legacy inputs
+   * @param writeToClientCache whether successful fetches may populate the client cache
+   * @param realTimeFlag whether the request should use real-time scheduling behavior
+   * @param binaryBlob whether the request should emit Binary Blob output instead of ordinary data
+   */
+  public record GlobalRequestConfig(
+      boolean dsOnly,
+      boolean ignoreDS,
+      boolean filterData,
+      int maxSplitfileRetries,
+      int maxNonSplitfileRetries,
+      long maxOutputLength,
+      ReturnType returnType,
+      boolean persistRebootOnly,
+      String identifier,
+      int verbosity,
+      short prioClass,
+      File returnFilename,
+      String charset,
+      boolean writeToClientCache,
+      boolean realTimeFlag,
+      boolean binaryBlob) {
+
+    ClientGetGlobalRequestConfig toInternalConfig() {
+      return new ClientGetGlobalRequestConfig(
+          dsOnly,
+          ignoreDS,
+          filterData,
+          maxSplitfileRetries,
+          maxNonSplitfileRetries,
+          maxOutputLength,
+          returnType,
+          persistRebootOnly,
+          identifier,
+          verbosity,
+          prioClass,
+          returnFilename,
+          charset,
+          writeToClientCache,
+          realTimeFlag,
+          binaryBlob);
+    }
+  }
+
+  /**
    * Creates a new request that has already been validated and configured by {@link
    * ClientGetFactory}.
    *
