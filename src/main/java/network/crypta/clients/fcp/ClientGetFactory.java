@@ -3,8 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
-import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,10 +12,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The factory performs the deterministic wiring for GET requests: it validates identifiers,
  * assembles an appropriate {@link FetchContext}, plans return handling, and packages everything
- * into a {@link ClientGet.ClientGetSetup}. Callers use the resulting request object for
- * registration and execution; the factory does not start or enqueue the request itself. Because it
- * is stateless and uses only local variables, the class is thread-safe and can be called
- * concurrently.
+ * into a {@link ClientGetSetup}. Callers use the resulting request object for registration and
+ * execution; the factory does not start or enqueue the request itself. Because it is stateless and
+ * uses only local variables, the class is thread-safe and can be called concurrently.
  *
  * <p>The factory is intentionally conservative about side effects: it only logs ignored parameters
  * (such as a legacy charset hint) and throws explicit exceptions for identifier collisions or
@@ -55,8 +52,8 @@ final class ClientGetFactory {
    * @param globalClient persistent client used for global-queue ownership and id checks.
    * @param uri target {@link FreenetURI} describing the key to fetch; must be non-null.
    * @param requestConfig immutable configuration with limits, flags, and return preferences.
-   * @param core node core providing fetch contexts, planners, and bucket factories.
-   * @param transferAccess transfer policy used for disk-return planning in this request flow.
+   * @param fetchRuntimeSupport fetch runtime support providing fetch defaults, planners, and bucket
+   *     allocation.
    * @return configured {@link ClientGet} instance ready for registration and start.
    * @throws IdentifierCollisionException if the identifier is already registered globally.
    * @throws NotAllowedException if disk output violates policy or DDA restrictions.
@@ -66,11 +63,36 @@ final class ClientGetFactory {
       PersistentRequestClient globalClient,
       FreenetURI uri,
       ClientGet.GlobalRequestConfig requestConfig,
-      NodeClientCore core,
-      TransferAccessPort transferAccess)
+      FcpFetchRuntimeSupport fetchRuntimeSupport)
+      throws IdentifierCollisionException, NotAllowedException, IOException {
+    return fromGlobal(globalClient, uri, requestConfig.toInternalConfig(), fetchRuntimeSupport);
+  }
+
+  /**
+   * Creates a persistent, global-queue {@link ClientGet} from the package-local configuration
+   * record used by the refactored GET path.
+   *
+   * <p>This overload keeps the internal seam narrow while the public {@link
+   * ClientGet.GlobalRequestConfig} compatibility alias remains available for external callers.
+   *
+   * @param globalClient persistent client used for global-queue ownership and id checks.
+   * @param uri target {@link FreenetURI} describing the key to fetch; must be non-null.
+   * @param requestConfig immutable configuration with limits, flags, and return preferences.
+   * @param fetchRuntimeSupport fetch runtime support providing fetch defaults, planners, and bucket
+   *     allocation.
+   * @return configured {@link ClientGet} instance ready for registration and start.
+   * @throws IdentifierCollisionException if the identifier is already registered globally.
+   * @throws NotAllowedException if disk output violates policy or DDA restrictions.
+   * @throws IOException if bucket or file initialization fails during setup.
+   */
+  static ClientGet fromGlobal(
+      PersistentRequestClient globalClient,
+      FreenetURI uri,
+      ClientGetGlobalRequestConfig requestConfig,
+      FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
-    FetchContext fctx = buildFetchContextForGlobal(core, requestConfig);
+    FetchContext fctx = buildFetchContextForGlobal(fetchRuntimeSupport, requestConfig);
     if (requestConfig.charset() != null && LOG.isDebugEnabled()) {
       LOG.debug(
           "Charset parameter is ignored for ClientGet global queue requests: {}",
@@ -83,7 +105,7 @@ final class ClientGetFactory {
             requestConfig.returnType(),
             requestConfig.returnFilename(),
             requestConfig.filterData(),
-            transferAccess);
+            fetchRuntimeSupport.transferAccess());
     ClientRequestParams params =
         new ClientRequestParams(
             uri,
@@ -96,9 +118,14 @@ final class ClientGetFactory {
             requestConfig.realTimeFlag(),
             null,
             true);
-    ClientGet.ClientGetSetup requestSetup =
-        new ClientGet.ClientGetSetup(
-            fctx, returnSetup, requestConfig.returnType(), requestConfig.binaryBlob(), null, core);
+    ClientGetSetup requestSetup =
+        new ClientGetSetup(
+            fctx,
+            returnSetup,
+            requestConfig.returnType(),
+            requestConfig.binaryBlob(),
+            null,
+            fetchRuntimeSupport);
     return new ClientGet(params, globalClient, requestSetup);
   }
 
@@ -115,13 +142,15 @@ final class ClientGetFactory {
    *
    * @param handler connection handler supplying scope checks and DDA enforcement hooks.
    * @param message parsed FCP GET message containing identifiers, flags, and limits.
-   * @param core node core providing contexts, planners, and bucket factories.
+   * @param fetchRuntimeSupport fetch runtime support providing contexts, planners, and buckets.
    * @return configured {@link ClientGet} instance ready for registration and start.
    * @throws IdentifierCollisionException if the identifier is already used in scope.
    * @throws MessageInvalidException if validation fails or bucket setup throws I/O errors.
    */
   static ClientGet fromMessage(
-      FCPConnectionHandler handler, ClientGetMessage message, NodeClientCore core)
+      FCPConnectionHandler handler,
+      ClientGetMessage message,
+      FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IdentifierCollisionException, MessageInvalidException {
     ClientRequestParams params =
         new ClientRequestParams(
@@ -136,16 +165,25 @@ final class ClientGetFactory {
     if (message.persistence == ClientRequest.Persistence.CONNECTION) {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
-    FetchContext fctx = buildFetchContextForMessage(core, message);
-    TransferAccessPort transferAccess = core.getRuntimePorts().transferAccess();
+    FetchContext fctx = buildFetchContextForMessage(fetchRuntimeSupport, message);
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForMessage(
-            message.identifier, message.global, fctx, message, transferAccess, handler);
+            message.identifier,
+            message.global,
+            fctx,
+            message,
+            fetchRuntimeSupport.transferAccess(),
+            handler);
     Bucket initialMetadata = message.getInitialMetadata();
     try {
-      ClientGet.ClientGetSetup requestSetup =
-          new ClientGet.ClientGetSetup(
-              fctx, returnSetup, message.returnType, message.binaryBlob, initialMetadata, core);
+      ClientGetSetup requestSetup =
+          new ClientGetSetup(
+              fctx,
+              returnSetup,
+              message.returnType,
+              message.binaryBlob,
+              initialMetadata,
+              fetchRuntimeSupport);
       return new ClientGet(params, handler, requestSetup);
     } catch (IOException e) {
       throw bucketCreationFailure(e, message.identifier, message.global);
@@ -195,13 +233,14 @@ final class ClientGetFactory {
    * configuration's limits, datastore flags, and filtering preferences. The returned context is
    * mutable and owned by the caller; further modifications affect only the request being built.
    *
-   * @param core node core providing the default persistent fetch context.
+   * @param fetchRuntimeSupport fetch runtime support providing the default persistent fetch
+   *     context.
    * @param requestConfig configuration containing datastore flags and retry limits.
    * @return configured fetch context instance tailored for this request.
    */
   private static FetchContext buildFetchContextForGlobal(
-      NodeClientCore core, ClientGet.GlobalRequestConfig requestConfig) {
-    FetchContext fctx = core.getClientContext().getDefaultPersistentFetchContext();
+      FcpFetchRuntimeSupport fetchRuntimeSupport, ClientGetGlobalRequestConfig requestConfig) {
+    FetchContext fctx = fetchRuntimeSupport.defaultPersistentFetchContext();
     fctx.setLocalRequestOnly(requestConfig.dsOnly());
     fctx.setIgnoreStore(requestConfig.ignoreDS());
     fctx.setMaxNonSplitfileRetries(requestConfig.maxNonSplitfileRetries());
@@ -220,13 +259,14 @@ final class ClientGetFactory {
    * retry limits, size limits, allowed MIME types, and USK date hint behavior. The returned context
    * is owned by the caller and can be further adjusted before the request starts.
    *
-   * @param core node core providing the default persistent fetch context.
+   * @param fetchRuntimeSupport fetch runtime support providing the default persistent fetch
+   *     context.
    * @param message the parsed message supplying overrides and allowed MIME type hints.
    * @return configured fetch context instance tailored for the message.
    */
   private static FetchContext buildFetchContextForMessage(
-      NodeClientCore core, ClientGetMessage message) {
-    FetchContext fctx = core.getClientContext().getDefaultPersistentFetchContext();
+      FcpFetchRuntimeSupport fetchRuntimeSupport, ClientGetMessage message) {
+    FetchContext fctx = fetchRuntimeSupport.defaultPersistentFetchContext();
     fctx.setLocalRequestOnly(message.dsOnly);
     fctx.setIgnoreStore(message.ignoreDS);
     fctx.setMaxNonSplitfileRetries(message.maxRetries);

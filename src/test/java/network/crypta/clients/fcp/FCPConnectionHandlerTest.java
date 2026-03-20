@@ -49,12 +49,11 @@ class FCPConnectionHandlerTest {
   @Mock private RandomnessPort randomnessPort;
 
   private FCPConnectionHandler handler;
-  private Random fastRandom;
 
   @BeforeEach
   void setUp() {
     DeterministicRandomSource randomSource = new DeterministicRandomSource(1234L);
-    fastRandom = new Random(5678L);
+    Random fastRandom = new Random(5678L);
 
     lenient().when(server.getCore()).thenReturn(core);
     lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);

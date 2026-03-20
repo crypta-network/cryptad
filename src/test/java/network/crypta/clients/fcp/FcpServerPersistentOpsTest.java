@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.client.FetchContext;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
@@ -47,6 +48,7 @@ class FcpServerPersistentOpsTest {
   @Mock private NodeClientCore core;
 
   @Mock private FCPServer server;
+  @Mock private FcpFetchRuntimeSupport fetchRuntimeSupport;
   @Mock private RuntimePorts runtimePorts;
   @Mock private TransferAccessPort transferAccess;
 
@@ -635,7 +637,12 @@ class FcpServerPersistentOpsTest {
 
   private FcpServerPersistentOps newOps(PersistentRequestRoot root) {
     lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(server.fetchRuntimeSupport()).thenReturn(fetchRuntimeSupport);
     lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
+    lenient().when(fetchRuntimeSupport.transferAccess()).thenReturn(transferAccess);
+    lenient()
+        .when(fetchRuntimeSupport.defaultPersistentFetchContext())
+        .thenReturn(mock(FetchContext.class));
     return new FcpServerPersistentOps(server, core, root);
   }
 

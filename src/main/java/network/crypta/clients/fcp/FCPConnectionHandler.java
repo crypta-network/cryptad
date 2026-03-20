@@ -482,7 +482,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(server.fetchRuntimeSupport().clientContext());
   }
 
   private void startRebootClientGet(ClientGetMessage message) {
@@ -493,7 +493,7 @@ public class FCPConnectionHandler implements Closeable {
     if (!registerPersistentRequest(request, message.identifier, message.global)) {
       return;
     }
-    request.start(server.getCore().getClientContext());
+    request.start(server.fetchRuntimeSupport().clientContext());
   }
 
   private void startForeverClientGet(ClientGetMessage message) {
@@ -516,7 +516,7 @@ public class FCPConnectionHandler implements Closeable {
 
   private ClientGet buildClientGet(ClientGetMessage message) {
     try {
-      return ClientGetFactory.fromMessage(this, message, server.getCore());
+      return ClientGetFactory.fromMessage(this, message, server.messageFetchRuntimeSupport());
     } catch (IdentifierCollisionException _) {
       handleIdentifierCollision(message.identifier, message.global);
     } catch (MessageInvalidException e) {
