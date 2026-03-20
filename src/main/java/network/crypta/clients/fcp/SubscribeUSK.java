@@ -5,15 +5,14 @@ import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
 import network.crypta.client.async.USKProgressCallback;
 import network.crypta.keys.USK;
-import network.crypta.node.NodeClientCore;
 
 /**
  * Bridges an FCP client subscription to the node's USK manager.
  *
  * <p>This helper wires a {@link SubscribeUSKMessage} received over FCP into the asynchronous USK
- * subscription facilities provided by {@link NodeClientCore}. It registers itself as the {@link
- * USKProgressCallback} so that progress, network activity, and discovered editions are fed back to
- * the originating {@link FCPConnectionHandler}. Instances are intentionally lightweight and
+ * subscription facilities provided by the insert runtime support seam. It registers itself as the
+ * {@link USKProgressCallback} so that progress, network activity, and discovered editions are fed
+ * back to the originating {@link FCPConnectionHandler}. Instances are intentionally lightweight and
  * short-lived: they register with the node on construction and can be removed via {@link
  * #unsubscribe()} when the client disconnects or no longer requires updates.
  *
@@ -38,7 +37,7 @@ import network.crypta.node.NodeClientCore;
 public final class SubscribeUSK implements USKProgressCallback {
   final FCPConnectionHandler handler;
   final String clientIdentifier;
-  final NodeClientCore core;
+  final FcpInsertRuntimeSupport runtimeSupport;
   final boolean dontPoll;
   final short prio;
   final short prioProgress;
@@ -54,32 +53,36 @@ public final class SubscribeUSK implements USKProgressCallback {
    * additional initialization is required after construction.
    *
    * @param message parsed FCP subscribe request containing keys, flags, and priorities; never null.
-   * @param core node client core that owns the USK manager and executes polling logic.
+   * @param runtimeSupport insert runtime support that owns the USK manager and polling logic.
    * @param handler connection handler used to emit FCP responses back to the requesting client.
    * @throws IdentifierCollisionException if the identifier already exists on this handler and
    *     cannot be reused for another subscription.
    */
-  public SubscribeUSK(
-      SubscribeUSKMessage message, NodeClientCore core, FCPConnectionHandler handler)
+  SubscribeUSK(
+      SubscribeUSKMessage message,
+      FcpInsertRuntimeSupport runtimeSupport,
+      FCPConnectionHandler handler)
       throws IdentifierCollisionException {
     this.handler = handler;
     this.dontPoll = message.dontPoll;
     this.clientIdentifier = message.clientIdentifier;
-    this.core = core;
+    this.runtimeSupport = runtimeSupport;
     this.usk = message.key;
     prio = message.prio;
     prioProgress = message.prioProgress;
     handler.addUSKSubscription(clientIdentifier, this);
     if (!message.dontPoll && message.sparsePoll)
       toUnsub =
-          core.getUskManager()
+          runtimeSupport
+              .uskManager()
               .subscribeSparse(
                   message.key,
                   this,
                   message.ignoreUSKDatehints,
                   handler.getRebootClient().lowLevelClient(message.realTimeFlag));
     else {
-      core.getUskManager()
+      runtimeSupport
+          .uskManager()
           .subscribe(
               message.key,
               this,
@@ -104,7 +107,7 @@ public final class SubscribeUSK implements USKProgressCallback {
   public void onFoundEdition(USKFoundEdition foundEdition) {
     USK key = foundEdition.key();
     if (handler.isClosed()) {
-      core.getUskManager().unsubscribe(key, toUnsub);
+      runtimeSupport.uskManager().unsubscribe(key, toUnsub);
       return;
     }
     FCPMessage msg =
@@ -154,7 +157,7 @@ public final class SubscribeUSK implements USKProgressCallback {
    * calls.
    */
   public void unsubscribe() {
-    core.getUskManager().unsubscribe(usk, toUnsub);
+    runtimeSupport.uskManager().unsubscribe(usk, toUnsub);
   }
 
   /**

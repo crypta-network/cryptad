@@ -351,7 +351,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
             null,
             request.filenameForKey(),
             false),
-        core);
+        fcpServer);
   }
 
   ClientPut createLocalFileClientPut(
@@ -372,7 +372,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
             null,
             request.targetFilename(),
             false),
-        core);
+        fcpServer);
   }
 
   ClientPutDir createLocalDirectoryPut(
@@ -386,7 +386,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
         null,
         false,
         false,
-        core);
+        fcpServer);
   }
 
   private FCPServer fcpServer() throws RequestQueueUnavailableException {

@@ -33,7 +33,7 @@ public final class SubscribeUSKMessage extends FCPMessage {
 
   /**
    * Message name sent over FCP to denote a USK subscription request. Constant value is stable
-   * across releases so client implementations can rely on it when constructing field sets or
+   * across releases, so client implementations can rely on it when constructing field sets or
    * parsing incoming traffic without hard-coding multiple variants.
    */
   public static final String NAME = "SubscribeUSK";
@@ -141,7 +141,7 @@ public final class SubscribeUSKMessage extends FCPMessage {
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
     try {
-      new SubscribeUSK(this, handler.getServer().getCore(), handler);
+      new SubscribeUSK(this, handler.getServer().insertRuntimeSupport(), handler);
     } catch (IdentifierCollisionException _) {
       handler.send(new IdentifierCollisionMessage(clientIdentifier, false));
       return;

@@ -2,9 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -42,7 +40,7 @@ class ClientPutPreparedDataFactoryTest {
             metadata,
             bucket,
             null,
-            mock(NodeClientCore.class),
+            mock(FcpInsertRuntimeSupport.class),
             false);
 
     assertSame(bucket, prepared.bucket());
@@ -55,15 +53,13 @@ class ClientPutPreparedDataFactoryTest {
     ClientMetadata metadata = new ClientMetadata("text/plain");
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     FreenetURI target = new FreenetURI(VALID_CHK);
-    ClientContext context = mock(ClientContext.class);
-    NodeClientCore core = mock(NodeClientCore.class);
+    FcpInsertRuntimeSupport runtimeSupport = mock(FcpInsertRuntimeSupport.class);
 
-    when(core.getClientContext()).thenReturn(context);
-    when(context.getBucketFactory(true)).thenReturn(new ArrayBucketFactory());
+    when(runtimeSupport.bucketFactory(true)).thenReturn(new ArrayBucketFactory());
 
     PreparedData prepared =
         ClientPutPreparedDataFactory.prepareForPersistentUpload(
-            ClientPutBase.UploadFrom.REDIRECT, metadata, bucket, target, core, true);
+            ClientPutBase.UploadFrom.REDIRECT, metadata, bucket, target, runtimeSupport, true);
 
     assertNotNull(prepared.bucket());
     assertNotSame(bucket, prepared.bucket());
@@ -77,19 +73,22 @@ class ClientPutPreparedDataFactoryTest {
     //noinspection resource
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     FreenetURI target = new FreenetURI(VALID_CHK);
-    ClientContext context = mock(ClientContext.class);
-    NodeClientCore core = mock(NodeClientCore.class);
+    FcpInsertRuntimeSupport runtimeSupport = mock(FcpInsertRuntimeSupport.class);
     BucketFactory bucketFactory = mock(BucketFactory.class);
 
-    when(core.getClientContext()).thenReturn(context);
-    when(context.getBucketFactory(false)).thenReturn(bucketFactory);
+    when(runtimeSupport.bucketFactory(false)).thenReturn(bucketFactory);
     when(bucketFactory.makeBucket(-1)).thenThrow(new IOException("fail"));
 
     assertThrows(
         IOException.class,
         () ->
             ClientPutPreparedDataFactory.prepareForPersistentUpload(
-                ClientPutBase.UploadFrom.REDIRECT, metadata, bucket, target, core, false));
+                ClientPutBase.UploadFrom.REDIRECT,
+                metadata,
+                bucket,
+                target,
+                runtimeSupport,
+                false));
   }
 
   @Test
@@ -102,7 +101,7 @@ class ClientPutPreparedDataFactoryTest {
         ClientPutPreparedDataFactory.prepareForMessage(
             message,
             new ClientMetadata("text/plain"),
-            mock(FCPServer.class),
+            mock(FcpInsertRuntimeSupport.class),
             false,
             ClientPutBase.UploadFrom.DIRECT,
             "id",
@@ -118,19 +117,15 @@ class ClientPutPreparedDataFactoryTest {
     ClientPutMessage message = buildMessage(ClientPutBase.UploadFrom.REDIRECT, VALID_CHK);
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     message.bucket = bucket;
-    ClientContext context = mock(ClientContext.class);
-    NodeClientCore core = mock(NodeClientCore.class);
-    FCPServer server = mock(FCPServer.class);
+    FcpInsertRuntimeSupport runtimeSupport = mock(FcpInsertRuntimeSupport.class);
 
-    when(server.getCore()).thenReturn(core);
-    when(core.getClientContext()).thenReturn(context);
-    when(context.getBucketFactory(true)).thenReturn(new ArrayBucketFactory());
+    when(runtimeSupport.bucketFactory(true)).thenReturn(new ArrayBucketFactory());
 
     PreparedData prepared =
         ClientPutPreparedDataFactory.prepareForMessage(
             message,
             new ClientMetadata("text/plain"),
-            server,
+            runtimeSupport,
             true,
             ClientPutBase.UploadFrom.REDIRECT,
             "id",

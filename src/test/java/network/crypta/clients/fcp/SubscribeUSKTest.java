@@ -7,7 +7,6 @@ import network.crypta.client.async.USKFoundEditionProgress;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.async.USKSparseProxyCallback;
 import network.crypta.keys.USK;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -35,7 +34,7 @@ class SubscribeUSKTest {
   private static final String TEST_USK =
       "USK@0I8gctpUE32CM0iQhXaYpCMvtPPGfT4pjXm01oid5Zc,3dAcn4fX2LyxO6uCnWFTx-2HKZ89uruurcKwLSCxbZ4,AQACAAE/FakeM3UHostingFreesite/23/";
 
-  @Mock private NodeClientCore core;
+  @Mock private FcpInsertRuntimeSupport runtimeSupport;
   @Mock private USKManager uskManager;
   @Mock private FCPConnectionHandler handler;
   @Mock private PersistentRequestClient persistentRequestClient;
@@ -52,7 +51,7 @@ class SubscribeUSKTest {
     when(uskManager.subscribeSparse(eq(message.key), any(), eq(true), eq(requestClient)))
         .thenReturn(sparseProxyCallback);
 
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     verify(handler).addUSKSubscription("id-sparse", subscription);
     verify(persistentRequestClient).lowLevelClient(true);
@@ -71,7 +70,7 @@ class SubscribeUSKTest {
         buildSubscribeUSKMessage("id-poll", false, false, (short) 6, (short) 5, false, false);
     mockCommonBehavior();
 
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     verify(handler).addUSKSubscription("id-poll", subscription);
     verify(persistentRequestClient).lowLevelClient(false);
@@ -89,7 +88,7 @@ class SubscribeUSKTest {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-closed", true, false, (short) 2, (short) 1, false, false);
     mockCommonBehavior();
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
     when(handler.isClosed()).thenReturn(true);
 
     subscription.onFoundEdition(
@@ -107,7 +106,7 @@ class SubscribeUSKTest {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-open", true, false, (short) 3, (short) 1, false, false);
     mockCommonBehavior();
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
     when(handler.isClosed()).thenReturn(false);
 
     subscription.onFoundEdition(
@@ -135,7 +134,7 @@ class SubscribeUSKTest {
         buildSubscribeUSKMessage("id-prio", true, false, (short) 9, (short) 2, false, false);
     mockCommonBehavior();
 
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     assertEquals(9, subscription.getPollingPriorityNormal());
     assertEquals(2, subscription.getPollingPriorityProgress());
@@ -146,7 +145,7 @@ class SubscribeUSKTest {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-send", true, false, (short) 1, (short) 0, false, false);
     mockCommonBehavior();
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     subscription.onSendingToNetwork(clientContext);
 
@@ -163,7 +162,7 @@ class SubscribeUSKTest {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-round", true, false, (short) 1, (short) 0, false, false);
     mockCommonBehavior();
-    SubscribeUSK subscription = new SubscribeUSK(message, core, handler);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     subscription.onRoundFinished(clientContext);
 
@@ -176,7 +175,7 @@ class SubscribeUSKTest {
   }
 
   private void mockCommonBehavior() {
-    when(core.getUskManager()).thenReturn(uskManager);
+    when(runtimeSupport.uskManager()).thenReturn(uskManager);
     when(handler.getRebootClient()).thenReturn(persistentRequestClient);
     when(persistentRequestClient.lowLevelClient(anyBoolean())).thenReturn(requestClient);
     lenient().when(requestClient.persistent()).thenReturn(false);

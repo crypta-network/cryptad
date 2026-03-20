@@ -23,7 +23,6 @@ import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.StartedCompressionEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -189,19 +188,19 @@ public abstract class ClientPutBase extends ClientRequest
    * @param charset optional declared source charset; unsupported values trigger warnings only
    * @param options insert tuning options covering retries, compression, and caching behavior
    * @param handler owning connection handler responsible for queuing outbound replies
-   * @param server server providing node context, bucket factories, and persistent insert defaults
+   * @param runtimeSupport insert runtime support providing contexts and bucket factories
    * @param publicURI precomputed request URI corresponding to {@code requestParams.uri()}
    */
-  protected ClientPutBase(
+  ClientPutBase(
       ClientRequestParams requestParams,
       String charset,
       FcpInsertOptions options,
       FCPConnectionHandler handler,
-      FCPServer server,
+      FcpInsertRuntimeSupport runtimeSupport,
       FreenetURI publicURI) {
     super(prepareConstructorInit(requestParams, handler));
     warnIfUnsupportedCharset(charset);
-    ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
+    ctx = runtimeSupport.defaultPersistentInsertContext();
     ctx.setGetCHKOnly(options.getCHKOnly());
     ctx.setDontCompress(options.dontCompress());
     ctx.getEventProducer().addEventListener(this);
@@ -256,30 +255,31 @@ public abstract class ClientPutBase extends ClientRequest
    * disk or migrating between schedulers.
    *
    * <p>The constructor receives a fully resolved persistent client handle and reuses the
-   * persistence-aware {@link InsertContext} provided by {@link NodeClientCore}. It mirrors the
-   * connection-bound constructor but skips server-specific bookkeeping, allowing REST API callers
-   * or resuming jobs to bypass socket handlers entirely while preserving the same configuration
-   * surface.
+   * persistence-aware {@link InsertContext} provided by the insert runtime support seam. It mirrors
+   * the connection-bound constructor but skips server-specific bookkeeping, allowing REST API
+   * callers or resuming jobs to bypass socket handlers entirely while preserving the same
+   * configuration surface.
    *
    * @param requestParams request metadata including URI, identifiers, and scheduling flags
    * @param charset optional charset hint that influences metadata generation when meaningful
    * @param options insert tuning options that should persist across restarts
    * @param handler connection handler for immediate responses during the resume handshake
    * @param client persistent request owner used to enqueue outbound messages after resumption
-   * @param core node core used to get shared factories and contexts for resumed jobs
+   * @param runtimeSupport insert runtime support used to get shared factories and contexts for
+   *     resumed jobs
    * @param publicURI precomputed request URI corresponding to {@code requestParams.uri()}
    */
-  protected ClientPutBase(
+  ClientPutBase(
       ClientRequestParams requestParams,
       String charset,
       FcpInsertOptions options,
       FCPConnectionHandler handler,
       PersistentRequestClient client,
-      NodeClientCore core,
+      FcpInsertRuntimeSupport runtimeSupport,
       FreenetURI publicURI) {
     super(prepareConstructorInit(requestParams, handler, client));
     warnIfUnsupportedCharset(charset);
-    ctx = core.getClientContext().getDefaultPersistentInsertContext();
+    ctx = runtimeSupport.defaultPersistentInsertContext();
     ctx.setGetCHKOnly(options.getCHKOnly());
     ctx.setDontCompress(options.dontCompress());
     ctx.getEventProducer().addEventListener(this);

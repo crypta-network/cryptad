@@ -6,7 +6,6 @@ import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.Metadata;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.RandomAccessBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +57,8 @@ final class ClientPutPreparedDataFactory {
    * @param data bucket holding the raw upload payload; must not be {@code null}.
    * @param redirectTarget redirect target URI used when {@code uploadFrom} is redirect; may be
    *     {@code null} when unused.
-   * @param core node core providing the persistent bucket factory; must not be {@code null}.
+   * @param runtimeSupport insert runtime support providing the bucket factory; must not be {@code
+   *     null}.
    * @param persistentForever whether to use a forever-persistent bucket factory.
    * @return a {@link PreparedData} bundle describing the bucket to insert and redirect metadata.
    * @throws MetadataUnresolvedException when redirect metadata cannot serialize.
@@ -69,14 +69,14 @@ final class ClientPutPreparedDataFactory {
       ClientMetadata metadata,
       RandomAccessBucket data,
       FreenetURI redirectTarget,
-      NodeClientCore core,
+      FcpInsertRuntimeSupport runtimeSupport,
       boolean persistentForever)
       throws MetadataUnresolvedException, IOException {
     if (uploadFrom == ClientPutBase.UploadFrom.REDIRECT) {
       Metadata redirectMetadata =
           new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, redirectTarget, metadata);
       RandomAccessBucket redirectData =
-          redirectMetadata.toBucket(core.getClientContext().getBucketFactory(persistentForever));
+          redirectMetadata.toBucket(runtimeSupport.bucketFactory(persistentForever));
       return new PreparedData(redirectData, true, redirectTarget);
     }
     return new PreparedData(data, false, null);
@@ -92,7 +92,8 @@ final class ClientPutPreparedDataFactory {
    *
    * @param message parsed FCP message containing the data bucket; must not be {@code null}.
    * @param metadata client metadata attached to the upload; must not be {@code null}.
-   * @param server server instance providing access to the node core; must not be {@code null}.
+   * @param runtimeSupport insert runtime support providing bucket allocation; must not be {@code
+   *     null}.
    * @param persistentForever whether to use a forever-persistent bucket factory.
    * @param uploadFrom upload source describing whether this is a redirect or direct upload.
    * @param identifier request identifier used for error reporting; must not be {@code null}.
@@ -104,7 +105,7 @@ final class ClientPutPreparedDataFactory {
   static PreparedData prepareForMessage(
       ClientPutMessage message,
       ClientMetadata metadata,
-      FCPServer server,
+      FcpInsertRuntimeSupport runtimeSupport,
       boolean persistentForever,
       ClientPutBase.UploadFrom uploadFrom,
       String identifier,
@@ -118,8 +119,7 @@ final class ClientPutPreparedDataFactory {
           new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, redirectTarget, metadata);
       try {
         RandomAccessBucket redirectData =
-            metadataDoc.toBucket(
-                server.getCore().getClientContext().getBucketFactory(persistentForever));
+            metadataDoc.toBucket(runtimeSupport.bucketFactory(persistentForever));
         return new PreparedData(redirectData, true, redirectTarget);
       } catch (MetadataUnresolvedException e) {
         throw new MessageInvalidException(

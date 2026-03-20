@@ -24,7 +24,6 @@ import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.ResumeFailedException;
@@ -119,6 +118,7 @@ public final class ClientPutDir extends ClientPutBase {
       boolean wasDiskPut,
       FCPServer server)
       throws MalformedURLException, TooManyFilesInsertException {
+    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     FcpInsertOptions options =
         new FcpInsertOptions(
             new FcpInsertBehaviorOptions(
@@ -142,7 +142,7 @@ public final class ClientPutDir extends ClientPutBase {
             checkEmptySSK(
                 message.uri,
                 message.targetFilename != null ? message.targetFilename : "site",
-                server.getCore().getClientContext()),
+                runtimeSupport.clientContext()),
             message.identifier,
             message.verbosity,
             message.priorityClass,
@@ -150,7 +150,13 @@ public final class ClientPutDir extends ClientPutBase {
             options.realTimeFlag(),
             message.clientToken,
             message.global);
-    super(requestParams, null, options, handler, server, derivePublicURI(requestParams.uri()));
+    super(
+        requestParams,
+        null,
+        options,
+        handler,
+        runtimeSupport,
+        derivePublicURI(requestParams.uri()));
     // debug level captured via LOG.isDebugEnabled()
     this.wasDiskPut = wasDiskPut;
     this.overrideSplitfileCryptoKey = message.overrideSplitfileCryptoKey;
@@ -162,7 +168,7 @@ public final class ClientPutDir extends ClientPutBase {
     this.manifestElements.putAll(manifestElements);
 
     this.defaultName = message.defaultName;
-    makePutter(server.getCore().getClientContext());
+    makePutter(runtimeSupport.clientContext());
     if (putter != null) {
       numberOfFiles = putter.countFiles();
       totalSize = putter.totalSize();
@@ -183,8 +189,7 @@ public final class ClientPutDir extends ClientPutBase {
    * the request is registered with a {@link PersistentRequestClient}. The constructor immediately
    * counts files and bytes, so progress meters have deterministic totals, and it captures the
    * optional override splitfile key for callers who precompute keys. After construction, invoke
-   * {@link #start(ClientContext)} to stream blocks while leveraging the provided {@link
-   * NodeClientCore}.
+   * {@link #start(ClientContext)} to stream blocks while leveraging the provided {@link FCPServer}.
    *
    * <pre>{@code
    * var request =
@@ -215,7 +220,7 @@ public final class ClientPutDir extends ClientPutBase {
    * @param defaultName default manifest document served when consumers fetch the directory.
    * @param allowUnreadableFiles true to skip unreadable entries instead of aborting immediately.
    * @param includeHiddenFiles true to include filesystem entries marked hidden by the OS.
-   * @param core node client core providing context services and cryptographic settings.
+   * @param server owning server providing insert runtime support and cryptographic settings.
    * @throws FileNotFoundException if unreadable files are encountered while not permitted.
    * @throws MalformedURLException if the URI cannot be parsed, normalized, or validated.
    * @throws TooManyFilesInsertException if the directory exceeds the configured file limit.
@@ -227,11 +232,12 @@ public final class ClientPutDir extends ClientPutBase {
       String defaultName,
       boolean allowUnreadableFiles,
       boolean includeHiddenFiles,
-      NodeClientCore core)
+      FCPServer server)
       throws FileNotFoundException, MalformedURLException, TooManyFilesInsertException {
+    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(request.uri(), "site", core.getClientContext()),
+            checkEmptySSK(request.uri(), "site", runtimeSupport.clientContext()),
             request.identifier(),
             request.verbosity(),
             request.priorityClass(),
@@ -245,14 +251,14 @@ public final class ClientPutDir extends ClientPutBase {
         options,
         null,
         request.client(),
-        core,
+        runtimeSupport,
         derivePublicURI(requestParams.uri()));
     wasDiskPut = true;
     this.overrideSplitfileCryptoKey = options.overrideSplitfileCryptoKey();
     // debug level captured via LOG.isDebugEnabled()
     this.manifestElements = makeDiskDirManifest(dir, "", allowUnreadableFiles, includeHiddenFiles);
     this.defaultName = defaultName;
-    makePutter(core.getClientContext());
+    makePutter(runtimeSupport.clientContext());
     if (putter != null) {
       numberOfFiles = putter.countFiles();
       totalSize = putter.totalSize();
