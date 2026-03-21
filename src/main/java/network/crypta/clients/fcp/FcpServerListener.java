@@ -59,7 +59,7 @@ final class FcpServerListener implements Runnable {
   private final boolean enabled;
 
   /** Allowed-hosts filter string provided at initialization time. */
-  private final String allowedHosts;
+  private String allowedHosts;
 
   /** Current bind address string used when initializing the interface. */
   private String bindTo;
@@ -146,29 +146,36 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Returns the allowed-hosts string from the active interface, or the default when absent.
+   * Returns the allowed-hosts string from the active interface, or the configured value when
+   * absent.
    *
-   * <p>If the listener has not yet created its {@link NetworkInterface}, this method returns {@link
-   * NetworkInterface#DEFAULT_BIND_TO} to preserve legacy behavior during configuration discovery.
+   * <p>If the listener has not yet created its {@link NetworkInterface}, this method returns the
+   * listener's configured allowlist value so configuration callbacks can expose the current
+   * in-memory setting before the socket is active.
    *
-   * @return current allowlist string, or the default bind list when no interface exists.
+   * @return current allowlist string, or the configured value when no interface exists.
    */
   String getAllowedHosts() {
     NetworkInterface netIface = networkInterface;
-    return netIface == null ? NetworkInterface.DEFAULT_BIND_TO : netIface.getAllowedHosts();
+    return netIface == null ? allowedHosts : netIface.getAllowedHosts();
   }
 
   /**
-   * Applies a new allowed-hosts string to the active network interface.
+   * Applies a new allowed-hosts string to the active network interface and caches it for future
+   * binds.
    *
-   * <p>The method assumes the listener has been initialized and delegates to {@link
-   * NetworkInterface#setAllowedHosts(String)}. It does not validate the input beyond the interface
-   * implementation.
+   * <p>The method caches the value even when the interface has not yet been created, so later
+   * listener initialization sees the latest configured allowlist. When the interface is active, it
+   * delegates to {@link NetworkInterface#setAllowedHosts(String)}.
    *
    * @param value new allowlist string for filtering inbound connections.
    */
   void setAllowedHosts(String value) {
-    networkInterface.setAllowedHosts(value);
+    this.allowedHosts = value;
+    NetworkInterface netIface = networkInterface;
+    if (netIface != null) {
+      netIface.setAllowedHosts(value);
+    }
   }
 
   /**

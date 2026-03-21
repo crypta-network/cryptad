@@ -20,6 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -50,7 +54,7 @@ class FcpServerListenerTest {
   }
 
   @Test
-  void getAllowedHosts_whenNetworkInterfaceMissing_expectDefaultBind() {
+  void getAllowedHosts_whenNetworkInterfaceMissing_expectConfiguredHosts() {
     // Arrange
     FcpServerListener listener = newListener(true);
 
@@ -59,6 +63,18 @@ class FcpServerListenerTest {
 
     // Assert
     assertEquals(NetworkInterface.DEFAULT_BIND_TO, allowedHosts);
+  }
+
+  @Test
+  void getAllowedHosts_whenConfiguredAndNetworkInterfaceMissing_expectConfiguredHosts() {
+    // Arrange
+    FcpServerListener listener = newListener(true, "127.0.0.1");
+
+    // Act
+    String allowedHosts = listener.getAllowedHosts();
+
+    // Assert
+    assertEquals("127.0.0.1", allowedHosts);
   }
 
   @Test
@@ -88,6 +104,18 @@ class FcpServerListenerTest {
 
     // Assert
     verify(networkInterface).setAllowedHosts("127.0.0.1");
+  }
+
+  @Test
+  void setAllowedHosts_whenNetworkInterfaceMissing_expectValueCachedForFutureReads() {
+    // Arrange
+    FcpServerListener listener = newListener(true);
+
+    // Act
+    listener.setAllowedHosts("127.0.0.1");
+
+    // Assert
+    assertEquals("127.0.0.1", listener.getAllowedHosts());
   }
 
   @Test
@@ -141,6 +169,35 @@ class FcpServerListenerTest {
 
     // Act
     listener.maybeStart();
+
+    // Assert
+    assertSame(networkInterface, getNetworkInterface(listener));
+  }
+
+  @Test
+  void maybeStart_whenAllowedHostsUpdatedBeforeStart_expectInterfaceCreatedWithUpdatedHosts()
+      throws Exception {
+    // Arrange
+    FcpServerListener.setSslEnabled(false);
+    FcpServerListener listener = newListener(true);
+    NetworkInterface networkInterface = mock(NetworkInterface.class);
+    listener.setAllowedHosts("127.0.0.1");
+
+    // Act
+    try (var networkInterfaceMock = mockStatic(NetworkInterface.class)) {
+      networkInterfaceMock
+          .when(
+              () ->
+                  NetworkInterface.create(anyInt(), anyString(), anyString(), any(), anyBoolean()))
+          .thenAnswer(
+              invocation -> {
+                assertEquals(FCPServer.DEFAULT_FCP_PORT, invocation.<Integer>getArgument(0));
+                assertEquals("127.0.0.1", invocation.getArgument(2));
+                return networkInterface;
+              });
+
+      listener.maybeStart();
+    }
 
     // Assert
     assertSame(networkInterface, getNetworkInterface(listener));
@@ -205,11 +262,16 @@ class FcpServerListenerTest {
   }
 
   private FcpServerListener newListener(boolean enabled) {
+    return newListener(enabled, NetworkInterface.DEFAULT_BIND_TO);
+  }
+
+  private FcpServerListener newListener(boolean enabled, String allowedHosts) {
+    FcpServerListener.setSslEnabled(false);
     when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
-            NetworkInterface.DEFAULT_BIND_TO,
+            allowedHosts,
             NetworkInterface.DEFAULT_BIND_TO,
             FCPServer.DEFAULT_FCP_PORT,
             enabled,
