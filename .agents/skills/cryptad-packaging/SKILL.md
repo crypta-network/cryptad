@@ -20,9 +20,12 @@ Use this skill when working on:
 - Packaging remains root-owned.
 - The root project `:cryptad` still owns `buildJar`, `assembleCryptadDist`, `dist*`, `run`,
   `runLauncher`, and jpackage tasks.
-- Current contributing leaf modules are `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
-  `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
+- Current contributing leaf modules are `:foundation-config`, `:foundation-fs`,
+  `:foundation-compat`, `:runtime-spi`, `:thirdparty-onion`, `:thirdparty-legacy`, and
+  `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
+- `:foundation-config` contributes the config/l10n code and main l10n resources via its leaf JAR
+  like the other extracted modules.
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
