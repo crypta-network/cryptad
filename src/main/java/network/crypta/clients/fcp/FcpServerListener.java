@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
+import java.io.IOException;
 import java.net.Socket;
+import java.util.Objects;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -53,6 +55,9 @@ final class FcpServerListener implements Runnable {
   /** Executor adapter expected by the legacy network-interface factories. */
   private final PriorityAwareExecutor executor;
 
+  /** Factory used to build short-lived interfaces for pre-start bind validation. */
+  private final ValidationInterfaceFactory validationInterfaceFactory;
+
   /** TCP port to bind when creating the network interface. */
   private final int port;
 
@@ -82,9 +87,32 @@ final class FcpServerListener implements Runnable {
    * @param config snapshot of listener configuration values at construction time.
    */
   FcpServerListener(FCPServer server, RuntimePorts runtime, FcpServerConfig config) {
+    this(server, runtime, config, FcpServerListener::createValidationInterface);
+  }
+
+  /**
+   * Creates a listener with an explicit factory for pre-start bind validation.
+   *
+   * <p>This overload exists so tests can supply deterministic validation interfaces without
+   * touching the real network stack. Production callers should use {@link
+   * #FcpServerListener(FCPServer, RuntimePorts, FcpServerConfig)}.
+   *
+   * @param server the owning server that constructs connection handlers for clients.
+   * @param runtime runtime SPI bridge supplying execution and lifecycle state used by the
+   *     accept-loop.
+   * @param config snapshot of listener configuration values at construction time.
+   * @param validationInterfaceFactory factory for temporary interfaces used to validate pre-start
+   *     bind changes.
+   */
+  FcpServerListener(
+      FCPServer server,
+      RuntimePorts runtime,
+      FcpServerConfig config,
+      ValidationInterfaceFactory validationInterfaceFactory) {
     this.server = server;
     this.runtime = runtime;
     this.executor = FcpRuntimeAdapters.priorityAwareExecutor(runtime);
+    this.validationInterfaceFactory = Objects.requireNonNull(validationInterfaceFactory);
     this.port = config.port();
     this.enabled = config.enabled();
     this.allowedHosts = config.allowedHosts();
@@ -119,25 +147,64 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Applies a new bind address to the active {@link NetworkInterface}, or caches it for startup.
+   * Applies a new bind address to the active {@link NetworkInterface}, or validates it for startup.
    *
-   * <p>If the listener has not yet created its {@link NetworkInterface}, this method records the
-   * provided bind string and reports success so configuration callbacks can accept pre-start
-   * updates. Once the interface exists, it forwards the raw bind string to {@link
-   * NetworkInterface#setBindTo(String, boolean)} and returns any failed addresses.
+   * <p>If the listener has not yet created its {@link NetworkInterface}, this method validates the
+   * provided bind string against a short-lived interface instance before caching it. Invalid
+   * addresses are returned to the caller and are not retained. Once the interface exists, the
+   * method forwards the raw bind string to {@link NetworkInterface#setBindTo(String, boolean)} and
+   * returns any failed addresses.
    *
    * @param value comma-separated bind addresses or {@code null} to use defaults.
-   * @param update whether to update acceptors immediately for the new bindings.
+   * @param ignoreUnbindableIp6 whether IPv6 bind failures should be ignored when validating or
+   *     applying the new bindings.
    * @return array of failed addresses, or {@code null} when all bindings succeed.
    */
   @SuppressWarnings({"SameParameterValue", "java:S1168"})
-  String[] setBindTo(String value, boolean update) {
+  String[] setBindTo(String value, boolean ignoreUnbindableIp6) {
     NetworkInterface netIface = networkInterface;
     if (netIface == null) {
+      return validatePreStartBindTo(value, ignoreUnbindableIp6);
+    }
+    return netIface.setBindTo(value, ignoreUnbindableIp6);
+  }
+
+  @SuppressWarnings("java:S1168")
+  private String[] validatePreStartBindTo(String value, boolean ignoreUnbindableIp6) {
+    NetworkInterface validationInterface =
+        validationInterfaceFactory.create(port, allowedHosts, executor);
+    String[] failedAddresses = validationInterface.setBindTo(value, ignoreUnbindableIp6);
+    boolean closed = closeValidationInterface(validationInterface, value);
+    if (failedAddresses == null && closed) {
       bindTo = value;
       return null;
     }
-    return netIface.setBindTo(value, update);
+    return failedAddresses == null ? validationFailure(value) : failedAddresses;
+  }
+
+  private boolean closeValidationInterface(NetworkInterface validationInterface, String value) {
+    try {
+      validationInterface.close();
+      return true;
+    } catch (IOException e) {
+      LOG.warn("Failed to close temporary FCP bind validator for {}:{}", value, port, e);
+      return false;
+    }
+  }
+
+  private static String[] validationFailure(String value) {
+    return new String[] {normalizeBindTo(value)};
+  }
+
+  private static String normalizeBindTo(String value) {
+    return value == null || value.isEmpty() ? NetworkInterface.DEFAULT_BIND_TO : value;
+  }
+
+  private static NetworkInterface createValidationInterface(
+      int port, String allowedHosts, PriorityAwareExecutor executor) {
+    return ssl
+        ? new ValidationSslNetworkInterface(port, allowedHosts, executor)
+        : new ValidationNetworkInterface(port, allowedHosts, executor);
   }
 
   /**
@@ -260,5 +327,24 @@ final class FcpServerListener implements Runnable {
     Socket s = networkInterface.accept();
     FCPConnectionHandler ch = new FCPConnectionHandler(s, server);
     ch.start();
+  }
+
+  @FunctionalInterface
+  interface ValidationInterfaceFactory {
+    NetworkInterface create(int port, String allowedHosts, PriorityAwareExecutor executor);
+  }
+
+  private static final class ValidationNetworkInterface extends NetworkInterface {
+    private ValidationNetworkInterface(
+        int port, String allowedHosts, PriorityAwareExecutor executor) {
+      super(port, allowedHosts, executor);
+    }
+  }
+
+  private static final class ValidationSslNetworkInterface extends SSLNetworkInterface {
+    private ValidationSslNetworkInterface(
+        int port, String allowedHosts, PriorityAwareExecutor executor) {
+      super(port, allowedHosts, executor);
+    }
   }
 }

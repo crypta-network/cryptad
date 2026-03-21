@@ -135,9 +135,16 @@ class FcpServerListenerTest {
   }
 
   @Test
-  void setBindTo_whenNetworkInterfaceMissing_expectValueCachedForFutureStart() throws Exception {
+  void setBindTo_whenValidationSucceedsBeforeStart_expectValueCachedForFutureStart()
+      throws Exception {
     // Arrange
-    FcpServerListener listener = newListener(true);
+    NetworkInterface validationInterface = mock(NetworkInterface.class);
+    when(validationInterface.setBindTo("0.0.0.0", true)).thenReturn(null);
+    FcpServerListener listener =
+        newListener(
+            true,
+            NetworkInterface.DEFAULT_BIND_TO,
+            (ignoredPort, ignoredAllowedHosts, ignoredExecutor) -> validationInterface);
 
     // Act
     String[] result = listener.setBindTo("0.0.0.0", true);
@@ -145,6 +152,28 @@ class FcpServerListenerTest {
     // Assert
     assertNull(result);
     assertEquals("0.0.0.0", getBindTo(listener));
+    verify(validationInterface).close();
+  }
+
+  @Test
+  void setBindTo_whenValidationFailsBeforeStart_expectValueRejectedAndNotCached() throws Exception {
+    // Arrange
+    NetworkInterface validationInterface = mock(NetworkInterface.class);
+    String[] failed = new String[] {"0.0.0.0"};
+    when(validationInterface.setBindTo("0.0.0.0", true)).thenReturn(failed);
+    FcpServerListener listener =
+        newListener(
+            true,
+            NetworkInterface.DEFAULT_BIND_TO,
+            (ignoredPort, ignoredAllowedHosts, ignoredExecutor) -> validationInterface);
+
+    // Act
+    String[] result = listener.setBindTo("0.0.0.0", true);
+
+    // Assert
+    assertArrayEquals(failed, result);
+    assertEquals("127.0.0.1", getBindTo(listener));
+    verify(validationInterface).close();
   }
 
   @Test
@@ -280,6 +309,13 @@ class FcpServerListenerTest {
   }
 
   private FcpServerListener newListener(boolean enabled, String allowedHosts) {
+    return newListener(enabled, allowedHosts, null);
+  }
+
+  private FcpServerListener newListener(
+      boolean enabled,
+      String allowedHosts,
+      FcpServerListener.ValidationInterfaceFactory validationInterfaceFactory) {
     FcpServerListener.setSslEnabled(false);
     when(runtimePorts.execution()).thenReturn(executionPort);
     FcpServerConfig config =
@@ -293,7 +329,10 @@ class FcpServerListenerTest {
             false,
             false,
             10);
-    return new FcpServerListener(server, runtimePorts, config);
+    if (validationInterfaceFactory == null) {
+      return new FcpServerListener(server, runtimePorts, config);
+    }
+    return new FcpServerListener(server, runtimePorts, config, validationInterfaceFactory);
   }
 
   private void setNetworkInterface(FcpServerListener listener, NetworkInterface value)

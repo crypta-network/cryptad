@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import java.lang.reflect.Field;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
@@ -25,6 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -193,19 +193,27 @@ class FcpServerConfigRegistrarTest {
   }
 
   @Test
-  void maybeCreate_whenBindToUpdatedBeforeStart_expectPendingListenerValueUpdated()
-      throws Exception {
+  void fcpBindToCallback_whenListenerRejectsValue_expectInvalidConfigValueException() {
     // Arrange
-    Config config = new Config();
-    FCPServer server = FcpServerConfigRegistrar.maybeCreate(newDependencies(), config);
-    SubConfig subConfig = config.get("fcp");
+    FcpServerListener listener = mock(FcpServerListener.class);
+    doNothing().when(listener).updateBindTo(anyString());
+    when(listener.setBindTo("0.0.0.0", true)).thenReturn(new String[] {"0.0.0.0"});
+    when(listener.setBindTo("127.0.0.1", true)).thenReturn(null);
+    FCPServer server = newServer(listener);
+    server.bindTo = "127.0.0.1";
+    FcpServerConfigRegistrar.FCPBindtoCallback callback =
+        new FcpServerConfigRegistrar.FCPBindtoCallback("127.0.0.1");
+    callback.bind(server);
 
-    // Act
-    assertDoesNotThrow(() -> subConfig.getOption("bindTo").setValue("0.0.0.0"));
+    // Act & Assert
+    assertThrows(InvalidConfigValueException.class, () -> callback.set("0.0.0.0"));
 
     // Assert
-    assertEquals("0.0.0.0", server.bindTo);
-    assertEquals("0.0.0.0", getListenerBindTo(server.listener()));
+    assertEquals("127.0.0.1", server.bindTo);
+    assertEquals("127.0.0.1", callback.get());
+    verify(listener).setBindTo("0.0.0.0", true);
+    verify(listener).setBindTo("127.0.0.1", true);
+    verify(listener, never()).updateBindTo("0.0.0.0");
   }
 
   @Test
@@ -319,12 +327,6 @@ class FcpServerConfigRegistrarTest {
       return new FCPServer(config, dependencies);
     }
     return new TestServer(config, dependencies, listenerOverride);
-  }
-
-  private String getListenerBindTo(FcpServerListener listener) throws Exception {
-    Field bindToField = FcpServerListener.class.getDeclaredField("bindTo");
-    bindToField.setAccessible(true);
-    return (String) bindToField.get(listener);
   }
 
   private static final class TestServer extends FCPServer {
