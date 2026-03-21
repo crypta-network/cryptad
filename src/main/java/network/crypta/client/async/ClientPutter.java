@@ -9,6 +9,7 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
+import network.crypta.client.InsertUriChecks;
 import network.crypta.client.Metadata;
 import network.crypta.client.events.SendingToNetworkEvent;
 import network.crypta.client.events.SplitfileProgressCounts;
@@ -231,7 +232,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     if (LOG.isDebugEnabled()) LOG.debug("Insert start requested: {} target={}", this, targetURI);
     final byte cryptoAlgorithm = selectCryptoAlgorithm();
     try {
-      targetURI.checkInsertURI();
+      InsertUriChecks.checkInsertURI(targetURI);
       final boolean randomiseKeys = randomiseSplitfileKeys(targetURI, ctx);
       if (data == null)
         throw new InsertException(InsertExceptionMode.BUCKET_ERROR, "No data to insert", null);

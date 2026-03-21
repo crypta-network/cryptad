@@ -26,7 +26,6 @@ import javax.net.ssl.SSLContext;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
-import network.crypta.node.NodeStarter;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
@@ -382,7 +381,7 @@ public class SSL {
 
     // Generate a key pair.
     KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KEY_ALGORITHM, "BC");
-    keyPairGenerator.initialize(KEY_SIZE, NodeStarter.getGlobalSecureRandom());
+    keyPairGenerator.initialize(KEY_SIZE, CryptoRandoms.shared());
     KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
     // Build a certificate.

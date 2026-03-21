@@ -18,7 +18,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
-import network.crypta.node.Node;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -224,7 +223,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throw new CHKDecodeException("Unsupported cipher", e);
     }
     byte[] cryptoKey = key.cryptoKey;
-    if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
+    if (cryptoKey.length < ChkKeySizes.AES_256_BYTES)
       throw new CHKDecodeException("Crypto key too short");
     cipher.initialize(key.cryptoKey);
     byte[] zeroIv = new byte[PCFBMode.lengthIV(cipher)];
@@ -266,7 +265,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     long times = Long.MAX_VALUE;
     byte[] input = new byte[1024];
     byte[] output = new byte[hmac.getMacLength()];
-    byte[] key = new byte[Node.SYMMETRIC_KEY_LENGTH];
+    byte[] key = new byte[ChkKeySizes.AES_256_BYTES];
     final String algo = hmac.getAlgorithm();
     hmac.init(new SecretKeySpec(key, algo));
     // warm-up
@@ -300,7 +299,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     try {
       final String algo = HMAC_SHA256;
       final Provider sun = JceLoader.getSunJCE();
-      SecretKeySpec dummyKey = new SecretKeySpec(new byte[Node.SYMMETRIC_KEY_LENGTH], algo);
+      SecretKeySpec dummyKey = new SecretKeySpec(new byte[ChkKeySizes.AES_256_BYTES], algo);
       Mac hmac = Mac.getInstance(algo);
       hmac.init(dummyKey); // resolve provider
       hmac = safeSelectPreferredHmac(hmac, sun, dummyKey);
@@ -342,7 +341,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     byte[] data = block.data;
     byte[] hash = Arrays.copyOfRange(headers, 2, 2 + 32);
     byte[] cryptoKey = key.cryptoKey;
-    if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
+    if (cryptoKey.length < ChkKeySizes.AES_256_BYTES)
       throw new CHKDecodeException("Crypto key too short");
     try {
       Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
@@ -404,7 +403,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     byte[] data = block.data;
     byte[] hash = Arrays.copyOfRange(headers, 2, 2 + 32);
     byte[] cryptoKey = key.cryptoKey;
-    if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
+    if (cryptoKey.length < ChkKeySizes.AES_256_BYTES)
       throw new CHKDecodeException("Crypto key too short");
     Rijndael aes;
     try {
@@ -457,7 +456,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
    *
    * @param data the block payload, exactly {@link CHKBlock#DATA_LENGTH} bytes.
    * @param cryptoKey optional encryption key; when non-null it must be {@link
-   *     Node#SYMMETRIC_KEY_LENGTH} bytes.
+   *     ChkKeySizes#AES_256_BYTES} bytes.
    * @param cryptoAlgorithm algorithm selector; one of {@link Key#ALGO_AES_PCFB_256_SHA256} or
    *     {@link Key#ALGO_AES_CTR_256_SHA256}.
    * @return the encoded client block.

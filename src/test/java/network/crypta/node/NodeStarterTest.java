@@ -4,10 +4,15 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import network.crypta.config.PersistentConfig;
+import network.crypta.config.SubConfig;
+import network.crypta.crypt.CryptoRandoms;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.crypt.SSL;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
@@ -183,6 +188,55 @@ class NodeStarterTest {
       assertEquals(1, nativeThreadCtor.constructed().size());
       wm.verify(() -> WrapperManager.signalStarting(500000), times(1));
       wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
+    }
+  }
+
+  @Test
+  void start_whenBootstrapping_warmsSharedRandomBeforeInitializingSsl()
+      throws ReflectiveOperationException, java.io.IOException {
+    File tmpDir = createStandaloneTempDir("node-starter-rng-order-");
+    NodeStarter ns = newNodeStarterViaReflection();
+    int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
+    String[] args = startupArgs(tmpDir);
+    SecureRandom sharedRandom = new SecureRandom();
+    List<String> calls = new ArrayList<>();
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedStatic<CryptoRandoms> cryptoRandoms = Mockito.mockStatic(CryptoRandoms.class);
+        MockedStatic<SSL> ssl = Mockito.mockStatic(SSL.class);
+        MockedConstruction<NativeThread> nativeThreadCtor =
+            Mockito.mockConstruction(NativeThread.class);
+        MockedConstruction<Node> nodeCtor =
+            Mockito.mockConstruction(
+                Node.class,
+                (mock, _) ->
+                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                        .when(mock)
+                        .start(false))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
+      cryptoRandoms
+          .when(CryptoRandoms::shared)
+          .thenAnswer(
+              _ -> {
+                calls.add("random");
+                return sharedRandom;
+              });
+      ssl.when(() -> SSL.init(Mockito.any(SubConfig.class)))
+          .thenAnswer(
+              _ -> {
+                calls.add("ssl");
+                return null;
+              });
+
+      Integer result = ns.start(args);
+
+      assertEquals(expectedExitCode, result);
+      assertEquals(1, nodeCtor.constructed().size());
+      assertEquals(1, nativeThreadCtor.constructed().size());
+      assertTrue(calls.contains("random"));
+      assertTrue(calls.contains("ssl"));
+      assertTrue(calls.indexOf("random") < calls.indexOf("ssl"));
+      cryptoRandoms.verify(CryptoRandoms::shared, times(1));
     }
   }
 
@@ -387,7 +441,6 @@ class NodeStarterTest {
   private static void resetNodeStarterStatics() throws ReflectiveOperationException {
     clearStaticBoolean("isStarted");
     clearStaticBoolean("isTestingVM");
-    clearStaticObject("globalSecureRandom");
     clearStaticObject("nodestarter_osgi");
   }
 

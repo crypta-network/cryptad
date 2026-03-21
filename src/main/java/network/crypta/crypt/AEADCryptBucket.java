@@ -16,7 +16,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 import network.crypta.client.async.ClientContext;
-import network.crypta.node.NodeStarter;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
@@ -94,7 +93,7 @@ public final class AEADCryptBucket implements Bucket, Serializable {
       throw new IOException("Read only");
     }
     OutputStream os = underlying.getOutputStreamUnbuffered();
-    return AEADOutputStream.createAES(os, key, NodeStarter.getGlobalSecureRandom());
+    return AEADOutputStream.createAES(os, key, CryptoRandoms.shared());
   }
 
   /**
@@ -275,6 +274,7 @@ public final class AEADCryptBucket implements Bucket, Serializable {
   private static final String FIELD_READONLY = "readOnly";
 
   @Serial
+  @SuppressWarnings("unused") // Used reflectively by Java serialization.
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_UNDERLYING, Bucket.class),
     new ObjectStreamField(FIELD_KEY, byte[].class),
@@ -283,7 +283,6 @@ public final class AEADCryptBucket implements Bucket, Serializable {
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     // Write fields using the default field block. Include the underlying only when it is
     // Serializable; otherwise fail fast to avoid silently dropping data.
     ObjectOutputStream.PutField fields = out.putFields();

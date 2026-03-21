@@ -3,7 +3,6 @@ package network.crypta.keys;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import network.crypta.node.Node;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
@@ -166,8 +165,8 @@ class ClientCHKBlockTest {
     ClientCHK goodKey = good.getClientKey();
     byte[] routing = goodKey.getRoutingKey();
     byte[] extra = goodKey.getExtra();
-    // Use a deterministic short key: length SYMMETRIC_KEY_LENGTH - 1
-    byte[] shortKey = Arrays.copyOf(goodKey.getCryptoKey(), Node.SYMMETRIC_KEY_LENGTH - 1);
+    // Use a deterministic short key: length AES_256_BYTES - 1
+    byte[] shortKey = Arrays.copyOf(goodKey.getCryptoKey(), ChkKeySizes.AES_256_BYTES - 1);
     ClientCHK shortClientKey = new ClientCHK(routing, shortKey, extra);
 
     ClientCHKBlock forged = forgeBlock(good, shortClientKey);
@@ -247,7 +246,8 @@ class ClientCHKBlockTest {
   @Test
   void encodeNew_throwsOnWrongAlgorithm() {
     byte[] data = new byte[CHKBlock.DATA_LENGTH];
-    byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
+    assertEquals(32, ChkKeySizes.AES_256_BYTES);
+    byte[] encKey = new byte[ChkKeySizes.AES_256_BYTES];
     MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
     ClientCHKEncodeParams params =
         new ClientCHKEncodeParams(
@@ -266,7 +266,7 @@ class ClientCHKBlockTest {
     for (int i = 0; i < data.length; i++) data[i] = (byte) (i & 0xFF);
     byte[] original = data.clone();
     MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
-    byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
+    byte[] encKey = new byte[ChkKeySizes.AES_256_BYTES];
     ClientCHKBlock.innerEncode(
         new ClientCHKEncodeParams(
             new ClientCHKEncodePayload(data, /* dataLength= */ 123, md, encKey),
