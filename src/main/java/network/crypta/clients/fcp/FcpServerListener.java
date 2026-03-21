@@ -19,8 +19,9 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * thread, dispatching sockets to {@link FCPConnectionHandler} instances. Runtime lifecycle and
  * execution concerns are consumed through {@link RuntimePorts} so the listener does not depend on
  * daemon executor implementations directly. Configuration updates such as {@link
- * #updateBindTo(String)} and {@link #setAllowedHosts(String)} are delegated to the underlying
- * interface when available, while SSL mode is tracked via static flag accessors.
+ * #updateBindTo(String)}, {@link #setBindTo(String, boolean)}, and {@link #setAllowedHosts(String)}
+ * are delegated to the underlying interface when available and otherwise cached for later startup,
+ * while SSL mode is tracked via static flag accessors.
  *
  * <p>The listener is intentionally conservative about re-binding: it caches the created interface
  * and only creates a new one once per instance. Shutdown handling relies on the Tanuki Wrapper
@@ -118,19 +119,25 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Delegates to the underlying {@link NetworkInterface} to update binding addresses.
+   * Applies a new bind address to the active {@link NetworkInterface}, or caches it for startup.
    *
-   * <p>This method assumes a listener has already been started and will throw a {@link
-   * NullPointerException} if the interface has not been initialized. It forwards the raw bind
-   * string to {@link NetworkInterface#setBindTo(String, boolean)} and returns any failed addresses.
+   * <p>If the listener has not yet created its {@link NetworkInterface}, this method records the
+   * provided bind string and reports success so configuration callbacks can accept pre-start
+   * updates. Once the interface exists, it forwards the raw bind string to {@link
+   * NetworkInterface#setBindTo(String, boolean)} and returns any failed addresses.
    *
    * @param value comma-separated bind addresses or {@code null} to use defaults.
    * @param update whether to update acceptors immediately for the new bindings.
    * @return array of failed addresses, or {@code null} when all bindings succeed.
    */
-  @SuppressWarnings("SameParameterValue")
+  @SuppressWarnings({"SameParameterValue", "java:S1168"})
   String[] setBindTo(String value, boolean update) {
-    return networkInterface.setBindTo(value, update);
+    NetworkInterface netIface = networkInterface;
+    if (netIface == null) {
+      bindTo = value;
+      return null;
+    }
+    return netIface.setBindTo(value, update);
   }
 
   /**

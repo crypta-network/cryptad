@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.lang.reflect.Field;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
@@ -192,6 +193,22 @@ class FcpServerConfigRegistrarTest {
   }
 
   @Test
+  void maybeCreate_whenBindToUpdatedBeforeStart_expectPendingListenerValueUpdated()
+      throws Exception {
+    // Arrange
+    Config config = new Config();
+    FCPServer server = FcpServerConfigRegistrar.maybeCreate(newDependencies(), config);
+    SubConfig subConfig = config.get("fcp");
+
+    // Act
+    assertDoesNotThrow(() -> subConfig.getOption("bindTo").setValue("0.0.0.0"));
+
+    // Assert
+    assertEquals("0.0.0.0", server.bindTo);
+    assertEquals("0.0.0.0", getListenerBindTo(server.listener()));
+  }
+
+  @Test
   void fcpAllowedHostsFullAccessCallback_whenBeforeBind_expectInitialValue() {
     // Arrange
     FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback callback =
@@ -302,6 +319,12 @@ class FcpServerConfigRegistrarTest {
       return new FCPServer(config, dependencies);
     }
     return new TestServer(config, dependencies, listenerOverride);
+  }
+
+  private String getListenerBindTo(FcpServerListener listener) throws Exception {
+    Field bindToField = FcpServerListener.class.getDeclaredField("bindTo");
+    bindToField.setAccessible(true);
+    return (String) bindToField.get(listener);
   }
 
   private static final class TestServer extends FCPServer {

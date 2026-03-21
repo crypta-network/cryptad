@@ -135,6 +135,19 @@ class FcpServerListenerTest {
   }
 
   @Test
+  void setBindTo_whenNetworkInterfaceMissing_expectValueCachedForFutureStart() throws Exception {
+    // Arrange
+    FcpServerListener listener = newListener(true);
+
+    // Act
+    String[] result = listener.setBindTo("0.0.0.0", true);
+
+    // Assert
+    assertNull(result);
+    assertEquals("0.0.0.0", getBindTo(listener));
+  }
+
+  @Test
   void updateBindTo_whenInvoked_expectFieldUpdated() throws Exception {
     // Arrange
     FcpServerListener listener = newListener(true);
@@ -185,6 +198,7 @@ class FcpServerListenerTest {
 
     // Act
     try (var networkInterfaceMock = mockStatic(NetworkInterface.class)) {
+      //noinspection resource
       networkInterfaceMock
           .when(
               () ->
