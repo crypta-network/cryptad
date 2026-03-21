@@ -13,7 +13,6 @@ import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -314,12 +313,11 @@ class FreenetURITest {
   }
 
   @Test
-  @SuppressWarnings("java:S1612")
-  void checkInsertURI_throwsWhenMetaStringsPresent() {
+  void hasMetaStrings_reportsPresenceOfMetaStrings() {
     FreenetURI uri = FreenetURI.generateRandomCHK(new Random(1)).pushMetaString("file");
-    // Disambiguate overloaded methods by using explicit lambdas
-    assertThrows(network.crypta.client.InsertException.class, uri::checkInsertURI);
-    assertDoesNotThrow(FreenetURI.EMPTY_CHK_URI::checkInsertURI);
+
+    assertTrue(uri.hasMetaStrings());
+    assertFalse(FreenetURI.EMPTY_CHK_URI.hasMetaStrings());
   }
 
   @Test

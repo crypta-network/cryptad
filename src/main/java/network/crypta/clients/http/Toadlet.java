@@ -16,6 +16,7 @@ import network.crypta.client.FetchWaiter;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertException;
+import network.crypta.client.InsertUriChecks;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
@@ -198,7 +199,8 @@ public abstract class Toadlet {
    *     <p>Override this function to return something else for invisible Toadlets as explained
    *     above.
    */
-  public Toadlet showAsToadlet(ToadletContext context) {
+  @SuppressWarnings("java:S1172")
+  public Toadlet showAsToadlet(@SuppressWarnings("unused") ToadletContext context) {
     return resolveLegacyShowAsToadlet();
   }
 
@@ -333,7 +335,7 @@ public abstract class Toadlet {
   FreenetURI insert(InsertBlock insert, String filenameHint) throws InsertException {
     // For now, just run it blocking.
     FreenetURI desiredURI = Objects.requireNonNull(insert.desiredURI, "InsertBlock.desiredURI");
-    desiredURI.checkInsertURI();
+    InsertUriChecks.checkInsertURI(desiredURI);
     return getClientImpl().insert(insert, false, filenameHint);
   }
 

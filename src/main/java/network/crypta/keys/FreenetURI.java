@@ -21,8 +21,6 @@ import java.util.Random;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.client.InsertException;
 import network.crypta.support.Base64;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalBase64Exception;
@@ -655,6 +653,7 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
    *
    * <p>Not intended for direct use.
    */
+  @SuppressWarnings("unused")
   FreenetURI() {
     // For serialization only.
     this.metaStr = null;
@@ -1236,24 +1235,6 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
   public FreenetURI setRoutingKey(byte[] newRoutingKey) {
     return new FreenetURI(
         keyType, docName, metaStr, newRoutingKey, cryptoKey, extra, suggestedEdition);
-  }
-
-  /**
-   * Throw an InsertException if we have any meta-strings. They are not valid for inserts, you must
-   * insert a directory to create a directory structure.
-   */
-  public void checkInsertURI() throws InsertException {
-    if (metaStr != null && metaStr.length > 0)
-      throw new InsertException(InsertExceptionMode.META_STRINGS_NOT_SUPPORTED, this);
-  }
-
-  /**
-   * Throw an InsertException if the argument has any meta-strings. They are not valid for inserts,
-   * you must insert a directory to create a directory structure.
-   */
-  @SuppressWarnings("unused")
-  public static void checkInsertURIOrThrow(FreenetURI uri) throws InsertException {
-    uri.checkInsertURI();
   }
 
   /**

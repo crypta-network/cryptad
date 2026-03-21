@@ -20,6 +20,7 @@ import network.crypta.config.FreenetFilePersistentConfig;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.crypt.CryptoRandoms;
 import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
@@ -138,6 +139,7 @@ public class NodeStarter implements WrapperListener {
 
     // Initialize RNG, defaulting to Yarrow if none supplied.
     RandomSource random = randomSource != null ? randomSource : new Yarrow();
+    getGlobalSecureRandom();
 
     if (enablePlug) {
       startKeepAlivePlugThread();
@@ -402,20 +404,15 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * Returns a lazily initialized process-wide {@link SecureRandom} and ensures it seeds eagerly.
+   * Returns the process-wide {@link SecureRandom} shared with {@link CryptoRandoms}.
+   *
+   * <p>Node bootstrap calls this during startup so the shared instance is force-seeded before later
+   * cryptographic operations use it.
    *
    * @return shared {@link SecureRandom} instance
    */
-  public static synchronized SecureRandom getGlobalSecureRandom() {
-    if (globalSecureRandom == null) {
-      globalSecureRandom = new SecureRandom();
-      forceSecureRandomSeeding(globalSecureRandom);
-    }
-    return globalSecureRandom;
-  }
-
-  private static void forceSecureRandomSeeding(SecureRandom secureRandom) {
-    secureRandom.nextBytes(new byte[16]); // Force it to seed itself so it blocks now, not later.
+  public static SecureRandom getGlobalSecureRandom() {
+    return CryptoRandoms.shared();
   }
 
   /**
@@ -534,6 +531,7 @@ public class NodeStarter implements WrapperListener {
     WrapperManager.signalStarting(500000);
 
     startKeepAliveNativePlugThread();
+    getGlobalSecureRandom();
 
     initSSL(cfg);
 
@@ -1265,9 +1263,6 @@ public class NodeStarter implements WrapperListener {
   private static boolean isTestingVM;
   private static boolean isStarted;
   private static Thread nativeKeepAlivePlugThread;
-
-  /** Static instance of SecureRandom, as opposed to Node's copy. @see getSecureRandom() */
-  private static SecureRandom globalSecureRandom;
 
   private Node node;
 }

@@ -15,6 +15,7 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
+import network.crypta.client.InsertUriChecks;
 import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.Metadata;
 import network.crypta.client.MetadataRedirectTarget;
@@ -866,7 +867,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (uri == null) {
       throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
     }
-    uri.checkInsertURI(); // will throw an exception if needed
+    InsertUriChecks.checkInsertURI(uri);
 
     if (uri.getKeyType().equals("USK")) {
       try {

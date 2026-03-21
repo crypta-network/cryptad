@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-import network.crypta.client.async.ReadBucketAndFreeInputStream;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.NonClosingOutputStream;
@@ -220,7 +219,7 @@ public abstract class ChecksumChecker {
     try (OutputStream os = bucket.getOutputStream()) {
       copyAndStripChecksum(dis, os, length);
     }
-    return ReadBucketAndFreeInputStream.create(bucket);
+    return BucketInputStreams.openAndFreeOnClose(bucket);
   }
 
   public void writeAndChecksum(OutputStream os, byte[] buf, int offset, int length)

@@ -17,7 +17,6 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import network.crypta.node.NodeStarter;
 import network.crypta.support.Fields;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -73,7 +72,7 @@ public final class KeyGenUtils {
     int dotPos = version.indexOf('.');
     int dashPos = version.indexOf('-');
     int end = version.length();
-    if (dotPos > -1 && dotPos < end) {
+    if (dotPos > -1) {
       end = dotPos;
     }
     if (dashPos > -1 && dashPos < end) {
@@ -315,7 +314,7 @@ public final class KeyGenUtils {
    */
   private static byte[] genRandomBytes(int length) {
     byte[] randBytes = new byte[length];
-    NodeStarter.getGlobalSecureRandom().nextBytes(randBytes);
+    CryptoRandoms.shared().nextBytes(randBytes);
     return randBytes;
   }
 
