@@ -48,11 +48,14 @@ Use this skill when you need to:
 - `:foundation-config` is the current home for all main `network.crypta.config` and
   `network.crypta.l10n` sources. Their unit tests still live in the root test tree and are run by
   the root project.
-- Selective extractions that still share root output directories rely on leaf-owned stale-root
-  output metadata at `<leaf>/gradle/owned-root-output-patterns.txt`. Update that metadata whenever
-  a leaf starts owning additional main classes/resources that root used to compile/package, or move
-  to a more structural boundary instead. If the split under `network.crypta.support*` keeps
-  growing, prefer a future extraction such as `:foundation-support`.
+- Every extracted internal leaf relies on leaf-owned stale-root-output metadata at
+  `<leaf>/gradle/owned-root-output-patterns.txt`. This is required even for structurally separate
+  package/resource moves, because stale root outputs from earlier builds or branch switches can
+  still shadow leaf outputs while `buildJar` packages root outputs first.
+- Update that metadata whenever a leaf starts owning additional main classes/resources that root
+  used to compile/package. If the split under `network.crypta.support*` keeps growing, prefer a
+  future extraction such as `:foundation-support`, but keep the metadata accurate until the build
+  no longer has that shadowing risk.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
