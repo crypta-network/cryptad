@@ -8,7 +8,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.AtomicFileMoves;
 import network.crypta.support.io.LineReadingInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -239,7 +239,7 @@ public class FilePersistentConfig extends PersistentConfig {
    *
    * <p>Callers must hold {@link #storeSync}. The method serializes the export from {@link
    * #exportFieldSet()} to {@link #tempFilename} (including {@link #header} when provided), then
-   * moves it over {@link #filename} via {@link FileUtil#moveTo(File, File)}.
+   * moves it over {@link #filename} via {@link AtomicFileMoves#moveTo(File, File)}.
    *
    * @throws IOException if writing or moving the file fails
    */
@@ -254,7 +254,7 @@ public class FilePersistentConfig extends PersistentConfig {
         fs.writeToBigBuffer(fos);
       }
     }
-    FileUtil.moveTo(tempFilename, filename);
+    AtomicFileMoves.moveTo(tempFilename, filename);
   }
 
   /** Completes initialization and performs any deferred store. */

@@ -1,11 +1,12 @@
 package network.crypta.node;
 
 import java.io.Serial;
+import network.crypta.config.ConfigExitCodes;
 
 /**
  * Reports an early node startup failure with an associated process exit code.
  *
- * <p>Throw this exception when initialization cannot proceed and the launcher or wrapper should
+ * <p>Throw this exception when initialization cannot proceed, and the launcher or wrapper should
  * terminate the JVM with a deterministic exit status. Use one of the {@code EXIT_*} constants to
  * classify the failure. The chosen code is also exposed via {@link #exitCode} for programmatic
  * handling. Instances are immutable and thread-safe.
@@ -26,12 +27,14 @@ public class NodeInitException extends Exception {
   public static final int EXIT_COULD_NOT_START_UPDATER = 21;
 
   /** TMCI (text-mode control interface) fails to start. */
+  @SuppressWarnings("unused")
   public static final int EXIT_COULD_NOT_START_TMCI = 19;
 
   /** FProxy HTTP service fails to start. */
   public static final int EXIT_COULD_NOT_START_FPROXY = 18;
 
   /** FCP (client protocol) service fails to start. */
+  @SuppressWarnings("unused")
   public static final int EXIT_COULD_NOT_START_FCP = 17;
 
   /** Node directory is invalid, inaccessible, or not writable. */
@@ -49,14 +52,14 @@ public class NodeInitException extends Exception {
   /** Binding the USM port fails (already in use or permissions). */
   public static final int EXIT_COULD_NOT_BIND_USM = 9;
 
-  /** Other store-related initialization error not covered by specific codes. */
+  /** Other store-related initialization error which is not covered by specific codes. */
   public static final int EXIT_STORE_OTHER = 3;
 
   /** Upper bound for node-specific exit codes (not itself an exit value). */
   public static final int EXIT_NODE_UPPER_LIMIT = 1024;
 
   /** Generated or edited {@code wrapper.conf} is invalid. */
-  public static final int EXIT_BROKE_WRAPPER_CONF = 28;
+  public static final int EXIT_BROKE_WRAPPER_CONF = ConfigExitCodes.BROKE_WRAPPER_CONF;
 
   /** Creation or update of {@code master.keys} fails (e.g., I/O error). */
   public static final int EXIT_CANT_WRITE_MASTER_KEYS = 30;

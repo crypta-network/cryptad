@@ -14,10 +14,9 @@ import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
-import network.crypta.clients.http.TranslationToadlet;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.AtomicFileMoves;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -579,7 +578,7 @@ public final class BaseL10n {
         this.translationOverride.writeToBigBuffer(fos);
       }
 
-      FileUtil.moveTo(tempFile, finalFile);
+      AtomicFileMoves.moveTo(tempFile, finalFile);
       LOG.info("Override file saved successfully!");
     } catch (IOException e) {
       LOG.error("Error while saving the translation override: {}", e.getMessage(), e);
@@ -690,7 +689,7 @@ public final class BaseL10n {
    *
    * @param key Key to search for.
    * @return Text node with the resolved value; if the key is missing, returns a node prompting
-   *     translation with a link to {@link TranslationToadlet}.
+   *     translation with a link to {@link TranslationPaths#TOADLET_URL}.
    */
   public HTMLNode getHTMLNode(String key) {
     return getHTMLNode(key, null, null);
@@ -715,7 +714,7 @@ public final class BaseL10n {
     if (patterns != null) translationField.addChild("#", getDefaultString(key, patterns, values));
     else translationField.addChild("#", getDefaultString(key));
     translationField
-        .addChild("a", "href", TranslationToadlet.TOADLET_URL + "?translate=" + key)
+        .addChild("a", "href", TranslationPaths.TOADLET_URL + "?translate=" + key)
         .addChild("small", " (translate it in your native language!)");
 
     return translationField;
