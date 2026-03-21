@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
+import java.io.IOException;
 import java.net.Socket;
+import java.util.Objects;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -19,8 +21,9 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * thread, dispatching sockets to {@link FCPConnectionHandler} instances. Runtime lifecycle and
  * execution concerns are consumed through {@link RuntimePorts} so the listener does not depend on
  * daemon executor implementations directly. Configuration updates such as {@link
- * #updateBindTo(String)} and {@link #setAllowedHosts(String)} are delegated to the underlying
- * interface when available, while SSL mode is tracked via static flag accessors.
+ * #updateBindTo(String)}, {@link #setBindTo(String, boolean)}, and {@link #setAllowedHosts(String)}
+ * are delegated to the underlying interface when available and otherwise cached for later startup,
+ * while SSL mode is tracked via static flag accessors.
  *
  * <p>The listener is intentionally conservative about re-binding: it caches the created interface
  * and only creates a new one once per instance. Shutdown handling relies on the Tanuki Wrapper
@@ -52,6 +55,9 @@ final class FcpServerListener implements Runnable {
   /** Executor adapter expected by the legacy network-interface factories. */
   private final PriorityAwareExecutor executor;
 
+  /** Factory used to build short-lived interfaces for pre-start bind validation. */
+  private final ValidationInterfaceFactory validationInterfaceFactory;
+
   /** TCP port to bind when creating the network interface. */
   private final int port;
 
@@ -59,7 +65,7 @@ final class FcpServerListener implements Runnable {
   private final boolean enabled;
 
   /** Allowed-hosts filter string provided at initialization time. */
-  private final String allowedHosts;
+  private String allowedHosts;
 
   /** Current bind address string used when initializing the interface. */
   private String bindTo;
@@ -81,9 +87,32 @@ final class FcpServerListener implements Runnable {
    * @param config snapshot of listener configuration values at construction time.
    */
   FcpServerListener(FCPServer server, RuntimePorts runtime, FcpServerConfig config) {
+    this(server, runtime, config, FcpServerListener::createValidationInterface);
+  }
+
+  /**
+   * Creates a listener with an explicit factory for pre-start bind validation.
+   *
+   * <p>This overload exists so tests can supply deterministic validation interfaces without
+   * touching the real network stack. Production callers should use {@link
+   * #FcpServerListener(FCPServer, RuntimePorts, FcpServerConfig)}.
+   *
+   * @param server the owning server that constructs connection handlers for clients.
+   * @param runtime runtime SPI bridge supplying execution and lifecycle state used by the
+   *     accept-loop.
+   * @param config snapshot of listener configuration values at construction time.
+   * @param validationInterfaceFactory factory for temporary interfaces used to validate pre-start
+   *     bind changes.
+   */
+  FcpServerListener(
+      FCPServer server,
+      RuntimePorts runtime,
+      FcpServerConfig config,
+      ValidationInterfaceFactory validationInterfaceFactory) {
     this.server = server;
     this.runtime = runtime;
     this.executor = FcpRuntimeAdapters.priorityAwareExecutor(runtime);
+    this.validationInterfaceFactory = Objects.requireNonNull(validationInterfaceFactory);
     this.port = config.port();
     this.enabled = config.enabled();
     this.allowedHosts = config.allowedHosts();
@@ -118,19 +147,64 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Delegates to the underlying {@link NetworkInterface} to update binding addresses.
+   * Applies a new bind address to the active {@link NetworkInterface}, or validates it for startup.
    *
-   * <p>This method assumes a listener has already been started and will throw a {@link
-   * NullPointerException} if the interface has not been initialized. It forwards the raw bind
-   * string to {@link NetworkInterface#setBindTo(String, boolean)} and returns any failed addresses.
+   * <p>If the listener has not yet created its {@link NetworkInterface}, this method validates the
+   * provided bind string against a short-lived interface instance before caching it. Invalid
+   * addresses are returned to the caller and are not retained. Once the interface exists, the
+   * method forwards the raw bind string to {@link NetworkInterface#setBindTo(String, boolean)} and
+   * returns any failed addresses.
    *
    * @param value comma-separated bind addresses or {@code null} to use defaults.
-   * @param update whether to update acceptors immediately for the new bindings.
+   * @param ignoreUnbindableIp6 whether IPv6 bind failures should be ignored when validating or
+   *     applying the new bindings.
    * @return array of failed addresses, or {@code null} when all bindings succeed.
    */
-  @SuppressWarnings("SameParameterValue")
-  String[] setBindTo(String value, boolean update) {
-    return networkInterface.setBindTo(value, update);
+  @SuppressWarnings({"SameParameterValue", "java:S1168"})
+  String[] setBindTo(String value, boolean ignoreUnbindableIp6) {
+    NetworkInterface netIface = networkInterface;
+    if (netIface == null) {
+      return validatePreStartBindTo(value, ignoreUnbindableIp6);
+    }
+    return netIface.setBindTo(value, ignoreUnbindableIp6);
+  }
+
+  @SuppressWarnings("java:S1168")
+  private String[] validatePreStartBindTo(String value, boolean ignoreUnbindableIp6) {
+    NetworkInterface validationInterface =
+        validationInterfaceFactory.create(port, allowedHosts, executor);
+    String[] failedAddresses = validationInterface.setBindTo(value, ignoreUnbindableIp6);
+    boolean closed = closeValidationInterface(validationInterface, value);
+    if (failedAddresses == null && closed) {
+      bindTo = value;
+      return null;
+    }
+    return failedAddresses == null ? validationFailure(value) : failedAddresses;
+  }
+
+  private boolean closeValidationInterface(NetworkInterface validationInterface, String value) {
+    try {
+      validationInterface.close();
+      return true;
+    } catch (IOException e) {
+      LOG.warn("Failed to close temporary FCP bind validator for {}:{}", value, port, e);
+      return false;
+    }
+  }
+
+  private static String[] validationFailure(String value) {
+    return new String[] {normalizeBindTo(value)};
+  }
+
+  private static String normalizeBindTo(String value) {
+    return value == null || value.isEmpty() ? NetworkInterface.DEFAULT_BIND_TO : value;
+  }
+
+  private static NetworkInterface createValidationInterface(
+      int port, String allowedHosts, PriorityAwareExecutor executor) {
+    return ssl
+        ? new ValidationSslNetworkInterface(port, allowedHosts, executor)
+        : new ValidationNetworkInterface(port, allowedHosts, executor);
   }
 
   /**
@@ -146,29 +220,36 @@ final class FcpServerListener implements Runnable {
   }
 
   /**
-   * Returns the allowed-hosts string from the active interface, or the default when absent.
+   * Returns the allowed-hosts string from the active interface, or the configured value when
+   * absent.
    *
-   * <p>If the listener has not yet created its {@link NetworkInterface}, this method returns {@link
-   * NetworkInterface#DEFAULT_BIND_TO} to preserve legacy behavior during configuration discovery.
+   * <p>If the listener has not yet created its {@link NetworkInterface}, this method returns the
+   * listener's configured allowlist value so configuration callbacks can expose the current
+   * in-memory setting before the socket is active.
    *
-   * @return current allowlist string, or the default bind list when no interface exists.
+   * @return current allowlist string, or the configured value when no interface exists.
    */
   String getAllowedHosts() {
     NetworkInterface netIface = networkInterface;
-    return netIface == null ? NetworkInterface.DEFAULT_BIND_TO : netIface.getAllowedHosts();
+    return netIface == null ? allowedHosts : netIface.getAllowedHosts();
   }
 
   /**
-   * Applies a new allowed-hosts string to the active network interface.
+   * Applies a new allowed-hosts string to the active network interface and caches it for future
+   * binds.
    *
-   * <p>The method assumes the listener has been initialized and delegates to {@link
-   * NetworkInterface#setAllowedHosts(String)}. It does not validate the input beyond the interface
-   * implementation.
+   * <p>The method caches the value even when the interface has not yet been created, so later
+   * listener initialization sees the latest configured allowlist. When the interface is active, it
+   * delegates to {@link NetworkInterface#setAllowedHosts(String)}.
    *
    * @param value new allowlist string for filtering inbound connections.
    */
   void setAllowedHosts(String value) {
-    networkInterface.setAllowedHosts(value);
+    this.allowedHosts = value;
+    NetworkInterface netIface = networkInterface;
+    if (netIface != null) {
+      netIface.setAllowedHosts(value);
+    }
   }
 
   /**
@@ -246,5 +327,24 @@ final class FcpServerListener implements Runnable {
     Socket s = networkInterface.accept();
     FCPConnectionHandler ch = new FCPConnectionHandler(s, server);
     ch.start();
+  }
+
+  @FunctionalInterface
+  interface ValidationInterfaceFactory {
+    NetworkInterface create(int port, String allowedHosts, PriorityAwareExecutor executor);
+  }
+
+  private static final class ValidationNetworkInterface extends NetworkInterface {
+    private ValidationNetworkInterface(
+        int port, String allowedHosts, PriorityAwareExecutor executor) {
+      super(port, allowedHosts, executor);
+    }
+  }
+
+  private static final class ValidationSslNetworkInterface extends SSLNetworkInterface {
+    private ValidationSslNetworkInterface(
+        int port, String allowedHosts, PriorityAwareExecutor executor) {
+      super(port, allowedHosts, executor);
+    }
   }
 }

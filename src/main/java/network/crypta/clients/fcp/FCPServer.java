@@ -10,7 +10,6 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.config.Config;
 import network.crypta.io.AllowedHosts;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.Bucket;
 
@@ -49,12 +48,10 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public static final int DEFAULT_FCP_PORT = 9481;
 
-  /* It’s not the field that is deprecated, but accessing it directly is. */
-  private final NodeClientCore core;
-
   private final FcpServerRuntimeSupport serverRuntimeSupport;
   private final FcpMessageRuntimeSupport messageRuntimeSupport;
   private final FcpFetchRuntimeSupport fetchRuntimeSupport;
+  private final FcpFetchRuntimeSupport messageFetchRuntimeSupport;
   private final FcpInsertRuntimeSupport insertRuntimeSupport;
 
   private final RuntimePorts runtime;
@@ -110,13 +107,12 @@ public class FCPServer implements Runnable, DownloadCache {
     this.allowedHostsFullAccess = new AllowedHosts(config.allowedHostsFullAccess());
     this.port = config.port();
     this.enabled = config.enabled();
-    this.core = dependencies.core();
-    this.serverRuntimeSupport = new CoreFcpServerRuntimeSupport(core);
-    this.messageRuntimeSupport = new CoreFcpMessageRuntimeSupport(core);
     this.runtime = dependencies.runtimePorts();
-    this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime::transferAccess);
-    this.insertRuntimeSupport =
-        new CoreFcpInsertRuntimeSupport(core, () -> core.getRuntimePorts().transferAccess());
+    this.serverRuntimeSupport = dependencies.serverRuntimeSupport();
+    this.messageRuntimeSupport = dependencies.messageRuntimeSupport();
+    this.fetchRuntimeSupport = dependencies.fetchRuntimeSupport();
+    this.messageFetchRuntimeSupport = dependencies.messageFetchRuntimeSupport();
+    this.insertRuntimeSupport = dependencies.insertRuntimeSupport();
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();
@@ -124,57 +120,6 @@ public class FCPServer implements Runnable, DownloadCache {
     this.listener = new FcpServerListener(this, runtime, config);
     this.persistentOps =
         new FcpServerPersistentOps(this, serverRuntimeSupport, dependencies.persistentRoot());
-  }
-
-  /**
-   * Constructs a server instance wired to the provided node components and policy flags.
-   *
-   * <p>This convenience overload packages the raw parameters into {@link FcpServerConfig} and
-   * {@link FcpServerDependencies}, then delegates to the primary constructor. It captures immutable
-   * configuration such as the bind address, allowlists, port, and persistence roots; runtime
-   * toggles only adjust the dedicated mutable fields. It does not bind sockets or start background
-   * threads, so callers must invoke {@link #maybeStart()} to begin accepting connections.
-   *
-   * @param ipToBindTo textual bind address; {@code 0.0.0.0} listens on all interfaces.
-   * @param allowedHosts comma-separated allowlist enforced for standard FCP sockets.
-   * @param allowedHostsFullAccess allowlist used for privileged operations that bypass client-side
-   *     restrictions.
-   * @param port TCP port number for the FCP listener, in the host byte order.
-   * @param core node client core exposing persistence, download directories, and cache factories.
-   * @param runtime runtime SPI bridge for infrastructure code that avoids daemon internals.
-   * @param isEnabled whether networked FCP should start.
-   * @param assumeDDADownloadAllowed flag to treat download DDA as preapproved globally.
-   * @param assumeDDAUploadAllowed flag to treat upload DDA as preapproved globally.
-   * @param neverDropAMessage whether outbound queues retain messages under backpressure.
-   * @param maxMessageQueueLength maximum messages buffered per connection before applying limits.
-   * @param persistentRoot persistence root used to access global clients and caches.
-   */
-  @SuppressWarnings("java:S107")
-  public FCPServer(
-      String ipToBindTo,
-      String allowedHosts,
-      String allowedHostsFullAccess,
-      int port,
-      NodeClientCore core,
-      RuntimePorts runtime,
-      boolean isEnabled,
-      boolean assumeDDADownloadAllowed,
-      boolean assumeDDAUploadAllowed,
-      boolean neverDropAMessage,
-      int maxMessageQueueLength,
-      PersistentRequestRoot persistentRoot) {
-    this(
-        new FcpServerConfig(
-            ipToBindTo,
-            allowedHosts,
-            allowedHostsFullAccess,
-            port,
-            isEnabled,
-            assumeDDADownloadAllowed,
-            assumeDDAUploadAllowed,
-            neverDropAMessage,
-            maxMessageQueueLength),
-        new FcpServerDependencies(core, runtime, persistentRoot));
   }
 
   /**
@@ -221,18 +166,15 @@ public class FCPServer implements Runnable, DownloadCache {
    * <p>This factory wires the FCP-related settings into the {@code fcp} configuration subtree and
    * constructs the server with immutable values derived from that configuration. It does not start
    * network listeners; callers still invoke {@link #maybeStart()} at the appropriate lifecycle
-   * point. The returned server is fully wired to the supplied client core and persistence root, so
-   * it can immediately serve FCP traffic once started.
+   * point. The returned server is fully wired to the supplied dependencies, so it can immediately
+   * serve FCP traffic once started.
    *
-   * @param core client core used for persistence and endpoint access.
-   * @param runtime runtime SPI bridge used by infrastructure code inside the server.
+   * @param dependencies prebuilt FCP runtime and persistence dependencies.
    * @param config configuration registry where the {@code fcp} subsection is registered.
-   * @param root persistence root used to back global request queues.
    * @return configured server instance ready to be started by the caller.
    */
-  public static FCPServer maybeCreate(
-      NodeClientCore core, RuntimePorts runtime, Config config, PersistentRequestRoot root) {
-    return FcpServerConfigRegistrar.maybeCreate(core, runtime, config, root);
+  public static FCPServer maybeCreate(FcpServerDependencies dependencies, Config config) {
+    return FcpServerConfigRegistrar.maybeCreate(dependencies, config);
   }
 
   /**
@@ -731,9 +673,9 @@ public class FCPServer implements Runnable, DownloadCache {
   /**
    * Returns runtime support for residual message-level FCP infrastructure concerns.
    *
-   * <p>This package-local seam keeps message execution code independent of direct {@link
-   * NodeClientCore} access while preserving the current runtime behavior. It is an internal wiring
-   * detail of {@code clients.fcp}, not a public server API.
+   * <p>This package-local seam keeps message execution code independent of direct daemon-core
+   * access while preserving the current runtime behavior. It is an internal wiring detail of {@code
+   * clients.fcp}, not a public server API.
    *
    * @return message runtime support backing the remaining message-level FCP operations
    */
@@ -745,8 +687,8 @@ public class FCPServer implements Runnable, DownloadCache {
    * Returns runtime support for server-owned FCP infrastructure concerns.
    *
    * <p>This package-local seam keeps connection handling, persistent request plumbing, and inbound
-   * message parsing independent of direct {@link NodeClientCore} access while preserving current
-   * behavior. It is an internal wiring detail of {@code clients.fcp}, not a public server API.
+   * message parsing independent of direct daemon-core access while preserving current behavior. It
+   * is an internal wiring detail of {@code clients.fcp}, not a public server API.
    *
    * @return server runtime support backing infrastructure-level FCP operations
    */
@@ -757,8 +699,8 @@ public class FCPServer implements Runnable, DownloadCache {
   /**
    * Returns the package-local runtime support used by the FCP GET/fetch path.
    *
-   * <p>This seam keeps fetch request construction and getter setup independent of direct {@link
-   * NodeClientCore} access while preserving current runtime behavior. This accessor is used for the
+   * <p>This seam keeps fetch request construction and getter setup independent of direct
+   * daemon-core access while preserving current runtime behavior. This accessor is used for the
    * server-owned persistent/global GET flow, so its transfer policy stays aligned with {@link
    * #runtime()}. It is package-private because it is an internal wiring detail of {@code
    * clients.fcp}, not a public server API.
@@ -773,11 +715,11 @@ public class FCPServer implements Runnable, DownloadCache {
    * Returns the package-local runtime support used by the FCP insert and USK path.
    *
    * <p>This seam keeps put request construction, upload bucket allocation, and USK subscription
-   * wiring independent of direct {@link NodeClientCore} access while preserving current runtime
-   * behavior. Insert validation historically consulted the core runtime's transfer policy for both
-   * live message puts and queued local-file inserts, so this seam keeps upload checks aligned with
-   * {@code core.getRuntimePorts()}. It is package-private because it is an internal wiring detail
-   * of {@code clients.fcp}, not a public server API.
+   * wiring independent of direct daemon-core access while preserving current runtime behavior.
+   * Insert validation historically consulted the core runtime's transfer policy for both live
+   * message puts and queued local-file inserts, so this seam keeps upload checks aligned with the
+   * core runtime ports. It is package-private because it is an internal wiring detail of {@code
+   * clients.fcp}, not a public server API.
    *
    * @return insert runtime support backing put construction and USK subscriptions
    */
@@ -796,7 +738,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * @return fetch runtime support that uses the core runtime's transfer policy for message flows
    */
   FcpFetchRuntimeSupport messageFetchRuntimeSupport() {
-    return new CoreFcpFetchRuntimeSupport(core, () -> core.getRuntimePorts().transferAccess());
+    return messageFetchRuntimeSupport;
   }
 
   /**

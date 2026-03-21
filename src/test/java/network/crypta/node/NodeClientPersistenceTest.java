@@ -11,7 +11,9 @@ import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest;
+import network.crypta.clients.fcp.CoreFcpServerDependenciesFactory;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpServerDependencies;
 import network.crypta.clients.fcp.PersistentRequestClient;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -476,24 +478,31 @@ class NodeClientPersistenceTest {
     NodeClientCore core = mock(NodeClientCore.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     FCPServer expected = mock(FCPServer.class);
+    FcpServerDependencies dependencies = mock(FcpServerDependencies.class);
 
     // Act
-    try (MockedStatic<FCPServer> fcpServerMock = mockStatic(FCPServer.class)) {
-      fcpServerMock
+    try (MockedStatic<CoreFcpServerDependenciesFactory> factoryMock =
+            mockStatic(CoreFcpServerDependenciesFactory.class);
+        MockedStatic<FCPServer> fcpServerMock = mockStatic(FCPServer.class)) {
+      factoryMock
           .when(
               () ->
-                  FCPServer.maybeCreate(
-                      eq(core), eq(runtimePorts), eq(config), any(PersistentRequestRoot.class)))
+                  CoreFcpServerDependenciesFactory.create(
+                      eq(core), eq(runtimePorts), any(PersistentRequestRoot.class)))
+          .thenReturn(dependencies);
+      fcpServerMock
+          .when(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)))
           .thenReturn(expected);
 
       FCPServer result = persistence.createFcpServer(node, core, runtimePorts);
 
       // Assert
       assertSame(expected, result);
-      fcpServerMock.verify(
+      factoryMock.verify(
           () ->
-              FCPServer.maybeCreate(
-                  eq(core), eq(runtimePorts), eq(config), any(PersistentRequestRoot.class)));
+              CoreFcpServerDependenciesFactory.create(
+                  eq(core), eq(runtimePorts), any(PersistentRequestRoot.class)));
+      fcpServerMock.verify(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)));
     }
   }
 

@@ -46,16 +46,6 @@ class FCPServerTest {
   @Mock private HighLevelSimpleClient highLevelSimpleClient;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
-    when(runtimePorts.execution()).thenReturn(executionPort);
-    lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
-    lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
-    lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
-    lenient().when(core.getClientContext()).thenReturn(clientContext);
-    lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
-    lenient().when(core.getUskManager()).thenReturn(uskManager);
-    lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
-    lenient().when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
-    lenient().when(core.getRandom()).thenReturn(randomSource);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -67,8 +57,21 @@ class FCPServerTest {
             assumeUploadAllowed,
             false,
             10);
-    return new FCPServer(
-        config, new FcpServerDependencies(core, runtimePorts, new PersistentRequestRoot()));
+    return new FCPServer(config, newDependencies(new PersistentRequestRoot()));
+  }
+
+  private FcpServerDependencies newDependencies(PersistentRequestRoot root) {
+    when(runtimePorts.execution()).thenReturn(executionPort);
+    lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
+    lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
+    lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
+    lenient().when(core.getClientContext()).thenReturn(clientContext);
+    lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
+    lenient().when(core.getUskManager()).thenReturn(uskManager);
+    lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
+    lenient().when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
+    lenient().when(core.getRandom()).thenReturn(randomSource);
+    return CoreFcpServerDependenciesFactory.create(core, runtimePorts, root);
   }
 
   @Test
@@ -124,6 +127,8 @@ class FCPServerTest {
     PersistentRequestRoot root = spy(new PersistentRequestRoot());
     when(runtimePorts.execution()).thenReturn(executionPort);
     lenient().when(runtimePorts.transferAccess()).thenReturn(serverTransferAccess);
+    lenient().when(core.getRuntimePorts()).thenReturn(coreRuntimePorts);
+    lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -135,7 +140,7 @@ class FCPServerTest {
             false,
             false,
             10);
-    FCPServer server = new FCPServer(config, new FcpServerDependencies(core, runtimePorts, root));
+    FCPServer server = new FCPServer(config, newDependencies(root));
     PersistentRequestClient forever = root.registerForeverClient("forever", null);
 
     // Act

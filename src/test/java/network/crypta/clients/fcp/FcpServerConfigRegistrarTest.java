@@ -19,6 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -35,11 +42,7 @@ class FcpServerConfigRegistrarTest {
   void maybeCreate_whenDefaults_expectConfiguredServerAndInitializedSubConfig() {
     // Arrange
     Config config = new Config();
-    PersistentRequestRoot root = new PersistentRequestRoot();
-    when(runtimePorts.execution()).thenReturn(executionPort);
-
-    // Act
-    FCPServer server = FcpServerConfigRegistrar.maybeCreate(core, runtimePorts, config, root);
+    FCPServer server = FcpServerConfigRegistrar.maybeCreate(newDependencies(), config);
     SubConfig subConfig = config.get("fcp");
 
     // Assert
@@ -61,37 +64,47 @@ class FcpServerConfigRegistrarTest {
   }
 
   @Test
-  void fcpPortNumberCallback_whenValueUnchanged_expectNoException() {
+  void fcpPortNumberCallback_whenBeforeBind_expectInitialValue() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
     FcpServerConfigRegistrar.FCPPortNumberCallback callback =
-        new FcpServerConfigRegistrar.FCPPortNumberCallback(core);
+        new FcpServerConfigRegistrar.FCPPortNumberCallback(FCPServer.DEFAULT_FCP_PORT);
 
     // Act & Assert
-    assertEquals(server.port, callback.get());
-    assertDoesNotThrow(() -> callback.set(server.port));
+    assertEquals(FCPServer.DEFAULT_FCP_PORT, callback.get());
+    assertDoesNotThrow(() -> callback.set(FCPServer.DEFAULT_FCP_PORT));
   }
 
   @Test
-  void fcpPortNumberCallback_whenValueChanged_expectInvalidConfigValueException() {
+  void fcpPortNumberCallback_whenBoundAndValueChanged_expectInvalidConfigValueException() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
+    FCPServer server = newServer(null);
     FcpServerConfigRegistrar.FCPPortNumberCallback callback =
-        new FcpServerConfigRegistrar.FCPPortNumberCallback(core);
+        new FcpServerConfigRegistrar.FCPPortNumberCallback(FCPServer.DEFAULT_FCP_PORT);
+    callback.bind(server);
 
     // Act & Assert
+    assertEquals(server.port, callback.get());
     assertThrows(InvalidConfigValueException.class, () -> callback.set(server.port + 1));
   }
 
   @Test
-  void fcpEnabledCallback_whenValueUnchanged_expectNoException() {
+  void fcpEnabledCallback_whenBeforeBind_expectInitialValue() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
     FcpServerConfigRegistrar.FCPEnabledCallback callback =
-        new FcpServerConfigRegistrar.FCPEnabledCallback(core);
+        new FcpServerConfigRegistrar.FCPEnabledCallback(true);
+
+    // Act & Assert
+    assertTrue(callback.get());
+    assertDoesNotThrow(() -> callback.set(true));
+  }
+
+  @Test
+  void fcpEnabledCallback_whenBound_expectLiveServerValue() {
+    // Arrange
+    FCPServer server = newServer(null);
+    FcpServerConfigRegistrar.FCPEnabledCallback callback =
+        new FcpServerConfigRegistrar.FCPEnabledCallback(true);
+    callback.bind(server);
 
     // Act & Assert
     assertEquals(server.enabled, callback.get());
@@ -111,57 +124,130 @@ class FcpServerConfigRegistrarTest {
   }
 
   @Test
-  void fcpAllowedHostsCallback_whenServerMissing_expectDefaultBind() {
+  void fcpAllowedHostsCallback_whenBeforeBind_expectInitialValue() {
     // Arrange
-    when(core.getEndpoints().getFCPServer()).thenReturn(null);
     FcpServerConfigRegistrar.FCPAllowedHostsCallback callback =
-        new FcpServerConfigRegistrar.FCPAllowedHostsCallback(core);
+        new FcpServerConfigRegistrar.FCPAllowedHostsCallback(NetworkInterface.DEFAULT_BIND_TO);
 
     // Act & Assert
     assertEquals(NetworkInterface.DEFAULT_BIND_TO, callback.get());
   }
 
   @Test
-  void fcpAllowedHostsCallback_whenValueUnchanged_expectNoException() {
+  void fcpAllowedHostsCallback_whenBoundAndValueChanged_expectListenerUpdated() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
+    FcpServerListener listener = mock(FcpServerListener.class);
+    final String[] allowedHosts = {NetworkInterface.DEFAULT_BIND_TO};
+    doAnswer(
+            invocation -> {
+              allowedHosts[0] = invocation.getArgument(0);
+              return null;
+            })
+        .when(listener)
+        .setAllowedHosts(anyString());
+    when(listener.getAllowedHosts()).thenAnswer(_ -> allowedHosts[0]);
+
+    FCPServer server = newServer(listener);
     FcpServerConfigRegistrar.FCPAllowedHostsCallback callback =
-        new FcpServerConfigRegistrar.FCPAllowedHostsCallback(core);
+        new FcpServerConfigRegistrar.FCPAllowedHostsCallback(NetworkInterface.DEFAULT_BIND_TO);
+    callback.bind(server);
 
-    // Act & Assert
-    assertDoesNotThrow(() -> callback.set(NetworkInterface.DEFAULT_BIND_TO));
+    // Act
+    assertDoesNotThrow(() -> callback.set("127.0.0.1,192.168.0.1"));
+
+    // Assert
+    assertEquals("127.0.0.1,192.168.0.1", callback.get());
+    verify(listener).setAllowedHosts("127.0.0.1,192.168.0.1");
   }
 
   @Test
-  void fcpBindToCallback_whenGetCalled_expectServerBindTo() {
+  void fcpBindToCallback_whenBeforeBind_expectInitialValue() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
     FcpServerConfigRegistrar.FCPBindtoCallback callback =
-        new FcpServerConfigRegistrar.FCPBindtoCallback(core);
+        new FcpServerConfigRegistrar.FCPBindtoCallback("127.0.0.1");
 
     // Act & Assert
-    assertEquals(server.bindTo, callback.get());
+    assertEquals("127.0.0.1", callback.get());
   }
 
   @Test
-  void fcpAllowedHostsFullAccessCallback_whenValueUnchanged_expectNoException() {
+  void fcpBindToCallback_whenBoundAndValueChanged_expectServerUpdated() {
     // Arrange
-    FCPServer server = newServer();
-    when(core.getEndpoints().getFCPServer()).thenReturn(server);
-    FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback callback =
-        new FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback(core);
+    FcpServerListener listener = mock(FcpServerListener.class);
+    doNothing().when(listener).updateBindTo(anyString());
+    when(listener.setBindTo(anyString(), eq(true))).thenReturn(null);
+
+    FCPServer server = newServer(listener);
+    server.bindTo = "127.0.0.1";
+    FcpServerConfigRegistrar.FCPBindtoCallback callback =
+        new FcpServerConfigRegistrar.FCPBindtoCallback("127.0.0.1");
+    callback.bind(server);
+
+    // Act
+    assertDoesNotThrow(() -> callback.set("0.0.0.0"));
+
+    // Assert
+    assertEquals("0.0.0.0", server.bindTo);
+    verify(listener).setBindTo("0.0.0.0", true);
+    verify(listener).updateBindTo("0.0.0.0");
+  }
+
+  @Test
+  void fcpBindToCallback_whenListenerRejectsValue_expectInvalidConfigValueException() {
+    // Arrange
+    FcpServerListener listener = mock(FcpServerListener.class);
+    doNothing().when(listener).updateBindTo(anyString());
+    when(listener.setBindTo("0.0.0.0", true)).thenReturn(new String[] {"0.0.0.0"});
+    when(listener.setBindTo("127.0.0.1", true)).thenReturn(null);
+    FCPServer server = newServer(listener);
+    server.bindTo = "127.0.0.1";
+    FcpServerConfigRegistrar.FCPBindtoCallback callback =
+        new FcpServerConfigRegistrar.FCPBindtoCallback("127.0.0.1");
+    callback.bind(server);
 
     // Act & Assert
-    assertEquals(server.allowedHostsFullAccess.getAllowedHosts(), callback.get());
-    assertDoesNotThrow(() -> callback.set(server.allowedHostsFullAccess.getAllowedHosts()));
+    assertThrows(InvalidConfigValueException.class, () -> callback.set("0.0.0.0"));
+
+    // Assert
+    assertEquals("127.0.0.1", server.bindTo);
+    assertEquals("127.0.0.1", callback.get());
+    verify(listener).setBindTo("0.0.0.0", true);
+    verify(listener).setBindTo("127.0.0.1", true);
+    verify(listener, never()).updateBindTo("0.0.0.0");
+  }
+
+  @Test
+  void fcpAllowedHostsFullAccessCallback_whenBeforeBind_expectInitialValue() {
+    // Arrange
+    FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback callback =
+        new FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback(
+            NetworkInterface.DEFAULT_BIND_TO);
+
+    // Act & Assert
+    assertEquals(NetworkInterface.DEFAULT_BIND_TO, callback.get());
+  }
+
+  @Test
+  void fcpAllowedHostsFullAccessCallback_whenBoundAndValueChanged_expectServerUpdated() {
+    // Arrange
+    FCPServer server = newServer(null);
+    FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback callback =
+        new FcpServerConfigRegistrar.FCPAllowedHostsFullAccessCallback(
+            NetworkInterface.DEFAULT_BIND_TO);
+    callback.bind(server);
+
+    // Act
+    assertDoesNotThrow(() -> callback.set("127.0.0.1,192.168.0.1"));
+
+    // Assert
+    assertEquals("127.0.0.1,192.168.0.1", callback.get());
+    assertEquals("127.0.0.1,192.168.0.1", server.allowedHostsFullAccess.getAllowedHosts());
   }
 
   @Test
   void assumeDDADownloadIsAllowedCallback_whenSet_expectServerUpdated() {
     // Arrange
-    FCPServer server = newServer();
+    FCPServer server = newServer(null);
     FcpServerConfigRegistrar.AssumeDDADownloadIsAllowedCallback callback =
         new FcpServerConfigRegistrar.AssumeDDADownloadIsAllowedCallback();
     callback.server = server;
@@ -176,7 +262,7 @@ class FcpServerConfigRegistrarTest {
   @Test
   void assumeDDAUploadIsAllowedCallback_whenSet_expectServerUpdated() {
     // Arrange
-    FCPServer server = newServer();
+    FCPServer server = newServer(null);
     FcpServerConfigRegistrar.AssumeDDAUploadIsAllowedCallback callback =
         new FcpServerConfigRegistrar.AssumeDDAUploadIsAllowedCallback();
     callback.server = server;
@@ -191,7 +277,7 @@ class FcpServerConfigRegistrarTest {
   @Test
   void neverDropAMessageCallback_whenSet_expectServerUpdated() {
     // Arrange
-    FCPServer server = newServer();
+    FCPServer server = newServer(null);
     FcpServerConfigRegistrar.NeverDropAMessageCallback callback =
         new FcpServerConfigRegistrar.NeverDropAMessageCallback();
     callback.server = server;
@@ -206,7 +292,7 @@ class FcpServerConfigRegistrarTest {
   @Test
   void maxMessageQueueLengthCallback_whenSet_expectServerUpdated() {
     // Arrange
-    FCPServer server = newServer();
+    FCPServer server = newServer(null);
     FcpServerConfigRegistrar.MaxMessageQueueLengthCallback callback =
         new FcpServerConfigRegistrar.MaxMessageQueueLengthCallback();
     callback.server = server;
@@ -219,8 +305,12 @@ class FcpServerConfigRegistrarTest {
     assertEquals(42, callback.get());
   }
 
-  private FCPServer newServer() {
+  private FcpServerDependencies newDependencies() {
     when(runtimePorts.execution()).thenReturn(executionPort);
+    return CoreFcpServerDependenciesFactory.create(core, runtimePorts, new PersistentRequestRoot());
+  }
+
+  private FCPServer newServer(FcpServerListener listenerOverride) {
     FcpServerConfig config =
         new FcpServerConfig(
             "127.0.0.1",
@@ -232,7 +322,25 @@ class FcpServerConfigRegistrarTest {
             false,
             false,
             10);
-    return new FCPServer(
-        config, new FcpServerDependencies(core, runtimePorts, new PersistentRequestRoot()));
+    FcpServerDependencies dependencies = newDependencies();
+    if (listenerOverride == null) {
+      return new FCPServer(config, dependencies);
+    }
+    return new TestServer(config, dependencies, listenerOverride);
+  }
+
+  private static final class TestServer extends FCPServer {
+    private final FcpServerListener listener;
+
+    private TestServer(
+        FcpServerConfig config, FcpServerDependencies dependencies, FcpServerListener listener) {
+      super(config, dependencies);
+      this.listener = listener;
+    }
+
+    @Override
+    FcpServerListener listener() {
+      return listener;
+    }
   }
 }

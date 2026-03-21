@@ -8,8 +8,6 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
-import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
@@ -19,18 +17,18 @@ import network.crypta.support.api.StringCallback;
  *
  * <p>This helper centralizes the wiring between the {@code fcp} {@link SubConfig} and the runtime
  * components that back the FCP listener and request lifecycle. It installs callbacks for mutable
- * configuration values (such as bind address and allowed hosts), preserves the immutable defaults
- * captured in {@link FcpServerConfig}, and creates the server instance that other subsystems use.
- * The method is typically invoked during node startup or endpoint initialization and is expected to
- * run once per process. It performs no network binding or background thread creation; callers still
- * invoke {@link FCPServer#maybeStart()} to begin accepting connections.
+ * configuration values, preserves the configured defaults until the server is available, and
+ * creates the server instance that other subsystems use. The method is typically invoked during
+ * node startup or endpoint initialization and is expected to run once per process. It performs no
+ * network binding or background thread creation; callers still invoke {@link
+ * FCPServer#maybeStart()} to begin accepting connections.
  *
  * <p>Responsibilities include:
  *
  * <ul>
  *   <li>Registering the {@code fcp} option set with deterministic ordering and defaults.
- *   <li>Binding config callbacks that guard runtime changes and apply validation.
- *   <li>Building the {@link FCPServer} with dependencies from the node client core.
+ *   <li>Binding config callbacks directly to the created {@link FCPServer}.
+ *   <li>Building the server with the already-constructed dependency bundle.
  * </ul>
  *
  * @see FCPServer
@@ -38,6 +36,11 @@ import network.crypta.support.api.StringCallback;
  * @see FcpServerListener
  */
 final class FcpServerConfigRegistrar {
+  private static final String ENABLED_OPTION = "enabled";
+  private static final String BIND_TO_OPTION = "bindTo";
+  private static final String ALLOWED_HOSTS_OPTION = "allowedHosts";
+  private static final String ALLOWED_HOSTS_FULL_ACCESS_OPTION = "allowedHostsFullAccess";
+
   /** Creates a registrar utility; instances are not used. */
   private FcpServerConfigRegistrar() {}
 
@@ -45,57 +48,64 @@ final class FcpServerConfigRegistrar {
    * Registers the FCP sub-configuration and returns a fully wired {@link FCPServer} instance.
    *
    * <p>The method creates (or retrieves) a {@link SubConfig} named {@code fcp}, registers all FCP
-   * options with their defaults, and attaches callbacks that enforce non-mutable fields such as the
-   * port and SSL toggle. If SSL support is available, the persisted SSL value is applied to the
-   * listener state; otherwise the setting remains disabled until restart. After building the {@link
-   * FcpServerConfig} and dependency container, the returned server is created and the config is
-   * marked initialized so later user changes trigger callbacks.
+   * options with their defaults, and attaches callbacks that guard runtime changes. If SSL support
+   * is available, the persisted SSL value is applied to the listener state; otherwise the setting
+   * remains disabled until restart. After building the {@link FcpServerConfig} and server
+   * dependency bundle, the returned server is created and the config is marked initialized so later
+   * user changes trigger callbacks.
    *
-   * <pre>{@code
-   * Config config = new Config();
-   * FCPServer server = FcpServerConfigRegistrar.maybeCreate(core, runtimePorts, config, root);
-   * server.maybeStart();
-   * }</pre>
-   *
-   * @param core client core used for endpoint access and persisted settings lookups.
-   * @param runtimePorts runtime SPI bridge passed to the created server.
+   * @param dependencies pre-built runtime and persistence dependencies for the server.
    * @param config root configuration registry where the {@code fcp} subsection is registered.
-   * @param root persistent request root used to wire global request queues.
    * @return configured {@link FCPServer} instance ready for {@link FCPServer#maybeStart()}.
    */
-  static FCPServer maybeCreate(
-      NodeClientCore core, RuntimePorts runtimePorts, Config config, PersistentRequestRoot root) {
+  static FCPServer maybeCreate(FcpServerDependencies dependencies, Config config) {
     SubConfig fcpConfig = config.createSubConfig("fcp");
     short sortOrder = 0;
+
+    FCPEnabledCallback enabledCallback = new FCPEnabledCallback(false);
     fcpConfig.register(
-        "enabled",
+        ENABLED_OPTION,
         true,
         new Option.Meta(sortOrder++, true, false, "FcpServer.isEnabled", "FcpServer.isEnabledLong"),
-        new FCPEnabledCallback(core));
+        enabledCallback);
+    enabledCallback.setInitialEnabled(fcpConfig.getBoolean(ENABLED_OPTION));
+
     fcpConfig.register(
         "ssl",
         false,
         new Option.Meta(sortOrder++, true, true, "FcpServer.ssl", "FcpServer.sslLong"),
         new FCPSSLCallback());
+    FCPPortNumberCallback portCallback = new FCPPortNumberCallback(FCPServer.DEFAULT_FCP_PORT);
     fcpConfig.register(
         "port",
         FCPServer.DEFAULT_FCP_PORT /* anagram of 1984, and 1000 up from the old number */,
         new Option.Meta(2, true, true, "FcpServer.portNumber", "FcpServer.portNumberLong"),
-        new FCPPortNumberCallback(core),
+        portCallback,
         false);
+    portCallback.setInitialPort(fcpConfig.getInt("port"));
+
+    FCPBindtoCallback bindToCallback = new FCPBindtoCallback(NetworkInterface.DEFAULT_BIND_TO);
     fcpConfig.register(
-        "bindTo",
+        BIND_TO_OPTION,
         NetworkInterface.DEFAULT_BIND_TO,
         new Option.Meta(sortOrder++, true, true, "FcpServer.bindTo", "FcpServer.bindToLong"),
-        new FCPBindtoCallback(core));
+        bindToCallback);
+    bindToCallback.setInitialBindTo(fcpConfig.getString(BIND_TO_OPTION));
+
+    FCPAllowedHostsCallback allowedHostsCallback =
+        new FCPAllowedHostsCallback(NetworkInterface.DEFAULT_BIND_TO);
     fcpConfig.register(
-        "allowedHosts",
+        ALLOWED_HOSTS_OPTION,
         NetworkInterface.DEFAULT_BIND_TO,
         new Option.Meta(
             sortOrder++, true, true, "FcpServer.allowedHosts", "FcpServer.allowedHostsLong"),
-        new FCPAllowedHostsCallback(core));
+        allowedHostsCallback);
+    allowedHostsCallback.setInitialAllowedHosts(fcpConfig.getString(ALLOWED_HOSTS_OPTION));
+
+    FCPAllowedHostsFullAccessCallback allowedHostsFullAccessCallback =
+        new FCPAllowedHostsFullAccessCallback(NetworkInterface.DEFAULT_BIND_TO);
     fcpConfig.register(
-        "allowedHostsFullAccess",
+        ALLOWED_HOSTS_FULL_ACCESS_OPTION,
         NetworkInterface.DEFAULT_BIND_TO,
         new Option.Meta(
             sortOrder++,
@@ -103,7 +113,9 @@ final class FcpServerConfigRegistrar {
             true,
             "FcpServer.allowedHostsFullAccess",
             "FcpServer.allowedHostsFullAccessLong"),
-        new FCPAllowedHostsFullAccessCallback(core));
+        allowedHostsFullAccessCallback);
+    allowedHostsFullAccessCallback.setInitialAllowedHostsFullAccess(
+        fcpConfig.getString(ALLOWED_HOSTS_FULL_ACCESS_OPTION));
 
     AssumeDDADownloadIsAllowedCallback cb4 = new AssumeDDADownloadIsAllowedCallback();
     AssumeDDAUploadIsAllowedCallback cb5 = new AssumeDDAUploadIsAllowedCallback();
@@ -157,22 +169,26 @@ final class FcpServerConfigRegistrar {
 
     FcpServerConfig serverConfig =
         new FcpServerConfig(
-            fcpConfig.getString("bindTo"),
-            fcpConfig.getString("allowedHosts"),
-            fcpConfig.getString("allowedHostsFullAccess"),
+            fcpConfig.getString(BIND_TO_OPTION),
+            fcpConfig.getString(ALLOWED_HOSTS_OPTION),
+            fcpConfig.getString(ALLOWED_HOSTS_FULL_ACCESS_OPTION),
             fcpConfig.getInt("port"),
-            fcpConfig.getBoolean("enabled"),
+            fcpConfig.getBoolean(ENABLED_OPTION),
             fcpConfig.getBoolean("assumeDownloadDDAIsAllowed"),
             fcpConfig.getBoolean("assumeUploadDDAIsAllowed"),
             fcpConfig.getBoolean("neverDropAMessage"),
             fcpConfig.getInt("maxMessageQueueLength"));
-    FcpServerDependencies dependencies = new FcpServerDependencies(core, runtimePorts, root);
     FCPServer fcp = new FCPServer(serverConfig, dependencies);
 
-    cb4.server = fcp;
-    cb5.server = fcp;
-    cb6.server = fcp;
-    cb7.server = fcp;
+    portCallback.bind(fcp);
+    enabledCallback.bind(fcp);
+    bindToCallback.bind(fcp);
+    allowedHostsCallback.bind(fcp);
+    allowedHostsFullAccessCallback.bind(fcp);
+    cb4.bind(fcp);
+    cb5.bind(fcp);
+    cb6.bind(fcp);
+    cb7.bind(fcp);
 
     fcpConfig.finishedInitialization();
     return fcp;
@@ -180,22 +196,24 @@ final class FcpServerConfigRegistrar {
 
   /** Callback that exposes the read-only FCP port configuration. */
   static class FCPPortNumberCallback extends IntCallback {
+    private int initialPort;
+    private FCPServer server;
 
-    /** Node core used to access the active endpoint configuration. */
-    private final NodeClientCore node;
+    FCPPortNumberCallback(int initialPort) {
+      this.initialPort = initialPort;
+    }
 
-    /**
-     * Creates a callback bound to the provided node client core.
-     *
-     * @param node client core supplying the current endpoint configuration.
-     */
-    FCPPortNumberCallback(NodeClientCore node) {
-      this.node = node;
+    void setInitialPort(int initialPort) {
+      this.initialPort = initialPort;
+    }
+
+    void bind(FCPServer server) {
+      this.server = server;
     }
 
     @Override
     public Integer get() {
-      return node.getEndpoints().getFCPServer().port;
+      return server == null ? initialPort : server.port;
     }
 
     @Override
@@ -213,22 +231,24 @@ final class FcpServerConfigRegistrar {
 
   /** Callback that exposes the read-only enabled flag for networked FCP. */
   static class FCPEnabledCallback extends BooleanCallback {
+    private boolean initialEnabled;
+    private FCPServer server;
 
-    /** Node core used to access the endpoint state for the enabled flag. */
-    final NodeClientCore node;
+    FCPEnabledCallback(boolean initialEnabled) {
+      this.initialEnabled = initialEnabled;
+    }
 
-    /**
-     * Creates a callback bound to the provided node client core.
-     *
-     * @param node client core supplying the current endpoint configuration.
-     */
-    FCPEnabledCallback(NodeClientCore node) {
-      this.node = node;
+    void setInitialEnabled(boolean initialEnabled) {
+      this.initialEnabled = initialEnabled;
+    }
+
+    void bind(FCPServer server) {
+      this.server = server;
     }
 
     @Override
     public Boolean get() {
-      return node.getEndpoints().getFCPServer().enabled;
+      return server == null ? initialEnabled : server.enabled;
     }
 
     @Override
@@ -247,7 +267,6 @@ final class FcpServerConfigRegistrar {
 
   /** Callback that reports and guards the SSL enablement flag for FCP. */
   static class FCPSSLCallback extends BooleanCallback {
-
     /** Creates a callback instance for SSL configuration handling. */
     FCPSSLCallback() {}
 
@@ -286,33 +305,41 @@ final class FcpServerConfigRegistrar {
 
   /** Callback that exposes the bind address and updates the listener when modified. */
   static class FCPBindtoCallback extends StringCallback {
+    private String initialBindTo;
+    private FCPServer server;
 
-    /** Node core used to resolve the active FCP server instance. */
-    final NodeClientCore node;
+    FCPBindtoCallback(String initialBindTo) {
+      this.initialBindTo = initialBindTo;
+    }
 
-    /**
-     * Creates a callback bound to the provided node client core.
-     *
-     * @param node client core supplying the current endpoint configuration.
-     */
-    FCPBindtoCallback(NodeClientCore node) {
-      this.node = node;
+    void setInitialBindTo(String initialBindTo) {
+      this.initialBindTo = initialBindTo;
+    }
+
+    void bind(FCPServer server) {
+      this.server = server;
+      server.listener().updateBindTo(initialBindTo);
+      server.bindTo = initialBindTo;
     }
 
     @Override
     public String get() {
-      return node.getEndpoints().getFCPServer().bindTo;
+      return server == null ? initialBindTo : server.bindTo;
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
+      if (server == null) {
+        initialBindTo = val;
+        return;
+      }
       String oldValue = get();
       if (!val.equals(oldValue)) {
-        FCPServer server = node.getEndpoints().getFCPServer();
+        FCPServer currentServer = server;
 
-        String[] failedAddresses = server.listener().setBindTo(val, true);
+        String[] failedAddresses = currentServer.listener().setBindTo(val, true);
         if (failedAddresses != null) {
-          server.listener().setBindTo(oldValue, true);
+          currentServer.listener().setBindTo(oldValue, true);
           throw new InvalidConfigValueException(
               NodeL10n.getBase()
                   .getString(
@@ -321,40 +348,44 @@ final class FcpServerConfigRegistrar {
                       Arrays.toString(failedAddresses)));
         }
 
-        server.listener().setBindTo(val, true);
-        server.listener().updateBindTo(val);
-        server.bindTo = val;
+        currentServer.listener().updateBindTo(val);
+        currentServer.bindTo = val;
+        initialBindTo = val;
       }
     }
   }
 
   /** Callback that reads or updates the allowed-hosts list for the FCP listener. */
   static class FCPAllowedHostsCallback extends StringCallback {
+    private String initialAllowedHosts;
+    private FCPServer server;
 
-    /** Node core used to resolve the active FCP server instance. */
-    private final NodeClientCore node;
+    FCPAllowedHostsCallback(String initialAllowedHosts) {
+      this.initialAllowedHosts = initialAllowedHosts;
+    }
 
-    /**
-     * Creates a callback bound to the provided node client core.
-     *
-     * @param node client core supplying the current endpoint configuration.
-     */
-    public FCPAllowedHostsCallback(NodeClientCore node) {
-      this.node = node;
+    void setInitialAllowedHosts(String initialAllowedHosts) {
+      this.initialAllowedHosts = initialAllowedHosts;
+    }
+
+    void bind(FCPServer server) {
+      this.server = server;
+      server.listener().setAllowedHosts(initialAllowedHosts);
     }
 
     @Override
     public String get() {
-      FCPServer server = node.getEndpoints().getFCPServer();
-      if (server == null) return NetworkInterface.DEFAULT_BIND_TO;
-      return server.listener().getAllowedHosts();
+      return server == null ? initialAllowedHosts : server.listener().getAllowedHosts();
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
         try {
-          node.getEndpoints().getFCPServer().listener().setAllowedHosts(val);
+          if (server != null) {
+            server.listener().setAllowedHosts(val);
+          }
+          initialAllowedHosts = val;
         } catch (IllegalArgumentException e) {
           throw new InvalidConfigValueException(e);
         }
@@ -364,28 +395,37 @@ final class FcpServerConfigRegistrar {
 
   /** Callback that manages the full-access allowlist for privileged operations. */
   static class FCPAllowedHostsFullAccessCallback extends StringCallback {
-    /** Node core used to resolve the active FCP server instance. */
-    private final NodeClientCore node;
+    private String initialAllowedHostsFullAccess;
+    private FCPServer server;
 
-    /**
-     * Creates a callback bound to the provided node client core.
-     *
-     * @param node client core supplying the current endpoint configuration.
-     */
-    public FCPAllowedHostsFullAccessCallback(NodeClientCore node) {
-      this.node = node;
+    FCPAllowedHostsFullAccessCallback(String initialAllowedHostsFullAccess) {
+      this.initialAllowedHostsFullAccess = initialAllowedHostsFullAccess;
+    }
+
+    void setInitialAllowedHostsFullAccess(String initialAllowedHostsFullAccess) {
+      this.initialAllowedHostsFullAccess = initialAllowedHostsFullAccess;
+    }
+
+    void bind(FCPServer server) {
+      this.server = server;
+      server.getAllowedHostsFullAccess().setAllowedHosts(initialAllowedHostsFullAccess);
     }
 
     @Override
     public String get() {
-      return node.getEndpoints().getFCPServer().getAllowedHostsFullAccess().getAllowedHosts();
+      return server == null
+          ? initialAllowedHostsFullAccess
+          : server.getAllowedHostsFullAccess().getAllowedHosts();
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
         try {
-          node.getEndpoints().getFCPServer().getAllowedHostsFullAccess().setAllowedHosts(val);
+          if (server != null) {
+            server.getAllowedHostsFullAccess().setAllowedHosts(val);
+          }
+          initialAllowedHostsFullAccess = val;
         } catch (IllegalArgumentException e) {
           throw new InvalidConfigValueException(e);
         }
@@ -400,6 +440,10 @@ final class FcpServerConfigRegistrar {
 
     /** Creates a callback instance for download DDA defaults. */
     AssumeDDADownloadIsAllowedCallback() {}
+
+    void bind(FCPServer server) {
+      this.server = server;
+    }
 
     @Override
     public Boolean get() {
@@ -421,6 +465,10 @@ final class FcpServerConfigRegistrar {
     /** Creates a callback instance for upload DDA defaults. */
     AssumeDDAUploadIsAllowedCallback() {}
 
+    void bind(FCPServer server) {
+      this.server = server;
+    }
+
     @Override
     public Boolean get() {
       return server.assumeUploadDDAIsAllowed;
@@ -441,6 +489,10 @@ final class FcpServerConfigRegistrar {
     /** Creates a callback instance for queue retention defaults. */
     NeverDropAMessageCallback() {}
 
+    void bind(FCPServer server) {
+      this.server = server;
+    }
+
     @Override
     public Boolean get() {
       return server.neverDropAMessage;
@@ -460,6 +512,10 @@ final class FcpServerConfigRegistrar {
 
     /** Creates a callback instance for queue length defaults. */
     MaxMessageQueueLengthCallback() {}
+
+    void bind(FCPServer server) {
+      this.server = server;
+    }
 
     @Override
     public Integer get() {
