@@ -8,6 +8,7 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.l10n.TranslationPaths;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet.KeyIterator;
@@ -49,7 +50,7 @@ public class TranslationToadlet extends Toadlet {
    * emitting navigation, links back to the translation UI. The trailing slash is intentional to
    * align with other in-UI links that append query parameters directly without adding a separator.
    */
-  public static final String TOADLET_URL = "/translation/";
+  public static final String TOADLET_URL = TranslationPaths.TOADLET_URL;
 
   private static final String PARAM_TO_TRANSLATE_ONLY = "toTranslateOnly";
   private static final String PARAM_GET_OVERRIDE_FILE = "getOverrideTranslationFile";

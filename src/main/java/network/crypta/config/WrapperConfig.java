@@ -11,8 +11,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import network.crypta.node.NodeInitException;
-import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -58,7 +56,8 @@ public class WrapperConfig {
       LOG.info("Cannot alter properties: wrapper.conf not writable");
       return false;
     }
-    if (!FileUtil.getCanonicalFile(f).getParentFile().canWrite()) {
+    File parent = canonicalOrAbsolute(f).getParentFile();
+    if (parent == null || !parent.canWrite()) {
       LOG.info("Cannot alter properties: parent dir not writable");
       return false; // Can we create a file to rename over wrapper.conf?
     }
@@ -198,9 +197,17 @@ public class WrapperConfig {
                 + " boot until you get a new wrapper.conf!\n"
                 + "The old config file is saved in {} and it should be renamed to wrapper.conf",
             oldOldConfig);
-        System.exit(NodeInitException.EXIT_BROKE_WRAPPER_CONF);
+        System.exit(ConfigExitCodes.BROKE_WRAPPER_CONF);
       }
     }
     return true;
+  }
+
+  private static File canonicalOrAbsolute(File file) {
+    try {
+      return file.getAbsoluteFile().getCanonicalFile();
+    } catch (IOException _) {
+      return file.getAbsoluteFile();
+    }
   }
 }

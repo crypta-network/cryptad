@@ -5,6 +5,7 @@ import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.l10n.TranslationPaths;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
@@ -66,6 +67,12 @@ class TranslationToadletTest {
   @Test
   void path_returnsTranslationUrl() {
     assertEquals(TranslationToadlet.TOADLET_URL, toadlet.path());
+  }
+
+  @Test
+  void translationUrlConstants_shareCanonicalPath() {
+    assertEquals("/translation/", TranslationPaths.TOADLET_URL);
+    assertEquals(TranslationPaths.TOADLET_URL, TranslationToadlet.TOADLET_URL);
   }
 
   @Test

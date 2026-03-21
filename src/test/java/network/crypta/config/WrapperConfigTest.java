@@ -1,13 +1,16 @@
 package network.crypta.config;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import network.crypta.node.NodeInitException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -29,7 +32,7 @@ class WrapperConfigTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    // Clear static overrides map to avoid cross-test pollution
+    // Clear static overrides the map to avoid cross-test pollution
     Field f = WrapperConfig.class.getDeclaredField("overrides");
     f.setAccessible(true);
     @SuppressWarnings("unchecked")
@@ -77,7 +80,7 @@ class WrapperConfigTest {
     Map<String, String> map = (Map<String, String>) f.get(null);
     map.put("my.prop", "override");
 
-    // Also mock WrapperManager to prove override takes precedence
+    // Also, mock WrapperManager to prove override takes precedence
     try (MockedStatic<WrapperManager> mocked = Mockito.mockStatic(WrapperManager.class)) {
       Properties props = new Properties();
       props.setProperty("my.prop", "fromWrapper");
@@ -162,6 +165,26 @@ class WrapperConfigTest {
   }
 
   @Test
+  void canonicalOrAbsolute_whenCanonicalLookupFails_returnsAbsoluteFile() throws Exception {
+    // Arrange
+    Method method = WrapperConfig.class.getDeclaredMethod("canonicalOrAbsolute", File.class);
+    method.setAccessible(true);
+    File file = new FailingCanonicalFile("wrapper/wrapper.conf");
+
+    // Act
+    File resolved = (File) method.invoke(null, file);
+
+    // Assert
+    assertEquals(file.getAbsoluteFile(), resolved);
+  }
+
+  @Test
+  void configExitCodes_whenBrokeWrapperConf_constantStaysAtTwentyEight() {
+    assertEquals(28, ConfigExitCodes.BROKE_WRAPPER_CONF);
+    assertEquals(ConfigExitCodes.BROKE_WRAPPER_CONF, NodeInitException.EXIT_BROKE_WRAPPER_CONF);
+  }
+
+  @Test
   @Tag("io")
   void setWrapperProperty_whenPropertyExists_updatesValueAndKeepsReload() throws Exception {
     // Arrange: wrapper/wrapper.conf exists with the target property and reload flag present
@@ -184,7 +207,7 @@ class WrapperConfigTest {
     // Assert
     assertTrue(ok);
     String content = Files.readString(conf, StandardCharsets.UTF_8);
-    // Ensure updated exactly once and reload flag preserved exactly once
+    // Ensure updated exactly once and the reload flag preserved exactly once
     assertTrue(content.contains("my.key=new"));
     assertFalse(content.contains("my.key=old"));
 
@@ -206,7 +229,7 @@ class WrapperConfigTest {
   @Test
   @Tag("io")
   void setWrapperProperty_whenMissingProperty_appendsPropertyAndReload() throws Exception {
-    // Arrange: wrapper.conf without the target property and without reload flag
+    // Arrange: wrapper.conf without the target property and without a reload flag
     Path wrapper = repoRoot().resolve("wrapper");
     Files.createDirectories(wrapper);
     Path conf = wrapper.resolve("wrapper.conf");
@@ -254,5 +277,23 @@ class WrapperConfigTest {
     assertTrue(content.contains("top.level=ok"));
     assertTrue(
         content.toLowerCase(Locale.ROOT).contains("wrapper.restart.reload_configuration=true"));
+  }
+
+  private static final class FailingCanonicalFile extends File {
+    private static final long serialVersionUID = 1L;
+
+    FailingCanonicalFile(String pathname) {
+      super(pathname);
+    }
+
+    @Override
+    public File getAbsoluteFile() {
+      return new FailingCanonicalFile(super.getAbsolutePath());
+    }
+
+    @Override
+    public File getCanonicalFile() throws IOException {
+      throw new IOException("canonicalization failed");
+    }
   }
 }

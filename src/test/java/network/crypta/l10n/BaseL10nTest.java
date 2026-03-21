@@ -1,6 +1,7 @@
 package network.crypta.l10n;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -493,6 +494,23 @@ class BaseL10nTest {
     assertEquals("Sane", l10n.getString("test.sanity"));
     l10n.setOverride(" test.sanity ", " Sane ");
     assertFalse(l10n.isOverridden("test.sanity"));
+  }
+
+  @Test
+  void setOverride_whenNewValue_expectPersistedOverrideFile(@TempDir Path tmp) throws Exception {
+    BaseL10n l10n =
+        new BaseL10n(
+            "network/crypta/l10n/",
+            "crypta.l10n.${lang}.test.properties",
+            tmp.resolve("crypta.l10n.${lang}.override.properties").toString(),
+            LANGUAGE.ENGLISH);
+
+    l10n.setOverride("new.override", "Value");
+
+    Path overrideFile = tmp.resolve("crypta.l10n.en.override.properties");
+    assertTrue(Files.exists(overrideFile));
+    assertEquals(
+        "Value", SimpleFieldSet.readFrom(overrideFile.toFile(), false, false).get("new.override"));
   }
 
   @Test
