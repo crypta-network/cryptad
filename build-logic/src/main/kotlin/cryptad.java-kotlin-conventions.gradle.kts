@@ -229,7 +229,7 @@ tasks.withType<Test>().configureEach {
   exclude("org/spaceroots/**/*$*Test.class")
   // Point tests expecting old layout to new standard resource locations
   systemProperty("test.l10npath_test", "src/test/resources/network/crypta/l10n/")
-  systemProperty("test.l10npath_main", "src/main/resources/network/crypta/l10n/")
+  systemProperty("test.l10npath_main", "foundation-config/src/main/resources/network/crypta/l10n/")
 }
 
 // Match prior behavior: disable assertions in tests

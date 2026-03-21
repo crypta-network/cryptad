@@ -24,6 +24,7 @@ dependencyResolutionManagement {
 rootProject.name = "cryptad"
 
 include(
+  ":foundation-config",
   ":foundation-fs",
   ":foundation-compat",
   ":runtime-spi",

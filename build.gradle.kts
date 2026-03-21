@@ -16,6 +16,7 @@ version = "3"
 
 val internalLeafProjects =
   listOf(
+    project(":foundation-config"),
     project(":foundation-fs"),
     project(":foundation-compat"),
     project(":runtime-spi"),
@@ -32,6 +33,7 @@ val internalLeafMainClassDirs =
 
 dependencies {
   // implementation
+  implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(project(":foundation-compat"))
   implementation(project(":runtime-spi"))
