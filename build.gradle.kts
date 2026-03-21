@@ -127,12 +127,6 @@ data class SelectiveLeafRootOutputOwnership(
       "RootOutputs"
 }
 
-sealed interface InternalLeafRootOutputOwnershipMode {
-  data object RequiresMetadata : InternalLeafRootOutputOwnershipMode
-
-  data class NoRootOutputsToPrune(val reason: String) : InternalLeafRootOutputOwnershipMode
-}
-
 fun parseOwnedRootOutputPatterns(metadataFile: File): List<String> =
   metadataFile.useLines { lines ->
     lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
@@ -140,67 +134,26 @@ fun parseOwnedRootOutputPatterns(metadataFile: File): List<String> =
 
 val selectiveLeafOwnershipMetadataRelativePath = "gradle/owned-root-output-patterns.txt"
 
-val internalLeafRootOutputOwnershipModes =
-  mapOf(
-    ":foundation-config" to InternalLeafRootOutputOwnershipMode.RequiresMetadata,
-    ":foundation-fs" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate network.crypta.fs package tree"
-      ),
-    ":foundation-compat" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate network.crypta.compat package tree"
-      ),
-    ":runtime-spi" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate network.crypta.runtime.spi package tree"
-      ),
-    ":thirdparty-onion" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate com.onionnetworks package tree"
-      ),
-    ":thirdparty-legacy" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate org.bitpedia/org.sevenzip/org.spaceroots package trees"
-      ),
-    ":launcher-desktop" to
-      InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune(
-        "Owns the structurally separate launcher package/resources boundary"
-      ),
-  )
-
-check(internalLeafRootOutputOwnershipModes.keys == internalLeafProjects.map { it.path }.toSet()) {
-  "Every internal leaf project must declare whether it requires owned-root-output metadata or an " +
-    "explicit structural opt-out"
-}
-
-// Selective extractions that still share the root output directories must either move to a more
-// structural boundary or declare leaf-owned stale-root-output metadata under
-// <leaf>/gradle/owned-root-output-patterns.txt. If the network.crypta.support* split keeps
-// growing, prefer a structural extraction such as :foundation-support over expanding pattern lists.
+// Every extracted internal leaf declares leaf-owned stale-root-output metadata under
+// <leaf>/gradle/owned-root-output-patterns.txt. Even structurally separated package moves need this
+// because stale root outputs from earlier builds or branch switches can still shadow leaf outputs
+// when buildJar packages sourceSets.main.output before the leaf outputs.
 val selectiveLeafRootOutputOwnerships =
-  internalLeafProjects.mapNotNull { leaf ->
-    when (internalLeafRootOutputOwnershipModes.getValue(leaf.path)) {
-      InternalLeafRootOutputOwnershipMode.RequiresMetadata -> {
-        val metadataFile =
-          leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
-        if (!metadataFile.isFile) {
-          throw GradleException(
-            "Missing ${relativePath(leaf.projectDir)}/$selectiveLeafOwnershipMetadataRelativePath " +
-              "for ${leaf.path}. Add leaf-owned stale-root-output metadata or switch the leaf to " +
-              "an explicit structural opt-out."
-          )
-        }
-        SelectiveLeafRootOutputOwnership(
-          leaf = leaf,
-          metadataFile = metadataFile,
-          patterns = parseOwnedRootOutputPatterns(metadataFile),
-        )
-      }
-      is InternalLeafRootOutputOwnershipMode.NoRootOutputsToPrune -> {
-        null
-      }
+  internalLeafProjects.map { leaf ->
+    val metadataFile =
+      leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
+    if (!metadataFile.isFile) {
+      throw GradleException(
+        "Missing ${relativePath(leaf.projectDir)}/$selectiveLeafOwnershipMetadataRelativePath " +
+          "for ${leaf.path}. Add leaf-owned stale-root-output metadata before extracting root " +
+          "outputs into this leaf."
+      )
     }
+    SelectiveLeafRootOutputOwnership(
+      leaf = leaf,
+      metadataFile = metadataFile,
+      patterns = parseOwnedRootOutputPatterns(metadataFile),
+    )
   }
 
 val verifySelectiveLeafOwnershipMetadata by

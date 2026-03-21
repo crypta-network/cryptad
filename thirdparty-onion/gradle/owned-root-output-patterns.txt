@@ -1,0 +1,4 @@
+# Root outputs that must be pruned on non-clean builds because :thirdparty-onion owns them now.
+
+com/onionnetworks/**
+lib/fec.properties
