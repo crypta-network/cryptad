@@ -13,7 +13,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -31,12 +30,14 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
@@ -213,6 +214,53 @@ class FCPConnectionInputHandlerTest {
   }
 
   @Test
+  void realRun_whenCreatingMessage_usesServerRuntimeSupportBucketFactories() throws Exception {
+    TestContext ctx = createContext(clientHello("One"), message("AfterHello", "EndMessage"));
+    FakeSimpleMessage message = new FakeSimpleMessage();
+    List<String> lines =
+        List.of(
+            "ClientHello",
+            "Name=One",
+            "ExpectedVersion=2.0",
+            "EndMessage",
+            "AfterHello",
+            "EndMessage");
+
+    try (MockedStatic<FCPMessage> mocked = mockFactory(message, "AfterHello")) {
+      withLineSequence(lines, ctx.inputHandler::realRun);
+
+      mocked.verify(
+          () ->
+              FCPMessage.create(
+                  eq("AfterHello"),
+                  any(SimpleFieldSet.class),
+                  same(ctx.bucketFactory),
+                  same(ctx.persistentFactory)));
+    }
+  }
+
+  @Test
+  void realRun_whenReadingDataPayload_usesServerRuntimeSupportTempBucketFactory() throws Exception {
+    FakeDataMessage dataMessage = new FakeDataMessage(null);
+    TestContext ctx = createContext(clientHello("One"), message("StubData", "EndMessage"));
+    List<String> lines =
+        List.of(
+            "ClientHello",
+            "Name=One",
+            "ExpectedVersion=2.0",
+            "EndMessage",
+            "StubData",
+            "EndMessage");
+
+    try (var _ = mockFactory(dataMessage, "StubData")) {
+      withLineSequence(lines, ctx.inputHandler::realRun);
+    }
+
+    assertSame(ctx.bucketFactory, dataMessage.readBucketFactory);
+    assertSame(ctx.server, dataMessage.readServer);
+  }
+
+  @Test
   void realRun_whenHandlerIndicatesClosed_stopsConsumingFurtherMessages() throws Exception {
     AtomicBoolean closed = new AtomicBoolean(false);
     FakeSimpleMessage stopMessage = new FakeSimpleMessage(() -> closed.set(true), null);
@@ -271,7 +319,7 @@ class FCPConnectionInputHandlerTest {
     ctx.handler = mock(FCPConnectionHandler.class);
     ctx.bucketFactory = mock(TempBucketFactory.class);
     ctx.server = mock(FCPServer.class);
-    ctx.core = mock(NodeClientCore.class);
+    ctx.runtimeSupport = mock(FcpServerRuntimeSupport.class);
     ctx.runtimePorts = mock(RuntimePorts.class);
     ctx.nodeInfoPort = mock(NodeInfoPort.class);
     ctx.persistentFactory = mock(PersistentTempBucketFactory.class);
@@ -280,7 +328,7 @@ class FCPConnectionInputHandlerTest {
     when(ctx.handler.getSocket()).thenReturn(ctx.socket);
     when(ctx.socket.getInputStream()).thenReturn(stream);
     when(ctx.handler.getServer()).thenReturn(ctx.server);
-    lenient().when(ctx.server.getCore()).thenReturn(ctx.core);
+    lenient().when(ctx.server.serverRuntimeSupport()).thenReturn(ctx.runtimeSupport);
     lenient().when(ctx.server.runtime()).thenReturn(ctx.runtimePorts);
     lenient().when(ctx.runtimePorts.nodeInfo()).thenReturn(ctx.nodeInfoPort);
     lenient()
@@ -288,8 +336,10 @@ class FCPConnectionInputHandlerTest {
         .thenReturn(
             new NodeGreetingSnapshot(
                 "Cryptad", "v-string", 123, "rev-xyz", false, "descriptor", "ENGLISH"));
-    lenient().when(ctx.core.getTempBucketFactory()).thenReturn(ctx.bucketFactory);
-    lenient().when(ctx.core.getPersistentTempBucketFactory()).thenReturn(ctx.persistentFactory);
+    lenient().when(ctx.runtimeSupport.tempBucketFactory()).thenReturn(ctx.bucketFactory);
+    lenient()
+        .when(ctx.runtimeSupport.persistentTempBucketFactory())
+        .thenReturn(ctx.persistentFactory);
     lenient().when(ctx.handler.isClosed()).thenReturn(false);
     lenient().when(ctx.handler.getConnectionIdentifierUUID()).thenReturn(UUID.randomUUID());
 
@@ -332,7 +382,7 @@ class FCPConnectionInputHandlerTest {
     FCPConnectionInputHandler inputHandler;
     FCPConnectionHandler handler;
     FCPServer server;
-    NodeClientCore core;
+    FcpServerRuntimeSupport runtimeSupport;
     RuntimePorts runtimePorts;
     NodeInfoPort nodeInfoPort;
     Socket socket;
@@ -342,6 +392,8 @@ class FCPConnectionInputHandlerTest {
 
   private static final class FakeDataMessage extends BaseDataCarryingMessage {
     private final MessageInvalidException readFailure;
+    private BucketFactory readBucketFactory;
+    private FCPServer readServer;
 
     FakeDataMessage(MessageInvalidException readFailure) {
       this.readFailure = readFailure;
@@ -350,6 +402,8 @@ class FCPConnectionInputHandlerTest {
     @Override
     public void readFrom(InputStream is, BucketFactory bf, FCPServer server)
         throws MessageInvalidException {
+      readBucketFactory = bf;
+      readServer = server;
       if (readFailure != null) {
         throw readFailure;
       }

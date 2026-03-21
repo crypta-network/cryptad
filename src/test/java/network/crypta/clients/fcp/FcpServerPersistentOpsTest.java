@@ -636,14 +636,16 @@ class FcpServerPersistentOpsTest {
   }
 
   private FcpServerPersistentOps newOps(PersistentRequestRoot root) {
+    FcpServerRuntimeSupport runtimeSupport = new CoreFcpServerRuntimeSupport(core);
     lenient().when(server.runtime()).thenReturn(runtimePorts);
+    lenient().when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     lenient().when(server.fetchRuntimeSupport()).thenReturn(fetchRuntimeSupport);
     lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     lenient().when(fetchRuntimeSupport.transferAccess()).thenReturn(transferAccess);
     lenient()
         .when(fetchRuntimeSupport.defaultPersistentFetchContext())
         .thenReturn(mock(FetchContext.class));
-    return new FcpServerPersistentOps(server, core, root);
+    return new FcpServerPersistentOps(server, runtimeSupport, root);
   }
 
   private static void setField(Object target, String fieldName, Object value) throws Exception {

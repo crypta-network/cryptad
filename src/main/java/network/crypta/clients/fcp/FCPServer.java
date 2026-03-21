@@ -52,6 +52,7 @@ public class FCPServer implements Runnable, DownloadCache {
   /* It’s not the field that is deprecated, but accessing it directly is. */
   private final NodeClientCore core;
 
+  private final FcpServerRuntimeSupport serverRuntimeSupport;
   private final FcpFetchRuntimeSupport fetchRuntimeSupport;
   private final FcpInsertRuntimeSupport insertRuntimeSupport;
 
@@ -109,6 +110,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.port = config.port();
     this.enabled = config.enabled();
     this.core = dependencies.core();
+    this.serverRuntimeSupport = new CoreFcpServerRuntimeSupport(core);
     this.runtime = dependencies.runtimePorts();
     this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime::transferAccess);
     this.insertRuntimeSupport =
@@ -118,7 +120,8 @@ public class FCPServer implements Runnable, DownloadCache {
     this.neverDropAMessage = config.neverDropAMessage();
     this.maxMessageQueueLength = config.maxMessageQueueLength();
     this.listener = new FcpServerListener(this, runtime, config);
-    this.persistentOps = new FcpServerPersistentOps(this, core, dependencies.persistentRoot());
+    this.persistentOps =
+        new FcpServerPersistentOps(this, serverRuntimeSupport, dependencies.persistentRoot());
   }
 
   /**
@@ -735,6 +738,19 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   public NodeClientCore getCore() {
     return core;
+  }
+
+  /**
+   * Returns runtime support for server-owned FCP infrastructure concerns.
+   *
+   * <p>This package-local seam keeps connection handling, persistent request plumbing, and inbound
+   * message parsing independent of direct {@link NodeClientCore} access while preserving current
+   * behavior. It is an internal wiring detail of {@code clients.fcp}, not a public server API.
+   *
+   * @return server runtime support backing infrastructure-level FCP operations
+   */
+  FcpServerRuntimeSupport serverRuntimeSupport() {
+    return serverRuntimeSupport;
   }
 
   /**

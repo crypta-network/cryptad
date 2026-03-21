@@ -715,7 +715,7 @@ public abstract class ClientRequest implements Serializable {
       return;
     }
 
-    server.getCore().getClientContext().jobRunner.setCheckpointASAP();
+    server.serverRuntimeSupport().clientContext().jobRunner.setCheckpointASAP();
 
     PersistentRequestModifiedMessage modifiedMsg =
         buildPersistentRequestModifiedMessage(clientTokenChanged, priorityClassChanged);
@@ -739,7 +739,7 @@ public abstract class ClientRequest implements Serializable {
     }
     priorityClass = newPriorityClass;
     ClientRequester requester = getClientRequest();
-    requester.setPriorityClass(priorityClass, server.getCore().getClientContext());
+    requester.setPriorityClass(priorityClass, server.serverRuntimeSupport().clientContext());
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
       if (cache != null) {
@@ -778,6 +778,7 @@ public abstract class ClientRequest implements Serializable {
   @SuppressWarnings("unused")
   public void restartAsync(final FCPServer server, final boolean disableFilterData)
       throws PersistenceDisabledException {
+    FcpServerRuntimeSupport runtimeSupport = server.serverRuntimeSupport();
     synchronized (requestLock()) {
       this.started = false;
     }
@@ -788,9 +789,8 @@ public abstract class ClientRequest implements Serializable {
       }
     }
     if (persistence == Persistence.FOREVER) {
-      server
-          .getCore()
-          .getClientContext()
+      runtimeSupport
+          .clientContext()
           .jobRunner
           .queue(
               (PersistentJob)
@@ -818,7 +818,7 @@ public abstract class ClientRequest implements Serializable {
                 @Override
                 public void run() {
                   try {
-                    restart(server.getCore().getClientContext(), disableFilterData);
+                    restart(runtimeSupport.clientContext(), disableFilterData);
                   } catch (PersistenceDisabledException _) {
                     // Impossible
                   }
