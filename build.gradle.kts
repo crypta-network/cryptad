@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
   // Apply Gradle 9 convention plugins from the included build
   id("cryptad.java-kotlin-conventions")
@@ -110,66 +112,150 @@ val internalLeafJarNames =
     internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
   }
 
-val foundationConfigOwnedRootOutputPatterns =
-  listOf(
-    "network/crypta/config/**",
-    "network/crypta/l10n/**",
-    "network/crypta/node/FSParseException*",
-    "network/crypta/support/Base64*",
-    "network/crypta/support/Fields*",
-    "network/crypta/support/HTMLEncoder*",
-    "network/crypta/support/HTMLEntities*",
-    "network/crypta/support/HTMLNode*",
-    "network/crypta/support/HexUtil*",
-    "network/crypta/support/IllegalBase64Exception*",
-    "network/crypta/support/PriorityAwareExecutor*",
-    "network/crypta/support/SimpleFieldSet*",
-    "network/crypta/support/Ticker*",
-    "network/crypta/support/TimeUtil*",
-    "network/crypta/support/URLDecoder*",
-    "network/crypta/support/URLEncodedFormatException*",
-    "network/crypta/support/URLEncoder*",
-    "network/crypta/support/XMLCharacterClasses*",
-    "network/crypta/support/api/BooleanCallback*",
-    "network/crypta/support/api/IntCallback*",
-    "network/crypta/support/api/LongCallback*",
-    "network/crypta/support/api/ShortCallback*",
-    "network/crypta/support/api/StringArrCallback*",
-    "network/crypta/support/api/StringCallback*",
-    "network/crypta/support/io/AtomicFileMoves*",
-    "network/crypta/support/io/LineReader*",
-    "network/crypta/support/io/LineReadingInputStream*",
-    "network/crypta/support/io/Readers*",
-    "network/crypta/support/io/TooLongException*",
-  )
+data class SelectiveLeafRootOutputOwnership(
+  val leaf: Project,
+  val metadataFile: File,
+  val patterns: List<String>,
+) {
+  val pruneTaskName: String =
+    "prune" +
+      leaf.name.split("-").joinToString(separator = "") { segment ->
+        segment.replaceFirstChar { firstChar ->
+          if (firstChar.isLowerCase()) firstChar.titlecase() else firstChar.toString()
+        }
+      } +
+      "RootOutputs"
+}
 
-val pruneFoundationConfigRootOutputs by
-  tasks.registering(Delete::class) {
+fun parseOwnedRootOutputPatterns(metadataFile: File): List<String> =
+  metadataFile.useLines { lines ->
+    lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
+  }
+
+val selectiveLeafOwnershipMetadataRelativePath = "gradle/owned-root-output-patterns.txt"
+
+// Selective extractions that still share the root output directories must either move to a more
+// structural boundary or declare leaf-owned stale-root-output metadata under
+// <leaf>/gradle/owned-root-output-patterns.txt. If the network.crypta.support* split keeps
+// growing, prefer a structural extraction such as :foundation-support over expanding pattern lists.
+val selectiveLeafRootOutputOwnerships =
+  internalLeafProjects.mapNotNull { leaf ->
+    val metadataFile =
+      leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
+    if (!metadataFile.isFile) {
+      null
+    } else {
+      SelectiveLeafRootOutputOwnership(
+        leaf = leaf,
+        metadataFile = metadataFile,
+        patterns = parseOwnedRootOutputPatterns(metadataFile),
+      )
+    }
+  }
+
+val verifySelectiveLeafOwnershipMetadata by
+  tasks.registering {
+    group = "verification"
+    description = "Verifies leaf-owned stale-root-output metadata for selective extractions"
+    doLast {
+      val currentOwnerships =
+        selectiveLeafRootOutputOwnerships.map { ownership ->
+          ownership.copy(patterns = parseOwnedRootOutputPatterns(ownership.metadataFile))
+        }
+
+      val emptyMetadataFiles =
+        currentOwnerships.filter { it.patterns.isEmpty() }.map { relativePath(it.metadataFile) }
+      if (emptyMetadataFiles.isNotEmpty()) {
+        throw GradleException(
+          "Selective leaf ownership metadata must not be empty: " +
+            emptyMetadataFiles.sorted().joinToString(", ")
+        )
+      }
+
+      val duplicatePatternsWithinFile =
+        currentOwnerships.mapNotNull { ownership ->
+          val duplicatePatterns =
+            ownership.patterns.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
+          if (duplicatePatterns.isEmpty()) {
+            null
+          } else {
+            relativePath(ownership.metadataFile) to duplicatePatterns
+          }
+        }
+      if (duplicatePatternsWithinFile.isNotEmpty()) {
+        throw GradleException(
+          buildString {
+            appendLine("Duplicate patterns found within selective leaf ownership metadata:")
+            duplicatePatternsWithinFile.forEach { (metadataPath, duplicatePatterns) ->
+              appendLine("$metadataPath: ${duplicatePatterns.joinToString(", ")}")
+            }
+          }
+        )
+      }
+
+      val duplicatePatternsAcrossLeaves =
+        currentOwnerships
+          .flatMap { ownership ->
+            ownership.patterns.map { pattern -> pattern to ownership.leaf.path }
+          }
+          .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+          .mapValues { (_, owningLeaves) -> owningLeaves.distinct().sorted() }
+          .filterValues { it.size > 1 }
+      if (duplicatePatternsAcrossLeaves.isNotEmpty()) {
+        throw GradleException(
+          buildString {
+            appendLine("Duplicate patterns claimed by multiple selective leaf projects:")
+            duplicatePatternsAcrossLeaves.toSortedMap().forEach { (pattern, owningLeaves) ->
+              appendLine("$pattern: ${owningLeaves.joinToString(", ")}")
+            }
+          }
+        )
+      }
+    }
+  }
+
+val selectiveLeafRootOutputPruneTasks =
+  selectiveLeafRootOutputOwnerships.associate { ownership ->
+    ownership.leaf.path to
+      tasks.register<Delete>(ownership.pruneTaskName) {
+        description =
+          "Removes stale root outputs for sources extracted into ${ownership.leaf.path} on non-clean builds"
+        dependsOn(verifySelectiveLeafOwnershipMetadata)
+        outputs.upToDateWhen { false }
+        delete(
+          fileTree(layout.buildDirectory.dir("classes/java/main")) {
+            include(*ownership.patterns.toTypedArray())
+          },
+          fileTree(layout.buildDirectory.dir("resources/main")) {
+            include(*ownership.patterns.toTypedArray())
+          },
+        )
+      }
+  }
+
+val pruneFoundationConfigRootOutputs =
+  selectiveLeafRootOutputPruneTasks.getValue(":foundation-config")
+
+val pruneSelectiveLeafRootOutputs by
+  tasks.registering {
     description =
-      "Removes stale root outputs for sources extracted into :foundation-config on non-clean builds"
-    outputs.upToDateWhen { false }
-    delete(
-      fileTree(layout.buildDirectory.dir("classes/java/main")) {
-        include(foundationConfigOwnedRootOutputPatterns)
-      },
-      fileTree(layout.buildDirectory.dir("resources/main")) {
-        include(foundationConfigOwnedRootOutputPatterns)
-      },
-    )
+      "Removes stale root outputs claimed by selectively extracted leaf projects on non-clean builds"
+    dependsOn(verifySelectiveLeafOwnershipMetadata)
+    dependsOn(selectiveLeafRootOutputPruneTasks.values)
   }
 
 internalLeafProjects.forEach { leaf ->
   leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
 }
 
-tasks.named("copyResourcesToClasses2") { dependsOn(pruneFoundationConfigRootOutputs) }
+tasks.named("copyResourcesToClasses2") { dependsOn(pruneSelectiveLeafRootOutputs) }
 
-tasks.named("compileJava") { dependsOn(pruneFoundationConfigRootOutputs) }
+tasks.named("compileJava") { dependsOn(pruneSelectiveLeafRootOutputs) }
 
-tasks.named("processResources") { dependsOn(pruneFoundationConfigRootOutputs) }
+tasks.named("processResources") { dependsOn(pruneSelectiveLeafRootOutputs) }
 
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
-  dependsOn(pruneFoundationConfigRootOutputs)
+  dependsOn(pruneSelectiveLeafRootOutputs)
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->
     from(

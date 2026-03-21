@@ -24,6 +24,10 @@ Use this skill when you need to:
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources,
   plus the minimal support/node compile closure they currently need.
+- Selective extractions that still leave root and leaf outputs mixed must keep the leaf-owned
+  stale-root-output metadata in sync. When moving additional main classes/resources from root into a
+  leaf without a full structural boundary, update `<leaf>/gradle/owned-root-output-patterns.txt`
+  and validate with `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - All tests remain in the root project for now and compile against the leaf subprojects through
