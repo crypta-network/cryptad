@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -72,9 +71,9 @@ public final class TestDdaRequestMessage extends FCPMessage {
    * handler does not receive nonsensical work items.
    *
    * @param fs field set containing Directory, WantReadDirectory, and WantWriteDirectory entries
-   *     from client.
-   * @throws MessageInvalidException If required directory is missing, empty, or both access flags
-   *     false.
+   *     from the client.
+   * @throws MessageInvalidException If the required directory is missing, empty, or both, access
+   *     flags false.
    */
   public TestDdaRequestMessage(SimpleFieldSet fs) throws MessageInvalidException {
     requestedDirectory = fs.get(DIRECTORY);
@@ -123,8 +122,9 @@ public final class TestDdaRequestMessage extends FCPMessage {
    * handlers.
    *
    * <p>The value is constant for every instance and matches {@link #NAME}, allowing dispatchers or
-   * tests to compare names without constructing additional field sets. The method is side effect
-   * free and threads can call it repeatedly without synchronization because the value is immutable.
+   * tests to compare names without constructing additional field sets. The method is
+   * side-effect-free, and threads can call it repeatedly without synchronization because the value
+   * is immutable.
    *
    * @return Message name constant identifying a TestDDARequest on the wire protocol.
    */
@@ -138,15 +138,14 @@ public final class TestDdaRequestMessage extends FCPMessage {
    *
    * <p>The method delegates to {@link FCPConnectionHandler#enqueueDDACheck(String, boolean,
    * boolean)} to perform path validation and spawn a {@link DdaCheckJob}. It then wraps the job in
-   * a {@link TestDdaReplyMessage} and sends it back over the same connection. The {@link Node}
-   * argument is accepted for interface compatibility but is not used directly. Callers should pass
-   * a handler that can manage filesystem permissions; this method does not retry and will propagate
+   * a {@link TestDdaReplyMessage} and sends it back over the same connection. Callers should pass a
+   * handler that can manage filesystem permissions; this method does not retry and will propagate
    * validation errors as {@link MessageInvalidException}.
    *
    * @param handler connection-scoped handler responsible for scheduling DDA checks and sending
    *     replies synchronously.
-   * @throws MessageInvalidException if handler rejects the directory or if validation fails during
-   *     enqueueing.
+   * @throws MessageInvalidException if the handler rejects the directory or if validation fails
+   *     during enqueueing.
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {

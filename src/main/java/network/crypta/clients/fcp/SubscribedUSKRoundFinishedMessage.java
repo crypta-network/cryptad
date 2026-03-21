@@ -1,19 +1,18 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
  * Notifies an FCP client that a subscribed USK polling round has completed for a given subscription
  * identifier.
  *
- * <p>This message is emitted by the node after it has finished probing the requested update
- * sequence key (USK) for newer editions. Clients typically subscribe using the higher-level USK
- * subscription commands and receive this message to learn that the current polling interval has
- * reached its natural end, regardless of whether fresh data was discovered. The message is
- * intentionally lightweight: it only echoes the identifier provided at subscription time so the
- * client can correlate the lifecycle of concurrent subscriptions without holding additional state
- * inside the protocol layer.
+ * <p>The node emits this message after it has finished probing the requested update sequence key
+ * (USK) for newer editions. Clients typically subscribe using the higher-level USK subscription
+ * commands and receive this message to learn that the current polling interval has reached its
+ * natural end, regardless of whether fresh data was discovered. The message is intentionally
+ * lightweight: it only echoes the identifier provided at subscription time so the client can
+ * correlate the lifecycle of concurrent subscriptions without holding additional state inside the
+ * protocol layer.
  *
  * <p>Responsibilities and notable behaviors:
  *
@@ -87,8 +86,8 @@ public class SubscribedUSKRoundFinishedMessage extends FCPMessage {
    * <p>The FCP framework still requires a {@code run} implementation for completeness, so the
    * method remains to satisfy the contract but signals misuse via an {@link
    * UnsupportedOperationException} at runtime. Implementations that invoke this method should treat
-   * such calls as programming errors or protocol violations. No state is modified and no
-   * interaction with {@link Node} occurs before the exception is thrown.
+   * such calls as programming errors or protocol violations. No state is modified before the
+   * exception is thrown.
    *
    * @param handler connection handler associated with the subscription; never used because the
    *     method aborts immediately.

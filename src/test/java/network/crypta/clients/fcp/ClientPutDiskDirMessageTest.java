@@ -78,6 +78,36 @@ class ClientPutDiskDirMessageTest {
   }
 
   @Test
+  void constructor_whenPriorityClassMissing_usesInsertDefaults() throws MessageInvalidException {
+    ClientPutDiskDirMessage message = newMessage(tempDir);
+
+    assertEquals(FcpPriorityClasses.IMMEDIATE_SPLITFILE, message.priorityClass);
+    assertEquals(FcpInsertDefaults.FORK_ON_CACHEABLE_DEFAULT, message.forkOnCacheable);
+  }
+
+  @Test
+  void constructor_whenPriorityClassOutOfRange_expectInvalidField() {
+    short invalidPriorityClass = (short) (FcpPriorityClasses.PAUSED + 1);
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putSingle("Filename", tempDir.toAbsolutePath().toString());
+    fs.putSingle("PriorityClass", Short.toString(invalidPriorityClass));
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutDiskDirMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, ex.protocolCode);
+    assertTrue(
+        ex.getMessage()
+            .contains(
+                "Invalid priority class "
+                    + invalidPriorityClass
+                    + " - range is "
+                    + FcpPriorityClasses.PAUSED
+                    + " to "
+                    + FcpPriorityClasses.MAXIMUM));
+  }
+
+  @Test
   void run_whenUploadNotAllowed_expectAccessDenied() throws Exception {
     when(transferAccess.allowUploadFrom(any())).thenReturn(false);
     ClientPutDiskDirMessage message = newMessage(tempDir);

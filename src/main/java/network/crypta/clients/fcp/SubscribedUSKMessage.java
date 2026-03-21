@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -32,7 +31,7 @@ import network.crypta.support.SimpleFieldSet;
 public class SubscribedUSKMessage extends FCPMessage {
 
   /**
-   * Canonical FCP identifier used on the wire for this message type so routers and handlers can
+   * Canonical FCP identifier used on the wire for this message type, so routers and handlers can
    * recognize acknowledgement payloads.
    */
   public static final String NAME = "SubscribedUSK";
@@ -66,7 +65,7 @@ public class SubscribedUSKMessage extends FCPMessage {
    * <p>The resulting {@link SimpleFieldSet} always includes the original {@code Identifier}, the
    * canonical {@code URI} derived from {@link SubscribeUSKMessage#key}, and the {@code DontPoll}
    * boolean that instructs the node to avoid proactive polling. Each invocation returns a fresh
-   * field set, ensuring callers can adjust or discard the structure without affecting subsequent
+   * field set, ensuring callers can adjust or discard the structure without affecting further
    * messages. The method does not perform null checks because the constructor already expects a
    * fully parsed request.
    *
@@ -108,7 +107,7 @@ public class SubscribedUSKMessage extends FCPMessage {
    * toward the node. Because the message is designed to flow only from server to client, the method
    * immediately throws {@link MessageInvalidException} with a descriptive explanation so callers
    * can surface the misuse to their users. The behavior is intentionally non-recoverable and does
-   * not mutate either the {@link FCPConnectionHandler} or the {@link Node} instance.
+   * not mutate the {@link FCPConnectionHandler}.
    *
    * @param handler active FCP connection context that attempted to process the message; not
    *     modified by this method.

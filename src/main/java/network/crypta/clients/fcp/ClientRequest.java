@@ -15,7 +15,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
@@ -525,10 +524,10 @@ public abstract class ClientRequest implements Serializable {
   /**
    * Returns the current priority class used for scheduling this request.
    *
-   * <p>Priority classes are defined by {@link RequestStarter} and influence how quickly the node
+   * <p>Priority classes follow the FCP-local protocol defaults and influence how quickly the node
    * allocates bandwidth and other resources compared to other queued requests.
    *
-   * @return priority class value in the range defined by {@link RequestStarter}
+   * @return priority class value in the range defined by {@link FcpPriorityClasses}
    */
   public short getPriority() {
     return priorityClass;
@@ -973,8 +972,7 @@ public abstract class ClientRequest implements Serializable {
     int verbosity = dis.readInt();
     long startupTime = dis.readLong();
     short priorityClass = dis.readShort();
-    if (priorityClass < RequestStarter.MAXIMUM_PRIORITY_CLASS
-        || priorityClass > RequestStarter.PAUSED_PRIORITY_CLASS)
+    if (!FcpPriorityClasses.isValid(priorityClass))
       throw new StorageFormatException("Bogus priority");
     String clientToken = dis.readBoolean() ? dis.readUTF() : null;
     boolean finished = dis.readBoolean();

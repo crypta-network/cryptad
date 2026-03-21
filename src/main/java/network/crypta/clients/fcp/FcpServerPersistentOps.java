@@ -21,7 +21,6 @@ import network.crypta.client.async.PersistentJob;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.Base64;
 import network.crypta.support.api.Bucket;
@@ -624,7 +623,7 @@ final class FcpServerPersistentOps implements DownloadCache {
             spec.persistRebootOnly(),
             spec.identifier(),
             Integer.MAX_VALUE,
-            RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+            FcpPriorityClasses.BULK_SPLITFILE,
             spec.returnFilename(),
             null,
             false,

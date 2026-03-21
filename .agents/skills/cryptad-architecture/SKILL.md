@@ -34,7 +34,9 @@ Use this skill when you need to:
     `LegacyDarknetConnectionsPort`, `LegacyDarknetMessagingPort`,
     `LegacyQueuePagePort`, `LegacyQueueDownloadPort`, `LegacyQueueInsertPort`,
     `LegacyQueueMutationPort`, `LegacyQueueSupportPort`, `LegacyQueueCompletionPort`,
-    `LegacySecurityLevelsPort`, and `LegacyFirstTimeWizardPort`.
+    `LegacySecurityLevelsPort`, `LegacyPageChromePort`, `LegacyCoreUpdateActionPort`,
+    `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`, `LegacyWelcomePagePort`, and
+    `LegacyWelcomeActionPort`.
 - The large cyclic daemon core still lives in the root project:
   `network.crypta.node`, `network.crypta.io`, `network.crypta.client`,
   `network.crypta.clients`, `network.crypta.support`, `network.crypta.config`,
@@ -73,9 +75,14 @@ Use this skill when you need to:
   - `FcpRuntimeAdapters` preserves legacy FCP-local shapes such as `PriorityAwareExecutor` and
     `RandomSource` on top of the SPI.
   - Detached peer-management operations such as `ModifyPeer` now go through `RuntimePorts#peer()`.
+  - Server bootstrap now flows through `FcpServerDependencies` and
+    `CoreFcpServerDependenciesFactory`.
+  - Package-local seams split the remaining daemon-backed work by concern:
+    `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
+    `FcpInsertRuntimeSupport`.
 - HTTP interface: `network.crypta.clients.http`
-  - The migrated management slices no longer depend directly on live daemon peers or node-info
-    exports for their core data flow.
+  - The migrated management and shell slices no longer depend directly on live daemon peers or
+    node-info exports for their core data flow.
   - `ConfigToadlet` now takes detached configuration export/update capabilities from
     `ConfigPort` through `ConfigToadletRuntimePorts`.
   - `ConnectionsToadlet`, `DarknetConnectionsToadlet`, `OpennetConnectionsToadlet`, and
@@ -86,9 +93,20 @@ Use this skill when you need to:
     `TransferAccessPort`, `DarknetConnectionsPort`, and `DarknetMessagingPort`.
   - `SecurityLevelsToadlet` uses `SecurityLevelsPort` for detached page state, warning HTML, and
     master-password mutation flows.
+  - `PageMaker` reads shared shell status through `PageChromePort`.
+  - `CoreActionToadlet` reaches updater availability, download triggers, and installer-path
+    validation through `CoreUpdateActionPort`.
   - `FirstTimeWizardToadlet` and `FirstTimeWizardNewToadlet` use `FirstTimeWizardPort` for
-    detached snapshot export, validation bounds, bandwidth/security suggestions, and submission
-    handling.
+    detached snapshot export, validation bounds, bandwidth/security suggestions, current-bandwidth
+    rows, and submission handling.
+  - `SymlinkerToadlet` persists aliases through `ToadletSymlinkPort`.
+  - `WelcomeToadlet` splits detached GET state and POST actions across `WelcomePagePort` and
+    `WelcomeActionPort`, bundled in `WelcomeToadletRuntimePorts`.
+  - FProxy and shell bootstrap now have local package-private seams:
+    `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
+    `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`.
+  - `BookmarkEditorToadletRuntimePorts` and `FileInsertWizardToadletRuntimePorts` are small
+    page-specific records used to keep constructor surfaces explicit during HTTP wiring.
   - `N2NTMToadlet` uses `DarknetConnectionsPort` and `DarknetMessagingPort` for selected-peer
     lookup, transfer confirmations, and compose/send actions.
 
@@ -98,14 +116,17 @@ Use this skill when you need to:
   `ConfigPort`, `ConnectivityPort`, `ConnectionsPagePort`, `ConnectionsSupportPort`,
   `DarknetConnectionsPort`, `DarknetMessagingPort`, `DiagnosticPort`, `QueueSupportPort`,
   `QueueCompletionPort`, `QueuePagePort`, `QueueDownloadPort`, `QueueInsertPort`,
-  `QueueMutationPort`, `StatisticsPort`, `SecurityLevelsPort`, `FirstTimeWizardPort`,
-  `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
+  `QueueMutationPort`, `StatisticsPort`, `SecurityLevelsPort`, `PageChromePort`,
+  `CoreUpdateActionPort`, `FirstTimeWizardPort`, `ToadletSymlinkPort`, `WelcomePagePort`,
+  `WelcomeActionPort`, `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
 - Detached DTOs include config, connectivity, peer, darknet-friends, node-reference, queue,
-  security-level, first-time-wizard, and statistics/report snapshot types such as
+  security-level, shared shell, first-time-wizard, symlinker, welcome-page, and statistics/report
+  snapshot types such as
   `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`, `PeerSnapshot`,
   `DarknetConnectionPeerSnapshot`, `DarknetUploadedFile`, `NodeReferenceSnapshot`,
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
-  `SecurityLevelsSnapshot`, and `FirstTimeWizardSnapshot`
+  `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
+  `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`
 - Root adapters: `network.crypta.node.runtime.LegacyRuntimePorts`,
   `network.crypta.node.runtime.LegacyConfigPort`,
   `network.crypta.node.runtime.LegacyNodeInfoPort`,
@@ -114,6 +135,8 @@ Use this skill when you need to:
   `network.crypta.node.runtime.LegacyConnectionsSupportPort`,
   `network.crypta.node.runtime.LegacyDarknetConnectionsPort`,
   `network.crypta.node.runtime.LegacyDarknetMessagingPort`,
+  `network.crypta.node.runtime.LegacyPageChromePort`,
+  `network.crypta.node.runtime.LegacyCoreUpdateActionPort`,
   `network.crypta.node.runtime.LegacyQueuePagePort`,
   `network.crypta.node.runtime.LegacyQueueDownloadPort`,
   `network.crypta.node.runtime.LegacyQueueInsertPort`,
@@ -121,7 +144,10 @@ Use this skill when you need to:
   `network.crypta.node.runtime.LegacyQueueSupportPort`,
   `network.crypta.node.runtime.LegacyQueueCompletionPort`,
   `network.crypta.node.runtime.LegacySecurityLevelsPort`,
-  `network.crypta.node.runtime.LegacyFirstTimeWizardPort`
+  `network.crypta.node.runtime.LegacyFirstTimeWizardPort`,
+  `network.crypta.node.runtime.LegacyToadletSymlinkPort`,
+  `network.crypta.node.runtime.LegacyWelcomePagePort`,
+  `network.crypta.node.runtime.LegacyWelcomeActionPort`
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`
@@ -134,7 +160,9 @@ Use this skill when you need to:
   operation (`config()`, `peer()`, `nodeInfo()`, `connectionsPage()`, `connectionsSupport()`,
   `darknetConnections()`, `darknetMessaging()`, `queuePage()`, `queueDownload()`,
   `queueInsert()`, `queueMutation()`, `queueSupport()`, `queueCompletion()`,
-  `securityLevels()`, `firstTimeWizard()`, etc.) instead of traversing daemon internals directly
+  `securityLevels()`, `pageChrome()`, `coreUpdateAction()`, `firstTimeWizard()`,
+  `toadletSymlinks()`, `welcomePage()`, `welcomeAction()`, etc.) instead of traversing daemon
+  internals directly
 
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers

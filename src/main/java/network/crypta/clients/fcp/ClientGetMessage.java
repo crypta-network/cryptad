@@ -10,7 +10,6 @@ import java.util.Locale;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -169,12 +168,10 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
   private ReturnTypeConfig resolveReturnType(SimpleFieldSet fs) throws MessageInvalidException {
     ReturnType parsedType = parseReturnTypeFCP(fs.get("ReturnType"));
     return switch (parsedType) {
-      case DIRECT ->
-          new ReturnTypeConfig(parsedType, null, RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS);
-      case NONE -> new ReturnTypeConfig(parsedType, null, RequestStarter.PREFETCH_PRIORITY_CLASS);
+      case DIRECT -> new ReturnTypeConfig(parsedType, null, FcpPriorityClasses.IMMEDIATE_SPLITFILE);
+      case NONE -> new ReturnTypeConfig(parsedType, null, FcpPriorityClasses.PREFETCH);
       case DISK ->
-          new ReturnTypeConfig(
-              parsedType, initDiskFile(fs), RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS);
+          new ReturnTypeConfig(parsedType, initDiskFile(fs), FcpPriorityClasses.BULK_SPLITFILE);
       default ->
           throw new MessageInvalidException(
               ProtocolErrorMessage.MESSAGE_PARSE_ERROR, "Unknown return-type", identifier, global);
@@ -261,15 +258,15 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
     }
     try {
       short parsed = Short.parseShort(priorityString);
-      if (!RequestStarter.isValidPriorityClass(parsed)) {
+      if (!FcpPriorityClasses.isValid(parsed)) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid priority class "
                 + parsed
                 + " - range is "
-                + RequestStarter.PAUSED_PRIORITY_CLASS
+                + FcpPriorityClasses.PAUSED
                 + " to "
-                + RequestStarter.MAXIMUM_PRIORITY_CLASS,
+                + FcpPriorityClasses.MAXIMUM,
             identifier,
             global);
       }
@@ -347,7 +344,7 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
    *
    * <p>Even though the value is always {@link #NAME}, this indirection keeps the {@link
    * BaseDataCarryingMessage} contract satisfied and enables instrumentation hooks that inspect
-   * names before executing a handler. The method is pure and side effect free, allowing it to be
+   * names before executing a handler. The method is pure and side-effect-free, allowing it to be
    * invoked repeatedly when tracing or metrics systems need to tag outgoing responses.
    *
    * @return literal {@code ClientGet} so dispatchers map field sets consistently.
@@ -360,11 +357,11 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
   /**
    * Delegates processing to the provided connection handler for execution on the node.
    *
-   * <p>The handler typically schedules the request with {@link RequestStarter}, causing the node to
-   * retrieve or stream data according to the persistence and return type captured inside this
-   * message. Callers should only invoke this method once per instance; repeated calls would enqueue
-   * redundant work and potentially exceed resource quotas because the message carries immutable
-   * identifiers and client tokens.
+   * <p>The handler typically schedules the request through the node's fetch pipeline, causing the
+   * node to retrieve or stream data according to the persistence and return type captured inside
+   * this message. Callers should only invoke this method once per instance; repeated calls would
+   * enqueue redundant work and potentially exceed resource quotas because the message carries
+   * immutable identifiers and client tokens.
    *
    * @param handler active connection handler orchestrating ClientGet lifecycle and status relays.
    */
@@ -381,7 +378,7 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
    * rely on datastore durability instead. External callers can consult this helper when determining
    * whether to materialize temporary buckets or bypass caching for highly transient transfers.
    *
-   * @return true to mirror into client cache, false to stream directly.
+   * @return true to mirror into the client cache, false to stream directly.
    */
   public boolean shouldWriteToClientCache() {
     return writeToClientCache;
@@ -406,7 +403,7 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
   }
 
   /**
-   * Reads optional initial metadata that may accompany the literal message body.
+   * Reads optional initial metadata that may come with the literal message body.
    *
    * <p>The implementation allocates a {@link Bucket} sized exactly to {@link
    * #initialMetadataLength} and streams bytes from the provided {@link InputStream}. Because the

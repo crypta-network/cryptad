@@ -127,6 +127,59 @@ class ClientGetMessageTest {
   }
 
   @Test
+  void constructor_whenPriorityClassMissingAndReturnTypeDirect_usesImmediateSplitfilePriority()
+      throws MessageInvalidException {
+    ClientGetMessage message = new ClientGetMessage(baseFieldSet());
+
+    assertEquals(FcpPriorityClasses.IMMEDIATE_SPLITFILE, message.priorityClass);
+  }
+
+  @Test
+  void constructor_whenPriorityClassMissingAndReturnTypeNone_usesPrefetchPriority()
+      throws MessageInvalidException {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putOverwrite("ReturnType", ReturnType.NONE.name());
+
+    ClientGetMessage message = new ClientGetMessage(fs);
+
+    assertEquals(FcpPriorityClasses.PREFETCH, message.priorityClass);
+  }
+
+  @Test
+  void constructor_whenPriorityClassMissingAndReturnTypeDisk_usesBulkSplitfilePriority(
+      @TempDir Path tempDir) throws MessageInvalidException {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putOverwrite("ReturnType", ReturnType.DISK.name());
+    fs.putSingle("Filename", tempDir.resolve("download.bin").toString());
+
+    ClientGetMessage message = new ClientGetMessage(fs);
+
+    assertEquals(FcpPriorityClasses.BULK_SPLITFILE, message.priorityClass);
+  }
+
+  @Test
+  void constructor_whenPriorityClassOutOfRange_throwsInvalidField() {
+    short invalidPriorityClass = (short) (FcpPriorityClasses.PAUSED + 1);
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putSingle("PriorityClass", Short.toString(invalidPriorityClass));
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> new ClientGetMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, exception.protocolCode);
+    assertTrue(
+        exception
+            .getMessage()
+            .contains(
+                "Invalid priority class "
+                    + invalidPriorityClass
+                    + " - range is "
+                    + FcpPriorityClasses.PAUSED
+                    + " to "
+                    + FcpPriorityClasses.MAXIMUM));
+  }
+
+  @Test
   void getFieldSet_whenCalled_containsCoreValues() throws MessageInvalidException {
     ClientGetMessage message = new ClientGetMessage(baseFieldSet());
 

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RequestQueuePriority;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -58,15 +57,15 @@ public final class ModifyPersistentRequest extends FCPMessage {
     if (prio != null) {
       try {
         priorityClass = Short.parseShort(prio);
-        if (!RequestStarter.isValidPriorityClass(priorityClass))
+        if (!FcpPriorityClasses.isValid(priorityClass))
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,
               "Invalid priority class "
                   + priorityClass
                   + " - range is "
-                  + RequestStarter.PAUSED_PRIORITY_CLASS
+                  + FcpPriorityClasses.PAUSED
                   + " to "
-                  + RequestStarter.MAXIMUM_PRIORITY_CLASS,
+                  + FcpPriorityClasses.MAXIMUM,
               requestIdentifier,
               global);
       } catch (NumberFormatException e) {

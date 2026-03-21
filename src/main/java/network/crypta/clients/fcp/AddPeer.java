@@ -17,7 +17,6 @@ import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
@@ -347,7 +346,7 @@ public final class AddPeer extends FCPMessage {
           handler
               .getServer()
               .messageRuntimeSupport()
-              .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
+              .makeClient(FcpPriorityClasses.IMMEDIATE_SPLITFILE, true, true);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
     } catch (MalformedURLException | FetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urlString);

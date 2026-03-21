@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.FSParseException;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.UnknownPeerException;
@@ -159,7 +158,7 @@ public class ModifyPeerNote extends FCPMessage {
           e);
       return;
     }
-    if (peerNoteType != Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT) {
+    if (peerNoteType != FcpPeerNoteTypes.PRIVATE_DARKNET_COMMENT) {
       FCPMessage msg = new UnknownPeerNoteTypeMessage(peerNoteType, requestIdentifier);
       handler.send(msg);
       return;
