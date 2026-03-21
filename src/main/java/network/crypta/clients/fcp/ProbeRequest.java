@@ -218,9 +218,7 @@ public final class ProbeRequest extends FCPMessage {
     long probeUid = FcpRuntimeAdapters.nextSecureLong(handler.getServer().runtime().randomness());
     handler
         .getServer()
-        .getCore()
-        .getNode()
-        .network()
+        .messageRuntimeSupport()
         .startProbe(hopsToLive, probeUid, probeType, listener);
   }
 }

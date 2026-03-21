@@ -80,7 +80,7 @@ public class ShutdownMessage extends FCPMessage {
    * Executes the shutdown request by validating access, notifying the client, and exiting the node.
    *
    * <p>The handler must expose full-access privileges; otherwise the method rejects the request
-   * with a {@link MessageInvalidException}. On acceptance it first sends a {@link
+   * with a {@link MessageInvalidException}. On acceptance, it first sends a {@link
    * ProtocolErrorMessage#SHUTTING_DOWN} response so the client can distinguish deliberate shutdown
    * from transport failures, and then calls {@link Node#exit(String)} to terminate the process. The
    * call is synchronous and does not retry; callers should therefore ensure idempotency upstream
@@ -88,8 +88,8 @@ public class ShutdownMessage extends FCPMessage {
    *
    * @param handler connection handler that issued the request; must provide full-access rights or
    *     the call fails with an exception
-   * @throws MessageInvalidException when the connection lacks required privileges or protocol
-   *     validation fails prior to triggering the shutdown
+   * @throws MessageInvalidException when the connection lacks required privileges or protocol,
+   *     validation fails before triggering the shutdown
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
@@ -101,6 +101,6 @@ public class ShutdownMessage extends FCPMessage {
         new ProtocolErrorMessage(
             ProtocolErrorMessage.SHUTTING_DOWN, true, "The node is shutting down", "Node", false);
     handler.send(msg);
-    handler.getServer().getCore().getNode().exit("Received FCP shutdown message");
+    handler.getServer().messageRuntimeSupport().shutdownNode("Received FCP shutdown message");
   }
 }

@@ -346,7 +346,7 @@ public final class AddPeer extends FCPMessage {
       HighLevelSimpleClient client =
           handler
               .getServer()
-              .getCore()
+              .messageRuntimeSupport()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
     } catch (MalformedURLException | FetchException _) {

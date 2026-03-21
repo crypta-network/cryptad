@@ -47,7 +47,7 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
   private final long dataLength;
 
   /**
-   * Creates a new send request from already-validated common routing fields.
+   * Creates a new sending request from already-validated common routing fields.
    *
    * <p>Subclasses should call {@link #parseCommonFields(SimpleFieldSet)} before invoking this
    * constructor so validation errors are surfaced from the subclass constructor rather than this
@@ -127,7 +127,7 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
-    PeerNode pn = handler.getServer().getCore().getNode().network().getPeerNode(nodeIdentifier);
+    PeerNode pn = handler.getServer().messageRuntimeSupport().findPeer(nodeIdentifier);
     if (pn == null) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
       handler.send(msg);
@@ -152,7 +152,7 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    * actionable details.
    *
    * @param pn darknet peer reference already registered on the node and guaranteed non-null.
-   * @return integer status communicated to the client; semantic range is defined by the subclass.
+   * @return integer status communicated to the client; the subclass defines semantic range.
    * @throws MessageInvalidException if the payload cannot be accepted or violates protocol
    *     invariants enforced by the subclass.
    */

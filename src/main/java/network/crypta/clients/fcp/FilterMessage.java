@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * is designed to be instantiated, validated, and consumed entirely on a single thread while the
  * caller holds the relevant protocol connection locks; no shared mutable state escapes the object.
  *
- * <p>Typical callers build a {@code Filter} FCP message prior to uploading content that might trip
+ * <p>Typical callers build a {@code Filter} FCP message before uploading content that might trip
  * safety policies. The reply, {@link FilterResultMessage}, lets the client decide whether to redact
  * data or retry with a safer MIME type before performing irreversible operations such as
  * persistence. Large inputs are streamed through temporary buckets, so the filtering cost is
@@ -78,7 +78,7 @@ public final class FilterMessage extends DataCarryingMessage {
    * that the caller supplied every field required for the chosen data source before executing any
    * disk or network operations.
    *
-   * <p>The constructor consumes lightweight identifiers immediately so that subsequent failures
+   * <p>The constructor consumes lightweight identifiers immediately so that later failures
    * reference the client-provided ID. For {@code DIRECT} payloads it copies length metadata; for
    * {@code DISK} payloads it verifies paths, sets up {@link FileBucket} staging, and derives MIME
    * hints. Callers typically chain this constructor directly from {@code FCPMessage.create} without
@@ -309,8 +309,8 @@ public final class FilterMessage extends DataCarryingMessage {
    *
    * @param handler connection handler responsible for sending replies back over the client's FCP
    *     socket and exposing the server core; must remain valid for the call duration.
-   * @throws MessageInvalidException if the payload bucket is absent or a transient allocation error
-   *     prevents preparing buckets for the filtering process.
+   * @throws MessageInvalidException if the payload bucket is absent, or a transient allocation
+   *     error prevents preparing buckets for the filtering process.
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
@@ -330,7 +330,7 @@ public final class FilterMessage extends DataCarryingMessage {
     try (InputStream input = bucket.getInputStream();
         OutputStream output = resultBucket.getOutputStream()) {
       FilterStatus status =
-          applyFilter(input, output, handler.getServer().getCore().getClientContext());
+          applyFilter(input, output, handler.getServer().serverRuntimeSupport().clientContext());
       resultCharset = status.charset;
       resultMimeType = status.mimeType;
     } catch (UnsafeContentTypeException _) {

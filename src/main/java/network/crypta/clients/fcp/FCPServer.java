@@ -53,6 +53,7 @@ public class FCPServer implements Runnable, DownloadCache {
   private final NodeClientCore core;
 
   private final FcpServerRuntimeSupport serverRuntimeSupport;
+  private final FcpMessageRuntimeSupport messageRuntimeSupport;
   private final FcpFetchRuntimeSupport fetchRuntimeSupport;
   private final FcpInsertRuntimeSupport insertRuntimeSupport;
 
@@ -111,6 +112,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.enabled = config.enabled();
     this.core = dependencies.core();
     this.serverRuntimeSupport = new CoreFcpServerRuntimeSupport(core);
+    this.messageRuntimeSupport = new CoreFcpMessageRuntimeSupport(core);
     this.runtime = dependencies.runtimePorts();
     this.fetchRuntimeSupport = new CoreFcpFetchRuntimeSupport(core, this.runtime::transferAccess);
     this.insertRuntimeSupport =
@@ -727,17 +729,16 @@ public class FCPServer implements Runnable, DownloadCache {
   }
 
   /**
-   * Exposes the backing {@link NodeClientCore} for callers needing lower-level services.
+   * Returns runtime support for residual message-level FCP infrastructure concerns.
    *
-   * <p>The returned reference is the same instance supplied at construction time. Callers should
-   * avoid mutating shared state on the core directly unless they own the broader node lifecycle. It
-   * is intended for subsystems that need access to shared services such as downloads directories or
-   * persistent storage.
+   * <p>This package-local seam keeps message execution code independent of direct {@link
+   * NodeClientCore} access while preserving the current runtime behavior. It is an internal wiring
+   * detail of {@code clients.fcp}, not a public server API.
    *
-   * @return node client core instance used by this server.
+   * @return message runtime support backing the remaining message-level FCP operations
    */
-  public NodeClientCore getCore() {
-    return core;
+  FcpMessageRuntimeSupport messageRuntimeSupport() {
+    return messageRuntimeSupport;
   }
 
   /**

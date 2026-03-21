@@ -14,7 +14,6 @@ import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.BucketFactory;
@@ -186,6 +185,7 @@ class FilterMessageTest {
   }
 
   @Test
+  @SuppressWarnings("resource")
   void run_whenContentFilterSucceeds_sendsResultMessage() throws Exception {
     byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
     FilterMessage message = createDirectMessage("req-run-success", payload);
@@ -230,6 +230,35 @@ class FilterMessageTest {
     } catch (IOException e) {
       fail(e);
     }
+  }
+
+  @Test
+  @SuppressWarnings("resource")
+  void run_whenContentFilterSucceeds_readsClientContextFromServerRuntimeSupport() throws Exception {
+    byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
+    FilterMessage message = createDirectMessage("req-run-context", payload);
+
+    ClientContext clientContext = Mockito.mock(ClientContext.class);
+    FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
+    FCPServer server = Mockito.mock(FCPServer.class);
+    FcpServerRuntimeSupport runtimeSupport = Mockito.mock(FcpServerRuntimeSupport.class);
+    Mockito.when(handler.getServer()).thenReturn(server);
+    Mockito.when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
+    Mockito.when(runtimeSupport.clientContext()).thenReturn(clientContext);
+
+    try (MockedStatic<ContentFilter> staticFilter = Mockito.mockStatic(ContentFilter.class)) {
+      staticFilter
+          .when(
+              () ->
+                  ContentFilter.filter(
+                      Mockito.any(ContentFilterRequest.class),
+                      Mockito.any(ContentFilterCallbacks.class)))
+          .thenReturn(filterStatusUtf8Text());
+
+      message.run(handler);
+    }
+
+    Mockito.verify(runtimeSupport).clientContext();
   }
 
   @Test
@@ -302,10 +331,10 @@ class FilterMessageTest {
   private FCPConnectionHandler handlerWithContext(ClientContext context) {
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
     FCPServer server = Mockito.mock(FCPServer.class);
-    NodeClientCore core = Mockito.mock(NodeClientCore.class);
+    FcpServerRuntimeSupport runtimeSupport = Mockito.mock(FcpServerRuntimeSupport.class);
     Mockito.lenient().when(handler.getServer()).thenReturn(server);
-    Mockito.lenient().when(server.getCore()).thenReturn(core);
-    Mockito.lenient().when(core.getClientContext()).thenReturn(context);
+    Mockito.lenient().when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
+    Mockito.lenient().when(runtimeSupport.clientContext()).thenReturn(context);
     return handler;
   }
 
