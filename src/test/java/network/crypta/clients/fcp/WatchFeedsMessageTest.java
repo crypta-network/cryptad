@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,7 +9,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,8 +16,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class WatchFeedsMessageTest {
 
-  @Mock private NodeClientCore clientCore;
-  @Mock private UserAlertManager alertManager;
+  @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
 
@@ -60,13 +56,11 @@ class WatchFeedsMessageTest {
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(clientCore);
-    when(clientCore.getAlerts()).thenReturn(alertManager);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
 
     message.run(handler);
 
-    verify(alertManager).watch(handler);
-    verify(alertManager, never()).unwatch(handler);
+    verify(messageRuntimeSupport).watchFeeds(handler, true);
   }
 
   @Test
@@ -76,13 +70,11 @@ class WatchFeedsMessageTest {
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(clientCore);
-    when(clientCore.getAlerts()).thenReturn(alertManager);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
 
     message.run(handler);
 
-    verify(alertManager).unwatch(handler);
-    verify(alertManager, never()).watch(handler);
+    verify(messageRuntimeSupport).watchFeeds(handler, false);
   }
 
   @Test

@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,10 +23,7 @@ class ShutdownMessageTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-  @Mock private NodeClientCore core;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
 
   @Test
   void getName_whenCalled_returnsShutdownConstant() {
@@ -61,7 +56,6 @@ class ShutdownMessageTest {
     assertNull(thrown.ident);
     assertFalse(thrown.global);
     verify(handler, never()).send(any());
-    verify(node, never()).exit(any(String.class));
   }
 
   @Test
@@ -70,15 +64,14 @@ class ShutdownMessageTest {
     ShutdownMessage message = new ShutdownMessage();
     when(handler.hasFullAccess()).thenReturn(true);
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.getNode()).thenReturn(node);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     ArgumentCaptor<ProtocolErrorMessage> sentMessage =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
 
     message.run(handler);
 
     verify(handler).send(sentMessage.capture());
-    verify(node).exit("Received FCP shutdown message");
+    verify(messageRuntimeSupport).shutdownNode("Received FCP shutdown message");
 
     ProtocolErrorMessage protocolError = sentMessage.getValue();
     assertEquals(ProtocolErrorMessage.SHUTTING_DOWN, protocolError.getCode());

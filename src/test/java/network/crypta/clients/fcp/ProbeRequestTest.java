@@ -3,13 +3,10 @@ package network.crypta.clients.fcp;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.FSParseException;
-import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
-import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
@@ -32,7 +29,6 @@ import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,9 +40,10 @@ class ProbeRequestTest {
   private static final long REQUEST_UID = 4242L;
 
   @Mock private FCPConnectionHandler handler;
-
-  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
-  private Node node;
+  @Mock private FCPServer server;
+  @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
+  @Mock private RuntimePorts runtimePorts;
+  @Mock private RandomnessPort randomnessPort;
 
   @Test
   void constructor_whenTypeUnrecognized_expectMessageInvalidException() {
@@ -107,8 +104,6 @@ class ProbeRequestTest {
       throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 5));
     when(handler.hasFullAccess()).thenReturn(false);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    when(node.network()).thenReturn(network);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> request.run(handler));
@@ -116,30 +111,24 @@ class ProbeRequestTest {
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("probe-1", exception.ident);
     assertEquals("Probe requires full access.", exception.getMessage());
-    verify(network, never()).startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
+    verify(messageRuntimeSupport, never())
+        .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
   }
 
   @Test
   void run_whenHtlMissing_usesProbeMaxHtl() throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, null));
     when(handler.hasFullAccess()).thenReturn(true);
-    FCPServer server = mock(FCPServer.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
-    RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.getNode()).thenReturn(node);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
     request.run(handler);
 
-    verify(network)
+    verify(messageRuntimeSupport)
         .startProbe(eq(Probe.MAX_HTL), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
@@ -148,23 +137,16 @@ class ProbeRequestTest {
   void run_whenHtlProvided_usesProvidedValue() throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 12));
     when(handler.hasFullAccess()).thenReturn(true);
-    FCPServer server = mock(FCPServer.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
-    RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.getNode()).thenReturn(node);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
     request.run(handler);
 
-    verify(network)
+    verify(messageRuntimeSupport)
         .startProbe(eq((byte) 12), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
@@ -370,25 +352,18 @@ class ProbeRequestTest {
 
   private Listener runAndCaptureListener(ProbeRequest request) throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    FCPServer server = mock(FCPServer.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
-    RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-    NodeClientCore core = mock(NodeClientCore.class);
     when(handler.getServer()).thenReturn(server);
-    when(server.getCore()).thenReturn(core);
-    when(core.getNode()).thenReturn(node);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    when(node.network()).thenReturn(network);
     AtomicReference<Listener> listenerRef = new AtomicReference<>();
     doAnswer(
             invocation -> {
               listenerRef.set(invocation.getArgument(3));
               return null;
             })
-        .when(network)
+        .when(messageRuntimeSupport)
         .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
 
     request.run(handler);

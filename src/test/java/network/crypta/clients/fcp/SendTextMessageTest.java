@@ -3,19 +3,23 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +29,10 @@ class SendTextMessageTest {
   private static final String NODE_IDENTIFIER = "peer-node-1";
 
   @Mock private DarknetPeerNode darknetPeerNode;
+  @Mock private FCPConnectionHandler handler;
+  @Mock private FCPServer server;
+  @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
+  @Mock private PeerNode peerNode;
 
   @Test
   void getName_whenCalled_returnsSendText() throws MessageInvalidException {
@@ -73,6 +81,59 @@ class SendTextMessageTest {
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals("", ex.getMessage());
     verify(darknetPeerNode, never()).sendTextFeed(Mockito.anyString());
+  }
+
+  @Test
+  void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws Exception {
+    SendTextMessage message = new SendTextMessage(baseFieldSet());
+    when(handler.getServer()).thenReturn(server);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(null);
+    ArgumentCaptor<FCPMessage> sentCaptor = ArgumentCaptor.forClass(FCPMessage.class);
+
+    message.run(handler);
+
+    verify(handler).send(sentCaptor.capture());
+    UnknownNodeIdentifierMessage sent =
+        assertInstanceOf(UnknownNodeIdentifierMessage.class, sentCaptor.getValue());
+    assertEquals(NODE_IDENTIFIER, sent.getFieldSet().get("NodeIdentifier"));
+    assertEquals(IDENTIFIER, sent.getFieldSet().get("Identifier"));
+  }
+
+  @Test
+  void run_whenPeerIsNotDarknet_throwsDarknetOnly() throws Exception {
+    SendTextMessage message = new SendTextMessage(baseFieldSet());
+    when(handler.getServer()).thenReturn(server);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(peerNode);
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
+
+    assertEquals(ProtocolErrorMessage.DARKNET_ONLY, ex.protocolCode);
+    assertEquals("SendText only available for darknet peers", ex.getMessage());
+    assertEquals(IDENTIFIER, ex.ident);
+    verify(handler, never()).send(Mockito.any());
+  }
+
+  @Test
+  void run_whenDarknetPeerResolved_sendsSentPeerMessage() throws Exception {
+    String text = "hello peer";
+    byte[] payload = text.getBytes(StandardCharsets.UTF_8);
+    SendTextMessage message = new SendTextMessage(baseFieldSetWithLength(payload.length));
+    message.bucket = new ArrayBucket(payload);
+    when(handler.getServer()).thenReturn(server);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(darknetPeerNode.sendTextFeed(text)).thenReturn(123);
+    ArgumentCaptor<FCPMessage> sentCaptor = ArgumentCaptor.forClass(FCPMessage.class);
+
+    message.run(handler);
+
+    verify(handler).send(sentCaptor.capture());
+    SentPeerMessage sent = assertInstanceOf(SentPeerMessage.class, sentCaptor.getValue());
+    assertEquals(IDENTIFIER, sent.clientIdentifier);
+    assertEquals(123, sent.nodeStatus);
   }
 
   private SimpleFieldSet baseFieldSet() {

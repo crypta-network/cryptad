@@ -42,7 +42,7 @@ public class WatchFeedsMessage extends FCPMessage {
    * Creates a new message instance from a serialized field set received over FCP.
    *
    * <p>The constructor extracts the {@code Enabled} boolean flag from the provided {@link
-   * SimpleFieldSet}. If the key is absent, watching defaults to enabled so clients that omit the
+   * SimpleFieldSet}. If the key is absent, watching defaults to "enabled" so clients that omit the
    * field still receive alerts. The instance is immutable and may be reused across handler calls,
    * but it is typically constructed per incoming request.
    *
@@ -79,8 +79,7 @@ public class WatchFeedsMessage extends FCPMessage {
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
-    if (enabled) handler.getServer().getCore().getAlerts().watch(handler);
-    else handler.getServer().getCore().getAlerts().unwatch(handler);
+    handler.getServer().messageRuntimeSupport().watchFeeds(handler, enabled);
   }
 
   /**

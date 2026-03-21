@@ -12,6 +12,7 @@ import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
+import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +55,8 @@ class AddPeerTest {
   @Mock private Node node;
 
   @Mock private FCPServer server;
+
+  @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
 
   @Mock private RuntimePorts runtimePorts;
 
@@ -161,6 +166,64 @@ class AddPeerTest {
     StringBuilder result = AddPeer.getReferenceFromFreenetURI(uri, client);
 
     assertEquals("ref-line-1\nref-line-2\n", result.toString());
+  }
+
+  @Test
+  void run_whenUrlUsesCryptaUri_usesMessageRuntimeSupportClient() throws Exception {
+    SimpleFieldSet fs = minimalValidFieldSet();
+    fs.putSingle("URL", "KSK@keyword");
+    AddPeer addPeer = new AddPeer(fs);
+    PeerSnapshot snapshot = peerSnapshot("peer-url");
+    stubPeerPort();
+    when(handler.hasFullAccess()).thenReturn(true);
+    when(handler.getServer()).thenReturn(server);
+    when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
+    when(server.runtime()).thenReturn(runtimePorts);
+    when(runtimePorts.peer()).thenReturn(peerPort);
+    when(peerPort.add(any(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES))).thenReturn(snapshot);
+
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+
+    try (MockedStatic<AddPeer> mockedAddPeer =
+        Mockito.mockStatic(AddPeer.class, Mockito.CALLS_REAL_METHODS)) {
+      StringBuilder reference = new StringBuilder();
+      reference.append("identity=peer-url\n");
+      mockedAddPeer
+          .when(() -> AddPeer.getReferenceFromFreenetURI(any(FreenetURI.class), eq(client)))
+          .thenReturn(reference);
+      when(messageRuntimeSupport.makeClient(
+              RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true))
+          .thenReturn(client);
+
+      addPeer.run(handler);
+    }
+
+    verify(messageRuntimeSupport)
+        .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
+    verify(peerPort).add(any(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
+  }
+
+  @Test
+  void run_whenUrlUsesStandardUrl_readsReferenceWithoutMessageRuntimeSupport(@TempDir Path tempDir)
+      throws Exception {
+    Path file = tempDir.resolve("peer-ref.txt");
+    Files.writeString(file, "identity=peer-file\n", StandardCharsets.UTF_8);
+
+    SimpleFieldSet fs = minimalValidFieldSet();
+    fs.putSingle("URL", file.toUri().toURL().toString());
+    AddPeer addPeer = new AddPeer(fs);
+    PeerSnapshot snapshot = peerSnapshot("peer-file");
+    stubPeerPort();
+    when(handler.hasFullAccess()).thenReturn(true);
+    when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
+        .thenReturn(snapshot);
+
+    addPeer.run(handler);
+
+    ArgumentCaptor<PeerFieldSet> referenceCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
+    verify(peerPort).add(referenceCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
+    assertEquals("peer-file", referenceCaptor.getValue().directValues().get("identity"));
+    verifyNoInteractions(messageRuntimeSupport);
   }
 
   @Test
