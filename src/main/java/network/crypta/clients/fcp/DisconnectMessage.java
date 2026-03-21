@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -21,7 +20,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <ul>
  *   <li>Preserves explicit shutdown semantics rather than relying on TCP FIN/RST heuristics.
- *   <li>Helps {@link Node} enforce connection quotas by guaranteeing {@code close()} is invoked.
+ *   <li>Helps the server enforce connection quotas by guaranteeing {@code close()} is invoked.
  * </ul>
  *
  * @author <a href="mailto:bombe@freenetproject.org">David ‘Bombe’ Roden</a>
@@ -85,9 +84,8 @@ public class DisconnectMessage extends FCPMessage {
    *
    * <p>Calling this method is idempotent with respect to protocol semantics: on the first
    * invocation the handler closes its socket, cancels queued state, and notifies observers, while
-   * later calls simply operate on an already-closed channel. The {@link Node} reference is supplied
-   * for parity with other messages yet remains unused, emphasizing that the logic lives entirely in
-   * the connection layer.
+   * later calls simply operate on an already-closed channel. The logic lives entirely in the
+   * connection layer.
    *
    * <pre>{@code
    * // Example: proactively terminate a misbehaving client

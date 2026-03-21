@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
@@ -123,7 +122,7 @@ public class ListPeerNotesMessage extends FCPMessage {
           new PeerNote(
               nodeIdentifier,
               noteText,
-              Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT,
+              FcpPeerNoteTypes.PRIVATE_DARKNET_COMMENT,
               requestIdentifier));
       handler.send(new EndListPeerNotesMessage(nodeIdentifier, requestIdentifier));
     } catch (UnknownPeerException _) {

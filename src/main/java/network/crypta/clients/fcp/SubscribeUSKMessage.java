@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.net.MalformedURLException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -82,7 +81,7 @@ public final class SubscribeUSKMessage extends FCPMessage {
     this.dontPoll = fs.getBoolean("DontPoll", false);
     if (!dontPoll) this.sparsePoll = fs.getBoolean("SparsePoll", false);
     else sparsePoll = false;
-    prio = fs.getShort("PriorityClass", RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS);
+    prio = fs.getShort("PriorityClass", FcpPriorityClasses.BULK_SPLITFILE);
     prioProgress = fs.getShort("PriorityClassProgress", (short) Math.max(0, prio - 1));
     realTimeFlag = fs.getBoolean("RealTimeFlag", false);
     ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);

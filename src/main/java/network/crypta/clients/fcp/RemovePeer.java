@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.RemovedPeerSnapshot;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.SimpleFieldSet;
@@ -29,7 +28,6 @@ import network.crypta.support.SimpleFieldSet;
  *
  * @see PeerRemoved
  * @see UnknownNodeIdentifierMessage
- * @see Node
  */
 public class RemovePeer extends FCPMessage {
 

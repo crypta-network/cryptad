@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -103,8 +102,7 @@ class ClientPutMessageTest {
     assertEquals(10L, serialized.getLong("DataLength", -1));
     assertTrue(serialized.getBoolean("GetCHKOnly", false));
     assertEquals(
-        RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
-        serialized.getShort("PriorityClass", (short) -1));
+        FcpPriorityClasses.IMMEDIATE_SPLITFILE, serialized.getShort("PriorityClass", (short) -1));
     assertEquals("connection", serialized.get("Persistence"));
     assertTrue(serialized.getBoolean("DontCompress", false));
     assertEquals("GZIP", serialized.get("Codecs"));
@@ -190,6 +188,50 @@ class ClientPutMessageTest {
     ClientPutMessage message = newDirectMessage("put-length", 99L);
 
     assertEquals(99L, message.dataLength());
+  }
+
+  @Test
+  void constructor_whenForkOnCacheableMissing_usesInsertDefault() throws MessageInvalidException {
+    ClientPutMessage message = newDirectMessage("put-fork-default", 12L);
+
+    assertEquals(FcpInsertDefaults.FORK_ON_CACHEABLE_DEFAULT, message.forkOnCacheable);
+  }
+
+  @Test
+  void constructor_whenForkOnCacheableProvided_usesExplicitValue() throws MessageInvalidException {
+    SimpleFieldSet fs = baseFieldSet("put-fork-explicit");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 12L);
+    fs.put("ForkOnCacheable", false);
+
+    ClientPutMessage message = new ClientPutMessage(fs);
+
+    assertFalse(message.forkOnCacheable);
+  }
+
+  @Test
+  void constructor_whenPriorityClassOutOfRange_throwsInvalidField() {
+    short invalidPriorityClass = (short) (FcpPriorityClasses.PAUSED + 1);
+    SimpleFieldSet fs = baseFieldSet("put-invalid-priority");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 5L);
+    fs.putSingle("PriorityClass", Short.toString(invalidPriorityClass));
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, exception.protocolCode);
+    assertEquals("put-invalid-priority", exception.ident);
+    assertTrue(
+        exception
+            .getMessage()
+            .contains(
+                "Invalid priority class "
+                    + invalidPriorityClass
+                    + " - range is "
+                    + FcpPriorityClasses.PAUSED
+                    + " to "
+                    + FcpPriorityClasses.MAXIMUM));
   }
 
   @Test

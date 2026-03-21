@@ -10,8 +10,6 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
@@ -161,7 +159,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
     compressorDescriptor = parseCompressorDescriptor(fs.get("Codecs"), identifier, global);
     if (fs.get("ForkOnCacheable") != null)
       forkOnCacheable = fs.getBoolean("ForkOnCacheable", false);
-    else forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
+    else forkOnCacheable = FcpInsertDefaults.FORK_ON_CACHEABLE_DEFAULT;
     extraInsertsSingleBlock =
         fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
     extraInsertsSplitfileHeaderBlock =
@@ -272,19 +270,19 @@ public final class ClientPutMessage extends DataCarryingMessage {
   private static short parsePriorityClass(String priorityString, String identifier, boolean global)
       throws MessageInvalidException {
     if (priorityString == null) {
-      return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
+      return FcpPriorityClasses.IMMEDIATE_SPLITFILE;
     }
     try {
       short parsed = Short.parseShort(priorityString);
-      if (!RequestStarter.isValidPriorityClass(parsed)) {
+      if (!FcpPriorityClasses.isValid(parsed)) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid priority class "
                 + parsed
                 + " - range is "
-                + RequestStarter.PAUSED_PRIORITY_CLASS
+                + FcpPriorityClasses.PAUSED
                 + " to "
-                + RequestStarter.MAXIMUM_PRIORITY_CLASS,
+                + FcpPriorityClasses.MAXIMUM,
             identifier,
             global);
       }
@@ -499,10 +497,9 @@ public final class ClientPutMessage extends DataCarryingMessage {
    * Initiates processing of this insert request by delegating to the connection handler.
    *
    * <p>The method is invoked on the handler thread after any payload bucket has been populated so
-   * that {@link DataCarryingMessage} invariants already hold. It forwards this instance, together
-   * with the owning {@link Node}, to {@link FCPConnectionHandler#startClientPut(ClientPutMessage)}
-   * so the handler can enforce quotas, schedule insert workers, or emit late validation errors to
-   * the client.
+   * that {@link DataCarryingMessage} invariants already hold. It forwards this instance to {@link
+   * FCPConnectionHandler#startClientPut(ClientPutMessage)} so the handler can enforce quotas,
+   * schedule insert workers, or emit late validation errors to the client.
    *
    * @param handler connection handler that accepted the message and coordinates streaming
    *     back-pressure

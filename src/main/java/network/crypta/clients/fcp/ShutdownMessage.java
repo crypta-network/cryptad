@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -14,11 +13,11 @@ import network.crypta.support.SimpleFieldSet;
  * partially trusted connections cannot terminate the process unexpectedly.
  *
  * <p>Shutdown proceeds synchronously within the handler call: after an acknowledgment error message
- * is queued to the client, the node exits its process via {@link Node#exit(String)}. The class is
- * immutable and thread-safe; instances are stateless and may be reused across requests, though the
- * surrounding protocol usually allocates a fresh instance per inbound frame. Use this type when you
- * need a minimal, declarative way to signal server termination over FCP rather than invoking
- * out-of-band administration hooks.
+ * is queued to the client, the server requests node termination through the message runtime
+ * support. The class is immutable and thread-safe; instances are stateless and may be reused across
+ * requests, though the surrounding protocol usually allocates a fresh instance per inbound frame.
+ * Use this type when you need a minimal, declarative way to signal server termination over FCP
+ * rather than invoking out-of-band administration hooks.
  *
  * <ul>
  *   <li>Responsibilities: identify the shutdown intent and delegate execution to the node.
@@ -82,9 +81,9 @@ public class ShutdownMessage extends FCPMessage {
    * <p>The handler must expose full-access privileges; otherwise the method rejects the request
    * with a {@link MessageInvalidException}. On acceptance, it first sends a {@link
    * ProtocolErrorMessage#SHUTTING_DOWN} response so the client can distinguish deliberate shutdown
-   * from transport failures, and then calls {@link Node#exit(String)} to terminate the process. The
+   * from transport failures, and then asks the message runtime support to terminate the node. The
    * call is synchronous and does not retry; callers should therefore ensure idempotency upstream
-   * because repeated invocations will request exit repeatedly once authorization passes.
+   * because repeated invocations will request shutdown repeatedly once authorization passes.
    *
    * @param handler connection handler that issued the request; must provide full-access rights or
    *     the call fails with an exception

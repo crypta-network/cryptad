@@ -7,8 +7,6 @@ import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
-import network.crypta.node.RequestStarter;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
@@ -19,11 +17,10 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
  *
  * <p>This abstract container centralizes the parsing and validation shared by {@link
  * ClientPutDiskDirMessage} and {@link ClientPutComplexDirMessage}. A node controller builds an
- * instance from an inbound {@link SimpleFieldSet} and hands it to {@link RequestStarter}, which
- * turns the embedded metadata into the actual insert pipeline. The message spells out the target
- * {@link FreenetURI}, retry envelope, splitfile compatibility mode, compression hints, and
- * persistence knobs expected by the storage layer so that both directory flavors remain
- * interoperable.
+ * instance from an inbound {@link SimpleFieldSet} and hands it to the insert pipeline. The message
+ * spells out the target {@link FreenetURI}, retry envelope, splitfile compatibility mode,
+ * compression hints, and persistence knobs expected by the storage layer so that both directory
+ * flavors remain interoperable.
  *
  * <p>All fields are populated during construction, and the type is effectively immutable afterward,
  * which lets callers hand references across worker threads without additional synchronization. The
@@ -109,9 +106,9 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
 
   /**
    * Signals whether cacheable blocks should be forked into independent inserts while obeying the
-   * node's {@link Node#FORK_ON_CACHEABLE_DEFAULT} policy. Callers read this flag to decide if a
-   * cache hit should spawn separate background persistence work or remain in-band with the parent
-   * request, allowing UI clients to trade extra bandwidth for faster convergence on popular data.
+   * node's default cache-forking policy. Callers read this flag to decide if a cache hit should
+   * spawn separate background persistence work or remain in-band with the parent request, allowing
+   * UI clients to trade extra bandwidth for faster convergence on popular data.
    */
   public final boolean forkOnCacheable;
 
@@ -247,7 +244,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     if (fs.get("ForkOnCacheable") != null) {
       return fs.getBoolean("ForkOnCacheable", false);
     }
-    return Node.FORK_ON_CACHEABLE_DEFAULT;
+    return FcpInsertDefaults.FORK_ON_CACHEABLE_DEFAULT;
   }
 
   /**
@@ -378,19 +375,19 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
       throws MessageInvalidException {
     String priorityString = fs.get("PriorityClass");
     if (priorityString == null) {
-      return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
+      return FcpPriorityClasses.IMMEDIATE_SPLITFILE;
     }
     try {
       short parsed = Short.parseShort(priorityString);
-      if (!RequestStarter.isValidPriorityClass(parsed))
+      if (!FcpPriorityClasses.isValid(parsed))
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid priority class "
                 + parsed
                 + " - range is "
-                + RequestStarter.PAUSED_PRIORITY_CLASS
+                + FcpPriorityClasses.PAUSED
                 + " to "
-                + RequestStarter.MAXIMUM_PRIORITY_CLASS,
+                + FcpPriorityClasses.MAXIMUM,
             identifier,
             global);
       return parsed;

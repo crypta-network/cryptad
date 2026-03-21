@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.util.EnumSet;
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.ConfigSection;
 import network.crypta.support.SimpleFieldSet;
 
@@ -105,8 +104,9 @@ public class GetConfig extends FCPMessage {
    * raising a {@link MessageInvalidException} describing the access denial. When authorized, it
    * requests the selected configuration sections from the runtime SPI and constructs a {@link
    * ConfigData} response from the returned snapshot. The response is streamed via the provided
-   * handler without mutating the {@link Node}. Invocations are single-shot per instance; repeated
-   * calls would resend identical configuration data until the connection closes.
+   * handler without mutating the live daemon configuration directly. Invocations are single-shot
+   * per instance; repeated calls would resend identical configuration data until the connection
+   * closes.
    *
    * @param handler connection context responsible for permission checks and outbound delivery; must
    *     not be {@code null} and must expose full access for the call to proceed.

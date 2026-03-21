@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.support.SimpleFieldSet;
 
@@ -117,8 +116,7 @@ public final class ClientHelloMessage extends FCPMessage {
    * so it focuses on the happy path: fetching greeting metadata from the runtime SPI, building a
    * node response using the handler's connection UUID, and dispatching it over the same channel.
    * After the response leaves, the handler remembers the client name so future log lines can refer
-   * to it even if the socket closes unexpectedly. The {@link Node} parameter is currently unused
-   * but retained for parity with other {@link FCPMessage} hooks.
+   * to it even if the socket closes unexpectedly.
    *
    * <pre>{@code
    * ClientHelloMessage hello = ...;

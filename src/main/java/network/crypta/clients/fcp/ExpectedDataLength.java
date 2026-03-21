@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -8,8 +7,8 @@ import network.crypta.support.SimpleFieldSet;
  * implementation.
  *
  * <p>This lightweight message informs a connected client about the byte length that the node
- * anticipates for a specific identifier. It is typically sent while a download is still in progress
- * so that UI layers can prepare disk space, update progress meters, or judge whether the transfer
+ * expects for a specific identifier. It is typically sent while a download is still in progress so
+ * that UI layers can prepare disk space, update progress meters, or judge whether the transfer
  * should continue. Instances are immutable; the identifier, global flag, and data length captured
  * in the constructor remain fixed for the life of the object, allowing the message to be safely
  * shared across threads provided callers do not mutate the returned {@link SimpleFieldSet}.
@@ -34,14 +33,14 @@ public class ExpectedDataLength extends FCPMessage {
   /**
    * Creates a new immutable descriptor for a future payload length.
    *
-   * <p>The constructor simply stores the provided metadata without validation so callers are
+   * <p>The constructor simply stores the provided metadata without validation, so callers are
    * responsible for ensuring the identifier matches ongoing requests and that {@code dataLength}
    * reflects the best estimate currently available. Because the values are stored verbatim they can
    * represent either optimistic or pessimistic projections depending on the upstream calculation.
    *
    * @param identifier unique token provided by the client; must not be {@code null}.
    * @param global whether the message relates to a global request or a per-connection context.
-   * @param dataLength anticipated payload size in bytes as reported by upstream logic.
+   * @param dataLength expected payload size in bytes as reported by upstream logic.
    */
   ExpectedDataLength(String identifier, boolean global, long dataLength) {
     this.messageIdentifier = identifier;
@@ -91,7 +90,7 @@ public class ExpectedDataLength extends FCPMessage {
    * Execution hook for inbound command handling; this implementation performs no action.
    *
    * <p>The message type is informational-only, so the server-side handler intentionally abstains
-   * from altering connection state or interacting with the {@link Node}. Implementations that treat
+   * from altering the connection state or touching daemon internals. Implementations that treat
    * this message as a notification should intercept it earlier in the pipeline. Invoking this
    * method is safe and idempotent on any thread because the body contains no shared state access.
    *
