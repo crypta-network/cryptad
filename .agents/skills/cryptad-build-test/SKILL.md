@@ -18,14 +18,18 @@ Use this skill when you need to:
 ## Build layout
 - Cryptad now uses a partial multi-project Gradle build.
 - Use root-project tasks by default; the root project remains the daemon/application target.
-- Current leaf projects are `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
-  `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
+- Current leaf projects are `:foundation-config`, `:foundation-fs`, `:foundation-compat`,
+  `:runtime-spi`, `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
+- `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources,
+  plus the minimal support/node compile closure they currently need.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - All tests remain in the root project for now and compile against the leaf subprojects through
   the root build.
+- File-system-based l10n tests still run from the root project and use
+  `foundation-config/src/main/resources/network/crypta/l10n/` as the main resource path.
 
 ## Guardrails (must follow)
 - Always use the Gradle wrapper: `./gradlew …`
@@ -54,6 +58,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## Compile-only / quick checks
 - Compile only:
   - `./gradlew compileJava`
+- Compile the config/l10n leaf when you touched extracted config, l10n, or their helper closure:
+  - `./gradlew :foundation-config:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
 - Compile the root project and its unchanged test tree against the leaf-module layout:

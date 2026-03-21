@@ -16,6 +16,7 @@ version = "3"
 
 val internalLeafProjects =
   listOf(
+    project(":foundation-config"),
     project(":foundation-fs"),
     project(":foundation-compat"),
     project(":runtime-spi"),
@@ -32,6 +33,7 @@ val internalLeafMainClassDirs =
 
 dependencies {
   // implementation
+  implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(project(":foundation-compat"))
   implementation(project(":runtime-spi"))
@@ -108,11 +110,66 @@ val internalLeafJarNames =
     internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
   }
 
+val foundationConfigOwnedRootOutputPatterns =
+  listOf(
+    "network/crypta/config/**",
+    "network/crypta/l10n/**",
+    "network/crypta/node/FSParseException*",
+    "network/crypta/support/Base64*",
+    "network/crypta/support/Fields*",
+    "network/crypta/support/HTMLEncoder*",
+    "network/crypta/support/HTMLEntities*",
+    "network/crypta/support/HTMLNode*",
+    "network/crypta/support/HexUtil*",
+    "network/crypta/support/IllegalBase64Exception*",
+    "network/crypta/support/PriorityAwareExecutor*",
+    "network/crypta/support/SimpleFieldSet*",
+    "network/crypta/support/Ticker*",
+    "network/crypta/support/TimeUtil*",
+    "network/crypta/support/URLDecoder*",
+    "network/crypta/support/URLEncodedFormatException*",
+    "network/crypta/support/URLEncoder*",
+    "network/crypta/support/XMLCharacterClasses*",
+    "network/crypta/support/api/BooleanCallback*",
+    "network/crypta/support/api/IntCallback*",
+    "network/crypta/support/api/LongCallback*",
+    "network/crypta/support/api/ShortCallback*",
+    "network/crypta/support/api/StringArrCallback*",
+    "network/crypta/support/api/StringCallback*",
+    "network/crypta/support/io/AtomicFileMoves*",
+    "network/crypta/support/io/LineReader*",
+    "network/crypta/support/io/LineReadingInputStream*",
+    "network/crypta/support/io/Readers*",
+    "network/crypta/support/io/TooLongException*",
+  )
+
+val pruneFoundationConfigRootOutputs by
+  tasks.registering(Delete::class) {
+    description =
+      "Removes stale root outputs for sources extracted into :foundation-config on non-clean builds"
+    outputs.upToDateWhen { false }
+    delete(
+      fileTree(layout.buildDirectory.dir("classes/java/main")) {
+        include(foundationConfigOwnedRootOutputPatterns)
+      },
+      fileTree(layout.buildDirectory.dir("resources/main")) {
+        include(foundationConfigOwnedRootOutputPatterns)
+      },
+    )
+  }
+
 internalLeafProjects.forEach { leaf ->
   leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
 }
 
+tasks.named("copyResourcesToClasses2") { dependsOn(pruneFoundationConfigRootOutputs) }
+
+tasks.named("compileJava") { dependsOn(pruneFoundationConfigRootOutputs) }
+
+tasks.named("processResources") { dependsOn(pruneFoundationConfigRootOutputs) }
+
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
+  dependsOn(pruneFoundationConfigRootOutputs)
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->
     from(
