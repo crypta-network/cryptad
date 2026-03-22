@@ -3,10 +3,10 @@ package network.crypta.node;
 import java.io.File;
 import java.io.IOException;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Ticker;
-import network.crypta.support.api.StringCallback;
 
 /**
  * Persister that takes its file locations from configuration.

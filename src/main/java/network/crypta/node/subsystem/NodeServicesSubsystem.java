@@ -2,6 +2,7 @@ package network.crypta.node.subsystem;
 
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
+import network.crypta.config.BooleanCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
@@ -19,7 +20,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
-import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.io.ArrayBucketFactory;
 
 /**

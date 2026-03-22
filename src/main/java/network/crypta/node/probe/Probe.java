@@ -6,7 +6,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import network.crypta.config.BooleanCallback;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.LongCallback;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
@@ -22,8 +24,6 @@ import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerNode;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.LongCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

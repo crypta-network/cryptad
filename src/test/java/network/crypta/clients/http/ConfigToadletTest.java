@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -8,12 +9,14 @@ import java.util.List;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
+import network.crypta.config.ConfigCallback;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.config.WrapperConfig;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.ProgramDirectory;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.runtime.spi.ConfigPort;
@@ -395,6 +398,54 @@ class ConfigToadletTest {
 
     assertTrue(body.contains("name=\"" + WRAPPER_MAX_MEMORY + "\""));
     assertTrue(body.contains("value=\"768\""));
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyBooleanCallback_expectBoolean() throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    ConfigCallback<?> callback =
+        new network.crypta.support.api.BooleanCallback() {
+          @Override
+          public Boolean get() {
+            return true;
+          }
+
+          @Override
+          public void set(Boolean value) {}
+        };
+    Object optionType = resolveOptionType(toadlet, callback);
+
+    assertEquals("BOOLEAN", optionType.toString());
+  }
+
+  @Test
+  void resolveOptionType_whenWritableProgramDirectoryCallback_expectDirectory() throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    ConfigCallback<?> callback = new ProgramDirectory("move.error").getStringCallback();
+
+    Object optionType = resolveOptionType(toadlet, callback);
+
+    assertEquals("DIRECTORY", optionType.toString());
+  }
+
+  @Test
+  void resolveOptionType_whenReadOnlyProgramDirectoryCallback_expectTextReadOnly()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    ConfigCallback<?> callback = new ProgramDirectory().getStringCallback();
+
+    Object optionType = resolveOptionType(toadlet, callback);
+
+    assertEquals("TEXT_READ_ONLY", optionType.toString());
+  }
+
+  private Object resolveOptionType(ConfigToadlet toadlet, ConfigCallback<?> callback)
+      throws Exception {
+    Method resolveOptionType =
+        ConfigToadlet.class.getDeclaredMethod("resolveOptionType", ConfigCallback.class);
+    resolveOptionType.setAccessible(true);
+    return resolveOptionType.invoke(toadlet, callback);
   }
 
   private HTTPRequest createRequest(Map<String, String> parts) {

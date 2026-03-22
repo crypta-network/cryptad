@@ -50,13 +50,13 @@ class UpgradeConnectionSpeedUserAlertTest {
         "inputBandwidthLimit",
         4096, // 4 KiB/s
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.IntCallback) null,
+        (network.crypta.config.IntCallback) null,
         false);
     nodeConfig.register(
         "outputBandwidthLimit",
         2048, // 2 KiB/s
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.IntCallback) null,
+        (network.crypta.config.IntCallback) null,
         false);
 
     when(node.getConfig()).thenReturn(config);

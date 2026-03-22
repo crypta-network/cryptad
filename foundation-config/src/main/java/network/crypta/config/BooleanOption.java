@@ -1,7 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.api.BooleanCallback;
 
 /**
  * Configuration option representing a boolean value.
@@ -32,9 +31,34 @@ public class BooleanOption extends Option<Boolean> {
       boolean defaultValue,
       Option.Meta meta,
       BooleanCallback cb) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Boolean>) cb);
+  }
+
+  private BooleanOption(
+      SubConfig conf,
+      String optionName,
+      boolean defaultValue,
+      Option.Meta meta,
+      ConfigCallback<Boolean> cb) {
     super(conf, optionName, cb, meta, Option.DataType.BOOLEAN);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #BooleanOption(SubConfig, String, boolean, Option.Meta,
+   *     network.crypta.config.BooleanCallback)}.
+   */
+  @Deprecated
+  public BooleanOption(
+      SubConfig conf,
+      String optionName,
+      boolean defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.BooleanCallback cb) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Boolean>) cb);
   }
 
   /**

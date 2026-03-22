@@ -1,7 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.api.IntCallback;
 
 /**
  * Integer-backed configuration option with optional unit/duration semantics.
@@ -41,7 +40,36 @@ public class IntOption extends Option<Integer> {
       Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
-    this(conf, optionName, parseString(defaultValueString, dimension), meta, cb, dimension);
+    this(
+        conf,
+        optionName,
+        parseString(defaultValueString, dimension),
+        meta,
+        (ConfigCallback<Integer>) cb,
+        dimension);
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #IntOption(SubConfig, String, String, Option.Meta,
+   *     network.crypta.config.IntCallback, Dimension)}.
+   */
+  @Deprecated
+  public IntOption(
+      SubConfig conf,
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb,
+      Dimension dimension) {
+    this(
+        conf,
+        optionName,
+        parseString(defaultValueString, dimension),
+        meta,
+        (ConfigCallback<Integer>) cb,
+        dimension);
   }
 
   /**
@@ -61,10 +89,37 @@ public class IntOption extends Option<Integer> {
       Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Integer>) cb, dimension);
+  }
+
+  IntOption(
+      SubConfig conf,
+      String optionName,
+      Integer defaultValue,
+      Option.Meta meta,
+      ConfigCallback<Integer> cb,
+      Dimension dimension) {
     super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.dimension = dimension;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #IntOption(SubConfig, String, Integer, Option.Meta,
+   *     network.crypta.config.IntCallback, Dimension)}.
+   */
+  @Deprecated
+  public IntOption(
+      SubConfig conf,
+      String optionName,
+      Integer defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb,
+      Dimension dimension) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Integer>) cb, dimension);
   }
 
   /**

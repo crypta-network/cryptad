@@ -1,14 +1,14 @@
 package network.crypta.node;
 
 import java.net.UnknownHostException;
+import network.crypta.config.BooleanCallback;
+import network.crypta.config.IntCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.IntCallback;
-import network.crypta.support.api.StringCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

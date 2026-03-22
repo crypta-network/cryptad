@@ -2,6 +2,7 @@ package network.crypta.node.subsystem;
 
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
+import network.crypta.config.BooleanCallback;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -21,7 +22,6 @@ import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
-import network.crypta.support.api.BooleanCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

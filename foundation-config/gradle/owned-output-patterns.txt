@@ -1,7 +1,13 @@
-# Aggregated main outputs that must be pruned on non-clean builds because :foundation-config owns them now.
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-config owns
+# them now.
 # Future selective extractions should either tighten the structural boundary or add/update the
 # relevant leaf-owned metadata file instead of hardcoding aggregated main-output ownership in the
 # root build script.
+#
+# The old support/api callback paths remain owned here while deprecated compatibility shims exist.
+# Keeping them listed also preserves the stale-output cleanup needed after the package move into
+# network/crypta/config, so non-clean builds and branch switches do not leave old aggregated
+# outputs behind to shadow or pollute the new callback classes.
 
 network/crypta/config/**
 network/crypta/l10n/**

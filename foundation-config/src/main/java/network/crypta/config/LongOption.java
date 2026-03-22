@@ -2,7 +2,6 @@ package network.crypta.config;
 
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Fields;
-import network.crypta.support.api.LongCallback;
 
 /**
  * Option representing a {@link Long} configuration value.
@@ -49,7 +48,36 @@ public class LongOption extends Option<Long> {
       Option.Meta meta,
       LongCallback cb,
       boolean isSize) {
-    this(conf, optionName, Fields.parseLong(defaultValueString), meta, cb, isSize);
+    this(
+        conf,
+        optionName,
+        Fields.parseLong(defaultValueString),
+        meta,
+        (ConfigCallback<Long>) cb,
+        isSize);
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #LongOption(SubConfig, String, String, Option.Meta,
+   *     network.crypta.config.LongCallback, boolean)}.
+   */
+  @Deprecated
+  public LongOption(
+      SubConfig conf,
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.LongCallback cb,
+      boolean isSize) {
+    this(
+        conf,
+        optionName,
+        Fields.parseLong(defaultValueString),
+        meta,
+        (ConfigCallback<Long>) cb,
+        isSize);
   }
 
   /**
@@ -69,10 +97,37 @@ public class LongOption extends Option<Long> {
       Option.Meta meta,
       LongCallback cb,
       boolean isSize) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Long>) cb, isSize);
+  }
+
+  private LongOption(
+      SubConfig conf,
+      String optionName,
+      Long defaultValue,
+      Option.Meta meta,
+      ConfigCallback<Long> cb,
+      boolean isSize) {
     super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.isSize = isSize;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #LongOption(SubConfig, String, Long, Option.Meta,
+   *     network.crypta.config.LongCallback, boolean)}.
+   */
+  @Deprecated
+  public LongOption(
+      SubConfig conf,
+      String optionName,
+      Long defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.LongCallback cb,
+      boolean isSize) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Long>) cb, isSize);
   }
 
   /**

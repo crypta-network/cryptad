@@ -16,11 +16,16 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
+import network.crypta.config.BooleanCallback;
 import network.crypta.config.FreenetFilePersistentConfig;
+import network.crypta.config.IntCallback;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.LongCallback;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
+import network.crypta.config.ShortCallback;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.PersistentRandomSource;
@@ -40,11 +45,6 @@ import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.IntCallback;
-import network.crypta.support.api.LongCallback;
-import network.crypta.support.api.ShortCallback;
-import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
@@ -2060,7 +2060,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         cfgKey,
         defaultValue,
         new Option.Meta(sortOrder, true, true, shortdesc, longdesc),
-        dir.getStringCallback());
+        (StringCallback) dir.getStringCallback());
     String dirName = installConfig.getString(cfgKey);
     try {
       dir.move(dirName);
@@ -2481,6 +2481,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @return configuration directory path.
    */
+  @SuppressWarnings("unused")
   public File getCfgDir() {
     return cfgDir.dir();
   }
@@ -2594,6 +2595,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @return maximum allowed opennet peer count.
    */
+  @SuppressWarnings("unused")
   public int getMaxOpennetPeers() {
     return network.maxOpennetPeers();
   }
@@ -2620,6 +2622,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @return {@code true} if the node is configured as a seed node.
    */
+  @SuppressWarnings("unused")
   public boolean isSeednode() {
     return network.isSeednode();
   }
@@ -2894,6 +2897,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @return {@code true} if the peers are outdated.
    */
+  @SuppressWarnings("unused")
   public boolean isOutdated() {
     return network.isOutdated();
   }

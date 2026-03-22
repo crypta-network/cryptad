@@ -44,7 +44,7 @@ class FilePersistentConfigTest {
         "key",
         "default-value",
         new Option.Meta(10, false, false, SHORT_DESC, LONG_DESC),
-        new network.crypta.support.api.StringCallback() {
+        new network.crypta.config.StringCallback() {
           private String v = "default-value";
 
           @Override
@@ -79,7 +79,7 @@ class FilePersistentConfigTest {
         "name",
         "default",
         new Option.Meta(1, false, false, SHORT_DESC, LONG_DESC),
-        new network.crypta.support.api.StringCallback() {
+        new network.crypta.config.StringCallback() {
           private String v = "default";
 
           @Override
@@ -127,7 +127,7 @@ class FilePersistentConfigTest {
         "opt",
         "def",
         new Option.Meta(1, false, false, SHORT_DESC, LONG_DESC),
-        new network.crypta.support.api.StringCallback() {
+        new network.crypta.config.StringCallback() {
           private String v = "def";
 
           @Override
@@ -181,7 +181,7 @@ class FilePersistentConfigTest {
         "k",
         "d",
         new Option.Meta(0, false, false, "s", "l"),
-        new network.crypta.support.api.StringCallback() {
+        new network.crypta.config.StringCallback() {
           private String v = "d";
 
           @Override

@@ -2,6 +2,7 @@ package network.crypta.client.async;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Random;
@@ -94,7 +95,7 @@ class InsertCompressorTest {
 
   // Minimal Test Inserter that records callbacks without performing full scheduling logic
   private static final class TestInserter extends SingleFileInserter {
-    private static final long serialVersionUID = 1L;
+    @Serial private static final long serialVersionUID = 1L;
 
     private transient CompressionOutput lastOutput;
     private transient ClientContext lastContext;
@@ -131,16 +132,6 @@ class InsertCompressorTest {
     void onCompressed(CompressionOutput output, ClientContext context) {
       lastOutput = output;
       lastContext = context;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      return this == obj;
-    }
-
-    @Override
-    public int hashCode() {
-      return System.identityHashCode(this);
     }
   }
 
@@ -230,7 +221,7 @@ class InsertCompressorTest {
 
     // Act
     compressor.init(ctx);
-    compressor.init(ctx); // second call should be ignored
+    compressor.init(ctx); // the second call should be ignored
 
     // Assert
     verify(rc, times(1)).enqueueNewJob(compressor);
@@ -401,13 +392,13 @@ class InsertCompressorTest {
         "amountOfDataToCheckCompressionRatio",
         32768L,
         new Option.Meta(0, false, false, "", ""),
-        null,
+        (network.crypta.config.LongCallback) null,
         true);
     node.register(
         "minimumCompressionPercentage",
         100,
         new Option.Meta(0, false, false, "", ""),
-        new network.crypta.support.api.IntCallback() {
+        new network.crypta.config.IntCallback() {
           @Override
           public Integer get() {
             return 100;
@@ -448,7 +439,7 @@ class InsertCompressorTest {
     // Act
     compressor.tryCompress(ctx);
 
-    // Assert: compression attempted and hashes were captured even when ratio check aborted
+    // Assert: compression attempted and hashes were captured even when the ratio check aborted
     assertNotNull(inserter.lastOutput);
     assertNotNull(inserter.lastOutput.hashes(), "hashes must be captured when ratio check fails");
     // Ensure the onStartCompression was invoked at least once

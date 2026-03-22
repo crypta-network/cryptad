@@ -1,7 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.l10n.BaseL10n;
-import network.crypta.support.api.StringCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;

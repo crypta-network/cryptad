@@ -1,7 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.LongCallback;
-
 /**
  * No-op {@link LongCallback} that implements the null-object pattern.
  *

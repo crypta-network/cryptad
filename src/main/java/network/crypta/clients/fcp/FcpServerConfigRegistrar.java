@@ -1,16 +1,16 @@
 package network.crypta.clients.fcp;
 
 import java.util.Arrays;
+import network.crypta.config.BooleanCallback;
 import network.crypta.config.Config;
+import network.crypta.config.IntCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.IntCallback;
-import network.crypta.support.api.StringCallback;
 
 /**
  * Registers FCP server configuration options and constructs a configured {@link FCPServer}.

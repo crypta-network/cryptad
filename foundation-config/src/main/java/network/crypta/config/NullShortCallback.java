@@ -1,7 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.ShortCallback;
-
 /**
  * No-op {@link ShortCallback} implementing the null-object pattern.
  *

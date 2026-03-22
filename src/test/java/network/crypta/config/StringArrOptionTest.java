@@ -1,6 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.StringArrCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
