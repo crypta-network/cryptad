@@ -6,13 +6,13 @@ import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.StringCallback;
 
 /**
  * Registers node configuration keys and supplies callback implementations for core options.

@@ -6,12 +6,6 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Map;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.IntCallback;
-import network.crypta.support.api.LongCallback;
-import network.crypta.support.api.ShortCallback;
-import network.crypta.support.api.StringArrCallback;
-import network.crypta.support.api.StringCallback;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,6 +121,30 @@ public class SubConfig implements Comparable<SubConfig> {
   }
 
   /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, int, Option.Meta, IntCallback, boolean)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      int defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb,
+      boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullIntCallback();
+    register(
+        new IntOption(
+            this,
+            optionName,
+            defaultValue,
+            normalizedMeta,
+            cb,
+            isSize ? Dimension.SIZE : Dimension.NOT));
+  }
+
+  /**
    * Registers a {@code long}-valued option.
    *
    * @param optionName Name of the option (no prefix).
@@ -143,11 +161,44 @@ public class SubConfig implements Comparable<SubConfig> {
   }
 
   /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, long, Option.Meta, LongCallback, boolean)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      long defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.LongCallback cb,
+      boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullLongCallback();
+    register(new LongOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
+  }
+
+  /**
    * Registers a bandwidth option.
    *
    * @see BandwidthOption
    */
   public void register(String optionName, int defaultValue, Option.Meta meta, IntCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullIntCallback();
+    register(new BandwidthOption(this, optionName, defaultValue, normalizedMeta, cb));
+  }
+
+  /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, int, Option.Meta, IntCallback)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      int defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullIntCallback();
     register(new BandwidthOption(this, optionName, defaultValue, normalizedMeta, cb));
@@ -167,6 +218,25 @@ public class SubConfig implements Comparable<SubConfig> {
       String defaultValueString,
       Option.Meta meta,
       IntCallback cb,
+      Dimension dimension) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) {
+      cb = new NullIntCallback();
+    }
+    register(new IntOption(this, optionName, defaultValueString, normalizedMeta, cb, dimension));
+  }
+
+  /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, String, Option.Meta, IntCallback, Dimension)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb,
       Dimension dimension) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) {
@@ -196,12 +266,45 @@ public class SubConfig implements Comparable<SubConfig> {
   }
 
   /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, String, Option.Meta, LongCallback, boolean)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.LongCallback cb,
+      boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullLongCallback();
+    register(new LongOption(this, optionName, defaultValueString, normalizedMeta, cb, isSize));
+  }
+
+  /**
    * Registers a bandwidth option.
    *
    * @see BandwidthOption
    */
   public void register(
       String optionName, String defaultValueString, Option.Meta meta, IntCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullIntCallback();
+    register(new BandwidthOption(this, optionName, defaultValueString, normalizedMeta, cb));
+  }
+
+  /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, String, Option.Meta, IntCallback)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullIntCallback();
     register(new BandwidthOption(this, optionName, defaultValueString, normalizedMeta, cb));
@@ -223,6 +326,22 @@ public class SubConfig implements Comparable<SubConfig> {
   }
 
   /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, boolean, Option.Meta, BooleanCallback)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      boolean defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.BooleanCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullBooleanCallback();
+    register(new BooleanOption(this, optionName, defaultValue, normalizedMeta, cb));
+  }
+
+  /**
    * Registers a {@code String}-valued option.
    *
    * @param optionName Name of the option (no prefix).
@@ -232,6 +351,22 @@ public class SubConfig implements Comparable<SubConfig> {
    */
   public void register(
       String optionName, String defaultValue, Option.Meta meta, StringCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullStringCallback();
+    register(new StringOption(this, optionName, defaultValue, normalizedMeta, cb));
+  }
+
+  /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, String, Option.Meta, StringCallback)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      String defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.StringCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullStringCallback();
     register(new StringOption(this, optionName, defaultValue, normalizedMeta, cb));
@@ -254,6 +389,23 @@ public class SubConfig implements Comparable<SubConfig> {
   }
 
   /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, short, Option.Meta, ShortCallback, boolean)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      short defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.ShortCallback cb,
+      boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    if (cb == null) cb = new NullShortCallback();
+    register(new ShortOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
+  }
+
+  /**
    * Registers a {@code String[]} option.
    *
    * @param optionName Name of the option (no prefix).
@@ -263,6 +415,21 @@ public class SubConfig implements Comparable<SubConfig> {
    */
   public void register(
       String optionName, String[] defaultValue, Option.Meta meta, StringArrCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    register(new StringArrOption(this, optionName, defaultValue, normalizedMeta, cb));
+  }
+
+  /**
+   * Deprecated compatibility overload for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #register(String, String[], Option.Meta, StringArrCallback)}.
+   */
+  @Deprecated
+  public void register(
+      String optionName,
+      String[] defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.StringArrCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     register(new StringArrOption(this, optionName, defaultValue, normalizedMeta, cb));
   }

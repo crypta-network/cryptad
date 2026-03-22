@@ -5,7 +5,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.URLEncoder;
-import network.crypta.support.api.StringArrCallback;
 
 /**
  * Configuration option whose value is a sequence of strings.
@@ -50,9 +49,34 @@ public class StringArrOption extends Option<String[]> {
       String[] defaultValue,
       Option.Meta meta,
       StringArrCallback cb) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<String[]>) cb);
+  }
+
+  private StringArrOption(
+      SubConfig conf,
+      String optionName,
+      String[] defaultValue,
+      Option.Meta meta,
+      ConfigCallback<String[]> cb) {
     super(conf, optionName, cb, meta, Option.DataType.STRING_ARRAY);
     this.defaultValue = (defaultValue == null) ? new String[0] : defaultValue;
     this.currentValue = (defaultValue == null) ? new String[0] : defaultValue;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #StringArrOption(SubConfig, String, String[], Option.Meta,
+   *     network.crypta.config.StringArrCallback)}.
+   */
+  @Deprecated
+  public StringArrOption(
+      SubConfig conf,
+      String optionName,
+      String[] defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.StringArrCallback cb) {
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

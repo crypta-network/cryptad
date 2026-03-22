@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "deprecation"})
 class ProgramDirectoryTest {
 
   @TempDir Path tempDir;
@@ -83,7 +83,7 @@ class ProgramDirectoryTest {
     assertTrue(cb.isReadOnly(), "Default callback must be read-only");
     assertEquals(new File(path1.toString()).getPath(), cb.get());
 
-    // Setting to same path is a no-op
+    // Setting to the same path is a no-op
     assertDoesNotThrow(() -> cb.set(path1.toString()));
 
     // Changing to a different path is rejected
@@ -104,12 +104,12 @@ class ProgramDirectoryTest {
     // Act + Assert
     assertFalse(cb.isReadOnly(), "RW callback must be writable");
 
-    // Initial set succeeds; RWDirectoryCallback does not create the directory on first set
+    // The initial set succeeds; RWDirectoryCallback does not create the directory on the first set
     cb.set(path1.toString());
     assertEquals(new File(path1.toString()).getPath(), cb.get());
     assertFalse(Files.exists(path1), "Initial path is not created by first set call");
 
-    // Setting same path again is a no-op
+    // Setting the same path again is a no-op
     assertDoesNotThrow(() -> cb.set(path1.toString()));
 
     // Change to a different path: directory should be created and accepted

@@ -1,7 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.BooleanCallback;
-
 /**
  * No-op {@link BooleanCallback} following the null-object pattern.
  *

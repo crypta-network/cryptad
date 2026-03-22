@@ -5,11 +5,11 @@ import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
+import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.api.StringCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

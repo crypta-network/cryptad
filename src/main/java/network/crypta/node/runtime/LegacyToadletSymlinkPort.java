@@ -6,12 +6,12 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
+import network.crypta.config.StringArrCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.ToadletSymlinkEntry;
 import network.crypta.runtime.spi.ToadletSymlinkPort;
-import network.crypta.support.api.StringArrCallback;
 
 /**
  * Adapts the symlinker persistence SPI to the legacy daemon runtime.

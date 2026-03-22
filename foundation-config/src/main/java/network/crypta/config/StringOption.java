@@ -1,7 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.StringCallback;
-
 /**
  * String-valued configuration option.
  *
@@ -26,9 +24,34 @@ public class StringOption extends Option<String> {
    */
   public StringOption(
       SubConfig conf, String optionName, String defaultValue, Option.Meta meta, StringCallback cb) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<String>) cb);
+  }
+
+  private StringOption(
+      SubConfig conf,
+      String optionName,
+      String defaultValue,
+      Option.Meta meta,
+      ConfigCallback<String> cb) {
     super(conf, optionName, cb, meta, Option.DataType.STRING);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #StringOption(SubConfig, String, String, Option.Meta,
+   *     network.crypta.config.StringCallback)}.
+   */
+  @Deprecated
+  public StringOption(
+      SubConfig conf,
+      String optionName,
+      String defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.StringCallback cb) {
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

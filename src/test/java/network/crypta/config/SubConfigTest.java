@@ -7,7 +7,6 @@ import ch.qos.logback.core.read.ListAppender;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.IntCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -133,7 +132,10 @@ class SubConfigTest {
         new NullShortCallback(),
         false);
     subConfig.register(
-        "arr", new String[] {"x", "", "a b"}, new Option.Meta(1, false, false, "sd", "ld"), null);
+        "arr",
+        new String[] {"x", "", "a b"},
+        new Option.Meta(1, false, false, "sd", "ld"),
+        (StringArrCallback) null);
 
     // Act + Assert
     assertEquals(42, subConfig.getInt("i"));
@@ -210,7 +212,7 @@ class SubConfigTest {
         "arr",
         new String[] {"abc"},
         new Option.Meta(1, false, false, "sd", "ld"),
-        new network.crypta.support.api.StringArrCallback() {
+        new network.crypta.config.StringArrCallback() {
           @Override
           public String[] get() {
             return new String[0];
@@ -350,7 +352,7 @@ class SubConfigTest {
         "arr",
         new String[] {"a", "b"},
         new Option.Meta(11, false, false, "short.arr", "long.arr"),
-        new network.crypta.support.api.StringArrCallback() {
+        new network.crypta.config.StringArrCallback() {
           @Override
           public String[] get() {
             return new String[0];

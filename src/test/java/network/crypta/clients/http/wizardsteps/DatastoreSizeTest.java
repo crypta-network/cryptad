@@ -395,36 +395,50 @@ class DatastoreSizeTest {
         KEY_OUTPUT_BANDWIDTH_LIMIT,
         upstreamLimit,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.IntCallback) null,
+        (network.crypta.config.IntCallback) null,
         false);
     node.register(
         KEY_INPUT_BANDWIDTH_LIMIT,
         downstreamLimit,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.IntCallback) null,
+        (network.crypta.config.IntCallback) null,
         false);
     node.register(
         KEY_SLASHDOT_CACHE_LIFETIME,
         slashdotLifetimeMs,
         new Option.Meta(0, false, false, "", ""),
-        null,
+        (network.crypta.config.LongCallback) null,
         false);
 
-    node.register(KEY_STORE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
-    node.register(KEY_CLIENT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
     node.register(
-        KEY_SLASHDOT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
+        KEY_STORE_SIZE,
+        0L,
+        new Option.Meta(0, false, false, "", ""),
+        (network.crypta.config.LongCallback) null,
+        true);
+    node.register(
+        KEY_CLIENT_CACHE_SIZE,
+        0L,
+        new Option.Meta(0, false, false, "", ""),
+        (network.crypta.config.LongCallback) null,
+        true);
+    node.register(
+        KEY_SLASHDOT_CACHE_SIZE,
+        0L,
+        new Option.Meta(0, false, false, "", ""),
+        (network.crypta.config.LongCallback) null,
+        true);
 
     node.register(
         KEY_STORE_TYPE,
         VALUE_DEFAULT,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.StringCallback) null);
+        (network.crypta.config.StringCallback) null);
     node.register(
         KEY_CLIENT_CACHE_TYPE,
         VALUE_DEFAULT,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.support.api.StringCallback) null);
+        (network.crypta.config.StringCallback) null);
 
     return config;
   }

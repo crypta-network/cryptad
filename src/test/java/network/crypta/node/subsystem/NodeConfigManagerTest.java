@@ -66,8 +66,8 @@ class NodeConfigManagerTest {
 
     assertEquals(startOrder + 1, result);
 
-    ArgumentCaptor<network.crypta.support.api.StringCallback> callbackCaptor =
-        ArgumentCaptor.forClass(network.crypta.support.api.StringCallback.class);
+    ArgumentCaptor<network.crypta.config.StringCallback> callbackCaptor =
+        ArgumentCaptor.forClass(network.crypta.config.StringCallback.class);
     verify(nodeConfig)
         .register(
             eq("l10n"),

@@ -2,7 +2,6 @@ package network.crypta.config;
 
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Fields;
-import network.crypta.support.api.ShortCallback;
 
 /**
  * Configuration option that stores a {@link Short} value.
@@ -43,10 +42,37 @@ public class ShortOption extends Option<Short> {
       Option.Meta meta,
       ShortCallback cb,
       boolean isSize) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Short>) cb, isSize);
+  }
+
+  private ShortOption(
+      SubConfig conf,
+      String optionName,
+      short defaultValue,
+      Option.Meta meta,
+      ConfigCallback<Short> cb,
+      boolean isSize) {
     super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.isSize = isSize;
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #ShortOption(SubConfig, String, short, Option.Meta,
+   *     network.crypta.config.ShortCallback, boolean)}.
+   */
+  @Deprecated
+  public ShortOption(
+      SubConfig conf,
+      String optionName,
+      short defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.ShortCallback cb,
+      boolean isSize) {
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb), isSize);
   }
 
   /** Builds a localized error message for an unparseable short value. */

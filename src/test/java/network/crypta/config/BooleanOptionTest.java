@@ -1,6 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.BooleanCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

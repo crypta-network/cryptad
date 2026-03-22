@@ -1,7 +1,5 @@
 package network.crypta.config;
 
-import network.crypta.support.api.IntCallback;
-
 /**
  * Configuration option representing a bandwidth limit as an integer rate.
  *
@@ -34,7 +32,33 @@ public class BandwidthOption extends IntOption {
       String defaultValueString,
       Option.Meta meta,
       IntCallback cb) {
-    this(conf, optionName, parseDefaultValue(defaultValueString), meta, cb);
+    this(
+        conf,
+        optionName,
+        parseDefaultValue(defaultValueString),
+        meta,
+        (ConfigCallback<Integer>) cb);
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #BandwidthOption(SubConfig, String, String, Option.Meta,
+   *     network.crypta.config.IntCallback)}.
+   */
+  @Deprecated
+  public BandwidthOption(
+      SubConfig conf,
+      String optionName,
+      String defaultValueString,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb) {
+    this(
+        conf,
+        optionName,
+        parseDefaultValue(defaultValueString),
+        meta,
+        LegacyCallbackAdapters.adapt(cb));
   }
 
   /**
@@ -48,7 +72,32 @@ public class BandwidthOption extends IntOption {
    */
   public BandwidthOption(
       SubConfig conf, String optionName, Integer defaultValue, Option.Meta meta, IntCallback cb) {
+    this(conf, optionName, defaultValue, meta, (ConfigCallback<Integer>) cb);
+  }
+
+  private BandwidthOption(
+      SubConfig conf,
+      String optionName,
+      Integer defaultValue,
+      Option.Meta meta,
+      ConfigCallback<Integer> cb) {
     super(conf, optionName, defaultValue, meta, cb, Dimension.SIZE);
+  }
+
+  /**
+   * Deprecated compatibility constructor for consumers compiled against the old callback package.
+   *
+   * @deprecated Use {@link #BandwidthOption(SubConfig, String, Integer, Option.Meta,
+   *     network.crypta.config.IntCallback)}.
+   */
+  @Deprecated
+  public BandwidthOption(
+      SubConfig conf,
+      String optionName,
+      Integer defaultValue,
+      Option.Meta meta,
+      network.crypta.support.api.IntCallback cb) {
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

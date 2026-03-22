@@ -1,7 +1,5 @@
-package network.crypta.support.api;
+package network.crypta.config;
 
-import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.NodeNeedRestartException;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 

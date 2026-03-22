@@ -3,6 +3,7 @@ package network.crypta.node.useralerts;
 import java.util.List;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
+import network.crypta.config.StringCallback;
 import network.crypta.config.StringOption;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -11,7 +12,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.StringCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -144,7 +144,7 @@ class MeaningfulNodeNameUserAlertTest {
     HTMLNode li =
         ul.getChildren().stream().filter(n -> "li".equals(n.getName())).findFirst().orElseThrow();
 
-    // The title span includes default tooltip and small short description node appended
+    // The title span includes the default tooltip and a small short description node appended
     HTMLNode titleSpan =
         li.getChildren().stream().filter(n -> "span".equals(n.getName())).findFirst().orElseThrow();
     assertEquals("configshortdesc", titleSpan.getAttribute("class"));

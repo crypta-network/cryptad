@@ -149,7 +149,10 @@ class PeersOffersUserAlertTest {
     SubConfig nodeCfg = cfg.createSubConfig("node");
     // Register the boolean option with default=false
     nodeCfg.register(
-        "peersOffersDismissed", false, new Option.Meta(0, false, true, "short", "long"), null);
+        "peersOffersDismissed",
+        false,
+        new Option.Meta(0, false, true, "short", "long"),
+        (network.crypta.config.BooleanCallback) null);
     // SubConfig registers itself with the owning config in its constructor.
     when(node.getConfig()).thenReturn(cfg);
 

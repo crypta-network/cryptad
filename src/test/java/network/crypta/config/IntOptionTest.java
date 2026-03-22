@@ -1,7 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.support.Fields;
-import network.crypta.support.api.IntCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

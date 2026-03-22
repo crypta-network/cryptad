@@ -1,13 +1,13 @@
 package network.crypta.node;
 
+import network.crypta.config.BooleanCallback;
+import network.crypta.config.IntCallback;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.LongCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.BooleanCallback;
-import network.crypta.support.api.IntCallback;
-import network.crypta.support.api.LongCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

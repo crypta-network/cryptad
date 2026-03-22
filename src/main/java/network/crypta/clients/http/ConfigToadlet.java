@@ -18,7 +18,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLEncoder;
-import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -698,7 +697,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
 
     HTMLNode configItemNode = configGroupUlNode.addChild("li");
     String defaultValue =
-        (callback instanceof BooleanCallback) ? l10n(option.getDefault()) : option.getDefault();
+        isBooleanCallback(callback) ? l10n(option.getDefault()) : option.getDefault();
 
     configItemNode.addAttribute(ATTR_CLASS, optionType.cssClass);
     configItemNode
@@ -757,7 +756,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     if (callback instanceof EnumerableOptionCallback) {
       return OptionType.DROP_DOWN;
     }
-    if (callback instanceof BooleanCallback) {
+    if (isBooleanCallback(callback)) {
       return OptionType.BOOLEAN;
     }
     if (callback instanceof ProgramDirectory.DirectoryCallback && !callback.isReadOnly()) {
@@ -767,6 +766,11 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       return OptionType.TEXT;
     }
     return OptionType.TEXT_READ_ONLY;
+  }
+
+  @SuppressWarnings("deprecation")
+  private static boolean isBooleanCallback(ConfigCallback<?> callback) {
+    return callback instanceof network.crypta.support.api.BooleanCallback;
   }
 
   private void addFormButtons(HTMLNode formNode) {

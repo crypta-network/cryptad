@@ -12,7 +12,7 @@ import network.crypta.support.api.StringCallback;
  *
  * <p>This type holds the directory {@link File} and a set of basenames for files that code creates
  * beneath it. It exposes a {@link StringCallback} so configuration code can read or update the
- * directory path. Runtime moves are intentionally restricted: changing the path after initial
+ * directory path. Runtime moves are intentionally restricted: changing the path after the initial
  * assignment is not supported except where explicitly allowed by the read/write callback variant.
  *
  * @author infinity0
@@ -20,6 +20,7 @@ import network.crypta.support.api.StringCallback;
  *     (new)</a>
  * @see <a href="http://wiki.freenetproject.org/Program_files">Program files documentation (old)</a>
  */
+@SuppressWarnings("deprecation")
 public class ProgramDirectory {
 
   /** Absolute or relative directory path; {@code null} until initialized. */
@@ -102,7 +103,7 @@ public class ProgramDirectory {
    *
    * <p>Allows the first assignment and accepts idempotent writes; rejects changes thereafter.
    */
-  public class DirectoryCallback extends StringCallback {
+  public class DirectoryCallback extends network.crypta.config.StringCallback {
     @Override
     public String get() {
       return dir.getPath();
@@ -115,7 +116,7 @@ public class ProgramDirectory {
         return;
       }
       if (dir.equals(new File(val))) return;
-      // Disallow changing the path at runtime; keep message in English intentionally.
+      // Disallow changing the path at runtime; keep the message in English intentionally.
       throw new InvalidConfigValueException(
           "Moving program directory on the fly not supported at present");
     }
@@ -143,7 +144,7 @@ public class ProgramDirectory {
       File f = new File(val);
       if (!((f.exists() && f.isDirectory()) || f.mkdir()))
         // Used in advanced setups; still common enough to translate.
-        // Keep message localized for user-facing configuration errors.
+        // Keep the message localized for user-facing configuration errors.
         throw new InvalidConfigValueException(l10n(moveErrMsg));
       dir = new File(val);
     }
