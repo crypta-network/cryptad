@@ -280,22 +280,17 @@ val sharedSelectiveLeafPruneTaskNames =
     "test",
     "jacocoTestReport",
     "jacocoTestCoverageVerification",
+    "sonar",
+    "sonarqube",
+    "sonarResolver",
+    "sonarlintFile",
+    "sonarlintMain",
+    "sonarlintTest",
   )
 
 val rootSelectiveLeafPruneTaskNames =
   sharedSelectiveLeafPruneTaskNames +
-    setOf(
-      "copyResourcesToClasses2",
-      "buildJar",
-      "run",
-      "runLauncher",
-      "printDirs",
-      "sonar",
-      "sonarResolver",
-      "sonarlintFile",
-      "sonarlintMain",
-      "sonarlintTest",
-    )
+    setOf("copyResourcesToClasses2", "buildJar", "run", "runLauncher", "printDirs")
 
 internalLeafProjects.forEach { leaf ->
   leaf.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, sharedSelectiveLeafPruneTaskNames)
