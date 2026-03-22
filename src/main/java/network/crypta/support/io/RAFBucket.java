@@ -6,11 +6,11 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * Read-only {@link Bucket} backed by a {@link LockableRandomAccessBuffer}.
@@ -160,7 +160,7 @@ public final class RAFBucket implements Bucket, RandomAccessBucket {
    * @throws ResumeFailedException if the underlying buffer cannot resume
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     underlying.onResume(context);
   }
 

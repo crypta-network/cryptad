@@ -23,6 +23,7 @@ import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
@@ -265,6 +266,20 @@ class ClientContextTest {
   }
 
   @Test
+  void asResumeContext_whenViewedThroughInterface_exposesPersistentObjects() {
+    MasterSecret secret = mock(MasterSecret.class);
+    ctx.setPersistentMasterSecret(secret);
+
+    ResumeContext resumeContext = ctx;
+
+    assertSame(ctx.fastWeakRandom(), resumeContext.fastWeakRandom());
+    assertSame(
+        ctx.getPersistentFilenameGenerator(), resumeContext.getPersistentFilenameGenerator());
+    assertSame(ctx.getPersistentFileTracker(), resumeContext.getPersistentFileTracker());
+    assertSame(secret, resumeContext.getPersistentMasterSecret());
+  }
+
+  @Test
   void getDefaultPersistentFetchContext_returnsCopyWithNewProducer() {
     FetchContext copy = ctx.getDefaultPersistentFetchContext();
     assertNotNull(copy);
@@ -493,7 +508,7 @@ class ClientContextTest {
 
     @Override
     public CheckpointLock lock() {
-      return (forceWrite, prio) -> {};
+      return (_, _) -> {};
     }
 
     @Override

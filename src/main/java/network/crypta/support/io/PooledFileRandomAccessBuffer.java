@@ -12,9 +12,9 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Serialization/resume: a compact descriptor can be written with {@link #storeTo} and restored
  * via the {@linkplain #PooledFileRandomAccessBuffer(DataInputStream, FilenameGenerator,
- * PersistentFileTracker) persistence constructor}. {@link #onResume(ClientContext)} validates and
+ * PersistentFileTracker) persistence constructor}. {@link #onResume(ResumeContext)} validates and
  * re-registers persistent-temp files.
  *
  * <p>Shutdown: this type does not rely on a shutdown hook. Descriptors are reclaimed via explicit
@@ -584,7 +584,7 @@ public final class PooledFileRandomAccessBuffer
    * @throws ResumeFailedException if the file is missing or if the stored length is inconsistent
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     if (!file.exists()) throw new ResumeFailedException("File does not exist: " + file);
     if (length > file.length()) throw new ResumeFailedException("Bad length");
     if (persistentTempID != -1) context.getPersistentFileTracker().register(file);

@@ -42,7 +42,7 @@ class SectoredRandomGrabArrayTest {
   private static ClientContext contextWithRandom(Random r) throws Exception {
     // Create a Mockito mock, then set the public final field via reflection for deterministic RNG.
     ClientContext ctx = mock(ClientContext.class);
-    Field f = ClientContext.class.getDeclaredField("fastWeakRandom");
+    Field f = ClientContext.class.getDeclaredField("fastWeakRandomSource");
     f.setAccessible(true);
     f.set(ctx, r);
     return ctx;

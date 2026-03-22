@@ -9,10 +9,10 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -258,16 +258,16 @@ public final class DelayedFreeBucket implements Bucket, Serializable, DelayedFre
   /**
    * Reattaches runtime state after a restart.
    *
-   * <p>Wires the tracker from {@link ClientContext#persistentBucketFactory} and delegates {@link
-   * Bucket#onResume(ClientContext)} to the wrapped bucket so it can register itself and avoid
+   * <p>Wires the tracker from {@link ResumeContext#getPersistentFileTracker()} and delegates {@link
+   * Bucket#onResume(ResumeContext)} to the wrapped bucket so it can register itself and avoid
    * premature collection.
    *
-   * @param context runtime context providing the persistent bucket factory
+   * @param context runtime context providing the persistent file tracker
    * @throws ResumeFailedException if the wrapped bucket cannot be resumed
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
-    this.factory = context.persistentBucketFactory;
+  public void onResume(ResumeContext context) throws ResumeFailedException {
+    this.factory = context.getPersistentFileTracker();
     bucket.onResume(context);
   }
 

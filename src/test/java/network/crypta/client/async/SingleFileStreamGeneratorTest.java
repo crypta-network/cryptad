@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -103,7 +104,7 @@ class SingleFileStreamGeneratorTest {
           }
 
           @Override
-          public void onResume(ClientContext context) {
+          public void onResume(ResumeContext context) {
             /* intentionally empty: not used in this test */
           }
 
@@ -249,7 +250,7 @@ class SingleFileStreamGeneratorTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       /* intentionally empty: not used in this test */
     }
 

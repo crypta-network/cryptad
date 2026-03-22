@@ -6,8 +6,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +32,7 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
 
   /**
    * Tracker used to check disk space and register files on resume. This field is transient and is
-   * reattached from the {@link ClientContext} during {@link #innerResume(ClientContext)}; it does
+   * reattached from the {@link ResumeContext} during {@link #innerResume(ResumeContext)}; it does
    * not participate in equality.
    */
   transient PersistentFileTracker tracker;
@@ -131,16 +131,16 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
   }
 
   @Override
-  protected void innerResume(ClientContext context) throws ResumeFailedException {
+  protected void innerResume(ResumeContext context) throws ResumeFailedException {
     /*
      * Reattaches runtime dependencies after deserialization and registers the file with the
      * persistent tracker.
      *
-     * <p>Order matters: delegate to {@link TempFileBucket#innerResume(ClientContext)} first to
-     * resolve the generator and file location, then wire the tracker and register the file so it is
-     * not collected during persistent-temp cleanup.
+     * <p>Order matters: delegate to {@link TempFileBucket#innerResume(ResumeContext)} first to
+     * resolve the generator and file location, then wire the tracker and register the file so it
+     * is not collected during persistent-temp cleanup.
      *
-     * @param context client context providing {@link PersistentFileTracker}
+     * @param context resume context providing {@link PersistentFileTracker}
      * @throws ResumeFailedException if the backing file cannot be located or validated
      */
     super.innerResume(context);

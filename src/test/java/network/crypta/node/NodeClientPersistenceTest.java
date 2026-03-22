@@ -384,7 +384,7 @@ class NodeClientPersistenceTest {
         () -> assertSame(healingQueue, context.healingQueue),
         () -> assertSame(uskManager, context.uskManager),
         () -> assertSame(random, context.random),
-        () -> assertSame(fastWeakRandom, context.fastWeakRandom),
+        () -> assertSame(fastWeakRandom, context.fastWeakRandomSource),
         () -> assertSame(ticker, context.ticker),
         () -> assertSame(memoryLimitedJobRunner, context.memoryLimitedJobRunner),
         () -> assertSame(tempFilenameGenerator, context.fg),

@@ -27,6 +27,7 @@ import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -215,7 +216,7 @@ class USKInserterTest {
       }
 
       @Override
-      public void onResume(ClientContext context) {
+      public void onResume(ResumeContext context) {
         // Not persistent in tests; nothing to resume.
       }
 

@@ -8,7 +8,6 @@ import java.io.OptionalDataException;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.io.ResumeFailedException;
 
@@ -288,12 +287,12 @@ public final class ManifestElement implements Serializable {
   /**
    * Reattaches runtime state after a restart.
    *
-   * <p>Delegates to {@link RandomAccessBucket#onResume(ClientContext)} when a bucket is present.
+   * <p>Delegates to {@link RandomAccessBucket#onResume(ResumeContext)} when a bucket is present.
    *
    * @param context runtime context used by nested bucket implementations
    * @throws ResumeFailedException if the bucket cannot resume
    */
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     if (data != null) data.onResume(context);
   }
 

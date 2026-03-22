@@ -8,20 +8,27 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.CacheFetchResult;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
@@ -97,27 +104,8 @@ class RequestStatusCacheTest {
     FreenetURI originalUri = mock(FreenetURI.class);
     FreenetURI redirectUri = mock(FreenetURI.class);
 
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "dl",
-            Persistence.CONNECTION,
-            false,
-            false,
-            false,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            false,
-            (short) 1);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(1L, "text/plain", null, null, null, null, false);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, originalUri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
+    DownloadRequestStatus status =
+        newDownloadStatus("dl", originalUri, false, 1L, "text/plain", null, false);
 
     cache.addDownload(status);
 
@@ -138,27 +126,8 @@ class RequestStatusCacheTest {
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = new FixedBucket(8);
 
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "shadow",
-            Persistence.CONNECTION,
-            true,
-            false,
-            false,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            false,
-            (short) 1);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(8L, "image/png", null, null, null, bucket, false);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
+    DownloadRequestStatus status =
+        newDownloadStatus("shadow", uri, true, 8L, "image/png", bucket, false);
 
     cache.addDownload(status);
 
@@ -177,27 +146,8 @@ class RequestStatusCacheTest {
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = new FixedBucket(2);
 
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "shadow-filter",
-            Persistence.CONNECTION,
-            true,
-            false,
-            false,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            false,
-            (short) 1);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(2L, "text/plain", null, null, null, bucket, true);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
+    DownloadRequestStatus status =
+        newDownloadStatus("shadow-filter", uri, true, 2L, "text/plain", bucket, true);
 
     cache.addDownload(status);
 
@@ -209,27 +159,8 @@ class RequestStatusCacheTest {
     RequestStatusCache cache = new RequestStatusCache();
 
     FreenetURI uri = mock(FreenetURI.class);
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            "remove-dl",
-            Persistence.CONNECTION,
-            true,
-            false,
-            false,
-            0,
-            0,
-            0,
-            null,
-            0,
-            0,
-            null,
-            false,
-            (short) 1);
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(1L, "text/plain", null, null, null, new FixedBucket(1), false);
-    DownloadRequestStatusDetails details =
-        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
-    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
+    DownloadRequestStatus status =
+        newDownloadStatus("remove-dl", uri, true, 1L, "text/plain", new FixedBucket(1), false);
 
     cache.addDownload(status);
 
@@ -382,10 +313,8 @@ class RequestStatusCacheTest {
     cache.addTo(snapshot);
     assertTrue(snapshot.isEmpty());
 
-    @SuppressWarnings("unchecked")
     MultiValueTable<?, ?> downloadsByUri =
         (MultiValueTable<?, ?>) getField(cache, "downloadsByURI");
-    @SuppressWarnings("unchecked")
     MultiValueTable<?, ?> uploadsByFinalUri =
         (MultiValueTable<?, ?>) getField(cache, "uploadsByFinalURI");
     assertTrue(downloadsByUri.isEmpty());
@@ -398,6 +327,38 @@ class RequestStatusCacheTest {
     return field.get(target);
   }
 
+  private static DownloadRequestStatus newDownloadStatus(
+      String identifier,
+      FreenetURI uri,
+      boolean started,
+      long dataSize,
+      String mimeType,
+      Bucket bucket,
+      boolean alreadyFiltered) {
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            identifier,
+            Persistence.CONNECTION,
+            started,
+            false,
+            false,
+            0,
+            0,
+            0,
+            null,
+            0,
+            0,
+            null,
+            false,
+            (short) 1);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(dataSize, mimeType, null, null, null, bucket, alreadyFiltered);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    return new DownloadRequestStatus(statusSnapshot, details);
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class FixedBucket implements Bucket {
     private final long size;
 
@@ -456,7 +417,7 @@ class RequestStatusCacheTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       throw new UnsupportedOperationException();
     }
 

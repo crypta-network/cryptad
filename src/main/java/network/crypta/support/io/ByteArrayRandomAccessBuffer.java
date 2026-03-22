@@ -5,8 +5,8 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * In-memory {@link LockableRandomAccessBuffer} backed by a fixed-size {@code byte[]}.
@@ -196,7 +196,7 @@ public class ByteArrayRandomAccessBuffer implements LockableRandomAccessBuffer, 
    * @param context the client context requesting resume
    */
   @Override
-  public void onResume(ClientContext context) {
+  public void onResume(ResumeContext context) {
     // No-op.
   }
 

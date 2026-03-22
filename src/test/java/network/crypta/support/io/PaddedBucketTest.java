@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -113,7 +114,7 @@ class PaddedBucketTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // Intentionally no-op: this in-memory bucket has no persistent state to re-register or
       // restore after resume; tests do not rely on any tracker integration.
     }

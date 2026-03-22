@@ -10,7 +10,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -25,7 +24,6 @@ import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.NodeStarter;
-import network.crypta.support.StringValidityChecker;
 import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,7 +106,7 @@ public final class FileUtil {
    * sanitization and path handling.
    */
   public enum OperatingSystem {
-    UNKNOWN(false, false, false), // Special-cased in filename sanitising code.
+    UNKNOWN(false, false, false), // Special-cased in filename sanitizing code.
     MAC_OS(false, true, true), // OS/X in that it can run scripts.
     LINUX(false, false, true),
     FREE_BSD(false, false, true),
@@ -182,53 +180,6 @@ public final class FileUtil {
      * outside intended directories.
      */
     fileNameCharset = getFileEncodingCharset();
-  }
-
-  private static char chooseDefaultReplacement(String extraChars) {
-    if (extraChars.indexOf(' ') == -1) return ' ';
-    if (extraChars.indexOf('_') == -1) return '_';
-    if (extraChars.indexOf('-') == -1) return '-';
-    throw new IllegalArgumentException("What do you want me to use instead of spaces???");
-  }
-
-  private static boolean isReservedForAnyOS(char c) {
-    return StringValidityChecker.isWindowsReservedPrintableFilenameCharacter(c)
-        || StringValidityChecker.isMacOSReservedPrintableFilenameCharacter(c)
-        || StringValidityChecker.isUnixReservedPrintableFilenameCharacter(c);
-  }
-
-  private static boolean isReservedForOS(OperatingSystem targetOS, char c) {
-    if (targetOS == OperatingSystem.UNKNOWN) return isReservedForAnyOS(c);
-    if (targetOS.isWindows && StringValidityChecker.isWindowsReservedPrintableFilenameCharacter(c))
-      return true;
-    if (targetOS.isMac && StringValidityChecker.isMacOSReservedPrintableFilenameCharacter(c))
-      return true;
-    return targetOS.isUnix && StringValidityChecker.isUnixReservedPrintableFilenameCharacter(c);
-  }
-
-  private static boolean shouldReplaceChar(char c, OperatingSystem targetOS, String extraChars) {
-    return extraChars.indexOf(c) != -1
-        || Character.getType(c) == Character.CONTROL
-        || Character.isWhitespace(c)
-        || isReservedForOS(targetOS, c);
-  }
-
-  private static void trimWindowsTrailingSpaceDot(StringBuilder sb, OperatingSystem targetOS) {
-    if (targetOS == OperatingSystem.UNKNOWN || targetOS.isWindows) {
-      int lastCharIndex = sb.length() - 1;
-      while (lastCharIndex >= 0) {
-        char lastChar = sb.charAt(lastCharIndex);
-        if (lastChar == ' ' || lastChar == '.') sb.deleteCharAt(lastCharIndex--);
-        else break;
-      }
-    }
-  }
-
-  private static void fixWindowsReservedBasename(StringBuilder sb, OperatingSystem targetOS) {
-    if ((targetOS == OperatingSystem.UNKNOWN || targetOS.isWindows)
-        && StringValidityChecker.isWindowsReservedFilename(sb.toString())) {
-      sb.insert(0, '_');
-    }
   }
 
   /**
@@ -625,34 +576,13 @@ public final class FileUtil {
    */
   public static String sanitizeFileName(
       final String fileName, OperatingSystem targetOS, String extraChars) {
-    // Filter out any characters that do not exist in the charset.
-    final CharBuffer buffer =
-        fileNameCharset.decode(fileNameCharset.encode(fileName)); // Charsets are thread‑safe
-
-    final StringBuilder sb = new StringBuilder(fileName.length() + 1);
-
-    char def = chooseDefaultReplacement(extraChars);
-
-    for (char c :
-        buffer.array()) { // Note that this will add extra whitespace to the end, which we will trim
-      // later.
-
-      boolean replace = shouldReplaceChar(c, targetOS, extraChars);
-      sb.append(replace ? def : c);
-    }
-
-    // On Windows, a filename must not end with a space or dot; remove any trailing instances.
-    trimWindowsTrailingSpaceDot(sb, targetOS);
-
-    // Avoid Windows reserved basenames (e.g., CON, NUL) by prefixing an underscore when needed.
-    fixWindowsReservedBasename(sb, targetOS);
-
-    if (sb.isEmpty()) {
-      sb.append("Invalid filename"); // Note: not localized
-    }
-
-    return sb.toString().trim(); // Trim leading and trailing whitespace.
-    // Some of the trailing whitespace may be from the CharBuffer.
+    return FilenameSanitizer.sanitizeFileName(
+        fileName,
+        fileNameCharset,
+        targetOS == OperatingSystem.UNKNOWN || targetOS.isWindows,
+        targetOS == OperatingSystem.UNKNOWN || targetOS.isMac,
+        targetOS == OperatingSystem.UNKNOWN || targetOS.isUnix,
+        extraChars);
   }
 
   /**

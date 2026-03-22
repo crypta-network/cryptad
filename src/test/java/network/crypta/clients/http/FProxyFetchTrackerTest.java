@@ -139,7 +139,7 @@ class FProxyFetchTrackerTest {
     try (var _ =
         mockConstruction(
             FProxyFetchInProgress.class,
-            (mock, settings) -> {
+            (mock, _) -> {
               when(mock.getWaiter()).thenReturn(mock(FProxyFetchWaiter.class));
               doThrow(failure).when(mock).start(context);
               setFinalField(mock, "uri", key);
@@ -218,7 +218,7 @@ class FProxyFetchTrackerTest {
   void makeRandomElementID_returnsValueFromFastWeakRandom() throws Exception {
     Random fastRandom = new Random(1234L);
     ClientContext context = mock(ClientContext.class);
-    setFinalField(context, "fastWeakRandom", fastRandom);
+    setFinalField(context, "fastWeakRandomSource", fastRandom);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
     FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);

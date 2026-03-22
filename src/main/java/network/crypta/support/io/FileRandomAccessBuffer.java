@@ -11,8 +11,8 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -287,7 +287,7 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
    * @throws ResumeFailedException if the file is missing or the length differs
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     if (!file.exists()) throw new ResumeFailedException("File does not exist any more");
     if (file.length() != length) throw new ResumeFailedException("File is wrong length");
     RandomAccessFile reopened;

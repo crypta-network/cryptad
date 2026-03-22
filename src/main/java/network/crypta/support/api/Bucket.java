@@ -4,16 +4,15 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
  * Abstraction of a temporary data container.
  *
  * <p>A {@code Bucket} behaves like a temporary file but the underlying storage can vary: it may
- * live in memory, on disk, be encrypted, occupy a slice of another file, or be composed from a
- * chain of other buckets. Implementations are free to choose the storage strategy while exposing a
- * simple stream-based read/write API.
+ * live in memory, on disk, be encrypted, occupy a slice of another file, or be composed of a chain
+ * of other buckets. Implementations are free to choose the storage strategy while exposing a simple
+ * stream-based read/write API.
  *
  * <p>Serialization is not required; not all bucket implementations are {@link java.io.Serializable
  * Serializable}.
@@ -153,7 +152,7 @@ public interface Bucket extends AutoCloseable {
    * @param context runtime services and helpers required to reinitialize the bucket
    * @throws ResumeFailedException if the bucket cannot reattach to its persisted state
    */
-  void onResume(ClientContext context) throws ResumeFailedException;
+  void onResume(ResumeContext context) throws ResumeFailedException;
 
   /**
    * Writes the metadata necessary to reconstruct the bucket to the given stream.

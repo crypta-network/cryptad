@@ -6,9 +6,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +64,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   /** Cached file path; may be {@code null} for deserialized legacy instances. */
   private File file;
 
-  /** Ensures {@link #onResume(ClientContext)} runs at most once. */
+  /** Ensures {@link #onResume(ResumeContext)} runs at most once. */
   private transient boolean resumed;
 
   /**
@@ -79,7 +79,6 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   public TempFileBucket(long id, FilenameGenerator generator) {
     // Using deleteOnExit() for temp files retains entries for JVM lifetime and risks memory leaks.
     this(id, generator, true);
-    this.file = generator.getFilename(id);
   }
 
   /**
@@ -100,7 +99,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
     this.file = generator.getFilename(id);
 
     if (LOG.isTraceEnabled()) {
-      LOG.trace("Initializing TempFileBucket({}", getFile());
+      LOG.trace("Initializing TempFileBucket({}", file);
     }
   }
 
@@ -122,7 +121,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   }
 
   @Override
-  public File getFile() {
+  public final File getFile() {
     // Prefer a cached file path; fall back to the generator to recompute on demand.
     if (file != null) return file;
     return generator.getFilename(filenameID);
@@ -156,15 +155,16 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   /**
    * Reattaches runtime state after deserialization in persistent subclasses.
    *
-   * <p>This method updates {@link #generator} from {@link ClientContext#persistentFG}, verifies the
-   * backing file exists (creating it if necessary), and relocates it using {@link
-   * FilenameGenerator#maybeMove(File, long)} when the generator's directory has changed.
+   * <p>This method updates {@link #generator} from {@link
+   * ResumeContext#getPersistentFilenameGenerator()}, verifies the backing file exists (creating it
+   * if necessary), and relocates it using {@link FilenameGenerator#maybeMove(File, long)} when the
+   * generator's directory has changed.
    *
    * @param context client context providing a persistent {@link FilenameGenerator}
    * @throws ResumeFailedException if the file is missing and cannot be created
    */
-  protected void innerResume(ClientContext context) throws ResumeFailedException {
-    generator = context.persistentFG;
+  protected void innerResume(ResumeContext context) throws ResumeFailedException {
+    generator = context.getPersistentFilenameGenerator();
     if (file == null) {
       // Legacy path (e.g., migration from older on-disk formats).
       file = generator.getFilename(filenameID);
@@ -184,7 +184,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   }
 
   @Override
-  public final void onResume(ClientContext context) throws ResumeFailedException {
+  public final void onResume(ResumeContext context) throws ResumeFailedException {
     // Non-persistent buckets cannot be resumed.
     if (!persistent()) throw new UnsupportedOperationException();
     synchronized (this) {

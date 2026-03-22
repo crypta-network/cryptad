@@ -15,13 +15,13 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EntropySource;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -192,7 +192,7 @@ class LongTermPushRepullTestTest {
 
   /** Subprocess entrypoint used by {@link #runMainInSubprocess()}. */
   public static final class MainRunner {
-    public static void main(String[] args) {
+    static void main(String[] args) {
       LongTermPushRepullTest.main(args);
     }
   }
@@ -296,7 +296,7 @@ class LongTermPushRepullTestTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       throw new UnsupportedOperationException("resume not supported");
     }
 

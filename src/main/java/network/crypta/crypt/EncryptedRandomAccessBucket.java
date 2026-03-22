@@ -24,11 +24,11 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.util.Arrays;
 import javax.crypto.SecretKey;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EncryptedRandomAccessBuffer.KdfInput;
 import network.crypta.support.Fields;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.NullInputStream;
@@ -492,7 +492,7 @@ public final class EncryptedRandomAccessBucket implements RandomAccessBucket, Se
    * @throws ResumeFailedException if the underlying bucket fails to resume.
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     underlying.onResume(context);
     this.masterKey = context.getPersistentMasterSecret();
     baseSetup(masterKey);

@@ -1,11 +1,18 @@
 package network.crypta.support.io;
 
-import java.io.*;
-
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.ListUtils;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -217,7 +224,7 @@ public class MultiReaderBucket implements Serializable {
       }
 
       @Override
-      public final int read() throws IOException {
+      public int read() throws IOException {
         synchronized (MultiReaderBucket.this) {
           if (freed || closed) throw new IOException("Already closed");
         }
@@ -225,7 +232,7 @@ public class MultiReaderBucket implements Serializable {
       }
 
       @Override
-      public final int read(byte @NotNull [] data, int offset, int length) throws IOException {
+      public int read(byte @NotNull [] data, int offset, int length) throws IOException {
         synchronized (MultiReaderBucket.this) {
           if (freed || closed) throw new IOException("Already closed");
         }
@@ -233,7 +240,7 @@ public class MultiReaderBucket implements Serializable {
       }
 
       @Override
-      public final int read(byte @NotNull [] data) throws IOException {
+      public int read(byte @NotNull [] data) throws IOException {
         synchronized (MultiReaderBucket.this) {
           if (freed || closed) throw new IOException("Already closed");
         }
@@ -241,12 +248,12 @@ public class MultiReaderBucket implements Serializable {
       }
 
       @Override
-      public final void close() throws IOException {
+      public void close() throws IOException {
         is.close();
       }
 
       @Override
-      public final int available() throws IOException {
+      public int available() throws IOException {
         return is.available();
       }
     }
@@ -323,7 +330,7 @@ public class MultiReaderBucket implements Serializable {
      * @throws UnsupportedOperationException always.
      */
     @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
+    public void onResume(ResumeContext context) throws ResumeFailedException {
       throw new UnsupportedOperationException(); // Not persistent.
     }
 

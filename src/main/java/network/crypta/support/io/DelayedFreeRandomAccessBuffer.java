@@ -8,9 +8,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * A {@link LockableRandomAccessBuffer} wrapper whose {@link #free()} is deferred until after the
@@ -162,15 +162,15 @@ public final class DelayedFreeRandomAccessBuffer
   /**
    * Reattaches runtime state after a restart.
    *
-   * <p>Wires the tracker from {@link ClientContext#persistentBucketFactory} and delegates to the
-   * underlying buffer so it can register itself and avoid the premature collection.
+   * <p>Wires the tracker from {@link ResumeContext#getPersistentFileTracker()} and delegates to the
+   * underlying buffer so it can register itself and avoid premature collection.
    *
-   * @param context runtime context providing the persistent bucket factory
+   * @param context runtime context providing the persistent file tracker
    * @throws ResumeFailedException if the underlying buffer cannot be resumed
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
-    this.factory = context.persistentBucketFactory;
+  public void onResume(ResumeContext context) throws ResumeFailedException {
+    this.factory = context.getPersistentFileTracker();
     underlying.onResume(context);
   }
 

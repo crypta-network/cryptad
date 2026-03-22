@@ -98,7 +98,7 @@ class DelayedFreeRandomAccessBufferTest {
             new ClientContextStorageFactories(
                 newFactory,
                 mock(TempBucketFactory.class),
-                mock(PersistentFileTracker.class),
+                newFactory,
                 mock(FilenameGenerator.class),
                 mock(FilenameGenerator.class),
                 mock(network.crypta.support.io.FileRandomAccessBufferFactory.class),
@@ -132,17 +132,17 @@ class DelayedFreeRandomAccessBufferTest {
     return new OpAction[] {
       new OpAction(
           "pread",
-          (b, u) -> {
+          (b, _) -> {
             byte[] dst = new byte[8];
             b.pread(4L, dst, 1, 3);
           }),
       new OpAction(
           "pwrite",
-          (b, u) -> {
+          (b, _) -> {
             byte[] src = new byte[8];
             b.pwrite(6L, src, 2, 4);
           }),
-      new OpAction("lockOpen", (b, u) -> b.lockOpen())
+      new OpAction("lockOpen", (b, _) -> b.lockOpen())
     };
   }
 

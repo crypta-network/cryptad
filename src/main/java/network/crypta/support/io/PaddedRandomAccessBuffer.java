@@ -9,9 +9,9 @@ import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * A {@link LockableRandomAccessBuffer} wrapper that exposes a logical prefix of the underlying
@@ -151,7 +151,7 @@ public final class PaddedRandomAccessBuffer implements LockableRandomAccessBuffe
    * @throws ResumeFailedException if the wrapped buffer cannot resume
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     raf.onResume(context);
   }
 
@@ -257,6 +257,7 @@ public final class PaddedRandomAccessBuffer implements LockableRandomAccessBuffe
   // This keeps on-the-wire layout compatible with older streams that wrote 'raf' inside default
   // object data when it was non-transient.
   /** Declares persistent fields to keep on-the-wire layout stable across versions. */
+  @SuppressWarnings("unused") // Referenced reflectively by Java serialization.
   @Serial
   private static final ObjectStreamField[] serialPersistentFields =
       new ObjectStreamField[] {
@@ -267,7 +268,6 @@ public final class PaddedRandomAccessBuffer implements LockableRandomAccessBuffe
   /** Writes the declared fields using the standard {@link ObjectOutputStream} protocol. */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     ObjectOutputStream.PutField fields = out.putFields();
     if (!(raf instanceof Serializable)) {
       throw new NotSerializableException(raf == null ? "nullRaf" : raf.getClass().getName());

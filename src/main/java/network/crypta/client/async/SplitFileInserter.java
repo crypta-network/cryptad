@@ -474,7 +474,7 @@ public final class SplitFileInserter
       SplitFileInserterStorageRuntimeParams runtimeParams =
           new SplitFileInserterStorageRuntimeParams.Builder()
               .callback(this)
-              .random(options.context.fastWeakRandom)
+              .random(options.context.fastWeakRandomSource)
               .memoryLimitedJobRunner(options.context.memoryLimitedJobRunner)
               .jobRunner(options.context.getJobRunner(persistent))
               .ticker(options.context.ticker)
@@ -602,7 +602,7 @@ public final class SplitFileInserter
       SplitFileInserterStorageRuntimeParams runtimeParams =
           new SplitFileInserterStorageRuntimeParams.Builder()
               .callback(this)
-              .random(context.fastWeakRandom)
+              .random(context.fastWeakRandomSource)
               .memoryLimitedJobRunner(context.memoryLimitedJobRunner)
               .jobRunner(context.getJobRunner(true))
               .ticker(context.ticker)

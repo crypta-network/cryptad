@@ -17,9 +17,9 @@ import java.security.InvalidKeyException;
 import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.crypto.SecretKey;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.Fields;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.IOUtils;
@@ -53,7 +53,7 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  *
  * <p>Persistence: instances can be stored and restored via {@link #storeTo(DataOutputStream)} and
  * {@link #create(DataInputStream, FilenameGenerator, PersistentFileTracker, MasterSecret)}; an
- * {@link #onResume(ClientContext)} call re-derives transient crypto state from the master secret
+ * {@link #onResume(ResumeContext)} call re-derives transient crypto state from the master secret
  * and validates the header.
  *
  * @author unixninja92 Suggested {@link EncryptedRandomAccessBufferType} to use: ChaCha128
@@ -466,7 +466,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
    * @throws ResumeFailedException If I/O or cryptographic initialization fails.
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     underlyingBuffer.onResume(context);
     try {
       setup(context.getPersistentMasterSecret(), false);
@@ -499,6 +499,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   private static final String FIELD_UNDERLYING = "underlyingBuffer";
   private static final String FIELD_VERSION = "version";
 
+  @SuppressWarnings("unused") // Referenced reflectively by Java serialization.
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_TYPE, EncryptedRandomAccessBufferType.class),
@@ -508,7 +509,6 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     PutField fields = out.putFields();
     fields.put(FIELD_TYPE, type);
     fields.put(FIELD_VERSION, version);

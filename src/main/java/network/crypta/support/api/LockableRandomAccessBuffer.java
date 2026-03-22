@@ -2,7 +2,6 @@ package network.crypta.support.api;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
@@ -88,7 +87,7 @@ public interface LockableRandomAccessBuffer extends RandomAccessBuffer {
    * @param context runtime context available during resume
    * @throws ResumeFailedException if the buffer cannot be made ready for use after restoration
    */
-  void onResume(ClientContext context) throws ResumeFailedException;
+  void onResume(ResumeContext context) throws ResumeFailedException;
 
   /**
    * Writes enough information to reconstruct an equivalent buffer later.

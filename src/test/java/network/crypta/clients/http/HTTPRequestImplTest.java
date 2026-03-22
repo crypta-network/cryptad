@@ -361,6 +361,7 @@ class HTTPRequestImplTest {
    * Minimal in-memory Bucket suitable for exercising the parsing code paths without involving
    * filesystem IO.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class DummyBucket implements RandomAccessBucket {
     private final byte[] data;
 
@@ -419,7 +420,7 @@ class HTTPRequestImplTest {
     }
 
     @Override
-    public void onResume(network.crypta.client.async.ClientContext context) {
+    public void onResume(network.crypta.support.api.ResumeContext context) {
       throw new UnsupportedOperationException();
     }
 
