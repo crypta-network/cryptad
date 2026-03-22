@@ -2,6 +2,7 @@
 # Keep this list limited to the stable generic support subset extracted from :foundation-config.
 
 network/crypta/support/Base64*
+network/crypta/support/Fields*
 network/crypta/support/HTMLEncoder*
 network/crypta/support/HTMLEntities*
 network/crypta/support/HTMLNode*

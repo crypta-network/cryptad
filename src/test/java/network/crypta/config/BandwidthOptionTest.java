@@ -1,20 +1,28 @@
 package network.crypta.config;
 
+import network.crypta.l10n.BaseL10n;
+import network.crypta.l10n.NodeL10n;
+import network.crypta.support.Fields;
 import network.crypta.support.api.IntCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100") // Allow method names like method_whenCondition_expectOutcome
 @ExtendWith(MockitoExtension.class)
@@ -77,8 +85,7 @@ class BandwidthOptionTest {
 
     // Assert: current value and string forms
     assertEquals(expectedBytes, opt.getValue(), "parsed numeric value");
-    String expectedPersist =
-        network.crypta.support.Fields.intToString(expectedBytes, Dimension.NOT);
+    String expectedPersist = Fields.intToString(expectedBytes, false);
     assertEquals(expectedPersist, opt.getValueString(), "persistence string");
   }
 
@@ -130,7 +137,7 @@ class BandwidthOptionTest {
 
     // The current value should remain the default (unchanged)
     assertEquals(2000, opt.getValue());
-    String expectedPersist = network.crypta.support.Fields.intToString(2000, Dimension.NOT);
+    String expectedPersist = Fields.intToString(2000, false);
     assertEquals(expectedPersist, opt.getValueString());
     verify(callback, times(1)).set(2048);
   }
@@ -151,6 +158,39 @@ class BandwidthOptionTest {
     assertEquals("2MiB", opt.getValueDisplayString());
     // Persistence: plain number
     assertEquals("2097152", opt.getDefault());
+  }
+
+  @Test
+  void constructor_withStringDefaultAndPerSecondSuffix_parsesTrimmedBandwidth() {
+    BandwidthOption opt =
+        new BandwidthOption(
+            subConfig,
+            "bandwidth",
+            "16kbps",
+            new Option.Meta(10, false, false, "short", "long"),
+            callback);
+
+    assertEquals(2000, opt.getValue());
+    assertEquals("2k", opt.getValueDisplayString());
+    assertEquals(Fields.intToString(2000, false), opt.getDefault());
+  }
+
+  @Test
+  @ResourceLock("NodeL10n.base")
+  void setValue_whenLocalizedPerSecondSuffix_callsCallbackWithParsedValue() throws Exception {
+    BandwidthOption opt = newOptionWithDefault(0);
+
+    try (MockedStatic<NodeL10n> nodeL10n = mockStatic(NodeL10n.class)) {
+      BaseL10n base = mock(BaseL10n.class);
+      nodeL10n.when(NodeL10n::getBase).thenReturn(base);
+      when(base.getString("FirstTimeWizardToadlet.bandwidthPerSecond")).thenReturn("/sek");
+
+      opt.setValue("2KiB/SEK");
+    }
+
+    assertEquals(2048, opt.getValue());
+    assertEquals("2KiB", opt.getValueDisplayString());
+    verify(callback, times(1)).set(2048);
   }
 
   @Test

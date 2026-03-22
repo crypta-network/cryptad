@@ -405,7 +405,7 @@ class FieldsTest {
     assertEquals("Long overflow", ex.getMessage());
   }
 
-  // New tests below aim to improve coverage of Fields.java public API.
+  // The new tests below aim to improve coverage of Fields.java public API.
 
   @Test
   void numberList_whenRoundTrip_expectEqual() {
@@ -565,27 +565,6 @@ class FieldsTest {
     assertEquals(8, Fields.parseInt("8B")); // 8 bytes
     assertEquals(2048, Fields.parseInt("2KiB"));
     assertEquals(2000, Fields.parseInt("2kB"));
-  }
-
-  @Test
-  void parseInt_withDimensionDuration_expectMillis() {
-    assertEquals(90_000, Fields.parseInt("1m30s", network.crypta.config.Dimension.DURATION));
-  }
-
-  @Test
-  void parseInt_withDimensionOverflow_expectArithmeticException() {
-    assertThrows(
-        ArithmeticException.class,
-        () -> Fields.parseInt("10000000000s", network.crypta.config.Dimension.DURATION));
-  }
-
-  @Test
-  void trimPerSecond_whenHasQualifiers_expectRemoved() {
-    assertEquals("100KiB", Fields.trimPerSecond("100KiB/s"));
-    assertEquals("100KiB", Fields.trimPerSecond("100KiB/SEC"));
-    assertEquals("100KiB", Fields.trimPerSecond("100KiB/second"));
-    assertEquals("100KiB", Fields.trimPerSecond("100KiBps"));
-    assertEquals("100KiB", Fields.trimPerSecond("  100KiBps  "));
   }
 
   @Test
