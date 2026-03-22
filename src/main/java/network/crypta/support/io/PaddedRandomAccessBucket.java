@@ -13,10 +13,10 @@ import java.io.ObjectStreamField;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -379,7 +379,7 @@ public final class PaddedRandomAccessBucket implements RandomAccessBucket, Seria
    * @throws ResumeFailedException if the underlying bucket cannot resume
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     underlying.onResume(context);
   }
 

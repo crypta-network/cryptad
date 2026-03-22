@@ -2,8 +2,8 @@ package network.crypta.support.io;
 
 import java.io.*;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -286,7 +286,7 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
    * @param context runtime context (unused).
    */
   @Override
-  public void onResume(ClientContext context) {
+  public void onResume(ResumeContext context) {
     // Intentional no-op.
   }
 

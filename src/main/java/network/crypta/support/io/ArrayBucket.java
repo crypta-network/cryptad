@@ -11,10 +11,10 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * In‑memory {@link network.crypta.support.api.Bucket} implementation backed by a single byte array.
@@ -235,7 +235,7 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
    * @param context runtime context; ignored
    */
   @Override
-  public void onResume(ClientContext context) {
+  public void onResume(ResumeContext context) {
     // Do nothing.
   }
 

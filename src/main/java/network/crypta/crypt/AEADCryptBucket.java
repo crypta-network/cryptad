@@ -15,8 +15,8 @@ import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
@@ -194,7 +194,7 @@ public final class AEADCryptBucket implements Bucket, Serializable {
    * @throws ResumeFailedException if the underlying resume fails
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     underlying.onResume(context);
   }
 

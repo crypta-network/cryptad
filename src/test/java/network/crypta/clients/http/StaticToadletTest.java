@@ -264,7 +264,7 @@ class StaticToadletTest {
     }
 
     @Override
-    public void onResume(network.crypta.client.async.ClientContext context) {
+    public void onResume(network.crypta.support.api.ResumeContext context) {
       // No-op: test bucket does not persist across runs, resume lifecycle is irrelevant here.
     }
 

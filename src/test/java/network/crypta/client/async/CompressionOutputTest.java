@@ -8,6 +8,7 @@ import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import org.junit.jupiter.api.Test;
 
@@ -37,6 +38,7 @@ class CompressionOutputTest {
    * interface but all I/O methods throw {@link UnsupportedOperationException} as tests never call
    * them.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class FakeBucket implements RandomAccessBucket {
     private final String id;
 
@@ -122,7 +124,7 @@ class CompressionOutputTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       throw new UnsupportedOperationException();
     }
 

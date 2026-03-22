@@ -235,7 +235,7 @@ class ImageCreatorToadletTest {
     }
 
     @Override
-    public void onResume(network.crypta.client.async.ClientContext context) {
+    public void onResume(network.crypta.support.api.ResumeContext context) {
       // no-op
     }
 

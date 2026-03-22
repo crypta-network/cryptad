@@ -145,7 +145,7 @@ class DelayedFreeRandomAccessBucketTest {
             new ClientContextStorageFactories(
                 newFactory,
                 mock(TempBucketFactory.class),
-                mock(PersistentFileTracker.class),
+                newFactory,
                 mock(FilenameGenerator.class),
                 mock(FilenameGenerator.class),
                 mock(network.crypta.support.io.FileRandomAccessBufferFactory.class),

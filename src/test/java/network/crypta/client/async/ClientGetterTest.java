@@ -36,6 +36,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
@@ -55,6 +56,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -135,7 +137,7 @@ class ClientGetterTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // no-op for tests
     }
 
@@ -433,7 +435,9 @@ class ClientGetterTest {
     assertEquals(targetLength, res.size());
     assertEquals("text/plain", res.getMetadata().getMIMEType());
     try (Bucket b = res.asBucket()) {
-      assertEquals(completion.getAbsolutePath(), ((FileBucket) b).getFile().getPath());
+      File resultFile = ((FileBucket) b).getFile();
+      assertNotNull(resultFile);
+      assertEquals(completion.getAbsolutePath(), resultFile.getPath());
     }
   }
 

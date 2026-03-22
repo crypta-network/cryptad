@@ -197,7 +197,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       return new RemoveRandomReturn(r.firstValidItem);
     }
 
-    int rnd = context.fastWeakRandom.nextInt(r.valid);
+    int rnd = context.fastWeakRandomSource.nextInt(r.valid);
     if (LOG.isDebugEnabled())
       LOG.debug("removeRandom: choose nth={} of valid={} excluded={}", rnd, r.valid, r.exclude);
     RandomGrabArrayItem chosen = findNthValid(rnd, excluding, context, now);
@@ -440,7 +440,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
 
   private AttemptOutcome tryOnceLimited(
       RandomGrabArrayItemExclusionList excluding, ClientContext context, long now) {
-    int i = context.fastWeakRandom.nextInt(index);
+    int i = context.fastWeakRandomSource.nextInt(index);
     int blockNo = i / BLOCK_SIZE;
     RandomGrabArrayItem ret = blocks[blockNo].reqs[i % BLOCK_SIZE];
 

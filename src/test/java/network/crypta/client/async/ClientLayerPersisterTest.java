@@ -21,6 +21,7 @@ import network.crypta.node.RequestStarterGroup;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 import org.jetbrains.annotations.NotNull;
@@ -366,7 +367,7 @@ class ClientLayerPersisterTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // nothing to do
     }
 

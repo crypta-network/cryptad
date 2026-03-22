@@ -29,6 +29,7 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.junit.jupiter.api.Test;
@@ -121,7 +122,7 @@ class ContainerInserterTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       if (resumeCalls != null) resumeCalls.incrementAndGet();
     }
 
@@ -188,7 +189,7 @@ class ContainerInserterTest {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // intentionally empty: nothing to resume for this stub
     }
 

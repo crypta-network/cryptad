@@ -10,7 +10,6 @@ import java.util.Arrays;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 import network.crypta.support.Fields;
-import network.crypta.support.io.FileUtil;
 
 /**
  * {@link ChecksumChecker} implementation that uses CRC-32.
@@ -21,6 +20,7 @@ import network.crypta.support.io.FileUtil;
  * type effectively thread-safe.
  */
 public class CRCChecksumChecker extends ChecksumChecker {
+  private static final int BUFFER_SIZE = 32 * 1024;
 
   /** Returns the size of the CRC-32 trailer in bytes. */
   @Override
@@ -141,10 +141,10 @@ public class CRCChecksumChecker extends ChecksumChecker {
     }
 
     long remaining = length;
-    byte[] buffer = new byte[FileUtil.BUFFER_SIZE];
+    byte[] buffer = new byte[BUFFER_SIZE];
     DataInputStream source = new DataInputStream(is);
     while (remaining > 0) {
-      int toRead = (int) Math.min(remaining, FileUtil.BUFFER_SIZE);
+      int toRead = (int) Math.min(remaining, BUFFER_SIZE);
       int read = source.read(buffer, 0, toRead);
       if (read == -1) {
         throw new EOFException("stream reached eof");
@@ -170,9 +170,9 @@ public class CRCChecksumChecker extends ChecksumChecker {
    */
   private static void copyUntilEOF(InputStream is, OutputStream destination, CRC32 crc)
       throws IOException {
-    byte[] buffer = new byte[FileUtil.BUFFER_SIZE];
+    byte[] buffer = new byte[BUFFER_SIZE];
     for (; ; ) {
-      int read = is.read(buffer, 0, FileUtil.BUFFER_SIZE);
+      int read = is.read(buffer, 0, BUFFER_SIZE);
       if (read == -1) {
         return;
       }

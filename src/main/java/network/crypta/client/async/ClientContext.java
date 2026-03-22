@@ -22,6 +22,7 @@ import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
@@ -61,7 +62,7 @@ import network.crypta.support.io.TempBucketFactory;
  * @see ClientRequestScheduler
  * @see RequestScheduler
  */
-public class ClientContext {
+public class ClientContext implements ResumeContext {
 
   private ClientRequestScheduler sskFetchSchedulerBulk;
   private ClientRequestScheduler chkFetchSchedulerBulk;
@@ -129,7 +130,7 @@ public class ClientContext {
    * Fast but weak PRNG for non-cryptographic use (e.g., jitter, randomized backoff). Do not use for
    * secrets or key material. Thread-confined unless otherwise documented by callers.
    */
-  public final Random fastWeakRandom;
+  public final Random fastWeakRandomSource;
 
   /** Monotonic boot identifier for this process instance; stable until the node restarts. */
   public final long bootID;
@@ -220,7 +221,7 @@ public class ClientContext {
     this.tempBucketFactory = storageFactories.tempBucketFactory();
     this.healingQueue = services.resources().healingQueue();
     this.uskManager = services.uskManager();
-    this.fastWeakRandom = runtime.fastWeakRandom();
+    this.fastWeakRandomSource = runtime.fastWeakRandom();
     this.ticker = runtime.ticker();
     this.fg = storageFactories.filenameGenerator();
     this.persistentFG = storageFactories.persistentFilenameGenerator();
@@ -276,8 +277,29 @@ public class ClientContext {
    *
    * @return The master secret used for persistent operations; may be {@code null} until set.
    */
+  @Override
   public synchronized MasterSecret getPersistentMasterSecret() {
     return cryptoSecretPersistent;
+  }
+
+  /**
+   * Returns the weak PRNG exposed through {@link ResumeContext}.
+   *
+   * @return the fast weak random source used for non-cryptographic resume wiring
+   */
+  @Override
+  public Random fastWeakRandom() {
+    return fastWeakRandomSource;
+  }
+
+  /**
+   * Returns the filename generator for persistent artifacts.
+   *
+   * @return the persistent filename generator
+   */
+  @Override
+  public FilenameGenerator getPersistentFilenameGenerator() {
+    return persistentFG;
   }
 
   /**
@@ -559,6 +581,7 @@ public class ClientContext {
    *
    * @return The current {@link PersistentFileTracker} instance.
    */
+  @Override
   public PersistentFileTracker getPersistentFileTracker() {
     return persistentFileTracker;
   }

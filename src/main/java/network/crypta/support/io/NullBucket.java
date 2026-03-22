@@ -1,11 +1,15 @@
 package network.crypta.support.io;
 
-import java.io.*;
-
-import network.crypta.client.async.ClientContext;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * A {@link Bucket} that discards all data written to it and produces no data when read. Intended as
@@ -23,7 +27,7 @@ import network.crypta.support.api.RandomAccessBucket;
  *   <li>Size: {@link #size()} returns the fixed {@link #length}. Writes do not change it.
  *   <li>Random access: {@link #toRandomAccessBuffer()} returns a {@link NullRandomAccessBuffer}
  *       whose size equals {@link #length} and whose reads fill zeros.
- *   <li>Lifecycle: {@link #setReadOnly()}, {@link #free()}, and {@link #onResume(ClientContext)}
+ *   <li>Lifecycle: {@link #setReadOnly()}, {@link #free()}, and {@link #onResume(ResumeContext)}
  *       are no-ops.
  *   <li>Persistence: {@link #storeTo(DataOutputStream)} always throws {@link
  *       UnsupportedOperationException}.
@@ -34,6 +38,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * <p>Note: While this class is {@link java.io.Serializable Serializable}, it does not support the
  * emergency recovery mechanism via {@link #storeTo(DataOutputStream)}.
  */
+@SuppressWarnings("ClassCanBeRecord")
 public class NullBucket implements Bucket, Serializable, RandomAccessBucket {
 
   @Serial private static final long serialVersionUID = 1L;
@@ -183,7 +188,7 @@ public class NullBucket implements Bucket, Serializable, RandomAccessBucket {
    * @param context runtime context; unused
    */
   @Override
-  public void onResume(ClientContext context) {
+  public void onResume(ResumeContext context) {
     /* no-op */
   }
 

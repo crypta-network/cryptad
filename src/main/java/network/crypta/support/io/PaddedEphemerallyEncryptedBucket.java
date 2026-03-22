@@ -9,19 +9,20 @@ import java.io.InputStream;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicLongFieldUpdater;
-import network.crypta.client.async.ClientContext;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.PCFBMode;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.math.MersenneTwister;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -50,10 +51,6 @@ import org.slf4j.LoggerFactory;
 public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PaddedEphemerallyEncryptedBucket.class);
 
-  private static final AtomicLongFieldUpdater<PaddedEphemerallyEncryptedBucket>
-      DATA_LENGTH_UPDATER =
-          AtomicLongFieldUpdater.newUpdater(PaddedEphemerallyEncryptedBucket.class, "dataLength");
-
   /**
    * Serial version for Java serialization. Bumped to 2 to reflect the change in the on-wire Java
    * serialization layout (custom writeObject/readObject with a transient underlying bucket).
@@ -62,18 +59,36 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
 
   // Wrapped bucket may not be java.io.Serializable; keep transient and persist via storeTo/restore
   private transient Bucket bucket;
-  private final int minPaddedSize;
+  private int minPaddedSize;
 
   /** The decryption key. */
-  private final byte[] key;
+  private byte[] key;
 
-  private final byte[] iv;
+  private byte[] iv;
   private transient byte[] randomSeed;
-  private volatile long dataLength;
+  private transient AtomicLong dataLength = new AtomicLong();
   private volatile boolean readOnly;
   private transient int lastOutputStream;
 
   // No static initialization required
+
+  private static final String FIELD_MIN_PADDED_SIZE = "minPaddedSize";
+  private static final String FIELD_KEY = "key";
+  private static final String FIELD_IV = "iv";
+  private static final String FIELD_DATA_LENGTH = "dataLength";
+  private static final String FIELD_READ_ONLY = "readOnly";
+
+  // Keep the Java-serialization field layout compatible with older checkpoints that wrote a
+  // primitive long named 'dataLength' in the default field block.
+  @SuppressWarnings("unused") // Referenced reflectively by Java serialization.
+  @Serial
+  private static final ObjectStreamField[] serialPersistentFields = {
+    new ObjectStreamField(FIELD_MIN_PADDED_SIZE, int.class),
+    new ObjectStreamField(FIELD_KEY, byte[].class),
+    new ObjectStreamField(FIELD_IV, byte[].class),
+    new ObjectStreamField(FIELD_DATA_LENGTH, long.class),
+    new ObjectStreamField(FIELD_READ_ONLY, boolean.class)
+  };
 
   /**
    * Creates an encrypted, padding-aware wrapper over an empty underlying bucket.
@@ -102,7 +117,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
     this.minPaddedSize = minSize;
     readOnly = false;
     lastOutputStream = 0;
-    dataLength = 0;
+    dataLength.set(0);
   }
 
   /**
@@ -116,7 +131,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    * @param newBucket underlying storage used by the shadow wrapper
    */
   public PaddedEphemerallyEncryptedBucket(PaddedEphemerallyEncryptedBucket orig, Bucket newBucket) {
-    this.dataLength = orig.dataLength;
+    this.dataLength.set(orig.dataLength.get());
     this.key = orig.key.clone();
     this.randomSeed = null; // Will be read-only
     setReadOnly();
@@ -142,6 +157,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
     key = null;
     iv = null;
     randomSeed = null;
+    dataLength = new AtomicLong();
   }
 
   /**
@@ -175,7 +191,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
     if (readOnly) throw new IOException("Read only");
     OutputStream os = bucket.getOutputStreamUnbuffered();
     synchronized (this) {
-      dataLength = 0;
+      dataLength.set(0);
     }
     return new PaddedEphemerallyEncryptedOutputStream(os, ++lastOutputStream);
   }
@@ -189,7 +205,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
 
     public PaddedEphemerallyEncryptedOutputStream(OutputStream out, int streamNumber) {
       this.out = out;
-      dataLength = 0;
+      dataLength.set(0);
       this.streamNumber = streamNumber;
       pcfb = getPCFB();
     }
@@ -204,7 +220,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
       int toWrite = pcfb.encipher(b);
       synchronized (PaddedEphemerallyEncryptedBucket.this) {
         out.write(toWrite);
-        DATA_LENGTH_UPDATER.incrementAndGet(PaddedEphemerallyEncryptedBucket.this);
+        dataLength.incrementAndGet();
       }
     }
 
@@ -231,7 +247,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
       pcfb.blockEncipher(enc, 0, enc.length);
       synchronized (PaddedEphemerallyEncryptedBucket.this) {
         out.write(enc, 0, enc.length);
-        DATA_LENGTH_UPDATER.addAndGet(PaddedEphemerallyEncryptedBucket.this, enc.length);
+        dataLength.addAndGet(enc.length);
       }
     }
 
@@ -247,7 +263,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
             return;
           }
           long finalLength = paddedLength();
-          long padding = finalLength - dataLength;
+          long padding = finalLength - dataLength.get();
           int sz = 65536;
           if (padding < (long) sz) sz = (int) padding;
           byte[] buf = new byte[sz];
@@ -306,7 +322,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
 
     @Override
     public int read() throws IOException {
-      if (ptr >= dataLength) return -1;
+      if (ptr >= dataLength.get()) return -1;
       int x = in.read();
       if (x == -1) return x;
       ptr++;
@@ -315,7 +331,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
 
     @Override
     public final int available() {
-      int x = (int) Math.min(dataLength - ptr, Integer.MAX_VALUE);
+      int x = (int) Math.min(dataLength.get() - ptr, Integer.MAX_VALUE);
       return Math.max(x, 0);
     }
 
@@ -368,7 +384,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    * @return padded length in bytes
    */
   public synchronized long paddedLength() {
-    return paddedLength(dataLength, minPaddedSize);
+    return paddedLength(dataLength.get(), minPaddedSize);
   }
 
   /** Minimum default padded size in bytes ({@value}). */
@@ -455,7 +471,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    */
   @Override
   public synchronized long size() {
-    return dataLength;
+    return dataLength.get();
   }
 
   /**
@@ -533,9 +549,9 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
    * @throws ResumeFailedException if the underlying bucket fails to resume
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     randomSeed = new byte[32];
-    context.fastWeakRandom.nextBytes(randomSeed);
+    context.fastWeakRandom().nextBytes(randomSeed);
     bucket.onResume(context);
   }
 
@@ -547,7 +563,13 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
   /* Writes default state and, when possible, the underlying bucket for Java serialization. */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    out.defaultWriteObject();
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put(FIELD_MIN_PADDED_SIZE, minPaddedSize);
+    fields.put(FIELD_KEY, key);
+    fields.put(FIELD_IV, iv);
+    fields.put(FIELD_DATA_LENGTH, dataLength.get());
+    fields.put(FIELD_READ_ONLY, readOnly);
+    out.writeFields();
     if (bucket instanceof Serializable serializable) {
       out.writeObject(serializable);
     } else {
@@ -559,7 +581,12 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
   /* Restores the default state and the underlying bucket written by {@link #writeObject}. */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+    ObjectInputStream.GetField fields = in.readFields();
+    minPaddedSize = fields.get(FIELD_MIN_PADDED_SIZE, 0);
+    key = (byte[]) fields.get(FIELD_KEY, null);
+    iv = (byte[]) fields.get(FIELD_IV, null);
+    dataLength = new AtomicLong(fields.get(FIELD_DATA_LENGTH, 0L));
+    readOnly = fields.get(FIELD_READ_ONLY, false);
     bucket = (Bucket) in.readObject();
   }
 
@@ -577,7 +604,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
   public void storeTo(DataOutputStream dos) throws IOException {
     long currentDataLength;
     synchronized (this) {
-      currentDataLength = dataLength;
+      currentDataLength = dataLength.get();
     }
     dos.writeInt(MAGIC);
     dos.writeInt(VERSION);
@@ -626,7 +653,7 @@ public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializa
     } else {
       iv = null;
     }
-    dataLength = dis.readLong();
+    dataLength.set(dis.readLong());
     readOnly = dis.readBoolean();
     bucket = BucketTools.restoreFrom(dis, fg, persistentFileTracker, masterKey);
   }

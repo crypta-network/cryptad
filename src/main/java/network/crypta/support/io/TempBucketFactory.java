@@ -15,7 +15,6 @@ import java.util.ListIterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.EncryptedRandomAccessBufferType;
@@ -28,6 +27,7 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -690,7 +690,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
      * @throws IllegalStateException always
      */
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // Not persistent.
       throw new IllegalStateException();
     }
@@ -1236,7 +1236,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // Not persistent.
       throw new UnsupportedOperationException();
     }

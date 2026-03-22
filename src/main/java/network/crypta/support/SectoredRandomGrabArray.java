@@ -221,7 +221,7 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
       if (grabArrays.length == 0) return null;
 
       MinWakeup minWakeup = new MinWakeup(Long.MAX_VALUE);
-      int x = context.fastWeakRandom.nextInt(grabArrays.length);
+      int x = context.fastWeakRandomSource.nextInt(grabArrays.length);
 
       for (int i = 0; i < grabArrays.length; i++) {
         x = nextIndex(x, grabArrays.length);
@@ -338,7 +338,7 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
       Counter excluded) {
     if (grabArrays.length == 0) return LimitedOutcome.abortOutcome();
 
-    int x = context.fastWeakRandom.nextInt(grabArrays.length);
+    int x = context.fastWeakRandomSource.nextInt(grabArrays.length);
     RemoveRandomWithObject<T> rga = grabArrays[x];
 
     if (rga == null) {
@@ -424,7 +424,7 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
     synchronized (root) {
       MinWakeup minWakeup = new MinWakeup(Long.MAX_VALUE);
       // Optimized branch for the common case of two children: choose one at random, then the other.
-      int x = context.fastWeakRandom.nextBoolean() ? 1 : 0;
+      int x = context.fastWeakRandomSource.nextBoolean() ? 1 : 0;
       RemoveRandomWithObject<T> rga = grabArrays[x];
       RemoveRandomWithObject<T> firstRGA = rga;
 

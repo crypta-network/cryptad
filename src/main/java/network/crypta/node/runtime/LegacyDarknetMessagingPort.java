@@ -8,7 +8,6 @@ import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.util.List;
 import java.util.Objects;
-import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
@@ -20,6 +19,7 @@ import network.crypta.runtime.spi.DarknetUploadedFile;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPUploadedFile;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * Adapts the legacy node-to-node message compose/send flow to the runtime SPI.
@@ -258,7 +258,7 @@ final class LegacyDarknetMessagingPort implements DarknetMessagingPort {
     }
 
     @Override
-    public void onResume(ClientContext context) {
+    public void onResume(ResumeContext context) {
       // Request-scoped upload streams do not participate in resume.
     }
 

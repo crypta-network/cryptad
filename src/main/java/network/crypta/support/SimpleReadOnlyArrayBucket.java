@@ -6,10 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 
 /**
@@ -29,7 +29,7 @@ import network.crypta.support.io.ByteArrayRandomAccessBuffer;
  *       bytes.
  *   <li>Read-only: {@link #getOutputStream()} and {@link #getOutputStreamUnbuffered()} always throw
  *       {@link IOException}.
- *   <li>Persistence: Not persistent. {@link #onResume(ClientContext)} and {@link
+ *   <li>Persistence: Not persistent. {@link #onResume(ResumeContext)} and {@link
  *       #storeTo(DataOutputStream)} throw {@link UnsupportedOperationException}.
  *   <li>Shadows: {@link #createShadow()} returns a new independent bucket that copies this slice
  *       only when the backing array is smaller than 256&nbsp;KiB; otherwise it returns {@code
@@ -192,7 +192,7 @@ public class SimpleReadOnlyArrayBucket implements Bucket, RandomAccessBucket {
    * @throws UnsupportedOperationException always
    */
   @Override
-  public void onResume(ClientContext context) {
+  public void onResume(ResumeContext context) {
     // Not persistent.
     throw new UnsupportedOperationException();
   }

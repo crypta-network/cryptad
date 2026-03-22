@@ -16,10 +16,10 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -563,7 +563,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
 
   /** No-op resume hook; subclasses may override to restore persistence contracts. */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     // Intentionally empty
   }
 

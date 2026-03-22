@@ -292,13 +292,13 @@ public class FProxyFetchTracker implements Runnable {
   /**
    * Generates a random element identifier suitable for tagging fetch-related objects.
    *
-   * <p>The value is produced by {@link ClientContext#fastWeakRandom}, which favors speed over
+   * <p>The value is produced by {@link ClientContext#fastWeakRandom()}, which favors speed over
    * cryptographic strength. Callers should treat the result as best-effort unique within the
    * current process and avoid persisting it where strong randomness is required.
    *
    * @return a pseudo-random 32-bit integer drawn from the fast weak random source.
    */
   public int makeRandomElementID() {
-    return context.fastWeakRandom.nextInt();
+    return context.fastWeakRandomSource.nextInt();
   }
 }

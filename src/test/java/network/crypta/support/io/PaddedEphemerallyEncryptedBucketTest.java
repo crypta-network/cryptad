@@ -6,13 +6,18 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import java.util.stream.Stream;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -52,6 +59,26 @@ class PaddedEphemerallyEncryptedBucketTest {
 
   private static Random weak(long seed) {
     return new Random(seed);
+  }
+
+  private static byte[] randomSeedOf(PaddedEphemerallyEncryptedBucket bucket)
+      throws ReflectiveOperationException {
+    Field field = PaddedEphemerallyEncryptedBucket.class.getDeclaredField("randomSeed");
+    field.setAccessible(true);
+    return ((byte[]) field.get(bucket)).clone();
+  }
+
+  private static PaddedEphemerallyEncryptedBucket restoreFromJavaSerialization(
+      PaddedEphemerallyEncryptedBucket original) throws Exception {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(original);
+    }
+
+    try (ObjectInputStream ois =
+        new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      return (PaddedEphemerallyEncryptedBucket) ois.readObject();
+    }
   }
 
   @Test
@@ -322,6 +349,52 @@ class PaddedEphemerallyEncryptedBucketTest {
   }
 
   @Test
+  @DisplayName("javaSerializationDescriptor_whenQueried_expectPrimitiveLongDataLengthField")
+  void javaSerializationDescriptor_whenQueried_expectPrimitiveLongDataLengthField() {
+    // Act
+    ObjectStreamClass descriptor = ObjectStreamClass.lookup(PaddedEphemerallyEncryptedBucket.class);
+    var field = descriptor == null ? null : descriptor.getField("dataLength");
+
+    // Assert
+    assertNotNull(descriptor);
+    assertNotNull(field);
+    assertEquals(long.class, field.getType());
+  }
+
+  @Test
+  @DisplayName("javaSerialization_whenRoundTripped_expectLogicalSizeAndPayloadPreserved")
+  void javaSerialization_whenRoundTripped_expectLogicalSizeAndPayloadPreserved() throws Exception {
+    // Arrange
+    ArrayBucket underlying = new ArrayBucket();
+    PaddedEphemerallyEncryptedBucket original =
+        new PaddedEphemerallyEncryptedBucket(underlying, 64, strong(99L), weak(100L));
+    byte[] payload = "serialized-contents".getBytes(StandardCharsets.UTF_8);
+    try (OutputStream os = original.getOutputStream()) {
+      os.write(payload);
+    }
+
+    byte[] bytes;
+    try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+      oos.writeObject(original);
+      oos.flush();
+      bytes = bos.toByteArray();
+    }
+
+    // Act
+    PaddedEphemerallyEncryptedBucket restored;
+    try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+      restored = (PaddedEphemerallyEncryptedBucket) ois.readObject();
+    }
+
+    // Assert
+    assertEquals(payload.length, restored.size());
+    try (InputStream is = restored.getInputStream()) {
+      assertArrayEquals(payload, is.readAllBytes());
+    }
+  }
+
+  @Test
   @DisplayName("storeTo_whenCalled_expectHeaderKeyIvAndDelegation")
   void storeTo_whenCalled_expectHeaderKeyIvAndDelegation() throws Exception {
     // Arrange: write some data using a real underlying bucket
@@ -365,8 +438,57 @@ class PaddedEphemerallyEncryptedBucketTest {
     assertTrue(dis.readBoolean()); // readOnly
   }
 
-  // onResume() touches a public final field on ClientContext; its behavior is indirectly
-  // exercised by other tests and by verifying serialization paths.
+  @Test
+  @DisplayName("onResume_whenCalled_expectSeedFromResumeContextAndDelegate")
+  void onResume_whenCalled_expectSeedFromResumeContextAndDelegate() throws Exception {
+    // Arrange
+    Bucket underlying = mock(Bucket.class);
+    when(underlying.size()).thenReturn(0L);
+    doNothing().when(underlying).onResume(any());
+    PaddedEphemerallyEncryptedBucket enc =
+        new PaddedEphemerallyEncryptedBucket(underlying, 64, strong(11L), weak(12L));
+    ResumeContext context = mock(ResumeContext.class);
+    long seed = 123_456L;
+    when(context.fastWeakRandom()).thenReturn(new Random(seed));
+
+    // Act
+    enc.onResume(context);
+
+    // Assert
+    byte[] expectedSeed = new byte[32];
+    new Random(seed).nextBytes(expectedSeed);
+    assertArrayEquals(expectedSeed, randomSeedOf(enc));
+    verify(context, times(1)).fastWeakRandom();
+    verify(underlying, times(1)).onResume(context);
+  }
+
+  @Test
+  @DisplayName("restoredBucket_afterOnResume_expectWritePaddingAndReadbackToWork")
+  void restoredBucket_afterOnResume_expectWritePaddingAndReadbackToWork() throws Exception {
+    // Arrange
+    PaddedEphemerallyEncryptedBucket original =
+        new PaddedEphemerallyEncryptedBucket(new ArrayBucket(), 64, strong(21L), weak(22L));
+    PaddedEphemerallyEncryptedBucket restored = restoreFromJavaSerialization(original);
+    ResumeContext context = mock(ResumeContext.class);
+    when(context.fastWeakRandom()).thenReturn(new Random(654_321L));
+    byte[] payload = "resumed payload".getBytes(StandardCharsets.UTF_8);
+
+    // Act
+    restored.onResume(context);
+    try (OutputStream os = restored.getOutputStream()) {
+      os.write(payload);
+    }
+
+    // Assert
+    assertEquals(payload.length, restored.size());
+    assertEquals(
+        PaddedEphemerallyEncryptedBucket.paddedLength(payload.length, 64),
+        restored.getUnderlying().size());
+    try (InputStream is = restored.getInputStream()) {
+      assertArrayEquals(payload, is.readAllBytes());
+    }
+    verify(context, times(1)).fastWeakRandom();
+  }
 
   @Test
   @DisplayName("getOutputStream_writeZeroLength_expectNoChangeInSize")

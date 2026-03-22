@@ -42,7 +42,7 @@
  *       network.crypta.support.io.TooLongException} for malformed or oversized inputs.
  *   <li>{@link network.crypta.support.io.ResumeFailedException} when resuming persisted state fails
  *       during {@link network.crypta.support.api.Bucket#onResume(
- *       network.crypta.client.async.ClientContext)}.
+ *       network.crypta.support.api.ResumeContext)}.
  * </ul>
  *
  * <h2>Usage Notes</h2>

@@ -10,6 +10,7 @@ import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -21,13 +22,14 @@ import java.util.Random;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.fs.AppEnv;
 import network.crypta.support.Base64;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.URLEncoder;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.FilenameSanitizer;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1159,17 +1161,44 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * Generate a suggested, sanitized filename for this URI.
    *
    * <p>The name is derived from relevant parts (e.g., document name, USK edition, and meta-string
-   * segments). The result is already passed through {@link FileUtil#sanitize(String)}.
+   * segments). The result is already passed through {@link FilenameSanitizer}.
    *
    * @return A non-empty sanitized name when available; otherwise a fallback such as the Base64
    *     routing key or {@code "unknown"}.
    */
   public String getPreferredFilename() {
     if (LOG.isDebugEnabled()) LOG.debug("Getting preferred filename for {}", this);
+    AppEnv env = new AppEnv();
+    Charset fileNameCharset = getFileEncodingCharset();
+    boolean windowsLike;
+    boolean macLike;
+    boolean unixLike;
+    switch (env.osKind()) {
+      case WINDOWS -> {
+        windowsLike = true;
+        macLike = false;
+        unixLike = false;
+      }
+      case MAC -> {
+        windowsLike = false;
+        macLike = true;
+        unixLike = false;
+      }
+      case LINUX -> {
+        windowsLike = false;
+        macLike = false;
+        unixLike = true;
+      }
+      default -> {
+        windowsLike = true;
+        macLike = true;
+        unixLike = true;
+      }
+    }
     ArrayList<String> names = new ArrayList<>();
     collectBaseNames(names);
     appendMetaNames(names);
-    String joined = buildSanitizedJoined(names);
+    String joined = buildSanitizedJoined(names, fileNameCharset, windowsLike, macLike, unixLike);
     if (LOG.isDebugEnabled()) LOG.debug("out = {}", joined);
     if (joined.isEmpty()) {
       if (routingKey != null) {
@@ -1178,8 +1207,12 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
       }
       return "unknown"; // localize in a wrapper if needed
     }
-    assert joined.equals(FileUtil.sanitize(joined))
-        : ("Not sanitized? \"" + joined + "\" -> \"" + FileUtil.sanitize(joined)) + "\"";
+    assert joined.equals(sanitize(joined, fileNameCharset, windowsLike, macLike, unixLike))
+        : ("Not sanitized? \""
+            + joined
+            + "\" -> \""
+            + sanitize(joined, fileNameCharset, windowsLike, macLike, unixLike)
+            + "\"");
     return joined;
   }
 
@@ -1208,16 +1241,35 @@ public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
     }
   }
 
-  private static String buildSanitizedJoined(List<String> names) {
+  private static String buildSanitizedJoined(
+      List<String> names,
+      Charset fileNameCharset,
+      boolean windowsLike,
+      boolean macLike,
+      boolean unixLike) {
     StringBuilder out = new StringBuilder();
     for (String raw : names) {
-      String s = FileUtil.sanitize(raw);
+      String s = sanitize(raw, fileNameCharset, windowsLike, macLike, unixLike);
       if (!s.isEmpty()) {
         if (!out.isEmpty()) out.append('-');
         out.append(s);
       }
     }
     return out.toString();
+  }
+
+  private static String sanitize(
+      String raw, Charset fileNameCharset, boolean windowsLike, boolean macLike, boolean unixLike) {
+    return FilenameSanitizer.sanitizeFileName(
+        raw, fileNameCharset, windowsLike, macLike, unixLike, "");
+  }
+
+  private static Charset getFileEncodingCharset() {
+    try {
+      return Charset.forName(Charset.defaultCharset().displayName());
+    } catch (Exception _) {
+      return Charset.defaultCharset();
+    }
   }
 
   /** Return a new URI with an updated suggested edition (for {@code USK}). */

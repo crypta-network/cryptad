@@ -3,9 +3,9 @@ package network.crypta.support.io;
 import java.io.*;
 
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * Wrapper for a {@link Bucket} that intentionally ignores {@link #free()}.
@@ -47,6 +47,7 @@ public final class NoFreeBucket implements Bucket, Serializable {
   // (field was non-transient and no extra object followed). Declaring the field in
   // serialPersistentFields allows readObject(ObjectInputStream) to obtain it via
   // ObjectInputStream.GetField, even though the runtime field is now transient.
+  @SuppressWarnings("unused") // Referenced reflectively by Java serialization.
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(PROXY_FIELD_NAME, Bucket.class)
@@ -201,7 +202,7 @@ public final class NoFreeBucket implements Bucket, Serializable {
    * @throws ResumeFailedException if the wrapped bucket fails to resume
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     proxyRef.get().onResume(context);
   }
 
@@ -261,7 +262,6 @@ public final class NoFreeBucket implements Bucket, Serializable {
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     // Preserve compatibility with older releases that rely on default Java serialization
     // (no readObject) and expect the legacy 'proxy' field to carry the wrapped bucket when it is
     // serializable. Only when the wrapped bucket is not serializable do we throw, matching legacy

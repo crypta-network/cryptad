@@ -2,8 +2,8 @@ package network.crypta.support.io;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 
 /**
  * Random-access buffer that contains only zero bytes and performs no I/O.
@@ -23,7 +23,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  *       {@code null} buffer).
  *   <li>{@link #lockOpen()} returns a trivial lock whose {@link RAFLock#unlock()} may be called
  *       exactly once; a second call throws {@link IllegalStateException}.
- *   <li>Persistence is unsupported: {@link #onResume(ClientContext)} and {@link
+ *   <li>Persistence is unsupported: {@link #onResume(ResumeContext)} and {@link
  *       #storeTo(DataOutputStream)} throw {@link UnsupportedOperationException}.
  *   <li>Equality is by runtime class only; {@link #hashCode()} returns {@code 0} to remain
  *       consistent with that definition.
@@ -132,7 +132,7 @@ public class NullRandomAccessBuffer implements LockableRandomAccessBuffer {
    * @throws ResumeFailedException always thrown: resuming is not supported
    */
   @Override
-  public void onResume(ClientContext context) throws ResumeFailedException {
+  public void onResume(ResumeContext context) throws ResumeFailedException {
     throw new UnsupportedOperationException();
   }
 
