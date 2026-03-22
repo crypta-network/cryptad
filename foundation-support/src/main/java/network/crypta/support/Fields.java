@@ -12,8 +12,6 @@ import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
-import network.crypta.config.Dimension;
-import network.crypta.l10n.NodeL10n;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -448,6 +446,21 @@ public abstract class Fields {
     return 0;
   }
 
+  /**
+   * Compares fixed-length slices of two byte arrays lexicographically using unsigned byte values.
+   *
+   * <p>The comparison starts at {@code aoff} in {@code a} and {@code boff} in {@code b} and
+   * examines at most {@code len} bytes. If one slice runs out of readable data before a differing
+   * byte is found, the shorter readable slice sorts first. This matches the historical behavior
+   * used in several storage and protocol helpers that compare partial keys or prefixes.
+   *
+   * @param a first source array containing the left-hand slice to compare.
+   * @param b second source array containing the right-hand slice to compare.
+   * @param aoff zero-based offset of the first compared byte in {@code a}.
+   * @param boff zero-based offset of the first compared byte in {@code b}.
+   * @param len maximum number of bytes to compare before declaring equality.
+   * @return {@code -1}, {@code 0}, or {@code 1} depending on lexicographic ordering.
+   */
   public static int compareBytes(byte[] a, byte[] b, int aoff, int boff, int len) {
     for (int i = 0; i < len; ++i) {
       if (i + aoff == a.length) {
@@ -504,10 +517,21 @@ public abstract class Fields {
     return true;
   }
 
-  /** Comparator that delegates to {@link Fields#compareBytes(byte[], byte[])}. */
+  /**
+   * Stateless comparator for byte arrays that uses {@link Fields#compareBytes(byte[], byte[])}.
+   *
+   * <p>This comparator is suitable when callers need a reusable {@link Comparator} instance for
+   * collections, maps, or sorting utilities but want to preserve the unsigned lexicographic order
+   * defined by {@link Fields}. The class holds no mutable state and instances are interchangeable.
+   */
   public static final class ByteArrayComparator implements Comparator<byte[]>, Serializable {
 
     @Serial private static final long serialVersionUID = 1L;
+
+    /** Creates a comparator that orders byte arrays using unsigned lexicographic comparison. */
+    public ByteArrayComparator() {
+      // Stateless comparator. This explicit no-op constructor documents the public API surface.
+    }
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
@@ -547,7 +571,13 @@ public abstract class Fields {
   /**
    * 64-bit variant of {@link #hashCode(byte[], int, int)}.
    *
-   * <p>Not suitable for cryptographic purposes.
+   * <p>This produces the same value as calling {@link #longHashCode(byte[], int, int)} with the
+   * full array range. The algorithm is intentionally lightweight and deterministic; it is useful
+   * for hash tables, caches, and test utilities, but it is not resistant to collisions and must not
+   * be treated as a cryptographic digest.
+   *
+   * @param b source array whose full contents contribute to the hash.
+   * @return 64-bit hash value derived from the input bytes.
    */
   public static long longHashCode(byte[] b) {
     return longHashCode(b, 0, b.length);
@@ -556,7 +586,16 @@ public abstract class Fields {
   /**
    * 64-bit variant of {@link #hashCode(byte[], int, int)} over a byte range.
    *
-   * <p>Not suitable for cryptographic purposes.
+   * <p>The implementation mixes bytes into successive eight-bit lanes of a {@code long} using a
+   * simple XOR-based scheme. It is fast and stable across platforms, which makes it useful for
+   * internal indexing and repeatable tests. It does not attempt to defend against adversarial
+   * inputs and therefore should not be used for signatures, fingerprints, or untrusted-hash
+   * decisions.
+   *
+   * @param b source array containing the bytes to hash.
+   * @param offset zero-based index of the first byte included in the hash.
+   * @param length number of bytes to include starting at {@code offset}.
+   * @return 64-bit hash value for the requested slice.
    */
   public static long longHashCode(byte[] b, int offset, int length) {
     long h = 0;
@@ -685,6 +724,18 @@ public abstract class Fields {
     return x;
   }
 
+  /**
+   * Converts 4 bytes starting at offset 0 to an {@code int} in big-endian order.
+   *
+   * <p>This overload is equivalent to calling {@link #bytesToInt(byte[], int)} with an offset of
+   * {@code 0}. It is convenient for callers that already hold an exact four-byte buffer or want to
+   * decode the leading integer from a larger message without spelling out the common zero-offset
+   * case.
+   *
+   * @param buf source bytes; length must be at least 4.
+   * @return the decoded {@code int} from the first four bytes of {@code buf}.
+   * @throws IllegalArgumentException if fewer than 4 bytes are available.
+   */
   public static int bytesToInt(byte[] buf) {
     return bytesToInt(buf, 0);
   }
@@ -920,70 +971,6 @@ public abstract class Fields {
   }
 
   /**
-   * Removes an optional {@code per-second} qualifier from a bandwidth expression.
-   *
-   * <p>Examples of removed suffixes: {@code "/s"}, {@code "/sec"}, {@code "/second"}, {@code "ps"},
-   * and the localized variant used in the wizard. The input case is preserved.
-   *
-   * @param limit input limit expression.
-   * @return {@code limit} without the per-second suffix.
-   */
-  public static String trimPerSecond(String limit) {
-    limit = limit.trim();
-    if (limit.isEmpty()) {
-      return "";
-    }
-    /*
-     * IEC endings are case-sensitive, so the input string's case should not be modified. However, the
-     * qualifiers should not be case-sensitive.
-     */
-    final String lower = limit.toLowerCase(Locale.ROOT);
-    for (String ending :
-        new String[] {
-          "/s",
-          "/sec",
-          "/second",
-          "ps",
-          NodeL10n.getBase()
-              .getString("FirstTimeWizardToadlet.bandwidthPerSecond")
-              .toLowerCase(Locale.ROOT)
-        }) {
-      if (lower.endsWith(ending)) {
-        return limit.substring(0, limit.length() - ending.length());
-      }
-    }
-    return limit;
-  }
-
-  /**
-   * Parses an integer according to a {@link Dimension}.
-   *
-   * <ul>
-   *   <li>{@code NOT}/{@code SIZE}: delegates to {@link #parseInt(String)}.
-   *   <li>{@code DURATION}: parses a duration via {@link TimeUtil#toMillis(String)} and returns
-   *       milliseconds as an {@code int} when the value fits.
-   * </ul>
-   *
-   * @param s input string.
-   * @param dimension interpretation of the value.
-   * @return parsed integer.
-   * @throws NumberFormatException if parsing fails.
-   * @throws ArithmeticException if the duration does not fit in an {@code int}.
-   */
-  public static int parseInt(String s, Dimension dimension) throws NumberFormatException {
-    return switch (dimension) {
-      case NOT, SIZE -> parseInt(s);
-      case DURATION -> {
-        long durationInMillis = TimeUtil.toMillis(s);
-        if ((int) durationInMillis == durationInMillis) {
-          yield (int) durationInMillis;
-        }
-        throw new ArithmeticException("integer overflow");
-      }
-    };
-  }
-
-  /**
    * Parses a human-readable quantity into an {@code int} with optional SI/IEC suffixes.
    *
    * <p>If a trailing {@code b} or {@code B} is present, the result is interpreted as bits or bytes
@@ -1098,21 +1085,6 @@ public abstract class Fields {
       }
     }
     return ret;
-  }
-
-  /**
-   * Formats an integer according to a {@link Dimension}.
-   *
-   * @param val value to format.
-   * @param dimension interpretation (plain number, size, or duration).
-   * @return formatted string.
-   */
-  public static String intToString(int val, Dimension dimension) {
-    return switch (dimension) {
-      case NOT -> intToString(val, false);
-      case SIZE -> intToString(val, true);
-      case DURATION -> TimeUtil.formatTime(val, 6, false);
-    };
   }
 
   /**
@@ -1340,6 +1312,11 @@ public abstract class Fields {
    * Compares two {@code int} values avoiding overflow pitfalls.
    *
    * <p>Equivalent to {@link Integer#compare(int, int)}.
+   *
+   * @param x left-hand value to compare.
+   * @param y right-hand value to compare.
+   * @return a negative value, zero, or a positive value when {@code x} is less than, equal to, or
+   *     greater than {@code y}.
    */
   public static int compare(int x, int y) {
     return Integer.compare(x, y);
@@ -1349,12 +1326,27 @@ public abstract class Fields {
    * Compares two {@code long} values avoiding overflow pitfalls.
    *
    * <p>Equivalent to {@link Long#compare(long, long)}.
+   *
+   * @param x left-hand value to compare.
+   * @param y right-hand value to compare.
+   * @return a negative value, zero, or a positive value when {@code x} is less than, equal to, or
+   *     greater than {@code y}.
    */
   public static int compare(long x, long y) {
     return Long.compare(x, y);
   }
 
-  /** Compares two {@code double} values, ordering {@code NaN} after any numeric value. */
+  /**
+   * Compares two {@code double} values with a stable ordering for {@code NaN}.
+   *
+   * <p>Unlike the JDK comparison helpers, this method preserves the historical Cryptad convention
+   * used by existing callers and tests: {@code NaN} sorts before ordinary numeric values, and two
+   * {@code NaN} values compare as equal. All other values follow normal numeric ordering.
+   *
+   * @param x left-hand floating-point value to compare.
+   * @param y right-hand floating-point value to compare.
+   * @return a negative value, zero, or a positive value based on the defined ordering.
+   */
   public static int compare(double x, double y) {
     if (Double.isNaN(x)) {
       if (Double.isNaN(y)) {
@@ -1374,7 +1366,18 @@ public abstract class Fields {
     return 0;
   }
 
-  /** Compares two {@code float} values, ordering {@code NaN} after any numeric value. */
+  /**
+   * Compares two {@code float} values with a stable ordering for {@code NaN}.
+   *
+   * <p>This mirrors {@link #compare(double, double)} for single-precision values. {@code NaN} sorts
+   * before ordinary numeric values, two {@code NaN} values compare as equal, and all other inputs
+   * use normal numeric ordering. Keeping that convention in one helper avoids repeated special-case
+   * logic in callers.
+   *
+   * @param x left-hand floating-point value to compare.
+   * @param y right-hand floating-point value to compare.
+   * @return a negative value, zero, or a positive value based on the defined ordering.
+   */
   public static int compare(float x, float y) {
     if (Float.isNaN(x)) {
       if (Float.isNaN(y)) {

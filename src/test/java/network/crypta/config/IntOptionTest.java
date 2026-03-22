@@ -1,5 +1,6 @@
 package network.crypta.config;
 
+import network.crypta.support.Fields;
 import network.crypta.support.api.IntCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ class IntOptionTest {
             new NullIntCallback(),
             Dimension.DURATION);
 
-    // Act: Build from canonical string produced by toString (falls back via Dimension.NOT)
+    // Act: Build from a canonical string produced by toString (falls back via Dimension.NOT)
     IntOption optFromCanonical =
         new IntOption(
             null,
@@ -53,7 +54,7 @@ class IntOptionTest {
     // Assert
     assertEquals(optDurationFromDisplay.currentValue, optFromCanonical.currentValue);
 
-    // Act: Build from display string produced by toDisplayString (e.g., "5m")
+    // Act: Build from a display string produced by toDisplayString (e.g., "5m")
     IntOption optFromDisplay =
         new IntOption(
             null,
@@ -92,6 +93,50 @@ class IntOptionTest {
   }
 
   @Mock private IntCallback mockCb;
+
+  @Test
+  void setValue_whenDurationString_updatesCurrentAndFormatsDisplay() throws Exception {
+    // Arrange
+    IntOption option =
+        new IntOption(
+            subConfig,
+            "duration",
+            0,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.DURATION);
+
+    // Act
+    option.setValue("1m30s");
+
+    // Assert
+    assertEquals(90_000, option.currentValue);
+    assertEquals(Fields.intToString(90_000, false), option.getValueString());
+    assertEquals("1m30s", option.getValueDisplayString());
+    verify(mockCb, times(1)).set(90_000);
+  }
+
+  @Test
+  void setValue_whenDurationPlainInteger_fallsBackToDimensionlessParsing() throws Exception {
+    // Arrange
+    IntOption option =
+        new IntOption(
+            subConfig,
+            "duration",
+            0,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.DURATION);
+
+    // Act
+    option.setValue("3000");
+
+    // Assert
+    assertEquals(3000, option.currentValue);
+    assertEquals(Fields.intToString(3000, false), option.getValueString());
+    assertEquals("3s", option.getValueDisplayString());
+    verify(mockCb, times(1)).set(3000);
+  }
 
   @Test
   void setValue_whenInvalidString_throwsInvalidConfigValueException() {
@@ -142,7 +187,7 @@ class IntOptionTest {
             new Option.Meta(1, false, false, "short", "long"),
             mockCb,
             Dimension.NOT);
-    // Callback throws validation error
+    // Callback throws a validation error
     org.mockito.Mockito.doThrow(new InvalidConfigValueException("bad")).when(mockCb).set(anyInt());
 
     // Act + Assert
@@ -233,7 +278,7 @@ class IntOptionTest {
     assertEquals("2048", sizeOption.toString(2048));
     assertEquals("2KiB", sizeOption.toDisplayString(2048));
 
-    // Also sanity-check a SI multiple representation
+    // Also, sanity-check a SI multiple representation
     assertEquals("2k", sizeOption.toString(2000));
     assertEquals("2k", sizeOption.toDisplayString(2000));
   }

@@ -1,24 +1,19 @@
 package network.crypta.config;
 
-import network.crypta.support.Fields;
 import network.crypta.support.api.IntCallback;
 
 /**
  * Configuration option representing a bandwidth limit as an integer rate.
  *
- * <p>This class specializes {@link IntOption} for bandwidth values. It accepts human‑friendly size
- * forms (see {@link Fields#parseInt(String)}), and tolerates optional “per second” qualifiers such
- * as {@code "/s"}, {@code "/sec"}, and {@code "/second"}. Any per‑second qualifier is removed
- * before parsing so inputs like {@code "10MiB/s"} and {@code "8192b/s"} are interpreted correctly.
- * By default, values are treated as bytes; a trailing {@code 'b'} denotes bits and is converted to
- * bytes during parsing.
+ * <p>This class specializes {@link IntOption} for bandwidth values. It accepts human-friendly size
+ * forms and tolerates optional per-second qualifiers such as {@code "/s"}, {@code "/sec"}, and
+ * {@code "/second"}. Any per-second qualifier is removed before parsing so inputs like {@code
+ * "10MiB/s"} and {@code "8192b/s"} are interpreted correctly. By default, values are treated as
+ * bytes; a trailing {@code 'b'} denotes bits and is converted to bytes during parsing.
  *
- * <p>Display formatting follows {@link Dimension#SIZE} via {@link Fields#intToString(int,
- * Dimension)}, which prefers compact unit suffixes when evenly divisible. No global state is
- * modified; instances are safe for use by configuration UIs and loaders.
- *
- * @see Fields#trimPerSecond(String)
- * @see Fields#parseInt(String)
+ * <p>Display formatting follows {@link Dimension#SIZE}, which prefers compact unit suffixes when
+ * evenly divisible. No global state is modified; instances are safe for use by configuration UIs
+ * and loaders.
  */
 public class BandwidthOption extends IntOption {
   /**
@@ -39,7 +34,7 @@ public class BandwidthOption extends IntOption {
       String defaultValueString,
       Option.Meta meta,
       IntCallback cb) {
-    this(conf, optionName, Fields.parseInt(defaultValueString), meta, cb);
+    this(conf, optionName, parseDefaultValue(defaultValueString), meta, cb);
   }
 
   /**
@@ -60,8 +55,8 @@ public class BandwidthOption extends IntOption {
    * Parses user input after removing an optional per‑second qualifier.
    *
    * <p>Examples accepted by this option include {@code "2048"}, {@code "2MiB/s"}, and {@code
-   * "8192b/s"}. The {@code /s} (or localized equivalent) is stripped via {@link
-   * Fields#trimPerSecond(String)} before delegating to dimension‑aware parsing in the base class.
+   * "8192b/s"}. The {@code /s} (or localized equivalent) is stripped before delegating to
+   * dimension-aware parsing in the base class.
    *
    * @param val input string from configuration.
    * @return the parsed value in bytes per second.
@@ -69,7 +64,11 @@ public class BandwidthOption extends IntOption {
    */
   @Override
   protected Integer parseString(String val) throws InvalidConfigValueException {
-    // Strip optional per‑second suffix, then parse using Dimension.SIZE rules.
-    return super.parseString(Fields.trimPerSecond(val));
+    return super.parseString(DimensionValueSupport.trimPerSecond(val));
+  }
+
+  private static int parseDefaultValue(String defaultValueString) {
+    return DimensionValueSupport.parseInt(
+        DimensionValueSupport.trimPerSecond(defaultValueString), Dimension.SIZE);
   }
 }

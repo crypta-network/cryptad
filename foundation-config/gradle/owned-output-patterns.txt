@@ -6,7 +6,6 @@
 network/crypta/config/**
 network/crypta/l10n/**
 network/crypta/node/FSParseException*
-network/crypta/support/Fields*
 network/crypta/support/SimpleFieldSet*
 network/crypta/support/api/BooleanCallback*
 network/crypta/support/api/IntCallback*

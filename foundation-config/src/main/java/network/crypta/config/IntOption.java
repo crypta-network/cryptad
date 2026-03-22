@@ -1,7 +1,6 @@
 package network.crypta.config;
 
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Fields;
 import network.crypta.support.api.IntCallback;
 
 /**
@@ -13,7 +12,7 @@ import network.crypta.support.api.IntCallback;
  * <ul>
  *   <li>{@link Dimension#NOT}: treat the value as a plain number.
  *   <li>{@link Dimension#SIZE}: allow human-friendly size suffixes when parsing and prefer compact
- *       IEC/SI forms when formatting (see {@link Fields#intToString(int, Dimension)}).
+ *       IEC/SI forms when formatting.
  *   <li>{@link Dimension#DURATION}: parse durations (via {@code TimeUtil}) and format as a
  *       human-readable time span.
  * </ul>
@@ -92,9 +91,9 @@ public class IntOption extends Option<Integer> {
   // fall back to {@code Dimension.NOT} to maintain compatibility with existing config files.
   private static Integer parseString(String val, Dimension dimension) throws NumberFormatException {
     try {
-      return Fields.parseInt(val, dimension);
+      return DimensionValueSupport.parseInt(val, dimension);
     } catch (NumberFormatException _) {
-      return Fields.parseInt(val, Dimension.NOT);
+      return DimensionValueSupport.parseInt(val, Dimension.NOT);
     }
   }
 
@@ -117,20 +116,20 @@ public class IntOption extends Option<Integer> {
    */
   @Override
   protected String toDisplayString(Integer val) {
-    return Fields.intToString(val, dimension);
+    return DimensionValueSupport.intToString(val, dimension);
   }
 
   /**
    * Converts a value to a stable, non-localized string suitable for persistence.
    *
-   * <p>This representation always uses {@link Dimension#NOT} to avoid introducing unit suffixes or
-   * localized forms into configuration files.
+   * <p>This preserves the historical dimensionless formatting path used by configuration files and
+   * APIs.
    *
    * @param val value to encode; never {@code null}.
-   * @return plain numeric string.
+   * @return non-localized persistence string.
    */
   @Override
   protected String toString(Integer val) {
-    return Fields.intToString(val, Dimension.NOT);
+    return DimensionValueSupport.intToString(val, Dimension.NOT);
   }
 }
