@@ -1,0 +1,21 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-support owns them now.
+# Keep this list limited to the stable generic support subset extracted from :foundation-config.
+
+network/crypta/support/Base64*
+network/crypta/support/HTMLEncoder*
+network/crypta/support/HTMLEntities*
+network/crypta/support/HTMLNode*
+network/crypta/support/HexUtil*
+network/crypta/support/IllegalBase64Exception*
+network/crypta/support/PriorityAwareExecutor*
+network/crypta/support/Ticker*
+network/crypta/support/TimeUtil*
+network/crypta/support/URLDecoder*
+network/crypta/support/URLEncodedFormatException*
+network/crypta/support/URLEncoder*
+network/crypta/support/XMLCharacterClasses*
+network/crypta/support/io/AtomicFileMoves*
+network/crypta/support/io/LineReader*
+network/crypta/support/io/LineReadingInputStream*
+network/crypta/support/io/Readers*
+network/crypta/support/io/TooLongException*
