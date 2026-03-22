@@ -51,7 +51,7 @@ public class StringOption extends Option<String> {
       String defaultValue,
       Option.Meta meta,
       network.crypta.support.api.StringCallback cb) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<String>) cb);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

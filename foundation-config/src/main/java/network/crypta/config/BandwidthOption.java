@@ -58,7 +58,7 @@ public class BandwidthOption extends IntOption {
         optionName,
         parseDefaultValue(defaultValueString),
         meta,
-        (ConfigCallback<Integer>) cb);
+        LegacyCallbackAdapters.adapt(cb));
   }
 
   /**
@@ -97,7 +97,7 @@ public class BandwidthOption extends IntOption {
       Integer defaultValue,
       Option.Meta meta,
       network.crypta.support.api.IntCallback cb) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<Integer>) cb);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

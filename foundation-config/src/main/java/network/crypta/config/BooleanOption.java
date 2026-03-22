@@ -58,7 +58,7 @@ public class BooleanOption extends Option<Boolean> {
       boolean defaultValue,
       Option.Meta meta,
       network.crypta.support.api.BooleanCallback cb) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<Boolean>) cb);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

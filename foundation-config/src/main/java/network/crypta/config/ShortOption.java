@@ -72,7 +72,7 @@ public class ShortOption extends Option<Short> {
       Option.Meta meta,
       network.crypta.support.api.ShortCallback cb,
       boolean isSize) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<Short>) cb, isSize);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb), isSize);
   }
 
   /** Builds a localized error message for an unparseable short value. */

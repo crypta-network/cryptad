@@ -68,7 +68,7 @@ public class IntOption extends Option<Integer> {
         optionName,
         parseString(defaultValueString, dimension),
         meta,
-        (ConfigCallback<Integer>) cb,
+        LegacyCallbackAdapters.adapt(cb),
         dimension);
   }
 
@@ -119,7 +119,7 @@ public class IntOption extends Option<Integer> {
       Option.Meta meta,
       network.crypta.support.api.IntCallback cb,
       Dimension dimension) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<Integer>) cb, dimension);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb), dimension);
   }
 
   /**

@@ -76,7 +76,7 @@ public class LongOption extends Option<Long> {
         optionName,
         Fields.parseLong(defaultValueString),
         meta,
-        (ConfigCallback<Long>) cb,
+        LegacyCallbackAdapters.adapt(cb),
         isSize);
   }
 
@@ -127,7 +127,7 @@ public class LongOption extends Option<Long> {
       Option.Meta meta,
       network.crypta.support.api.LongCallback cb,
       boolean isSize) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<Long>) cb, isSize);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb), isSize);
   }
 
   /**

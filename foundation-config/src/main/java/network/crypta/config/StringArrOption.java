@@ -76,7 +76,7 @@ public class StringArrOption extends Option<String[]> {
       String[] defaultValue,
       Option.Meta meta,
       network.crypta.support.api.StringArrCallback cb) {
-    this(conf, optionName, defaultValue, meta, (ConfigCallback<String[]>) cb);
+    this(conf, optionName, defaultValue, meta, LegacyCallbackAdapters.adapt(cb));
   }
 
   /**

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -367,7 +368,7 @@ class CallbackCompatibilityTest {
   }
 
   @Test
-  void legacyOptionConstructorsRetainLegacyRuntimeCallbackInstancesAcrossFamilies() {
+  void legacyOptionConstructorsExposeCallbacksThroughBothPackagesAcrossFamilies() {
     Config config = new Config();
     SubConfig subConfig = config.createSubConfig("compat");
     network.crypta.support.api.BooleanCallback booleanCallback =
@@ -441,38 +442,45 @@ class CallbackCompatibilityTest {
           public void set(String[] value) {}
         };
 
-    assertLegacyRuntimeCallback(
+    assertBridgedRuntimeCallback(
         new BooleanOption(subConfig, "flag", true, META, booleanCallback),
         booleanCallback,
-        network.crypta.support.api.BooleanCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.BooleanCallback.class,
+        network.crypta.config.BooleanCallback.class);
+    assertBridgedRuntimeCallback(
         new IntOption(subConfig, "count", 123, META, intCallback, Dimension.NOT),
         intCallback,
-        network.crypta.support.api.IntCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.IntCallback.class,
+        network.crypta.config.IntCallback.class);
+    assertBridgedRuntimeCallback(
         new BandwidthOption(subConfig, "bandwidth", 2048, META, bandwidthCallback),
         bandwidthCallback,
-        network.crypta.support.api.IntCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.IntCallback.class,
+        network.crypta.config.IntCallback.class);
+    assertBridgedRuntimeCallback(
         new LongOption(subConfig, "duration", 456L, META, longCallback, false),
         longCallback,
-        network.crypta.support.api.LongCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.LongCallback.class,
+        network.crypta.config.LongCallback.class);
+    assertBridgedRuntimeCallback(
         new ShortOption(subConfig, "small", (short) 7, META, shortCallback, false),
         shortCallback,
-        network.crypta.support.api.ShortCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.ShortCallback.class,
+        network.crypta.config.ShortCallback.class);
+    assertBridgedRuntimeCallback(
         new StringOption(subConfig, "path", "value", META, stringCallback),
         stringCallback,
-        network.crypta.support.api.StringCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.StringCallback.class,
+        network.crypta.config.StringCallback.class);
+    assertBridgedRuntimeCallback(
         new StringArrOption(subConfig, "list", new String[] {"value"}, META, stringArrCallback),
         stringArrCallback,
-        network.crypta.support.api.StringArrCallback.class);
+        network.crypta.support.api.StringArrCallback.class,
+        network.crypta.config.StringArrCallback.class);
   }
 
   @Test
-  void legacyRegisterOverloadsRetainLegacyRuntimeCallbackInstancesAcrossFamilies() {
+  void legacyRegisterOverloadsExposeCallbacksThroughBothPackagesAcrossFamilies() {
     Config config = new Config();
     SubConfig subConfig = config.createSubConfig("compat");
     network.crypta.support.api.BooleanCallback booleanCallback =
@@ -576,45 +584,63 @@ class CallbackCompatibilityTest {
     subConfig.register("path", "value", META, stringCallback);
     subConfig.register("list", new String[] {"value"}, META, stringArrCallback);
 
-    assertLegacyRuntimeCallback(
+    assertBridgedRuntimeCallback(
         subConfig.getOption("flag"),
         booleanCallback,
-        network.crypta.support.api.BooleanCallback.class);
-    assertLegacyRuntimeCallback(
-        subConfig.getOption("count"), intCallback, network.crypta.support.api.IntCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.BooleanCallback.class,
+        network.crypta.config.BooleanCallback.class);
+    assertBridgedRuntimeCallback(
+        subConfig.getOption("count"),
+        intCallback,
+        network.crypta.support.api.IntCallback.class,
+        network.crypta.config.IntCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("bandwidth"),
         bandwidthCallback,
-        network.crypta.support.api.IntCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.IntCallback.class,
+        network.crypta.config.IntCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("bandwidthText"),
         bandwidthStringCallback,
-        network.crypta.support.api.IntCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.IntCallback.class,
+        network.crypta.config.IntCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("duration"),
         longCallback,
-        network.crypta.support.api.LongCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.LongCallback.class,
+        network.crypta.config.LongCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("durationText"),
         longStringCallback,
-        network.crypta.support.api.LongCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.LongCallback.class,
+        network.crypta.config.LongCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("small"),
         shortCallback,
-        network.crypta.support.api.ShortCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.ShortCallback.class,
+        network.crypta.config.ShortCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("path"),
         stringCallback,
-        network.crypta.support.api.StringCallback.class);
-    assertLegacyRuntimeCallback(
+        network.crypta.support.api.StringCallback.class,
+        network.crypta.config.StringCallback.class);
+    assertBridgedRuntimeCallback(
         subConfig.getOption("list"),
         stringArrCallback,
-        network.crypta.support.api.StringArrCallback.class);
+        network.crypta.support.api.StringArrCallback.class,
+        network.crypta.config.StringArrCallback.class);
   }
 
   private static void assertLegacyRuntimeCallback(
       Option<?> option, Object callback, Class<?> legacyType) {
     assertSame(callback, option.getCallback());
     assertInstanceOf(legacyType, option.getCallback());
+  }
+
+  private static void assertBridgedRuntimeCallback(
+      Option<?> option, Object callback, Class<?> legacyType, Class<?> configType) {
+    assertNotSame(callback, option.getCallback());
+    assertInstanceOf(legacyType, option.getCallback());
+    assertInstanceOf(configType, option.getCallback());
   }
 }
