@@ -1,0 +1,5 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :thirdparty-legacy owns them now.
+
+org/bitpedia/**
+org/sevenzip/**
+org/spaceroots/**

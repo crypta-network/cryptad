@@ -1,3 +1,0 @@
-# Root outputs that must be pruned on non-clean builds because :runtime-spi owns them now.
-
-network/crypta/runtime/spi/**

@@ -38,7 +38,7 @@ debhelper-build-stamp
 gradle
 !*/gradle/
 */gradle/**
-!*/gradle/owned-root-output-patterns.txt
+!*/gradle/owned-output-patterns.txt
 /.gradle-user-home
 debian/seednodes.fref
 .idea

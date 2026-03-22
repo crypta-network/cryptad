@@ -24,12 +24,12 @@ Use this skill when you need to:
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources,
   plus the minimal support/node compile closure they currently need.
-- Every extracted internal leaf must keep leaf-owned stale-root-output metadata in sync at
-  `<leaf>/gradle/owned-root-output-patterns.txt`, even for structurally separate package/resource
-  moves. Non-clean builds and branch switches can leave stale root outputs behind, and `buildJar`
-  still packages root outputs before leaf outputs.
+- Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
+  `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
+  moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
+  and `buildJar` still packages aggregated main outputs before leaf outputs.
 - When moving additional main classes/resources from root into any extracted leaf, update that
-  leaf's `owned-root-output-patterns.txt` and validate with
+  leaf's `owned-output-patterns.txt` and validate with
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.

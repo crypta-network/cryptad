@@ -1,0 +1,5 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :launcher-desktop owns them now.
+
+com/jthemedetecor/**
+network/crypta/launcher/**
+oshi/annotation/**
