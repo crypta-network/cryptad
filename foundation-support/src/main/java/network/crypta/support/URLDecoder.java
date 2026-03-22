@@ -98,7 +98,7 @@ public class URLDecoder {
 
     String hexval = s.substring(i + 1, i + 3);
     try {
-      long read = Fields.hexToLong(hexval);
+      int read = parseHexByte(hexval);
       // Reject NUL byte to avoid embedding 0x00 in results.
       if (read == 0) {
         throw new URLEncodedFormatException("Can't encode 00");
@@ -116,6 +116,15 @@ public class URLDecoder {
       throw new URLEncodedFormatException(
           "Not a two character hex % escape: " + hexval + " in " + s);
     }
+  }
+
+  private static int parseHexByte(String hex) {
+    int high = Character.digit(hex.charAt(0), 16);
+    int low = Character.digit(hex.charAt(1), 16);
+    if (high < 0 || low < 0) {
+      throw new NumberFormatException();
+    }
+    return (high << 4) | low;
   }
 
   // Result of handling a single "%.." sequence: where to continue and whether a byte was decoded.

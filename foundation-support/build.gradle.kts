@@ -6,9 +6,6 @@ plugins {
 version = rootProject.version
 
 dependencies {
-  implementation(project(":foundation-support"))
-  implementation(project(":foundation-fs"))
   implementation(libs.slf4jApi)
-  implementation(files(rootProject.file("libs/wrapper.jar")))
   compileOnly(libs.jetbrainsAnnotations)
 }
