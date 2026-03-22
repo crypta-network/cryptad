@@ -1,6 +1,7 @@
 # Aggregated main outputs that must be pruned on non-clean builds because :foundation-support owns them now.
 # Keep this list limited to the stable generic support subset extracted from :foundation-config.
 
+network/crypta/node/FSParseException*
 network/crypta/support/Base64*
 network/crypta/support/Fields*
 network/crypta/support/HTMLEncoder*
@@ -9,6 +10,7 @@ network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*
 network/crypta/support/IllegalBase64Exception*
 network/crypta/support/PriorityAwareExecutor*
+network/crypta/support/SimpleFieldSet*
 network/crypta/support/Ticker*
 network/crypta/support/TimeUtil*
 network/crypta/support/URLDecoder*
