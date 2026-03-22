@@ -13,6 +13,7 @@ import network.crypta.config.ConfigCallback;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
+import network.crypta.config.StringOption;
 import network.crypta.config.SubConfig;
 import network.crypta.config.WrapperConfig;
 import network.crypta.l10n.NodeL10n;
@@ -440,12 +441,73 @@ class ConfigToadletTest {
     assertEquals("TEXT_READ_ONLY", optionType.toString());
   }
 
+  @Test
+  @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyEnumerableStringCallbackRegistered_expectDropDown()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    Config config = new Config();
+    SubConfig subConfig = config.createSubConfig("compat");
+    network.crypta.support.api.StringCallback callback =
+        new LegacyEnumerableStringCallback("dark", new String[] {"light", "dark"});
+    StringOption option =
+        new StringOption(
+            subConfig, "theme", "dark", new Option.Meta(1, false, false, "sd", "ld"), callback);
+
+    Object optionType = resolveOptionType(toadlet, option.getCallback());
+
+    assertEquals("DROP_DOWN", optionType.toString());
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyProgramDirectoryCallbackRegistered_expectDirectory()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    Config config = new Config();
+    SubConfig subConfig = config.createSubConfig("compat");
+    network.crypta.support.api.StringCallback callback =
+        new ProgramDirectory("move.error").getStringCallback();
+    StringOption option =
+        new StringOption(
+            subConfig, "dir", "path", new Option.Meta(1, false, false, "sd", "ld"), callback);
+
+    Object optionType = resolveOptionType(toadlet, option.getCallback());
+
+    assertEquals("DIRECTORY", optionType.toString());
+  }
+
   private Object resolveOptionType(ConfigToadlet toadlet, ConfigCallback<?> callback)
       throws Exception {
     Method resolveOptionType =
         ConfigToadlet.class.getDeclaredMethod("resolveOptionType", ConfigCallback.class);
     resolveOptionType.setAccessible(true);
     return resolveOptionType.invoke(toadlet, callback);
+  }
+
+  @SuppressWarnings("deprecation")
+  private static final class LegacyEnumerableStringCallback
+      extends network.crypta.support.api.StringCallback implements EnumerableOptionCallback {
+    private final String currentValue;
+    private final String[] possibleValues;
+
+    private LegacyEnumerableStringCallback(String currentValue, String[] possibleValues) {
+      this.currentValue = currentValue;
+      this.possibleValues = possibleValues;
+    }
+
+    @Override
+    public String get() {
+      return currentValue;
+    }
+
+    @Override
+    public void set(String value) {}
+
+    @Override
+    public String[] getPossibleValues() {
+      return possibleValues;
+    }
   }
 
   private HTTPRequest createRequest(Map<String, String> parts) {

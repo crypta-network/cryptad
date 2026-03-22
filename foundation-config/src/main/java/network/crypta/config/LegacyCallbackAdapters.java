@@ -127,22 +127,10 @@ final class LegacyCallbackAdapters {
     if (callback instanceof StringCallback adapted) {
       return adapted;
     }
-    return new StringCallback() {
-      @Override
-      public String get() {
-        return callback.get();
-      }
-
-      @Override
-      public void set(String value) throws InvalidConfigValueException, NodeNeedRestartException {
-        callback.set(value);
-      }
-
-      @Override
-      public boolean isReadOnly() {
-        return callback.isReadOnly();
-      }
-    };
+    if (callback instanceof EnumerableOptionCallback enumerableCallback) {
+      return new EnumerableStringCallbackAdapter(callback, enumerableCallback);
+    }
+    return new StringCallbackAdapter(callback);
   }
 
   static StringArrCallback adapt(network.crypta.support.api.StringArrCallback callback) {
@@ -168,5 +156,45 @@ final class LegacyCallbackAdapters {
         return callback.isReadOnly();
       }
     };
+  }
+
+  private static class StringCallbackAdapter extends StringCallback {
+    private final network.crypta.support.api.StringCallback callback;
+
+    private StringCallbackAdapter(network.crypta.support.api.StringCallback callback) {
+      this.callback = callback;
+    }
+
+    @Override
+    public String get() {
+      return callback.get();
+    }
+
+    @Override
+    public void set(String value) throws InvalidConfigValueException, NodeNeedRestartException {
+      callback.set(value);
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return callback.isReadOnly();
+    }
+  }
+
+  private static final class EnumerableStringCallbackAdapter extends StringCallbackAdapter
+      implements EnumerableOptionCallback {
+    private final EnumerableOptionCallback enumerableCallback;
+
+    private EnumerableStringCallbackAdapter(
+        network.crypta.support.api.StringCallback callback,
+        EnumerableOptionCallback enumerableCallback) {
+      super(callback);
+      this.enumerableCallback = enumerableCallback;
+    }
+
+    @Override
+    public String[] getPossibleValues() {
+      return enumerableCallback.getPossibleValues();
+    }
   }
 }
