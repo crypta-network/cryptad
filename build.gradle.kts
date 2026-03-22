@@ -112,7 +112,12 @@ val internalLeafJarNames =
     internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
   }
 
-data class SelectiveLeafRootOutputOwnership(
+data class AggregatedMainOutputProducer(val project: Project) {
+  val mainClassesDir = project.layout.buildDirectory.dir("classes/java/main")
+  val mainResourcesDir = project.layout.buildDirectory.dir("resources/main")
+}
+
+data class SelectiveLeafOutputOwnership(
   val leaf: Project,
   val metadataFile: File,
   val patterns: List<String>,
@@ -124,53 +129,58 @@ data class SelectiveLeafRootOutputOwnership(
           if (firstChar.isLowerCase()) firstChar.titlecase() else firstChar.toString()
         }
       } +
-      "RootOutputs"
+      "OwnedOutputsFromNonOwners"
 }
 
-fun parseOwnedRootOutputPatterns(metadataFile: File): List<String> =
+fun parseOwnedOutputPatterns(metadataFile: File): List<String> =
   metadataFile.useLines { lines ->
     lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
   }
 
-val selectiveLeafOwnershipMetadataRelativePath = "gradle/owned-root-output-patterns.txt"
+val selectiveLeafOwnershipMetadataRelativePath = "gradle/owned-output-patterns.txt"
 
-// Every extracted internal leaf declares leaf-owned stale-root-output metadata under
-// <leaf>/gradle/owned-root-output-patterns.txt. Even structurally separated package moves need this
-// because stale root outputs from earlier builds or branch switches can still shadow leaf outputs
-// when buildJar packages sourceSets.main.output before the leaf outputs.
-val selectiveLeafRootOutputOwnerships =
+val aggregatedMainOutputProducers =
+  (listOf(project) + internalLeafProjects).map(::AggregatedMainOutputProducer)
+
+// Every extracted internal leaf declares aggregated main-output ownership metadata under
+// <leaf>/gradle/owned-output-patterns.txt. Structurally separated root -> leaf and leaf -> leaf
+// moves need this because stale outputs can survive in root or old leaf build directories on
+// non-clean builds or branch switches, while root packaging/runtime aggregation still consumes the
+// root main output and every internal leaf main output.
+val selectiveLeafOutputOwnerships =
   internalLeafProjects.map { leaf ->
     val metadataFile =
       leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
     if (!metadataFile.isFile) {
       throw GradleException(
         "Missing ${relativePath(leaf.projectDir)}/$selectiveLeafOwnershipMetadataRelativePath " +
-          "for ${leaf.path}. Add leaf-owned stale-root-output metadata before extracting root " +
-          "outputs into this leaf."
+          "for ${leaf.path}. Add leaf-owned aggregated main-output ownership metadata before " +
+          "extracting root or leaf outputs into this leaf."
       )
     }
-    SelectiveLeafRootOutputOwnership(
+    SelectiveLeafOutputOwnership(
       leaf = leaf,
       metadataFile = metadataFile,
-      patterns = parseOwnedRootOutputPatterns(metadataFile),
+      patterns = parseOwnedOutputPatterns(metadataFile),
     )
   }
 
 val verifySelectiveLeafOwnershipMetadata by
   tasks.registering {
     group = "verification"
-    description = "Verifies leaf-owned stale-root-output metadata for selective extractions"
+    description =
+      "Verifies leaf-owned aggregated main-output ownership metadata for selective extractions"
     doLast {
       val currentOwnerships =
-        selectiveLeafRootOutputOwnerships.map { ownership ->
-          ownership.copy(patterns = parseOwnedRootOutputPatterns(ownership.metadataFile))
+        selectiveLeafOutputOwnerships.map { ownership ->
+          ownership.copy(patterns = parseOwnedOutputPatterns(ownership.metadataFile))
         }
 
       val emptyMetadataFiles =
         currentOwnerships.filter { it.patterns.isEmpty() }.map { relativePath(it.metadataFile) }
       if (emptyMetadataFiles.isNotEmpty()) {
         throw GradleException(
-          "Selective leaf ownership metadata must not be empty: " +
+          "Selective leaf aggregated main-output ownership metadata must not be empty: " +
             emptyMetadataFiles.sorted().joinToString(", ")
         )
       }
@@ -188,7 +198,9 @@ val verifySelectiveLeafOwnershipMetadata by
       if (duplicatePatternsWithinFile.isNotEmpty()) {
         throw GradleException(
           buildString {
-            appendLine("Duplicate patterns found within selective leaf ownership metadata:")
+            appendLine(
+              "Duplicate patterns found within selective leaf aggregated main-output ownership metadata:"
+            )
             duplicatePatternsWithinFile.forEach { (metadataPath, duplicatePatterns) ->
               appendLine("$metadataPath: ${duplicatePatterns.joinToString(", ")}")
             }
@@ -207,7 +219,9 @@ val verifySelectiveLeafOwnershipMetadata by
       if (duplicatePatternsAcrossLeaves.isNotEmpty()) {
         throw GradleException(
           buildString {
-            appendLine("Duplicate patterns claimed by multiple selective leaf projects:")
+            appendLine(
+              "Duplicate aggregated main-output ownership patterns claimed by multiple selective leaf projects:"
+            )
             duplicatePatternsAcrossLeaves.toSortedMap().forEach { (pattern, owningLeaves) ->
               appendLine("$pattern: ${owningLeaves.joinToString(", ")}")
             }
@@ -217,48 +231,76 @@ val verifySelectiveLeafOwnershipMetadata by
     }
   }
 
-val selectiveLeafRootOutputPruneTasks =
-  selectiveLeafRootOutputOwnerships.associate { ownership ->
+fun ownedOutputTreesFor(producer: AggregatedMainOutputProducer, patterns: List<String>) =
+  listOf(
+    fileTree(producer.mainClassesDir) { include(*patterns.toTypedArray()) },
+    fileTree(producer.mainResourcesDir) { include(*patterns.toTypedArray()) },
+  )
+
+val selectiveLeafOutputPruneTasks =
+  selectiveLeafOutputOwnerships.associate { ownership ->
     ownership.leaf.path to
       tasks.register<Delete>(ownership.pruneTaskName) {
+        val staleOutputTrees =
+          aggregatedMainOutputProducers
+            .filter { producer -> producer.project != ownership.leaf }
+            .flatMap { producer -> ownedOutputTreesFor(producer, ownership.patterns) }
         description =
-          "Removes stale root outputs for sources extracted into ${ownership.leaf.path} on non-clean builds"
+          "Removes stale non-owner aggregated main outputs for paths owned by ${ownership.leaf.path} on non-clean builds"
         dependsOn(verifySelectiveLeafOwnershipMetadata)
         outputs.upToDateWhen { false }
-        delete(
-          fileTree(layout.buildDirectory.dir("classes/java/main")) {
-            include(*ownership.patterns.toTypedArray())
-          },
-          fileTree(layout.buildDirectory.dir("resources/main")) {
-            include(*ownership.patterns.toTypedArray())
-          },
-        )
+        delete(staleOutputTrees)
       }
   }
 
-val pruneFoundationConfigRootOutputs =
-  selectiveLeafRootOutputPruneTasks.getValue(":foundation-config")
-
-val pruneSelectiveLeafRootOutputs by
+val pruneSelectiveLeafOutputs by
   tasks.registering {
     description =
-      "Removes stale root outputs claimed by selectively extracted leaf projects on non-clean builds"
+      "Removes stale aggregated main outputs claimed by selectively extracted leaf projects on non-clean builds"
     dependsOn(verifySelectiveLeafOwnershipMetadata)
-    dependsOn(selectiveLeafRootOutputPruneTasks.values)
+    dependsOn(selectiveLeafOutputPruneTasks.values)
   }
 
+fun Project.wireSelectiveLeafOutputPruning(
+  pruneTask: TaskProvider<out Task>,
+  taskNames: Set<String>,
+) {
+  tasks.matching { task -> task.name in taskNames }.configureEach { dependsOn(pruneTask) }
+}
+
+val sharedSelectiveLeafPruneTaskNames =
+  setOf(
+    "compileJava",
+    "processResources",
+    "classes",
+    "jar",
+    "compileTestJava",
+    "processTestResources",
+    "testClasses",
+    "test",
+    "jacocoTestReport",
+    "jacocoTestCoverageVerification",
+    "sonar",
+    "sonarqube",
+    "sonarResolver",
+    "sonarlintFile",
+    "sonarlintMain",
+    "sonarlintTest",
+  )
+
+val rootSelectiveLeafPruneTaskNames =
+  sharedSelectiveLeafPruneTaskNames +
+    setOf("copyResourcesToClasses2", "buildJar", "run", "runLauncher", "printDirs")
+
 internalLeafProjects.forEach { leaf ->
+  leaf.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, sharedSelectiveLeafPruneTaskNames)
   leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
 }
 
-tasks.named("copyResourcesToClasses2") { dependsOn(pruneSelectiveLeafRootOutputs) }
-
-tasks.named("compileJava") { dependsOn(pruneSelectiveLeafRootOutputs) }
-
-tasks.named("processResources") { dependsOn(pruneSelectiveLeafRootOutputs) }
+project.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, rootSelectiveLeafPruneTaskNames)
 
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
-  dependsOn(pruneSelectiveLeafRootOutputs)
+  dependsOn(pruneSelectiveLeafOutputs)
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->
     from(

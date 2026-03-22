@@ -1,6 +1,7 @@
-# Root outputs that must be pruned on non-clean builds because :foundation-config owns them now.
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-config owns them now.
 # Future selective extractions should either tighten the structural boundary or add/update the
-# relevant leaf-owned metadata file instead of hardcoding patterns in the root build script.
+# relevant leaf-owned metadata file instead of hardcoding aggregated main-output ownership in the
+# root build script.
 
 network/crypta/config/**
 network/crypta/l10n/**
