@@ -6,7 +6,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.Arrays;
 import java.util.function.LongSupplier;
-import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,7 +13,9 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TimeDecayingRunningAverageTest {
@@ -57,10 +58,10 @@ class TimeDecayingRunningAverageTest {
   }
 
   @Test
-  @DisplayName("report_whenUptimeNegative_appliesDecay")
-  void report_whenUptimeNegative_appliesDecay() {
+  @DisplayName("report_whenWallClockRegressesAndUptimeNegative_appliesDecayAndAlerts")
+  void report_whenWallClockRegressesAndUptimeNegative_appliesDecayAndAlerts() {
     // Arrange
-    TimeSkewDetectorCallback cb = mock(TimeSkewDetectorCallback.class);
+    TimeSkewAlertCallback cb = mock(TimeSkewAlertCallback.class);
     LongSupplier wall = wallTimes(10_000, 11_000, 9_000);
     LongSupplier mono = monoTimesFromMillis(0, 1_000, 2_000);
     TimeDecayingRunningAverage avg =
@@ -73,6 +74,7 @@ class TimeDecayingRunningAverageTest {
 
     // Assert: still decays using monotonic delta despite negative uptime
     assertTrue(avg.currentValue() >= 0.5 - 1e-9);
+    verify(cb, atLeastOnce()).setTimeSkewDetectedUserAlert();
   }
 
   @Test

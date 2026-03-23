@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import network.crypta.support.math.KeyspaceMath;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,7 +20,7 @@ class LocationTest {
   // Maximal acceptable difference to consider two doubles equal.
   private static final double EPSILON = 1e-12;
 
-  // Just some valid non corner case locations.
+  // Just some valid non-corner case locations.
   private static final double VALID_1 = 0.2;
   private static final double VALID_2 = 0.75;
 
@@ -116,6 +117,24 @@ class LocationTest {
 
     // Corner case.
     assertEquals(0.0, Location.normalize(1.0), EPSILON);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"-1.75", "-0.25", "0.0", "0.2", "1.0", "1.75"})
+  void normalize_whenDelegated_expectSameAsKeyspaceMath(double input) {
+    assertEquals(KeyspaceMath.normalize(input), Location.normalize(input), EPSILON);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"0.2, 0.75", "0.75, 0.2", "0.9, 0.1", "0.1, 0.9", "0.0, 0.5", "0.5, 0.0"})
+  void change_whenDelegated_expectSameAsKeyspaceMath(double from, double to) {
+    assertEquals(KeyspaceMath.change(from, to), Location.change(from, to), EPSILON);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"0.2, 0.75", "0.75, 0.2", "0.9, 0.1", "0.1, 0.9", "0.0, 0.5", "0.25, 0.25"})
+  void distance_whenDelegated_expectSameAsKeyspaceMath(double from, double to) {
+    assertEquals(KeyspaceMath.distance(from, to), Location.distance(from, to), EPSILON);
   }
 
   @Test
