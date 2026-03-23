@@ -12,7 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Persistent, file-backed temporary bucket that survives process restarts.
+ * Persistent, file-backed temporary bucket that survives the process restarts.
  *
  * <p>This bucket stores its data in the persistent temp directory and is designed to be resumed
  * after a node restart. Unlike plain {@link TempFileBucket}, it never registers files with {@link
@@ -41,27 +41,30 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
    * Creates a persistent temp bucket for the given filename id.
    *
    * @param id stable identifier used by {@link FilenameGenerator} to derive the backing file name
-   * @param generator filename generator for locating/migrating the file
-   * @param tracker persistent file tracker providing disk-space checks and registration on resume
+   * @param generator filename contract for locating/migrating the file
+   * @param tracker a persistent file tracker providing disk-space checks and registration on resume
    */
   public PersistentTempFileBucket(
-      long id, FilenameGenerator generator, PersistentFileTracker tracker) {
+      long id, PersistentFilenameGenerator generator, PersistentFileTracker tracker) {
     this(id, generator, tracker, true);
   }
 
   /**
-   * Constructs a persistent temp bucket with explicit delete-on-free policy.
+   * Constructs a persistent temp bucket with an explicit delete-on-free policy.
    *
    * <p>Subclasses call this to create either a normal bucket ({@code deleteOnFree=true}) or a
    * shadow/read-only view ({@code deleteOnFree=false}).
    *
    * @param id stable identifier used by the generator
-   * @param generator filename generator for locating/migrating the file
+   * @param generator filename contract for locating/migrating the file
    * @param tracker persistent file tracker for disk checks and registration
    * @param deleteOnFree whether {@link #free()} deletes the backing file
    */
   protected PersistentTempFileBucket(
-      long id, FilenameGenerator generator, PersistentFileTracker tracker, boolean deleteOnFree) {
+      long id,
+      PersistentFilenameGenerator generator,
+      PersistentFileTracker tracker,
+      boolean deleteOnFree) {
     super(id, generator, deleteOnFree);
     this.tracker = tracker;
   }
@@ -104,7 +107,7 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
    * {@link BufferedOutputStream} with the same internal buffer size used for disk-space checks.
    *
    * @return a buffered output stream for writing the bucket contents
-   * @throws IOException if opening the underlying stream fails or the bucket is read-only/freed
+   * @throws IOException if opening the underlying stream fails, or the bucket is read-only/freed
    */
   @Override
   public OutputStream getOutputStream() throws IOException {
@@ -140,7 +143,7 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
      * resolve the generator and file location, then wire the tracker and register the file so it
      * is not collected during persistent-temp cleanup.
      *
-     * @param context resume context providing {@link PersistentFileTracker}
+     * @param context the resume context providing {@link PersistentFileTracker}
      * @throws ResumeFailedException if the backing file cannot be located or validated
      */
     super.innerResume(context);
@@ -195,7 +198,8 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
   }
 
   // Subclasses that add fields should override equals/hashCode. The tracker is transient and not
-  // part of logical identity; delegate to super to preserve TempFileBucket's equality semantics.
+  // part of logical identity; delegate to super class to preserve TempFileBucket's equality
+  // semantics.
   @Override
   public boolean equals(Object obj) {
     return super.equals(obj);

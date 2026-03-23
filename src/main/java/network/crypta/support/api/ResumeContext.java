@@ -1,8 +1,8 @@
 package network.crypta.support.api;
 
 import java.util.Random;
-import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
+import network.crypta.support.io.PersistentFilenameGenerator;
 
 /**
  * Narrow runtime view used to reconnect persisted bucket and buffer state after restart.
@@ -34,15 +34,15 @@ public interface ResumeContext {
   Random fastWeakRandom();
 
   /**
-   * Returns the filename generator for persistent artifacts.
+   * Returns the persistent filename contract for persistent artifacts.
    *
-   * <p>Resumed file-backed components use this generator to recover or allocate the stable file
-   * paths associated with persistent temporary storage. The generator should reflect the persistent
-   * storage namespace for the current process, not any transient scratch area.
+   * <p>Resumed file-backed components use this contract to recover or allocate the stable file
+   * paths associated with persistent temporary storage. The implementation should reflect the
+   * persistent storage namespace for the current process, not any transient scratch area.
    *
-   * @return the filename generator that manages persistent artifact naming for resumed state
+   * @return the persistent filename resolver used for resumed state
    */
-  FilenameGenerator getPersistentFilenameGenerator();
+  PersistentFilenameGenerator getPersistentFilenameGenerator();
 
   /**
    * Returns the tracker responsible for persistent temporary files.

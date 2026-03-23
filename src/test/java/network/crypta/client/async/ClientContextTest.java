@@ -30,6 +30,7 @@ import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.PersistentFileTracker;
+import network.crypta.support.io.PersistentFilenameGenerator;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -277,6 +278,13 @@ class ClientContextTest {
     assertSame(
         ctx.getPersistentFilenameGenerator(), resumeContext.getPersistentFilenameGenerator());
     assertSame(ctx.getPersistentFileTracker(), resumeContext.getPersistentFileTracker());
+  }
+
+  @Test
+  void getPersistentFilenameGenerator_whenCalled_returnsPersistentFilenameGeneratorContract() {
+    PersistentFilenameGenerator persistentFilenameGenerator = ctx.getPersistentFilenameGenerator();
+
+    assertSame(ctx.persistentFG, persistentFilenameGenerator);
   }
 
   @Test

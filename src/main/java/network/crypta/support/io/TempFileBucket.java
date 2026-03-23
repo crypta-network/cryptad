@@ -15,8 +15,8 @@ import org.slf4j.LoggerFactory;
 /**
  * File-backed, non-persistent temporary bucket implementation.
  *
- * <p>This bucket stores data in a file located by a {@link FilenameGenerator}. Instances start
- * empty and, by design, operate directly on an already-existing file path (see {@link
+ * <p>This bucket stores data in a file located by a {@link PersistentFilenameGenerator}. Instances
+ * start empty and, by design, operate directly on an already-existing file path (see {@link
  * #tempFileAlreadyExists()}). Reads and writes are coordinated by the {@link BaseFileBucket}
  * superclass.
  *
@@ -49,11 +49,11 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    */
   @Serial private static final long serialVersionUID = 1L;
 
-  /** Stable identifier used by {@link FilenameGenerator} to derive the file path. */
+  /** Stable identifier used by the filename contract to derive the file path. */
   long filenameID;
 
-  /** Non-serializable generator reattached on resume in persistent subclasses. */
-  protected transient FilenameGenerator generator;
+  /** Non-serializable filename contract reattached on resume in persistent subclasses. */
+  protected transient PersistentFilenameGenerator generator;
 
   /** When {@code true}, write operations are disallowed. */
   private volatile boolean readOnly;
@@ -74,9 +74,9 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    * the lifetime of the JVM and can cause memory growth.
    *
    * @param id identifier used by the generator to compute the file path
-   * @param generator filename generator; must be non-null
+   * @param generator filename contract; must be non-null
    */
-  public TempFileBucket(long id, FilenameGenerator generator) {
+  public TempFileBucket(long id, PersistentFilenameGenerator generator) {
     // Using deleteOnExit() for temp files retains entries for JVM lifetime and risks memory leaks.
     this(id, generator, true);
   }
@@ -88,10 +88,10 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    * shadows ({@code deleteOnFree=false}).
    *
    * @param id stable identifier used by the generator
-   * @param generator filename generator for locating the file; must be non-null
+   * @param generator filename contract for locating the file; must be non-null
    * @param deleteOnFree whether {@link #free()} deletes the underlying file
    */
-  protected TempFileBucket(long id, FilenameGenerator generator, boolean deleteOnFree) {
+  protected TempFileBucket(long id, PersistentFilenameGenerator generator, boolean deleteOnFree) {
     super(generator.getFilename(id), false, false, true);
     this.filenameID = id;
     this.generator = generator;
@@ -157,10 +157,10 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    *
    * <p>This method updates {@link #generator} from {@link
    * ResumeContext#getPersistentFilenameGenerator()}, verifies the backing file exists (creating it
-   * if necessary), and relocates it using {@link FilenameGenerator#maybeMove(File, long)} when the
-   * generator's directory has changed.
+   * if necessary), and relocates it using {@link PersistentFilenameGenerator#maybeMove(File, long)}
+   * when the filename namespace has changed.
    *
-   * @param context client context providing a persistent {@link FilenameGenerator}
+   * @param context client context providing a persistent filename contract
    * @throws ResumeFailedException if the file is missing and cannot be created
    */
   protected void innerResume(ResumeContext context) throws ResumeFailedException {

@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * while holding a pool lock throws {@link IllegalStateException}.
  *
  * <p>Serialization/resume: a compact descriptor can be written with {@link #storeTo} and restored
- * via the {@linkplain #PooledFileRandomAccessBuffer(DataInputStream, FilenameGenerator,
+ * via the {@linkplain #PooledFileRandomAccessBuffer(DataInputStream, PersistentFilenameGenerator,
  * PersistentFileTracker) persistence constructor}. {@link #onResume(ResumeContext)} validates and
  * re-registers persistent-temp files.
  *
@@ -629,18 +629,20 @@ public final class PooledFileRandomAccessBuffer
    * Reconstruct a buffer from a descriptor written by {@link #storeTo}.
    *
    * <p>Caller must consume {@link #MAGIC} before invoking this constructor; this method validates
-   * {@link #VERSION}. For persistent-temp files, the file may be moved by {@link FilenameGenerator}
-   * during resume.
+   * {@link #VERSION}. For persistent-temp files, the file may be moved by {@link
+   * PersistentFilenameGenerator} during resume.
    *
    * @param dis source stream positioned after {@link #MAGIC}
-   * @param fg filename generator for persistent-temp resolution
+   * @param fg filename contract for persistent-temp resolution
    * @param persistentFileTracker tracker used to (re)register files during resume
    * @throws StorageFormatException if the version or stored values are invalid
    * @throws IOException on I/O errors
    * @throws ResumeFailedException if the file is missing and cannot be recovered
    */
   PooledFileRandomAccessBuffer(
-      DataInputStream dis, FilenameGenerator fg, PersistentFileTracker persistentFileTracker)
+      DataInputStream dis,
+      PersistentFilenameGenerator fg,
+      PersistentFileTracker persistentFileTracker)
       throws StorageFormatException, IOException, ResumeFailedException {
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");

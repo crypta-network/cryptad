@@ -36,7 +36,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  *
  * @author toad
  */
-public final class FilenameGenerator {
+public final class FilenameGenerator implements PersistentFilenameGenerator {
   private static final Logger LOG = LoggerFactory.getLogger(FilenameGenerator.class);
 
   private final Random random;
@@ -53,7 +53,7 @@ public final class FilenameGenerator {
    * <p>If {@code dir} is {@code null}, the system temporary directory specified by the {@code
    * java.io.tmpdir} system property is used. The directory is canonicalized before use. When {@code
    * wipeFiles} is {@code true}, existing files in the directory whose names start with {@code
-   * prefix} are deleted on best-effort basis. On Windows the match is case-insensitive.
+   * prefix} are deleted on a best-effort basis. On Windows the match is case-insensitive.
    *
    * <p>Security: uniqueness is enforced by {@link File#createNewFile()} to avoid time-of-check to
    * time-of-use races. Callers can supply a stronger {@link Random} implementation if desired.
@@ -176,7 +176,7 @@ public final class FilenameGenerator {
   }
 
   /**
-   * Resolves the file path corresponding to an identifier, without creating the file.
+   * Resolves the file path corresponding to an identifier without creating the file.
    *
    * <p>The identifier is encoded as a lower-case hexadecimal string via {@link
    * Long#toHexString(long)} and prefixed with the generator's prefix. The returned {@link File} may
@@ -186,6 +186,7 @@ public final class FilenameGenerator {
    *     associated with this generator's namespace
    * @return the file path under the configured temporary directory
    */
+  @Override
   public File getFilename(long id) {
     return new File(tmpDir, prefix + Long.toHexString(id));
   }
@@ -240,6 +241,7 @@ public final class FilenameGenerator {
    * @param id identifier to use when constructing the target file name
    * @return the destination file if the move succeeded; otherwise the original file
    */
+  @Override
   public File maybeMove(File file, long id) {
     if (matches(file)) return file;
     File newFile = getFilename(id);

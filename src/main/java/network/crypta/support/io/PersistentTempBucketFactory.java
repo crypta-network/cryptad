@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * <p>The deletion lifecycle is coordinated with persistence: buckets are freed only after the
  * transaction recording their deletion is durably committed. The factory is recreated on startup
  * and relies on callers to re-register their files, which prevents reuse after an unclean shutdown.
- * This class is thread-safe; it synchronizes around mutable state and uses a dedicated lock for
+ * This class is thread-safe; it synchronizes around the mutable state and uses a dedicated lock for
  * encryption settings.
  *
  * <p><strong>Notable behaviors:</strong>
@@ -41,9 +41,9 @@ public final class PersistentTempBucketFactory implements BucketFactory, Persist
   private static final Logger LOG = LoggerFactory.getLogger(PersistentTempBucketFactory.class);
 
   /**
-   * Original contents of directory. This used to be used to delete any files that we can't account
-   * for. However, at the moment we do not support garbage collection for non-blob persistent temp
-   * files. When we implement it, it will probably not use this structure.
+   * Original contents of the directory. This used to be used to delete any files that we can't
+   * account for. However, at the moment we do not support garbage collection for non-blob
+   * persistent temp files. When we implement it, it will probably not use this structure.
    */
   private HashSet<File> originalFiles;
 
@@ -56,7 +56,7 @@ public final class PersistentTempBucketFactory implements BucketFactory, Persist
   public final FilenameGenerator fg;
 
   /**
-   * Buckets to free. When buckets are freed, we write them to this list, and delete the files
+   * Buckets to free. When buckets are freed, we write them to this list and delete the files
    * *after* the transaction recording the buckets being deleted hits the disk.
    */
   private final ArrayList<DelayedFree> bucketsToFree;
@@ -294,16 +294,16 @@ public final class PersistentTempBucketFactory implements BucketFactory, Persist
   }
 
   /**
-   * Returns the filename generator responsible for persistent temp file naming.
+   * Returns the filename contract responsible for persistent temp file naming.
    *
-   * <p>The generator exposes the current directory and prefix and can relocate files when the
-   * tracked directory changes. Callers should not mutate its configuration directly and should rely
-   * on the factory methods to create new filenames.
+   * <p>The contract exposes the current directory and prefix through this factory and can relocate
+   * files when the tracked directory changes. Callers should not mutate its configuration directly
+   * and should rely on the factory methods to create new filenames.
    *
-   * @return the filename generator used by this factory.
+   * @return the filename contract used by this factory.
    */
   @Override
-  public FilenameGenerator getGenerator() {
+  public PersistentFilenameGenerator getGenerator() {
     return fg;
   }
 
