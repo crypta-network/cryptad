@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.util.function.LongSupplier;
-import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,7 +127,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
    */
   double maxReport;
 
-  private final transient TimeSkewDetectorCallback timeSkewCallback;
+  private final transient TimeSkewAlertCallback timeSkewCallback;
   private transient LongSupplier wallClockTimeSourceMillis;
   private transient LongSupplier monotonicTimeSourceNanos;
 
@@ -195,7 +194,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
    * @param callback optional callback notified when wall‑clock time regresses; may be {@code null}
    */
   public TimeDecayingRunningAverage(
-      RunningAverageBounds bounds, long halfLife, TimeSkewDetectorCallback callback) {
+      RunningAverageBounds bounds, long halfLife, TimeSkewAlertCallback callback) {
 
     curValue = bounds.defaultValue();
     this.defaultValue = bounds.defaultValue();
@@ -232,7 +231,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       RunningAverageBounds bounds,
       long halfLife,
       SimpleFieldSet fs,
-      TimeSkewDetectorCallback callback) {
+      TimeSkewAlertCallback callback) {
 
     curValue = bounds.defaultValue();
     this.defaultValue = bounds.defaultValue();
@@ -286,7 +285,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       RunningAverageBounds bounds,
       long halfLife,
       SimpleFieldSet fs,
-      TimeSkewDetectorCallback callback,
+      TimeSkewAlertCallback callback,
       LongSupplier wallClockTimeSourceMillis,
       LongSupplier monotonicTimeSourceNanos) {
 
@@ -352,7 +351,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       RunningAverageBounds bounds,
       double halfLife,
       DataInputStream dis,
-      TimeSkewDetectorCallback callback)
+      TimeSkewAlertCallback callback)
       throws IOException {
     int m = dis.readInt();
     if (m != MAGIC) throw new IOException("Invalid magic " + m);
@@ -419,7 +418,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     boolean started;
     long totalReports;
     double curValue;
-    TimeSkewDetectorCallback timeSkewCallback;
+    TimeSkewAlertCallback timeSkewCallback;
     LongSupplier wallClockTimeSourceMillis;
     LongSupplier monotonicTimeSourceNanos;
   }

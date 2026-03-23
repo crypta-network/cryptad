@@ -1,7 +1,7 @@
 package network.crypta.support.math;
 
+import java.util.Objects;
 import java.util.stream.Stream;
-import network.crypta.node.Location;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -102,7 +102,8 @@ class DecayingKeyspaceAverageTest {
 
     // Assert
     // Expect normalize(s + 0.5 * change(s, d)) with s=0.25, d=0.75, change=0.5
-    double expected = Location.normalize(beforeValue + 0.5 * Location.change(beforeValue, 0.75));
+    double expected =
+        KeyspaceMath.normalize(beforeValue + 0.5 * KeyspaceMath.change(beforeValue, 0.75));
     assertThat(predicted, closeTo(expected, EPS));
     assertThat(avg.currentValue(), closeTo(beforeValue, EPS));
     assertEquals(beforeCount, avg.countReports());
@@ -149,17 +150,18 @@ class DecayingKeyspaceAverageTest {
     DecayingKeyspaceAverage avg = new DecayingKeyspaceAverage(0.0, 2, null);
     avg.report(0.9); // anchor: s=0.9
 
-    // Act: with maxReports=2, reporting 0.1 moves halfway across shortest path
+    // Act: with maxReports=2, reporting 0.1 moves halfway across the shortest path
     avg.report(0.1);
-    double expectedHalf = Location.normalize(0.9 + 0.5 * Location.change(0.9, 0.1));
+    double expectedHalf = KeyspaceMath.normalize(0.9 + 0.5 * KeyspaceMath.change(0.9, 0.1));
     assertThat(avg.currentValue(), closeTo(expectedHalf, EPS));
 
-    // Act: increase decay by setting maxReports=1 so next report fully replaces current
+    // Act: increase decay by setting maxReports=1 so the next report fully replaces the current
     avg.changeMaxReports(1);
     avg.report(0.2);
 
-    // Assert: new value equals the unwrapped target (normalized)
-    double expectedFull = Location.normalize(expectedHalf + Location.change(expectedHalf, 0.2));
+    // Assert: the new value equals the unwrapped target (normalized)
+    double expectedFull =
+        KeyspaceMath.normalize(expectedHalf + KeyspaceMath.change(expectedHalf, 0.2));
     assertThat(avg.currentValue(), closeTo(expectedFull, EPS));
   }
 
@@ -190,7 +192,7 @@ class DecayingKeyspaceAverageTest {
     double snapValue = original.currentValue();
     long snapReports = original.countReports();
 
-    // Act: take a snapshot using the interface helper and then mutate original
+    // Act: take a snapshot using the interface helper and then mutate the original
     RunningAverage snapshot = RunningAverage.copyOf(original);
     original.report(0.25);
 
@@ -222,7 +224,7 @@ class DecayingKeyspaceAverageTest {
     // Arrange
     DecayingKeyspaceAverage avg = new DecayingKeyspaceAverage(0.5, 2, null);
     avg.report(0.5);
-    avg.report(1.0); // normalizes to 0.75 internally then to [0,1)
+    avg.report(1.0); // normalizes to 0.75 internally, then to [0,1)
     double current = avg.currentValue();
     long reports = avg.countReports();
 
@@ -231,8 +233,10 @@ class DecayingKeyspaceAverageTest {
 
     // Assert
     assertThat(sfs.get("Type"), equalTo("BootstrappingDecayingRunningAverage"));
-    assertThat(Double.parseDouble(sfs.get("CurrentValue")), closeTo(current, EPS));
-    assertEquals(reports, Long.parseLong(sfs.get("Reports")));
+    String currentValue = Objects.requireNonNull(sfs.get("CurrentValue"));
+    String reportCount = Objects.requireNonNull(sfs.get("Reports"));
+    assertThat(Double.parseDouble(currentValue), closeTo(current, EPS));
+    assertEquals(reports, Long.parseLong(reportCount));
   }
 
   @Test

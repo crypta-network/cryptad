@@ -1,7 +1,6 @@
 package network.crypta.support.math;
 
 import java.io.Serial;
-import network.crypta.node.Location;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -38,7 +37,7 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
   /**
    * Creates a new keyspace-aware decaying running average.
    *
-   * @param defaultValue initial normalized value returned by {@link #currentValue()} before any
+   * @param defaultValue initially normalized value returned by {@link #currentValue()} before any
    *     valid report. Expected in {@code [0.0, 1.0]}.
    * @param maxReports number of valid reports before decay stabilizes at {@code 1/maxReports}.
    *     Larger values decay more slowly.
@@ -92,7 +91,7 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
    * Reports a value in the normalized keyspace range {@code [0.0, 1.0]}.
    *
    * <p>To handle the wrap at {@code 1.0/0.0}, this method computes an unwrapped delta from the
-   * current normalized average to {@code d} using {@link Location#change(double, double)} and
+   * current normalized average to {@code d} using {@link KeyspaceMath#change(double, double)} and
    * updates the underlying average in that unwrapped space. After the update it normalizes the
    * stored value back into {@code [0.0, 1.0)}.
    *
@@ -107,12 +106,12 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
       // Using an unwrapped representation does not relax the input contract here.
       throw new IllegalArgumentException("Not a valid normalized key: " + d);
     double superValue = avg.currentValue();
-    double thisValue = Location.normalize(superValue);
-    double diff = Location.change(thisValue, d);
+    double thisValue = KeyspaceMath.normalize(superValue);
+    double diff = KeyspaceMath.change(thisValue, d);
     double toAverage = (superValue + diff);
     avg.report(toAverage);
     // Normalize the stored value back into [0.0, 1.0), so exactly 1.0 becomes 0.0.
-    avg.setCurrentValue(Location.normalize(avg.currentValue()));
+    avg.setCurrentValue(KeyspaceMath.normalize(avg.currentValue()));
   }
 
   /**
@@ -129,9 +128,9 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
     if ((d < 0.0) || (d > 1.0) || Double.isNaN(d) || Double.isInfinite(d))
       throw new IllegalArgumentException("Not a valid normalized key: " + d);
     double superValue = avg.currentValue();
-    double thisValue = Location.normalize(superValue);
-    double diff = Location.change(thisValue, d);
-    return Location.normalize(avg.valueIfReported(superValue + diff));
+    double thisValue = KeyspaceMath.normalize(superValue);
+    double diff = KeyspaceMath.change(thisValue, d);
+    return KeyspaceMath.normalize(avg.valueIfReported(superValue + diff));
   }
 
   /**

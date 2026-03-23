@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import network.crypta.support.math.KeyspaceMath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -107,7 +108,7 @@ public class Location {
    * @return the minimal arc length in {@code [0.0, 0.5]}
    */
   private static double simpleDistance(double a, double b) {
-    return Math.abs(change(a, b));
+    return KeyspaceMath.distance(a, b);
   }
 
   /**
@@ -122,14 +123,7 @@ public class Location {
    * @return the signed delta on the unit circle
    */
   public static double change(double from, double to) {
-    double change = to - from;
-    if (change > 0.5) {
-      return change - 1.0;
-    }
-    if (change <= -0.5) {
-      return change + 1.0;
-    }
-    return change;
+    return KeyspaceMath.change(from, to);
   }
 
   /**
@@ -145,11 +139,7 @@ public class Location {
    * @return the normalized location in {@code [0.0, 1.0)}
    */
   public static double normalize(double rough) {
-    double normal = rough % 1.0;
-    if (normal < 0) {
-      return 1.0 + normal;
-    }
-    return normal;
+    return KeyspaceMath.normalize(rough);
   }
 
   /**
