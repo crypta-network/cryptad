@@ -10,6 +10,7 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
+import network.crypta.crypt.CryptoResumeContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.RequestScheduler;
@@ -62,7 +63,7 @@ import network.crypta.support.io.TempBucketFactory;
  * @see ClientRequestScheduler
  * @see RequestScheduler
  */
-public class ClientContext implements ResumeContext {
+public class ClientContext implements CryptoResumeContext {
 
   private ClientRequestScheduler sskFetchSchedulerBulk;
   private ClientRequestScheduler chkFetchSchedulerBulk;
@@ -77,12 +78,12 @@ public class ClientContext implements ResumeContext {
   private final PriorityAwareExecutor mainExecutorInternal;
 
   /**
-   * We need to be able to suspend execution of jobs changing persistent state in order to write it
-   * to disk consistently. Also, some jobs may want to request immediate serialization.
+   * We need to be able to suspend execution of jobs changing persistent state to write it to disk
+   * consistently. Also, some jobs may want to request immediate serialization.
    */
   public final PersistentJobRunner jobRunner;
 
-  /** Strong, cryptographic RNG used for IDs, nonces, and protocol randomness. Thread-safe. */
+  /** Strong, cryptographic RNG used for IDs, nonce, and protocol randomness. Thread-safe. */
   public final RandomSource random;
 
   /**
@@ -92,8 +93,8 @@ public class ClientContext implements ResumeContext {
   public final ArchiveManager archiveManager;
 
   /**
-   * Factory for temporary buckets that persist on disk across restarts. Use when request state must
-   * survive crashes or shutdowns, such as persistent inserts or fetch retries.
+   * Factory for temporary buckets that persist on disk across restarts. Use when the request state
+   * must survive crashes or shutdowns, such as persistent inserts or fetch retries.
    */
   public final PersistentTempBucketFactory persistentBucketFactory;
 
@@ -113,7 +114,7 @@ public class ClientContext implements ResumeContext {
 
   /**
    * Produces lockable random-access buffers for data that must persist. Use for persistent request
-   * pipelines where intermediate state needs to be crash-safe.
+   * pipelines where the intermediate state needs to be crash-safe.
    */
   public final LockableRandomAccessBufferFactory persistentRAFFactory;
 
@@ -127,8 +128,8 @@ public class ClientContext implements ResumeContext {
   public final USKManager uskManager;
 
   /**
-   * Fast but weak PRNG for non-cryptographic use (e.g., jitter, randomized backoff). Do not use for
-   * secrets or key material. Thread-confined unless otherwise documented by callers.
+   * Fast but weak PRNG for non-cryptographic use (e.g., jitter, randomized backoff). Do not use it
+   * for secrets or key material. Thread-confined unless otherwise documented by callers.
    */
   public final Random fastWeakRandomSource;
 
@@ -161,7 +162,7 @@ public class ClientContext implements ResumeContext {
   private DownloadCache downloadCache;
 
   /**
-   * Used for memory intensive jobs such as in-RAM FEC decodes. Some of these jobs may do disk I/O,
+   * Used for memory-intensive jobs such as in-RAM FEC decoding. Some of these jobs may do disk I/O,
    * and we don't guarantee to serialize them. The new splitfile code does FEC decode entirely in
    * memory, which saves a lot of seeks and improves robustness.
    */
@@ -185,7 +186,7 @@ public class ClientContext implements ResumeContext {
 
   /**
    * Transient version of the PersistentJobRunner, just starts stuff immediately. Helpful for
-   * avoiding having two different API's, e.g. in SplitFileFetcherStorage.
+   * avoiding having two different APIs, e.g., in SplitFileFetcherStorage.
    */
   PersistentJobRunner dummyJobRunner;
 
@@ -195,7 +196,7 @@ public class ClientContext implements ResumeContext {
    * Creates a new client context wiring together schedulers, storage factories, crypto state, and
    * supporting services used by getters and putters.
    *
-   * @param bootID Monotonic identifier for this process instance; remains constant until restart
+   * @param bootID Monotonic identifier for this process instance, remains constant until restart
    *     and can be used to disambiguate ephemeral artifacts.
    * @param runtime Runtime executors, schedulers, and randomness sources used by the client layer.
    * @param storageFactories Storage factories and filename generators for transient and persistent
@@ -448,7 +449,7 @@ public class ClientContext implements ResumeContext {
    * Get the temporary bucket factory appropriate for a request.
    *
    * @param persistent If true, get the persistent temporary bucket factory. This creates buckets
-   *     which persist across restarts of the node. If false, get the temporary bucket factory,
+   *     which persist across the restarts of the node. If false, get the temporary bucket factory,
    *     which creates buckets which will be deleted once the node is restarted.
    * @return The appropriate {@link BucketFactory} for the {@code persistent} setting.
    */
@@ -458,7 +459,7 @@ public class ClientContext implements ResumeContext {
   }
 
   /**
-   * Get the RequestScheduler responsible for the given key type. This is used to queue low level
+   * Get the RequestScheduler responsible for the given key type. This is used to queue low-level
    * requests.
    *
    * @param ssk If true, get the SSK request scheduler. If false, get the CHK request scheduler.
@@ -488,8 +489,8 @@ public class ClientContext implements ResumeContext {
   /**
    * Sets the download cache reference used by client requests that support caching.
    *
-   * @param cache Cache implementation to use for subsequent downloads; may be {@code null} to
-   *     disable caching.
+   * @param cache Cache implementation to use for later downloads; may be {@code null} to disable
+   *     caching.
    */
   public void setDownloadCache(DownloadCache cache) {
     this.downloadCache = cache;
@@ -527,8 +528,8 @@ public class ClientContext implements ResumeContext {
   /**
    * Returns the job runner appropriate for the persistence mode.
    *
-   * @param persistent {@code true} to obtain the persistence-serializing runner; {@code false} for
-   *     the transient runner that starts work immediately.
+   * @param persistent {@code true} to get the persistence-serializing runner; {@code false} for the
+   *     transient runner that starts work immediately.
    * @return The {@link PersistentJobRunner} matching the requested mode.
    */
   public PersistentJobRunner getJobRunner(boolean persistent) {
@@ -570,7 +571,7 @@ public class ClientContext implements ResumeContext {
   /**
    * Returns the main priority-aware executor for client-layer tasks.
    *
-   * @return The executor used for general client scheduling outside of persistence serialization.
+   * @return The executor used for general client scheduling outside persistence serialization.
    */
   public PriorityAwareExecutor getMainExecutor() {
     return mainExecutorInternal;
@@ -589,7 +590,7 @@ public class ClientContext implements ResumeContext {
   /**
    * Updates the tracker responsible for persistent files created by client requests.
    *
-   * @param tracker New persistent file tracker to use for subsequent operations.
+   * @param tracker New persistent file tracker to use for later operations.
    */
   public void setPersistentFileTracker(PersistentFileTracker tracker) {
     this.persistentFileTracker = tracker;

@@ -11,8 +11,8 @@ import java.io.ObjectOutputStream;
 import java.util.Locale;
 import java.util.Random;
 import java.util.stream.Stream;
-import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.DelayedFree;
 import network.crypta.support.io.FileRandomAccessBuffer;
@@ -26,15 +26,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Unit tests for {@link EncryptedRandomAccessBuffer}.
  *
  * <p>Strategy: - Use in-memory or file-backed underlying RAFs with deterministic {@link
- * MasterSecret}. - Verify header handling (new vs existing), bounds, close semantics, resume
+ * MasterSecret}. - Verify header handling (new vs. existing), bounds, close semantics, resume
  * behavior, and persistence round-trips via {@link BucketTools#restoreRAFFrom}.
  */
 @SuppressWarnings("java:S100")
@@ -91,7 +95,7 @@ class EncryptedRandomAccessBufferTest {
   @MethodSource("types")
   @DisplayName("constructor_whenExistingAndBadMagic_expectIOException")
   void constructor_whenExistingAndBadMagic_expectIOException(EncryptedRandomAccessBufferType type) {
-    // Arrange: header area is zeroed -> bad magic
+    // Arrange: the header area is zeroed -> bad magic
     try (LockableRandomAccessBuffer underlying =
         new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + 10)) {
       assertThrows(
@@ -220,7 +224,7 @@ class EncryptedRandomAccessBufferTest {
           new EncryptedRandomAccessBuffer(type, underlying, secret, true);
       first.pwrite(0, data, 0, data.length);
 
-      // Act: reopen over same underlying with newFile=false
+      // Act: reopen over the same underlying with newFile=false
       try (EncryptedRandomAccessBuffer reopened =
           new EncryptedRandomAccessBuffer(type, underlying, secret, false)) {
         byte[] out = new byte[payload];
@@ -288,7 +292,7 @@ class EncryptedRandomAccessBufferTest {
       for (int i = 0; i < data.length; i++) data[i] = (byte) (i + 7);
       raf.pwrite(0, data, 0, data.length);
 
-      ClientContext ctx = Mockito.mock(ClientContext.class);
+      CryptoResumeContext ctx = Mockito.mock(CryptoResumeContext.class);
       Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
 
       // Act
@@ -313,10 +317,31 @@ class EncryptedRandomAccessBufferTest {
             new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
       raf.pwrite(0, new byte[payload], 0, payload);
 
-      ClientContext ctx = Mockito.mock(ClientContext.class);
+      CryptoResumeContext ctx = Mockito.mock(CryptoResumeContext.class);
       Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(new MasterSecret(new byte[64]));
 
       assertThrows(ResumeFailedException.class, () -> raf.onResume(ctx));
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("types")
+  @DisplayName("onResume_whenResumeContextIsNotCrypto_expectResumeFailedException")
+  void onResume_whenResumeContextIsNotCrypto_expectResumeFailedException(
+      EncryptedRandomAccessBufferType type) throws Exception {
+    int payload = 8;
+    try (LockableRandomAccessBuffer underlying =
+            new network.crypta.support.io.ByteArrayRandomAccessBuffer(type.headerLen + payload);
+        EncryptedRandomAccessBuffer raf =
+            new EncryptedRandomAccessBuffer(type, underlying, deterministicSecret(), true)) {
+      raf.pwrite(0, new byte[payload], 0, payload);
+      ResumeContext context = Mockito.mock(ResumeContext.class);
+
+      ResumeFailedException exception =
+          assertThrows(ResumeFailedException.class, () -> raf.onResume(context));
+
+      assertEquals(
+          "Encrypted persistent state requires a CryptoResumeContext", exception.getMessage());
     }
   }
 
@@ -357,7 +382,7 @@ class EncryptedRandomAccessBufferTest {
   @DisplayName("storeTo_and_restoreRAFFrom_roundTrip_expectReadable")
   void storeTo_and_restoreRAFFrom_roundTrip_expectReadable(EncryptedRandomAccessBufferType type)
       throws Exception {
-    // Arrange underlying file-backed buffer so it can be restored from stream
+    // Arrange the underlying file-backed buffer so it can be restored from the stream
     File file = new File(tmpDir, "underlying.dat");
     int payload = 200;
     try (FileRandomAccessBuffer fab =
@@ -502,7 +527,7 @@ class EncryptedRandomAccessBufferTest {
           EncryptedRandomAccessBuffer restored = (EncryptedRandomAccessBuffer) ois.readObject()) {
         assertNotNull(restored);
         // Supply persistent secret and verify readability
-        ClientContext ctx = Mockito.mock(ClientContext.class);
+        CryptoResumeContext ctx = Mockito.mock(CryptoResumeContext.class);
         Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
         restored.onResume(ctx);
 
@@ -544,7 +569,7 @@ class EncryptedRandomAccessBufferTest {
 
       try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
           EncryptedRandomAccessBuffer restored = (EncryptedRandomAccessBuffer) ois.readObject()) {
-        ClientContext ctx = Mockito.mock(ClientContext.class);
+        CryptoResumeContext ctx = Mockito.mock(CryptoResumeContext.class);
         Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(secret);
         restored.onResume(ctx);
         byte[] out = new byte[payload];

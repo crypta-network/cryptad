@@ -25,6 +25,7 @@ import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTestBase;
 import network.crypta.support.io.BucketTools;
@@ -308,7 +309,7 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     int ivLen = types[0].encryptType.ivSize; // bytes
     int keyLen = types[0].encryptKey.keySize >> 3; // bytes
     int macOffset = ivLen + keyLen;
-    raw[macOffset + 3] ^= 0x20; // flip a bit inside MAC region
+    raw[macOffset + 3] ^= 0x20; // flip a bit inside the MAC region
     ArrayBucket corrupted = new ArrayBucket(raw);
 
     EncryptedRandomAccessBucket corruptedBucket =
@@ -345,11 +346,30 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
       os.write(payload);
     }
     // Swap to a different master secret via ClientContext mock
-    ClientContext ctx = Mockito.mock(ClientContext.class);
+    CryptoResumeContext ctx = Mockito.mock(CryptoResumeContext.class);
     Mockito.when(ctx.getPersistentMasterSecret()).thenReturn(new MasterSecret());
     bucket.onResume(ctx);
     // Now the MAC/key derivation won't match the header; reading must fail
     assertThrows(IOException.class, bucket::getInputStreamUnbuffered);
+    bucket.free();
+  }
+
+  @Test
+  void onResume_whenResumeContextIsNotCrypto_expectResumeFailedException() throws Exception {
+    ArrayBucket underlying = new ArrayBucket();
+    EncryptedRandomAccessBucket bucket =
+        new EncryptedRandomAccessBucket(types[0], underlying, secret);
+    byte[] payload = new byte[] {10, 20, 30, 40};
+    try (OutputStream os = bucket.getOutputStream()) {
+      os.write(payload);
+    }
+    ResumeContext context = Mockito.mock(ResumeContext.class);
+
+    ResumeFailedException exception =
+        assertThrows(ResumeFailedException.class, () -> bucket.onResume(context));
+
+    assertEquals(
+        "Encrypted persistent state requires a CryptoResumeContext", exception.getMessage());
     bucket.free();
   }
 
@@ -374,16 +394,7 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     try (DataOutputStream dos = new DataOutputStream(baos)) {
       erab.storeTo(dos);
     }
-    ClientContext context =
-        new ClientContext(
-            0,
-            new ClientContextRuntime(null, null, null, null, null, r, null),
-            new ClientContextStorageFactories(null, null, null, null, null, null, null),
-            new ClientContextRafFactories(null, null),
-            new ClientContextServices(
-                new ClientContextResources(null, null), null, null, null, null, null),
-            new ClientContextDefaults(null, null, null));
-    context.setPersistentMasterSecret(secret);
+    ClientContext context = createPersistentClientContext(r);
     EncryptedRandomAccessBucket restored;
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
       restored =
@@ -423,16 +434,7 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
       oos.writeObject(erab);
     }
-    ClientContext context =
-        new ClientContext(
-            0,
-            new ClientContextRuntime(null, null, null, null, null, r, null),
-            new ClientContextStorageFactories(null, null, null, null, null, null, null),
-            new ClientContextRafFactories(null, null),
-            new ClientContextServices(
-                new ClientContextResources(null, null), null, null, null, null, null),
-            new ClientContextDefaults(null, null, null));
-    context.setPersistentMasterSecret(secret);
+    ClientContext context = createPersistentClientContext(r);
     EncryptedRandomAccessBucket restored;
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
         ObjectInputStream ois = new ObjectInputStream(dis)) {
@@ -476,16 +478,7 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     try (ObjectInputStream ois =
         new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
       EncryptedRandomAccessBucket restored = (EncryptedRandomAccessBucket) ois.readObject();
-      ClientContext context =
-          new ClientContext(
-              0,
-              new ClientContextRuntime(null, null, null, null, null, r, null),
-              new ClientContextStorageFactories(null, null, null, null, null, null, null),
-              new ClientContextRafFactories(null, null),
-              new ClientContextServices(
-                  new ClientContextResources(null, null), null, null, null, null, null),
-              new ClientContextDefaults(null, null, null));
-      context.setPersistentMasterSecret(secret);
+      ClientContext context = createPersistentClientContext(r);
       restored.onResume(context);
       assertEquals(buf.length, restored.size());
       assertEquals(erab, restored);
@@ -506,6 +499,20 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
   @Override
   protected void freeBucket(Bucket bucket) {
     bucket.free();
+  }
+
+  private ClientContext createPersistentClientContext(Random random) {
+    ClientContext context =
+        new ClientContext(
+            0,
+            new ClientContextRuntime(null, null, null, null, null, random, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
+    context.setPersistentMasterSecret(secret);
+    return context;
   }
 
   private static final MasterSecret secret = new MasterSecret();

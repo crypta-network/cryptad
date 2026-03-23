@@ -13,6 +13,7 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
+import network.crypta.crypt.CryptoResumeContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.ClientContextResources;
@@ -190,7 +191,7 @@ class ClientContextTest {
     assertEquals(0L, fakeTicker.lastOffset);
     assertNotNull(fakeTicker.lastJob);
 
-    // Set alerts then run the queued job
+    // Set alerts, then run the queued job
     UserAlertManager alerts = mock(UserAlertManager.class);
     setField(ctx, "alerts", alerts);
     fakeTicker.runLast();
@@ -266,7 +267,7 @@ class ClientContextTest {
   }
 
   @Test
-  void asResumeContext_whenViewedThroughInterface_exposesPersistentObjects() {
+  void asResumeContext_whenViewedThroughInterface_exposesGenericPersistentObjects() {
     MasterSecret secret = mock(MasterSecret.class);
     ctx.setPersistentMasterSecret(secret);
 
@@ -276,7 +277,16 @@ class ClientContextTest {
     assertSame(
         ctx.getPersistentFilenameGenerator(), resumeContext.getPersistentFilenameGenerator());
     assertSame(ctx.getPersistentFileTracker(), resumeContext.getPersistentFileTracker());
-    assertSame(secret, resumeContext.getPersistentMasterSecret());
+  }
+
+  @Test
+  void asCryptoResumeContext_whenViewedThroughInterface_exposesPersistentMasterSecret() {
+    MasterSecret secret = mock(MasterSecret.class);
+    ctx.setPersistentMasterSecret(secret);
+
+    CryptoResumeContext cryptoResumeContext = ctx;
+
+    assertSame(secret, cryptoResumeContext.getPersistentMasterSecret());
   }
 
   @Test
