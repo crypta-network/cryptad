@@ -19,9 +19,15 @@ Use this skill when you need to:
 - The root project still owns `buildJar`, `run`, `runLauncher`, distribution/jpackage tasks, the
   strongly coupled core packages, and all tests.
 - Leaf subprojects:
-  - `:foundation-config` → `network.crypta.config`, `network.crypta.l10n`, the main l10n
-    resources, and the current minimal config/l10n helper closure under
-    `network.crypta.support*` plus `network.crypta.node.FSParseException`
+  - `:foundation-support` → the current stable generic subset of `network.crypta.support`,
+    `network.crypta.support.api`, `network.crypta.support.io`,
+    `network.crypta.support.compress`, `network.crypta.support.math`, plus
+    `network.crypta.node.FSParseException`
+  - `:foundation-store-contracts` → neutral `network.crypta.store` contracts
+    `BlockMetadata`, `GetPubkey`, `StorableBlock`
+  - `:foundation-config` → `network.crypta.config`, `network.crypta.l10n`, and the main l10n
+    resources; public config APIs re-export `:foundation-support` and `:foundation-fs` where they
+    expose shared types
   - `:foundation-fs` → `network.crypta.fs`
   - `:foundation-compat` → `network.crypta.compat`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
@@ -43,8 +49,8 @@ Use this skill when you need to:
 - The large cyclic daemon core still lives in the root project:
   `network.crypta.node` (except the transitional `FSParseException` move),
   `network.crypta.io`, `network.crypta.client`, `network.crypta.clients`,
-  most of `network.crypta.support`, `network.crypta.crypt`, `network.crypta.keys`,
-  `network.crypta.store`, and `network.crypta.tools`.
+  the remaining daemon-coupled support code, `network.crypta.crypt`, `network.crypta.keys`,
+  most store implementations under `network.crypta.store`, and `network.crypta.tools`.
 - `:foundation-config` is the current home for all main `network.crypta.config` and
   `network.crypta.l10n` sources. Their unit tests still live in the root test tree and are run by
   the root project.
@@ -53,9 +59,8 @@ Use this skill when you need to:
   package/resource moves, because stale non-owner aggregated outputs from earlier builds or branch
   switches can still shadow leaf outputs while `buildJar` packages aggregated main outputs first.
 - Update that metadata whenever a leaf starts owning additional main classes/resources that root
-  used to compile/package. If the split under `network.crypta.support*` keeps growing, prefer a
-  future extraction such as `:foundation-support`, but keep the metadata accurate until the build
-  no longer has that stale non-owner aggregated output shadowing risk.
+  used to compile/package. This applies to existing leaves such as `:foundation-support` and
+  `:foundation-store-contracts` just as much as any future extraction.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
@@ -69,6 +74,8 @@ Use this skill when you need to:
 - Storage abstractions: `FreenetStore`
 - CHK/SSK stores: `CHKStore`, `SSKStore`
 - Caching: `SlashdotStore`
+- Neutral contracts `BlockMetadata`, `GetPubkey`, and `StorableBlock` now live in
+  `:foundation-store-contracts`; store implementations still remain in the root project.
 
 ### Cryptography (`network.crypta.crypt`)
 - Encryption: block cipher / AES streams
@@ -185,10 +192,11 @@ Use this skill when you need to:
 
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers
-- Most support code still lives in the root project, but `:foundation-config` now carries the
-  current minimal config/l10n closure from `network.crypta.support`,
-  `network.crypta.support.api`, and `network.crypta.support.io` so that config/l10n can compile as
-  a leaf without depending back on root main sources.
+- `:foundation-support` now owns the stable generic support subset across `network.crypta.support`,
+  `network.crypta.support.api`, `network.crypta.support.io`,
+  `network.crypta.support.compress`, and `network.crypta.support.math`.
+- The root project still owns daemon-coupled support code and higher-level wiring that is not yet
+  stable enough to extract cleanly.
 
 ### Launcher/Desktop leaf module (`:launcher-desktop`)
 - Swing launcher: `network.crypta.launcher`
@@ -196,8 +204,10 @@ Use this skill when you need to:
 - Vendored OSHI annotations and launcher resources
 
 ### Foundation leaf modules
-- `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`, selected
-  `network.crypta.support*` helpers, and `network.crypta.node.FSParseException`
+- `:foundation-support`: stable generic `network.crypta.support*` subset plus
+  `network.crypta.node.FSParseException`
+- `:foundation-store-contracts`: neutral `network.crypta.store` contracts
+- `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`
 - `:runtime-spi`: `network.crypta.runtime.spi`

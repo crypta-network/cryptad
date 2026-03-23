@@ -18,12 +18,17 @@ Use this skill when you need to:
 ## Build layout
 - Cryptad now uses a partial multi-project Gradle build.
 - Use root-project tasks by default; the root project remains the daemon/application target.
-- Current leaf projects are `:foundation-config`, `:foundation-fs`, `:foundation-compat`,
-  `:runtime-spi`, `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
+- Current leaf projects are `:foundation-support`, `:foundation-store-contracts`,
+  `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+  `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
-- `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources,
-  plus the minimal support/node compile closure they currently need.
+- `:foundation-support` owns the current stable generic support subset under
+  `network.crypta.support*` plus `network.crypta.node.FSParseException`.
+- `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
+  `BlockMetadata`, `GetPubkey`, and `StorableBlock`.
+- `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources.
+  Its public APIs now re-export `:foundation-support` and `:foundation-fs` where needed.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
   `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
   moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
@@ -65,7 +70,12 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## Compile-only / quick checks
 - Compile only:
   - `./gradlew compileJava`
-- Compile the config/l10n leaf when you touched extracted config, l10n, or their helper closure:
+- Compile the support leaf when you touched extracted generic support classes:
+  - `./gradlew :foundation-support:classes`
+- Compile the neutral store-contracts leaf when you touched `BlockMetadata`, `GetPubkey`, or
+  `StorableBlock`:
+  - `./gradlew :foundation-store-contracts:compileJava`
+- Compile the config/l10n leaf when you touched extracted config or l10n sources:
   - `./gradlew :foundation-config:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
