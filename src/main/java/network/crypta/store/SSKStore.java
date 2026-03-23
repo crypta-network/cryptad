@@ -18,7 +18,7 @@ import network.crypta.keys.SSKVerifyException;
 public class SSKStore extends StoreCallback<SSKBlock> {
 
   /** Provider used to retrieve and cache DSA public keys by hash when reconstructing SSKs. */
-  private final GetPubkey pubkeyCache;
+  private final GetPubkey<DSAPublicKey> pubkeyCache;
 
   /**
    * Creates a new store adapter for SSK blocks.
@@ -26,7 +26,7 @@ public class SSKStore extends StoreCallback<SSKBlock> {
    * @param pubkeyCache source used to resolve {@link DSAPublicKey}s by their SHA‑256 hash when the
    *     key is not already attached to the {@link NodeSSK} being reconstructed.
    */
-  public SSKStore(GetPubkey pubkeyCache) {
+  public SSKStore(GetPubkey<DSAPublicKey> pubkeyCache) {
     this.pubkeyCache = pubkeyCache;
   }
 

@@ -1,0 +1,6 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-store-contracts owns them now.
+
+network/crypta/store/StorableBlock*
+network/crypta/store/BlockMetadata*
+network/crypta/store/GetPubkey*
+

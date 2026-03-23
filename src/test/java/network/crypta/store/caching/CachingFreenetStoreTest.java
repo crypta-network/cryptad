@@ -297,7 +297,7 @@ final class CachingFreenetStoreTest {
     // Arrange
     PubkeyStore pk = new PubkeyStore();
     try (var _ = new RAMFreenetStore<>(pk, 10)) {
-      GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+      GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
       SSKStore store = new SSKStore(pubkeyCache);
       int sskBlockSize = store.getTotalBlockSize();
 
@@ -439,7 +439,7 @@ final class CachingFreenetStoreTest {
     // Arrange
     PubkeyStore pk = new PubkeyStore();
     try (var _ = new RAMFreenetStore<>(pk, 10)) {
-      GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+      GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
       SSKStore store = new SSKStore(pubkeyCache);
       int sskBlockSize = store.getTotalBlockSize();
 
@@ -528,7 +528,7 @@ final class CachingFreenetStoreTest {
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, 10);
     pk.setStore(ramFreenetStore);
 
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     int sskBlockSize = store.getTotalBlockSize();
 
@@ -667,7 +667,7 @@ final class CachingFreenetStoreTest {
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
 
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     File f = getStorePath("testSimpleSSK");
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
@@ -892,7 +892,7 @@ final class CachingFreenetStoreTest {
     PubkeyStore pk = new PubkeyStore();
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
 
     List<ClientSSKBlock> sskBlocks = new ArrayList<>();
@@ -994,7 +994,7 @@ final class CachingFreenetStoreTest {
     PubkeyStore pk = new PubkeyStore();
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
 
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
@@ -1152,7 +1152,7 @@ final class CachingFreenetStoreTest {
     PubkeyStore pk = new PubkeyStore();
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     File f = getStorePath("checkOnCollisionsSSK");
 

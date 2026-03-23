@@ -1,5 +1,3 @@
-import java.io.File
-
 plugins {
   // Apply Gradle 9 convention plugins from the included build
   id("cryptad.java-kotlin-conventions")
@@ -19,6 +17,7 @@ version = "3"
 val internalLeafProjects =
   listOf(
     project(":foundation-support"),
+    project(":foundation-store-contracts"),
     project(":foundation-config"),
     project(":foundation-fs"),
     project(":foundation-compat"),
@@ -37,6 +36,7 @@ val internalLeafMainClassDirs =
 dependencies {
   // implementation
   implementation(project(":foundation-support"))
+  implementation(project(":foundation-store-contracts"))
   implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(project(":foundation-compat"))
@@ -145,10 +145,12 @@ val aggregatedMainOutputProducers =
   (listOf(project) + internalLeafProjects).map(::AggregatedMainOutputProducer)
 
 // Every extracted internal leaf declares aggregated main-output ownership metadata under
-// <leaf>/gradle/owned-output-patterns.txt. Structurally separated root -> leaf and leaf -> leaf
-// moves need this because stale outputs can survive in root or old leaf build directories on
-// non-clean builds or branch switches, while root packaging/runtime aggregation still consumes the
-// root main output and every internal leaf main output.
+// <leaf>/gradle/owned-output-patterns.txt.
+// We need this for structurally separated root -> leaf and leaf -> leaf moves.
+// Stale outputs can survive in root or old leaf build directories on non-clean builds or branch
+// switches.
+// Root packaging/runtime aggregation still consumes the root main output and every internal leaf
+// main output.
 val selectiveLeafOutputOwnerships =
   internalLeafProjects.map { leaf ->
     val metadataFile =
@@ -247,6 +249,7 @@ val selectiveLeafOutputPruneTasks =
           aggregatedMainOutputProducers
             .filter { producer -> producer.project != ownership.leaf }
             .flatMap { producer -> ownedOutputTreesFor(producer, ownership.patterns) }
+        group = "build"
         description =
           "Removes stale non-owner aggregated main outputs for paths owned by ${ownership.leaf.path} on non-clean builds"
         dependsOn(verifySelectiveLeafOwnershipMetadata)
@@ -257,6 +260,7 @@ val selectiveLeafOutputPruneTasks =
 
 val pruneSelectiveLeafOutputs by
   tasks.registering {
+    group = "build"
     description =
       "Removes stale aggregated main outputs claimed by selectively extracted leaf projects on non-clean builds"
     dependsOn(verifySelectiveLeafOwnershipMetadata)
@@ -305,12 +309,7 @@ tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(pruneSelectiveLeafOutputs)
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->
-    from(
-      leaf.extensions
-        .getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
-        .named("main")
-        .map { it.output }
-    )
+    from(leaf.extensions.getByType(SourceSetContainer::class.java).named("main").map { it.output })
   }
 }
 

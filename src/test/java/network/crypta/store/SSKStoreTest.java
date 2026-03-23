@@ -43,7 +43,7 @@ class SSKStoreTest {
 
   private static final byte CRYPTO_ALGO = Key.ALGO_AES_PCFB_256_SHA256;
 
-  @Mock private GetPubkey pubkeyCache;
+  @Mock private GetPubkey<DSAPublicKey> pubkeyCache;
 
   @Mock private FreenetStore<SSKBlock> mockStore;
 
