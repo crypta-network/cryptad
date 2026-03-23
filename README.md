@@ -167,10 +167,16 @@ Cryptad now uses a partial multi-project Gradle build.
 
 - The root project remains the daemon/application project. It still owns the daemon JAR, tests,
   `run`, `runLauncher`, `assembleCryptadDist`, and jpackage task graph.
-- `:foundation-config` owns `network.crypta.config`, `network.crypta.l10n`, the main
-  `network/crypta/l10n/crypta.l10n.en.properties` resource, and the current minimal helper
-  closure those packages need from `network.crypta.support*` plus
+- `:foundation-support` owns the current stable generic support subset under
+  `network.crypta.support`, `network.crypta.support.api`, `network.crypta.support.io`,
+  `network.crypta.support.compress`, `network.crypta.support.math`, plus
   `network.crypta.node.FSParseException`.
+- `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
+  `BlockMetadata`, `GetPubkey`, and `StorableBlock`.
+- `:foundation-config` owns `network.crypta.config`, `network.crypta.l10n`, and the main
+  `network/crypta/l10n/crypta.l10n.en.properties` resource. Its public APIs now export
+  `:foundation-support` and `:foundation-fs` where config types expose `SimpleFieldSet` or
+  filesystem-facing value types.
 - `:foundation-fs` owns `network.crypta.fs`.
 - `:foundation-compat` owns `network.crypta.compat`.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
@@ -182,7 +188,7 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
   resources.
 - The large cyclic daemon core remains in the root project for now, and all tests still live
-  there.
+  there. Most store implementations and daemon-coupled support code remain root-owned.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, implemented in the root project by
   `network.crypta.node.runtime.LegacyRuntimePorts`, plus HTTP-local wiring records and
@@ -462,8 +468,12 @@ cd build/jpackage/Crypta.app/Contents
     artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Root build also includes:
-- `:foundation-config`: extracted config/l10n code plus the minimal support/node closure needed
-  to compile it as a leaf.
+- `:foundation-support`: extracted stable support/api/io/compress/math subset plus
+  `network.crypta.node.FSParseException`.
+- `:foundation-store-contracts`: neutral store contracts used by `crypt`, `keys`, and `store`
+  code during extraction work.
+- `:foundation-config`: extracted config/l10n code and main l10n resources. Its public APIs
+  re-export `:foundation-support` and `:foundation-fs` where required.
 - `:launcher-desktop`: Swing launcher code and desktop/theme detection dependencies.
 - `:thirdparty-onion`: Onion FEC and related vendored sources/resources.
 - `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
@@ -516,10 +526,13 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Root project `:cryptad` remains the daemon/application build and still owns the strongly
     coupled core packages, all tests, packaging/runtime tasks, and the current
     `LegacyRuntimePorts` bridge into the runtime SPI.
-  - Leaf subprojects are `:foundation-config`, `:foundation-fs`, `:foundation-compat`,
-    `:runtime-spi`, `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
+  - Leaf subprojects are `:foundation-support`, `:foundation-store-contracts`,
+    `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+    `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
+  Neutral contracts such as `BlockMetadata`, `GetPubkey`, and `StorableBlock` now live in
+  `:foundation-store-contracts`; store implementations still remain in the root project.
 - Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
 - Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
@@ -549,19 +562,22 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
-  `network.crypta.l10n`, the main l10n properties, and the current minimal compile closure they
-  need from `network.crypta.support`, `network.crypta.support.api`,
-  `network.crypta.support.io`, and `network.crypta.node.FSParseException`. Higher layers should
-  still prefer `RuntimePorts#config()` and the root `LegacyConfigPort` bridge instead of reaching
-  through daemon internals.
-- Support (`network.crypta.support`): logging, data structures, threading, and helpers remain
-  mostly in the root project; the config/l10n-specific compile closure is temporarily housed in
-  `:foundation-config` while package names stay unchanged.
+  `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
+  `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
+  filesystem-facing types. Higher layers should still prefer `RuntimePorts#config()` and the root
+  `LegacyConfigPort` bridge instead of reaching through daemon internals.
+- Support foundation leaf (`:foundation-support`): stable generic support, support-api,
+  support-io, support-compress, and support-math classes plus
+  `network.crypta.node.FSParseException`.
+- Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
+  split between `:foundation-support` and the root project. Keep generic reusable utilities in the
+  foundation leaf; daemon-coupled support code still remains in root.
 - Launcher/Desktop: `:launcher-desktop` provides `network.crypta.launcher`,
   `com.jthemedetecor`, launcher resources, and desktop-theme integration.
-- Extracted foundations: `:foundation-config` provides config/l10n plus the minimal support/node
-  closure described above, `:foundation-fs` provides `network.crypta.fs`,
-  and `:foundation-compat` provides `network.crypta.compat`.
+- Extracted foundations: `:foundation-support` provides the stable generic support subset,
+  `:foundation-store-contracts` provides neutral `network.crypta.store` contracts,
+  `:foundation-config` provides config/l10n, `:foundation-fs` provides `network.crypta.fs`, and
+  `:foundation-compat` provides `network.crypta.compat`.
 - Runtime boundary leaf: `:runtime-spi` provides `network.crypta.runtime.spi`.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.

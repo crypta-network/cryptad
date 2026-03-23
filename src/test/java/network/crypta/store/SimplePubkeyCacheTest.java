@@ -11,7 +11,7 @@ import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SimplePubkeyCacheTest {
 
@@ -19,8 +19,9 @@ class SimplePubkeyCacheTest {
   void testSimple() {
     final int keys = 10;
     PubkeyStore pk = new PubkeyStore();
+    //noinspection resource
     new RAMFreenetStore<>(pk, keys);
-    GetPubkey pubkeys = new SimpleGetPubkey(pk);
+    GetPubkey<DSAPublicKey> pubkeys = new SimpleGetPubkey(pk);
     DSAGroup group = Global.DSAgroupBigA;
     Random random = new MersenneTwister(1010101);
     HashMap<ByteArrayWrapper, DSAPublicKey> map = new HashMap<>();

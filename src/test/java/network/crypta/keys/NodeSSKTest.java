@@ -202,7 +202,7 @@ class NodeSSKTest {
     byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 0x11);
     NodeSSK key = new NodeSSK(pkh, eh, (byte) 99);
     byte[] full = key.getFullKey();
-    // Make header look like SSK but with unsupported algo
+    // Make the header look like SSK but with unsupported algo
     full[0] = NodeSSK.BASE_TYPE;
     full[1] = Key.ALGO_AES_CTR_256_SHA256; // not accepted by construct()
     assertThrows(SSKVerifyException.class, () -> NodeSSK.construct(full));
@@ -222,7 +222,7 @@ class NodeSSKTest {
     assertTrue(key.hasPubKey());
     assertEquals(pub, key.getPubKey());
 
-    // Idempotent: setting same instance is a no-op
+    // Idempotent: setting the same instance is a no-op
     key.setPubKey(pub);
     assertEquals(pub, key.getPubKey());
   }
@@ -319,7 +319,7 @@ class NodeSSKTest {
     assertTrue(a.compareTo(b) < 0);
     assertTrue(b.compareTo(a) > 0);
 
-    // Now equal ehd; order by pubkey hash
+    // Now equal ehd; ordered by pubkey hash
     NodeSSK c = new NodeSSK(pkhA, ehA, Key.ALGO_AES_PCFB_256_SHA256);
     NodeSSK d = new NodeSSK(pkhB, ehA, Key.ALGO_AES_PCFB_256_SHA256);
     assertTrue(c.compareTo(d) < 0);
@@ -332,7 +332,7 @@ class NodeSSKTest {
     NodeSSK key = new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256);
     byte[] full = key.getFullKey();
 
-    // Truncate to simulate wrong length; Arrays.copyOfRange pads with zeros
+    // Truncate to simulate the wrong length; Arrays.copyOfRange pads with zeros
     byte[] truncated = Arrays.copyOf(full, full.length - 3);
     byte[] rk = NodeSSK.routingKeyFromFullKey(truncated);
 
@@ -363,20 +363,35 @@ class NodeSSKTest {
   }
 
   @Test
-  void grabPubkey_whenCacheHasKey_setsAndReturnsTrue(
-      @Mock GetPubkey cache, @Mock DSAPublicKey pub) {
-    byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x71);
-    byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 0x72);
-    NodeSSK key = new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256);
+  void archivalCopy_whenGrabPubkeyCalled_throwsUnsupportedOperationException(
+      @Mock GetPubkey<DSAPublicKey> cache) {
+    byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x52);
+    byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 0x53);
+    NodeSSK archived = (NodeSSK) new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256).archivalCopy();
+    BlockMetadata meta = new BlockMetadata();
 
-    doReturn(pub).when(cache).getKey(pkh, true, false, null);
-    boolean grabbed = key.grabPubkey(cache, true, false, null);
-    assertTrue(grabbed);
-    assertEquals(pub, key.getPubKey());
+    assertThrows(
+        UnsupportedOperationException.class, () -> archived.grabPubkey(cache, true, true, meta));
   }
 
   @Test
-  void grabPubkey_whenCacheMiss_returnsFalseAndKeepsNull(@Mock GetPubkey cache) {
+  void grabPubkey_whenCacheHasKey_setsAndReturnsTrue(
+      @Mock GetPubkey<DSAPublicKey> cache, @Mock DSAPublicKey pub) {
+    byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x71);
+    byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 0x72);
+    NodeSSK key = new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256);
+    BlockMetadata meta = new BlockMetadata();
+
+    doReturn(pub).when(cache).getKey(pkh, true, false, meta);
+    boolean grabbed = key.grabPubkey(cache, true, false, meta);
+
+    assertTrue(grabbed);
+    assertEquals(pub, key.getPubKey());
+    verify(cache).getKey(pkh, true, false, meta);
+  }
+
+  @Test
+  void grabPubkey_whenCacheMiss_returnsFalseAndKeepsNull(@Mock GetPubkey<DSAPublicKey> cache) {
     byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x74);
     byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 0x75);
     NodeSSK key = new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256);
@@ -388,8 +403,8 @@ class NodeSSKTest {
   }
 
   @Test
-  void grabPubkey_whenAlreadyHasKey_doesNotCallCache(@Mock GetPubkey cache, @Mock DSAPublicKey pub)
-      throws SSKVerifyException {
+  void grabPubkey_whenAlreadyHasKey_doesNotCallCache(
+      @Mock GetPubkey<DSAPublicKey> cache, @Mock DSAPublicKey pub) throws SSKVerifyException {
     byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x76);
     byte[] pubBytes = "grabbed".getBytes(StandardCharsets.US_ASCII);
     byte[] pkh = sha256(pubBytes);

@@ -419,7 +419,10 @@ public class NodeSSK extends Key {
    * @return {@code true} if a key was fetched and attached; {@code false} otherwise.
    */
   public boolean grabPubkey(
-      GetPubkey pubkeyCache, boolean canReadClientCache, boolean forULPR, BlockMetadata meta) {
+      GetPubkey<DSAPublicKey> pubkeyCache,
+      boolean canReadClientCache,
+      boolean forULPR,
+      BlockMetadata meta) {
     if (pubKey != null) return false;
     pubKey = pubkeyCache.getKey(pubKeyHash, canReadClientCache, forULPR, meta);
     return pubKey != null;
@@ -494,7 +497,10 @@ final class ArchiveNodeSSK extends NodeSSK {
    */
   @Override
   public boolean grabPubkey(
-      GetPubkey pubkeyCache, boolean canReadClientCache, boolean forULPR, BlockMetadata meta) {
+      GetPubkey<DSAPublicKey> pubkeyCache,
+      boolean canReadClientCache,
+      boolean forULPR,
+      BlockMetadata meta) {
     throw new UnsupportedOperationException();
   }
 }

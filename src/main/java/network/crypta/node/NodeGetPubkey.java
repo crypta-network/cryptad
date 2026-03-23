@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  * <p>Lookup order (when applicable): memory cache → client caches (including legacy) → main
  * datastore (including legacy) → datacache (including legacy) → slashdot cache (when requested).
  */
-public class NodeGetPubkey implements GetPubkey {
+public class NodeGetPubkey implements GetPubkey<DSAPublicKey> {
   private static final Logger LOG = LoggerFactory.getLogger(NodeGetPubkey.class);
 
   // Enable the small RAM-backed pubkey cache for hot entries.
@@ -96,7 +96,7 @@ public class NodeGetPubkey implements GetPubkey {
                               tryDataCaches(hash, ignoreOldBlocks, meta),
                               () -> trySlashdot(hash, forULPR, ignoreOldBlocks, meta))));
       if (key != null) {
-        // Populate the in-memory cache for subsequent lookups.
+        // Populate the in-memory cache for later lookups.
         cacheKey(hash, key, false, false, false, false, false);
       }
       return key;

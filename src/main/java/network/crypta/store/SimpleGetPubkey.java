@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * mutable state. Concurrency characteristics therefore depend entirely on the {@link PubkeyStore}
  * implementation supplied at construction time.
  */
-public class SimpleGetPubkey implements GetPubkey {
+public class SimpleGetPubkey implements GetPubkey<DSAPublicKey> {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleGetPubkey.class);
 
   // Backing store used for all lookups and writes.
