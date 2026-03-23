@@ -16,9 +16,9 @@ import network.crypta.config.Option;
 import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
-import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
+import network.crypta.node.runtime.SSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

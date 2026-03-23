@@ -8,7 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.net.ssl.SSLServerSocket;
-import network.crypta.crypt.SSL;
+import network.crypta.node.runtime.SSL;
 import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

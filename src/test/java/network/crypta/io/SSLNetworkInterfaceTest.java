@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.SSLServerSocket;
-import network.crypta.crypt.SSL;
+import network.crypta.node.runtime.SSL;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
