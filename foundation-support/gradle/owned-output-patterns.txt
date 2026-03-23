@@ -18,6 +18,9 @@ network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*
 network/crypta/support/IllegalBase64Exception*
 network/crypta/support/PriorityAwareExecutor*
+network/crypta/support/Loader*
+network/crypta/support/SimpleReadOnlyArrayBucket*
+network/crypta/support/StringValidityChecker*
 network/crypta/support/SimpleFieldSet*
 network/crypta/support/Ticker*
 network/crypta/support/TimeUtil*
@@ -40,6 +43,8 @@ network/crypta/support/io/DiskSpaceChecker*
 network/crypta/support/io/HeaderStreams*
 network/crypta/support/io/IOUtils*
 network/crypta/support/io/InetAddressComparator*
+network/crypta/support/io/FilenameGenerator*
+network/crypta/support/io/FilenameSanitizer*
 network/crypta/support/io/InsufficientDiskSpaceException*
 network/crypta/support/io/LineReader*
 network/crypta/support/io/LineReadingInputStream*

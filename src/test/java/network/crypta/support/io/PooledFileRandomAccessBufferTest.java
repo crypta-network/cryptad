@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
+import network.crypta.support.api.LockableRandomAccessBuffer;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -27,6 +28,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -381,6 +383,40 @@ class PooledFileRandomAccessBufferTest {
           assertEquals(orig.size(), copy.size());
           assertEquals(orig, copy);
         }
+      }
+    }
+  }
+
+  @Test
+  void restoreRAFFrom_whenStoredPooledBuffer_usesPersistentFilenameGeneratorConstructor()
+      throws Exception {
+    // Arrange
+    File original = new File(tempDir, "buckettools-round.bin");
+    Files.write(original.toPath(), new byte[] {1, 2, 3, 4});
+    FilenameGenerator fg =
+        new FilenameGenerator(new java.util.Random(1234L), false, tempDir, "buckettools-");
+    PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+
+    try (PooledFileRandomAccessBuffer orig =
+        new PooledFileRandomAccessBuffer(
+            original, false, -1, -1L, false, new PooledFileRandomAccessBuffer.FDTracker(4))) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      try (DataOutputStream dos = new DataOutputStream(baos)) {
+        orig.storeTo(dos);
+      }
+
+      // Act
+      try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
+          LockableRandomAccessBuffer restored =
+              BucketTools.restoreRAFFrom(dis, fg, tracker, null)) {
+
+        // Assert
+        PooledFileRandomAccessBuffer copy =
+            assertInstanceOf(PooledFileRandomAccessBuffer.class, restored);
+        assertEquals(orig.size(), copy.size());
+        assertEquals(
+            original.getCanonicalPath(),
+            requireNonNull(copy.file, "restored file").getCanonicalPath());
       }
     }
   }

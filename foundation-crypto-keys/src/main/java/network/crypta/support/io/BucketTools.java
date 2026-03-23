@@ -5,13 +5,19 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import network.crypta.crypt.AEADCryptBucket;
 import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
@@ -41,6 +47,32 @@ public class BucketTools {
   private static final int BUFFER_SIZE = 64 * 1024;
   private static final String MOVED_LITERAL = " (moved ";
   private static final String UNABLE_TO_READ_FROM_LITERAL = "): unable to read from ";
+  // Remaining root-owned bucket/buffer implementations are restored reflectively during the
+  // extraction so this leaf no longer compiles against root main sources.
+  private static final String FILE_BUCKET_CLASS = "network.crypta.support.io.FileBucket";
+  private static final String PERSISTENT_TEMP_FILE_BUCKET_CLASS =
+      "network.crypta.support.io.PersistentTempFileBucket";
+  private static final String DELAYED_FREE_BUCKET_CLASS =
+      "network.crypta.support.io.DelayedFreeBucket";
+  private static final String DELAYED_FREE_RANDOM_ACCESS_BUCKET_CLASS =
+      "network.crypta.support.io.DelayedFreeRandomAccessBucket";
+  private static final String NO_FREE_BUCKET_CLASS = "network.crypta.support.io.NoFreeBucket";
+  private static final String PADDED_EPHEMERALLY_ENCRYPTED_BUCKET_CLASS =
+      "network.crypta.support.io.PaddedEphemerallyEncryptedBucket";
+  private static final String PADDED_BUCKET_CLASS = "network.crypta.support.io.PaddedBucket";
+  private static final String PADDED_RANDOM_ACCESS_BUCKET_CLASS =
+      "network.crypta.support.io.PaddedRandomAccessBucket";
+  private static final String RAF_BUCKET_CLASS = "network.crypta.support.io.RAFBucket";
+  private static final String POOLED_FILE_RANDOM_ACCESS_BUFFER_CLASS =
+      "network.crypta.support.io.PooledFileRandomAccessBuffer";
+  private static final String FILE_RANDOM_ACCESS_BUFFER_CLASS =
+      "network.crypta.support.io.FileRandomAccessBuffer";
+  private static final String READ_ONLY_RANDOM_ACCESS_BUFFER_CLASS =
+      "network.crypta.support.io.ReadOnlyRandomAccessBuffer";
+  private static final String DELAYED_FREE_RANDOM_ACCESS_BUFFER_CLASS =
+      "network.crypta.support.io.DelayedFreeRandomAccessBuffer";
+  private static final String PADDED_RANDOM_ACCESS_BUFFER_CLASS =
+      "network.crypta.support.io.PaddedRandomAccessBuffer";
 
   private BucketTools() {}
 
@@ -471,8 +503,8 @@ public class BucketTools {
   /**
    * Splits a bucket into a sequence of read-only chunk buckets.
    *
-   * <p>When {@code origData} is a {@link FileBucket} and {@code persistent} is {@code true}, the
-   * method uses the underlying file and returns efficient {@link ReadOnlyFileSliceBucket}s. In all
+   * <p>When {@code origData} is a {@code FileBucket} and {@code persistent} is {@code true}, the
+   * method uses the underlying file and returns efficient {@code ReadOnlyFileSliceBucket}s. In all
    * other cases it creates new buckets via {@code bf} and copies the data into them.
    *
    * <p>This method allocates a temporary buffer of size {@code splitSize}.
@@ -491,13 +523,14 @@ public class BucketTools {
   public static Bucket[] split(
       Bucket origData, int splitSize, BucketFactory bf, boolean freeData, boolean persistent)
       throws IOException {
-    if (origData instanceof FileBucket bucket) {
+    if (isReflectiveInstance(origData, FILE_BUCKET_CLASS)) {
       if (freeData) {
         LOG.error(
             "Asked to free data when splitting a FileBucket ?!?!? Not freeing as this would clobber"
                 + " the split result...");
       }
-      Bucket[] buckets = bucket.split(splitSize);
+      Bucket[] buckets =
+          invokeBucketArrayMethod(origData, "split", new Class<?>[] {int.class}, splitSize);
       if (persistent) return buckets;
     }
     long length = origData.size();
@@ -595,16 +628,18 @@ public class BucketTools {
     long size = a.size();
     try (InputStream aIn = a.getInputStreamUnbuffered();
         InputStream bIn = b.getInputStreamUnbuffered()) {
-      return FileUtil.equalStreams(aIn, bIn, size);
+      return equalStreams(aIn, bIn, size);
     }
   }
 
   // Note: Random-based test helpers live under src/test (FileTestUtils).
 
+  private static final SecureRandom FILL_SEED_GENERATOR = new SecureRandom();
+
   /**
    * Fills a bucket with pseudo-random bytes.
    *
-   * <p>Uses {@link FileUtil#fill(OutputStream, long)} to write {@code length} bytes. The data is
+   * <p>Uses the legacy Mersenne-Twister-backed filler to write {@code length} bytes. The data is
    * suitable for testing or obfuscating patterns but is not cryptographically secure.
    *
    * @param bucket the destination bucket
@@ -613,7 +648,7 @@ public class BucketTools {
    */
   public static void fill(Bucket bucket, long length) throws IOException {
     try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
-      FileUtil.fill(os, length);
+      fill(os, length);
     }
   }
 
@@ -666,6 +701,157 @@ public class BucketTools {
     }
   }
 
+  private static void fill(OutputStream os, long length) throws IOException {
+    byte[] seed = new byte[16];
+    FILL_SEED_GENERATOR.nextBytes(seed);
+    writeRandomBytes(os, MersenneTwister.createUnsynchronized(seed), length);
+  }
+
+  private static void writeRandomBytes(OutputStream os, Random random, long length)
+      throws IOException {
+    byte[] buffer = new byte[(int) Math.min(length, BUFFER_SIZE)];
+    long remaining = length;
+    while (remaining > 0) {
+      random.nextBytes(buffer);
+      int writeLength = (int) Math.min(remaining, BUFFER_SIZE);
+      os.write(buffer, 0, writeLength);
+      remaining -= writeLength;
+    }
+  }
+
+  private static boolean equalStreams(InputStream a, InputStream b, long size) throws IOException {
+    byte[] aBuffer = new byte[BUFFER_SIZE];
+    byte[] bBuffer = new byte[BUFFER_SIZE];
+    DataInputStream aIn = new DataInputStream(a);
+    DataInputStream bIn = new DataInputStream(b);
+    long checked = 0;
+    while (checked < size) {
+      int toRead = (int) Math.min(BUFFER_SIZE, size - checked);
+      aIn.readFully(aBuffer, 0, toRead);
+      bIn.readFully(bBuffer, 0, toRead);
+      if (!MessageDigest.isEqual(aBuffer, bBuffer)) return false;
+      checked += toRead;
+    }
+    return true;
+  }
+
+  private static boolean isReflectiveInstance(Object value, String className) {
+    for (Class<?> type = value.getClass(); type != null; type = type.getSuperclass()) {
+      if (type.getName().equals(className)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean magicMatches(String className, int magic) {
+    try {
+      Field magicField = loadClass(className).getDeclaredField("MAGIC");
+      magicField.setAccessible(true);
+      return magicField.getInt(null) == magic;
+    } catch (ReflectiveOperationException e) {
+      return false;
+    }
+  }
+
+  private static Class<?> loadClass(String className) throws ClassNotFoundException {
+    return Class.forName(className, true, BucketTools.class.getClassLoader());
+  }
+
+  private static Bucket[] invokeBucketArrayMethod(
+      Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+      throws IOException {
+    return invokeReflectiveMethod(target, methodName, Bucket[].class, parameterTypes, args);
+  }
+
+  private static RandomAccessBucket invokeRandomAccessBucketMethod(
+      Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+      throws IOException {
+    return invokeReflectiveMethod(
+        target, methodName, RandomAccessBucket.class, parameterTypes, args);
+  }
+
+  private static <T> T invokeReflectiveMethod(
+      Object target,
+      String methodName,
+      Class<T> expectedType,
+      Class<?>[] parameterTypes,
+      Object... args)
+      throws IOException {
+    try {
+      Method method = target.getClass().getMethod(methodName, parameterTypes);
+      method.setAccessible(true);
+      return expectedType.cast(method.invoke(target, args));
+    } catch (InvocationTargetException e) {
+      rethrowIoCause(target.getClass().getName() + "#" + methodName, e.getCause());
+      throw new IllegalStateException("Unreachable");
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException(
+          "Failed to invoke " + methodName + " on " + target.getClass().getName(), e);
+    }
+  }
+
+  private static Bucket instantiateBucket(
+      String className, Class<?>[] parameterTypes, Object... args)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    return instantiateReflectively(className, Bucket.class, parameterTypes, args);
+  }
+
+  private static LockableRandomAccessBuffer instantiateRandomAccessBuffer(
+      String className, Class<?>[] parameterTypes, Object... args)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    return instantiateReflectively(
+        className, LockableRandomAccessBuffer.class, parameterTypes, args);
+  }
+
+  private static <T> T instantiateReflectively(
+      String className, Class<T> expectedType, Class<?>[] parameterTypes, Object... args)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    try {
+      Constructor<?> constructor = loadClass(className).getDeclaredConstructor(parameterTypes);
+      constructor.setAccessible(true);
+      return expectedType.cast(constructor.newInstance(args));
+    } catch (InvocationTargetException e) {
+      rethrowReflectiveCause(className, e.getCause());
+      throw new IllegalStateException("Unreachable");
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("Failed to instantiate " + className, e);
+    }
+  }
+
+  private static void rethrowIoCause(String description, Throwable cause) throws IOException {
+    if (cause instanceof IOException ioException) {
+      throw ioException;
+    }
+    if (cause instanceof RuntimeException runtimeException) {
+      throw runtimeException;
+    }
+    if (cause instanceof Error error) {
+      throw error;
+    }
+    throw new IllegalStateException("Failed to invoke " + description, cause);
+  }
+
+  private static void rethrowReflectiveCause(String className, Throwable cause)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    if (cause instanceof IOException ioException) {
+      throw ioException;
+    }
+    if (cause instanceof StorageFormatException storageFormatException) {
+      throw storageFormatException;
+    }
+    if (cause instanceof ResumeFailedException resumeFailedException) {
+      throw resumeFailedException;
+    }
+    if (cause instanceof RuntimeException runtimeException) {
+      throw runtimeException;
+    }
+    if (cause instanceof Error error) {
+      throw error;
+    }
+    throw new IllegalStateException("Failed to instantiate " + className, cause);
+  }
+
   /**
    * Restores a {@link Bucket} from a binary stream written by {@code Bucket.storeTo()}.
    *
@@ -688,26 +874,121 @@ public class BucketTools {
       MasterSecret masterKey)
       throws IOException, StorageFormatException, ResumeFailedException {
     int magic = dis.readInt();
-    return switch (magic) {
-      case AEADCryptBucket.MAGIC -> new AEADCryptBucket(dis, fg, persistentFileTracker, masterKey);
-      case FileBucket.MAGIC -> new FileBucket(dis);
-      case PersistentTempFileBucket.MAGIC -> new PersistentTempFileBucket(dis);
-      case DelayedFreeBucket.MAGIC ->
-          new DelayedFreeBucket(dis, fg, persistentFileTracker, masterKey);
-      case DelayedFreeRandomAccessBucket.MAGIC ->
-          new DelayedFreeRandomAccessBucket(dis, fg, persistentFileTracker, masterKey);
-      case NoFreeBucket.MAGIC -> new NoFreeBucket(dis, fg, persistentFileTracker, masterKey);
-      case PaddedEphemerallyEncryptedBucket.MAGIC ->
-          new PaddedEphemerallyEncryptedBucket(dis, fg, persistentFileTracker, masterKey);
-      case ReadOnlyFileSliceBucket.MAGIC -> new ReadOnlyFileSliceBucket(dis);
-      case PaddedBucket.MAGIC -> new PaddedBucket(dis, fg, persistentFileTracker, masterKey);
-      case PaddedRandomAccessBucket.MAGIC ->
-          new PaddedRandomAccessBucket(dis, fg, persistentFileTracker, masterKey);
-      case RAFBucket.MAGIC -> new RAFBucket(dis, fg, persistentFileTracker, masterKey);
-      case EncryptedRandomAccessBucket.MAGIC ->
-          new EncryptedRandomAccessBucket(dis, fg, persistentFileTracker, masterKey);
-      default -> throw new StorageFormatException("Unknown magic value for bucket " + magic);
-    };
+    if (magic == AEADCryptBucket.MAGIC) {
+      return new AEADCryptBucket(dis, fg, persistentFileTracker, masterKey);
+    }
+    if (magicMatches(FILE_BUCKET_CLASS, magic)) {
+      return instantiateBucket(FILE_BUCKET_CLASS, new Class<?>[] {DataInputStream.class}, dis);
+    }
+    if (magicMatches(PERSISTENT_TEMP_FILE_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          PERSISTENT_TEMP_FILE_BUCKET_CLASS, new Class<?>[] {DataInputStream.class}, dis);
+    }
+    if (magicMatches(DELAYED_FREE_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          DELAYED_FREE_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magicMatches(DELAYED_FREE_RANDOM_ACCESS_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          DELAYED_FREE_RANDOM_ACCESS_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magicMatches(NO_FREE_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          NO_FREE_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magicMatches(PADDED_EPHEMERALLY_ENCRYPTED_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          PADDED_EPHEMERALLY_ENCRYPTED_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magic == ReadOnlyFileSliceBucket.MAGIC) {
+      return new ReadOnlyFileSliceBucket(dis);
+    }
+    if (magicMatches(PADDED_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          PADDED_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magicMatches(PADDED_RANDOM_ACCESS_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          PADDED_RANDOM_ACCESS_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magicMatches(RAF_BUCKET_CLASS, magic)) {
+      return instantiateBucket(
+          RAF_BUCKET_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterKey);
+    }
+    if (magic == EncryptedRandomAccessBucket.MAGIC) {
+      return new EncryptedRandomAccessBucket(dis, fg, persistentFileTracker, masterKey);
+    }
+    throw new StorageFormatException("Unknown magic value for bucket " + magic);
   }
 
   /**
@@ -729,26 +1010,72 @@ public class BucketTools {
       MasterSecret masterSecret)
       throws IOException, StorageFormatException, ResumeFailedException {
     int magic = dis.readInt();
-    return switch (magic) {
-      case PooledFileRandomAccessBuffer.MAGIC ->
-          new PooledFileRandomAccessBuffer(dis, fg, persistentFileTracker);
-      case FileRandomAccessBuffer.MAGIC -> new FileRandomAccessBuffer(dis);
-      case ReadOnlyRandomAccessBuffer.MAGIC ->
-          new ReadOnlyRandomAccessBuffer(dis, fg, persistentFileTracker, masterSecret);
-      case DelayedFreeRandomAccessBuffer.MAGIC ->
-          new DelayedFreeRandomAccessBuffer(dis, fg, persistentFileTracker, masterSecret);
-      case EncryptedRandomAccessBuffer.MAGIC ->
-          EncryptedRandomAccessBuffer.create(dis, fg, persistentFileTracker, masterSecret);
-      case PaddedRandomAccessBuffer.MAGIC ->
-          new PaddedRandomAccessBuffer(dis, fg, persistentFileTracker, masterSecret);
-      default -> throw new StorageFormatException("Unknown magic value for RAF " + magic);
-    };
+    if (magicMatches(POOLED_FILE_RANDOM_ACCESS_BUFFER_CLASS, magic)) {
+      return instantiateRandomAccessBuffer(
+          POOLED_FILE_RANDOM_ACCESS_BUFFER_CLASS,
+          new Class<?>[] {
+            DataInputStream.class, PersistentFilenameGenerator.class, PersistentFileTracker.class
+          },
+          dis,
+          fg,
+          persistentFileTracker);
+    }
+    if (magicMatches(FILE_RANDOM_ACCESS_BUFFER_CLASS, magic)) {
+      return instantiateRandomAccessBuffer(
+          FILE_RANDOM_ACCESS_BUFFER_CLASS, new Class<?>[] {DataInputStream.class}, dis);
+    }
+    if (magicMatches(READ_ONLY_RANDOM_ACCESS_BUFFER_CLASS, magic)) {
+      return instantiateRandomAccessBuffer(
+          READ_ONLY_RANDOM_ACCESS_BUFFER_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterSecret);
+    }
+    if (magicMatches(DELAYED_FREE_RANDOM_ACCESS_BUFFER_CLASS, magic)) {
+      return instantiateRandomAccessBuffer(
+          DELAYED_FREE_RANDOM_ACCESS_BUFFER_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterSecret);
+    }
+    if (magic == EncryptedRandomAccessBuffer.MAGIC) {
+      return EncryptedRandomAccessBuffer.create(dis, fg, persistentFileTracker, masterSecret);
+    }
+    if (magicMatches(PADDED_RANDOM_ACCESS_BUFFER_CLASS, magic)) {
+      return instantiateRandomAccessBuffer(
+          PADDED_RANDOM_ACCESS_BUFFER_CLASS,
+          new Class<?>[] {
+            DataInputStream.class,
+            FilenameGenerator.class,
+            PersistentFileTracker.class,
+            MasterSecret.class
+          },
+          dis,
+          fg,
+          persistentFileTracker,
+          masterSecret);
+    }
+    throw new StorageFormatException("Unknown magic value for RAF " + magic);
   }
 
   /**
    * Ensures a {@link Bucket} is a {@link RandomAccessBucket}, copying if necessary.
    *
-   * <p>If the bucket already supports random access, it is returned as-is. If it is a {@link
+   * <p>If the bucket already supports random access, it is returned as-is. If it is a {@code
    * DelayedFreeBucket}, the method first asks it to provide a random-access view. Otherwise, a new
    * random-access bucket is created via {@code bf}, the content is copied, and the original bucket
    * is freed.
@@ -761,8 +1088,9 @@ public class BucketTools {
   public static RandomAccessBucket toRandomAccessBucket(Bucket bucket, BucketFactory bf)
       throws IOException {
     if (bucket instanceof RandomAccessBucket accessBucket) return accessBucket;
-    if (bucket instanceof DelayedFreeBucket freeBucket) {
-      RandomAccessBucket ret = freeBucket.toRandomAccessBucket();
+    if (isReflectiveInstance(bucket, DELAYED_FREE_BUCKET_CLASS)) {
+      RandomAccessBucket ret =
+          invokeRandomAccessBucketMethod(bucket, "toRandomAccessBucket", new Class<?>[0]);
       if (ret != null) return ret;
     }
     RandomAccessBucket ret = bf.makeBucket(bucket.size());

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +21,7 @@ import network.crypta.support.api.RandomAccessBuffer;
 import network.crypta.testsupport.FileTestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -28,6 +30,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,6 +49,8 @@ import static org.mockito.Mockito.when;
  * simulate I/O error/edge paths and to verify interactions.
  */
 class BucketToolsTest {
+
+  @TempDir File tempDir;
 
   // ---------- copy(Bucket, Bucket) ----------
 
@@ -522,6 +527,34 @@ class BucketToolsTest {
 
       // Assert
       assertThrows(IllegalArgumentException.class, act);
+    }
+  }
+
+  @Test
+  void split_whenPersistentFileBucket_returnsReadOnlyFileSliceBuckets() throws Exception {
+    // Arrange
+    File backingFile = new File(tempDir, "split.bin");
+    byte[] data = "abcdefghij".getBytes(StandardCharsets.UTF_8);
+    try (FileBucket src = new FileBucket(backingFile, false, false, false, false)) {
+      try (OutputStream os = src.getOutputStreamUnbuffered()) {
+        os.write(data);
+      }
+
+      // Act
+      Bucket[] parts = BucketTools.split(src, 4, new ArrayBucketFactory(), false, true);
+
+      // Assert
+      assertEquals(3, parts.length);
+      try (Bucket p0 = parts[0];
+          Bucket p1 = parts[1];
+          Bucket p2 = parts[2]) {
+        assertInstanceOf(ReadOnlyFileSliceBucket.class, p0);
+        assertInstanceOf(ReadOnlyFileSliceBucket.class, p1);
+        assertInstanceOf(ReadOnlyFileSliceBucket.class, p2);
+        assertArrayEquals("abcd".getBytes(StandardCharsets.UTF_8), BucketTools.toByteArray(p0));
+        assertArrayEquals("efgh".getBytes(StandardCharsets.UTF_8), BucketTools.toByteArray(p1));
+        assertArrayEquals("ij".getBytes(StandardCharsets.UTF_8), BucketTools.toByteArray(p2));
+      }
     }
   }
 
