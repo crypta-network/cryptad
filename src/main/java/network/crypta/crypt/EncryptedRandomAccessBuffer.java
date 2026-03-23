@@ -54,7 +54,7 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  * <p>Persistence: instances can be stored and restored via {@link #storeTo(DataOutputStream)} and
  * {@link #create(DataInputStream, FilenameGenerator, PersistentFileTracker, MasterSecret)}; an
  * {@link #onResume(ResumeContext)} call re-derives transient crypto state from the master secret
- * and validates the header.
+ * supplied by a {@link CryptoResumeContext} and validates the header.
  *
  * @author unixninja92 Suggested {@link EncryptedRandomAccessBufferType} to use: ChaCha128
  */
@@ -460,8 +460,8 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   /**
    * Recreates transient crypto state after deserialization or process restart.
    *
-   * <p>Derives keys from the persistent master secret in {@code context}, verifies the header, and
-   * initializes the stream ciphers.
+   * <p>Derives keys from the persistent master secret exposed by the supplied {@link
+   * CryptoResumeContext}, verifies the header, and initializes the stream ciphers.
    *
    * @throws ResumeFailedException If I/O or cryptographic initialization fails.
    */
@@ -469,7 +469,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   public void onResume(ResumeContext context) throws ResumeFailedException {
     underlyingBuffer.onResume(context);
     try {
-      setup(context.getPersistentMasterSecret(), false);
+      setup(CryptoResumeContexts.require(context).getPersistentMasterSecret(), false);
     } catch (IOException e) {
       throw new ResumeFailedException(
           new IOException("Disk I/O error resuming EncryptedRandomAccessBuffer", e));

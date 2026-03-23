@@ -1,7 +1,6 @@
 package network.crypta.support.api;
 
 import java.util.Random;
-import network.crypta.crypt.MasterSecret;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 
@@ -9,15 +8,16 @@ import network.crypta.support.io.PersistentFileTracker;
  * Narrow runtime view used to reconnect persisted bucket and buffer state after restart.
  *
  * <p>This interface exists for persistence-oriented components such as buckets, random-access
- * buffers, and encrypted wrappers that must rebuild transient runtime state after deserialization
- * or checkpoint restore. Callers use it from {@code onResume(...)} paths to reacquire only the
- * collaborators that remain meaningful across restarts. That keeps these storage-layer types from
- * depending directly on the larger client runtime surface.
+ * buffers, and other non-crypto persistence helpers that must rebuild the transient runtime state
+ * after deserialization or checkpoint restore. Callers use it from {@code onResume(...)} paths to
+ * reacquire only the collaborators that remain meaningful across restarts. That keeps these
+ * storage-layer types from depending directly on the larger client runtime surface.
  *
  * <p>The contract is intentionally small. Implementations should expose stable persistence helpers
  * only and avoid widening this type into a general execution context. Consumers should treat the
  * returned objects as process-local resume aids, not as permission to reach into unrelated client
- * behavior.
+ * behavior. Crypto-specific resume state belongs on a narrower extension, so this support-layer API
+ * stays free of direct crypto coupling.
  */
 public interface ResumeContext {
 
@@ -54,17 +54,4 @@ public interface ResumeContext {
    * @return the persistent file tracker used for resumed file lifecycle management
    */
   PersistentFileTracker getPersistentFileTracker();
-
-  /**
-   * Returns the master secret used to re-establish persistent encrypted state.
-   *
-   * <p>Encrypted persistent buckets and buffers use this secret to reconstruct their runtime
-   * cryptographic state after reload. Implementations may return {@code null} when persistent
-   * encryption is unavailable or disabled, and callers are expected to handle that case according
-   * to their own resume contract.
-   *
-   * @return the master secret for persistent encrypted state, or {@code null} when none is
-   *     configured
-   */
-  MasterSecret getPersistentMasterSecret();
 }

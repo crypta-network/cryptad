@@ -486,15 +486,16 @@ public final class EncryptedRandomAccessBucket implements RandomAccessBucket, Se
    * Reinitializes after process resume/deserialization.
    *
    * <p>Resumes the underlying bucket first, then refreshes cryptographic material using the
-   * context's persistent master secret.
+   * persistent master secret exposed by the supplied {@link CryptoResumeContext}.
    *
-   * @param context resume context providing the persistent master secret.
+   * @param context resume context; encrypted state requires it to implement {@link
+   *     CryptoResumeContext}.
    * @throws ResumeFailedException if the underlying bucket fails to resume.
    */
   @Override
   public void onResume(ResumeContext context) throws ResumeFailedException {
     underlying.onResume(context);
-    this.masterKey = context.getPersistentMasterSecret();
+    this.masterKey = CryptoResumeContexts.require(context).getPersistentMasterSecret();
     baseSetup(masterKey);
   }
 
