@@ -29,6 +29,7 @@ import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.PersistentFileTracker;
+import network.crypta.support.io.PersistentFilenameGenerator;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 
@@ -294,12 +295,12 @@ public class ClientContext implements CryptoResumeContext {
   }
 
   /**
-   * Returns the filename generator for persistent artifacts.
+   * Returns the filename contract for persistent artifacts.
    *
-   * @return the persistent filename generator
+   * @return the persistent filename contract
    */
   @Override
-  public FilenameGenerator getPersistentFilenameGenerator() {
+  public PersistentFilenameGenerator getPersistentFilenameGenerator() {
     return persistentFG;
   }
 

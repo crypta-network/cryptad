@@ -1,7 +1,12 @@
 package network.crypta.support.io;
 
-import java.io.*;
-
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.stream.Stream;
@@ -15,11 +20,22 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
+import static java.util.Objects.requireNonNull;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @Tag("unit")
 @SuppressWarnings("java:S100") // Keep method_whenCondition_expectOutcome naming per project style
@@ -359,7 +375,7 @@ class PooledFileRandomAccessBufferTest {
         assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
         try (PooledFileRandomAccessBuffer copy =
             new PooledFileRandomAccessBuffer(
-                dis, mock(FilenameGenerator.class), mock(PersistentFileTracker.class))) {
+                dis, mock(PersistentFilenameGenerator.class), mock(PersistentFileTracker.class))) {
 
           // Assert
           assertEquals(orig.size(), copy.size());
@@ -377,8 +393,8 @@ class PooledFileRandomAccessBufferTest {
     long tempId = 0xABCDL;
     ByteArrayOutputStream baos = getByteArrayOutputStream(original, tempId);
 
-    // Prepare mocks: original does not exist; generator resolves a different existing file
-    FilenameGenerator fg = mock(FilenameGenerator.class);
+    // Prepare mocks: the original does not exist; the generator resolves a different existing file
+    PersistentFilenameGenerator fg = mock(PersistentFilenameGenerator.class);
     PersistentFileTracker tracker = mock(PersistentFileTracker.class);
     File moved = new File(tempDir, "tmp-" + Long.toHexString(tempId));
     Files.write(moved.toPath(), new byte[0]); // ensure it exists
@@ -391,10 +407,37 @@ class PooledFileRandomAccessBufferTest {
 
         // Assert
         verify(tracker, times(1)).register(moved);
-        assertNotNull(p.file);
-        assertEquals(moved.getCanonicalPath(), p.file.getCanonicalPath());
+        File actualFile = requireNonNull(p.file, "restored file");
+        assertEquals(moved.getCanonicalPath(), actualFile.getCanonicalPath());
       }
     }
+  }
+
+  @Test
+  void load_whenPersistentTempFileExists_usesPersistentFilenameGeneratorContract()
+      throws Exception {
+    // Arrange
+    File existing = new File(tempDir, "existing-persistent.bin");
+    Files.write(existing.toPath(), new byte[0]);
+    long tempId = 0x4242L;
+    ByteArrayOutputStream baos = getByteArrayOutputStream(existing, tempId);
+    PersistentFilenameGenerator fg = mock(PersistentFilenameGenerator.class);
+    PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+    when(fg.maybeMove(existing, tempId)).thenReturn(existing);
+
+    // Act
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+      assertEquals(PooledFileRandomAccessBuffer.MAGIC, dis.readInt());
+      try (PooledFileRandomAccessBuffer p = new PooledFileRandomAccessBuffer(dis, fg, tracker)) {
+
+        // Assert
+        File actualFile = requireNonNull(p.file, "restored file");
+        assertEquals(existing.getCanonicalPath(), actualFile.getCanonicalPath());
+      }
+    }
+
+    verify(fg, times(1)).maybeMove(existing, tempId);
+    verifyNoInteractions(tracker);
   }
 
   private static @NotNull ByteArrayOutputStream getByteArrayOutputStream(File original, long tempId)
@@ -434,7 +477,7 @@ class PooledFileRandomAccessBufferTest {
       dos.writeBoolean(false);
     }
 
-    FilenameGenerator fg = mock(FilenameGenerator.class);
+    PersistentFilenameGenerator fg = mock(PersistentFilenameGenerator.class);
     when(fg.getFilename(tempId)).thenReturn(new File(tempDir, "absent-" + tempId));
     when(fg.maybeMove(org.mockito.ArgumentMatchers.any(File.class), anyLong()))
         .thenAnswer(invocation -> invocation.getArgument(0));

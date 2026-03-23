@@ -18,6 +18,7 @@ import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -74,6 +76,7 @@ class PersistentTempFileBucketTest {
     return new AutoFree(bucket);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class AutoFree implements AutoCloseable {
     private final PersistentTempFileBucket bucket;
 
@@ -105,7 +108,7 @@ class PersistentTempFileBucketTest {
           os,
           "Unbuffered stream must be DiskSpaceCheckingOutputStream");
 
-      // Sanity: write exactly threshold bytes to trigger a single check
+      // Sanity: exactly write threshold bytes to trigger a single check
       byte[] buf = new byte[PersistentTempFileBucket.BUFFER_SIZE];
       os.write(buf);
       os.close();
@@ -122,7 +125,7 @@ class PersistentTempFileBucketTest {
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(true);
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
     try (var _ = autoClose(bucket)) {
-      // Act & Assert: BufferedOutputStream wraps unbuffered disk-space checking stream.
+      // Act & Assert: BufferedOutputStream wraps an unbuffered disk-space checking stream.
       try (OutputStream os = bucket.getOutputStream()) {
         assertInstanceOf(
             BufferedOutputStream.class, os, "getOutputStream() should return a buffered stream");
@@ -160,7 +163,7 @@ class PersistentTempFileBucketTest {
   void write_whenLengthBelowThreshold_doesNotCallChecker() throws Exception {
     // Arrange
     long id = generator.makeRandomFilename();
-    // No stubbing needed; should not be called at all
+    // No stubbing needed; it should not be called at all
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
     try (var _ = autoClose(bucket)) {
       // Act
@@ -190,7 +193,7 @@ class PersistentTempFileBucketTest {
             "Should throw when disk space checker rejects write at threshold");
       }
 
-      // File should exist but be empty (the write never reaches the underlying stream)
+      // File should exist but be empty (the writing never reaches the underlying stream)
       assertTrue(file.exists(), "File should exist after stream creation");
       assertEquals(0L, file.length(), "File length should remain zero on failed write");
     }
@@ -257,7 +260,7 @@ class PersistentTempFileBucketTest {
                   tempDir.toFile(), "ctx-", seededSecureRandom(3), false));
 
       // Rebuild context with ptbfSpy to ensure persistentFileTracker is our spy and persistentFG is
-      // generator
+      // the generator
       context =
           new ClientContext(
               0L,
@@ -280,6 +283,38 @@ class PersistentTempFileBucketTest {
 
       // Assert: factory registers the file
       verify(ptbfSpy, times(1)).register(generator.getFilename(id));
+    }
+  }
+
+  @Test
+  void innerResume_whenResumeContextProvidesPersistentFilenameGenerator_registersRelocatedFile()
+      throws Exception {
+    // Arrange
+    long id = 0x77L;
+    File original = tempDir.resolve("stored.tmp").toFile();
+    assertTrue(original.createNewFile(), "Setup should create the stored file");
+    PersistentFilenameGenerator initialGenerator = mock(PersistentFilenameGenerator.class);
+    when(initialGenerator.getFilename(id)).thenReturn(original);
+    PersistentTempFileBucket bucket =
+        new PersistentTempFileBucket(id, initialGenerator, trackerMock);
+
+    try (var _ = autoClose(bucket)) {
+      File relocated = tempDir.resolve("relocated.tmp").toFile();
+      assertTrue(relocated.createNewFile(), "Setup should create the relocated file");
+      PersistentFilenameGenerator resumedGenerator = mock(PersistentFilenameGenerator.class);
+      when(resumedGenerator.maybeMove(original, id)).thenReturn(relocated);
+      PersistentFileTracker resumedTracker = mock(PersistentFileTracker.class);
+      ResumeContext context = mock(ResumeContext.class);
+      when(context.getPersistentFilenameGenerator()).thenReturn(resumedGenerator);
+      when(context.getPersistentFileTracker()).thenReturn(resumedTracker);
+
+      // Act
+      bucket.innerResume(context);
+
+      // Assert
+      assertEquals(relocated, bucket.getFile());
+      verify(resumedGenerator, times(1)).maybeMove(original, id);
+      verify(resumedTracker, times(1)).register(relocated);
     }
   }
 

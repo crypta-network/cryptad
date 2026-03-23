@@ -17,6 +17,7 @@ import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -163,7 +164,7 @@ class TempFileBucketTest extends BucketTestBase {
         TempFileBucket shadowBucket = (TempFileBucket) shadow;
         assertTrue(shadowBucket.isReadOnly(), "Shadow must be read-only");
       }
-      // Shadow closed; file should still exist
+      // Shadow closed; the file should still exist
       assertTrue(file.exists(), "Shadow.close() must not delete the file");
     }
     File file2 = gen.getFilename(id);
@@ -198,7 +199,7 @@ class TempFileBucketTest extends BucketTestBase {
 
   @Test
   void innerResume_whenFileIsNull_setsGeneratorAndEnsuresFileExists() throws Exception {
-    // Arrange: construct a bucket as if deserialized from an old format (file is null)
+    // Arrange: construct a bucket as if deserialized from an old format (the file is null)
     long id = 0xabcdeL;
     FilenameGenerator gen =
         new FilenameGenerator(seededSecureRandom(8), false, tempDir.toFile(), "tfb-");
@@ -268,8 +269,39 @@ class TempFileBucketTest extends BucketTestBase {
       // Act
       bucket.innerResume(context);
 
-      // Assert: maybeMove must be invoked for non-null file path
+      // Assert: maybeMove must be invoked for a non-null file path
       verify(spyGen, times(1)).maybeMove(any(File.class), Mockito.eq(id));
+    }
+  }
+
+  @Test
+  void innerResume_whenResumeContextExposesPersistentFilenameGenerator_usesInterfaceContract()
+      throws Exception {
+    // Arrange
+    long id = 0x55L;
+    File original = tempDir.resolve("original.tmp").toFile();
+    assertTrue(original.createNewFile(), "Setup should create the original file");
+
+    PersistentFilenameGenerator initialGenerator = Mockito.mock(PersistentFilenameGenerator.class);
+    Mockito.when(initialGenerator.getFilename(id)).thenReturn(original);
+
+    try (TempFileBucket bucket = new TempFileBucket(id, initialGenerator)) {
+      File relocated = tempDir.resolve("relocated.tmp").toFile();
+      assertTrue(relocated.createNewFile(), "Setup should create the relocated file");
+
+      PersistentFilenameGenerator resumedGenerator =
+          Mockito.mock(PersistentFilenameGenerator.class);
+      Mockito.when(resumedGenerator.maybeMove(original, id)).thenReturn(relocated);
+
+      ResumeContext context = Mockito.mock(ResumeContext.class);
+      Mockito.when(context.getPersistentFilenameGenerator()).thenReturn(resumedGenerator);
+
+      // Act
+      bucket.innerResume(context);
+
+      // Assert
+      assertEquals(relocated, bucket.getFile());
+      Mockito.verify(resumedGenerator, times(1)).maybeMove(original, id);
     }
   }
 
@@ -359,7 +391,7 @@ class TempFileBucketTest extends BucketTestBase {
     long id = 0x12345L;
     FilenameGenerator gen =
         new FilenameGenerator(seededSecureRandom(18), false, tempDir.toFile(), "tfb-");
-    // emulate deserialized state: generator set but file is null
+    // emulate deserialized state: generator set, but the file is null
     try (TempFileBucket bucket = new TempFileBucket()) {
       bucket.filenameID = id;
       bucket.generator = gen;

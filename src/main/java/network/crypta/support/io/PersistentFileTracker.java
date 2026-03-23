@@ -17,7 +17,8 @@ import java.io.File;
  *   <li>Schedule actual deletion of resources implementing {@link DelayedFree} only after the
  *       transaction recording their deletion has been durably persisted, to avoid data loss on
  *       unclean shutdowns.
- *   <li>Provide access to the persistent temporary directory and its {@link FilenameGenerator}.
+ *   <li>Provide access to the persistent temporary directory and its {@link
+ *       PersistentFilenameGenerator}.
  * </ul>
  *
  * <p>This interface also extends {@link DiskSpaceChecker}; implementations should use the same
@@ -85,9 +86,9 @@ public interface PersistentFileTracker extends DiskSpaceChecker {
   File dir();
 
   /**
-   * Returns the filename generator bound to the persistent temporary directory.
+   * Returns the persistent filename contract bound to the persistent temporary directory.
    *
-   * @return the generator used for naming and migration of temp files
+   * @return the contract used for naming and migration of temp files
    */
-  FilenameGenerator getGenerator();
+  PersistentFilenameGenerator getGenerator();
 }

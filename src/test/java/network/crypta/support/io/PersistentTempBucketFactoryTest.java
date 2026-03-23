@@ -258,4 +258,21 @@ class PersistentTempBucketFactoryTest {
     // Assert
     assertTrue(factory.isEncrypting());
   }
+
+  @Test
+  void getGenerator_whenViewedThroughTracker_returnsPersistentFilenameGeneratorContract()
+      throws Exception {
+    // Arrange
+    PersistentTempBucketFactory factory =
+        new PersistentTempBucketFactory(tempDir.toFile(), PREFIX, seededSecureRandom(14L), false);
+    //noinspection UnnecessaryLocalVariable
+    PersistentFileTracker tracker = factory;
+    long id = 0x14L;
+
+    // Act
+    PersistentFilenameGenerator generator = tracker.getGenerator();
+
+    // Assert
+    assertEquals(factory.fg.getFilename(id), generator.getFilename(id));
+  }
 }
