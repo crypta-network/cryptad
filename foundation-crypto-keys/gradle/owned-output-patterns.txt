@@ -1,0 +1,7 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-crypto-keys owns them now.
+# Keep this list limited to the crypto/key boundary plus the small adjacent support-io helpers moved with it.
+
+network/crypta/crypt/**
+network/crypta/keys/**
+network/crypta/support/io/BucketTools*
+network/crypta/support/io/PrependLengthOutputStream*

@@ -71,7 +71,7 @@ public final class FilenameGenerator implements PersistentFilenameGenerator {
     this.random = random;
     this.prefix = prefix;
     tmpDir =
-        FileUtil.getCanonicalFile(
+        canonicalFile(
             Objects.requireNonNullElseGet(
                 dir, () -> new File(System.getProperty("java.io.tmpdir"))));
     if (!tmpDir.exists() && !tmpDir.mkdir() && !tmpDir.isDirectory()) {
@@ -223,7 +223,7 @@ public final class FilenameGenerator implements PersistentFilenameGenerator {
    * @return {@code true} if the file is under the generator's directory and begins with the prefix
    */
   boolean matches(File file) {
-    return FileUtil.equals(file.getParentFile(), tmpDir) && file.getName().startsWith(prefix);
+    return canonicalEquals(file.getParentFile(), tmpDir) && file.getName().startsWith(prefix);
   }
 
   /**
@@ -235,7 +235,7 @@ public final class FilenameGenerator implements PersistentFilenameGenerator {
    * original file is returned and an error is logged.
    *
    * <p>Note: the exact move semantics (atomicity across filesystems, overwrite behavior, etc.) are
-   * governed by {@link FileUtil#moveTo(File, File, boolean)}.
+   * governed by {@link AtomicFileMoves#moveTo(File, File, boolean)}.
    *
    * @param file source file; must be non-null
    * @param id identifier to use when constructing the target file name
@@ -246,10 +246,29 @@ public final class FilenameGenerator implements PersistentFilenameGenerator {
     if (matches(file)) return file;
     File newFile = getFilename(id);
     LOG.info("Moving tempfile {} to {}", file, newFile);
-    if (FileUtil.moveTo(file, newFile, false)) return newFile;
+    if (AtomicFileMoves.moveTo(file, newFile, false)) return newFile;
     else {
       LOG.error("Unable to move old temporary file {} to {}", file, newFile);
       return file;
     }
+  }
+
+  private static File canonicalFile(File file) {
+    String name = file.getPath();
+    if (File.pathSeparatorChar == '\\') {
+      name = name.toLowerCase(Locale.ROOT);
+    }
+    file = new File(name);
+    try {
+      return file.getAbsoluteFile().getCanonicalFile();
+    } catch (IOException _) {
+      return file.getAbsoluteFile();
+    }
+  }
+
+  private static boolean canonicalEquals(File a, File b) {
+    if (Objects.equals(a, b)) return true;
+    if (a == null || b == null) return false;
+    return canonicalFile(a).equals(canonicalFile(b));
   }
 }

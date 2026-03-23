@@ -18,6 +18,7 @@ val internalLeafProjects =
   listOf(
     project(":foundation-support"),
     project(":foundation-store-contracts"),
+    project(":foundation-crypto-keys"),
     project(":foundation-config"),
     project(":foundation-fs"),
     project(":foundation-compat"),
@@ -37,6 +38,7 @@ dependencies {
   // implementation
   implementation(project(":foundation-support"))
   implementation(project(":foundation-store-contracts"))
+  implementation(project(":foundation-crypto-keys"))
   implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(project(":foundation-compat"))
