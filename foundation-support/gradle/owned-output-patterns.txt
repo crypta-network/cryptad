@@ -2,6 +2,7 @@
 # Keep this list limited to the stable generic support subset extracted into :foundation-support.
 
 network/crypta/node/FSParseException*
+network/crypta/io/WritableToDataOutputStream*
 network/crypta/support/api/Bucket*
 network/crypta/support/api/BucketFactory*
 network/crypta/support/api/LockableRandomAccessBuffer*

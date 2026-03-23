@@ -8,9 +8,9 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
-import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.runtime.SSL;
 
 /**
  * Registers FCP server configuration options and constructs a configured {@link FCPServer}.

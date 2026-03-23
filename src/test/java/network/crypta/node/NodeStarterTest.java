@@ -12,7 +12,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.CryptoRandoms;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
-import network.crypta.crypt.SSL;
+import network.crypta.node.runtime.SSL;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
