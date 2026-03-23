@@ -1,5 +1,5 @@
 # Aggregated main outputs that must be pruned on non-clean builds because :foundation-support owns them now.
-# Keep this list limited to the stable generic support subset extracted from :foundation-config.
+# Keep this list limited to the stable generic support subset extracted into :foundation-support.
 
 network/crypta/node/FSParseException*
 network/crypta/support/api/Bucket*
@@ -76,3 +76,4 @@ network/crypta/support/compress/NewLZMACompressor*
 network/crypta/support/compress/OldLZMACompressor*
 network/crypta/support/compress/SingleOffsetReplacingOutputStream*
 network/crypta/support/compress/TooBigDictionaryException*
+network/crypta/support/math/**
