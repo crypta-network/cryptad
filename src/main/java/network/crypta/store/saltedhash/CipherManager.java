@@ -11,7 +11,6 @@ import network.crypta.crypt.PCFBMode;
 import network.crypta.crypt.SHA256;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
-import network.crypta.node.MasterKeys;
 import network.crypta.support.ByteArrayWrapper;
 
 /**
@@ -223,11 +222,11 @@ public final class CipherManager {
   /**
    * Clears sensitive material held by this instance.
    *
-   * <p>Overwrites the in-memory {@code salt} and {@code diskSalt} arrays via {@link
-   * MasterKeys#clear(byte[])}. After shutdown, this instance should not be used.
+   * <p>Overwrites the in-memory {@code salt} and {@code diskSalt} arrays directly. After shutdown,
+   * this instance should not be used.
    */
   public void shutdown() {
-    MasterKeys.clear(salt);
-    MasterKeys.clear(diskSalt);
+    Arrays.fill(salt, (byte) 0);
+    Arrays.fill(diskSalt, (byte) 0);
   }
 }

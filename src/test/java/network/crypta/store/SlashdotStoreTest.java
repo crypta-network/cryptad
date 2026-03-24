@@ -18,7 +18,9 @@ import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.SpeedyTicker;
 import network.crypta.support.TrivialTicker;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.BucketFactory;
 import network.crypta.support.compress.Compressor;
+import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -38,7 +41,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -310,6 +315,29 @@ class SlashdotStoreTest {
     try (SlashdotStore<TestBlock> ss =
         new SlashdotStore<>(cb, 10, 60_000, 1_000, new SpeedyTicker(), tbf)) {
       assertFalse(ss.start(new SpeedyTicker(), true));
+    }
+  }
+
+  @Test
+  void putAndFetch_whenUsingGenericBucketFactory_roundTripsThroughBucketFactory() throws Exception {
+    BucketFactory bucketFactory = mock(BucketFactory.class);
+    when(bucketFactory.makeBucket(anyLong())).thenAnswer(invocation -> new ArrayBucket());
+
+    TestCallback cb = new TestCallback();
+    try (SlashdotStore<TestBlock> ss =
+        new SlashdotStore<>(cb, 10, 60_000, 1_000, new SpeedyTicker(), bucketFactory)) {
+      byte[] routingKey = new byte[] {1, 2, 3};
+      byte[] fullKey = new byte[] {4, 5, 6, 7};
+      byte[] header = new byte[] {8, 9};
+      byte[] data = new byte[] {10, 11, 12};
+
+      ss.put(new TestBlock(routingKey, fullKey), data, header, false, false);
+      TestBlock fetched = ss.fetch(routingKey, fullKey, false, false, true, false, null);
+
+      assertNotNull(fetched);
+      assertArrayEquals(routingKey, fetched.getRoutingKey());
+      assertArrayEquals(fullKey, fetched.getFullKey());
+      verify(bucketFactory).makeBucket(9L);
     }
   }
 

@@ -160,7 +160,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
    * this returns an empty list and does not modify this list.
    *
    * @param n number of items to remove; non-positive values yield an empty result
-   * @return a list containing the removed prefix, preserving original order
+   * @return a list containing the removed prefix, preserving the original order
    */
   @Override
   public DoublyLinkedList<T> shift(int n) {
@@ -207,7 +207,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
    * this returns an empty list and does not modify this list.
    *
    * @param n number of items to remove; non-positive values yield an empty result
-   * @return a list containing the removed suffix, preserving original order
+   * @return a list containing the removed suffix, preserving the original order
    */
   @Override
   public DoublyLinkedList<T> pop(int n) {
@@ -275,7 +275,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
    */
   @Override
   public T remove(T i) {
-    if (i.getParent() == null || isEmpty()) return null; // not in list
+    if (i.getParent() == null || isEmpty()) return null; // not in the list
     if (i.getParent() != this) throw new PromiscuousItemException(i, i.getParent());
 
     T next = i.getNext();

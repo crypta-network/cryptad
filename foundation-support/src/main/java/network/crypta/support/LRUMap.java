@@ -11,11 +11,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Least-recently-used (LRU) map from keys to values.
+ * Least-recently used (LRU) map from keys to values.
  *
  * <p>When a mapping is {@linkplain #push(Object, Object) pushed}, the entry becomes the most
  * recently used, even if the key already exists. Removal and peeking operations work from the
- * least-recently-used side (i.e., the entry that was pushed furthest in the past). The caller is
+ * least-recently used side (i.e., the entry that was pushed furthest in the past). The caller is
  * responsible for enforcing any size limits or eviction policies on top of this primitive.
  *
  * <p>In many cases, a {@link java.util.LinkedHashMap} configured for access order can offer similar
@@ -64,7 +64,7 @@ public class LRUMap<K, V> {
   /**
    * Creates an instance reusing the provided backing map.
    *
-   * <p>Implementation detail: used by safe factory methods to switch map type.
+   * <p>Implementation detail: used by safe factory methods to switch the map type.
    */
   private LRUMap(Map<K, QItem<K, V>> map) {
     hash = map;
@@ -128,7 +128,7 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Removes and returns the least-recently-used key.
+   * Removes and returns the least-recently used key.
    *
    * <p>Also removes the corresponding mapping.
    *
@@ -150,7 +150,7 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Removes and returns the least-recently-used value.
+   * Removes and returns the least-recently used value.
    *
    * <p>Also removes the corresponding mapping.
    *
@@ -172,7 +172,7 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Returns the least-recently-used value without removing it.
+   * Returns the least-recently used value without removing it.
    *
    * @return the LRU value, or {@code null} if empty
    */
@@ -190,7 +190,7 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Returns the least-recently-used key without removing it.
+   * Returns the least-recently used key without removing it.
    *
    * @return the LRU key, or {@code null} if empty
    */
@@ -269,7 +269,7 @@ public class LRUMap<K, V> {
   /**
    * Returns a snapshot {@link Iterator} of keys in LRU→MRU order.
    *
-   * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
+   * <p>The snapshot is built under synchronization and is not affected by further changes.
    *
    * @return iterator of keys from least- to most-recently-used
    */
@@ -287,7 +287,7 @@ public class LRUMap<K, V> {
   /**
    * Returns a snapshot {@link Iterator} of values in LRU→MRU order.
    *
-   * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
+   * <p>The snapshot is built under synchronization and is not affected by further changes.
    *
    * @return iterator of values from least- to most-recently-used
    */

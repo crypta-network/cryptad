@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -444,9 +444,9 @@ class RAMFreenetStoreTest {
       assertFalse(store.start(mock(Ticker.class), true));
       assertNull(store.getTotalAccessStats());
 
-      UserAlertManager mgr = mock(UserAlertManager.class);
-      store.setUserAlertManager(mgr);
-      verifyNoInteractions(mgr);
+      StoreAlertSink alertSink = mock(StoreAlertSink.class);
+      store.setStoreAlertSink(alertSink);
+      verifyNoInteractions(alertSink);
 
       // Clear removes everything
       store.put(mockBlock(bytes(1), bytes(1)), bytes(1), bytes(0), false, false);
@@ -531,7 +531,7 @@ class RAMFreenetStoreTest {
     when(sourceCb.storeFullKeys()).thenReturn(false);
     when(sourceCb.collisionPossible()).thenReturn(true);
 
-    // First construct throws, second succeeds
+    // The first construct throws, the second succeeds
     when(sourceCb.construct(
             any(StoreCallback.BlockPayload.class),
             any(StoreCallback.ConstructOptions.class),

@@ -3,7 +3,7 @@ package network.crypta.store;
 import java.io.IOException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -198,13 +198,13 @@ class NullFreenetStoreTest {
   }
 
   @Test
-  void setUserAlertManager_whenCalled_noInteractions() {
+  void setStoreAlertSink_whenCalled_noInteractions() {
     try (NullFreenetStore<StorableBlock> store = new NullFreenetStore<>(new TestCallback())) {
-      UserAlertManager manager = org.mockito.Mockito.mock(UserAlertManager.class);
+      StoreAlertSink alertSink = org.mockito.Mockito.mock(StoreAlertSink.class);
 
-      store.setUserAlertManager(manager);
+      store.setStoreAlertSink(alertSink);
 
-      verifyNoInteractions(manager);
+      verifyNoInteractions(alertSink);
     }
   }
 

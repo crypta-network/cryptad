@@ -32,7 +32,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  *
  * <p>Threading: the instance owns its thread. {@link #close()} is thread-safe and may be invoked
  * from any thread. Closing requests termination; the loop exits after the current sleep interval or
- * sooner if the thread is interrupted by the caller. This class never interrupts itself.
+ * sooner if the caller interrupts the thread. This class never interrupts itself.
  *
  * <p>Interrupts: if interrupted while sleeping, the thread logs at DEBUG level, clears the
  * interrupted status via {@link Thread#interrupted()}, and continues looping until closed.

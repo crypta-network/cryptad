@@ -25,13 +25,12 @@ import java.io.Serial;
  *   <li>Plugin-provided statistics while the plugin is missing, disabled, or reloading.
  * </ul>
  *
- * @see network.crypta.node.stats.DataStoreStats
- * @see network.crypta.node.stats.StoreAccessStats
  * @author nikotyan
  */
 @SuppressWarnings("unused")
 public class StatsNotAvailableException extends Exception {
 
+  /** Serialization identifier for stable exception transport and persistence compatibility. */
   @Serial private static final long serialVersionUID = -7349859507599514672L;
 
   /**
@@ -65,7 +64,7 @@ public class StatsNotAvailableException extends Exception {
    * and logging.
    *
    * @param s detail message describing the high-level condition; may be {@code null} if the cause
-   *     is sufficiently descriptive on its own.
+   *     is descriptive enough on its own.
    * @param throwable the underlying cause that prevented providing statistics; may be {@code null}
    *     if unknown or not applicable.
    */

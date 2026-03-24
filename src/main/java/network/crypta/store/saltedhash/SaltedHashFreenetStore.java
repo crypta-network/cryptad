@@ -32,26 +32,24 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.keys.SSKBlock;
-import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FastRunnable;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.AbstractUserAlert;
-import network.crypta.node.useralerts.UserAlert;
-import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.store.BlockMetadata;
 import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.StorableBlock;
 import network.crypta.store.StoreCallback;
+import network.crypta.store.alerts.StoreAlertSink;
+import network.crypta.store.alerts.StoreMaintenanceAlertKind;
+import network.crypta.store.alerts.StoreMaintenanceAlertSource;
 import network.crypta.support.Fields;
-import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
 import network.crypta.support.Ticker;
 import network.crypta.support.WrapperKeepalive;
+import network.crypta.support.io.AtomicFileMoves;
 import network.crypta.support.io.Fallocate;
-import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -128,9 +126,6 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
   private static final String META_EXT = ".metadata";
   private static final String CACHE_WAS = " cache was ";
   private static final String STR_FROM = " from ";
-  private static final String KEY_PROCESSED = "processed";
-  private static final String KEY_TOTAL = "total";
-
   // Legacy debug gates removed; prefer SLF4J guards directly.
 
   private final File baseDir;
@@ -277,7 +272,7 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
     registerShutdown(params.shutdownHook());
 
     cleanerThread = new Cleaner();
-    cleanerStatusUserAlert = new CleanerStatusUserAlert(cleanerThread);
+    cleanerStatusAlertSource = new CleanerStatusAlertSource(cleanerThread);
 
     // Finish all resizing before continue if requested.
     maybeCompleteResizeOnStart(params.resizeOnStart());
@@ -1798,7 +1793,7 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
         raf.getFD().sync();
       }
 
-      FileUtil.moveTo(tempConfig, configFile);
+      AtomicFileMoves.moveTo(tempConfig, configFile);
     } catch (IOException ioe) {
       LOG.error("error writing config file for {}", name, ioe);
     } finally {
@@ -1812,7 +1807,7 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
   private final Condition cleanerCondition = cleanerLock.newCondition();
   private static final Lock cleanerGlobalLock = new ReentrantLock(); // global across all datastore
   private final Cleaner cleanerThread;
-  private final CleanerStatusUserAlert cleanerStatusUserAlert;
+  private final StoreMaintenanceAlertSource cleanerStatusAlertSource;
 
   private final Entry notModified = new Entry();
 
@@ -2420,10 +2415,10 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
     }
   }
 
-  private final class CleanerStatusUserAlert extends AbstractUserAlert {
+  private final class CleanerStatusAlertSource implements StoreMaintenanceAlertSource {
     private final Cleaner cleaner;
 
-    private CleanerStatusUserAlert(Cleaner cleaner) {
+    private CleanerStatusAlertSource(Cleaner cleaner) {
       this.cleaner = cleaner;
     }
 
@@ -2433,113 +2428,46 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
     }
 
     @Override
-    public String dismissButtonText() {
-      return NodeL10n.getBase().getString("UserAlert.hide");
+    public String storeName() {
+      return name;
     }
 
     @Override
-    public HTMLNode getHTMLText() {
-      return new HTMLNode("#", getText());
+    public StoreMaintenanceAlertKind kind() {
+      return cleaner.isResizing
+          ? StoreMaintenanceAlertKind.RESIZE_PROGRESS
+          : StoreMaintenanceAlertKind.REBUILD_PROGRESS;
     }
 
     @Override
-    public short getPriorityClass() {
-      return UserAlert.ERROR; // So everyone sees it.
+    public long processed() {
+      return cleaner.entriesTotal - cleaner.entriesLeft;
     }
 
     @Override
-    public String getShortText() {
-      if (cleaner.isResizing)
-        return NodeL10n.getBase()
-            .getString(
-                "SaltedHashCryptaStore.shortResizeProgress", //
-                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
-                new String[] {
-                  name,
-                  String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
-                  String.valueOf(cleaner.entriesTotal)
-                });
-      else
-        return NodeL10n.getBase()
-            .getString(
-                "SaltedHashCryptaStore.shortRebuildProgress"
-                    + ((slotFilter != null && slotFilter.isNew()) ? "New" : ""),
-                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
-                new String[] {
-                  name,
-                  String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
-                  String.valueOf(cleaner.entriesTotal)
-                });
+    public long total() {
+      return cleaner.entriesTotal;
     }
 
     @Override
-    public String getText() {
-      if (cleaner.isResizing)
-        return NodeL10n.getBase()
-            .getString(
-                "SaltedHashCryptaStore.longResizeProgress", //
-                new String[] {"name", KEY_PROCESSED, KEY_TOTAL}, //
-                new String[] {
-                  name,
-                  String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
-                  String.valueOf(cleaner.entriesTotal)
-                });
-      else
-        return NodeL10n.getBase()
-            .getString(
-                "SaltedHashCryptaStore.longRebuildProgress"
-                    + ((slotFilter != null && slotFilter.isNew()) ? "New" : ""),
-                new String[] {"name", KEY_PROCESSED, KEY_TOTAL},
-                new String[] {
-                  name,
-                  String.valueOf(cleaner.entriesTotal - cleaner.entriesLeft),
-                  String.valueOf(cleaner.entriesTotal)
-                });
-    }
-
-    @Override
-    public String getTitle() {
-      return NodeL10n.getBase()
-          .getString(
-              "SaltedHashCryptaStore.cleanerAlertTitle", //
-              new String[] {"name"}, //
-              new String[] {name});
+    public boolean newSlotFilter() {
+      return slotFilter != null && slotFilter.isNew();
     }
 
     @Override
     public boolean isValid() {
       return cleaner.isRebuilding || cleaner.isResizing;
     }
-
-    @Override
-    public void isValid(boolean validity) {
-      // Ignore
-    }
-
-    @Override
-    public void onDismiss() {
-      // Ignore
-    }
-
-    @Override
-    public boolean shouldUnregisterOnDismiss() {
-      return true;
-    }
-
-    @Override
-    public boolean userCanDismiss() {
-      return false;
-    }
   }
 
   /**
-   * Registers the cleaner status alert with the provided manager so progress appears in the UI.
+   * Registers the cleaner status alert source with the provided sink so progress appears in the UI.
    *
-   * @param userAlertManager destination manager; must not be {@code null}
+   * @param alertSink destination sink; when {@code null}, {@link StoreAlertSink#NO_OP} is used
    */
   @Override
-  public void setUserAlertManager(UserAlertManager userAlertManager) {
-    if (cleanerStatusUserAlert != null) userAlertManager.register(cleanerStatusUserAlert);
+  public void setStoreAlertSink(StoreAlertSink alertSink) {
+    Objects.requireNonNullElse(alertSink, StoreAlertSink.NO_OP).register(cleanerStatusAlertSource);
   }
 
   /**
