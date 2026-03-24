@@ -8,12 +8,12 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.LRUMap;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.TempBucketFactory;
+import network.crypta.support.api.BucketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Strict time‑based expiration: entries older than {@code maxLifetime} are removed.
  * </ul>
  *
- * <p>Block payloads are written into temporary buckets provided by {@link TempBucketFactory};
+ * <p>Block payloads are written into temporary buckets provided by {@link BucketFactory};
  * implementations commonly encrypt buckets at rest. The in‑memory index maps routing keys to disk
  * buckets and is synchronized for thread safety. Disk I/O is performed outside critical sections to
  * avoid holding locks during blocking operations.
@@ -45,7 +45,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
     long lastAccessed;
   }
 
-  private final TempBucketFactory bf;
+  private final BucketFactory bf;
 
   private long maxLifetime;
 
@@ -81,7 +81,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
    *     regardless of LRU position
    * @param purgePeriod interval in milliseconds between scheduled purge runs
    * @param ticker scheduler used for periodic purge tasks
-   * @param tbf factory for on‑disk temporary buckets used to persist cached bytes
+   * @param bucketFactory factory for on‑disk temporary buckets used to persist cached bytes
    */
   public SlashdotStore(
       StoreCallback<T> callback,
@@ -89,11 +89,11 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
       long maxLifetime,
       long purgePeriod,
       Ticker ticker,
-      TempBucketFactory tbf) {
+      BucketFactory bucketFactory) {
     this.callback = callback;
     this.blocksByRoutingKey = LRUMap.createSafeMap(ByteArrayWrapper.FAST_COMPARATOR);
     this.maxKeys = maxKeys;
-    this.bf = tbf;
+    this.bf = bucketFactory;
     this.ticker = ticker;
     this.maxLifetime = maxLifetime;
     this.purgePeriod = purgePeriod;
@@ -409,7 +409,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
 
   /** No‑op: this store does not surface user alerts. */
   @Override
-  public void setUserAlertManager(UserAlertManager userAlertManager) {
+  public void setStoreAlertSink(StoreAlertSink alertSink) {
     // Intentionally no operation
   }
 

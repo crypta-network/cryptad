@@ -2,7 +2,7 @@ package network.crypta.store;
 
 import java.io.IOException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.Ticker;
 
 /**
@@ -83,10 +83,10 @@ public abstract class ProxyFreenetStore<T extends StorableBlock> implements Free
     return backDatastore.getTotalAccessStats();
   }
 
-  /** {@inheritDoc} Forwards the manager to the underlying store. */
+  /** {@inheritDoc} Forwards the sink to the underlying store. */
   @Override
-  public void setUserAlertManager(UserAlertManager userAlertManager) {
-    this.backDatastore.setUserAlertManager(userAlertManager);
+  public void setStoreAlertSink(StoreAlertSink alertSink) {
+    this.backDatastore.setStoreAlertSink(alertSink);
   }
 
   /** {@inheritDoc} Returns the delegate for this proxy. */

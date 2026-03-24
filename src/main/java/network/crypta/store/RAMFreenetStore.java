@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.LRUMap;
 import network.crypta.support.Ticker;
@@ -353,7 +353,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
   }
 
   @Override
-  public void setUserAlertManager(UserAlertManager userAlertManager) {
+  public void setStoreAlertSink(StoreAlertSink alertSink) {
     // Do nothing
   }
 

@@ -191,7 +191,7 @@ public final class Fallocate {
       final Field field = channel.getClass().getDeclaredField("fd");
       // Attempt to make the field accessible; fall back to legacy when forbidden.
       if (!field.canAccess(channel) && !field.trySetAccessible()) {
-        return 0; // Trigger legacy path when descriptor is not accessible
+        return 0; // Trigger a legacy path when the descriptor is not accessible
       }
       return getDescriptor((FileDescriptor) field.get(channel));
     } catch (final Exception _) {
@@ -212,7 +212,7 @@ public final class Fallocate {
       final Field field = descriptor.getClass().getDeclaredField(IS_ANDROID ? "descriptor" : "fd");
       // Attempt to make the field accessible; fall back to legacy when forbidden.
       if (!field.canAccess(descriptor) && !field.trySetAccessible()) {
-        return 0; // Trigger legacy path when descriptor is not accessible
+        return 0; // Trigger a legacy path when the descriptor is not accessible
       }
       return (int) field.get(descriptor);
     } catch (final Exception _) {

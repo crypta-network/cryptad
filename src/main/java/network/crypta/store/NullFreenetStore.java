@@ -2,7 +2,7 @@ package network.crypta.store;
 
 import java.io.IOException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.Ticker;
 
 /**
@@ -205,9 +205,9 @@ public class NullFreenetStore<T extends StorableBlock> implements FreenetStore<T
     return false;
   }
 
-  /** Sets a {@link UserAlertManager}; ignored because the store has no alerts to raise. */
+  /** Sets a store alert sink; ignored because the store has no alerts to raise. */
   @Override
-  public void setUserAlertManager(UserAlertManager userAlertManager) {
+  public void setStoreAlertSink(StoreAlertSink alertSink) {
     // No-op
   }
 

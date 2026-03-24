@@ -3,7 +3,7 @@ package network.crypta.store;
 import java.io.Closeable;
 import java.io.IOException;
 import network.crypta.node.stats.StoreAccessStats;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.support.Ticker;
 
 /**
@@ -201,13 +201,12 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
   void close();
 
   /**
-   * Set the user alert manager used to publish non-fatal warnings and notices related to the store
-   * (for example, background rebuild progress or recoverable errors).
+   * Set the sink used to publish non-fatal store-maintenance alerts.
    *
-   * @param userAlertManager manager used to post user-facing alerts; may be ignored by some
+   * @param alertSink sink used to register dynamic store-maintenance alerts; may be ignored by some
    *     implementations.
    */
-  void setUserAlertManager(UserAlertManager userAlertManager);
+  void setStoreAlertSink(StoreAlertSink alertSink);
 
   /**
    * Return the underlying store when this instance is a wrapper.

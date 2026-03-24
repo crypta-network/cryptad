@@ -40,6 +40,7 @@ import network.crypta.node.NodeStats;
 import network.crypta.node.NodeStoreStatsProvider;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.node.runtime.UserAlertManagerStoreAlertSink;
 import network.crypta.node.stats.DataStoreInstanceType;
 import network.crypta.node.stats.DataStoreKeyType;
 import network.crypta.node.stats.DataStoreStats;
@@ -58,6 +59,7 @@ import network.crypta.store.SSKStore;
 import network.crypta.store.SlashdotStore;
 import network.crypta.store.StorableBlock;
 import network.crypta.store.StoreCallback;
+import network.crypta.store.alerts.StoreAlertSink;
 import network.crypta.store.caching.CachingFreenetStore;
 import network.crypta.store.caching.CachingFreenetStoreTracker;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
@@ -155,7 +157,7 @@ public final class NodeStorageSubsystem {
    * Estimated bytes consumed per logical key across primary data and metadata structures.
    *
    * <p>This heuristic drives key-count derivation from configured byte capacities. It is not a
-   * precise on-disk accounting number, but a stable planning estimate used for store partitioning.
+   * precise on-disk accounting number but a stable planning estimate used for store partitioning.
    */
   public static final int SIZE_PER_KEY =
       network.crypta.keys.CHKBlock.DATA_LENGTH
@@ -1864,7 +1866,7 @@ public final class NodeStorageSubsystem {
   /**
    * Clears password-waiting flags for both client-cache and database initialization paths.
    *
-   * <p>Callers typically invoke this after successfully applying credentials or resetting setup
+   * <p>Callers typically invoke this after successfully applying credentials or resetting the setup
    * state.
    */
   public void clearAwaitingPasswords() {
@@ -2233,12 +2235,14 @@ public final class NodeStorageSubsystem {
 
   private void finishInitSaltHashFS() {
     if (node.services().clientCore().getAlerts() == null) throw new NullPointerException();
-    chkDatastore.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
-    chkDatacache.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
-    pubKeyDatastore.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
-    pubKeyDatacache.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
-    sskDatastore.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
-    sskDatacache.getStore().setUserAlertManager(node.services().clientCore().getAlerts());
+    StoreAlertSink storeAlertSink =
+        new UserAlertManagerStoreAlertSink(node.services().clientCore().getAlerts());
+    chkDatastore.getStore().setStoreAlertSink(storeAlertSink);
+    chkDatacache.getStore().setStoreAlertSink(storeAlertSink);
+    pubKeyDatastore.getStore().setStoreAlertSink(storeAlertSink);
+    pubKeyDatacache.getStore().setStoreAlertSink(storeAlertSink);
+    sskDatastore.getStore().setStoreAlertSink(storeAlertSink);
+    sskDatacache.getStore().setStoreAlertSink(storeAlertSink);
   }
 
   /**

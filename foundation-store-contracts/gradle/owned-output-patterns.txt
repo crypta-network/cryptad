@@ -3,4 +3,5 @@
 network/crypta/store/StorableBlock*
 network/crypta/store/BlockMetadata*
 network/crypta/store/GetPubkey*
-
+network/crypta/node/stats/StoreAccessStats*
+network/crypta/node/stats/StatsNotAvailableException*

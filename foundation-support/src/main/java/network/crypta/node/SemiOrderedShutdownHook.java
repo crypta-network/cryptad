@@ -12,14 +12,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * <p>On shutdown, this hook starts all early jobs concurrently and joins each with a fixed
  * per-thread timeout. It then starts late jobs and joins them with the same timeout. If an
  * interruption occurs while joining, it is remembered and the interrupted status is restored after
- * both join loops complete. This allows the remaining joins to proceed while still propagating the
- * interrupt to callers.
+ * both join loops are complete. This allows the remaining joins to proceed while still propagating
+ * the interrupt to callers.
  *
  * <p>Thread safety: registration methods are synchronized. Snapshots of job lists are taken at
- * {@link #run()} time to avoid holding locks during joins. Callers should register jobs before
+ * {@link #run()} time to avoid holding locks during joins. Callers should register jobs before the
  * shutdown begins.
  *
- * <p>Usage: obtain the singleton via {@link #get()} and register unstarted threads with {@link
+ * <p>Usage: get the singleton via {@link #get()} and register unstarted threads with {@link
  * #addEarlyJob(Thread)} or {@link #addLateJob(Thread)}. The hook calls {@link Thread#start()}.
  */
 @SuppressWarnings({"java:S6548", "java:S2142"})
@@ -91,7 +91,7 @@ public class SemiOrderedShutdownHook extends Thread {
       try {
         r.join(TIMEOUT);
       } catch (InterruptedException _) {
-        // Remember interruption and continue joining remaining threads.
+        // Remember the interruption and continue joining remaining threads.
         wasInterrupted = true;
       }
     }
@@ -108,14 +108,14 @@ public class SemiOrderedShutdownHook extends Thread {
       try {
         r.join(TIMEOUT);
       } catch (InterruptedException _) {
-        // Remember interruption and continue joining remaining threads.
+        // Remember the interruption and continue joining remaining threads.
         wasInterrupted = true;
       }
     }
 
     if (wasInterrupted) {
       // Restore the interrupted status after all joins so callers can observe it
-      // without causing subsequent joins in this method to fail immediately.
+      // without causing later joins in this method to fail immediately.
       Thread.currentThread().interrupt();
     }
   }

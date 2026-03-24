@@ -34,7 +34,7 @@ public class ByteArrayWrapper implements Comparable<ByteArrayWrapper> {
   /**
    * Comparator that first compares cached hash codes and then falls back to natural order.
    *
-   * <p>This comparator may be faster for mostly-distinct values because it compares {@link
+   * <p>This comparator may be faster for mostly distinct values because it compares {@link
    * #hashCode()} first (an {@code int} comparison) and only performs a full lexicographic
    * comparison when hash codes collide. The resulting order is total and consistent with {@link
    * #equals(Object)} because ties on the hash are broken by {@link #compareTo(ByteArrayWrapper)}.
@@ -74,8 +74,8 @@ public class ByteArrayWrapper implements Comparable<ByteArrayWrapper> {
   /**
    * Returns a cached, content-based hash code.
    *
-   * <p>The hash is computed once from the wrapped array and stored, making subsequent calls
-   * constant time. The hash code is consistent with {@link #equals(Object)}.
+   * <p>The hash is computed once from the wrapped array and stored, making later calls constant
+   * time. The hash code is consistent with {@link #equals(Object)}.
    *
    * @return the cached hash code based on the array contents
    */

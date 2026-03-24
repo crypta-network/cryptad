@@ -2,6 +2,8 @@
 # Keep this list limited to the stable generic support subset extracted into :foundation-support.
 
 network/crypta/node/FSParseException*
+network/crypta/node/FastRunnable*
+network/crypta/node/SemiOrderedShutdownHook*
 network/crypta/io/WritableToDataOutputStream*
 network/crypta/support/api/Bucket*
 network/crypta/support/api/BucketFactory*
@@ -11,12 +13,18 @@ network/crypta/support/api/RandomAccessBucket*
 network/crypta/support/api/RandomAccessBuffer*
 network/crypta/support/api/ResumeContext*
 network/crypta/support/Base64*
+network/crypta/support/DoublyLinkedList*
+network/crypta/support/DoublyLinkedListImpl*
+network/crypta/support/ByteArrayWrapper*
 network/crypta/support/Fields*
 network/crypta/support/HTMLEncoder*
 network/crypta/support/HTMLEntities*
 network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*
 network/crypta/support/IllegalBase64Exception*
+network/crypta/support/LRUMap*
+network/crypta/support/LightweightException*
+network/crypta/support/PromiscuousItemException*
 network/crypta/support/PriorityAwareExecutor*
 network/crypta/support/Loader*
 network/crypta/support/SimpleReadOnlyArrayBucket*
@@ -27,6 +35,8 @@ network/crypta/support/TimeUtil*
 network/crypta/support/URLDecoder*
 network/crypta/support/URLEncodedFormatException*
 network/crypta/support/URLEncoder*
+network/crypta/support/VirginItemException*
+network/crypta/support/WrapperKeepalive*
 network/crypta/support/XMLCharacterClasses*
 network/crypta/support/io/AtomicFileMoves*
 network/crypta/support/io/ArrayBucket*
@@ -43,6 +53,7 @@ network/crypta/support/io/DiskSpaceChecker*
 network/crypta/support/io/HeaderStreams*
 network/crypta/support/io/IOUtils*
 network/crypta/support/io/InetAddressComparator*
+network/crypta/support/io/Fallocate*
 network/crypta/support/io/FilenameGenerator*
 network/crypta/support/io/FilenameSanitizer*
 network/crypta/support/io/InsufficientDiskSpaceException*
@@ -58,6 +69,7 @@ network/crypta/support/io/NullRandomAccessBuffer*
 network/crypta/support/io/NullWriter*
 network/crypta/support/io/PersistentFileTracker*
 network/crypta/support/io/PersistentFilenameGenerator*
+network/crypta/support/io/NativeThread*
 network/crypta/support/io/RAFInputStream*
 network/crypta/support/io/RandomAccessFileOutputStream*
 network/crypta/support/io/ReadOnlyFileSliceBucket*
