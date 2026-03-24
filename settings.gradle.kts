@@ -28,6 +28,7 @@ include(
   ":foundation-store",
   ":foundation-store-contracts",
   ":foundation-crypto-keys",
+  ":interop-wire",
   ":foundation-config",
   ":foundation-fs",
   ":foundation-compat",

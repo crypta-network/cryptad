@@ -6,6 +6,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
@@ -326,8 +327,9 @@ final class NodeDataRequestHandler {
   private void rejectRequest(Message m, ByteCounter ctr) {
     long uid = m.getLong(DMT.UID);
     Message msg = DMT.createFNPRejectedOverload(uid, true);
+    PeerContext source = (PeerContext) m.getSource();
     try {
-      m.getSource().transport().sendAsync(msg, null, ctr);
+      source.transport().sendAsync(msg, null, ctr);
     } catch (NotConnectedException _) {
       // Ignore
     }

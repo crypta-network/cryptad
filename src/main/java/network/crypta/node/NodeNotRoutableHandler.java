@@ -6,6 +6,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.PeerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,8 +20,8 @@ import org.slf4j.LoggerFactory;
  * rejected quickly and consistently.
  *
  * <p>The handler is intentionally stateless aside from a reference to the owning {@link Node}. It
- * does not maintain per-peer state, cache results, or schedule asynchronous work beyond the
- * transport send itself. Callers should treat it as a pure decision step: if it returns {@code
+ * does not maintain a per-peer state, cache results, or schedule asynchronous work beyond the
+ * transport sending itself. Callers should treat it as a pure decision step: if it returns {@code
  * true}, a response has been queued; if it returns {@code false}, the caller should continue with
  * normal processing. No internal synchronization is performed, so callers are expected to invoke it
  * on threads that already coordinate node message handling.
@@ -38,7 +39,7 @@ final class NodeNotRoutableHandler {
   /** Logger used for trace-level diagnostics during early rejection decisions. */
   private static final Logger LOG = LoggerFactory.getLogger(NodeNotRoutableHandler.class);
 
-  /** Owning node instance used to access routing state and network statistics. */
+  /** The owning node instance used to access routing state and network statistics. */
   private final Node node;
 
   /**
@@ -59,8 +60,8 @@ final class NodeNotRoutableHandler {
    *
    * <p>This method inspects the message type and, for known request types that cannot be routed
    * from the source, sends a rejection response that mirrors the request UID. The response is
-   * queued through the transport layer and accounted against the appropriate byte counter. When the
-   * message type is not handled by this class, the method returns {@code false} and performs no
+   * queued through the transport layer and accounted against the appropriate byte counter. When
+   * this class does not handle the message type, the method returns {@code false} and performs no
    * side effects.
    *
    * <p>The method is idempotent with respect to its return value but not with respect to network
@@ -96,8 +97,8 @@ final class NodeNotRoutableHandler {
    * Sends a rejection response for the given message using the supplied counter.
    *
    * <p>This method extracts the request UID, builds a rejection response, and queues it on the
-   * transport. If the peer disconnects before the send is queued, the exception is ignored so that
-   * upstream dispatch logic can continue without additional error handling.
+   * transport. If the peer disconnects before the sending is queued, the exception is ignored so
+   * that upstream dispatch logic can continue without additional error handling.
    *
    * @param m message whose UID is mirrored in the rejection response; must be non-null.
    * @param ctr byte counter used for accounting the reject response; must be non-null.
@@ -105,8 +106,9 @@ final class NodeNotRoutableHandler {
   private void rejectRequest(Message m, ByteCounter ctr) {
     long uid = m.getLong(DMT.UID);
     Message msg = DMT.createFNPRejectedOverload(uid, true);
+    PeerContext source = (PeerContext) m.getSource();
     try {
-      m.getSource().transport().sendAsync(msg, null, ctr);
+      source.transport().sendAsync(msg, null, ctr);
     } catch (NotConnectedException _) {
       // Ignore
     }

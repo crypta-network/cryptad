@@ -169,10 +169,21 @@ Cryptad now uses a partial multi-project Gradle build.
   `run`, `runLauncher`, `assembleCryptadDist`, and jpackage task graph.
 - `:foundation-support` owns the current stable generic support subset under
   `network.crypta.support`, `network.crypta.support.api`, `network.crypta.support.io`,
-  `network.crypta.support.compress`, `network.crypta.support.math`, plus
-  `network.crypta.node.FSParseException`.
+  `network.crypta.support.compress`, `network.crypta.support.math`,
+  `network.crypta.support.transport.ip`, plus `network.crypta.io.AddressIdentifier`,
+  `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
+  `network.crypta.node.FastRunnable`, and `network.crypta.node.SemiOrderedShutdownHook`.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
-  `BlockMetadata`, `GetPubkey`, and `StorableBlock`.
+  `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the store-maintenance alert seam under
+  `network.crypta.store.alerts`.
+- `:foundation-crypto-keys` owns `network.crypta.crypt`, `network.crypta.keys`, and the
+  crypto-adjacent `network.crypta.support.io.BucketTools` and
+  `network.crypta.support.io.PrependLengthOutputStream` helpers.
+- `:foundation-store` owns the reusable `network.crypta.store` implementations plus
+  `network.crypta.store.caching` and `network.crypta.store.saltedhash`.
+- `:interop-wire` owns the narrow wire/message/schema/version/probe nucleus: leaf-safe
+  `network.crypta.io.comm` message/schema classes, `network.crypta.node.Version`,
+  `network.crypta.node.probe.Error` and `Type`, and `network.crypta.support.Serializer`.
 - `:foundation-config` owns `network.crypta.config`, `network.crypta.l10n`, and the main
   `network/crypta/l10n/crypta.l10n.en.properties` resource. Its public APIs now export
   `:foundation-support` and `:foundation-fs` where config types expose `SimpleFieldSet` or
@@ -188,11 +199,13 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
   resources.
 - The large cyclic daemon core remains in the root project for now, and all tests still live
-  there. Most store implementations and daemon-coupled support code remain root-owned.
+  there. The root still owns daemon-coupled transport/socket code in `network.crypta.io.comm`,
+  runtime adapters and helpers under `network.crypta.node.runtime`, and the remaining
+  daemon-coupled support/UI wiring.
 - Higher-level infrastructure now crosses a narrower boundary through
-  `network.crypta.runtime.spi.RuntimePorts`, implemented in the root project by
-  `network.crypta.node.runtime.LegacyRuntimePorts`, plus HTTP-local wiring records and
-  package-local seams such as
+  `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
+  leaf-owned messages, and package-local seams such as
+  `network.crypta.node.runtime.LegacyRuntimePorts`,
   `network.crypta.clients.http.BookmarkEditorToadletRuntimePorts`,
   `network.crypta.clients.http.ConfigToadletRuntimePorts`,
   `network.crypta.clients.http.ConnectionsToadletRuntimePorts`,
@@ -468,10 +481,18 @@ cd build/jpackage/Crypta.app/Contents
     artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Root build also includes:
-- `:foundation-support`: extracted stable support/api/io/compress/math subset plus
-  `network.crypta.node.FSParseException`.
-- `:foundation-store-contracts`: neutral store contracts used by `crypt`, `keys`, and `store`
-  code during extraction work.
+- `:foundation-support`: extracted stable support/api/io/compress/math/transport subset plus
+  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
+  `network.crypta.node.SemiOrderedShutdownHook`.
+- `:foundation-store-contracts`: neutral store contracts plus the store-maintenance alert seam
+  shared by store code and root runtime/UI adapters.
+- `:foundation-crypto-keys`: extracted `network.crypta.crypt`, `network.crypta.keys`, and the
+  adjacent `BucketTools` / `PrependLengthOutputStream` helpers.
+- `:foundation-store`: extracted reusable `network.crypta.store` implementations, caching, and
+  salted-hash storage code.
+- `:interop-wire`: extracted wire/message/schema/address/version/probe nucleus plus
+  `network.crypta.support.Serializer`.
 - `:foundation-config`: extracted config/l10n code and main l10n resources. Its public APIs
   re-export `:foundation-support` and `:foundation-fs` where required.
 - `:launcher-desktop`: Swing launcher code and desktop/theme detection dependencies.
@@ -526,15 +547,26 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Root project `:cryptad` remains the daemon/application build and still owns the strongly
     coupled core packages, all tests, packaging/runtime tasks, and the current
     `LegacyRuntimePorts` bridge into the runtime SPI.
-  - Leaf subprojects are `:foundation-support`, `:foundation-store-contracts`,
+  - Leaf subprojects are `:foundation-support`, `:foundation-store`,
+    `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
     `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
-  Neutral contracts such as `BlockMetadata`, `GetPubkey`, and `StorableBlock` now live in
-  `:foundation-store-contracts`; store implementations still remain in the root project.
-- Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
-- Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
+  `:foundation-store` now owns the reusable store implementations, cache layer, and salted-hash
+  storage code. `:foundation-store-contracts` owns the neutral contracts plus the
+  `network.crypta.store.alerts` seam used by root runtime/UI adapters such as
+  `UserAlertManagerStoreAlertSink`.
+- Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow. This package
+  now lives in `:foundation-crypto-keys`.
+- Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK. This package now
+  lives in `:foundation-crypto-keys`.
+- Wire/message nucleus (`network.crypta.io.comm`, `network.crypta.node.Version`,
+  `network.crypta.node.probe`, `network.crypta.support.Serializer`): `:interop-wire` owns the
+  leaf-safe message/schema/address/version/probe subset, including `Message`, `MessageType`,
+  `Peer`, `FreenetInetAddress`, `Version`, and the probe enums. The root project still owns the
+  transport/socket/filter side of `network.crypta.io.comm`, and `Message` now depends on the
+  minimal `MessageSource` seam rather than directly on `PeerContext`.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
   (`network.crypta.clients.http`). FCP now consumes execution, randomness, transfer policy,
   lifecycle, config access, and detached peer mutations through `RuntimePorts` and FCP-local
@@ -567,17 +599,22 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   filesystem-facing types. Higher layers should still prefer `RuntimePorts#config()` and the root
   `LegacyConfigPort` bridge instead of reaching through daemon internals.
 - Support foundation leaf (`:foundation-support`): stable generic support, support-api,
-  support-io, support-compress, and support-math classes plus
-  `network.crypta.node.FSParseException`.
+  support-io, support-compress, support-math, and transport-IP classes plus
+  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
+  `network.crypta.node.SemiOrderedShutdownHook`.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
   foundation leaf; daemon-coupled support code still remains in root.
 - Launcher/Desktop: `:launcher-desktop` provides `network.crypta.launcher`,
   `com.jthemedetecor`, launcher resources, and desktop-theme integration.
 - Extracted foundations: `:foundation-support` provides the stable generic support subset,
-  `:foundation-store-contracts` provides neutral `network.crypta.store` contracts,
-  `:foundation-config` provides config/l10n, `:foundation-fs` provides `network.crypta.fs`, and
-  `:foundation-compat` provides `network.crypta.compat`.
+  `:foundation-store-contracts` provides neutral store contracts and alert seams,
+  `:foundation-crypto-keys` provides `network.crypta.crypt` and `network.crypta.keys`,
+  `:foundation-store` provides reusable store implementations, `:interop-wire` provides the
+  wire/version/probe nucleus, `:foundation-config` provides config/l10n,
+  `:foundation-fs` provides `network.crypta.fs`, and `:foundation-compat` provides
+  `network.crypta.compat`.
 - Runtime boundary leaf: `:runtime-spi` provides `network.crypta.runtime.spi`.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.

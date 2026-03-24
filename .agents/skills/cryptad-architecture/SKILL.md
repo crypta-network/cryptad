@@ -13,7 +13,7 @@ Use this skill when you need to:
 - Understand request routing, updates, plugins, or storage.
 - Make changes that could affect wire compatibility or on-disk formats.
 
-## Build/module layout (PR-1)
+## Build/module layout (current)
 - Cryptad now uses a partial multi-project Gradle build.
 - The root project `:cryptad` remains the daemon/application project.
 - The root project still owns `buildJar`, `run`, `runLauncher`, distribution/jpackage tasks, the
@@ -21,10 +21,22 @@ Use this skill when you need to:
 - Leaf subprojects:
   - `:foundation-support` → the current stable generic subset of `network.crypta.support`,
     `network.crypta.support.api`, `network.crypta.support.io`,
-    `network.crypta.support.compress`, `network.crypta.support.math`, plus
-    `network.crypta.node.FSParseException`
+    `network.crypta.support.compress`, `network.crypta.support.math`,
+    `network.crypta.support.transport.ip`, plus `network.crypta.io.AddressIdentifier`,
+    `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
+    `network.crypta.node.FastRunnable`, and `network.crypta.node.SemiOrderedShutdownHook`
   - `:foundation-store-contracts` → neutral `network.crypta.store` contracts
-    `BlockMetadata`, `GetPubkey`, `StorableBlock`
+    `BlockMetadata`, `GetPubkey`, `StorableBlock`, plus the `network.crypta.store.alerts` seam
+    (`StoreAlertSink`, `StoreMaintenanceAlertKind`, `StoreMaintenanceAlertSource`)
+  - `:foundation-crypto-keys` → `network.crypta.crypt`, `network.crypta.keys`, plus
+    `network.crypta.support.io.BucketTools` and
+    `network.crypta.support.io.PrependLengthOutputStream`
+  - `:foundation-store` → reusable `network.crypta.store` implementations plus
+    `network.crypta.store.caching` and `network.crypta.store.saltedhash`
+  - `:interop-wire` → the leaf-safe wire/message/schema/version/probe nucleus:
+    selected `network.crypta.io.comm` types, `network.crypta.node.Version`,
+    `network.crypta.node.probe.Error`, `network.crypta.node.probe.Type`, and
+    `network.crypta.support.Serializer`
   - `:foundation-config` → `network.crypta.config`, `network.crypta.l10n`, and the main l10n
     resources; public config APIs re-export `:foundation-support` and `:foundation-fs` where they
     expose shared types
@@ -47,10 +59,16 @@ Use this skill when you need to:
     `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`, `LegacyWelcomePagePort`, and
     `LegacyWelcomeActionPort`.
 - The large cyclic daemon core still lives in the root project:
-  `network.crypta.node` (except the transitional `FSParseException` move),
-  `network.crypta.io`, `network.crypta.client`, `network.crypta.clients`,
-  the remaining daemon-coupled support code, `network.crypta.crypt`, `network.crypta.keys`,
-  most store implementations under `network.crypta.store`, and `network.crypta.tools`.
+  most of `network.crypta.node`, the daemon-coupled transport/socket/filter side of
+  `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`,
+  `network.crypta.node.runtime`, the remaining daemon-coupled support code, and
+  `network.crypta.tools`.
+- The wire split is intentionally narrow:
+  `:interop-wire` owns the message/schema nucleus, while root keeps `MessageCore`,
+  `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
+  `PeerContext`, incoming-packet filters, socket handlers, and statistics collection.
+  `network.crypta.io.comm.Message` now depends on the minimal `MessageSource` seam instead of
+  directly on `PeerContext`.
 - `:foundation-config` is the current home for all main `network.crypta.config` and
   `network.crypta.l10n` sources. Their unit tests still live in the root test tree and are run by
   the root project.
@@ -74,19 +92,35 @@ Use this skill when you need to:
 - Storage abstractions: `FreenetStore`
 - CHK/SSK stores: `CHKStore`, `SSKStore`
 - Caching: `SlashdotStore`
-- Neutral contracts `BlockMetadata`, `GetPubkey`, and `StorableBlock` now live in
-  `:foundation-store-contracts`; store implementations still remain in the root project.
+- `:foundation-store` now owns the reusable store implementations, cache layer, and salted-hash
+  store code.
+- Neutral contracts `BlockMetadata`, `GetPubkey`, and `StorableBlock` live in
+  `:foundation-store-contracts`, along with the store-maintenance alert seam in
+  `network.crypta.store.alerts`.
+- Root-owned runtime/UI integration remains in `network.crypta.node.runtime`, for example
+  `UserAlertManagerStoreAlertSink`.
 
 ### Cryptography (`network.crypta.crypt`)
 - Encryption: block cipher / AES streams
 - Signatures: DSA/ECDSA
 - Hashing: SHA-256 and others
 - RNG: `RandomSource` / Yarrow
+- This package now lives in `:foundation-crypto-keys`.
 
 ### Key management (`network.crypta.keys`)
 - Client keys: `ClientCHK`, `ClientSSK`
 - URIs: `FreenetURI`
 - Updatable keys: USK
+- This package now lives in `:foundation-crypto-keys`.
+
+### Wire/message nucleus (`network.crypta.io.comm`, `network.crypta.node.Version`)
+- `:interop-wire` owns the leaf-safe message/schema/address subset such as `Message`,
+  `MessageType`, `Peer`, `FreenetInetAddress`, and related exceptions.
+- `:interop-wire` also owns `network.crypta.node.Version`,
+  `network.crypta.node.VersionParseException`, `network.crypta.node.probe.Error`,
+  `network.crypta.node.probe.Type`, and `network.crypta.support.Serializer`.
+- Root keeps transport-facing code such as `PeerContext`, `MessageCore`, filters, packet/socket
+  handlers, and runtime helpers like `network.crypta.node.runtime.SSL`.
 
 ### Client APIs
 - High-level client: `network.crypta.client`
@@ -194,7 +228,11 @@ Use this skill when you need to:
 - Logging, data structures, threading, helpers
 - `:foundation-support` now owns the stable generic support subset across `network.crypta.support`,
   `network.crypta.support.api`, `network.crypta.support.io`,
-  `network.crypta.support.compress`, and `network.crypta.support.math`.
+  `network.crypta.support.compress`, `network.crypta.support.math`, and
+  `network.crypta.support.transport.ip`.
+- `:foundation-support` also owns `network.crypta.io.AddressIdentifier`,
+  `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FastRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.SerializationLimits`.
 - The root project still owns daemon-coupled support code and higher-level wiring that is not yet
   stable enough to extract cleanly.
 
@@ -205,8 +243,14 @@ Use this skill when you need to:
 
 ### Foundation leaf modules
 - `:foundation-support`: stable generic `network.crypta.support*` subset plus
-  `network.crypta.node.FSParseException`
-- `:foundation-store-contracts`: neutral `network.crypta.store` contracts
+  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
+  `network.crypta.node.SemiOrderedShutdownHook`
+- `:foundation-store-contracts`: neutral `network.crypta.store` contracts plus
+  `network.crypta.store.alerts`
+- `:foundation-crypto-keys`: `network.crypta.crypt`, `network.crypta.keys`
+- `:foundation-store`: reusable `network.crypta.store` implementations
+- `:interop-wire`: wire/message/schema/version/probe nucleus
 - `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`
@@ -250,7 +294,8 @@ Use this skill when you need to:
 
 ## Versioning system
 - A single integer build number is set in `build.gradle.kts` (`version = "<int>"`).
-- Version tokens are replaced into `network/crypta/node/Version.java` during build (`@build_number@`, `@git_rev@`).
+- Version tokens are replaced into the `:interop-wire` `network/crypta/node/Version.java`
+  template during build (`@build_number@`, `@git_rev@`).
 - Version strings support both Cryptad and Fred formats; compatibility enforces protocol match and minimum builds.
 - Freenet interop uses historical identifiers (e.g., `"Fred,0.7"`) for wire compatibility where applicable.
 - Core update descriptors (`core-info.json`) must publish `version` as an integer string; this value

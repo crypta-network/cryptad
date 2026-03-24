@@ -42,7 +42,7 @@ public class Message {
       "$Id: Message.java,v 1.11 2005/09/15 18:16:04 amphibian Exp $";
 
   private final MessageType spec;
-  private final WeakReference<PeerContext> sourceRef;
+  private final WeakReference<? extends MessageSource> sourceRef;
   private final boolean internal;
   private final HashMap<String, Object> payload = HashMap.newHashMap(8);
   private List<Message> subMessages;
@@ -74,7 +74,7 @@ public class Message {
    * @return a decoded {@code Message}, or {@code null} if decoding fails or the type is rejected
    */
   public static Message decodeMessageFromPacket(
-      byte[] buf, int offset, int length, PeerContext peer, int overhead) {
+      byte[] buf, int offset, int length, MessageSource peer, int overhead) {
     ByteBufferInputStream bb = new ByteBufferInputStream(buf, offset, length);
     return decodeMessage(bb, peer, length + overhead, true, false, false);
   }
@@ -82,7 +82,7 @@ public class Message {
   /**
    * Decodes a message using relaxed validation.
    *
-   * <p>Compared to {@link #decodeMessageFromPacket(byte[], int, int, PeerContext, int)}, this
+   * <p>Compared to {@link #decodeMessageFromPacket(byte[], int, int, MessageSource, int)}, this
    * variant accepts certain legacy or malformed inputs that the strict decoder would reject.
    *
    * @param buf array containing the entire payload
@@ -90,14 +90,14 @@ public class Message {
    * @param overhead additional bytes attributed to the received packet for statistics
    * @return a decoded {@code Message}, or {@code null} when decoding fails
    */
-  public static Message decodeMessageLax(byte[] buf, PeerContext peer, int overhead) {
+  public static Message decodeMessageLax(byte[] buf, MessageSource peer, int overhead) {
     ByteBufferInputStream bb = new ByteBufferInputStream(buf);
     return decodeMessage(bb, peer, buf.length + overhead, true, false, true);
   }
 
   private static Message decodeMessage(
       ByteBufferInputStream bb,
-      PeerContext peer,
+      MessageSource peer,
       int recvByteCount,
       boolean mayHaveSubMessages,
       boolean inSubMessage,
@@ -150,7 +150,7 @@ public class Message {
   private static void readAndAttachSubMessagesIfAny(
       Message m,
       ByteBufferInputStream bb,
-      PeerContext peer,
+      MessageSource peer,
       boolean veryLax,
       boolean mayHaveSubMessages) {
     if (!mayHaveSubMessages) return;
@@ -158,7 +158,7 @@ public class Message {
   }
 
   private static void logPrematureEnd(
-      PeerContext peer, MessageType mspec, boolean inSubMessage, EOFException e) {
+      MessageSource peer, MessageType mspec, boolean inSubMessage, EOFException e) {
     String msg =
         peer.getPeer()
             + " sent a message packet that ends prematurely while deserialising "
@@ -192,7 +192,7 @@ public class Message {
   }
 
   private static void readAndAttachSubMessages(
-      Message m, ByteBufferInputStream bb, PeerContext peer, boolean veryLax) {
+      Message m, ByteBufferInputStream bb, MessageSource peer, boolean veryLax) {
     while (bb.remaining() > 2) { // sizeof(unsigned short) == 2
       ByteBufferInputStream bb2 = readSubMessageSlice(bb, m);
       if (bb2 == null) {
@@ -223,7 +223,7 @@ public class Message {
   }
 
   private static Message decodeSubMessage(
-      ByteBufferInputStream bb2, PeerContext peer, boolean veryLax) {
+      ByteBufferInputStream bb2, MessageSource peer, boolean veryLax) {
     try {
       return decodeMessage(bb2, peer, 0, false, true, veryLax);
     } catch (Exception e) {
@@ -241,7 +241,7 @@ public class Message {
     this(spec, null, 0);
   }
 
-  private Message(MessageType spec, PeerContext source, int recvByteCount) {
+  private Message(MessageType spec, MessageSource source, int recvByteCount) {
     localInstantiationTime = System.currentTimeMillis();
     this.spec = spec;
     if (source == null) {
@@ -586,9 +586,9 @@ public class Message {
    * <p>For locally constructed messages this is {@code null}. For decoded messages a weak reference
    * is held to the peer context and may have been cleared by the GC.
    *
-   * @return {@code null} for local messages, or a possibly {@code null} {@link PeerContext}
+   * @return {@code null} for local messages, or a possibly {@code null} {@link MessageSource}
    */
-  public PeerContext getSource() {
+  public MessageSource getSource() {
     return sourceRef == null ? null : sourceRef.get();
   }
 
