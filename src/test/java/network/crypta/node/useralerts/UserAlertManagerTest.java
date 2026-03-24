@@ -1,6 +1,7 @@
 package network.crypta.node.useralerts;
 
 import java.io.StringReader;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -13,11 +14,14 @@ import javax.xml.xpath.XPathFactory;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.L10nTestUtils;
+import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,9 +61,11 @@ class UserAlertManagerTest {
   @Mock private PriorityAwareExecutor executor;
 
   private UserAlertManager userAlertManager;
+  private BaseL10n originalBase;
 
   @BeforeEach
   void setUp() {
+    originalBase = NodeL10n.getBase();
     L10nTestUtils.useTestTranslation();
     lenient().when(nodeClientCore.getNode()).thenReturn(node);
     lenient().when(node.network().darknetPubKeyHash()).thenReturn(new byte[] {1, 2, 3, 4});
@@ -85,6 +91,11 @@ class UserAlertManagerTest {
         .when(executor)
         .execute(any(Runnable.class));
     userAlertManager = new UserAlertManager(nodeClientCore);
+  }
+
+  @AfterEach
+  void tearDown() throws ReflectiveOperationException {
+    installBase(originalBase);
   }
 
   @Test
@@ -873,6 +884,12 @@ class UserAlertManagerTest {
     public Type getEventType() {
       return eventType;
     }
+  }
+
+  private static void installBase(BaseL10n base) throws ReflectiveOperationException {
+    Method setBase = NodeL10n.class.getDeclaredMethod("setBase", BaseL10n.class);
+    setBase.setAccessible(true);
+    setBase.invoke(null, base);
   }
 
   private record EntrySnapshot(
