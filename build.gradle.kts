@@ -304,6 +304,35 @@ val rootSelectiveLeafPruneTaskNames =
   sharedSelectiveLeafPruneTaskNames +
     setOf("copyResourcesToClasses2", "buildJar", "run", "runLauncher", "printDirs")
 
+val legacyRuntimeAlertsMainPackageDir =
+  layout.buildDirectory.dir("classes/java/main/network/crypta/node/useralerts")
+
+val legacyRuntimeAlertsTestPackageDir =
+  layout.buildDirectory.dir("classes/java/test/network/crypta/node/useralerts")
+
+// Selective leaf ownership metadata only covers root <-> leaf and leaf <-> leaf moves.
+// Root-local package re-homes still need explicit stale-output pruning so non-clean builds and
+// branch switches do not keep packaging deleted classes from the old package path.
+val pruneLegacyRuntimeAlertsOutputs by
+  tasks.registering(Delete::class) {
+    val staleOutputTrees =
+      listOf(
+        legacyRuntimeAlertsMainPackageDir,
+        fileTree(layout.buildDirectory.dir("classes/java/main")) {
+          include("network/crypta/node/runtime/UserAlertManagerStoreAlertSink*.class")
+        },
+        legacyRuntimeAlertsTestPackageDir,
+        fileTree(layout.buildDirectory.dir("classes/java/test")) {
+          include("network/crypta/node/runtime/UserAlertManagerStoreAlertSinkTest*.class")
+        },
+      )
+    group = "build"
+    description =
+      "Removes stale pre-rehome runtime alert outputs from root build directories on non-clean builds"
+    outputs.upToDateWhen { false }
+    delete(staleOutputTrees)
+  }
+
 internalLeafProjects.forEach { leaf ->
   leaf.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, sharedSelectiveLeafPruneTaskNames)
   leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
@@ -311,8 +340,14 @@ internalLeafProjects.forEach { leaf ->
 
 project.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, rootSelectiveLeafPruneTaskNames)
 
+project.wireSelectiveLeafOutputPruning(
+  pruneLegacyRuntimeAlertsOutputs,
+  rootSelectiveLeafPruneTaskNames,
+)
+
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(pruneSelectiveLeafOutputs)
+  dependsOn(pruneLegacyRuntimeAlertsOutputs)
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   internalLeafProjects.forEach { leaf ->
     from(leaf.extensions.getByType(SourceSetContainer::class.java).named("main").map { it.output })

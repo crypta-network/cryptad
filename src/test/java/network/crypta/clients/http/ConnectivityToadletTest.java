@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.ConnectivityGapSnapshot;
 import network.crypta.runtime.spi.ConnectivityListenerPortSnapshot;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;

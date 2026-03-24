@@ -1450,55 +1450,55 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.AbstractUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.AbstractUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.AbstractUserAlert$Body"/>
+    <Class name="network.crypta.runtime.alerts.AbstractUserAlert$Body"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.BookmarkFeedUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.BookmarkFeedUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.DatastoreTooSmallAlert"/>
+    <Class name="network.crypta.runtime.alerts.DatastoreTooSmallAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.DiskSpaceUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.DiskSpaceUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.DownloadFeedUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.DownloadFeedUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.IPUndetectedUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.IPUndetectedUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.InvalidAddressOverrideUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.InvalidAddressOverrideUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.MeaningfulNodeNameUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.MeaningfulNodeNameUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.NodeToNodeAlertContext"/>
+    <Class name="network.crypta.runtime.alerts.NodeToNodeAlertContext"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.PeerManagerUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.PeerManagerUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert"/>
+    <Class name="network.crypta.runtime.alerts.UpdatedVersionAvailableUserAlert"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.useralerts.UserAlertManager"/>
+    <Class name="network.crypta.runtime.alerts.UserAlertManager"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

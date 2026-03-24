@@ -22,7 +22,7 @@ import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Version;
-import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.WelcomePageSnapshot;
 import network.crypta.support.HTMLNode;

@@ -2,7 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import network.crypta.config.Config;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 

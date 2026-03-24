@@ -2,7 +2,7 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;

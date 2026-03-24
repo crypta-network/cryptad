@@ -205,12 +205,12 @@
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.node.useralerts.DiskSpaceUserAlertTest"/>
+    <Class name="network.crypta.runtime.alerts.DiskSpaceUserAlertTest"/>
     <Method name="basic_properties_areConsistent"/>
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.node.useralerts.DiskSpaceUserAlertTest"/>
+    <Class name="network.crypta.runtime.alerts.DiskSpaceUserAlertTest"/>
     <Method name="isValid_boolean_noop_doesNotChangeValidity"/>
   </Match>
 </FindBugsFilter>

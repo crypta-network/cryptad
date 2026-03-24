@@ -1,6 +1,6 @@
 package network.crypta.clients.http;
 
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.PageChromeSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;

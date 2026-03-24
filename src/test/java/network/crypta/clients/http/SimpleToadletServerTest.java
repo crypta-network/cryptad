@@ -17,7 +17,7 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;

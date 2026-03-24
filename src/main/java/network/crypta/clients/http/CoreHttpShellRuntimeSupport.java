@@ -11,7 +11,7 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 

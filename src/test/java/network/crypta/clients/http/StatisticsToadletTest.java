@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.StatisticsPageSnapshot;
 import network.crypta.runtime.spi.StatisticsPort;
 import network.crypta.support.HTMLNode;

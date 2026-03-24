@@ -1,6 +1,6 @@
 package network.crypta.node;
 
-import network.crypta.node.useralerts.PeerManagerUserAlert;
+import network.crypta.runtime.alerts.PeerManagerUserAlert;
 
 /**
  * Updates and maintains the peer manager user alert based on current roster and status data.

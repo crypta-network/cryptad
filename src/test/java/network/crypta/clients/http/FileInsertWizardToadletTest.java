@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.time.Instant;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.SecurityLevelsSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
@@ -330,7 +330,7 @@ class FileInsertWizardToadletTest {
     }
 
     @Override
-    public network.crypta.node.useralerts.UserAlertManager getAlertManager() {
+    public network.crypta.runtime.alerts.UserAlertManager getAlertManager() {
       UserAlertManager manager = mock(UserAlertManager.class);
       when(manager.createSummary()).thenReturn(new HTMLNode("div"));
       when(manager.createSummary(true)).thenReturn(new HTMLNode("div"));

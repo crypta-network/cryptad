@@ -6,8 +6,8 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.BandwidthManager;
 import network.crypta.node.Node;
-import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
-import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.alerts.UpgradeConnectionSpeedUserAlert;
+import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.spi.WelcomeActionPort;
 import network.crypta.support.Fields;
 

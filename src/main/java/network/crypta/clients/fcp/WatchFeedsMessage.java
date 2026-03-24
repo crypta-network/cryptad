@@ -24,7 +24,7 @@ import network.crypta.support.SimpleFieldSet;
  * </ul>
  *
  * @see network.crypta.clients.fcp.FCPConnectionHandler
- * @see network.crypta.node.useralerts.UserAlertManager
+ * @see network.crypta.runtime.alerts.UserAlertManager
  */
 public class WatchFeedsMessage extends FCPMessage {
 

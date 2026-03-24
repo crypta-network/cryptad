@@ -20,7 +20,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;

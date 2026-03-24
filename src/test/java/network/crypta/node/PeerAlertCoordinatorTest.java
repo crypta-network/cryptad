@@ -2,9 +2,9 @@ package network.crypta.node;
 
 import java.lang.reflect.Field;
 import network.crypta.node.updater.NodeUpdateManager;
-import network.crypta.node.useralerts.PeerManagerUserAlert;
-import network.crypta.node.useralerts.UserAlert;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.PeerManagerUserAlert;
+import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.alerts.UserAlertManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

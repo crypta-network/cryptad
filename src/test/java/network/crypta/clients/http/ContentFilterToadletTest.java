@@ -18,7 +18,7 @@ import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;

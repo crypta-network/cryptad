@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;

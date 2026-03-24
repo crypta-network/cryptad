@@ -33,7 +33,7 @@ import network.crypta.support.io.NullBucket;
  *
  * @see FeedMessage
  * @see FreenetURI
- * @see network.crypta.node.useralerts.DownloadFeedUserAlert
+ * @see network.crypta.runtime.alerts.DownloadFeedUserAlert
  */
 public class URIFeedMessage extends FeedMessage {
   /**
