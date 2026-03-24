@@ -111,27 +111,76 @@ class LegacyRuntimePortsTest {
     assertAll(
         () -> assertInstanceOf(LegacyConfigPort.class, snapshot.configPort()),
         () -> assertInstanceOf(LegacyConnectivityPort.class, snapshot.connectivityPort()),
-        () -> assertInstanceOf(LegacyConnectionsPagePort.class, snapshot.connectionsPagePort()),
         () ->
-            assertInstanceOf(LegacyConnectionsSupportPort.class, snapshot.connectionsSupportPort()),
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyConnectionsPagePort"),
+                snapshot.connectionsPagePort()),
         () ->
-            assertInstanceOf(LegacyDarknetConnectionsPort.class, snapshot.darknetConnectionsPort()),
-        () -> assertInstanceOf(LegacyDarknetMessagingPort.class, snapshot.darknetMessagingPort()),
-        () -> assertInstanceOf(LegacyDiagnosticPort.class, snapshot.diagnosticPort()),
-        () -> assertInstanceOf(LegacyPageChromePort.class, snapshot.pageChromePort()),
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyConnectionsSupportPort"),
+                snapshot.connectionsSupportPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyDarknetConnectionsPort"),
+                snapshot.darknetConnectionsPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyDarknetMessagingPort"),
+                snapshot.darknetMessagingPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyDiagnosticPort"),
+                snapshot.diagnosticPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyPageChromePort"),
+                snapshot.pageChromePort()),
         () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()),
-        () -> assertInstanceOf(LegacyQueueSupportPort.class, snapshot.queueSupportPort()),
-        () -> assertInstanceOf(LegacyQueueCompletionPort.class, snapshot.queueCompletionPort()),
-        () -> assertInstanceOf(LegacyQueuePagePort.class, snapshot.queuePagePort()),
-        () -> assertInstanceOf(LegacyQueueDownloadPort.class, snapshot.queueDownloadPort()),
-        () -> assertInstanceOf(LegacyQueueInsertPort.class, snapshot.queueInsertPort()),
-        () -> assertInstanceOf(LegacyQueueMutationPort.class, snapshot.queueMutationPort()),
-        () -> assertInstanceOf(LegacyStatisticsPort.class, snapshot.statisticsPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueueSupportPort"),
+                snapshot.queueSupportPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueueCompletionPort"),
+                snapshot.queueCompletionPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueuePagePort"),
+                snapshot.queuePagePort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueueDownloadPort"),
+                snapshot.queueDownloadPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueueInsertPort"),
+                snapshot.queueInsertPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyQueueMutationPort"),
+                snapshot.queueMutationPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyStatisticsPort"),
+                snapshot.statisticsPort()),
         () -> assertInstanceOf(LegacySecurityLevelsPort.class, snapshot.securityLevelsPort()),
-        () -> assertInstanceOf(LegacyFirstTimeWizardPort.class, snapshot.firstTimeWizardPort()),
-        () -> assertInstanceOf(LegacyToadletSymlinkPort.class, snapshot.toadletSymlinkPort()),
-        () -> assertInstanceOf(LegacyWelcomePagePort.class, snapshot.welcomePagePort()),
-        () -> assertInstanceOf(LegacyWelcomeActionPort.class, snapshot.welcomeActionPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyFirstTimeWizardPort"),
+                snapshot.firstTimeWizardPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyToadletSymlinkPort"),
+                snapshot.toadletSymlinkPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyWelcomePagePort"),
+                snapshot.welcomePagePort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyWelcomeActionPort"),
+                snapshot.welcomeActionPort()),
         () -> assertInstanceOf(LegacyRequestQueuePort.class, snapshot.requestQueuePort()),
         () -> assertInstanceOf(LegacyNodeInfoPort.class, snapshot.nodeInfoPort()),
         () -> assertInstanceOf(LegacyPeerPort.class, snapshot.peerPort()));
@@ -219,6 +268,14 @@ class LegacyRuntimePortsTest {
         ports.requestQueue(),
         ports.nodeInfo(),
         ports.peer());
+  }
+
+  private static Class<?> loadClass(String className) {
+    try {
+      return Class.forName(className);
+    } catch (ClassNotFoundException exception) {
+      throw new AssertionError(exception);
+    }
   }
 
   private record PortsSnapshot(

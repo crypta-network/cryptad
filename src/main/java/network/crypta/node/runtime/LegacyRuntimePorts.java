@@ -4,6 +4,8 @@ import java.io.File;
 import java.util.Random;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.admin.AdminRuntimePortsBundle;
+import network.crypta.runtime.admin.AdminRuntimePortsFactory;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
@@ -165,28 +167,30 @@ public final class LegacyRuntimePorts implements RuntimePorts {
         };
     this.configPort = new LegacyConfigPort(node, core);
     this.connectivityPort = new LegacyConnectivityPort(node);
-    this.connectionsPagePort = new LegacyConnectionsPagePort(node, core);
-    this.connectionsSupportPort = new LegacyConnectionsSupportPort(node);
-    this.darknetConnectionsPort = new LegacyDarknetConnectionsPort(node);
-    this.darknetMessagingPort = new LegacyDarknetMessagingPort(node);
-    this.diagnosticPort = new LegacyDiagnosticPort(node, core);
-    this.pageChromePort = new LegacyPageChromePort(node);
     this.coreUpdateActionPort = new LegacyCoreUpdateActionPort(node);
-    this.queueCompletionPort = new LegacyQueueCompletionPort(core);
-    this.queuePagePort = new LegacyQueuePagePort(core);
-    this.queueDownloadPort = new LegacyQueueDownloadPort(core);
-    this.queueInsertPort = new LegacyQueueInsertPort(core);
-    this.queueMutationPort = new LegacyQueueMutationPort(core);
-    this.queueSupportPort = new LegacyQueueSupportPort(core);
-    this.statisticsPort = new LegacyStatisticsPort(node, core);
     this.securityLevelsPort = new LegacySecurityLevelsPort(node);
-    this.firstTimeWizardPort = new LegacyFirstTimeWizardPort(node, core);
-    this.toadletSymlinkPort = new LegacyToadletSymlinkPort(node, core);
-    this.welcomePagePort = new LegacyWelcomePagePort(node);
-    this.welcomeActionPort = new LegacyWelcomeActionPort(node);
     this.requestQueuePort = new LegacyRequestQueuePort(core);
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
+
+    AdminRuntimePortsBundle adminRuntimePorts = AdminRuntimePortsFactory.create(node, core);
+    this.connectionsPagePort = adminRuntimePorts.connectionsPage();
+    this.connectionsSupportPort = adminRuntimePorts.connectionsSupport();
+    this.darknetConnectionsPort = adminRuntimePorts.darknetConnections();
+    this.darknetMessagingPort = adminRuntimePorts.darknetMessaging();
+    this.diagnosticPort = adminRuntimePorts.diagnostic();
+    this.pageChromePort = adminRuntimePorts.pageChrome();
+    this.queueCompletionPort = adminRuntimePorts.queueCompletion();
+    this.queuePagePort = adminRuntimePorts.queuePage();
+    this.queueDownloadPort = adminRuntimePorts.queueDownload();
+    this.queueInsertPort = adminRuntimePorts.queueInsert();
+    this.queueMutationPort = adminRuntimePorts.queueMutation();
+    this.queueSupportPort = adminRuntimePorts.queueSupport();
+    this.statisticsPort = adminRuntimePorts.statistics();
+    this.firstTimeWizardPort = adminRuntimePorts.firstTimeWizard();
+    this.toadletSymlinkPort = adminRuntimePorts.toadletSymlinks();
+    this.welcomePagePort = adminRuntimePorts.welcomePage();
+    this.welcomeActionPort = adminRuntimePorts.welcomeAction();
   }
 
   /**
