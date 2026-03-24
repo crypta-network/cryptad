@@ -1,0 +1,33 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :interop-wire owns them now.
+# Keep this list limited to the narrow message/schema/version/probe nucleus extracted in PR-75.
+
+network/crypta/io/comm/AsyncMessageCallback*
+network/crypta/io/comm/ByteCounter*
+network/crypta/io/comm/DMT*
+network/crypta/io/comm/Dispatcher*
+network/crypta/io/comm/DisconnectedException*
+network/crypta/io/comm/DuplicateMessageTypeException*
+network/crypta/io/comm/FreenetInetAddress*
+network/crypta/io/comm/IncorrectTypeException*
+network/crypta/io/comm/Message.class
+network/crypta/io/comm/Message$*.class
+network/crypta/io/comm/MessageSource.class
+network/crypta/io/comm/MessageSource$*.class
+network/crypta/io/comm/MessageType.class
+network/crypta/io/comm/MessageType$*.class
+network/crypta/io/comm/NotConnectedException*
+network/crypta/io/comm/OpennetAnnounceRequest*
+network/crypta/io/comm/Peer.class
+network/crypta/io/comm/Peer$*.class
+network/crypta/io/comm/PeerParseException*
+network/crypta/io/comm/PeerRestartedException*
+network/crypta/io/comm/ReferenceSignatureVerificationException*
+network/crypta/io/comm/RetrievalException*
+network/crypta/io/comm/TrafficClass*
+network/crypta/node/Version.class
+network/crypta/node/Version$*.class
+network/crypta/node/VersionParseException*
+network/crypta/node/probe/Error*
+network/crypta/node/probe/Type*
+network/crypta/support/Serializer.class
+network/crypta/support/Serializer$*.class

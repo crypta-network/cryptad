@@ -19,25 +19,14 @@ import network.crypta.node.PeerTransport;
  *
  * @author amphibian
  */
-public interface PeerContext {
+public interface PeerContext extends MessageSource {
   // Largely opaque interface for now.
-
-  /**
-   * Returns the transport identity for this peer.
-   *
-   * <p>The value may be {@code null} if the peer identity is unknown, transient, or has been
-   * cleared (for example, after disconnect or GC of backing state). Callers should not retain or
-   * mutate the returned object.
-   *
-   * @return the peer descriptor, or {@code null} when unavailable.
-   */
-  Peer getPeer();
 
   /**
    * Requests that the underlying connection be closed.
    *
-   * <p>Pending operations may fail or be cancelled; subsequent calls to {@link #isConnected()}
-   * generally return {@code false}.
+   * <p>Pending operations may fail or be canceled; later calls to {@link #isConnected()} generally
+   * return {@code false}.
    */
   void forceDisconnect();
 
@@ -82,9 +71,9 @@ public interface PeerContext {
    * cancel the sending. If provided, {@link AsyncMessageCallback} is invoked as delivery
    * progresses. Implementations should account bytes via {@link ByteCounter} where appropriate.
    *
-   * @param msg the message to send; must be constructed for this send path (not reused from a
+   * @param msg the message to send; must be constructed for this sending path (not reused from a
    *     different source).
-   * @param cb optional callback invoked on send events; may be {@code null}.
+   * @param cb optional callback invoked on sending events; may be {@code null}.
    * @param ctr byte counter to update for statistics and throttling; may be {@code null} if the
    *     caller does not wish to record counts.
    * @return a handle representing the queued message.
@@ -94,14 +83,6 @@ public interface PeerContext {
       throws NotConnectedException {
     return transport().sendAsync(msg, cb, ctr);
   }
-
-  /**
-   * Returns the current boot identifier for the remote peer.
-   *
-   * <p>The value changes on each restart of the remote node and can be used to detect restarts
-   * while in-flight operations are pending.
-   */
-  long getBootID();
 
   /**
    * Returns the packet-level throttle for the peer's current address.
@@ -116,6 +97,7 @@ public interface PeerContext {
   }
 
   /** Returns the transport handler that receives packets from this peer. */
+  @SuppressWarnings("unused")
   default SocketHandler getSocketHandler() {
     return transport().getSocketHandler();
   }
@@ -129,6 +111,7 @@ public interface PeerContext {
    * <p>Implementations are encouraged to reuse a single weak reference per instance to avoid
    * allocation overhead.
    */
+  @Override
   WeakReference<PeerContext> getWeakRef();
 
   /** Returns a compact, log-friendly description of this peer. */
@@ -151,7 +134,7 @@ public interface PeerContext {
   boolean unqueueMessage(MessageItem item);
 
   /**
-   * Reports the time spent waiting for a send slot due to throttling.
+   * Reports the time spent waiting for a sending slot due to throttling.
    *
    * @param time elapsed time in milliseconds.
    * @param realTime {@code true} for the real-time path; {@code false} for bulk.
