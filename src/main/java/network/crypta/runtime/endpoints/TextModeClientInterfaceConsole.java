@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 /**
  * Console bridge used by the Text Mode Client Interface.

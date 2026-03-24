@@ -194,7 +194,7 @@
   -->
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.ClientEndpoints"/>
+    <Class name="network.crypta.runtime.endpoints.ClientEndpoints"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP"/>
@@ -440,7 +440,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.NodeClientCoreInit"/>
+    <Class name="network.crypta.runtime.endpoints.NodeClientCoreInit"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
@@ -1154,7 +1154,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.ClientEndpoints$InitResult"/>
+    <Class name="network.crypta.runtime.endpoints.ClientEndpoints$InitResult"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
@@ -1350,11 +1350,11 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.TextModeClientInterface"/>
+    <Class name="network.crypta.runtime.endpoints.TextModeClientInterface"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.TextModeClientInterfaceServer$InitResult"/>
+    <Class name="network.crypta.runtime.endpoints.TextModeClientInterfaceServer$InitResult"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

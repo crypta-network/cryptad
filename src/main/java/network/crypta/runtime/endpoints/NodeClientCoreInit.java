@@ -1,8 +1,9 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.node.NodeClientCore;
 
 /**
  * Bundles configuration inputs required to initialize {@link NodeClientCore}.

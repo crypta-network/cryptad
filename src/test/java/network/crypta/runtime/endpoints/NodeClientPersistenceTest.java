@@ -1,8 +1,9 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import java.io.File;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
 import network.crypta.client.InsertContext;
@@ -22,6 +23,12 @@ import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextInitParams;
+import network.crypta.node.ClientContextResources;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeInitException;
+import network.crypta.node.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -58,7 +65,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "StringConcatToTextBlock"})
 @ExtendWith(MockitoExtension.class)
 class NodeClientPersistenceTest {
 
@@ -96,7 +103,7 @@ class NodeClientPersistenceTest {
     persistence.startThrottle();
 
     // Assert
-    verify(ticker).queueTimedJob(any(Runnable.class), eq(Persister.PERIOD));
+    verify(ticker).queueTimedJob(any(Runnable.class), eq(TimeUnit.MINUTES.toMillis(15)));
   }
 
   @Test

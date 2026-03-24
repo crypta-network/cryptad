@@ -5,6 +5,7 @@ import java.util.Arrays;
 import network.crypta.config.Option;
 import network.crypta.config.StringArrCallback;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

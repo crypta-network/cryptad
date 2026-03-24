@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -57,8 +57,18 @@ import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
+import network.crypta.node.AnnouncementCallback;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
+import network.crypta.node.DarknetPeerNode;
+import network.crypta.node.FSParseException;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.PeerNode;
+import network.crypta.node.PeerTooOldException;
+import network.crypta.node.RequestClient;
+import network.crypta.node.RequestStarter;
+import network.crypta.node.Version;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
@@ -1654,7 +1664,7 @@ public class TextModeClientInterface implements Runnable {
       if (peer != null) {
         nodeIpAndPort = peer.toString();
       }
-      String name = pn.myName;
+      String name = pn.getName();
       String identity = pn.getIdentityString();
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
@@ -1677,7 +1687,7 @@ public class TextModeClientInterface implements Runnable {
       if (peer != null) {
         nodeIpAndPort = peer.toString();
       }
-      String name = pn.myName;
+      String name = pn.getName();
       String identity = pn.getIdentityString();
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
@@ -1700,7 +1710,7 @@ public class TextModeClientInterface implements Runnable {
       if (peer != null) {
         nodeIpAndPort = peer.toString();
       }
-      String name = pn.myName;
+      String name = pn.getName();
       String identity = pn.getIdentityString();
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
@@ -1723,7 +1733,7 @@ public class TextModeClientInterface implements Runnable {
       if (peer != null) {
         nodeIpAndPort = peer.toString();
       }
-      String name = pn.myName;
+      String name = pn.getName();
       String identity = pn.getIdentityString();
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
