@@ -18,15 +18,27 @@ Use this skill when you need to:
 ## Build layout
 - Cryptad now uses a partial multi-project Gradle build.
 - Use root-project tasks by default; the root project remains the daemon/application target.
-- Current leaf projects are `:foundation-support`, `:foundation-store-contracts`,
+- Current leaf projects are `:foundation-support`, `:foundation-store`,
+  `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
   `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
-  `network.crypta.support*` plus `network.crypta.node.FSParseException`.
+  `network.crypta.support*`, `network.crypta.support.transport.ip`,
+  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
+  `network.crypta.node.SemiOrderedShutdownHook`.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
-  `BlockMetadata`, `GetPubkey`, and `StorableBlock`.
+  `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the `network.crypta.store.alerts`
+  seam.
+- `:foundation-crypto-keys` owns `network.crypta.crypt`, `network.crypta.keys`, and the adjacent
+  `BucketTools` / `PrependLengthOutputStream` helpers.
+- `:foundation-store` owns reusable `network.crypta.store` implementations plus
+  `network.crypta.store.caching` and `network.crypta.store.saltedhash`.
+- `:interop-wire` owns the narrow wire/message/schema/version/probe nucleus:
+  leaf-safe `network.crypta.io.comm` message/schema classes, `network.crypta.node.Version`,
+  `network.crypta.node.probe.Error` and `Type`, and `network.crypta.support.Serializer`.
 - `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources.
   Its public APIs now re-export `:foundation-support` and `:foundation-fs` where needed.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
@@ -72,9 +84,17 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava`
 - Compile the support leaf when you touched extracted generic support classes:
   - `./gradlew :foundation-support:classes`
+- Compile the crypto/keys leaf when you touched `network.crypta.crypt`, `network.crypta.keys`,
+  or the moved bucket/length helpers:
+  - `./gradlew :foundation-crypto-keys:classes`
+- Compile the reusable store leaf when you touched extracted `network.crypta.store`,
+  `network.crypta.store.caching`, or `network.crypta.store.saltedhash` code:
+  - `./gradlew :foundation-store:compileJava`
 - Compile the neutral store-contracts leaf when you touched `BlockMetadata`, `GetPubkey`, or
-  `StorableBlock`:
+  `StorableBlock`, or the store-maintenance alert seam:
   - `./gradlew :foundation-store-contracts:compileJava`
+- Compile the wire/version leaf when you touched moved message/schema/address/version/probe code:
+  - `./gradlew :interop-wire:compileJava`
 - Compile the config/l10n leaf when you touched extracted config or l10n sources:
   - `./gradlew :foundation-config:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:

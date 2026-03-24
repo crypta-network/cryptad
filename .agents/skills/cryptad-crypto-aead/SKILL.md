@@ -13,6 +13,13 @@ Use this skill when you touch:
 - On-disk encryption formats for persistent files or plugin stores
 - Any migration/compatibility path involving OCB or AES-GCM
 
+## Source ownership
+- `network.crypta.crypt` and `network.crypta.keys` now live in the `:foundation-crypto-keys`
+  subproject.
+- Canonical source root: `foundation-crypto-keys/src/main/java/`
+- The root project and other leaf projects depend on `:foundation-crypto-keys`; do not recreate
+  duplicate crypto helpers in root-owned code when a reusable leaf-owned type already exists.
+
 ## Current state (breaking change)
 - AEAD has migrated from OCB to AES-GCM (breaking).
 - On-disk prefix remains 16 bytes:
@@ -26,8 +33,8 @@ Use this skill when you touch:
 - Plugin stores (`*.data.crypt`) cannot be read; plugins start with empty/default store data.
 
 ### Primary files
-- `src/main/java/network/crypta/crypt/AEADInputStream.java`
-- `src/main/java/network/crypta/crypt/AEADOutputStream.java`
+- `foundation-crypto-keys/src/main/java/network/crypta/crypt/AEADInputStream.java`
+- `foundation-crypto-keys/src/main/java/network/crypta/crypt/AEADOutputStream.java`
 
 ## Legacy note: OCB nonce compatibility (do not regress)
 Historically:
