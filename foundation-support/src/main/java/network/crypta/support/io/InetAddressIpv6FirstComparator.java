@@ -9,8 +9,6 @@ import java.util.function.Predicate;
 import network.crypta.support.Fields;
 import network.crypta.support.LRUCache;
 
-import static network.crypta.node.NodeStats.DEFAULT_MAX_PING_TIME;
-
 /**
  * Comparator for {@link InetAddress} values that prefers IPv6 over IPv4 and applies
  * scope/reachability heuristics to produce a stable total ordering.
@@ -30,9 +28,8 @@ import static network.crypta.node.NodeStats.DEFAULT_MAX_PING_TIME;
  *       total order.
  * </ol>
  *
- * <p>Reachability checks use {@link InetAddress#isReachable(int)} with the default node ping time
- * (see {@link network.crypta.node.NodeStats#DEFAULT_MAX_PING_TIME}) and are cached to avoid
- * repeated probes during sorting.
+ * <p>Reachability checks use {@link InetAddress#isReachable(int)} with a bounded default timeout
+ * and are cached to avoid repeated probes during sorting.
  *
  * <p>Side effects and performance:
  *
@@ -49,6 +46,7 @@ import static network.crypta.node.NodeStats.DEFAULT_MAX_PING_TIME;
  * @author toad
  */
 public class InetAddressIpv6FirstComparator implements Comparator<InetAddress> {
+  private static final long DEFAULT_REACHABILITY_TIMEOUT_MILLIS = 1500L;
 
   // Cache reachability to avoid repeated isReachable() calls during O(N log N) sorts.
   // Size ~1000 entries; TTL ~300_000 ms (5 minutes). Keys use InetAddress.hashCode().
@@ -83,8 +81,8 @@ public class InetAddressIpv6FirstComparator implements Comparator<InetAddress> {
    * </ul>
    *
    * <p>May perform a reachability probe for site-local addresses and therefore may block up to
-   * {@link network.crypta.node.NodeStats#DEFAULT_MAX_PING_TIME} milliseconds on a first encounter;
-   * results are cached to mitigate repeated calls.
+   * {@value #DEFAULT_REACHABILITY_TIMEOUT_MILLIS} milliseconds on a first encounter; results are
+   * cached to mitigate repeated calls.
    *
    * @param arg0 the first address; may be {@code null}
    * @param arg1 the second address; may be {@code null}
@@ -104,7 +102,7 @@ public class InetAddressIpv6FirstComparator implements Comparator<InetAddress> {
     Boolean reachable = reachabilityCache.get(hashCode);
     if (reachable == null) {
       try {
-        reachable = inetAddress.isReachable((int) DEFAULT_MAX_PING_TIME);
+        reachable = inetAddress.isReachable((int) DEFAULT_REACHABILITY_TIMEOUT_MILLIS);
       } catch (IOException _) {
         reachable = false;
       }

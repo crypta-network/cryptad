@@ -10,7 +10,6 @@ import network.crypta.io.comm.Peer;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
-import network.crypta.node.NewPacketFormat;
 
 /**
  * Utility for serializing and deserializing a constrained set of value types to and from {@link
@@ -42,16 +41,10 @@ public class Serializer {
    * Upper bound, in bits, used when deserializing {@link BitArray} to prevent pathological
    * allocations.
    */
-  public static final int MAX_BITARRAY_SIZE = 2048 * 8;
+  public static final int MAX_BITARRAY_SIZE = SerializationLimits.MAX_BITARRAY_SIZE;
 
-  /**
-   * Maximum allowed inbound variable-length payload, in bytes.
-   *
-   * <p>The limit equals {@link NewPacketFormat#MAX_MESSAGE_SIZE} minus four bytes to account for a
-   * leading length integer in the wire format.
-   */
-  // Max packet format size – 4 to account for starting size integer.
-  public static final int MAX_ARRAY_LENGTH = NewPacketFormat.MAX_MESSAGE_SIZE - 4;
+  /** Maximum allowed inbound variable-length payload, in bytes. */
+  public static final int MAX_ARRAY_LENGTH = SerializationLimits.MAX_ARRAY_LENGTH;
 
   /**
    * Reads a {@link List} whose elements are of {@code elementType} from the given {@link

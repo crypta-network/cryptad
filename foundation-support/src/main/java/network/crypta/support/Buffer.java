@@ -13,7 +13,7 @@ import network.crypta.io.WritableToDataOutputStream;
  * provides convenience methods for reading a buffer from a {@link DataInput} and writing it to a
  * {@link DataOutputStream}. When constructed from a {@code DataInput}, the input is expected to be
  * framed as a 4-byte length (signed, big-endian, non-negative, and not exceeding {@link
- * Serializer#MAX_ARRAY_LENGTH}) followed by exactly that many bytes of payload.
+ * SerializationLimits#MAX_ARRAY_LENGTH}) followed by exactly that many bytes of payload.
  *
  * <p>When the buffer spans the entire backing array (i.e., {@code start == 0} and {@code length ==
  * data.length}), {@link #getData()} returns the backing array directly. In all other cases it
@@ -43,16 +43,17 @@ public final class Buffer implements WritableToDataOutputStream {
    *
    * @param dis source to read the framed data from.
    * @throws IllegalArgumentException if the length is negative or greater than {@link
-   *     Serializer#MAX_ARRAY_LENGTH}. The historical behavior is to signal invalid length with this
-   *     exception type rather than {@link IOException}.
+   *     SerializationLimits#MAX_ARRAY_LENGTH}. The historical behavior is to signal invalid length
+   *     with this exception type rather than {@link IOException}.
    * @throws IOException if {@code dis} cannot provide the requested bytes.
    */
   public Buffer(DataInput dis) throws IOException {
     length = dis.readInt();
     if (length < 0) throw new IllegalArgumentException("Negative Length: " + length);
-    if (length > Serializer.MAX_ARRAY_LENGTH) {
+    if (length > SerializationLimits.MAX_ARRAY_LENGTH) {
       // Preserve historical behavior: signal invalid length with IllegalArgumentException.
-      throw new IllegalArgumentException("Length larger than " + Serializer.MAX_ARRAY_LENGTH);
+      throw new IllegalArgumentException(
+          "Length larger than " + SerializationLimits.MAX_ARRAY_LENGTH);
     }
 
     data = new byte[length]; // Allocate exactly the announced length.
@@ -140,7 +141,7 @@ public final class Buffer implements WritableToDataOutputStream {
    * Write this buffer to a {@link DataOutputStream} using the standard framing format.
    *
    * <p>The method writes a 4-byte signed length followed by the visible bytes. The length is equal
-   * to {@link #getLength()} and must not exceed {@link Serializer#MAX_ARRAY_LENGTH}.
+   * to {@link #getLength()} and must not exceed {@link SerializationLimits#MAX_ARRAY_LENGTH}.
    *
    * @param stream destination stream.
    * @throws IOException if an I/O error occurs while writing to {@code stream}.
