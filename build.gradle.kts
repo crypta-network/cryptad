@@ -17,6 +17,7 @@ version = "3"
 val internalLeafProjects =
   listOf(
     project(":foundation-support"),
+    project(":foundation-store"),
     project(":foundation-store-contracts"),
     project(":foundation-crypto-keys"),
     project(":foundation-config"),
@@ -37,6 +38,7 @@ val internalLeafMainClassDirs =
 dependencies {
   // implementation
   implementation(project(":foundation-support"))
+  implementation(project(":foundation-store"))
   implementation(project(":foundation-store-contracts"))
   implementation(project(":foundation-crypto-keys"))
   implementation(project(":foundation-config"))
