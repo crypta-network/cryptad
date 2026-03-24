@@ -1,0 +1,17 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :foundation-store owns them now.
+
+network/crypta/store/CHKStore*
+network/crypta/store/FetchOptions*
+network/crypta/store/FreenetStore*
+network/crypta/store/KeyCollisionException*
+network/crypta/store/NullFreenetStore*
+network/crypta/store/ProxyFreenetStore*
+network/crypta/store/PubkeyStore*
+network/crypta/store/RAMFreenetStore*
+network/crypta/store/SSKStore*
+network/crypta/store/SimpleGetPubkey*
+network/crypta/store/SlashdotStore*
+network/crypta/store/StoreCallback*
+network/crypta/store/package-info*
+network/crypta/store/caching/**
+network/crypta/store/saltedhash/**

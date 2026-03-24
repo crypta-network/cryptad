@@ -25,6 +25,7 @@ rootProject.name = "cryptad"
 
 include(
   ":foundation-support",
+  ":foundation-store",
   ":foundation-store-contracts",
   ":foundation-crypto-keys",
   ":foundation-config",
