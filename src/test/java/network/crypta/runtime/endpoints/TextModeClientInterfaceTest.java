@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -8,6 +8,8 @@ import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
 import network.crypta.node.subsystem.NodeBootstrap;
 import network.crypta.support.Base64;
 import network.crypta.support.io.ArrayBucket;

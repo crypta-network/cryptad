@@ -313,7 +313,13 @@ public class PeerManager {
     peerPersistence.writePeers(false);
   }
 
-  void writePeersDarknetUrgent() {
+  /**
+   * Forces an urgent write of darknet peer state to disk.
+   *
+   * <p>This preserves the historical TMCI behavior of flushing peer list mutations immediately
+   * after add/remove operations.
+   */
+  public void writePeersDarknetUrgent() {
     peerPersistence.writePeersUrgent(false);
   }
 

@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -11,6 +11,8 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.NetworkInterface;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
 import network.crypta.node.runtime.SSL;
 import network.crypta.node.subsystem.NodeBootstrap;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;

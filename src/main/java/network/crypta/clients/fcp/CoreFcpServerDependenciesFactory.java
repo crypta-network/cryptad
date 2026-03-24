@@ -8,11 +8,11 @@ import network.crypta.runtime.spi.RuntimePorts;
  * Builds the core-backed dependency bundle used by FCP server bootstrap.
  *
  * <p>This factory is intentionally local to {@code clients.fcp}. Callers use it at the bootstrap
- * boundary, typically from node startup code such as {@code NodeClientPersistence}, to translate
- * the remaining {@link NodeClientCore}-backed services into the narrow package-local seams that
- * {@link FCPServer} accepts. That keeps the server constructor and configuration registrar free of
- * direct daemon-core references while preserving the runtime behavior that older code paths
- * expected.
+ * boundary, typically from node startup code such as {@code
+ * network.crypta.runtime.endpoints.NodeClientPersistence}, to translate the remaining {@link
+ * NodeClientCore}-backed services into the narrow package-local seams that {@link FCPServer}
+ * accepts. That keeps the server constructor and configuration registrar free of direct daemon-core
+ * references while preserving the runtime behavior that older code paths expected.
  *
  * <p>The factory is stateless and creates one fresh {@link FcpServerDependencies} bundle per call.
  * Each bundle contains lightweight adapters over live daemon services rather than detached

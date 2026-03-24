@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;

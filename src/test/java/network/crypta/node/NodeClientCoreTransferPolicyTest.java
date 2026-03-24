@@ -10,6 +10,7 @@ import network.crypta.config.StringArrCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
