@@ -6,7 +6,7 @@ import network.crypta.crypt.ECDSA.Curves;
 import network.crypta.crypt.ECDSA;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.Peer;
-import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.Base64;
 import network.crypta.support.BooleanLastTrueTracker;
 import network.crypta.support.SimpleFieldSet;

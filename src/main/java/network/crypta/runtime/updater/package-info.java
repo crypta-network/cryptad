@@ -1,12 +1,12 @@
 /**
- * Package providing the node's update subsystem.
+ * Package providing the runtime updater subsystem.
  *
  * <p>This package coordinates discovery, download, integrity verification, and handoff for
- * installing newer versions of the node. Recent builds migrate to a package-based update flow for
- * the core ("CoreUpdater"), replacing self-replacement of {@code cryptad.jar}. Core updates fetch a
- * descriptor (for example, {@code info/<N>} over the existing update USK), select an installer that
- * matches the current OS and architecture, download it under a versioned directory, and offer a
- * guided installation.
+ * installing newer versions of the runtime. Recent builds migrate to a package-based update flow
+ * for the core ("CoreUpdater"), replacing self-replacement of {@code cryptad.jar}. Core updates
+ * fetch a descriptor (for example, {@code info/<N>} over the existing update USK), select an
+ * installer that matches the current OS and architecture, download it under a versioned directory,
+ * and offer a guided installation.
  *
  * <p>At a high level the updater strives to be robust, explicit, and user-driven. Network and file
  * operations surface progress and errors clearly so callers can present actionable status to users
@@ -42,4 +42,4 @@
  * typically guided by native installers; user messaging highlights common security prompts (for
  * example Gatekeeper or SmartScreen) and offers checksum verification tips when appropriate.
  */
-package network.crypta.node.updater;
+package network.crypta.runtime.updater;

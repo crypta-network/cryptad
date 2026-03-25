@@ -5,9 +5,9 @@ import java.io.IOException;
 import java.util.Objects;
 import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
-import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.runtime.spi.ConnectionsInstallerSnapshot;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
+import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.io.FileUtil;
 
 /**

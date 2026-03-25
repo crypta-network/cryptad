@@ -444,7 +444,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.NodeUpdateManager"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManager"/>
   </Match>
 
   <!--
@@ -558,7 +558,7 @@
 
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.node.updater.CoreActionToadlet"/>
+    <Class name="network.crypta.runtime.updater.CoreActionToadlet"/>
     <Method name="isOstree"/>
   </Match>
 
@@ -1418,35 +1418,35 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.CoreActionToadlet"/>
+    <Class name="network.crypta.runtime.updater.CoreActionToadlet"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.CoreInfo"/>
+    <Class name="network.crypta.runtime.updater.CoreInfo"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.CoreUpdater$PackageFetcher"/>
+    <Class name="network.crypta.runtime.updater.CoreUpdater$PackageFetcher"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.NodeUpdateManager$UpdateRevocationURICallback"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManager$UpdateRevocationURICallback"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.NodeUpdater"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdater"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.NodeUpdaterParams"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdaterParams"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.RevocationChecker"/>
+    <Class name="network.crypta.runtime.updater.RevocationChecker"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.updater.UpdateOverMandatoryManager"/>
+    <Class name="network.crypta.runtime.updater.UpdateOverMandatoryManager"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

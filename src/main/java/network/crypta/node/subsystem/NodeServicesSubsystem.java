@@ -54,7 +54,7 @@ public final class NodeServicesSubsystem {
   private final Node node;
   private SimpleToadletServer toadlets;
   private network.crypta.node.NodeClientCore clientCore;
-  private network.crypta.node.updater.NodeUpdateManager nodeUpdater;
+  private network.crypta.runtime.updater.NodeUpdateManager nodeUpdater;
   private network.crypta.node.diagnostics.DefaultNodeDiagnostics nodeDiagnostics;
   private network.crypta.node.SecurityLevels securityLevels;
   private MeaningfulNodeNameUserAlert nodeNameUserAlert;
@@ -155,7 +155,7 @@ public final class NodeServicesSubsystem {
    *
    * @param nodeUpdater updater instance to store; may be {@code null} to clear it.
    */
-  public void setNodeUpdater(network.crypta.node.updater.NodeUpdateManager nodeUpdater) {
+  public void setNodeUpdater(network.crypta.runtime.updater.NodeUpdateManager nodeUpdater) {
     this.nodeUpdater = nodeUpdater;
   }
 
@@ -166,25 +166,26 @@ public final class NodeServicesSubsystem {
    * #initUpdater(PersistentConfig)}. The returned instance is owned by the node and should not be
    * stopped directly by callers. It may be {@code null} if the updater is not configured.
    *
-   * @return the configured {@link network.crypta.node.updater.NodeUpdateManager} or {@code null}.
+   * @return the configured {@link network.crypta.runtime.updater.NodeUpdateManager} or {@code
+   *     null}.
    */
-  public network.crypta.node.updater.NodeUpdateManager nodeUpdater() {
+  public network.crypta.runtime.updater.NodeUpdateManager nodeUpdater() {
     return nodeUpdater;
   }
 
   /**
    * Initializes the node updater from configuration.
    *
-   * <p>This method calls {@link network.crypta.node.updater.NodeUpdateManager} to create or reuse
-   * an updater instance and stores the resulting reference. The method does not force the updater
-   * to start downloads; it only wires the instance into this subsystem so other components can
-   * access it later. The stored updater may be {@code null} when the updater is disabled.
+   * <p>This method calls {@link network.crypta.runtime.updater.NodeUpdateManager} to create or
+   * reuse an updater instance and stores the resulting reference. The method does not force the
+   * updater to start downloads; it only wires the instance into this subsystem so other components
+   * can access it later. The stored updater may be {@code null} when the updater is disabled.
    *
    * @param config persistent configuration root used to create updater settings.
    * @throws InvalidConfigValueException if configuration values are invalid or inconsistent.
    */
   public void initUpdater(PersistentConfig config) throws InvalidConfigValueException {
-    setNodeUpdater(network.crypta.node.updater.NodeUpdateManager.maybeCreate(node, config));
+    setNodeUpdater(network.crypta.runtime.updater.NodeUpdateManager.maybeCreate(node, config));
   }
 
   /**

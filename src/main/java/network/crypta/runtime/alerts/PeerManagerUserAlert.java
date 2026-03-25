@@ -3,7 +3,7 @@ package network.crypta.runtime.alerts;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
-import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.HTMLNode;
 
 import static java.util.concurrent.TimeUnit.DAYS;
