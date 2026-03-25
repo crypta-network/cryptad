@@ -1,4 +1,4 @@
-package network.crypta.node.diagnostics.threads;
+package network.crypta.runtime.diagnostics.threads;
 
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;

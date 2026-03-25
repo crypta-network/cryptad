@@ -1,4 +1,4 @@
-package network.crypta.node.diagnostics;
+package network.crypta.runtime.diagnostics;
 
 /**
  * Aggregates high-level diagnostic entry points for a running node.

@@ -1,7 +1,7 @@
-package network.crypta.node.diagnostics;
+package network.crypta.runtime.diagnostics;
 
 import network.crypta.node.NodeStats;
-import network.crypta.node.diagnostics.threads.DefaultThreadDiagnostics;
+import network.crypta.runtime.diagnostics.threads.DefaultThreadDiagnostics;
 import network.crypta.support.Ticker;
 
 /**
@@ -10,7 +10,7 @@ import network.crypta.support.Ticker;
  * <p>This lightweight implementation provides access to diagnostics components that sample and
  * report on the state of a running node. It focuses on thread-level information and delegates the
  * actual sampling and snapshot publication to {@link
- * network.crypta.node.diagnostics.threads.DefaultThreadDiagnostics}. Callers obtain this façade
+ * network.crypta.runtime.diagnostics.threads.DefaultThreadDiagnostics}. Callers obtain this façade
  * from node wiring, start it during application bootstrap, and subsequently read diagnostics via
  * the exposed accessors. The class itself contains no heavy logic; it primarily composes
  * collaborators and forwards lifecycle events.
@@ -29,15 +29,15 @@ import network.crypta.support.Ticker;
  *
  * @author desyncr
  * @see ThreadDiagnostics
- * @see network.crypta.node.diagnostics.threads.DefaultThreadDiagnostics
+ * @see network.crypta.runtime.diagnostics.threads.DefaultThreadDiagnostics
  */
 public class DefaultNodeDiagnostics implements NodeDiagnostics {
   /**
    * Creates a diagnostics façade bound to the given node statistics and scheduler.
    *
    * <p>The instance wires a {@link
-   * network.crypta.node.diagnostics.threads.DefaultThreadDiagnostics} that periodically samples JVM
-   * threads and publishes snapshots. Construction is cheap and does not schedule any background
+   * network.crypta.runtime.diagnostics.threads.DefaultThreadDiagnostics} that periodically samples
+   * JVM threads and publishes snapshots. Construction is cheap and does not schedule any background
    * work; callers should invoke {@link #start()} to begin sampling.
    *
    * @param nodeStats provider of live thread snapshots and related node metrics; must be non-null

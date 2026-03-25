@@ -1,6 +1,6 @@
-package network.crypta.node.diagnostics;
+package network.crypta.runtime.diagnostics;
 
-import network.crypta.node.diagnostics.threads.NodeThreadSnapshot;
+import network.crypta.runtime.diagnostics.threads.NodeThreadSnapshot;
 
 /**
  * Exposes lightweight diagnostics for threads running in the node.
