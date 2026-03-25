@@ -1,4 +1,4 @@
-package network.crypta.node.updater;
+package network.crypta.runtime.updater;
 
 import java.net.MalformedURLException;
 import java.util.Random;

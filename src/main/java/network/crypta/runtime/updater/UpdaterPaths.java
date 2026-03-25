@@ -1,4 +1,4 @@
-package network.crypta.node.updater;
+package network.crypta.runtime.updater;
 
 /**
  * Centralizes canonical URL path fragments used by the core updater web surface.

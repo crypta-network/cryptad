@@ -10,7 +10,7 @@ import java.util.stream.Stream;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

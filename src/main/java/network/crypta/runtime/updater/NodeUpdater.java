@@ -1,4 +1,4 @@
-package network.crypta.node.updater;
+package network.crypta.runtime.updater;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -61,7 +61,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  *   <li>Exposes helper accessors for blob files and progress reporting.
  * </ul>
  *
- * @see network.crypta.node.updater.CoreUpdater
+ * @see network.crypta.runtime.updater.CoreUpdater
  */
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(NodeUpdater.class);

@@ -3,8 +3,8 @@ package network.crypta.runtime.alerts;
 import java.io.File;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.node.updater.NodeUpdateManager;
-import network.crypta.node.updater.RevocationChecker;
+import network.crypta.runtime.updater.NodeUpdateManager;
+import network.crypta.runtime.updater.RevocationChecker;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
@@ -13,9 +13,9 @@ import org.slf4j.LoggerFactory;
 /**
  * User alert shown when a newer stable version of Crypta is available.
  *
- * <p>This alert aggregates state from the {@link network.crypta.node.updater.NodeUpdateManager} and
- * presents it to end users in both plain-text and HTML forms. It communicates whether an update is
- * being downloaded, has been verified, or is ready to install, and it may offer a simple action
+ * <p>This alert aggregates state from the {@link network.crypta.runtime.updater.NodeUpdateManager}
+ * and presents it to end users in both plain-text and HTML forms. It communicates whether an update
+ * is being downloaded, has been verified, or is ready to install, and it may offer a simple action
  * button to proceed. The alert also embeds links to release notes and developer changelogs when
  * available. The text and priority adapt to the updater's state so that more urgent conditions
  * surface with higher visibility.
@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Surfaces urgency using {@link #getPriorityClass()} to integrate with alert ranking.
  * </ul>
  *
- * @see network.crypta.node.updater.NodeUpdateManager
+ * @see network.crypta.runtime.updater.NodeUpdateManager
  * @see network.crypta.support.HTMLNode
  * @see network.crypta.runtime.alerts.UserAlert
  */

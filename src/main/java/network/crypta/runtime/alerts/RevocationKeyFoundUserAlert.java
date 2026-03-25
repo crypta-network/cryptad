@@ -28,7 +28,7 @@ import network.crypta.support.HTMLNode;
  *
  * @see AbstractUserAlert
  * @see UserAlert
- * @see network.crypta.node.updater.NodeUpdateManager
+ * @see network.crypta.runtime.updater.NodeUpdateManager
  */
 public class RevocationKeyFoundUserAlert extends AbstractUserAlert {
   private static final String L10N_PARAM_MESSAGE = "message";

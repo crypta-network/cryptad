@@ -12,11 +12,11 @@ import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
 import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
-import network.crypta.node.updater.CoreActionToadlet;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.runtime.updater.CoreActionToadlet;
 
-import static network.crypta.node.updater.UpdaterPaths.CORE_UPDATE_PATH;
+import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
 
 /**
  * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.

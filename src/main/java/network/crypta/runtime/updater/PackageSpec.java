@@ -1,4 +1,4 @@
-package network.crypta.node.updater;
+package network.crypta.runtime.updater;
 
 /**
  * Metadata describing one distributable package artifact in core updater descriptors.

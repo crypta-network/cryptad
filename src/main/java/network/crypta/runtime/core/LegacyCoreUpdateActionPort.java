@@ -6,9 +6,9 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import network.crypta.node.Node;
-import network.crypta.node.updater.CoreUpdater;
-import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
+import network.crypta.runtime.updater.CoreUpdater;
+import network.crypta.runtime.updater.NodeUpdateManager;
 
 /**
  * Adapts the core-update action SPI to the legacy daemon runtime.
