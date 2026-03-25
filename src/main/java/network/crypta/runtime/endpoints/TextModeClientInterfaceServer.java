@@ -21,7 +21,7 @@ import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
-import network.crypta.node.runtime.SSL;
+import network.crypta.runtime.core.SSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

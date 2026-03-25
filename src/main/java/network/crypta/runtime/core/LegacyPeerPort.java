@@ -1,4 +1,4 @@
-package network.crypta.node.runtime;
+package network.crypta.runtime.core;
 
 import java.util.ArrayList;
 import java.util.Arrays;

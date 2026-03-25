@@ -8,7 +8,7 @@
  * interfaces expected by higher-level wiring.
  *
  * <p>Keeping these classes here makes the ownership boundary explicit. The narrower {@code
- * network.crypta.node.runtime} package can keep the core runtime nucleus, while this package
+ * network.crypta.runtime.core} package can keep the core runtime nucleus, while this package
  * carries the page-oriented compatibility layer that may later be extracted or reshaped as a more
  * focused adapter cluster.
  */

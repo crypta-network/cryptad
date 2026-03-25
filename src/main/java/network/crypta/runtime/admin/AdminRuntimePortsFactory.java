@@ -7,7 +7,7 @@ import network.crypta.node.NodeClientCore;
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
  *
  * <p>This factory keeps the construction details for the transitional admin cluster inside {@code
- * network.crypta.runtime.admin}. The surrounding node-runtime wiring only needs to know that there
+ * network.crypta.runtime.admin}. The surrounding runtime-core wiring only needs to know that there
  * is one coherent group of page, queue, statistics, and welcome adapters that depend on the live
  * daemon {@link Node} and {@link NodeClientCore}. That keeps the move mechanical in this PR while
  * making the ownership boundary explicit for later extraction work.
@@ -24,8 +24,8 @@ public final class AdminRuntimePortsFactory {
    * Creates the admin/page runtime-port bundle backed by the current daemon node and client core.
    *
    * <p>Callers normally invoke this once while assembling {@link
-   * network.crypta.node.runtime.LegacyRuntimePorts}. The returned bundle contains the exact legacy
-   * adapter set that was moved out of {@code network.crypta.node.runtime}, with queue-oriented
+   * network.crypta.runtime.core.LegacyRuntimePorts}. The returned bundle contains the exact legacy
+   * adapter set that was moved out of {@code network.crypta.runtime.core}, with queue-oriented
    * adapters bound to {@code core} and page or node-state adapters bound to {@code node}. The
    * method performs no validation beyond the constructors it delegates to.
    *

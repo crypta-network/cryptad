@@ -1,4 +1,4 @@
-package network.crypta.node.runtime;
+package network.crypta.runtime.core;
 
 import java.util.Map;
 import network.crypta.l10n.BaseL10n;
