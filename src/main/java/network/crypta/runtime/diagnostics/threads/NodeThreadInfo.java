@@ -1,4 +1,4 @@
-package network.crypta.node.diagnostics.threads;
+package network.crypta.runtime.diagnostics.threads;
 
 /**
  * Immutable, value-based view of a single JVM thread at a particular sampling moment.

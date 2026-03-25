@@ -1,4 +1,4 @@
-package network.crypta.node.diagnostics.threads;
+package network.crypta.runtime.diagnostics.threads;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.NodeStats;
-import network.crypta.node.diagnostics.ThreadDiagnostics;
+import network.crypta.runtime.diagnostics.ThreadDiagnostics;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.Ticker;
 

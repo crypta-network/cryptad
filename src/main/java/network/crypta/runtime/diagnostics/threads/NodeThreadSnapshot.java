@@ -1,4 +1,4 @@
-package network.crypta.node.diagnostics.threads;
+package network.crypta.runtime.diagnostics.threads;
 
 import java.util.ArrayList;
 import java.util.List;

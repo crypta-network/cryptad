@@ -17,6 +17,7 @@ import network.crypta.runtime.alerts.PeersOffersUserAlert;
 import network.crypta.runtime.alerts.SimpleUserAlert;
 import network.crypta.runtime.alerts.TimeSkewDetectedUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -55,7 +56,7 @@ public final class NodeServicesSubsystem {
   private SimpleToadletServer toadlets;
   private network.crypta.node.NodeClientCore clientCore;
   private network.crypta.runtime.updater.NodeUpdateManager nodeUpdater;
-  private network.crypta.node.diagnostics.DefaultNodeDiagnostics nodeDiagnostics;
+  private DefaultNodeDiagnostics nodeDiagnostics;
   private network.crypta.node.SecurityLevels securityLevels;
   private MeaningfulNodeNameUserAlert nodeNameUserAlert;
   private volatile boolean showFriendsVisibilityAlert;
@@ -199,8 +200,7 @@ public final class NodeServicesSubsystem {
    * @param diagnostics diagnostics instance to store; may be {@code null} to clear it.
    */
   @SuppressWarnings("unused")
-  public void setNodeDiagnostics(
-      network.crypta.node.diagnostics.DefaultNodeDiagnostics diagnostics) {
+  public void setNodeDiagnostics(DefaultNodeDiagnostics diagnostics) {
     this.nodeDiagnostics = diagnostics;
   }
 
@@ -213,7 +213,7 @@ public final class NodeServicesSubsystem {
    *
    * @return the current diagnostics instance, or {@code null} if not initialized.
    */
-  public network.crypta.node.diagnostics.DefaultNodeDiagnostics nodeDiagnostics() {
+  public DefaultNodeDiagnostics nodeDiagnostics() {
     return nodeDiagnostics;
   }
 
@@ -229,8 +229,7 @@ public final class NodeServicesSubsystem {
    */
   public void initDiagnostics(NodeNetworkSubsystem network) {
     Ticker ticker = network.ticker();
-    this.nodeDiagnostics =
-        new network.crypta.node.diagnostics.DefaultNodeDiagnostics(network.stats(), ticker);
+    this.nodeDiagnostics = new DefaultNodeDiagnostics(network.stats(), ticker);
   }
 
   /**

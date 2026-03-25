@@ -1,8 +1,8 @@
-package network.crypta.node.diagnostics;
+package network.crypta.runtime.diagnostics;
 
 import network.crypta.node.NodeStats;
-import network.crypta.node.diagnostics.threads.NodeThreadInfo;
-import network.crypta.node.diagnostics.threads.NodeThreadSnapshot;
+import network.crypta.runtime.diagnostics.threads.NodeThreadInfo;
+import network.crypta.runtime.diagnostics.threads.NodeThreadSnapshot;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
