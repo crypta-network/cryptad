@@ -12,6 +12,7 @@ network/crypta/store/SSKStore*
 network/crypta/store/SimpleGetPubkey*
 network/crypta/store/SlashdotStore*
 network/crypta/store/StoreCallback*
+network/crypta/node/stats/StoreCallbackStats*
 network/crypta/store/package-info*
 network/crypta/store/caching/**
 network/crypta/store/saltedhash/**
