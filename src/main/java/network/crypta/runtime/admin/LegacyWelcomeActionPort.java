@@ -25,7 +25,7 @@ import network.crypta.support.Fields;
  * present, writes the same config keys, and swallows restart-required exceptions exactly as the
  * legacy welcome toadlet did. The class is package-private because it is an implementation detail
  * behind {@link WelcomeActionPort}; callers should depend on the SPI surface exposed through {@link
- * network.crypta.node.runtime.LegacyRuntimePorts} instead of constructing this adapter directly.
+ * network.crypta.runtime.core.LegacyRuntimePorts} instead of constructing this adapter directly.
  */
 final class LegacyWelcomeActionPort implements WelcomeActionPort {
   /** Small delay that lets the HTTP layer finish its redirect before shutdown or restart begins. */

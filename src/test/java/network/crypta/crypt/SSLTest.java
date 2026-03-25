@@ -8,7 +8,7 @@ import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
-import network.crypta.node.runtime.SSL;
+import network.crypta.runtime.core.SSL;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

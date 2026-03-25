@@ -200,12 +200,12 @@ Cryptad now uses a partial multi-project Gradle build.
   resources.
 - The large cyclic daemon core remains in the root project for now, and all tests still live
   there. The root still owns daemon-coupled transport/socket code in `network.crypta.io.comm`,
-  runtime adapters and helpers under `network.crypta.node.runtime`, and the remaining
+  runtime adapters and helpers under `network.crypta.runtime.core`, and the remaining
   daemon-coupled support/UI wiring.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
   leaf-owned messages, and package-local seams such as
-  `network.crypta.node.runtime.LegacyRuntimePorts`,
+  `network.crypta.runtime.core.LegacyRuntimePorts`,
   `network.crypta.clients.http.BookmarkEditorToadletRuntimePorts`,
   `network.crypta.clients.http.ConfigToadletRuntimePorts`,
   `network.crypta.clients.http.ConnectionsToadletRuntimePorts`,

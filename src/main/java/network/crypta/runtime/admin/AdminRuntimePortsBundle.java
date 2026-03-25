@@ -22,8 +22,8 @@ import network.crypta.runtime.spi.WelcomePagePort;
  * Groups the admin and page-oriented runtime SPI adapters owned by this package.
  *
  * <p>This record is the package-local handoff between {@link AdminRuntimePortsFactory} and {@link
- * network.crypta.node.runtime.LegacyRuntimePorts}. It lets the admin adapter cluster move together
- * without forcing the node-runtime nucleus to know which concrete classes implement the various
+ * network.crypta.runtime.core.LegacyRuntimePorts}. It lets the admin adapter cluster move together
+ * without forcing the runtime-core nucleus to know which concrete classes implement the various
  * page, queue, and welcome flows. Callers typically create one bundle during runtime-port assembly
  * and then keep the individual port references in longer-lived wiring objects.
  *

@@ -28,7 +28,7 @@ import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
-import network.crypta.node.runtime.SSL;
+import network.crypta.runtime.core.SSL;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;

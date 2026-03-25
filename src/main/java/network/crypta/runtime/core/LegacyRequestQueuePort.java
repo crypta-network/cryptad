@@ -1,4 +1,4 @@
-package network.crypta.node.runtime;
+package network.crypta.runtime.core;
 
 import java.util.Objects;
 import network.crypta.client.async.PersistenceDisabledException;

@@ -1,4 +1,4 @@
-package network.crypta.node.runtime;
+package network.crypta.runtime.core;
 
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
