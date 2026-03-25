@@ -158,8 +158,8 @@ class DarknetAddRefToadletTest {
     PageMaker pageMaker = mock(PageMaker.class);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx))).thenReturn(page);
-    network.crypta.node.useralerts.UserAlertManager alertManager =
-        mock(network.crypta.node.useralerts.UserAlertManager.class);
+    network.crypta.runtime.alerts.UserAlertManager alertManager =
+        mock(network.crypta.runtime.alerts.UserAlertManager.class);
     when(ctx.getAlertManager()).thenReturn(alertManager);
     when(alertManager.createSummary()).thenReturn(new HTMLNode("#", "summary"));
 
@@ -285,8 +285,8 @@ class DarknetAddRefToadletTest {
     PageMaker pageMaker = mock(PageMaker.class);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx))).thenReturn(page);
-    network.crypta.node.useralerts.UserAlertManager alertManager =
-        mock(network.crypta.node.useralerts.UserAlertManager.class);
+    network.crypta.runtime.alerts.UserAlertManager alertManager =
+        mock(network.crypta.runtime.alerts.UserAlertManager.class);
     when(ctx.getAlertManager()).thenReturn(alertManager);
     when(alertManager.createSummary()).thenReturn(new HTMLNode("#", "summary"));
 

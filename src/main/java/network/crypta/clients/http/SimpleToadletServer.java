@@ -33,7 +33,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.runtime.SSL;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;

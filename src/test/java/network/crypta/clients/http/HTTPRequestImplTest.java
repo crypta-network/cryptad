@@ -284,7 +284,7 @@ class HTTPRequestImplTest {
       }
 
       @Override
-      public network.crypta.node.useralerts.UserAlertManager getAlertManager() {
+      public network.crypta.runtime.alerts.UserAlertManager getAlertManager() {
         throw new UnsupportedOperationException();
       }
 

@@ -19,7 +19,7 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;

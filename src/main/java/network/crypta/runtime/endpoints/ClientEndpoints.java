@@ -8,8 +8,8 @@ import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
-import network.crypta.node.useralerts.UserAlert;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 

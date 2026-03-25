@@ -4,7 +4,7 @@ import java.net.MalformedURLException;
 import java.util.List;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.FSParseException;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

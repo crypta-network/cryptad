@@ -4,7 +4,7 @@ import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.compat.BandwidthIndicator;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
+import network.crypta.runtime.alerts.UpgradeConnectionSpeedUserAlert;
 
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.SECONDS;

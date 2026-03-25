@@ -12,7 +12,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTransport;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -161,8 +161,8 @@ class UpdateOverMandatoryManagerTest {
     verify(updateManager, times(1)).peerClaimsKeyBlown();
 
     // An alert is registered exactly once for the first matching announcement
-    ArgumentCaptor<network.crypta.node.useralerts.UserAlert> alertCaptor =
-        ArgumentCaptor.forClass(network.crypta.node.useralerts.UserAlert.class);
+    ArgumentCaptor<network.crypta.runtime.alerts.UserAlert> alertCaptor =
+        ArgumentCaptor.forClass(network.crypta.runtime.alerts.UserAlert.class);
     verify(alertManager, times(1)).register(alertCaptor.capture());
     assertNotNull(alertCaptor.getValue(), "Alert instance must be non-null");
 

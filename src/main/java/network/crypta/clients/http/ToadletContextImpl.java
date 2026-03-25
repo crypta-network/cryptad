@@ -29,7 +29,7 @@ import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.runtime.SSL;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;

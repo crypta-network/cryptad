@@ -282,17 +282,17 @@ class IPDetectorManagerTest {
 
     // Provide a client core + alerts that can render
     NodeClientCore core = mock(NodeClientCore.class);
-    network.crypta.node.useralerts.UserAlertManager alerts =
-        mock(network.crypta.node.useralerts.UserAlertManager.class);
+    network.crypta.runtime.alerts.UserAlertManager alerts =
+        mock(network.crypta.runtime.alerts.UserAlertManager.class);
     when(core.getAlerts()).thenReturn(alerts);
     when(node.services().clientCore()).thenReturn(core);
     when(alerts.renderAlert(any())).thenReturn(new HTMLNode("div"));
 
     // Install a ProxyUserAlert with an underlying always-valid alert via reflection
-    network.crypta.node.useralerts.ProxyUserAlert proxy =
-        new network.crypta.node.useralerts.ProxyUserAlert(alerts, false);
+    network.crypta.runtime.alerts.ProxyUserAlert proxy =
+        new network.crypta.runtime.alerts.ProxyUserAlert(alerts, false);
     proxy.setAlert(
-        new network.crypta.node.useralerts.UserAlert() {
+        new network.crypta.runtime.alerts.UserAlert() {
           @Override
           public boolean userCanDismiss() {
             return true;

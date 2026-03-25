@@ -1,7 +1,7 @@
 package network.crypta.clients.http;
 
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 
 /**
  * Shared services needed to build per-request {@link ToadletContextImpl} instances.

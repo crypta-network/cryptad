@@ -24,10 +24,10 @@ import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.useralerts.IPUndetectedUserAlert;
-import network.crypta.node.useralerts.InvalidAddressOverrideUserAlert;
-import network.crypta.node.useralerts.SimpleUserAlert;
-import network.crypta.node.useralerts.UserAlert;
+import network.crypta.runtime.alerts.IPUndetectedUserAlert;
+import network.crypta.runtime.alerts.InvalidAddressOverrideUserAlert;
+import network.crypta.runtime.alerts.SimpleUserAlert;
+import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.io.NativeThread;
@@ -655,7 +655,7 @@ public class NodeIPDetector {
     private void unregisterInvalidOverrideAlert() {
       NodeClientCore cc = node.services().clientCore();
       if (cc == null) return;
-      network.crypta.node.useralerts.UserAlertManager alerts = cc.getAlerts();
+      network.crypta.runtime.alerts.UserAlertManager alerts = cc.getAlerts();
       if (alerts == null) return;
       alerts.unregister(invalidAddressOverrideAlert);
     }

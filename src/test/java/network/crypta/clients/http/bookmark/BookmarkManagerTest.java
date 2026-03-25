@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -8,7 +8,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

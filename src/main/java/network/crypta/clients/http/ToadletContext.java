@@ -6,7 +6,7 @@ import java.text.ParseException;
 import java.time.Instant;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;

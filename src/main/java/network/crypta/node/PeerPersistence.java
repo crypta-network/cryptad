@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.node.useralerts.DroppedOldPeersUserAlert;
+import network.crypta.runtime.alerts.DroppedOldPeersUserAlert;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
