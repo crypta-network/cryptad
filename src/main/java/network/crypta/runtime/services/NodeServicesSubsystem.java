@@ -1,4 +1,4 @@
-package network.crypta.node.subsystem;
+package network.crypta.runtime.services;
 
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -10,6 +10,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.JVMVersionAlert;
 import network.crypta.runtime.alerts.MeaningfulNodeNameUserAlert;
 import network.crypta.runtime.alerts.NotEnoughNiceLevelsUserAlert;

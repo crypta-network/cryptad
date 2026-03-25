@@ -1,4 +1,4 @@
-package network.crypta.node.subsystem;
+package network.crypta.runtime.services;
 
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -6,9 +6,12 @@ import network.crypta.config.BooleanCallback;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.runtime.alerts.JVMVersionAlert;
 import network.crypta.runtime.alerts.MeaningfulNodeNameUserAlert;
 import network.crypta.runtime.alerts.NotEnoughNiceLevelsUserAlert;
@@ -284,6 +287,56 @@ class NodeServicesSubsystemTest {
 
     runnableCaptor.getValue().run();
     verify(config).store();
+  }
+
+  @Test
+  void createVisibilityAlert_whenDismissed_clearsFlagPersistsAndUnregistersAlert() {
+    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    subsystem.setClientCore(clientCore);
+    when(clientCore.getAlerts()).thenReturn(alerts);
+    when(node.network()).thenReturn(network);
+    when(network.ticker()).thenReturn(ticker);
+    when(node.getConfig()).thenReturn(config);
+
+    ArgumentCaptor<UserAlert> alertCaptor = ArgumentCaptor.forClass(UserAlert.class);
+
+    subsystem.createVisibilityAlert();
+
+    verify(alerts).register(alertCaptor.capture());
+    UserAlert registeredAlert = alertCaptor.getValue();
+    registeredAlert.onDismiss();
+
+    assertFalse(subsystem.isShowFriendsVisibilityAlert());
+    verify(config).store();
+    verify(alerts).unregister(registeredAlert);
+  }
+
+  @Test
+  void createVisibilityAlert_whenRegistered_usesExistingLocalizedVisibilityStrings() {
+    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    subsystem.setClientCore(clientCore);
+    when(clientCore.getAlerts()).thenReturn(alerts);
+    when(node.network()).thenReturn(network);
+    when(network.ticker()).thenReturn(ticker);
+    when(node.getConfig()).thenReturn(config);
+
+    ArgumentCaptor<UserAlert> alertCaptor = ArgumentCaptor.forClass(UserAlert.class);
+
+    subsystem.createVisibilityAlert();
+
+    verify(alerts).register(alertCaptor.capture());
+    UserAlert registeredAlert = alertCaptor.getValue();
+
+    assertEquals(
+        NodeL10n.getBase().getString("Node.pleaseSetPeersVisibilityAlertTitle"),
+        registeredAlert.getTitle());
+    assertEquals(
+        NodeL10n.getBase().getString("Node.pleaseSetPeersVisibilityAlert"),
+        registeredAlert.getText());
+    assertEquals(
+        NodeL10n.getBase().getString("Node.pleaseSetPeersVisibilityAlert"),
+        registeredAlert.getShortText());
+    assertEquals(UserAlert.ERROR, registeredAlert.getPriorityClass());
   }
 
   @Test
