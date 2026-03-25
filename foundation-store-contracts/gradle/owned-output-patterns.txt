@@ -4,5 +4,11 @@ network/crypta/store/StorableBlock*
 network/crypta/store/BlockMetadata*
 network/crypta/store/GetPubkey*
 network/crypta/store/alerts/**
+network/crypta/node/stats/DataStoreInstanceType*
+network/crypta/node/stats/DataStoreKeyType*
+network/crypta/node/stats/DataStoreStats*
+network/crypta/node/stats/DataStoreType*
+network/crypta/node/stats/NotAvailNodeStoreStats*
+network/crypta/node/stats/StoreLocationStats*
 network/crypta/node/stats/StoreAccessStats*
 network/crypta/node/stats/StatsNotAvailableException*
