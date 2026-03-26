@@ -2,7 +2,7 @@ package network.crypta.client.async;
 
 import java.util.function.Supplier;
 import network.crypta.node.Location;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 
 /**
  * Supplies decisions that determine whether the node should perform a healing insert for a given

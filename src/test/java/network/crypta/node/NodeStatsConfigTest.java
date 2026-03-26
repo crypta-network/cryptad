@@ -12,6 +12,7 @@ import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;

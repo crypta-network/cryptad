@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.bootstrap;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -12,6 +12,10 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.CryptoRandoms;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.DNSRequester;
+import network.crypta.node.Node;
+import network.crypta.node.NodeInitException;
+import network.crypta.node.PeerManager;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.SimpleFieldSet;
@@ -72,7 +76,7 @@ class NodeStarterTest {
     assertSame(rnd, returned, "Should return the same RandomSource instance when provided");
     // isTestingVM requires NodeStarter to be started by globalTestInit
     assertTrue(NodeStarter.isTestingVM(), "Test VM flag should be true after init");
-    assertTrue(DNSRequester.disable, "DNS should be disabled when noDNS is true");
+    assertTrue(isDnsRequesterDisabled(), "DNS should be disabled when noDNS is true");
   }
 
   @Test
@@ -128,7 +132,7 @@ class NodeStarterTest {
       File portDir = new File(tmpDir, "12345");
       assertEquals(new File(portDir, "throttle.dat").toString(), sfs.get("node.throttleFile"));
 
-      // And ensure the peers list is cleared on the returned node
+      // And ensure the peer list is cleared on the returned node
       verify(node.network().peers(), times(1)).removeAllPeers();
     }
   }
@@ -441,11 +445,15 @@ class NodeStarterTest {
   private static void resetNodeStarterStatics() throws ReflectiveOperationException {
     clearStaticBoolean("isStarted");
     clearStaticBoolean("isTestingVM");
-    clearStaticObject("nodestarter_osgi");
+    clearNodeStarterOsgi();
   }
 
   private static void clearDnsRequesterDisable() {
-    DNSRequester.disable = false;
+    DNSRequester.setDisabledForTests(false);
+  }
+
+  private static boolean isDnsRequesterDisabled() {
+    return DNSRequester.isDisabledForTests();
   }
 
   private static void clearStaticBoolean(String field)
@@ -455,9 +463,8 @@ class NodeStarterTest {
     f.setBoolean(null, false);
   }
 
-  private static void clearStaticObject(String field)
-      throws NoSuchFieldException, IllegalAccessException {
-    Field f = NodeStarter.class.getDeclaredField(field);
+  private static void clearNodeStarterOsgi() throws NoSuchFieldException, IllegalAccessException {
+    Field f = NodeStarter.class.getDeclaredField("nodestarter_osgi");
     f.setAccessible(true);
     f.set(null, null);
   }

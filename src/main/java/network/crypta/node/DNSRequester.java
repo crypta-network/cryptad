@@ -38,6 +38,24 @@ public class DNSRequester implements Runnable {
     this.node = node;
   }
 
+  /**
+   * Returns whether DNS lookups are disabled for simulation or test environments.
+   *
+   * @return {@code true} when DNS requester work is disabled for tests
+   */
+  public static boolean isDisabledForTests() {
+    return disable;
+  }
+
+  /**
+   * Enables or disables DNS requester work for simulation or test environments.
+   *
+   * @param disabled {@code true} to skip DNS requester work in tests
+   */
+  public static void setDisabledForTests(boolean disabled) {
+    DNSRequester.disable = disabled;
+  }
+
   public void start() {
     LOG.info("Starting DNSRequester");
     // Schedule the worker on the node's executor with a descriptive thread name.

@@ -1,7 +1,7 @@
 package network.crypta.crypt;
 
 import java.security.SecureRandom;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;

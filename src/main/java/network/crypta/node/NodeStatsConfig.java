@@ -7,6 +7,7 @@ import network.crypta.config.LongCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
