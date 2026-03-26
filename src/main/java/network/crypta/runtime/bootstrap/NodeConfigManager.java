@@ -1,4 +1,4 @@
-package network.crypta.node.subsystem;
+package network.crypta.runtime.bootstrap;
 
 import java.util.Locale;
 import java.util.MissingResourceException;
