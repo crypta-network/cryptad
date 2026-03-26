@@ -4,7 +4,7 @@ import java.io.File;
 import java.util.Objects;
 import java.util.function.Consumer;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.NodeStarter.TestNodeParameters;
+import network.crypta.runtime.bootstrap.NodeStarter.TestNodeParameters;
 import network.crypta.support.PriorityAwareExecutor;
 
 /**

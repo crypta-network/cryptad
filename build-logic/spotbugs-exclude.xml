@@ -87,7 +87,7 @@
 
   <Match>
     <Bug pattern="MS_EXPOSE_REP"/>
-    <Class name="network.crypta.node.NodeStarter"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeStarter"/>
     <Method name="getGlobalSecureRandom"/>
   </Match>
 
@@ -1250,7 +1250,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.NodeStarter$TestNodeParameters"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeStarter$TestNodeParameters"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

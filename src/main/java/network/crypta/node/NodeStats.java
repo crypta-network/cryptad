@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTimeCallback;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;

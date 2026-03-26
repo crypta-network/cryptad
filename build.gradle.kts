@@ -417,7 +417,7 @@ val nodeRuntimeJvmArgs =
 
 tasks.named<JavaExec>("run") {
   description = "Runs Cryptad daemon via NodeStarter"
-  mainClass.set("network.crypta.node.NodeStarter")
+  mainClass.set("network.crypta.runtime.bootstrap.NodeStarter")
   jvmArgs(nodeRuntimeJvmArgs)
 }
 

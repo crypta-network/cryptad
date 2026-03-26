@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

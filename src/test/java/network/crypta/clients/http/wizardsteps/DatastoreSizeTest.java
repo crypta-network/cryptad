@@ -7,7 +7,7 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.Fields;

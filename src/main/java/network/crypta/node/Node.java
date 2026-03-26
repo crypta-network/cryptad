@@ -40,6 +40,7 @@ import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
@@ -531,6 +532,31 @@ public final class Node implements TimeSkewDetectorCallback {
    */
   public NodeStarter getNodeStarter() {
     return nodeStarter;
+  }
+
+  /**
+   * Creates a node instance for the runtime bootstrap layer.
+   *
+   * <p>This factory preserves the historical construction path after {@link NodeStarter} moved out
+   * of {@code network.crypta.node}. It keeps the constructor package-local while allowing the
+   * bootstrap package to instantiate nodes without reflective access.
+   *
+   * @param config the persisted node configuration
+   * @param r the primary random source, or {@code null} to use the default secure source
+   * @param weakRandom the fast random source, or {@code null} to derive one from the secure source
+   * @param ns the associated starter, or {@code null} for test bootstrap
+   * @param executor the executor used by the node runtime
+   * @return a newly constructed node instance
+   * @throws NodeInitException if the node initialization fails
+   */
+  public static Node createForBootstrap(
+      PersistentConfig config,
+      RandomSource r,
+      RandomSource weakRandom,
+      NodeStarter ns,
+      PriorityAwareExecutor executor)
+      throws NodeInitException {
+    return new Node(config, r, weakRandom, ns, executor);
   }
 
   /**

@@ -18,7 +18,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeStarter.TestNodeParameters;
+import network.crypta.runtime.bootstrap.NodeStarter.TestNodeParameters;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.TempBucketFactory;

@@ -7,6 +7,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.IOStatisticCollector;
 import network.crypta.io.comm.Message;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import org.jetbrains.annotations.NotNull;

@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.bootstrap;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,8 +28,10 @@ import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
-import network.crypta.runtime.bootstrap.LoggingConfigHandler;
-import network.crypta.runtime.bootstrap.NodeCli;
+import network.crypta.node.DNSRequester;
+import network.crypta.node.Node;
+import network.crypta.node.NodeFile;
+import network.crypta.node.NodeInitException;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.Logging;
@@ -138,16 +140,15 @@ public class NodeStarter implements WrapperListener {
     // Do not cache DNS results; tests often rely on dynamic hostnames.
     Security.setProperty("networkaddress.cache.ttl", "0");
     Security.setProperty("networkaddress.cache.negative.ttl", "0");
+    setDNSRequesterDisabled(noDNS);
 
     // Initialize RNG, defaulting to Yarrow if none supplied.
     RandomSource random = randomSource != null ? randomSource : new Yarrow();
-    getGlobalSecureRandom();
+    warmGlobalSecureRandom();
 
     if (enablePlug) {
       startKeepAlivePlugThread();
     }
-
-    DNSRequester.disable = noDNS;
 
     return random;
   }
@@ -166,6 +167,20 @@ public class NodeStarter implements WrapperListener {
     if (!dir.mkdir() && (!dir.exists() || !dir.isDirectory())) {
       LOG.error("Test base directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
+    }
+  }
+
+  private static void setDNSRequesterDisabled(boolean noDNS) {
+    DNSRequester.setDisabledForTests(noDNS);
+  }
+
+  private static void warmGlobalSecureRandom() {
+    SecureRandom globalSecureRandom = getGlobalSecureRandom();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Global secure random ready (algorithm={}, provider={})",
+          globalSecureRandom.getAlgorithm(),
+          globalSecureRandom.getProvider().getName());
     }
   }
 
@@ -290,7 +305,8 @@ public class NodeStarter implements WrapperListener {
     PersistentConfig config = new PersistentConfig(configFS);
 
     Node node =
-        new Node(config, params.getRandom(), params.getRandom(), null, params.getExecutor());
+        Node.createForBootstrap(
+            config, params.getRandom(), params.getRandom(), null, params.getExecutor());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -408,8 +424,8 @@ public class NodeStarter implements WrapperListener {
   /**
    * Returns the process-wide {@link SecureRandom} shared with {@link CryptoRandoms}.
    *
-   * <p>Node bootstrap calls this during startup so the shared instance is force-seeded before later
-   * cryptographic operations use it.
+   * <p>Node bootstrap calls this during startup, so the shared instance is force-seeded before
+   * later cryptographic operations use it.
    *
    * @return shared {@link SecureRandom} instance
    */
@@ -533,12 +549,12 @@ public class NodeStarter implements WrapperListener {
     WrapperManager.signalStarting(500000);
 
     startKeepAliveNativePlugThread();
-    getGlobalSecureRandom();
+    warmGlobalSecureRandom();
 
     initSSL(cfg);
 
     try {
-      node = new Node(cfg, null, null, this, executor);
+      node = Node.createForBootstrap(cfg, null, null, this, executor);
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");

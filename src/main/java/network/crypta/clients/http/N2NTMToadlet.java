@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessageSendStatus;

@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

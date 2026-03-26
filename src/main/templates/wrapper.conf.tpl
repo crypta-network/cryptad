@@ -17,7 +17,7 @@ wrapper.java.additional.8=--add-opens=java.base/sun.nio.ch=ALL-UNNAMED
 wrapper.java.additional.9=-enableassertions:freenet
 
 # Main class
-wrapper.java.mainclass=network.crypta.node.NodeStarter
+wrapper.java.mainclass=network.crypta.runtime.bootstrap.NodeStarter
 
 # Console and log
 wrapper.console.format=PM

@@ -6,7 +6,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.node.LocationManager;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
-import network.crypta.node.NodeStarter;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.FileUtil;
