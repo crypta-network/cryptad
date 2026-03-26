@@ -7,17 +7,19 @@ import network.crypta.config.SubConfig;
 /**
  * Supplies the runtime-facing services that {@link FProxyToadlet} needs from the live daemon.
  *
- * <p>This interface keeps the HTTP-side FProxy code coupled to a narrow, package-local contract
- * instead of the full node core. The surface is intentionally small: it exposes only the client
- * context, threat-level state, download-policy checks, background execution, and the FProxy
- * sub-configuration needed to preserve current behavior. Code in {@code clients/http} can depend on
- * this seam without pulling in broader node assembly concerns.
+ * <p>This interface is public only so runtime-owned HTTP bootstrap adapters can implement it from
+ * outside {@code network.crypta.clients.http}. It is not a new platform API. The seam keeps the
+ * HTTP-side FProxy code coupled to a narrow contract instead of the full node core. The surface is
+ * intentionally small: it exposes only the client context, threat-level state, download-policy
+ * checks, background execution, and the FProxy sub-configuration needed to preserve current
+ * behavior. Code in {@code clients/http} can depend on this seam without pulling in broader node
+ * assembly concerns.
  *
  * <p>Implementations typically wrap a long-lived daemon object and delegate directly. Callers are
  * expected to get one instance during HTTP bootstrap and reuse it for the lifetime of the toadlet
  * registration.
  */
-interface FProxyRuntimeSupport {
+public interface FProxyRuntimeSupport {
 
   /**
    * Returns the client context used to schedule and track FProxy fetch operations.

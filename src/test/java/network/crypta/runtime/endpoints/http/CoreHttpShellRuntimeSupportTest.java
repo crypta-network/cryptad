@@ -1,4 +1,4 @@
-package network.crypta.clients.http;
+package network.crypta.runtime.endpoints.http;
 
 import java.io.File;
 import java.util.List;
@@ -7,8 +7,11 @@ import java.util.stream.Stream;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
+import network.crypta.clients.http.FProxyFetchTracker;
+import network.crypta.clients.http.FProxyToadlet;
+import network.crypta.clients.http.HttpShellFProxyBootstrap;
+import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.clients.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -20,6 +23,7 @@ import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;

@@ -34,6 +34,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.SSL;
+import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
@@ -493,13 +494,13 @@ public final class SimpleToadletServer
   /**
    * Publishes the initialized node core to request handlers through the HTTP-local runtime adapter.
    *
-   * <p>This compatibility shim wraps the supplied core in {@link CoreHttpShellRuntimeSupport}. The
-   * runtime support reference is written with volatile semantics, so listener threads see it after
-   * startup. Call this exactly once, immediately after the node finishes constructing its {@link
-   * NodeClientCore}, and before invoking {@link #createFproxy()} or {@link #start()}. When the
-   * runtime support exposes runtime SPI ports, this method also late-injects the detached
-   * page-chrome port into the shared {@link PageMaker}. Passing {@code null} leaves the server
-   * unable to service requests.
+   * <p>This compatibility shim wraps the supplied core in {@link
+   * network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport}. The runtime support
+   * reference is written with volatile semantics, so listener threads see it after startup. Call
+   * this exactly once, immediately after the node finishes constructing its {@link NodeClientCore},
+   * and before invoking {@link #createFproxy()} or {@link #start()}. When the runtime support
+   * exposes runtime SPI ports, this method also late-injects the detached page-chrome port into the
+   * shared {@link PageMaker}. Passing {@code null} leaves the server unable to service requests.
    *
    * @param core fully constructed {@link NodeClientCore}; must not be {@code null}.
    */

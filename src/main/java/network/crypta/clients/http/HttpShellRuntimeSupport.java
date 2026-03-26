@@ -9,15 +9,15 @@ import network.crypta.support.Ticker;
 /**
  * Defines the daemon-backed services that the HTTP shell still needs at runtime.
  *
- * <p>This interface is intentionally package-private and scoped to {@code
- * network.crypta.clients.http}. It narrows the remaining surface that {@link SimpleToadletServer}
- * uses while the larger daemon bootstrap still starts from the legacy node core. Implementations
- * may expose old HTTP-local concepts such as alerts, ticker access, and FProxy bootstrap work, but
- * the seam is not a new cross-module platform abstraction. Its purpose is to keep shell behavior
- * explicit, locally testable, and detached from direct {@link network.crypta.node.NodeClientCore}
- * field access inside the server itself.
+ * <p>This interface is public only so runtime-owned HTTP bootstrap adapters can implement it from
+ * outside {@code network.crypta.clients.http}. It is not a new platform API. The seam narrows the
+ * remaining surface that {@link SimpleToadletServer} uses while the larger daemon bootstrap still
+ * starts from the legacy node core. Implementations may expose old HTTP-local concepts such as
+ * alerts, ticker access, and FProxy bootstrap work, but the seam is not a new cross-module platform
+ * abstraction. Its purpose is to keep shell behavior explicit, locally testable, and detached from
+ * direct {@link network.crypta.node.NodeClientCore} field access inside the server itself.
  */
-interface HttpShellRuntimeSupport {
+public interface HttpShellRuntimeSupport {
 
   /**
    * Returns the runtime ports used by the shell for low-level services such as randomness.

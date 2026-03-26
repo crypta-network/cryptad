@@ -14,19 +14,43 @@ import network.crypta.clients.http.bookmark.BookmarkManager;
  * FProxyToadlet} has already been published to client endpoints by the time the shell receives this
  * bundle.
  *
+ * <p>This record is public only so runtime-owned HTTP bootstrap adapters can construct and return
+ * the bundle from outside {@code network.crypta.clients.http}. It is not a new platform API.
+ *
  * @param bookmarkManager bookmark manager wired against the daemon-backed bookmark runtime support
  * @param client interactive client shared by HTTP toadlets created during shell startup
  * @param fproxy root FProxy toadlet that has already been connected to daemon client endpoints
  */
-record HttpShellFProxyBootstrap(
+public record HttpShellFProxyBootstrap(
     BookmarkManager bookmarkManager, HighLevelSimpleClient client, FProxyToadlet fproxy) {
+
+  /**
+   * Creates the bundle while keeping {@link FProxyToadlet}'s constructor package-owned.
+   *
+   * <p>Runtime-owned HTTP bootstrap glue calls this factory when it needs the package-local toadlet
+   * instantiation behavior without widening {@link FProxyToadlet} itself.
+   *
+   * @param bookmarkManager bookmark manager used by the surrounding shell bootstrap
+   * @param client interactive client shared by FProxy and sibling toadlets
+   * @param runtimeSupport FProxy runtime adapter used by the root toadlet
+   * @param fetchTracker fetch tracker shared by root FProxy request handling
+   * @return bootstrap bundle containing the constructed root FProxy toadlet
+   */
+  public static HttpShellFProxyBootstrap create(
+      BookmarkManager bookmarkManager,
+      HighLevelSimpleClient client,
+      FProxyRuntimeSupport runtimeSupport,
+      FProxyFetchTracker fetchTracker) {
+    return new HttpShellFProxyBootstrap(
+        bookmarkManager, client, new FProxyToadlet(client, runtimeSupport, fetchTracker));
+  }
 
   /**
    * Validates that every required bootstrap collaborator is present.
    *
    * @throws NullPointerException if any bootstrap collaborator is {@code null}
    */
-  HttpShellFProxyBootstrap {
+  public HttpShellFProxyBootstrap {
     Objects.requireNonNull(bookmarkManager);
     Objects.requireNonNull(client);
     Objects.requireNonNull(fproxy);
