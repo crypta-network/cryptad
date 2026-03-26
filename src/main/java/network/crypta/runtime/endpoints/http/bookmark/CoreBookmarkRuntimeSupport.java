@@ -1,8 +1,10 @@
-package network.crypta.clients.http.bookmark;
+package network.crypta.runtime.endpoints.http.bookmark;
 
 import java.io.File;
 import java.util.Objects;
 import network.crypta.client.async.USKCallback;
+import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.clients.http.bookmark.BookmarkRuntimeSupport;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
@@ -20,7 +22,8 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * bookmark-local operations into the existing node services for user-directory file resolution, USK
  * subscription management, update-priority prefetch, and ticker-backed delayed work. That keeps
  * bookmark loading, update handling, and lazy persistence behavior stable while moving the direct
- * core dependency out of {@link BookmarkManager}.
+ * core dependency out of {@link BookmarkManager} and into runtime-owned HTTP endpoint bootstrap
+ * code.
  *
  * <p>The adapter is intentionally small and keeps only an immutable reference to the supplied node
  * core. It is not a general-purpose node facade. Callers are expected to construct it close to

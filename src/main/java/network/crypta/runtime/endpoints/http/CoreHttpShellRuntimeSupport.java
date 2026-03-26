@@ -1,10 +1,15 @@
-package network.crypta.clients.http;
+package network.crypta.runtime.endpoints.http;
 
 import java.io.File;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.FProxyFetchTracker;
+import network.crypta.clients.http.FProxyRuntimeSupport;
+import network.crypta.clients.http.FProxyToadlet;
+import network.crypta.clients.http.HttpShellFProxyBootstrap;
+import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.clients.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.Config;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
@@ -12,22 +17,23 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 
 /**
  * Adapts {@link NodeClientCore} to the narrow runtime surface used by {@link SimpleToadletServer}.
  *
- * <p>This record keeps the remaining HTTP-shell coupling local to {@code
- * network.crypta.clients.http} instead of letting the server reach directly into the daemon core.
- * Callers normally create one instance during a server bootstrap and then treat it as an immutable
+ * <p>This record keeps the remaining HTTP-shell coupling under runtime-owned HTTP endpoint
+ * bootstrap code instead of letting the server reach directly into the daemon core. Callers
+ * normally create one instance during a server bootstrap and then treat it as an immutable
  * delegate. The adapter is intentionally HTTP-local rather than a reusable platform API: it still
  * exposes alerts, config storage, upload permission checks, and FProxy bootstrap work because those
  * behaviors remain part of the HTTP shell in the current architecture.
  *
  * @param core daemon core that backs delegated shell services and FProxy bootstrap wiring
  */
-record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRuntimeSupport {
+public record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRuntimeSupport {
   /**
    * Creates a core-backed HTTP runtime adapter.
    *
@@ -37,7 +43,7 @@ record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRunt
    * @param core daemon core that supplies the shell-level runtime services
    * @throws NullPointerException if {@code core} is {@code null}
    */
-  CoreHttpShellRuntimeSupport(NodeClientCore core) {
+  public CoreHttpShellRuntimeSupport(NodeClientCore core) {
     this.core = Objects.requireNonNull(core);
   }
 
@@ -118,9 +124,12 @@ record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRunt
             client.getFetchContext(),
             new RequestClientBuilder().realTime().build());
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
-    FProxyToadlet fproxy = new FProxyToadlet(client, fproxyRuntimeSupport, fetchTracker);
+    HttpShellFProxyBootstrap bootstrap =
+        HttpShellFProxyBootstrap.create(
+            bookmarkManager, client, fproxyRuntimeSupport, fetchTracker);
+    FProxyToadlet fproxy = bootstrap.fproxy();
     core.getEndpoints().setFProxy(fproxy);
-    return new HttpShellFProxyBootstrap(bookmarkManager, client, fproxy);
+    return bootstrap;
   }
 
   /**

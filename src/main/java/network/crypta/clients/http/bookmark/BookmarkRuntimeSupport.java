@@ -25,7 +25,7 @@ import network.crypta.keys.USK;
  *   <li>Queue delayed background jobs without exposing ticker details.
  * </ul>
  *
- * @see CoreBookmarkRuntimeSupport
+ * @see network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport
  */
 public interface BookmarkRuntimeSupport {
 

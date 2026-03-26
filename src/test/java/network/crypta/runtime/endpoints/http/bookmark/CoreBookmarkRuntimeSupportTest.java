@@ -1,4 +1,4 @@
-package network.crypta.clients.http.bookmark;
+package network.crypta.runtime.endpoints.http.bookmark;
 
 import java.io.IOException;
 import java.nio.file.Path;
