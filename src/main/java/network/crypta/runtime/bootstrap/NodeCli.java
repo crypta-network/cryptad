@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.bootstrap;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import network.crypta.fs.Dirs;
+import network.crypta.node.Version;
 import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.ExitCode;

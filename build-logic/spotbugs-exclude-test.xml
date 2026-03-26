@@ -44,7 +44,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP2"/>
-    <Class name="~network\.crypta\.node\.NodeCliTest\$.*\$\$inlined\$assertThrows\$1"/>
+    <Class name="~network\.crypta\.runtime\.bootstrap\.NodeCliTest\$.*\$\$inlined\$assertThrows\$1"/>
     <Method name="&lt;init&gt;"/>
   </Match>
   <Match>
@@ -195,12 +195,12 @@
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.node.NodeCliTest"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeCliTest"/>
     <Method name="config_file_flag_overrides_positional"/>
   </Match>
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.node.NodeCliTest"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeCliTest"/>
     <Method name="explicitConfigFile_whenPositionalProvided_expectPositionalValue"/>
   </Match>
   <Match>
