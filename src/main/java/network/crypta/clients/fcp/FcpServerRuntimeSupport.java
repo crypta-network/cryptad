@@ -7,16 +7,18 @@ import network.crypta.support.io.PersistentTempBucketFactory;
 /**
  * Narrow runtime support seam for server-owned FCP infrastructure.
  *
- * <p>This package-local adapter keeps connection handling, persistent request plumbing, and inbound
- * message parsing independent of direct {@code NodeClientCore} access while preserving the current
- * runtime behavior. It exposes only the live client context, persistence-availability check, bucket
+ * <p>This adapter keeps connection handling, persistent request plumbing, and inbound message
+ * parsing independent of direct {@code NodeClientCore} access while preserving the current runtime
+ * behavior. It exposes only the live client context, persistence-availability check, bucket
  * factories, and secure randomness currently required by the FCP server's infrastructure classes.
  *
- * <p>The seam is intentionally local to {@code clients.fcp}. It is not a new shared platform API;
- * callers should add methods only when a later refactoring needs another demonstrably
- * server-infrastructure-specific capability.
+ * <p>The seam remains owned by {@code clients.fcp} even though core-backed implementations now live
+ * under runtime bootstrap wiring. It is public only so those runtime-owned adapters can implement
+ * it from outside this package. It is not a new shared platform API; callers should add methods
+ * only when a later refactoring needs another demonstrably server-infrastructure-specific
+ * capability.
  */
-interface FcpServerRuntimeSupport {
+public interface FcpServerRuntimeSupport {
 
   /**
    * Returns the live client context used for request lifecycle and persistent job work.

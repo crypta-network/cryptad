@@ -12,26 +12,28 @@ import network.crypta.support.api.RandomAccessBucket;
 /**
  * Narrow runtime support seam for the FCP insert and USK subscription path.
  *
- * <p>This package-local adapter keeps insert request creation, upload bucket allocation, and USK
- * subscription wiring independent of direct {@code NodeClientCore} access while preserving the
- * current runtime behavior. It exposes only the insert-specific services needed by {@link
- * ClientPutBase}, {@link ClientPut}, {@link ClientPutDir}, {@link ClientPutPreparedDataFactory},
- * {@link ClientPutMessage}, and {@link SubscribeUSK}: the live {@link ClientContext}, the default
- * persistent {@link InsertContext}, transfer-policy checks, bucket factories, forever-persistent
- * upload allocation, and the {@link USKManager}.
+ * <p>This adapter keeps insert request creation, upload bucket allocation, and USK subscription
+ * wiring independent of direct {@code NodeClientCore} access while preserving the current runtime
+ * behavior. It exposes only the insert-specific services needed by {@link ClientPutBase}, {@link
+ * ClientPut}, {@link ClientPutDir}, {@link ClientPutPreparedDataFactory}, {@link ClientPutMessage},
+ * and {@link SubscribeUSK}: the live {@link ClientContext}, the default persistent {@link
+ * InsertContext}, transfer-policy checks, bucket factories, forever-persistent upload allocation,
+ * and the {@link USKManager}.
  *
  * <p>Typical call paths get one instance from {@link FCPServer} and thread it through request
  * constructors while they normalize URIs, validate disk access, allocate temporary buckets, and
- * register USK listeners. The seam is intentionally small and local to {@code clients.fcp}. It is
- * not a general FCP runtime facade and does not widen {@code runtime-spi}; callers should add new
- * methods only when a later refactoring needs a demonstrably insert- or USK-specific seam.
+ * register USK listeners. The seam remains owned by {@code clients.fcp} even though core-backed
+ * implementations now live under runtime bootstrap wiring. It is public only so those runtime-owned
+ * adapters can implement it from outside the package. It is not a general FCP runtime facade and
+ * does not widen {@code runtime-spi}; callers should add new methods only when a later refactoring
+ * needs a demonstrably insert- or USK-specific seam.
  *
  * <p>Implementations are expected to be lightweight adapters over live daemon services rather than
  * detached snapshots. Callers therefore treat returned collaborators as the current runtime state
  * and should not assume ownership of shared resources beyond the normal contracts of the underlying
  * types.
  */
-interface FcpInsertRuntimeSupport {
+public interface FcpInsertRuntimeSupport {
 
   /**
    * Returns the live client context used to start, resume, or validate insert requests.

@@ -1,6 +1,7 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;

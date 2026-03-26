@@ -1,18 +1,25 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.util.Objects;
+import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
+import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
+import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
+import network.crypta.clients.fcp.FcpServerDependencies;
+import network.crypta.clients.fcp.FcpServerRuntimeSupport;
+import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
  * Builds the core-backed dependency bundle used by FCP server bootstrap.
  *
- * <p>This factory is intentionally local to {@code clients.fcp}. Callers use it at the bootstrap
- * boundary, typically from node startup code such as {@code
+ * <p>This factory is runtime-owned bootstrap glue. Callers use it at the runtime boundary,
+ * typically from node startup code such as {@code
  * network.crypta.runtime.endpoints.NodeClientPersistence}, to translate the remaining {@link
- * NodeClientCore}-backed services into the narrow package-local seams that {@link FCPServer}
- * accepts. That keeps the server constructor and configuration registrar free of direct daemon-core
- * references while preserving the runtime behavior that older code paths expected.
+ * NodeClientCore}-backed services into the narrow seams that {@link FCPServer} accepts. That keeps
+ * main code under {@code clients.fcp} free of direct daemon-core imports while preserving the
+ * runtime behavior that older code paths expected.
  *
  * <p>The factory is stateless and creates one fresh {@link FcpServerDependencies} bundle per call.
  * Each bundle contains lightweight adapters over live daemon services rather than detached

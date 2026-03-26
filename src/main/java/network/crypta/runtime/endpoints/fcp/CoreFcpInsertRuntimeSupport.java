@@ -1,4 +1,4 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -7,6 +7,8 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.USKManager;
+import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.BucketFactory;
@@ -16,10 +18,10 @@ import network.crypta.support.api.RandomAccessBucket;
  * Core-backed implementation of {@link FcpInsertRuntimeSupport}.
  *
  * <p>This adapter is the insert/USK assembly seam between {@code clients.fcp} and the broader
- * daemon runtime. It keeps insert-specific wiring local to this package by translating the small
- * set of insert dependencies into direct delegations on the wrapped {@link NodeClientCore} plus the
- * transfer-access policy supplier used for upload validation. The adapter is immutable after
- * construction and observes the live daemon state on each call.
+ * daemon runtime. It keeps insert-specific wiring local to runtime-owned bootstrap code by
+ * translating the small set of insert dependencies into direct delegations on the wrapped {@link
+ * NodeClientCore} plus the transfer-access policy supplier used for upload validation. The adapter
+ * is immutable after construction and observes the live daemon state on each call.
  *
  * @param core live daemon core used for insert contexts, bucket allocation, and USK subscriptions
  * @param transferAccessSupplier live transfer-policy lookup used for upload DDA checks; callers

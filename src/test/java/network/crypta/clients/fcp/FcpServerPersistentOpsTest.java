@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
@@ -12,11 +14,14 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
+import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.BucketFactory;
+import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -636,7 +641,39 @@ class FcpServerPersistentOpsTest {
   }
 
   private FcpServerPersistentOps newOps(PersistentRequestRoot root) {
-    FcpServerRuntimeSupport runtimeSupport = new CoreFcpServerRuntimeSupport(core);
+    Supplier<ClientContext> clientContextSupplier = core::getClientContext;
+    BooleanSupplier persistenceDisabledSupplier = core::killedDatabase;
+    Supplier<BucketFactory> tempBucketFactorySupplier = core::getTempBucketFactory;
+    Supplier<PersistentTempBucketFactory> persistentTempBucketFactorySupplier =
+        core::getPersistentTempBucketFactory;
+    Supplier<RandomSource> randomSourceSupplier = core::getRandom;
+    FcpServerRuntimeSupport runtimeSupport =
+        new FcpServerRuntimeSupport() {
+          @Override
+          public ClientContext clientContext() {
+            return clientContextSupplier.get();
+          }
+
+          @Override
+          public boolean persistenceDisabled() {
+            return persistenceDisabledSupplier.getAsBoolean();
+          }
+
+          @Override
+          public BucketFactory tempBucketFactory() {
+            return tempBucketFactorySupplier.get();
+          }
+
+          @Override
+          public PersistentTempBucketFactory persistentTempBucketFactory() {
+            return persistentTempBucketFactorySupplier.get();
+          }
+
+          @Override
+          public void fillSecureRandom(byte[] bytes) {
+            randomSourceSupplier.get().nextBytes(bytes);
+          }
+        };
     lenient().when(server.runtime()).thenReturn(runtimePorts);
     lenient().when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     lenient().when(server.fetchRuntimeSupport()).thenReturn(fetchRuntimeSupport);

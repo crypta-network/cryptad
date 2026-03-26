@@ -1,10 +1,12 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.io.IOException;
 import java.util.Objects;
 import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
@@ -13,10 +15,10 @@ import network.crypta.support.api.Bucket;
  * Core-backed implementation of {@link FcpFetchRuntimeSupport}.
  *
  * <p>This adapter is the GET-path assembly seam between {@code clients.fcp} and the broader daemon
- * runtime. It keeps the fetch-specific wiring local to this package by translating the small set of
- * GET dependencies into direct delegations on the wrapped {@link NodeClientCore} plus the owning
- * server's transfer-access policy supplier. The adapter is immutable after construction and
- * observes the live daemon state on each call.
+ * runtime. It keeps the fetch-specific wiring local to runtime-owned bootstrap code by translating
+ * the small set of GET dependencies into direct delegations on the wrapped {@link NodeClientCore}
+ * plus the owning server's transfer-access policy supplier. The adapter is immutable after
+ * construction and observes the live daemon state on each call.
  *
  * <p>The split between {@code core} and {@code transferAccessSupplier} is intentional. Fetch
  * creation still needs the live client context and bucket factories from the daemon core, while DDA
@@ -94,7 +96,7 @@ record CoreFcpFetchRuntimeSupport(
    *
    * <p>The bucket comes from the core's bucket factory for the requested persistence class. This
    * keeps Binary Blob storage behavior identical to the pre-refactor GET path while exposing only a
-   * narrow package-local seam to callers.
+   * narrow runtime-support seam to callers.
    *
    * @param maxOutputLength maximum number of bytes the bucket should be prepared to hold
    * @param persistentForever whether the forever-persistent bucket factory should be used
