@@ -14,7 +14,7 @@ import network.crypta.compat.PortForwardProvider;
 import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;

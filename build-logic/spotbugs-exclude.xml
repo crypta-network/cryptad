@@ -432,7 +432,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.subsystem.NodeServicesSubsystem"/>
+    <Class name="network.crypta.runtime.services.NodeServicesSubsystem"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

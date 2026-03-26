@@ -12,6 +12,7 @@ import network.crypta.node.Node;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.runtime.alerts.MeaningfulNodeNameUserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

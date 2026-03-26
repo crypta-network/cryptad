@@ -9,7 +9,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.ConnectionsInstallerSnapshot;
 import network.crypta.runtime.updater.NodeUpdateManager;
 import org.junit.jupiter.api.BeforeEach;

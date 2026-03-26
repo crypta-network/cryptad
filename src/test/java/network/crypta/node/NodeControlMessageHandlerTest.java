@@ -8,7 +8,7 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.subsystem.NodeMessagingSubsystem;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
-import network.crypta.node.subsystem.NodeServicesSubsystem;
+import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.runtime.updater.UpdateOverMandatoryManager;
 import network.crypta.support.Fields;
