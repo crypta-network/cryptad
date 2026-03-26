@@ -1214,7 +1214,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.LoggingConfigHandler"/>
+    <Class name="network.crypta.runtime.bootstrap.LoggingConfigHandler"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
@@ -1230,7 +1230,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.NodeCli"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeCli"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

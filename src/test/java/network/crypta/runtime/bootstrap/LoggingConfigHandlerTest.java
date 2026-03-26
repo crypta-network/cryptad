@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.bootstrap;
 
 import ch.qos.logback.classic.AsyncAppender;
 import ch.qos.logback.classic.Level;

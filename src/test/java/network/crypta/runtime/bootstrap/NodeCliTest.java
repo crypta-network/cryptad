@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.bootstrap;
 
 import java.io.File;
 import org.junit.jupiter.api.Test;
