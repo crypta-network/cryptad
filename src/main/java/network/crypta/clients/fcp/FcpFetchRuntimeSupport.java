@@ -9,20 +9,22 @@ import network.crypta.support.api.Bucket;
 /**
  * Narrow runtime support seam for the FCP GET/fetch path.
  *
- * <p>This package-local adapter keeps the GET request creation and getter wiring independent of
- * direct {@code NodeClientCore} access while preserving the current runtime behavior. It exposes
- * only the fetch-specific services needed by {@link ClientGet}, {@link ClientGetFactory}, and
- * {@link ClientGetGetterFactory}: the live {@link ClientContext}, the default persistent {@link
+ * <p>This adapter keeps the GET request creation and getter wiring independent of direct {@code
+ * NodeClientCore} access while preserving the current runtime behavior. It exposes only the
+ * fetch-specific services needed by {@link ClientGet}, {@link ClientGetFactory}, and {@link
+ * ClientGetGetterFactory}: the live {@link ClientContext}, the default persistent {@link
  * FetchContext}, transfer-policy checks, and binary-blob bucket allocation.
  *
- * <p>The interface is intentionally small and local to {@code clients.fcp}. It is not a general FCP
- * runtime facade and does not widen {@code runtime-spi}; callers should add new methods only when a
- * later refactoring needs a demonstrably GET-specific seam. Typical call flow starts with {@link
- * ClientGetFactory} reading the default context and transfer policy during request construction,
- * then {@link ClientGet} and {@link ClientGetGetterFactory} using the same support object again
- * when the request starts or allocates Binary Blob output.
+ * <p>The interface remains owned by {@code clients.fcp} even though core-backed implementations now
+ * live under runtime bootstrap wiring. It is public only so those runtime-owned adapters can
+ * implement it from outside the package. It is not a general FCP runtime facade and does not widen
+ * {@code runtime-spi}; callers should add new methods only when a later refactoring needs a
+ * demonstrably GET-specific seam. Typical call flow starts with {@link ClientGetFactory} reading
+ * the default context and transfer policy during request construction, then {@link ClientGet} and
+ * {@link ClientGetGetterFactory} using the same support object again when the request starts or
+ * allocates Binary Blob output.
  */
-interface FcpFetchRuntimeSupport {
+public interface FcpFetchRuntimeSupport {
 
   /**
    * Returns the live client context used to start or resume fetch requests.

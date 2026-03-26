@@ -1,5 +1,7 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
+import network.crypta.clients.fcp.FcpServerDependencies;
+import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;

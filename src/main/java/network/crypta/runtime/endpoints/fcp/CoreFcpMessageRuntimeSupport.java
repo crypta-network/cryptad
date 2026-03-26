@@ -1,7 +1,10 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.fcp.FCPConnectionHandler;
+import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
 import network.crypta.node.probe.Listener;

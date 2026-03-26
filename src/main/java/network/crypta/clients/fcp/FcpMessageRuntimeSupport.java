@@ -8,13 +8,15 @@ import network.crypta.node.probe.Type;
 /**
  * Narrow runtime support seam for residual message-level FCP operations.
  *
- * <p>This package-local contract gives the remaining message handlers in {@code clients.fcp} a
- * small, explicit surface for runtime-dependent work that used to reach directly into {@link
+ * <p>This contract gives the remaining message handlers in {@code clients.fcp} a small, explicit
+ * surface for runtime-dependent work that used to reach directly into {@link
  * network.crypta.node.NodeClientCore}. Typical callers get the adapter from {@link
  * FCPServer#messageRuntimeSupport()} and immediately delegate one operation such as peer lookup,
  * shutdown, or probe startup while keeping protocol branching in the message class itself.
  *
- * <p>The interface is intentionally local to the FCP package. It is not part of {@code
+ * <p>The interface remains owned by the FCP package even though the remaining core-backed
+ * implementation now lives under runtime bootstrap wiring. It is public only so that runtime-owned
+ * adapters can implement it from outside {@code clients.fcp}. It is not part of {@code
  * runtime-spi}, and it is not intended to become a general daemon abstraction. Its job is narrower:
  * preserve existing node behavior while removing direct core dependencies from message-level
  * execution paths, so later refactors can adjust server bootstrap and configuration seams without
@@ -27,9 +29,9 @@ import network.crypta.node.probe.Type;
  * </ul>
  *
  * @see FCPServer#messageRuntimeSupport()
- * @see CoreFcpMessageRuntimeSupport
+ * @see network.crypta.runtime.endpoints.fcp.CoreFcpMessageRuntimeSupport
  */
-interface FcpMessageRuntimeSupport {
+public interface FcpMessageRuntimeSupport {
 
   /**
    * Creates a client with the supplied message-level queue and store behavior.

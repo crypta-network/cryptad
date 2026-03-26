@@ -5,6 +5,7 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.io.NetworkInterface;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;

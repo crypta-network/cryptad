@@ -1,7 +1,8 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.util.Objects;
 import network.crypta.client.async.ClientContext;
+import network.crypta.clients.fcp.FcpServerRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.PersistentTempBucketFactory;
@@ -9,16 +10,17 @@ import network.crypta.support.io.PersistentTempBucketFactory;
 /**
  * Core-backed implementation of {@link FcpServerRuntimeSupport}.
  *
- * <p>This adapter keeps the server-owned FCP infrastructure coupled to a narrow, package-local
+ * <p>This adapter keeps the server-owned FCP infrastructure coupled to a narrow runtime-support
  * contract instead of directly to {@link NodeClientCore}. It is an immutable wrapper over the live
  * daemon core and delegates each method directly so connection handlers, persistent ops, and the
  * parser continue to observe the current runtime state.
  *
- * <p>Callers typically get a single instance from {@link FCPServer} during server construction and
- * reuse it for the lifetime of that server. The record does not cache derived state, so every
- * method reflects the current core-backed factories, context, and persistence status at the time of
- * the call. That keeps the seam narrow and reversible while still preserving the same operational
- * behavior that the pre-refactor code saw through direct core access.
+ * <p>Callers typically get a single instance from the runtime-owned FCP bootstrap wiring during
+ * server construction and reuse it for the lifetime of that server. The record does not cache
+ * derived state, so every method reflects the current core-backed factories, context, and
+ * persistence status at the time of the call. That keeps the seam narrow and reversible while still
+ * preserving the same operational behavior that the pre-refactor code saw through direct core
+ * access.
  *
  * @param core live daemon core backing the owning FCP server
  */

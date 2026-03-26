@@ -1,4 +1,4 @@
-package network.crypta.clients.fcp;
+package network.crypta.runtime.endpoints.fcp;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.RandomSource;
