@@ -12,6 +12,7 @@ import network.crypta.node.Node;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
 import network.crypta.node.RequestTag;
+import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1402,11 +1402,11 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.subsystem.NodeBootstrap"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeBootstrap"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.subsystem.NodeConfigManager"/>
+    <Class name="network.crypta.runtime.bootstrap.NodeConfigManager"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

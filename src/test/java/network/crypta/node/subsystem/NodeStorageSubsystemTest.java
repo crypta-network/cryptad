@@ -15,6 +15,7 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.SecurityLevels;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.store.CHKStore;
 import network.crypta.store.FreenetStore;
