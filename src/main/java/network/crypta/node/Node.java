@@ -42,6 +42,7 @@ import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
+import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
@@ -224,7 +225,7 @@ public final class Node implements TimeSkewDetectorCallback {
   /** Node-reference directory (node identity, peers, etc.) */
   private final ProgramDirectory nodeDir;
 
-  /** Config directory (l10n overrides, etc) */
+  /** Config directory (l10n overrides, etc.) */
   final ProgramDirectory cfgDir;
 
   /** User data directory (bookmarks, download lists, etc.) */
@@ -705,7 +706,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             storage.getDatabaseKey(),
             persistentSecret);
     services.setClientCore(clientCoreLocal);
-    services.toadlets().setCore(clientCoreLocal);
+    services.toadlets().setRuntimeSupport(new CoreHttpShellRuntimeSupport(clientCoreLocal));
 
     services.registerJvmVersionAlertIfNeeded();
 

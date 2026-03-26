@@ -103,7 +103,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava compileTestJava`
 
 ## Run tasks
-- Run daemon entrypoint (`NodeStarter`):
+- Run daemon entrypoint (`network.crypta.runtime.bootstrap.NodeStarter`):
   - `./gradlew run`
 - Pass daemon CLI args:
   - `./gradlew run --args="--help"`
