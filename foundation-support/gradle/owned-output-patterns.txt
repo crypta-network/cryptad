@@ -47,6 +47,11 @@ network/crypta/support/URLEncoder*
 network/crypta/support/VirginItemException*
 network/crypta/support/WrapperKeepalive*
 network/crypta/support/XMLCharacterClasses*
+network/crypta/support/http/ExternalLinkSupport*
+network/crypta/support/http/HttpDateParser*
+network/crypta/support/http/HttpFetchSizeLimits*
+network/crypta/support/http/HttpQueryParameters*
+network/crypta/support/http/StaticResourcePaths*
 network/crypta/support/io/AtomicFileMoves*
 network/crypta/support/io/ArrayBucket*
 network/crypta/support/io/ArrayBucketFactory*

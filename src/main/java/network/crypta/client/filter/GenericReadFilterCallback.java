@@ -6,20 +6,21 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
-import network.crypta.clients.http.ExternalLinkToadlet;
-import network.crypta.clients.http.HTTPRequestImpl;
-import network.crypta.clients.http.StaticToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.URIPreEncoder;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
-import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.ExternalLinkSupport;
+import network.crypta.support.http.HttpQueryParameters;
+import network.crypta.support.http.StaticResourcePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +65,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    */
   static final String UNRESERVED = "[a-zA-Z0-9\\-._~]";
 
-  //  pct-encoded   = "%" HEXDIG HEXDIG
+  //  pct-encoded = "%" HEXDIG HEXDIG
   /**
    * Pattern for an RFC 3986 percent-encoded octet. It matches a percent sign followed by two
    * hexadecimal digits. Callers typically combine this with {@link #UNRESERVED} and other tokens to
@@ -181,6 +182,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    * @throws IllegalArgumentException if the {@code FreenetURI} cannot be converted to a relative
    *     {@code URI} due to a syntax error.
    */
+  @SuppressWarnings("unused")
   public GenericReadFilterCallback(
       FreenetURI uri,
       FoundURICallback cb,
@@ -315,7 +317,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
       throw new CommentException(reason);
     }
     if (allowedProtocols.contains(uri.getScheme())) {
-      return ExternalLinkToadlet.escape(uri.toString());
+      return ExternalLinkSupport.escape(uri.toString());
     }
     throw new CommentException(l10n("protocolNotEscaped", "protocol", uri.getScheme()));
   }
@@ -528,11 +530,11 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
     }
   }
 
-  private String processBookmark(HTTPRequest req) throws CommentException {
+  private String processBookmark(QueryParameters req) throws CommentException {
     // allow links to the root to add bookmarks
-    String bookmarkKey = req.getParam("newbookmark");
-    String bookmarkDesc = req.getParam("desc");
-    String bookmarkActivelink = req.getParam("hasAnActivelink", "");
+    String bookmarkKey = req.get("newbookmark");
+    String bookmarkDesc = req.get("desc", "");
+    String bookmarkActivelink = req.get("hasAnActivelink", "");
 
     try {
       FreenetURI furi = new FreenetURI(bookmarkKey);
@@ -550,7 +552,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
   }
 
   private String finishProcess(
-      HTTPRequest req, String overrideType, String path, URI u, boolean noRelative) {
+      QueryParameters req, String overrideType, String path, URI u, boolean noRelative) {
     String typeOverride = computeTypeOverride(req, overrideType);
 
     // Other options are not supported here; only ?type= is considered.
@@ -593,7 +595,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
       FreenetURI furi, URI uri, String overrideType, boolean noRelative, boolean inline) {
     // Valid Freenet URI, allow it
     // Now what about the queries?
-    HTTPRequest req = new HTTPRequestImpl(uri, "GET");
+    QueryParameters req = queryParameters(uri);
     if (cb != null) {
       cb.foundURI(furi);
     }
@@ -635,11 +637,11 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
 
   private String handlePathSpecialCases(URI uri, String path, boolean forBaseHref)
       throws CommentException {
-    HTTPRequest req = new HTTPRequestImpl(uri, "GET");
+    QueryParameters req = queryParameters(uri);
     if (path != null) {
-      if (path.equals("/") && req.isParameterSet("newbookmark") && !forBaseHref) {
+      if (path.equals("/") && req.get("newbookmark") != null && !forBaseHref) {
         return processBookmark(req);
-      } else if (path.startsWith(StaticToadlet.ROOT_URL)) {
+      } else if (path.startsWith(StaticResourcePaths.ROOT_URL)) {
         // @see bug #2297
         return path;
       } else if (linkFilterExceptionProvider != null
@@ -729,8 +731,8 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
     return s;
   }
 
-  private String computeTypeOverride(HTTPRequest req, String overrideType) {
-    String typeOverride = req.getParam("type", null);
+  private String computeTypeOverride(QueryParameters req, String overrideType) {
+    String typeOverride = req.get("type", null);
     if (overrideType != null) {
       typeOverride = overrideType;
     }
@@ -781,5 +783,24 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
       sb.append(u.getRawFragment());
     }
     return new URI(sb.toString());
+  }
+
+  private QueryParameters queryParameters(URI uri) {
+    return new QueryParameters(HttpQueryParameters.parseUriParameters(uri.getRawQuery(), true));
+  }
+
+  private record QueryParameters(Map<String, List<String>> values) {
+    String get(String name) {
+      List<String> valuesForName = values.get(name);
+      if (valuesForName == null || valuesForName.isEmpty()) {
+        return null;
+      }
+      return valuesForName.getFirst();
+    }
+
+    String get(String name, String defaultValue) {
+      String value = get(name);
+      return value != null ? value : defaultValue;
+    }
   }
 }

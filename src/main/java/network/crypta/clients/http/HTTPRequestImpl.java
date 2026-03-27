@@ -16,7 +16,6 @@ import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.StringTokenizer;
 import javax.naming.SizeLimitExceededException;
 import network.crypta.support.Fields;
 import network.crypta.support.MultiValueTable;
@@ -27,6 +26,7 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.http.HttpQueryParameters;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.LineReadingInputStream;
 import org.slf4j.Logger;
@@ -293,57 +293,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   public static Map<String, List<String>> parseUriParameters(
       String queryString, boolean doUrlDecoding) {
-    if (LOG.isDebugEnabled()) {
-      int queryLength = queryString == null ? 0 : queryString.length();
-      LOG.debug("Parse URI parameters (queryLength={} urlDecode={})", queryLength, doUrlDecoding);
-    }
-
-    Map<String, List<String>> parameters = new HashMap<>();
-    if ((queryString == null) || queryString.isEmpty()) {
-      return parameters;
-    }
-
-    StringTokenizer tokenizer = new StringTokenizer(queryString, "&");
-    while (tokenizer.hasMoreTokens()) {
-      String nameValueToken = tokenizer.nextToken();
-      if (LOG.isDebugEnabled())
-        LOG.debug("Parse query token (tokenLength={})", nameValueToken.length());
-      ParameterNameValue parsedToken = parseNameValueToken(nameValueToken, doUrlDecoding);
-      parameters
-          .computeIfAbsent(parsedToken.name(), ignored -> new ArrayList<>())
-          .add(parsedToken.value());
-    }
-
-    return parameters;
-  }
-
-  private static ParameterNameValue parseNameValueToken(
-      String nameValueToken, boolean doUrlDecoding) {
-    String name;
-    String value = "";
-    int indexOfEqualsChar = nameValueToken.indexOf('=');
-    if (indexOfEqualsChar < 0) {
-      name = nameValueToken;
-      if (LOG.isDebugEnabled()) LOG.debug("Parsed token without value (name={})", name);
-    } else if (indexOfEqualsChar == nameValueToken.length() - 1) {
-      name = nameValueToken.substring(0, indexOfEqualsChar);
-      if (LOG.isDebugEnabled()) LOG.debug("Parsed token with empty value (name={})", name);
-    } else {
-      name = nameValueToken.substring(0, indexOfEqualsChar);
-      value = nameValueToken.substring(indexOfEqualsChar + 1);
-      if (LOG.isDebugEnabled())
-        LOG.debug("Parsed token with value (name={} valueLength={})", name, value.length());
-    }
-
-    if (doUrlDecoding) {
-      name = URLDecoder.decode(name, StandardCharsets.UTF_8);
-      value = URLDecoder.decode(value, StandardCharsets.UTF_8);
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Decoded parameter name (name={})", name);
-        LOG.debug("Decoded parameter value length (valueLength={})", value.length());
-      }
-    }
-    return new ParameterNameValue(name, value);
+    return HttpQueryParameters.parseUriParameters(queryString, doUrlDecoding);
   }
 
   private static String[] splitOnChar(String input, char delimiter) {
@@ -360,8 +310,6 @@ public class HTTPRequestImpl implements HTTPRequest {
     }
     return parts.toArray(new String[0]);
   }
-
-  private record ParameterNameValue(String name, String value) {}
 
   /**
    * Builds a URL query string from a multimap of parameter names to values.
@@ -1010,6 +958,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    * valid until {@link HTTPRequestImpl#freeParts()} is invoked. Callers should treat this class as
    * a lightweight data carrier rather than a full file abstraction.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   public static class HTTPUploadedFileImpl implements HTTPUploadedFile {
 
     /** The filename. */

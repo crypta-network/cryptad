@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import network.crypta.client.filter.PushingTagReplacerCallback;
+import network.crypta.clients.http.filter.PushingTagReplacerCallback;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.PageChromePort;
@@ -360,7 +360,7 @@ public final class PageMaker {
    *
    * @param title page title shown in the browser and within the header
    * @param renderNavigationLinks {@code true} to render the navigation bar; {@code false} to omit
-   * @param ctx request context controlling permissions, localisation, and theme delivery
+   * @param ctx request context controlling permissions, localization, and theme delivery
    * @return a template {@link PageNode}; prefer {@link #getPageNode(String, ToadletContext,
    *     RenderParameters)} for additional control
    */
@@ -381,7 +381,7 @@ public final class PageMaker {
    * @param title page title shown in the browser and within the header
    * @param renderNavigationLinks {@code true} to render the navigation bar; {@code false} to omit
    * @param renderStatus {@code true} to include the status bar; {@code false} to omit
-   * @param ctx request context controlling permissions, localisation, and theme delivery
+   * @param ctx request context controlling permissions, localization, and theme delivery
    * @return template {@link PageNode}; prefer {@link #getPageNode(String, ToadletContext,
    *     RenderParameters)} for finer-grained options
    */

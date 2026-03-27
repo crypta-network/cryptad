@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
@@ -22,6 +21,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.http.HttpFetchSizeLimits;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -218,7 +218,7 @@ public class BookmarkManager {
     public void onFoundEdition(USKFoundEdition foundEdition) {
       if (!foundEdition.newKnownGood()) {
         FreenetURI uri = foundEdition.key().copy(foundEdition.edition()).getURI();
-        runtime.prefetchUpdatedEdition(uri, FProxyToadlet.getMaxLengthWithProgress());
+        runtime.prefetchUpdatedEdition(uri, HttpFetchSizeLimits.getMaxLengthWithProgress());
         return;
       }
       long edition = foundEdition.edition();
@@ -338,7 +338,7 @@ public class BookmarkManager {
   }
 
   /**
-   * Returns the item stored at a given path, if the path resolves to an item.
+   * Returns the item stored at a given path if the path resolves to an item.
    *
    * <p>This is a convenience wrapper around {@link #getBookmarkByPath(String)} that performs a
    * type-check and returns {@code null} when the path is unknown or points to a category.

@@ -88,6 +88,17 @@ class ExternalLinkToadletTest {
   }
 
   @Test
+  void escape_whenCustomPathProvided_usesProvidedPath() {
+    String customPath = "/custom-external-link/";
+    String input = "http://example.com/resource";
+
+    String result = ExternalLinkToadlet.escape(customPath, input);
+
+    assertEquals(
+        customPath + "?" + ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING + '=' + input, result);
+  }
+
+  @Test
   void handleMethodPOST_whenGoParameterEmpty_redirectsToWelcome() throws Exception {
     when(request.getPartAsStringFailsafe(
             eq(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING), anyInt()))

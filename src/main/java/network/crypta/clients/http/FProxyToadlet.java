@@ -28,8 +28,8 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.FoundURICallback;
-import network.crypta.client.filter.PushingTagReplacerCallback;
 import network.crypta.client.filter.UnsafeContentTypeException;
+import network.crypta.clients.http.filter.PushingTagReplacerCallback;
 import network.crypta.clients.http.updateableelements.ProgressBarElement;
 import network.crypta.clients.http.updateableelements.ProgressInfoElement;
 import network.crypta.clients.http.utils.UriFilterProxyHeaderParser;
@@ -53,6 +53,7 @@ import network.crypta.support.URLEncoder;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.HttpFetchSizeLimits;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NoFreeBucket;
@@ -173,17 +174,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   // ?force= links become invalid after 2 hours.
   private static final long FORCE_GRAIN_INTERVAL = HOURS.toMillis(1);
 
-  /** Maximum size for transparent pass-through. See config passthroughMaxSizeProgress */
-  private static long maxLengthWithProgress =
-      (100 * 1024 * 1024)
-          * 11
-          / 10; // 100MiB plus a bit due to buggy inserts, because our Windows installer is >70 MiB
-
-  // nowadays
-
-  private static long maxLengthNoProgress =
-      (2 * 1024 * 1024) * 11 / 10; // 2MiB plus a bit due to buggy inserts
-
   static final URI welcome;
 
   /**
@@ -218,7 +208,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * @return maximum response size in bytes when progress feedback is enabled.
    */
   public static long getMaxLengthWithProgress() {
-    return maxLengthWithProgress;
+    return HttpFetchSizeLimits.getMaxLengthWithProgress();
   }
 
   /**
@@ -230,8 +220,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    *
    * @param length new allowed size in bytes for progress-enabled transfers.
    */
+  @SuppressWarnings("unused")
   public static void setMaxLengthWithProgress(long length) {
-    maxLengthWithProgress = length;
+    HttpFetchSizeLimits.setMaxLengthWithProgress(length);
   }
 
   /**
@@ -243,7 +234,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * @return maximum response size in bytes when progress feedback is disabled.
    */
   public static long getMaxLengthNoProgress() {
-    return maxLengthNoProgress;
+    return HttpFetchSizeLimits.getMaxLengthNoProgress();
   }
 
   /**
@@ -254,8 +245,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    *
    * @param length new allowed size in bytes for non-progress transfers.
    */
+  @SuppressWarnings("unused")
   public static void setMaxLengthNoProgress(long length) {
-    maxLengthNoProgress = length;
+    HttpFetchSizeLimits.setMaxLengthNoProgress(length);
   }
 
   /**

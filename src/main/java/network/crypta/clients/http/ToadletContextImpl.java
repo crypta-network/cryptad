@@ -15,7 +15,6 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
@@ -23,7 +22,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
-import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
@@ -38,6 +36,7 @@ import network.crypta.support.URIPreEncoder;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.HttpDateParser;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
@@ -115,7 +114,7 @@ public final class ToadletContextImpl implements ToadletContext {
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled()/isTraceEnabled().
 
   /**
-   * Is the context closed? If so, don't allow writes anymore. This is because there may be later
+   * Is the context closed? If so, don't allow writing anymore. This is because there may be later
    * requests.
    */
   private volatile boolean closed;
@@ -486,10 +485,10 @@ public final class ToadletContextImpl implements ToadletContext {
   }
 
   /**
-   * Validates that the supplied request carries the correct form password, redirecting to a caller
-   * provided location on failure. This variant is useful when a toadlet wants to return the user to
-   * a specific page rather than the root. The method does not throw when authentication fails; it
-   * simply returns {@code false} after writing headers.
+   * Validates that the supplied request carries the correct form password, redirecting to a
+   * caller-provided location on failure. This variant is useful when a toadlet wants to return the
+   * user to a specific page rather than the root. The method does not throw when authentication
+   * fails; it simply returns {@code false} after writing headers.
    *
    * @param request HTTP request object containing parsed parameters and body parts for validation.
    * @param redirectTo Absolute or relative path where unauthenticated clients should be redirected.
@@ -779,8 +778,6 @@ public final class ToadletContextImpl implements ToadletContext {
     return stringJoiner.toString();
   }
 
-  private static final TimeZone UTC_TIME_ZONE = TimeZone.getTimeZone("UTC");
-
   /**
    * Parses an RFC 7231/RFC 1123 HTTP date string into a {@link Date} in UTC. The parser is strict
    * with respect to the {@code EEE, dd MMM yyyy HH:mm:ss 'GMT'} pattern and locale, matching the
@@ -795,9 +792,7 @@ public final class ToadletContextImpl implements ToadletContext {
    *     format.
    */
   public static Date parseHTTPDate(String httpDate) throws ParseException {
-    SimpleDateFormat sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
-    sdf.setTimeZone(UTC_TIME_ZONE);
-    return sdf.parse(httpDate);
+    return HttpDateParser.parseHTTPDate(httpDate);
   }
 
   /**
@@ -1383,7 +1378,7 @@ public final class ToadletContextImpl implements ToadletContext {
    * suppress crawler-facing endpoints in deployments where indexing is undesirable. Use it to
    * decide whether to inject robot tags or return 404/403 responses for robot probes.
    *
-   * @return {@code true} when robots directives should be served for this node.
+   * @return {@code true} when robot directives should be served for this node.
    */
   @Override
   public boolean doRobots() {
