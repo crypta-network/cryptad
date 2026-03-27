@@ -49,19 +49,26 @@ Use this skill when you need to:
     resources
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports and immutable config DTOs.
-  - The root project implements those ports in `network.crypta.node.runtime.LegacyRuntimePorts`
-    plus per-slice adapters such as `LegacyConfigPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
-    `LegacyConnectionsPagePort`, `LegacyConnectionsSupportPort`,
-    `LegacyDarknetConnectionsPort`, `LegacyDarknetMessagingPort`,
-    `LegacyQueuePagePort`, `LegacyQueueDownloadPort`, `LegacyQueueInsertPort`,
-    `LegacyQueueMutationPort`, `LegacyQueueSupportPort`, `LegacyQueueCompletionPort`,
-    `LegacySecurityLevelsPort`, `LegacyPageChromePort`, `LegacyCoreUpdateActionPort`,
-    `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`, `LegacyWelcomePagePort`, and
-    `LegacyWelcomeActionPort`.
+  - The root project implements those ports across `network.crypta.runtime.core` and
+    `network.crypta.runtime.admin`. The runtime nucleus lives in
+    `network.crypta.runtime.core.LegacyRuntimePorts` plus core adapters such as
+    `LegacyConfigPort`, `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
+    `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`.
+    Page-oriented adapters such as `LegacyConnectionsPagePort`,
+    `LegacyConnectionsSupportPort`, `LegacyDarknetConnectionsPort`,
+    `LegacyDarknetMessagingPort`, `LegacyQueuePagePort`, `LegacyQueueDownloadPort`,
+    `LegacyQueueInsertPort`, `LegacyQueueMutationPort`, `LegacyQueueSupportPort`,
+    `LegacyQueueCompletionPort`, `LegacyPageChromePort`, `LegacyDiagnosticPort`,
+    `LegacyStatisticsPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
+    `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort` now live in
+    `network.crypta.runtime.admin`.
 - The large cyclic daemon core still lives in the root project:
   most of `network.crypta.node`, the daemon-coupled transport/socket/filter side of
-  `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`,
-  `network.crypta.node.runtime`, the remaining daemon-coupled support code, and
+  `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`, the
+  `network.crypta.runtime.bootstrap`, `network.crypta.runtime.core`,
+  `network.crypta.runtime.admin`, `network.crypta.runtime.alerts`,
+  `network.crypta.runtime.endpoints`, `network.crypta.runtime.services`, and
+  `network.crypta.runtime.updater` families, the remaining daemon-coupled support code, and
   `network.crypta.tools`.
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, while root keeps `MessageCore`,
@@ -86,7 +93,17 @@ Use this skill when you need to:
 - Peer management: `PeerNode`, `PeerManager`
 - Network transport: `PacketSender`, `FNPPacketMangler`
 - Request orchestration: `RequestStarter`, `RequestScheduler`
-- Updates: `NodeUpdateManager`
+- Updates now bootstrap through `network.crypta.runtime.updater.NodeUpdateManager`
+
+### Runtime orchestration packages (`network.crypta.runtime.*`)
+- Startup/CLI/config bootstrap: `network.crypta.runtime.bootstrap`
+  (`NodeStarter`, `NodeBootstrap`, `NodeCli`, `NodeConfigManager`, `LoggingConfigHandler`)
+- Runtime SPI nucleus and daemon-backed core adapters: `network.crypta.runtime.core`
+- Page-oriented admin/runtime adapters: `network.crypta.runtime.admin`
+- Operator-facing alerts: `network.crypta.runtime.alerts`
+- Endpoint bootstrap glue for FCP/HTTP/TMCI: `network.crypta.runtime.endpoints`
+- Service coordination: `network.crypta.runtime.services`
+- Core/plugin update subsystem: `network.crypta.runtime.updater`
 
 ### Content storage (`network.crypta.store`)
 - Storage abstractions: `FreenetStore`
@@ -97,7 +114,7 @@ Use this skill when you need to:
 - Neutral contracts `BlockMetadata`, `GetPubkey`, and `StorableBlock` live in
   `:foundation-store-contracts`, along with the store-maintenance alert seam in
   `network.crypta.store.alerts`.
-- Root-owned runtime/UI integration remains in `network.crypta.node.runtime`, for example
+- Root-owned runtime/UI integration now lives in `network.crypta.runtime.alerts`, for example
   `UserAlertManagerStoreAlertSink`.
 
 ### Cryptography (`network.crypta.crypt`)
@@ -120,7 +137,7 @@ Use this skill when you need to:
   `network.crypta.node.VersionParseException`, `network.crypta.node.probe.Error`,
   `network.crypta.node.probe.Type`, and `network.crypta.support.Serializer`.
 - Root keeps transport-facing code such as `PeerContext`, `MessageCore`, filters, packet/socket
-  handlers, and runtime helpers like `network.crypta.node.runtime.SSL`.
+  handlers, and runtime helpers like `network.crypta.runtime.core.SSL`.
 
 ### Client APIs
 - High-level client: `network.crypta.client`
@@ -182,27 +199,16 @@ Use this skill when you need to:
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`
-- Root adapters: `network.crypta.node.runtime.LegacyRuntimePorts`,
-  `network.crypta.node.runtime.LegacyConfigPort`,
-  `network.crypta.node.runtime.LegacyNodeInfoPort`,
-  `network.crypta.node.runtime.LegacyPeerPort`,
-  `network.crypta.node.runtime.LegacyConnectionsPagePort`,
-  `network.crypta.node.runtime.LegacyConnectionsSupportPort`,
-  `network.crypta.node.runtime.LegacyDarknetConnectionsPort`,
-  `network.crypta.node.runtime.LegacyDarknetMessagingPort`,
-  `network.crypta.node.runtime.LegacyPageChromePort`,
-  `network.crypta.node.runtime.LegacyCoreUpdateActionPort`,
-  `network.crypta.node.runtime.LegacyQueuePagePort`,
-  `network.crypta.node.runtime.LegacyQueueDownloadPort`,
-  `network.crypta.node.runtime.LegacyQueueInsertPort`,
-  `network.crypta.node.runtime.LegacyQueueMutationPort`,
-  `network.crypta.node.runtime.LegacyQueueSupportPort`,
-  `network.crypta.node.runtime.LegacyQueueCompletionPort`,
-  `network.crypta.node.runtime.LegacySecurityLevelsPort`,
-  `network.crypta.node.runtime.LegacyFirstTimeWizardPort`,
-  `network.crypta.node.runtime.LegacyToadletSymlinkPort`,
-  `network.crypta.node.runtime.LegacyWelcomePagePort`,
-  `network.crypta.node.runtime.LegacyWelcomeActionPort`
+- Root adapters in `network.crypta.runtime.core`: `LegacyRuntimePorts`, `LegacyConfigPort`,
+  `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`, `LegacyRequestQueuePort`,
+  `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`
+- Root adapters in `network.crypta.runtime.admin`: `LegacyConnectionsPagePort`,
+  `LegacyConnectionsSupportPort`, `LegacyDarknetConnectionsPort`,
+  `LegacyDarknetMessagingPort`, `LegacyDiagnosticPort`, `LegacyStatisticsPort`,
+  `LegacyPageChromePort`, `LegacyQueuePagePort`, `LegacyQueueDownloadPort`,
+  `LegacyQueueInsertPort`, `LegacyQueueMutationPort`, `LegacyQueueSupportPort`,
+  `LegacyQueueCompletionPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
+  `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort`
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`

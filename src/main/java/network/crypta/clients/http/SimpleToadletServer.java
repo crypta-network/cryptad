@@ -30,11 +30,9 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.SSL;
-import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
@@ -54,19 +52,19 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * endpoints to browsers and local tools. It wires configuration callbacks, constructs the network
  * interface, and manages registration of individual {@link Toadlet} handlers. Typical lifecycle:
  * construct the server with the node configuration, publish runtime support through {@link
- * #setCore(NodeClientCore)} or {@link #setRuntimeSupport(HttpShellRuntimeSupport)} once the daemon
- * is ready, start the listener, and invoke {@link #finishStart()} after startup housekeeping
- * completes. The server keeps track of theme selection, panic button visibility, gateway mode, and
- * access controls. It also delegates bookmark management, push managers, and theme overrides to the
- * HTTP-local runtime adapter and supporting helper classes.
+ * #setRuntimeSupport(HttpShellRuntimeSupport)} once the daemon is ready, start the listener, and
+ * invoke {@link #finishStart()} after startup housekeeping completes. The server keeps track of
+ * theme selection, panic button visibility, gateway mode, and access controls. It also delegates
+ * bookmark management, push managers, and theme overrides to the HTTP-local runtime adapter and
+ * supporting helper classes.
  *
  * <p>Concurrency: the network listener and request handling threads read shared state such as the
  * {@link #runtimeSupport} reference, panic flags, and theme settings. The runtime support reference
- * is published through a volatile write-in {@link #setCore(NodeClientCore)} or {@link
- * #setRuntimeSupport(HttpShellRuntimeSupport)} so request threads see it once set. Mutability: most
- * configuration is thread-safe via synchronized blocks or volatile fields; URL registration is
- * guarded by the server monitor. Extended configuration callbacks are invoked on the configuration
- * thread; request handlers run on the executor.
+ * is published through a volatile write-in {@link #setRuntimeSupport(HttpShellRuntimeSupport)} so
+ * request threads see it once set. Mutability: most configuration is thread-safe via synchronized
+ * blocks or volatile fields; URL registration is guarded by the server monitor. Extended
+ * configuration callbacks are invoked on the configuration thread; request handlers run on the
+ * executor.
  *
  * <ul>
  *   <li>Responsibilities: bind sockets, dispatch toadlets, surface configuration, and relay alerts.
@@ -75,7 +73,6 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * </ul>
  *
  * @see Toadlet
- * @see NodeClientCore
  * @see network.crypta.clients.http.FProxyToadlet
  */
 public final class SimpleToadletServer
@@ -455,15 +452,14 @@ public final class SimpleToadletServer
   }
 
   /**
-   * Builds the FProxy runtime structures once the core is ready.
+   * Builds the FProxy runtime structures once runtime support is ready.
    *
-   * <p>Call this after {@link #setCore(NodeClientCore)} or {@link
-   * #setRuntimeSupport(HttpShellRuntimeSupport)} and before accepting requests to install bookmark
-   * handling, interval push scheduling, and UI registration against the active node. This method is
-   * idempotent; later calls are ignored after the first successful invocation. It captures the
-   * current runtime support reference, wires the push managers to the shared {@link Ticker},
-   * assembles the daemon-only root FProxy collaborators, and delegates to {@link FProxyRegistrar}
-   * for the remaining HTTP shell registration.
+   * <p>Call this after {@link #setRuntimeSupport(HttpShellRuntimeSupport)} and before accepting
+   * requests to install bookmark handling, interval push scheduling, and UI registration against
+   * the active node. This method is idempotent; later calls are ignored after the first successful
+   * invocation. It captures the current runtime support reference, wires the push managers to the
+   * shared {@link Ticker}, assembles the daemon-only root FProxy collaborators, and delegates to
+   * {@link FProxyRegistrar} for the remaining HTTP shell registration.
    */
   public void createFproxy() {
     synchronized (this) {
@@ -492,23 +488,19 @@ public final class SimpleToadletServer
   }
 
   /**
-   * Publishes the initialized node core to request handlers through the HTTP-local runtime adapter.
+   * Publishes the initialized HTTP runtime adapter to request handlers.
    *
-   * <p>This compatibility shim wraps the supplied core in {@link
-   * network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport}. The runtime support
-   * reference is written with volatile semantics, so listener threads see it after startup. Call
-   * this exactly once, immediately after the node finishes constructing its {@link NodeClientCore},
-   * and before invoking {@link #createFproxy()} or {@link #start()}. When the runtime support
-   * exposes runtime SPI ports, this method also late-injects the detached page-chrome port into the
-   * shared {@link PageMaker}. Passing {@code null} leaves the server unable to service requests.
+   * <p>The runtime support reference is written with volatile semantics, so listener threads see it
+   * after startup. Call this exactly once, immediately after daemon bootstrap finishes creating the
+   * adapter, and before invoking {@link #createFproxy()} or {@link #start()}. When the runtime
+   * support exposes runtime SPI ports, this method also late-injects the detached page-chrome port
+   * into the shared {@link PageMaker}. Passing {@code null} leaves the server unable to service
+   * requests.
    *
-   * @param core fully constructed {@link NodeClientCore}; must not be {@code null}.
+   * @param runtimeSupport fully constructed runtime adapter; may be {@code null} during tests that
+   *     intentionally exercise uninitialized behavior
    */
-  public void setCore(NodeClientCore core) {
-    setRuntimeSupport(core == null ? null : new CoreHttpShellRuntimeSupport(core));
-  }
-
-  void setRuntimeSupport(HttpShellRuntimeSupport runtimeSupport) {
+  public void setRuntimeSupport(HttpShellRuntimeSupport runtimeSupport) {
     this.runtimeSupport = runtimeSupport;
     RuntimePorts runtimePorts = runtimeSupport == null ? null : runtimeSupport.runtimePorts();
     pageMaker.setPageChromePort(runtimePorts == null ? null : runtimePorts.pageChrome());
@@ -521,8 +513,8 @@ public final class SimpleToadletServer
    * callbacks, and defers expensive wiring (runtime support assignment, network listener startup)
    * to later calls. It seeds random sources, sets the initial access control list, and records
    * whether the server should start enabled. The {@link #runtimeSupport} is left {@code null};
-   * callers must invoke {@link #setCore(NodeClientCore)} or {@link
-   * #setRuntimeSupport(HttpShellRuntimeSupport)} before servicing requests.
+   * callers must invoke {@link #setRuntimeSupport(HttpShellRuntimeSupport)} before servicing
+   * requests.
    *
    * @param fproxyConfig configuration subsection containing fproxy.* keys that drive listener
    *     options, theme settings, limits, and ACLs; must be non-null.
@@ -538,7 +530,7 @@ public final class SimpleToadletServer
       throws InvalidConfigValueException {
 
     this.executor = executor;
-    this.runtimeSupport = null; // setCore() or setRuntimeSupport() will be called later.
+    this.runtimeSupport = null; // setRuntimeSupport() will be called later.
     this.random = new SecureRandom();
 
     int configItemOrder = registerInitialOptions(fproxyConfig);
@@ -1220,11 +1212,12 @@ public final class SimpleToadletServer
    * Removes the temporary startup toadlet once the node is ready.
    *
    * <p>Calling this method unregisters the startup handler that served initial setup pages and
-   * clears its reference for garbage collection. It must only be invoked after {@link #setCore} and
-   * after startup has progressed far enough that the main toadlets are available.
+   * clears its reference for garbage collection. It must only be invoked after {@link
+   * #setRuntimeSupport(HttpShellRuntimeSupport)} and after startup has progressed far enough that
+   * the main toadlets are available.
    */
   public void removeStartupToadlet() {
-    // setCore() must have been called first. It is in fact called much earlier on.
+    // setRuntimeSupport() must have been called first. It is in fact called much earlier on.
     synchronized (this) {
       unregister(startupToadlet);
       // Ready to be GCed
@@ -1257,11 +1250,11 @@ public final class SimpleToadletServer
   /**
    * Starts the HTTP listener thread if it has been initialized.
    *
-   * <p>Callers should ensure {@link #setCore(NodeClientCore)} or {@link
-   * #setRuntimeSupport(HttpShellRuntimeSupport)} and {@link #createFproxy()} have completed before
-   * invoking this method. When {@link #myThread} is non-null, the network interface is lazily
-   * created and the thread is started, logging the bind address and port. This call is idempotent
-   * when {@link #myThread} is already {@code null} or the thread has previously been started.
+   * <p>Callers should ensure {@link #setRuntimeSupport(HttpShellRuntimeSupport)} and {@link
+   * #createFproxy()} have completed before invoking this method. When {@link #myThread} is
+   * non-null, the network interface is lazily created and the thread is started, logging the bind
+   * address and port. This call is idempotent when {@link #myThread} is already {@code null} or the
+   * thread has previously been started.
    */
   @SuppressWarnings("java:S106")
   public void start() {
@@ -1546,8 +1539,8 @@ public final class SimpleToadletServer
    *
    * <p>The alert manager surfaces node warnings and informational banners to the UI and handles
    * their dismissal state. When runtime support has not yet been assigned this method returns
-   * {@code null}; callers should therefore wait until after {@link #setCore(NodeClientCore)} or
-   * {@link #setRuntimeSupport(HttpShellRuntimeSupport)} is invoked.
+   * {@code null}; callers should therefore wait until after {@link
+   * #setRuntimeSupport(HttpShellRuntimeSupport)} is invoked.
    *
    * @return active {@link UserAlertManager}, or {@code null} when unavailable.
    */
@@ -1800,23 +1793,6 @@ public final class SimpleToadletServer
    */
   public Ticker getTicker() {
     return requireRuntimeSupport().ticker();
-  }
-
-  /**
-   * Returns the currently bound node core when runtime support is core-backed.
-   *
-   * <p>This compatibility accessor is retained for callers that still expect a {@link
-   * NodeClientCore}. When the server was initialized with a non-core-backed runtime adapter, this
-   * method returns {@code null}.
-   *
-   * @return {@link NodeClientCore} instance or {@code null} when unset.
-   */
-  public NodeClientCore getCore() {
-    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
-    if (runtimeSupportRef instanceof CoreHttpShellRuntimeSupport(NodeClientCore core)) {
-      return core;
-    }
-    return null;
   }
 
   private HttpShellRuntimeSupport requireRuntimeSupport() {

@@ -200,7 +200,10 @@ Cryptad now uses a partial multi-project Gradle build.
   resources.
 - The large cyclic daemon core remains in the root project for now, and all tests still live
   there. The root still owns daemon-coupled transport/socket code in `network.crypta.io.comm`,
-  runtime adapters and helpers under `network.crypta.runtime.core`, and the remaining
+  runtime package families such as `network.crypta.runtime.bootstrap`,
+  `network.crypta.runtime.core`, `network.crypta.runtime.admin`,
+  `network.crypta.runtime.alerts`, `network.crypta.runtime.endpoints`,
+  `network.crypta.runtime.services`, and `network.crypta.runtime.updater`, plus the remaining
   daemon-coupled support/UI wiring.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
@@ -215,7 +218,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.clients.http.SecurityLevelsToadletRuntimePorts`,
   `network.crypta.clients.http.WelcomeToadletRuntimePorts`,
   `network.crypta.clients.http.FProxyRuntimeSupport`,
-  `network.crypta.clients.http.HttpShellRuntimeSupport`, and
+  `network.crypta.clients.http.HttpShellRuntimeSupport`,
+  `network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport`, and
   `network.crypta.clients.http.bookmark.BookmarkRuntimeSupport`.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
@@ -545,8 +549,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 - Build/module layout:
   - Root project `:cryptad` remains the daemon/application build and still owns the strongly
-    coupled core packages, all tests, packaging/runtime tasks, and the current
-    `LegacyRuntimePorts` bridge into the runtime SPI.
+    coupled core packages, all tests, packaging/runtime tasks, and the runtime package families
+    that now sit under `network.crypta.runtime.*` in the root project.
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
@@ -593,11 +597,24 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `ConfigSnapshot`, `ConfigFieldSet`, `QueuePageSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`.
+- Runtime package families (`network.crypta.runtime.*`): `runtime.bootstrap` owns startup and CLI
+  wiring such as `NodeStarter`, `NodeBootstrap`, `NodeCli`, and `NodeConfigManager`;
+  `runtime.core` owns the runtime SPI nucleus such as `LegacyRuntimePorts`,
+  `LegacyConfigPort`, `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
+  `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`;
+  `runtime.admin` owns page-oriented adapters such as `LegacyConnectionsPagePort`,
+  `LegacyQueuePagePort`, `LegacyPageChromePort`, `LegacyFirstTimeWizardPort`, and
+  `LegacyWelcomePagePort`; `runtime.alerts` owns operator-facing alerts and
+  `UserAlertManagerStoreAlertSink`; `runtime.endpoints` owns FCP/HTTP/TMCI bootstrap glue such as
+  `ClientEndpoints`, `NodeClientCoreInit`, `NodeClientPersistence`, and the HTTP-local runtime
+  adapters in `runtime.endpoints.http`; `runtime.services` owns `NodeServicesSubsystem`; and
+  `runtime.updater` owns `NodeUpdateManager`, `CoreUpdater`, and `CoreActionToadlet`.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
   `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
   `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
   filesystem-facing types. Higher layers should still prefer `RuntimePorts#config()` and the root
-  `LegacyConfigPort` bridge instead of reaching through daemon internals.
+  `network.crypta.runtime.core.LegacyConfigPort` bridge instead of reaching through daemon
+  internals.
 - Support foundation leaf (`:foundation-support`): stable generic support, support-api,
   support-io, support-compress, support-math, and transport-IP classes plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,

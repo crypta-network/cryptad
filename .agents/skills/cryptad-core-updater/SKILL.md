@@ -31,7 +31,7 @@ Use this skill when working on:
   - `PluginJarUpdater` for plugins
 - The legacy HTTP updater UI now crosses the runtime boundary through
   `RuntimePorts#coreUpdateAction()` and `network.crypta.runtime.spi.CoreUpdateActionPort`,
-  implemented in the root daemon by `network.crypta.node.runtime.LegacyCoreUpdateActionPort`.
+  implemented in the root daemon by `network.crypta.runtime.core.LegacyCoreUpdateActionPort`.
 - Core updater state surfaces through CorePackage-named APIs:
   - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
   - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
@@ -52,14 +52,16 @@ Use this skill when working on:
 - UI: alerts panel shows progress percent when available.
   - Failures surface clear retry guidance (non-fatal errors relabel to “Retry”).
 - Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching remain
-  in `network.crypta.node.updater.CoreActionToadlet`.
+  in `network.crypta.runtime.updater.CoreActionToadlet`.
 - Daemon-backed availability checks, UI-triggered download start, and downloaded-installer
   containment validation now live behind `CoreUpdateActionPort`.
 
 ## Runtime-boundary classes to inspect
-- HTTP/action layer: `network.crypta.node.updater.CoreActionToadlet`
+- HTTP/action layer: `network.crypta.runtime.updater.CoreActionToadlet`
+- Updater coordinator/state: `network.crypta.runtime.updater.NodeUpdateManager`
+- Core package downloader: `network.crypta.runtime.updater.CoreUpdater`
 - SPI contract: `network.crypta.runtime.spi.CoreUpdateActionPort`
-- Root adapter: `network.crypta.node.runtime.LegacyCoreUpdateActionPort`
+- Root adapter: `network.crypta.runtime.core.LegacyCoreUpdateActionPort`
 - Aggregate runtime entry point: `network.crypta.runtime.spi.RuntimePorts`
 
 ## Platform specifics (selected behaviors)

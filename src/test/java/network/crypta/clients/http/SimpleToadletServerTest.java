@@ -18,6 +18,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -123,7 +124,7 @@ class SimpleToadletServerTest {
     when(core.getNode().network().ticker()).thenReturn(ticker);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     when(client.getFetchContext()).thenReturn(fetchContext);
-    server.setCore(core);
+    server.setRuntimeSupport(new CoreHttpShellRuntimeSupport(core));
 
     AtomicInteger registrarCalls = new AtomicInteger();
     AtomicReference<FProxyRegistrarDependencies> dependenciesRef = new AtomicReference<>();
