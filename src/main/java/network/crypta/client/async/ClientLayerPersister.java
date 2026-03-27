@@ -21,9 +21,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import network.crypta.clients.fcp.ClientRequest;
-import network.crypta.clients.fcp.RequestIdentifier;
+import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
+import network.crypta.client.async.persistence.PersistentRequestIdentifier;
+import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.crypt.AEADVerificationFailedException;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumChecker;
@@ -31,7 +34,6 @@ import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.node.DatabaseKey;
 import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -66,8 +68,8 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * current variant and proceeds to the next to maximize recovery.
  *
  * <ul>
- *   <li>Responsibilities: checkpoint active requests, rotate files, restore and (if needed) restart
- *       requests.
+ *   <li>Responsibilities: checkpoint active requests, rotate files, restore, and (if needed)
+ *       restart requests.
  *   <li>Threading: inherits periodic checkpointing from {@link PersistentJobRunnerImpl}; most
  *       lifecyle methods synchronize on an internal monitor to maintain invariants.
  *   <li>Trade-offs: favors durability and orderly recovery over minimal metadata size.
@@ -81,8 +83,9 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
 
   static final long INTERVAL = MINUTES.toMillis(10);
   private final Node node; // Needed for bandwidth stats putter
-  private final NodeClientCore clientCore;
   private final PersistentTempBucketFactory persistentTempFactory;
+  private PersistentRequestCatalog persistentRequestCatalog;
+  private PersistentRequestRecoveryCodec persistentRequestRecoveryCodec;
 
   /**
    * Needed for temporary storage when writing objects. Some of them might be big, e.g., site
@@ -125,8 +128,6 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    *     provided {@code executor} to preserve ordering and avoid thread proliferation.
    * @param node parent node instance used for I/O statistics and contextual operations during
    *     checkpointing and recovery; expected to outlive this persister.
-   * @param core client core used as the authoritative source of persistent requests to save and as
-   *     the target for resuming or restarting requests after a successful load.
    * @param persistentTempFactory factory that tracks delayed frees and provides buckets scheduled
    *     for post-checkpoint cleanup; only its lifecycle hooks are invoked during saves/loads.
    * @param tempBucketFactory factory for short-lived buckets used to stage checksummed
@@ -138,13 +139,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       PriorityAwareExecutor executor,
       Ticker ticker,
       Node node,
-      NodeClientCore core,
       PersistentTempBucketFactory persistentTempFactory,
       TempBucketFactory tempBucketFactory,
       PersistentStatsPutter stats) {
     super(executor, ticker, INTERVAL);
     this.node = node;
-    this.clientCore = core;
     this.persistentTempFactory = persistentTempFactory;
     this.tempBucketFactory = tempBucketFactory;
     this.checker = new CRCChecksumChecker();
@@ -161,17 +160,31 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       PriorityAwareExecutor executor,
       Ticker ticker,
       Node node,
-      NodeClientCore core,
       PersistentTempBucketFactory persistentTempFactory,
       TempBucketFactory tempBucketFactory) {
     this(
         executor,
         ticker,
         node,
-        core,
         persistentTempFactory,
         tempBucketFactory,
         new PersistentStatsPutter());
+  }
+
+  /**
+   * Installs the persistent-request catalog and fallback recovery codec used by this persister.
+   *
+   * <p>Callers should configure both adapters before starting or loading the persister, so request
+   * enumeration, duplicate detection, and recovery all use the runtime-owned bridge for the active
+   * protocol implementation.
+   *
+   * @param catalog catalog used to list and deduplicate persistent requests
+   * @param recoveryCodec codec used to restart requests from compact recovery data
+   */
+  public void configurePersistenceAdapters(
+      PersistentRequestCatalog catalog, PersistentRequestRecoveryCodec recoveryCodec) {
+    persistentRequestCatalog = Objects.requireNonNull(catalog);
+    persistentRequestRecoveryCodec = Objects.requireNonNull(recoveryCodec);
   }
 
   private void loadAllVariants(
@@ -270,7 +283,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   }
 
   private ResumeOutcome resumeOne(PartiallyLoadedRequest partial) {
-    ClientRequest req = partial.request;
+    PersistentRequestHandle req = partial.request;
     try {
       req.onResume(getClientContext());
       if (partial.status == RequestLoadStatus.RESTORED_FULLY
@@ -299,9 +312,9 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    * required. When {@code noWrite} is {@code true}, all existing variants are deleted and future
    * checkpoints are disabled for the lifetime of the instance.
    *
-   * <p>On load, corrupted variants are skipped and backups are probed to maximize recovery. After a
-   * successful load, the method schedules an early checkpoint so the later state is captured
-   * quickly.
+   * <p>On loading, corrupted variants are skipped and backups are probed to maximize recovery.
+   * After a successful load, the method schedules an early checkpoint so the later state is
+   * captured quickly.
    *
    * <pre>{@code
    * // Example: load and enable encrypted persistence
@@ -498,10 +511,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     FAILED
   }
 
-  private record PartiallyLoadedRequest(ClientRequest request, RequestLoadStatus status) {}
+  private record PartiallyLoadedRequest(
+      PersistentRequestHandle request, RequestLoadStatus status) {}
 
   private static class PartialLoad {
-    private final Map<RequestIdentifier, PartiallyLoadedRequest> partiallyLoadedRequests =
+    private final Map<PersistentRequestIdentifier, PartiallyLoadedRequest> partiallyLoadedRequests =
         new HashMap<>();
 
     private byte[] salt;
@@ -517,13 +531,15 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
      *     necessary.
      */
     void addPartiallyLoadedRequest(
-        RequestIdentifier reqID, ClientRequest request, RequestLoadStatus status) {
+        PersistentRequestIdentifier reqID,
+        PersistentRequestHandle request,
+        RequestLoadStatus status) {
       if (reqID == null) {
         if (request == null) {
           somethingFailed = true;
           return;
         } else {
-          reqID = request.getRequestIdentifier();
+          reqID = request.getPersistentRequestIdentifier();
         }
       }
       PartiallyLoadedRequest old = partiallyLoadedRequests.get(reqID);
@@ -682,7 +698,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
     if (latest) {
       try {
-        // Only read stats/buckets from the latest version (client.dat not client.dat.bak).
+        // Only read stats/buckets from the latest version (client.dat, not client.dat.bak).
         readStatsAndBuckets(ois, length);
       } catch (Exception t) {
         LOG.error("Failed to restore stats and delete old temp files: {}", t, t);
@@ -707,10 +723,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   private void processSingleRequest(
       ObjectInputStream ois, long length, boolean noSerialize, PartialLoad loaded)
       throws IOException {
-    RequestIdentifier reqID = readRequestIdentifier(ois);
+    PersistentRequestIdentifier reqID = readRequestIdentifier(ois);
     if (alreadyPresent(reqID, ois, length)) return;
 
-    ClientRequest request = maybeReadSerialized(ois, length, noSerialize, reqID, loaded);
+    PersistentRequestHandle request = maybeReadSerialized(ois, length, noSerialize, reqID, loaded);
     if (request == null || LOG.isDebugEnabled()) {
       maybeRecoverFromRecoveryData(ois, length, reqID, loaded, request);
     } else {
@@ -718,9 +734,9 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
   }
 
-  private boolean alreadyPresent(RequestIdentifier reqID, ObjectInputStream ois, long length)
-      throws IOException {
-    if (reqID != null && getClientContext().persistentRoot.hasRequest(reqID)) {
+  private boolean alreadyPresent(
+      PersistentRequestIdentifier reqID, ObjectInputStream ois, long length) throws IOException {
+    if (reqID != null && requirePersistentRequestCatalog().hasRequest(reqID)) {
       LOG.warn("Not reading request because already have it");
       skipChecksummedObject(ois, length); // Request itself
       skipChecksummedObject(ois, length); // Recovery data
@@ -729,11 +745,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     return false;
   }
 
-  private ClientRequest maybeReadSerialized(
+  private PersistentRequestHandle maybeReadSerialized(
       ObjectInputStream ois,
       long length,
       boolean noSerialize,
-      RequestIdentifier reqID,
+      PersistentRequestIdentifier reqID,
       PartialLoad loaded)
       throws IOException {
     if (noSerialize) {
@@ -742,9 +758,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       return null;
     }
     try {
-      ClientRequest request = (ClientRequest) readChecksummedObject(ois, length);
+      PersistentRequestHandle request =
+          asPersistentRequestHandle(readChecksummedObject(ois, length));
       if (request != null && reqID != null) {
-        if (!reqID.sameIdentifier(request.getRequestIdentifier())) {
+        if (!reqID.sameIdentifier(request.getPersistentRequestIdentifier())) {
           LOG.error("Request does not match request identifier, discarding");
           return null;
         } else {
@@ -762,14 +779,14 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   }
 
   @SuppressWarnings("UnusedReturnValue")
-  private ClientRequest maybeRecoverFromRecoveryData(
+  private PersistentRequestHandle maybeRecoverFromRecoveryData(
       ObjectInputStream ois,
       long length,
-      RequestIdentifier reqID,
+      PersistentRequestIdentifier reqID,
       PartialLoad loaded,
-      ClientRequest current) {
+      PersistentRequestHandle current) {
     try {
-      ClientRequest restored = readRequestFromRecoveryData(ois, length, reqID);
+      PersistentRequestHandle restored = readRequestFromRecoveryData(ois, length, reqID);
       if (current == null && restored != null) {
         boolean loadedFully = restored.fullyResumed();
         loaded.addPartiallyLoadedRequest(
@@ -872,17 +889,17 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       oos.writeLong(MAGIC);
       oos.writeInt(VERSION);
       checker.writeAndChecksum(oos, salt);
-      ClientRequest[] requests = getRequests();
+      PersistentRequestHandle[] requests = getRequests();
       if (shutdown) {
-        for (ClientRequest req : requests) {
+        for (PersistentRequestHandle req : requests) {
           if (req == null) continue;
           callOnShutdown(req);
         }
       }
       oos.writeInt(requests.length);
-      for (ClientRequest req : requests) {
+      for (PersistentRequestHandle req : requests) {
         // Write the request identifier so we can skip reading the request if we already have it.
-        writeRequestIdentifier(oos, req.getRequestIdentifier());
+        writeRequestIdentifier(oos, req.getPersistentRequestIdentifier());
         // Write the actual request.
         writeChecksummedObject(oos, req, req.toString());
         // Write recovery data. This is just enough to restart the request from scratch,
@@ -903,7 +920,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
   }
 
-  private void callOnShutdown(ClientRequest req) {
+  private void callOnShutdown(PersistentRequestHandle req) {
     try {
       req.onShutdown(getClientContext());
     } catch (Exception t) {
@@ -911,10 +928,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
   }
 
-  private void writeRecoveryData(ObjectOutputStream os, ClientRequest req) throws IOException {
+  private void writeRecoveryData(ObjectOutputStream os, PersistentRequestHandle req)
+      throws IOException {
     PrependLengthOutputStream oos = checker.checksumWriterWithLengthNoClose(os, tempBucketFactory);
     try (DataOutputStream dos = new DataOutputStream(new NonClosingOutputStream(oos))) {
-      req.getClientDetail(dos, checker);
+      req.writeRecoveryData(dos, checker);
     } catch (Exception e) {
       LOG.error("Unable to write recovery data stream for {}: {}", req, e, e);
       if (oos != null) oos.abort();
@@ -923,12 +941,14 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
   }
 
-  private ClientRequest readRequestFromRecoveryData(
-      ObjectInputStream is, long totalLength, RequestIdentifier reqID)
+  private PersistentRequestHandle readRequestFromRecoveryData(
+      ObjectInputStream is, long totalLength, PersistentRequestIdentifier reqID)
       throws IOException, ChecksumFailedException, StorageFormatException {
     InputStream tmp = checker.checksumReaderWithLength(is, this.tempBucketFactory, totalLength);
     try (DataInputStream dis = new DataInputStream(tmp)) {
-      ClientRequest request = ClientRequest.restartFrom(dis, reqID, getClientContext(), checker);
+      PersistentRequestHandle request =
+          requirePersistentRequestRecoveryCodec()
+              .restartFrom(dis, reqID, getClientContext(), checker);
       tmp = null;
       return request;
     } catch (Exception t) {
@@ -973,8 +993,20 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     FileUtil.skipFully(is, length + checker.checksumLength());
   }
 
-  private ClientRequest[] getRequests() {
-    return clientCore.getPersistentRequests();
+  private PersistentRequestHandle asPersistentRequestHandle(Object request) {
+    if (request == null) {
+      return null;
+    }
+    if (request instanceof PersistentRequestHandle persistentRequestHandle) {
+      return persistentRequestHandle;
+    }
+    throw new IllegalStateException(
+        "Serialized persistent request does not implement PersistentRequestHandle: "
+            + request.getClass().getName());
+  }
+
+  private PersistentRequestHandle[] getRequests() {
+    return requirePersistentRequestCatalog().getPersistentRequests();
   }
 
   @Override
@@ -982,7 +1014,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     return newSalt;
   }
 
-  private RequestIdentifier readRequestIdentifier(DataInput is) throws IOException {
+  private PersistentRequestIdentifier readRequestIdentifier(DataInput is) throws IOException {
     short length = is.readShort();
     if (length <= 0) return null;
     byte[] buf = new byte[length];
@@ -996,7 +1028,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
     DataInputStream dis = new DataInputStream(new ByteArrayInputStream(buf));
     try {
-      return new RequestIdentifier(dis);
+      return new PersistentRequestIdentifier(dis);
     } catch (IOException e) {
       LOG.error(
           "Failed to parse RequestIdentifier in spite of valid checksum (probably a bug): {}",
@@ -1006,7 +1038,8 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
   }
 
-  private void writeRequestIdentifier(DataOutput os, RequestIdentifier req) throws IOException {
+  private void writeRequestIdentifier(DataOutput os, PersistentRequestIdentifier req)
+      throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     OutputStream oos = checker.checksumWriter(baos);
     DataOutputStream dos = new DataOutputStream(oos);
@@ -1015,6 +1048,16 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     byte[] buf = baos.toByteArray();
     os.writeShort(buf.length - checker.checksumLength());
     os.write(buf);
+  }
+
+  private PersistentRequestCatalog requirePersistentRequestCatalog() {
+    return Objects.requireNonNull(
+        persistentRequestCatalog, "Persistent request catalog not configured");
+  }
+
+  private PersistentRequestRecoveryCodec requirePersistentRequestRecoveryCodec() {
+    return Objects.requireNonNull(
+        persistentRequestRecoveryCodec, "Persistent request recovery codec not configured");
   }
 
   /**

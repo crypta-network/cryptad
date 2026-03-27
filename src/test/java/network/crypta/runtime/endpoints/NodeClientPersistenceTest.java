@@ -11,6 +11,8 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
+import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpServerDependencies;
@@ -28,7 +30,9 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.Persistable;
+import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
 import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
+import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -407,6 +411,14 @@ class NodeClientPersistenceTest {
                 DiskSpaceCheckingRandomAccessBufferFactory.class,
                 context.getFileRandomAccessBufferFactory(true)),
         () -> assertSame(persistentRafFactory, context.getRandomAccessBufferFactory(true)));
+    ArgumentCaptor<PersistentRequestCatalog> catalogCaptor =
+        ArgumentCaptor.forClass(PersistentRequestCatalog.class);
+    ArgumentCaptor<PersistentRequestRecoveryCodec> recoveryCodecCaptor =
+        ArgumentCaptor.forClass(PersistentRequestRecoveryCodec.class);
+    verify(clientLayerPersister)
+        .configurePersistenceAdapters(catalogCaptor.capture(), recoveryCodecCaptor.capture());
+    assertInstanceOf(CoreFcpPersistentRequestCatalog.class, catalogCaptor.getValue());
+    assertInstanceOf(FcpPersistentRequestRecoveryCodec.class, recoveryCodecCaptor.getValue());
   }
 
   @Test

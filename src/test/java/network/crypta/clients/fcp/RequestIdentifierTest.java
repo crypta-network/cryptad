@@ -5,8 +5,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -79,6 +81,34 @@ class RequestIdentifierTest {
   }
 
   @Test
+  void persistentConversion_whenRoundTripped_preservesFields() {
+    RequestIdentifier original =
+        new RequestIdentifier(false, "clientA", "identifier-1", RequestIdentifier.RequestType.PUT);
+
+    PersistentRequestIdentifier persistent = original.toPersistentRequestIdentifier();
+    RequestIdentifier restored = RequestIdentifier.fromPersistentRequestIdentifier(persistent);
+
+    assertEquals(original, restored);
+    assertTrue(
+        persistent.sameIdentifier(
+            new PersistentRequestIdentifier(
+                false, "clientA", "identifier-1", PersistentRequestIdentifier.RequestType.GET)));
+  }
+
+  @Test
+  void persistentIdentifierWriteTo_whenComparedWithLegacyEncoding_matchesBytes()
+      throws IOException {
+    RequestIdentifier original =
+        new RequestIdentifier(false, "clientA", "identifier-1", RequestIdentifier.RequestType.PUT);
+
+    byte[] legacyBytes = writeBytes(original);
+    byte[] persistentBytes = writeBytes(original.toPersistentRequestIdentifier());
+
+    assertEquals(legacyBytes.length, persistentBytes.length);
+    assertArrayEquals(legacyBytes, persistentBytes);
+  }
+
+  @Test
   void constructor_whenMagicInvalid_throwsIOException() throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     try (DataOutputStream dos = new DataOutputStream(baos)) {
@@ -137,5 +167,21 @@ class RequestIdentifierTest {
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
       return new RequestIdentifier(dis);
     }
+  }
+
+  private byte[] writeBytes(RequestIdentifier identifier) throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (DataOutputStream dos = new DataOutputStream(baos)) {
+      identifier.writeTo(dos);
+    }
+    return baos.toByteArray();
+  }
+
+  private byte[] writeBytes(PersistentRequestIdentifier identifier) throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (DataOutputStream dos = new DataOutputStream(baos)) {
+      identifier.writeTo(dos);
+    }
+    return baos.toByteArray();
   }
 }

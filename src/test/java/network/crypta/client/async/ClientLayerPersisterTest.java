@@ -11,12 +11,14 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.io.StreamCorruptedException;
-import network.crypta.clients.fcp.ClientRequest;
+import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
+import network.crypta.client.async.persistence.PersistentRequestIdentifier;
+import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.crypt.AEADVerificationFailedException;
 import network.crypta.io.comm.IOStatisticCollector;
 import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -57,7 +59,6 @@ class ClientLayerPersisterTest {
   @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
   Node node;
 
-  @Mock NodeClientCore core;
   @Mock PersistentTempBucketFactory persistentTempBucketFactory;
   @Mock TempBucketFactory tempBucketFactory;
   @Mock RequestStarterGroup requestStarters;
@@ -65,8 +66,6 @@ class ClientLayerPersisterTest {
   private ClientLayerPersister newPersister() {
     PriorityAwareExecutor exec = new InlineExecutor();
     Ticker ticker = new InlineTicker(exec);
-
-    when(core.getPersistentRequests()).thenReturn(new ClientRequest[0]);
 
     // Stats reading during save()
     when(node.network().collector()).thenReturn(new IOStatisticCollector());
@@ -82,14 +81,20 @@ class ClientLayerPersisterTest {
       throw new RuntimeException(e);
     }
 
-    return new ClientLayerPersister(
-        exec,
-        ticker,
-        node,
-        core,
-        persistentTempBucketFactory,
-        tempBucketFactory,
-        new PersistentStatsPutter());
+    ClientLayerPersister persister =
+        new ClientLayerPersister(
+            exec,
+            ticker,
+            node,
+            persistentTempBucketFactory,
+            tempBucketFactory,
+            new PersistentStatsPutter());
+    PersistentRequestCatalog catalog = mock(PersistentRequestCatalog.class);
+    when(catalog.getPersistentRequests()).thenReturn(new PersistentRequestHandle[0]);
+    when(catalog.hasRequest(any(PersistentRequestIdentifier.class))).thenReturn(false);
+    PersistentRequestRecoveryCodec recoveryCodec = mock(PersistentRequestRecoveryCodec.class);
+    persister.configurePersistenceAdapters(catalog, recoveryCodec);
+    return persister;
   }
 
   @Test

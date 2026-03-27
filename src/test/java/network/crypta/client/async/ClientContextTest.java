@@ -133,7 +133,6 @@ class ClientContextTest {
                     mainExecutor,
                     ticker,
                     null,
-                    null,
                     persistentTempBucketFactory,
                     tempBucketFactory,
                     null),

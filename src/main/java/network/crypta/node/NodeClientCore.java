@@ -286,7 +286,6 @@ public final class NodeClientCore implements Persistable {
             node.network().executor(),
             node.network().ticker(),
             node,
-            this,
             persistentTempBucketFactory,
             tempBucketFactory);
 
