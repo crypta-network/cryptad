@@ -1789,7 +1789,7 @@ public final class SimpleToadletServer
    * <p>The ticker is shared across push managers and other time-based components. It is owned by
    * the node instance and exposed here for convenience.
    *
-   * @return {@link Ticker} from the node; never {@code null} after the core is set.
+   * @return shared {@link Ticker}; never {@code null} after runtime support is published.
    */
   public Ticker getTicker() {
     return requireRuntimeSupport().ticker();
