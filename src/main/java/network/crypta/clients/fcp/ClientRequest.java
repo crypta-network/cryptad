@@ -10,6 +10,8 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
+import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.PrioRunnable;
@@ -48,7 +50,7 @@ import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
  * @see PersistentRequestClient
  * @see ClientRequester
  */
-public abstract class ClientRequest implements Serializable {
+public abstract class ClientRequest implements Serializable, PersistentRequestHandle {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequest.class);
 
   /**
@@ -96,10 +98,10 @@ public abstract class ClientRequest implements Serializable {
    */
   protected String clientToken;
 
-  /** Timestamp : startup time */
+  /** Timestamp: startup time */
   protected final long startupTime;
 
-  /** Timestamp : completion time */
+  /** Timestamp: completion time */
   protected volatile long completionTime;
 
   /**
@@ -322,7 +324,7 @@ public abstract class ClientRequest implements Serializable {
    * job or be canceled outright. This callback is invoked on a node worker thread and should return
    * quickly.
    *
-   * @param context client context providing access to schedulers, queues and persistent roots
+   * @param context client context providing access to schedulers, queues, and persistent roots
    */
   public abstract void onLostConnection(ClientContext context);
 
@@ -410,6 +412,7 @@ public abstract class ClientRequest implements Serializable {
    *
    * @param context client context used when propagating the cancellation into the core node
    */
+  @Override
   public void cancel(ClientContext context) {
     ClientRequester cr = getClientRequest();
     // It might have been finished on startup.
@@ -633,17 +636,6 @@ public abstract class ClientRequest implements Serializable {
    */
   @SuppressWarnings("unused")
   public abstract boolean isTotalFinalized();
-
-  /**
-   * Starts the request if it has not already been started.
-   *
-   * <p>Implementations are responsible for creating the underlying {@link ClientRequester},
-   * scheduling it on the appropriate queues, and updating any status caches. This method may be
-   * called again after a restart request but should avoid duplicating work when already running.
-   *
-   * @param context client context providing access to schedulers, factories, and persistent roots
-   */
-  public abstract void start(ClientContext context);
 
   /** Indicates whether {@link #start(ClientContext)} has been invoked for this request. */
   protected boolean started;
@@ -918,6 +910,11 @@ public abstract class ClientRequest implements Serializable {
     dos.writeBoolean(finished);
   }
 
+  @Override
+  public void writeRecoveryData(DataOutputStream dos, ChecksumChecker checker) throws IOException {
+    getClientDetail(dos, checker);
+  }
+
   /**
    * Reconstructs a persistent {@code ClientRequest} instance from the compact client-detail
    * encoding written by {@link #getClientDetail(DataOutputStream, ChecksumChecker)}.
@@ -1006,6 +1003,7 @@ public abstract class ClientRequest implements Serializable {
    * @param context client context that provides access to persistent roots and utility factories
    * @throws ResumeFailedException if the request cannot be reattached to the runtime environment
    */
+  @Override
   public final void onResume(ClientContext context) throws ResumeFailedException {
     client = context.persistentRoot.makeClient(global, clientName);
     lowLevelClient = client.lowLevelClient(realTime);
@@ -1055,6 +1053,11 @@ public abstract class ClientRequest implements Serializable {
     return new RequestIdentifier(global, clientName, identifier, getType());
   }
 
+  @Override
+  public PersistentRequestIdentifier getPersistentRequestIdentifier() {
+    return getRequestIdentifier().toPersistentRequestIdentifier();
+  }
+
   abstract RequestIdentifier.RequestType getType();
 
   /**
@@ -1083,17 +1086,6 @@ public abstract class ClientRequest implements Serializable {
   }
 
   /**
-   * Returns whether the original fetch was resumed entirely from stored data.
-   *
-   * <p>Subclasses use this to differentiate between fast restarts that reuse an existing splitfile
-   * layout and slower paths that have to reconstruct state from scratch. The value may be used for
-   * diagnostics or user-facing status messages.
-   *
-   * @return {@code true} when the request resumed from existing data without restarting work
-   */
-  public abstract boolean fullyResumed();
-
-  /**
    * Called just before the node performs its final writing during shutdown.
    *
    * <p>Subclasses can override this hook to flush any outstanding state to disk or perform
@@ -1102,6 +1094,7 @@ public abstract class ClientRequest implements Serializable {
    *
    * @param context client context giving access to persistence mechanisms used during shutdown
    */
+  @Override
   public void onShutdown(ClientContext context) {
     ClientRequester request = getClientRequest();
     if (request != null) request.onShutdown(context);

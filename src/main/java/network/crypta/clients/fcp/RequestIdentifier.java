@@ -3,6 +3,7 @@ package network.crypta.clients.fcp;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 
 /**
  * Immutable handle that uniquely identifies a client request in the FCP bridge and carries enough
@@ -102,7 +103,7 @@ public final class RequestIdentifier {
    * version short, queue flag, optional UTF client name, UTF identifier, and request-type code.
    *
    * @param dis data source positioned at the start of the serialized identifier.
-   * @throws IOException if the magic or version differ, type is invalid, or input fails.
+   * @throws IOException if the magic or version differ, the type is invalid, or input fails.
    */
   public RequestIdentifier(DataInput dis) throws IOException {
     int magic = dis.readInt();
@@ -136,8 +137,8 @@ public final class RequestIdentifier {
 
   /**
    * Determines whether another identifier represents the same queued request while deliberately
-   * ignoring {@link #type}. Use this when de-duplicating enqueue attempts that should coalesce
-   * based on queue scope, client name, and stable identifier string.
+   * ignoring {@link #type}. Use this when deduplicating enqueue attempts that should coalesce based
+   * on queue scope, client name, and stable identifier string.
    *
    * @param other candidate identifier compared by queue flag, client name, and identifier string.
    * @return {@code true} when queue scope and identifier match, even if request types differ.
@@ -146,6 +147,31 @@ public final class RequestIdentifier {
     if (globalQueue != other.globalQueue) return false;
     if (!globalQueue && !clientName.equals(other.clientName)) return false;
     return identifier.equals(other.identifier);
+  }
+
+  /**
+   * Converts this legacy FCP identifier to the client-owned persistence identifier.
+   *
+   * @return equivalent client-owned identifier with the same byte-compatible field values
+   */
+  public PersistentRequestIdentifier toPersistentRequestIdentifier() {
+    return new PersistentRequestIdentifier(
+        globalQueue, clientName, identifier, toPersistentRequestType(type));
+  }
+
+  /**
+   * Rebuilds an FCP identifier from the client-owned persistence identifier.
+   *
+   * @param identifier client-owned identifier to convert
+   * @return equivalent FCP request identifier
+   */
+  public static RequestIdentifier fromPersistentRequestIdentifier(
+      PersistentRequestIdentifier identifier) {
+    return new RequestIdentifier(
+        identifier.isGlobalQueue(),
+        identifier.clientName(),
+        identifier.identifier(),
+        fromPersistentRequestType(identifier.type()));
   }
 
   /** Hash code aligned with {@link #equals(Object)}; omits {@link #type} by design. */
@@ -165,7 +191,7 @@ public final class RequestIdentifier {
    * base identifier string, and {@link #type}. Suitable for maps and sets that must distinguish
    * between different request categories.
    *
-   * @param obj other object, expected to be another {@code RequestIdentifier}.
+   * @param obj the other object, expected to be another {@code RequestIdentifier}.
    * @return {@code true} when all significant fields match; {@code false} otherwise.
    */
   @Override
@@ -177,5 +203,22 @@ public final class RequestIdentifier {
     if (!globalQueue && !clientName.equals(other.clientName)) return false;
     if (!identifier.equals(other.identifier)) return false;
     return type == other.type;
+  }
+
+  private static PersistentRequestIdentifier.RequestType toPersistentRequestType(RequestType type) {
+    return switch (type) {
+      case GET -> PersistentRequestIdentifier.RequestType.GET;
+      case PUT -> PersistentRequestIdentifier.RequestType.PUT;
+      case PUTDIR -> PersistentRequestIdentifier.RequestType.PUTDIR;
+    };
+  }
+
+  private static RequestType fromPersistentRequestType(
+      PersistentRequestIdentifier.RequestType type) {
+    return switch (type) {
+      case GET -> RequestType.GET;
+      case PUT -> RequestType.PUT;
+      case PUTDIR -> RequestType.PUTDIR;
+    };
   }
 }

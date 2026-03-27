@@ -8,6 +8,8 @@ import network.crypta.client.async.ClientContextRafFactories;
 import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
+import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
@@ -21,7 +23,9 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.Persistable;
+import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
 import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
+import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
@@ -63,6 +67,10 @@ import network.crypta.support.io.TempBucketFactory;
 public final class NodeClientPersistence {
   private final ConfigurablePersister persister;
   private final PersistentRequestRoot persistentRoot = new PersistentRequestRoot();
+  private final PersistentRequestCatalog persistentRequestCatalog =
+      new CoreFcpPersistentRequestCatalog(persistentRoot);
+  private final PersistentRequestRecoveryCodec persistentRequestRecoveryCodec =
+      new FcpPersistentRequestRecoveryCodec();
   private DiskSpaceCheckingRandomAccessBufferFactory diskChecker;
   private MaybeEncryptedRandomAccessBufferFactory persistentRafFactory;
   private final int sortOrderAfter;
@@ -305,6 +313,9 @@ public final class NodeClientPersistence {
    */
   public ClientContext createClientContext(Node node, ClientContextInitParams params) {
     DiskSpaceCheckingRandomAccessBufferFactory checker = requireDiskChecker();
+    params
+        .clientLayerPersister()
+        .configurePersistenceAdapters(persistentRequestCatalog, persistentRequestRecoveryCodec);
     NodeClientCoreInit init = params.init();
     ClientContextRuntime runtime =
         new ClientContextRuntime(
