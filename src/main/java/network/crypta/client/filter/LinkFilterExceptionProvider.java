@@ -1,24 +1,16 @@
 package network.crypta.client.filter;
 
 import java.net.URI;
-import network.crypta.clients.http.LinkFilterExceptedToadlet;
-import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.Toadlet;
 
 /**
  * Supplies link filter exception decisions to components that perform content filtering.
  *
  * <p>This interface abstracts the policy that decides whether a particular {@link URI} should be
- * exempt from the link/content filtering pipeline. Client code that needs to evaluate links prior
- * to serving or fetching content can depend on this contract without tying itself to a specific
- * HTTP server or request handling implementation. A typical call pattern is that a request handler
+ * exempt from the link/content filtering pipeline. Client code that needs to evaluate links before
+ * serving or fetching content can depend on this contract without tying itself to a specific HTTP
+ * server or request handling implementation. A typical call pattern is that a request handler
  * inspects a candidate link and queries this provider to determine if the link must bypass
  * filtering; the handler then either forwards unmodified or applies the filter accordingly.
- *
- * <p>At present, the common implementation is {@link SimpleToadletServer}, which forwards a
- * decision to the addressed {@link Toadlet} when it implements {@link LinkFilterExceptedToadlet}.
- * This separation keeps filtering logic centralized while still allowing individual toadlets to
- * express fine‑grained exceptions.
  *
  * <p>Thread-safety and mutability characteristics depend on the concrete implementation. Callers
  * should treat providers as read‑only decision services. Implementations may consult configuration
@@ -32,27 +24,25 @@ import network.crypta.clients.http.Toadlet;
  * </ul>
  *
  * @author <a href="mailto:bombe@pterodactylus.net">David ‘Bombe’ Roden</a>
- * @see SimpleToadletServer
- * @see LinkFilterExceptedToadlet
  */
 public interface LinkFilterExceptionProvider {
 
   /**
    * Determines whether the supplied link is exempt from content filtering.
    *
-   * <p>The decision typically reflects policy exposed by the target handler (for example, a {@link
-   * Toadlet} implementing {@link LinkFilterExceptedToadlet}) or server‑level configuration. Callers
-   * should invoke this method for each candidate link they intend to process and act on the result
-   * immediately; the outcome is not guaranteed to be stable across requests if policy is dynamic.
-   * Implementations are expected to be side‑effect free and execute quickly; however, consult
-   * documentation of the concrete provider for any additional performance considerations.
+   * <p>The decision typically reflects policy exposed by the target handler or server‑level
+   * configuration. Callers should invoke this method for each candidate link they intend to process
+   * and act on the result immediately; the outcome is not guaranteed to be stable across requests
+   * if the policy is dynamic. Implementations are expected to be side‑effect-free and execute
+   * quickly; however, consult documentation of the concrete provider for any additional performance
+   * considerations.
    *
    * <p>Idempotency: Repeated calls with the same input during a single evaluation phase are
    * expected to return the same boolean answer.
    *
    * @param link the absolute or server‑relative {@link URI} to check against the exception policy;
-   *     must not be {@code null}; opaque or malformed URIs should be rejected by callers upstream
-   *     before invoking this method
+   *     must not be {@code null}; callers should reject opaque or malformed URIs upstream before
+   *     invoking this method
    * @return {@code true} when filtering must be bypassed for this link and the request may proceed
    *     unfiltered; {@code false} when the standard filtering pipeline should process the link
    */

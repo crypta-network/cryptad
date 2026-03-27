@@ -12,7 +12,6 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.NullClientCallback;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
@@ -21,6 +20,7 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.LRUMap;
 import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.http.HttpFetchSizeLimits;
 import network.crypta.support.io.NullBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,8 +125,8 @@ public class USKManager {
   public USKManager(NodeClientCore core) {
     HighLevelSimpleClient client =
         core.makeClient(RequestStarter.UPDATE_PRIORITY_CLASS, false, false);
-    client.setMaxIntermediateLength(FProxyToadlet.getMaxLengthNoProgress());
-    client.setMaxLength(FProxyToadlet.getMaxLengthNoProgress());
+    client.setMaxIntermediateLength(HttpFetchSizeLimits.getMaxLengthNoProgress());
+    client.setMaxLength(HttpFetchSizeLimits.getMaxLengthNoProgress());
     backgroundFetchContext = client.getFetchContext();
     backgroundFetchContext.setFollowRedirects(false);
     backgroundFetchContextIgnoreDBR =
@@ -765,7 +765,7 @@ public class USKManager {
    * @param cb Callback notified when stable editions are discovered during polling rounds.
    * @param ignoreUSKDatehints If true, ignores date hints while probing for new editions.
    * @param client Request client used for scheduling; must be non-persistent in this context.
-   * @return The proxy object which was actually subscribed. The caller MUST record this and pass it
+   * @return The proxy object that was actually subscribed. The caller MUST record this and pass it
    *     on to unsubscribe() when unsubscribing.
    */
   public USKSparseProxyCallback subscribeSparse(

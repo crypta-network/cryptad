@@ -14,10 +14,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
-import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.l10n.L10nTestUtils;
 import network.crypta.support.Logging;
 import network.crypta.support.TestProperty;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.io.ArrayBucket;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
@@ -125,7 +125,7 @@ class ContentFilterTest {
 
     // External links are stripped/redirected
     assertTrue(htmlFilter(EXTERNAL_LINK_CHECK1).startsWith(EXTERNAL_LINK_OK));
-    assertTrue(htmlFilter(EXTERNAL_LINK_CHECK2).contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH));
+    assertTrue(htmlFilter(EXTERNAL_LINK_CHECK2).contains(ExternalLinkSupport.EXTERNAL_LINK_PATH));
     assertTrue(htmlFilter(EXTERNAL_LINK_CHECK3).startsWith(EXTERNAL_LINK_OK));
   }
 
@@ -161,7 +161,7 @@ class ContentFilterTest {
     // bug #2451
     assertEquals(POUNT_CHARACTER_ENCODING_TEST_RESULT, htmlFilter(POUNT_CHARACTER_ENCODING_TEST));
     // bug #2297
-    assertTrue(htmlFilter(PREVENT_FPROXY_ACCESS).contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH));
+    assertTrue(htmlFilter(PREVENT_FPROXY_ACCESS).contains(ExternalLinkSupport.EXTERNAL_LINK_PATH));
     // bug #2921
     assertTrue(htmlFilter(PREVENT_EXTERNAL_ACCESS_CSS_SIMPLE).contains(DIV_BLOCK));
     assertTrue(htmlFilter(PREVENT_EXTERNAL_ACCESS_CSS_ESCAPE).contains(DIV_BLOCK));
@@ -232,6 +232,29 @@ class ContentFilterTest {
     testOneHTMLFilter(HTML_METER_PROGRESS_TAG);
     testOneHTMLFilter(HTML5_TAGS);
     testOneHTMLFilter(HTML5_BDI_RUBY);
+  }
+
+  @Test
+  void htmlFilter_whenInputTypeAllowed_expectInputPreserved() throws Exception {
+    enableVerboseLoggingIfRequested();
+
+    String filtered = htmlFilter("<form><input type=\"checkbox\" name=\"remember\"></form>");
+
+    assertTrue(filtered.contains("<input"));
+    assertTrue(filtered.contains("type=\"checkbox\""));
+    assertTrue(filtered.contains("name=\"remember\""));
+  }
+
+  @Test
+  void htmlFilter_whenInputTypeDisallowed_expectInputDropped() throws Exception {
+    enableVerboseLoggingIfRequested();
+
+    String filtered = htmlFilter("<form><input type=\"file\" name=\"upload\"></form>");
+
+    assertNotNull(filtered);
+    assertFalse(filtered.contains("<input"));
+    assertFalse(filtered.contains("type=\"file\""));
+    assertFalse(filtered.contains("name=\"upload\""));
   }
 
   @Test

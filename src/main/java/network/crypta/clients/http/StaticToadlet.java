@@ -11,6 +11,7 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.StaticResourcePaths;
 import network.crypta.support.io.FileBucket;
 
 /**
@@ -54,7 +55,7 @@ public class StaticToadlet extends Toadlet {
    * before resolving resources. Keeping the prefix centralized makes it easy for callers to mount
    * the toadlet under a different path without changing lookup behavior.
    */
-  public static final String ROOT_URL = "/static/";
+  public static final String ROOT_URL = StaticResourcePaths.ROOT_URL;
 
   /**
    * Classpath location that contains packaged static resources resolved by {@link

@@ -192,7 +192,7 @@ class LongTermPushRepullTestTest {
 
   /** Subprocess entrypoint used by {@link #runMainInSubprocess()}. */
   public static final class MainRunner {
-    static void main(String[] args) {
+    public static void main(String[] args) {
       LongTermPushRepullTest.main(args);
     }
   }

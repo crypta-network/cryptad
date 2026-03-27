@@ -7,7 +7,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import network.crypta.clients.http.ExternalLinkToadlet;
+import network.crypta.support.http.ExternalLinkSupport;
 
 /**
  * Content filter for M3U playlists.
@@ -29,7 +29,7 @@ import network.crypta.clients.http.ExternalLinkToadlet;
  *
  * <p>Extended M3U directives appear as comments and are therefore preserved only when carried in a
  * URI line; dedicated directive/comment lines are intentionally removed. The canonical extended
- * header is {@code #EXTM3U}. A typical entry line that accompanies metadata looks like {@code
+ * header is {@code #EXTM3U}. A typical entry line that comes with metadata looks like {@code
  * #EXTINF:233,Title 1} followed by a path, for example {@code Somewhere\\title1.mp3}. In prose the
  * rule is often described as: {@code #EXTINF:<length in seconds>,<title>} followed by {@code
  * <path>}.
@@ -84,7 +84,8 @@ public class M3UFilter implements ContentDataFilter {
    *     {@code http://localhost:8888}; forwarded to the callback to assist in URI rewriting; must
    *     be non-null when rewriting requires absolute context.
    * @param cb the filtering callback invoked for each URI to determine a safe representation and
-   *     appropriate mime type; must not be {@code null} and should be resilient to invalid input.
+   *     the appropriate mime type; must not be {@code null} and should be resilient to invalid
+   *     input.
    * @throws IOException if an I/O error occurs while reading from {@code input} or writing to
    *     {@code output}; callers should assume partial output may have been produced.
    */
@@ -140,8 +141,8 @@ public class M3UFilter implements ContentDataFilter {
       filtered = cb.processURI(uri, subMimetype, schemeHostAndPort, true);
 
       if (filtered != null
-          && !filtered.contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH)
-          && !filtered.contains(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING)) {
+          && !filtered.contains(ExternalLinkSupport.EXTERNAL_LINK_PATH)
+          && !filtered.contains(ExternalLinkSupport.MAGIC_HTTP_ESCAPE_STRING)) {
         filtered += (filtered.contains("?") ? "&" : "?");
         long maxLengthNoProgress = (200L * 1024 * 1024 * 11) / 10;
         filtered += "max-size=" + maxLengthNoProgress;

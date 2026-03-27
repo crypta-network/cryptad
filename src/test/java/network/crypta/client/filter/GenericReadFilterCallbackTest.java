@@ -4,9 +4,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.stream.Stream;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
-import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.L10nTestUtils;
+import network.crypta.support.http.ExternalLinkSupport;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -122,8 +122,31 @@ class GenericReadFilterCallbackTest {
     String result = cb.processURI(input, null);
 
     assertEquals(
-        ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?_CHECKED_HTTP_=http://example.com/path?q=a%20b",
+        ExternalLinkSupport.EXTERNAL_LINK_PATH
+            + "?"
+            + ExternalLinkSupport.MAGIC_HTTP_ESCAPE_STRING
+            + "=http://example.com/path?q=a%20b",
         result);
+  }
+
+  @Test
+  void processURI_whenBookmarkMissingDescription_expectEmptyDescriptionParameter()
+      throws Exception {
+    GenericReadFilterCallback cb = newCallback("http://localhost:8888/");
+
+    String result = cb.processURI("/?newbookmark=KSK@mykey", null);
+
+    assertEquals("/?newbookmark=KSK@mykey&desc=", result);
+  }
+
+  @Test
+  void processURI_whenBookmarkDescriptionContainsEncodedAmpersand_expectDecodedAndReencoded()
+      throws Exception {
+    GenericReadFilterCallback cb = newCallback("http://localhost:8888/");
+
+    String result = cb.processURI("/?newbookmark=KSK@mykey&desc=Rock%20%26%20Roll", null);
+
+    assertEquals("/?newbookmark=KSK@mykey&desc=Rock+%26+Roll", result);
   }
 
   @Test

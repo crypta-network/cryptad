@@ -8,7 +8,7 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
-import network.crypta.clients.http.ExternalLinkToadlet;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -99,11 +99,11 @@ class M3UFilterTest {
   void readFilter_whenSanitizedUriIsExternalLink_doesNotAppendMaxSize() throws Exception {
     FilterCallback callback = mock(FilterCallback.class);
     when(callback.processURI("song.mp3", "audio/mpeg", SCHEME_HOST_PORT, true))
-        .thenReturn(ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?target=example");
+        .thenReturn(ExternalLinkSupport.EXTERNAL_LINK_PATH + "?target=example");
 
     String result = runFilter("song.mp3\n", callback);
 
-    assertEquals(ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?target=example\n", result);
+    assertEquals(ExternalLinkSupport.EXTERNAL_LINK_PATH + "?target=example\n", result);
   }
 
   @Test
@@ -111,12 +111,12 @@ class M3UFilterTest {
     FilterCallback callback = mock(FilterCallback.class);
     when(callback.processURI("second.mp3", "audio/mpeg", SCHEME_HOST_PORT, true))
         .thenReturn(
-            "http://filtered/" + ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3");
+            "http://filtered/" + ExternalLinkSupport.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3");
 
     String result = runFilter("second.mp3\n", callback);
 
     assertEquals(
-        "http://filtered/" + ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3\n",
+        "http://filtered/" + ExternalLinkSupport.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3\n",
         result);
   }
 

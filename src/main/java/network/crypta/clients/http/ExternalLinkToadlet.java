@@ -9,6 +9,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.ExternalLinkSupport;
 
 /**
  * Serves a confirmation page before allowing the browser to follow external HTTP/HTTPS links.
@@ -36,21 +37,19 @@ import network.crypta.support.api.HTTPRequest;
 public class ExternalLinkToadlet extends Toadlet {
 
   private static final int MAX_URL_LENGTH = 1024 * 1024;
-  private static final String PATH_SEPARATOR = "/";
-  private static final String EXTERNAL_LINK_SEGMENT = "external-link";
 
   /**
    * Public path segment served by this toadlet (e.g. {@code /external-link/}). Clients compose
    * links by appending query parameters produced by {@link #escape(String)}.
    */
-  public static final String EXTERNAL_LINK_PATH =
-      PATH_SEPARATOR + EXTERNAL_LINK_SEGMENT + PATH_SEPARATOR;
+  public static final String EXTERNAL_LINK_PATH = ExternalLinkSupport.EXTERNAL_LINK_PATH;
 
   /**
    * Query parameter name carrying the original external URL. The value is treated as opaque text
    * and echoed back into the confirmation form without additional validation.
    */
-  public static final String MAGIC_HTTP_ESCAPE_STRING = "_CHECKED_HTTP_";
+  public static final String MAGIC_HTTP_ESCAPE_STRING =
+      ExternalLinkSupport.MAGIC_HTTP_ESCAPE_STRING;
 
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
@@ -186,7 +185,22 @@ public class ExternalLinkToadlet extends Toadlet {
    * }</pre>
    */
   public static String escape(String uri) {
-    return ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?" + MAGIC_HTTP_ESCAPE_STRING + '=' + uri;
+    return ExternalLinkSupport.escape(uri);
+  }
+
+  /**
+   * Prepends a caller-supplied confirmation-path URI to the escaped external-link parameter.
+   *
+   * <p>This overload keeps the query parameter naming stable while allowing tests or future
+   * refactors to compose the link against a different path without relying on the default {@link
+   * #EXTERNAL_LINK_PATH} constant.
+   *
+   * @param externalLinkPath confirmation page path to prepend, such as {@code /external-link/}.
+   * @param uri URI to prompt for confirmation; should be percent-encoded and non-empty.
+   * @return String appropriate for a link, combining the supplied path and the escaped parameter.
+   */
+  public static String escape(String externalLinkPath, String uri) {
+    return ExternalLinkSupport.escape(externalLinkPath, uri);
   }
 
   private static String confirmExternalLinkText(String url) {

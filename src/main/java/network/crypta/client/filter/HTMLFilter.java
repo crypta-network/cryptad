@@ -35,12 +35,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringTokenizer;
-import network.crypta.clients.http.ToadletContextImpl;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLDecoder;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
+import network.crypta.support.http.HttpDateParser;
 import network.crypta.support.io.NullWriter;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -1253,6 +1253,15 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         for (int x = 1; x < len; x++) unparsedAttrs[x - 1] = v.get(x);
       } else unparsedAttrs = new String[0];
       if (LOG.isTraceEnabled()) LOG.trace("Element = {}", element);
+    }
+
+    /**
+     * Returns whether this parsed tag was a closing tag.
+     *
+     * @return {@code true} when the original token started with {@code /}, otherwise {@code false}
+     */
+    public boolean isStartSlash() {
+      return startSlash;
     }
 
     ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
@@ -2819,7 +2828,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
      */
     protected final String tagName;
 
-    // Attributes which need no sanitation
+    // Attributes that need no sanitation
     private final HashSet<String> allowedAttrs;
 
     /**
@@ -3347,7 +3356,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
       String title = getHashString(h, HtmlStrings.STR_TITLE);
       if (title != null) {
-        // PARANOIA: title is PLAIN TEXT, right? In all user agents? :)
+        // PARANOIA: the title is PLAIN TEXT, right? In all user agents? :)
         hn.put(HtmlStrings.STR_TITLE, title);
       }
       return hn;
@@ -3763,7 +3772,22 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   static class InputTagVerifier extends CoreTagVerifier {
-    private final HashSet<String> allowedTypes;
+    private static final Set<String> ALLOWED_TYPES =
+        Set.of(
+            "text",
+            "password",
+            "checkbox",
+            "radio",
+            "submit",
+            "reset",
+            "hidden",
+            "image",
+            HtmlStrings.STR_BUTTON,
+            "email",
+            "number",
+            "search",
+            "tel",
+            "url");
 
     InputTagVerifier(
         String tag,
@@ -3772,27 +3796,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] inlineURIAttrs,
         String[] eventAttrs) {
       super(tag, allowedAttrs, uriAttrs, inlineURIAttrs, eventAttrs, null);
-      this.allowedTypes = new HashSet<>();
-      // no ! file
-      String[] types =
-          new String[] {
-            "text",
-            "password",
-            "checkbox",
-            "radio",
-            "submit",
-            "reset",
-            // no ! file
-            "hidden",
-            "image",
-            HtmlStrings.STR_BUTTON,
-            "email",
-            "number",
-            "search",
-            "tel",
-            "url"
-          };
-      this.allowedTypes.addAll(Arrays.asList(types));
     }
 
     @Override
@@ -3802,7 +3805,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
       // We drop the whole <input> if the type isn't allowed (case-insensitive)
       if (hn.get("type") != null
-          && !allowedTypes.contains(hn.get("type").toString().toLowerCase(Locale.ROOT))) {
+          && !ALLOWED_TYPES.contains(hn.get("type").toString().toLowerCase(Locale.ROOT))) {
         return dropTag();
       }
 
@@ -3939,7 +3942,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private boolean handleExpiresMeta(String content, Map<String, Object> output) {
       try {
-        ToadletContextImpl.parseHTTPDate(content);
+        HttpDateParser.parseHTTPDate(content);
         output.put(HtmlStrings.STR_HTTP_EQUIV, "Expires");
         output.put(HtmlStrings.STR_CONTENT, content);
         return true;

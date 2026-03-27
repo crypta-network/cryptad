@@ -39,6 +39,7 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BucketFactory;
+import network.crypta.support.http.HttpFetchSizeLimits;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
@@ -199,26 +200,26 @@ public final class SimpleToadletServer
   private static class FProxyPassthruMaxSizeNoProgress extends LongCallback {
     @Override
     public Long get() {
-      return FProxyToadlet.getMaxLengthNoProgress();
+      return HttpFetchSizeLimits.getMaxLengthNoProgress();
     }
 
     @Override
     public void set(Long val) {
       if (get().equals(val)) return;
-      FProxyToadlet.setMaxLengthNoProgress(val);
+      HttpFetchSizeLimits.setMaxLengthNoProgress(val);
     }
   }
 
   private static class FProxyPassthruMaxSizeProgress extends LongCallback {
     @Override
     public Long get() {
-      return FProxyToadlet.getMaxLengthWithProgress();
+      return HttpFetchSizeLimits.getMaxLengthWithProgress();
     }
 
     @Override
     public void set(Long val) {
       if (get().equals(val)) return;
-      FProxyToadlet.setMaxLengthWithProgress(val);
+      HttpFetchSizeLimits.setMaxLengthWithProgress(val);
     }
   }
 
@@ -972,7 +973,7 @@ public final class SimpleToadletServer
 
     fproxyConfig.register(
         "passthroughMaxSize",
-        FProxyToadlet.getMaxLengthNoProgress(),
+        HttpFetchSizeLimits.getMaxLengthNoProgress(),
         new Option.Meta(
             configItemOrder++,
             true,
@@ -981,10 +982,10 @@ public final class SimpleToadletServer
             "SimpleToadletServer.passthroughMaxSizeLong"),
         new FProxyPassthruMaxSizeNoProgress(),
         true);
-    FProxyToadlet.setMaxLengthNoProgress(fproxyConfig.getLong("passthroughMaxSize"));
+    HttpFetchSizeLimits.setMaxLengthNoProgress(fproxyConfig.getLong("passthroughMaxSize"));
     fproxyConfig.register(
         PASSTHROUGH_MAX_SIZE_PROGRESS_KEY,
-        FProxyToadlet.getMaxLengthWithProgress(),
+        HttpFetchSizeLimits.getMaxLengthWithProgress(),
         new Option.Meta(
             configItemOrder++,
             true,
@@ -993,11 +994,12 @@ public final class SimpleToadletServer
             "SimpleToadletServer.passthroughMaxSizeProgressLong"),
         new FProxyPassthruMaxSizeProgress(),
         true);
-    FProxyToadlet.setMaxLengthWithProgress(fproxyConfig.getLong(PASSTHROUGH_MAX_SIZE_PROGRESS_KEY));
+    HttpFetchSizeLimits.setMaxLengthWithProgress(
+        fproxyConfig.getLong(PASSTHROUGH_MAX_SIZE_PROGRESS_KEY));
     LOG.info(
         "Set fproxy max length to {} and max length with progress to {} = {}",
-        FProxyToadlet.getMaxLengthNoProgress(),
-        FProxyToadlet.getMaxLengthWithProgress(),
+        HttpFetchSizeLimits.getMaxLengthNoProgress(),
+        HttpFetchSizeLimits.getMaxLengthWithProgress(),
         fproxyConfig.getLong(PASSTHROUGH_MAX_SIZE_PROGRESS_KEY));
 
     fproxyConfig.register(
