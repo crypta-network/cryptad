@@ -2,6 +2,7 @@ package network.crypta.clients.http.wizardsteps;
 
 import java.util.Objects;
 import network.crypta.compat.BandwidthIndicator;
+import network.crypta.compat.bandwidth.BandwidthDetectionSupport;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
@@ -17,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * applying user-selected bandwidth limits to the node configuration, rendering a consistent warning
  * infobox when a value cannot be applied, and persisting the “wizard completed” flag. It also
  * contains a static helper for turning raw indicator-reported bit rates into the {@link
- * BandwidthLimit} value object used by the wizard UI.
+ * WizardBandwidthLimit} value object used by the wizard UI.
  *
  * <p>Instances are lightweight and hold a reference to the shared {@link Config} supplied by the
  * surrounding HTTP wizard implementation. This class does not own that object and does not perform
@@ -103,7 +104,7 @@ public abstract class BandwidthManipulator {
    *     correspond to the current page context.
    * @param message Human-readable message to display inside the infobox body; should be a single
    *     sentence and must not include raw user secrets.
-   * @return The created infobox node which is already attached to {@code parent}.
+   * @return The created infobox node that is already attached to {@code parent}.
    */
   protected HTMLNode parseErrorBox(HTMLNode parent, PageHelper helper, String message) {
     HTMLNode infoBox =
@@ -128,52 +129,31 @@ public abstract class BandwidthManipulator {
    * instance.
    *
    * <pre>{@code
-   * BandwidthLimit detected = BandwidthManipulator.detectBandwidthLimits(bwIndicator);
+   * WizardBandwidthLimit detected = BandwidthManipulator.detectBandwidthLimits(bwIndicator);
    * }</pre>
    *
    * @param bwIndicator indicator instance used to get upstream and downstream bit rates; may be
    *     null, in which case detection fails as if the indicator is unavailable.
    * @return Detected upstream and downstream bandwidth in bytes per second, suitable for display.
-   * @throws BandwidthDetectionUnavailableException If auto-detection is unavailable, or {@code
-   *     bwIndicator} is null and detection cannot proceed.
+   * @throws WizardBandwidthDetectionUnavailableException If auto-detection is unavailable, or
+   *     {@code bwIndicator} is null and detection cannot proceed.
    * @throws IllegalValueException If the indicator reports unavailable rates or values that are
    *     nonsensically low for wizard defaults.
    */
-  public static BandwidthLimit detectBandwidthLimits(BandwidthIndicator bwIndicator)
-      throws BandwidthDetectionUnavailableException, IllegalValueException {
-    if (bwIndicator == null) {
-      throw new BandwidthDetectionUnavailableException(
-          "The node does not have a bandwidthIndicator.");
+  @SuppressWarnings("unused")
+  public static WizardBandwidthLimit detectBandwidthLimits(BandwidthIndicator bwIndicator)
+      throws WizardBandwidthDetectionUnavailableException, IllegalValueException {
+    try {
+      network.crypta.compat.bandwidth.BandwidthLimit detected =
+          BandwidthDetectionSupport.detectBandwidthLimits(bwIndicator);
+      return new WizardBandwidthLimit(
+          detected.downBytes(),
+          detected.upBytes(),
+          detected.descriptionKey(),
+          detected.maybeDefault());
+    } catch (network.crypta.compat.bandwidth.BandwidthDetectionUnavailableException e) {
+      throw new WizardBandwidthDetectionUnavailableException(e.getMessage(), e);
     }
-
-    int downstreamBits = bwIndicator.getDownstreamMaxBitRate();
-    int upstreamBits = bwIndicator.getUpstreamMaxBitRate();
-    LOG.info(
-        "bandwidthIndicator reports downstream {} bits/s and upstream {} bits/s.",
-        downstreamBits,
-        upstreamBits);
-
-    if (downstreamBits < 0 || upstreamBits < 0) {
-      throw new IllegalValueException("Reported unavailable.");
-    }
-
-    // For readability, in bits.
-    final int KiB = 8192;
-
-    if (downstreamBits < 8 * KiB) {
-      throw new IllegalValueException(
-          "Detected downstream of " + downstreamBits + " bits/s is nonsensically slow, ignoring.");
-    }
-
-    if (upstreamBits < KiB) {
-      throw new IllegalValueException(
-          "Detected upstream of " + upstreamBits + " bits/s is nonsensically slow, ignoring.");
-    }
-
-    int downstreamBytes = downstreamBits / 8;
-    int upstreamBytes = upstreamBits / 8;
-
-    return new BandwidthLimit(downstreamBytes, upstreamBytes, "bandwidthDetected", false);
   }
 
   /**

@@ -4,12 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Objects;
-import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
-import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
-import network.crypta.clients.http.wizardsteps.DatastoreSize;
+import network.crypta.compat.bandwidth.BandwidthDetectionSupport;
+import network.crypta.compat.bandwidth.BandwidthDetectionUnavailableException;
+import network.crypta.compat.bandwidth.BandwidthLimit;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
+import network.crypta.config.DatastoreSizingSupport;
 import network.crypta.config.Option;
 import network.crypta.node.MasterKeysFileSizeException;
 import network.crypta.node.MasterKeysWrongPasswordException;
@@ -289,10 +289,10 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
     try {
       var ipDetector = node.network().ipDetector();
       BandwidthLimit detected =
-          BandwidthManipulator.detectBandwidthLimits(
+          BandwidthDetectionSupport.detectBandwidthLimits(
               ipDetector == null ? null : ipDetector.getBandwidthIndicator());
       return new String[] {
-        Long.toString(detected.downBytes / 2 / KIB), Long.toString(detected.upBytes / 2 / KIB)
+        Long.toString(detected.downBytes() / 2 / KIB), Long.toString(detected.upBytes() / 2 / KIB)
       };
     } catch (BandwidthDetectionUnavailableException | IllegalValueException e) {
       LOG.info(e.getMessage(), e);
@@ -346,10 +346,10 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
           BandwidthLimit.fromMonthlyBudget(
               Fields.parseLong(submission.bandwidthMonthlyLimitGiB() + "GiB"),
               Node.getMinimumBandwidth());
-      config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
+      config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes()));
       config
           .get("node")
-          .set(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT, Long.toString(bandwidth.upBytes));
+          .set(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT, Long.toString(bandwidth.upBytes()));
     } catch (ConfigException e) {
       LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
     }
@@ -365,7 +365,8 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    * @param storageLimitGiB requested datastore size in GiB text from the wizard form
    */
   private void applyDatastore(Config config, String storageLimitGiB) {
-    DatastoreSize.setDatastoreSize(storageLimitGiB + "GiB", config);
+    DatastoreSizingSupport.setDatastoreSize(
+        storageLimitGiB + "GiB", config, DatastoreUtil::maxDatastoreSize);
   }
 
   /**

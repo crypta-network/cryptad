@@ -43,7 +43,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
 
-  private final BandwidthLimit[] limits;
+  private final WizardBandwidthLimit[] limits;
   private final FirstTimeWizardPort wizardPort;
 
   /**
@@ -62,21 +62,21 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
     this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
     final long KiB = 1024L;
     limits =
-        new BandwidthLimit[] {
+        new WizardBandwidthLimit[] {
           // Feedback on typical real-world ratios on slow connections would be helpful.
           // 6Mbps/256kbps - 6Mbps is common in parts of China, as well as being the real value in
           // lots of DSL areas
-          new BandwidthLimit(384 * KiB, 16 * KiB, "bandwidthConnection6M", false),
+          new WizardBandwidthLimit(384 * KiB, 16 * KiB, "bandwidthConnection6M", false),
           // 8Mbps/512kbps - UK DSL1 is either 448k up or 832k up
-          new BandwidthLimit(512 * KiB, 32 * KiB, "bandwidthConnection8M", false),
+          new WizardBandwidthLimit(512 * KiB, 32 * KiB, "bandwidthConnection8M", false),
           // 12Mbps/1Mbps - typical DSL2
-          new BandwidthLimit(768 * KiB, 64 * KiB, "bandwidthConnection12M", false),
+          new WizardBandwidthLimit(768 * KiB, 64 * KiB, "bandwidthConnection12M", false),
           // Typical DSL as of 2024
-          new BandwidthLimit(768 * KiB, 160 * KiB, "bandwidthConnectionHalfVDSL", true),
+          new WizardBandwidthLimit(768 * KiB, 160 * KiB, "bandwidthConnectionHalfVDSL", true),
           // 20Mbps/5Mbps - Slow end of VDSL
-          new BandwidthLimit(1280 * KiB, 320 * KiB, "bandwidthConnectionVDSL", false),
-          // 100Mbps fibre etc
-          new BandwidthLimit(2048 * KiB, 2048 * KiB, "bandwidthConnection100M", false)
+          new WizardBandwidthLimit(1280 * KiB, 320 * KiB, "bandwidthConnectionVDSL", false),
+          // 100Mbps fiber etc.
+          new WizardBandwidthLimit(2048 * KiB, 2048 * KiB, "bandwidthConnection100M", false)
         };
   }
 
@@ -128,19 +128,19 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
 
     boolean addedDefault = false;
 
-    BandwidthLimit detected = detectedBandwidthLimitOrNull(snapshot);
+    WizardBandwidthLimit detected = detectedBandwidthLimitOrNull(snapshot);
     if (detected != null) {
       addLimitRow(table, detected, true, true);
       addedDefault = true;
     }
 
-    BandwidthLimit current = currentBandwidthLimitOrNull(snapshot);
+    WizardBandwidthLimit current = currentBandwidthLimitOrNull(snapshot);
     if (current != null) {
       addLimitRow(table, current, false, !addedDefault);
       addedDefault = true;
     }
 
-    for (BandwidthLimit limit : limits) {
+    for (WizardBandwidthLimit limit : limits) {
       addLimitRow(table, limit, false, !addedDefault);
     }
 
@@ -229,7 +229,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
     return FirstTimeWizardToadlet.WIZARD_STEP.COMPLETE.name();
   }
 
-  private BandwidthLimit detectedBandwidthLimitOrNull(FirstTimeWizardSnapshot snapshot) {
+  private WizardBandwidthLimit detectedBandwidthLimitOrNull(FirstTimeWizardSnapshot snapshot) {
     String detectedDownload = snapshot.detectedDownloadLimitKiB();
     String detectedUpload = snapshot.detectedUploadLimitKiB();
     if (detectedDownload.isEmpty() || detectedUpload.isEmpty()) {
@@ -238,7 +238,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
 
     try {
       final long kib = 1024L;
-      return new BandwidthLimit(
+      return new WizardBandwidthLimit(
           Long.parseLong(detectedDownload) * kib,
           Long.parseLong(detectedUpload) * kib,
           "bandwidthDetected",
@@ -249,13 +249,14 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
     }
   }
 
-  private static BandwidthLimit currentBandwidthLimitOrNull(FirstTimeWizardSnapshot snapshot) {
+  private static WizardBandwidthLimit currentBandwidthLimitOrNull(
+      FirstTimeWizardSnapshot snapshot) {
     FirstTimeWizardCurrentBandwidthLimits current = snapshot.currentBandwidthLimits();
     if (current == null) {
       return null;
     }
 
-    return new BandwidthLimit(
+    return new WizardBandwidthLimit(
         current.downloadBytes(), current.uploadBytes(), "bandwidthCurrent", false);
   }
 
@@ -293,20 +294,22 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
    * @param useMaybeDefault Whether to auto-select this entry when no other default was added.
    */
   private void addLimitRow(
-      HTMLNode table, BandwidthLimit limit, boolean recommended, boolean useMaybeDefault) {
+      HTMLNode table, WizardBandwidthLimit limit, boolean recommended, boolean useMaybeDefault) {
     HTMLNode row = table.addChild("tr");
-    row.addChild("td", WizardL10n.l10n(limit.descriptionKey));
+    row.addChild("td", WizardL10n.l10n(limit.descriptionKey()));
     String downColumn =
-        SizeUtil.formatSize(limit.downBytes) + WizardL10n.l10n("bandwidthPerSecond");
-    if (limit.downBytes >= 32 * 1024) {
+        SizeUtil.formatSize(limit.downBytes()) + WizardL10n.l10n("bandwidthPerSecond");
+    if (limit.downBytes() >= 32 * 1024) {
       downColumn += " (= ";
-      if (limit.downBytes < 256 * 1024)
-        downColumn += new DecimalFormat("0.0").format((double) limit.downBytes * 8 / (1024 * 1024));
-      else downColumn += (limit.downBytes * 8) / (1024 * 1024);
+      if (limit.downBytes() < 256 * 1024)
+        downColumn +=
+            new DecimalFormat("0.0").format((double) limit.downBytes() * 8 / (1024 * 1024));
+      else downColumn += (limit.downBytes() * 8) / (1024 * 1024);
       downColumn += "Mbps)";
     }
     row.addChild("td", downColumn);
-    row.addChild("td", SizeUtil.formatSize(limit.upBytes) + WizardL10n.l10n("bandwidthPerSecond"));
+    row.addChild(
+        "td", SizeUtil.formatSize(limit.upBytes()) + WizardL10n.l10n("bandwidthPerSecond"));
 
     HTMLNode buttonCell = row.addChild("td");
 
@@ -314,8 +317,8 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
         buttonCell.addChild(
             TAG_INPUT,
             new String[] {"type", "name", ATTR_VALUE},
-            new String[] {"radio", "bandwidth", limit.downBytes + "/" + limit.upBytes});
-    if (recommended || (useMaybeDefault && limit.maybeDefault))
+            new String[] {"radio", "bandwidth", limit.downBytes() + "/" + limit.upBytes()});
+    if (recommended || (useMaybeDefault && limit.maybeDefault()))
       radio.addAttribute("checked", "checked");
     if (recommended) {
       buttonCell.addChild("#", WizardL10n.l10n("autodetectedSuggestedLimit"));

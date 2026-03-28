@@ -187,10 +187,10 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
    *
    * <p>The handler reads the {@code capTo} form parameter, interprets it as a monthly cap in
    * “GB”-labeled units, and converts it to a byte total using {@link DatastoreUtil#ONE_GIB}. The
-   * resulting value is then mapped to upload and download limits via {@link BandwidthLimit} and
-   * persisted using {@link #setBandwidthLimit(String, boolean)}. If parsing fails, or if the cap is
-   * below the minimum accepted limit, this method returns a redirect target that re-displays the
-   * current step with an appropriate error indicator.
+   * resulting value is then mapped to upload and download limits via {@link WizardBandwidthLimit}
+   * and persisted using {@link #setBandwidthLimit(String, boolean)}. If parsing fails, or if the
+   * cap is below the minimum accepted limit, this method returns a redirect target that re-displays
+   * the current step with an appropriate error indicator.
    *
    * <p>This method is intended to be called once per form submission; repeating the same submission
    * is effectively idempotent with respect to the resulting stored limit values.
@@ -216,12 +216,12 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
       target.append("&parseError=true");
       return target.toString();
     }
-    BandwidthLimit bandwidth =
-        BandwidthLimit.fromMonthlyBudget(bytesPerMonth, snapshotMinBandwidthBytesPerSecond());
+    WizardBandwidthLimit bandwidth =
+        WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, snapshotMinBandwidthBytesPerSecond());
 
     try {
-      setBandwidthLimit(Long.toString(bandwidth.downBytes), false);
-      setBandwidthLimit(Long.toString(bandwidth.upBytes), true);
+      setBandwidthLimit(Long.toString(bandwidth.downBytes()), false);
+      setBandwidthLimit(Long.toString(bandwidth.upBytes()), true);
     } catch (InvalidConfigValueException _) {
       target.append(URLEncoder.encode(String.valueOf(gbPerMonth), true));
       target.append("&tooLow=true");
@@ -237,7 +237,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
     try {
       return Double.parseDouble(snapshot.minBandwidthMonthlyLimitGiB());
     } catch (NumberFormatException _) {
-      return BandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB);
+      return WizardBandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB);
     }
   }
 

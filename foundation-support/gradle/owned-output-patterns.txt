@@ -26,6 +26,7 @@ network/crypta/support/HTMLEntities*
 network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*
 network/crypta/support/IllegalBase64Exception*
+network/crypta/support/IllegalValueException*
 network/crypta/support/LRUCache*
 network/crypta/support/LRUMap*
 network/crypta/support/LightweightException*

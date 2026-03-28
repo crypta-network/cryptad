@@ -2,12 +2,12 @@ package network.crypta.runtime.admin;
 
 import java.io.File;
 import java.util.Locale;
-import network.crypta.clients.http.wizardsteps.BandwidthDetectionUnavailableException;
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
-import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
-import network.crypta.clients.http.wizardsteps.DatastoreSize;
 import network.crypta.compat.BandwidthIndicator;
+import network.crypta.compat.bandwidth.BandwidthDetectionSupport;
+import network.crypta.compat.bandwidth.BandwidthDetectionUnavailableException;
+import network.crypta.compat.bandwidth.BandwidthLimit;
 import network.crypta.config.Config;
+import network.crypta.config.DatastoreSizingSupport;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -42,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -99,7 +101,8 @@ class LegacyFirstTimeWizardPortTest {
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
-        MockedStatic<BandwidthManipulator> bandwidth = mockStatic(BandwidthManipulator.class)) {
+        MockedStatic<BandwidthDetectionSupport> bandwidth =
+            mockStatic(BandwidthDetectionSupport.class)) {
       configStatic.when(() -> Config.longOption(nodeSubConfig, "storeSize")).thenReturn(storeSize);
       configStatic
           .when(() -> Config.longOption(nodeSubConfig, "clientCacheSize"))
@@ -112,7 +115,7 @@ class LegacyFirstTimeWizardPortTest {
           .when(() -> DatastoreUtil.maxDatastoreSize(node))
           .thenReturn(8L * DatastoreUtil.ONE_GIB);
       bandwidth
-          .when(() -> BandwidthManipulator.detectBandwidthLimits(bandwidthIndicator))
+          .when(() -> BandwidthDetectionSupport.detectBandwidthLimits(bandwidthIndicator))
           .thenReturn(new BandwidthLimit(2097152L, 1048576L, "desc", false));
 
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
@@ -167,7 +170,8 @@ class LegacyFirstTimeWizardPortTest {
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
-        MockedStatic<BandwidthManipulator> bandwidth = mockStatic(BandwidthManipulator.class)) {
+        MockedStatic<BandwidthDetectionSupport> bandwidth =
+            mockStatic(BandwidthDetectionSupport.class)) {
       configStatic.when(() -> Config.longOption(nodeSubConfig, "storeSize")).thenReturn(storeSize);
       when(storeSize.isDefault()).thenReturn(true);
       datastore.when(() -> DatastoreUtil.autodetectDatastoreSize(core, config)).thenReturn(0L);
@@ -178,7 +182,7 @@ class LegacyFirstTimeWizardPortTest {
       bandwidth
           .when(
               () ->
-                  BandwidthManipulator.detectBandwidthLimits(
+                  BandwidthDetectionSupport.detectBandwidthLimits(
                       node.network().ipDetector().getBandwidthIndicator()))
           .thenThrow(new BandwidthDetectionUnavailableException("none"));
 
@@ -259,7 +263,8 @@ class LegacyFirstTimeWizardPortTest {
 
     try (MockedStatic<Config> configStatic = mockStatic(Config.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
-        MockedStatic<BandwidthManipulator> bandwidth = mockStatic(BandwidthManipulator.class)) {
+        MockedStatic<BandwidthDetectionSupport> bandwidth =
+            mockStatic(BandwidthDetectionSupport.class)) {
       configStatic.when(() -> Config.longOption(nodeSubConfig, "storeSize")).thenReturn(storeSize);
       when(storeSize.isDefault()).thenReturn(true);
       datastore.when(() -> DatastoreUtil.autodetectDatastoreSize(core, config)).thenReturn(0L);
@@ -270,7 +275,7 @@ class LegacyFirstTimeWizardPortTest {
       bandwidth
           .when(
               () ->
-                  BandwidthManipulator.detectBandwidthLimits(
+                  BandwidthDetectionSupport.detectBandwidthLimits(
                       node.network().ipDetector().getBandwidthIndicator()))
           .thenThrow(new BandwidthDetectionUnavailableException("none"));
 
@@ -416,7 +421,8 @@ class LegacyFirstTimeWizardPortTest {
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
 
-    try (MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
+    try (MockedStatic<DatastoreSizingSupport> datastoreSize =
+        mockStatic(DatastoreSizingSupport.class)) {
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
 
       port.applySubmission(
@@ -425,11 +431,15 @@ class LegacyFirstTimeWizardPortTest {
       verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.HIGH);
       verify(nodeSubConfig).set("inputBandwidthLimit", "20000KiB");
       verify(nodeSubConfig).set("outputBandwidthLimit", "10000KiB");
-      datastoreSize.verify(() -> DatastoreSize.setDatastoreSize("2GiB", config), times(1));
       verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
       verify(storage).changeMasterPassword("", "", true);
       verify(fproxySubConfig).set("hasCompletedWizard", true);
       verify(core).storeConfig();
+      datastoreSize.verify(
+          () ->
+              DatastoreSizingSupport.setDatastoreSize(
+                  eq("2GiB"), eq(config), any(java.util.function.LongSupplier.class)),
+          times(1));
     }
   }
 
@@ -446,7 +456,8 @@ class LegacyFirstTimeWizardPortTest {
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
 
-    try (MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
+    try (MockedStatic<DatastoreSizingSupport> datastoreSize =
+        mockStatic(DatastoreSizingSupport.class)) {
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
 
       port.applySubmission(
@@ -455,13 +466,17 @@ class LegacyFirstTimeWizardPortTest {
       BandwidthLimit bandwidth =
           BandwidthLimit.fromMonthlyBudget(Fields.parseLong("500GiB"), Node.getMinimumBandwidth());
       verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
-      verify(nodeSubConfig).set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
-      verify(nodeSubConfig).set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));
-      datastoreSize.verify(() -> DatastoreSize.setDatastoreSize("3GiB", config), times(1));
+      verify(nodeSubConfig).set("inputBandwidthLimit", Long.toString(bandwidth.downBytes()));
+      verify(nodeSubConfig).set("outputBandwidthLimit", Long.toString(bandwidth.upBytes()));
       verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
       verify(storage).changeMasterPassword("", "secret", true);
       verify(fproxySubConfig).set("hasCompletedWizard", true);
       verify(core).storeConfig();
+      datastoreSize.verify(
+          () ->
+              DatastoreSizingSupport.setDatastoreSize(
+                  eq("3GiB"), eq(config), any(java.util.function.LongSupplier.class)),
+          times(1));
     }
   }
 
@@ -473,7 +488,8 @@ class LegacyFirstTimeWizardPortTest {
     when(node.services()).thenReturn(services);
     when(services.securityLevels()).thenReturn(securityLevels);
 
-    try (MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
+    try (MockedStatic<DatastoreSizingSupport> datastoreSize =
+        mockStatic(DatastoreSizingSupport.class)) {
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
       FirstTimeWizardSubmission invalidSubmission =
           new FirstTimeWizardSubmission(false, true, true, "", "", "1e8", "3", true, "secret");
@@ -496,9 +512,13 @@ class LegacyFirstTimeWizardPortTest {
     when(node.services()).thenReturn(services);
     when(services.securityLevels()).thenReturn(securityLevels);
 
-    try (MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
+    try (MockedStatic<DatastoreSizingSupport> datastoreSize =
+        mockStatic(DatastoreSizingSupport.class)) {
       datastoreSize
-          .when(() -> DatastoreSize.setDatastoreSize("3GiB", config))
+          .when(
+              () ->
+                  DatastoreSizingSupport.setDatastoreSize(
+                      eq("3GiB"), eq(config), any(java.util.function.LongSupplier.class)))
           .thenThrow(new IllegalArgumentException("too big"));
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
       FirstTimeWizardSubmission invalidSubmission =
@@ -527,7 +547,8 @@ class LegacyFirstTimeWizardPortTest {
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
 
-    try (MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
+    try (MockedStatic<DatastoreSizingSupport> datastoreSize =
+        mockStatic(DatastoreSizingSupport.class)) {
       LegacyFirstTimeWizardPort port = new LegacyFirstTimeWizardPort(node, core);
 
       port.applySubmission(
@@ -536,7 +557,11 @@ class LegacyFirstTimeWizardPortTest {
 
       verify(nodeSubConfig).set("inputBandwidthLimit", "20000KiB");
       verify(nodeSubConfig).set("outputBandwidthLimit", "10000KiB");
-      datastoreSize.verify(() -> DatastoreSize.setDatastoreSize("2GiB", config), times(1));
+      datastoreSize.verify(
+          () ->
+              DatastoreSizingSupport.setDatastoreSize(
+                  eq("2GiB"), eq(config), any(java.util.function.LongSupplier.class)),
+          times(1));
       verify(securityLevels, never()).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
       verify(node, never()).storage();
       verify(core).storeConfig();

@@ -1,6 +1,6 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.compat.bandwidth.BandwidthLimit;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.support.HTMLNode;
@@ -13,17 +13,17 @@ import network.crypta.support.SizeUtil;
  * endpoint to apply the changes.
  *
  * <p>This alert is intended to be created programmatically via {@link
- * #createAlert(network.crypta.node.Node, network.crypta.clients.http.wizardsteps.BandwidthLimit)}
- * when the node has detected that higher bandwidth limits are appropriate (for example, after
- * environment or capacity checks). The instance maintains two bits of transient UI state: an
- * optional one-shot {@code error} message that is shown once on the next render and then cleared,
- * and an {@code upgraded} flag that switches the content to a compact success message and adjusts
- * the dismiss button text accordingly.
+ * #createAlert(network.crypta.node.Node, network.crypta.compat.bandwidth.BandwidthLimit)} when the
+ * node has detected that higher bandwidth limits are appropriate (for example, after environment or
+ * capacity checks). The instance maintains two bits of transient UI state: an optional one-shot
+ * {@code error} message that is shown once on the next render and then cleared, and an {@code
+ * upgraded} flag that switches the content to a compact success message and adjusts the Dismiss
+ * button text accordingly.
  *
- * <p>Instances are simple and mutable and perform no synchronization. Callers should confine
- * mutations such as {@link #setError(String)} and {@link #setUpgraded(boolean)} to the same thread
- * or arrange for external synchronization if accessed concurrently by multiple request handlers.
- * The alert unregisters itself when dismissed by the user.
+ * <p>Instances are straightforward and mutable and perform no synchronization. Callers should
+ * confine mutations such as {@link #setError(String)} and {@link #setUpgraded(boolean)} to the same
+ * thread or arrange for external synchronization if accessed concurrently by multiple request
+ * handlers. The alert unregisters itself when dismissed by the user.
  *
  * <ul>
  *   <li>Renders current limits and suggested values formatted via {@link
@@ -34,7 +34,7 @@ import network.crypta.support.SizeUtil;
  *
  * @see AbstractUserAlert
  * @see UserAlertManager
- * @see network.crypta.clients.http.wizardsteps.BandwidthLimit
+ * @see network.crypta.compat.bandwidth.BandwidthLimit
  */
 public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
 
@@ -92,7 +92,7 @@ public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
    * and proposed limits, a hidden action marker, and the node's form password.
    *
    * <p>If an {@linkplain #setError(String) error message} has been set, it is rendered once and
-   * cleared so subsequent renders do not repeat it.
+   * cleared so later renders do not repeat it.
    *
    * @return a non-{@code null} container node representing the alert body and embedded form. The
    *     returned node is not reused between calls and may be freely modified by the caller.
@@ -129,14 +129,16 @@ public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
         INPUT,
         new String[] {"type", "name", VALUE},
         new String[] {
-          "text", "inputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.downBytes)
+          "text", "inputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.downBytes())
         });
     bandwidthInput.addChild("br");
     bandwidthInput.addChild("span", STYLE, "margin-right: .5em;", l10n("uploadLimit"));
     bandwidthInput.addChild(
         INPUT,
         new String[] {"type", "name", VALUE},
-        new String[] {"text", "outputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.upBytes)});
+        new String[] {
+          "text", "outputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.upBytes())
+        });
 
     form.addChild(
         INPUT,
@@ -174,7 +176,7 @@ public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
   /**
    * Sets an error message to be displayed above the form on the next render. The message is treated
    * as transient UI state: it is emitted once by {@link #getHTMLText()} and then cleared so that
-   * subsequent renders do not repeat it.
+   * later renders do not repeat it.
    *
    * @param error human-readable message explaining why the previous attempt failed or why the
    *     suggested values are invalid. A {@code null} value clears any pending message without
@@ -186,11 +188,11 @@ public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
 
   /**
    * Marks the alert as upgraded, switching the rendered content to a compact success text and
-   * changing the dismiss button to an affirmative label. Callers typically set this to {@code true}
+   * changing the Dismiss button to an affirmative label. Callers typically set this to {@code true}
    * after successfully applying the submitted bandwidth limits.
    *
    * @param upgraded when {@code true}, subsequent {@link #getHTMLText()} calls return a short
-   *     confirmation paragraph and the dismiss button text becomes an "OK" equivalent; when {@code
+   *     confirmation paragraph and the Dismiss button text becomes an "OK" equivalent; when {@code
    *     false}, the full form is rendered.
    */
   public void setUpgraded(boolean upgraded) {
