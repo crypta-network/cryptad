@@ -2,12 +2,11 @@ package network.crypta.runtime.admin;
 
 import java.util.List;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.clients.fcp.DownloadRequestStatus;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.RequestStatus;
-import network.crypta.clients.fcp.UploadFileRequestStatus;
-import network.crypta.node.NodeClientCore;
-import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.admin.queue.QueueDownloadStatusView;
+import network.crypta.runtime.admin.queue.QueueRequestStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadDirStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadFileStatusView;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -25,69 +25,73 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class LegacyQueueMutationPortTest {
 
-  @Mock private NodeClientCore core;
-  @Mock private ClientEndpoints endpoints;
-  @Mock private FCPServer fcp;
+  @Mock private QueueAdminBackend queueBackend;
 
   private LegacyQueueMutationPort port;
 
   @BeforeEach
   void setUp() {
-    when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
-    port = new LegacyQueueMutationPort(core);
+    port = new LegacyQueueMutationPort(queueBackend);
   }
 
   @Test
-  void removeRequests_whenCalled_delegatesToFcpForEachIdentifier() throws Exception {
+  void removeRequests_whenCalled_delegatesToBackendForEachIdentifier() throws Exception {
     port.removeRequests(List.of("download-1", "download-2"));
 
-    verify(fcp).removeGlobalRequestBlocking("download-1");
-    verify(fcp).removeGlobalRequestBlocking("download-2");
+    verify(queueBackend).removeGlobalRequestBlocking("download-1");
+    verify(queueBackend).removeGlobalRequestBlocking("download-2");
   }
 
   @Test
   void restartRequests_whenDisableFilterDataRequested_preservesFlag() throws Exception {
     port.restartRequests(List.of("download-1", "download-2"), true);
 
-    verify(fcp).restartBlocking("download-1", true);
-    verify(fcp).restartBlocking("download-2", true);
+    verify(queueBackend).restartBlocking("download-1", true);
+    verify(queueBackend).restartBlocking("download-2", true);
   }
 
   @Test
   void changePriority_whenCalled_delegatesToPriorityMutation() throws Exception {
     port.changePriority(List.of("download-1", "download-2"), (short) 4);
 
-    verify(fcp).modifyGlobalRequestBlocking("download-1", null, (short) 4);
-    verify(fcp).modifyGlobalRequestBlocking("download-2", null, (short) 4);
+    verify(queueBackend).modifyGlobalRequestBlocking("download-1", null, (short) 4);
+    verify(queueBackend).modifyGlobalRequestBlocking("download-2", null, (short) 4);
   }
 
   @Test
   void removeFinishedUploads_whenMixedStatusesPresent_removesOnlySucceededUploads()
       throws Exception {
-    UploadFileRequestStatus succeededUpload =
-        org.mockito.Mockito.mock(UploadFileRequestStatus.class);
-    UploadFileRequestStatus failedUpload = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
-    DownloadRequestStatus download = org.mockito.Mockito.mock(DownloadRequestStatus.class);
+    QueueUploadFileStatusView succeededUpload =
+        org.mockito.Mockito.mock(QueueUploadFileStatusView.class);
+    QueueUploadFileStatusView failedUpload =
+        org.mockito.Mockito.mock(QueueUploadFileStatusView.class);
+    QueueUploadDirStatusView succeededDirectoryUpload =
+        org.mockito.Mockito.mock(QueueUploadDirStatusView.class);
+    QueueDownloadStatusView download = org.mockito.Mockito.mock(QueueDownloadStatusView.class);
     when(succeededUpload.hasSucceeded()).thenReturn(true);
     when(succeededUpload.getIdentifier()).thenReturn("upload-1");
     when(failedUpload.hasSucceeded()).thenReturn(false);
-    when(fcp.getGlobalRequests())
-        .thenReturn(new RequestStatus[] {succeededUpload, failedUpload, download});
+    when(queueBackend.getGlobalRequests())
+        .thenReturn(
+            new QueueRequestStatusView[] {
+              succeededUpload, failedUpload, succeededDirectoryUpload, download
+            });
 
     port.removeFinishedUploads();
 
-    verify(fcp).removeGlobalRequestBlocking("upload-1");
+    verify(queueBackend).removeGlobalRequestBlocking("upload-1");
+    verify(queueBackend, never()).removeGlobalRequestBlocking("upload-dir-1");
   }
 
   @Test
   void removeFinishedDownloads_whenMixedStatusesPresent_removesOnlyPersistentFinalizedDownloads()
       throws Exception {
-    DownloadRequestStatus matchingDownload = org.mockito.Mockito.mock(DownloadRequestStatus.class);
-    DownloadRequestStatus tempDownload = org.mockito.Mockito.mock(DownloadRequestStatus.class);
-    DownloadRequestStatus unfinishedDownload =
-        org.mockito.Mockito.mock(DownloadRequestStatus.class);
-    UploadFileRequestStatus upload = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
+    QueueDownloadStatusView matchingDownload =
+        org.mockito.Mockito.mock(QueueDownloadStatusView.class);
+    QueueDownloadStatusView tempDownload = org.mockito.Mockito.mock(QueueDownloadStatusView.class);
+    QueueDownloadStatusView unfinishedDownload =
+        org.mockito.Mockito.mock(QueueDownloadStatusView.class);
+    QueueUploadFileStatusView upload = org.mockito.Mockito.mock(QueueUploadFileStatusView.class);
 
     when(matchingDownload.isPersistent()).thenReturn(true);
     when(matchingDownload.hasSucceeded()).thenReturn(true);
@@ -103,20 +107,24 @@ class LegacyQueueMutationPortTest {
     when(unfinishedDownload.isPersistent()).thenReturn(true);
     when(unfinishedDownload.hasSucceeded()).thenReturn(false);
 
-    when(fcp.getGlobalRequests())
+    when(queueBackend.getGlobalRequests())
         .thenReturn(
-            new RequestStatus[] {matchingDownload, tempDownload, unfinishedDownload, upload});
+            new QueueRequestStatusView[] {
+              matchingDownload, tempDownload, unfinishedDownload, upload
+            });
 
     port.removeFinishedDownloads();
 
-    verify(fcp).removeGlobalRequestBlocking("download-1");
+    verify(queueBackend).removeGlobalRequestBlocking("download-1");
   }
 
   @Test
   void removeRequests_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
       throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(fcp.removeGlobalRequestBlocking("download-1")).thenThrow(cause);
+    RequestQueueUnavailableException queueUnavailable =
+        new RequestQueueUnavailableException("Persistent request queue unavailable", cause);
+    when(queueBackend.removeGlobalRequestBlocking("download-1")).thenThrow(queueUnavailable);
 
     RequestQueueUnavailableException thrown =
         assertThrows(
@@ -127,12 +135,11 @@ class LegacyQueueMutationPortTest {
   }
 
   @Test
-  void lazyFcpLookup_whenPortConstructed_defersEndpointAccessUntilMethodCall() throws Exception {
-    verifyNoInteractions(endpoints, fcp);
+  void lazyBackendUsage_whenPortConstructed_defersBackendAccessUntilMethodCall() throws Exception {
+    verifyNoInteractions(queueBackend);
 
     port.changePriority(List.of("download-1"), (short) 3);
 
-    verify(endpoints).getFCPServer();
-    verify(fcp).modifyGlobalRequestBlocking("download-1", null, (short) 3);
+    verify(queueBackend).modifyGlobalRequestBlocking("download-1", null, (short) 3);
   }
 }

@@ -2,6 +2,8 @@ package network.crypta.runtime.admin;
 
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 
 /**
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
@@ -34,19 +36,20 @@ public final class AdminRuntimePortsFactory {
    * @return immutable bundle containing the moved admin and page-oriented runtime adapters
    */
   public static AdminRuntimePortsBundle create(Node node, NodeClientCore core) {
+    QueueAdminBackend queueBackend = new FcpQueueAdminBackend(core);
     return new AdminRuntimePortsBundle(
         new LegacyConnectionsPagePort(node, core),
         new LegacyConnectionsSupportPort(node),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
-        new LegacyDiagnosticPort(node, core),
+        new LegacyDiagnosticPort(node, core, queueBackend),
         new LegacyPageChromePort(node),
         new LegacyQueueCompletionPort(core),
         new LegacyQueuePagePort(core),
         new LegacyQueueDownloadPort(core),
         new LegacyQueueInsertPort(core),
-        new LegacyQueueMutationPort(core),
-        new LegacyQueueSupportPort(core),
+        new LegacyQueueMutationPort(queueBackend),
+        new LegacyQueueSupportPort(core, queueBackend),
         new LegacyStatisticsPort(node, core),
         new LegacyFirstTimeWizardPort(node, core),
         new LegacyToadletSymlinkPort(node, core),

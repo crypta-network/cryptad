@@ -3,11 +3,6 @@ package network.crypta.runtime.admin;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.async.PersistentStatsPutter;
-import network.crypta.clients.fcp.DownloadRequestStatus;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.RequestStatus;
-import network.crypta.clients.fcp.UploadDirRequestStatus;
-import network.crypta.clients.fcp.UploadFileRequestStatus;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -19,10 +14,16 @@ import network.crypta.node.stats.DataStoreKeyType;
 import network.crypta.node.stats.DataStoreStats;
 import network.crypta.node.stats.DataStoreType;
 import network.crypta.node.stats.StoreAccessStats;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.admin.queue.QueueDownloadStatusView;
+import network.crypta.runtime.admin.queue.QueueRequestStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadDirStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadFileStatusView;
 import network.crypta.runtime.diagnostics.threads.NodeThreadInfo;
 import network.crypta.runtime.diagnostics.threads.NodeThreadSnapshot;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.BandwidthStatsContainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +59,7 @@ class LegacyDiagnosticPortTest {
   @Mock private RequestTracker tracker;
   @Mock private PersistentStatsPutter bandwidthStatsPutter;
   @Mock private BandwidthStatsContainer bandwidthStats;
-  @Mock private FCPServer fcpServer;
+  @Mock private QueueAdminBackend queueBackend;
   @Mock private SubConfig nodeConfig;
 
   private LegacyDiagnosticPort port;
@@ -68,7 +69,7 @@ class LegacyDiagnosticPortTest {
     when(node.network().stats()).thenReturn(stats);
     when(node.network().peers()).thenReturn(peers);
 
-    port = new LegacyDiagnosticPort(node, core);
+    port = new LegacyDiagnosticPort(node, core, queueBackend);
 
     when(node.storage().getDataStoreStats()).thenReturn(Map.of());
     when(node.routing().tracker()).thenReturn(tracker);
@@ -85,8 +86,7 @@ class LegacyDiagnosticPortTest {
     when(bandwidthStatsPutter.getLatestBWData()).thenReturn(bandwidthStats);
     lenient().when(bandwidthStats.getTotalBytesIn()).thenReturn(40_000L);
     lenient().when(bandwidthStats.getTotalBytesOut()).thenReturn(30_000L);
-    when(core.getEndpoints().getFCPServer()).thenReturn(fcpServer);
-    lenient().when(fcpServer.getGlobalRequests()).thenReturn(new RequestStatus[0]);
+    lenient().when(queueBackend.getGlobalRequests()).thenReturn(new QueueRequestStatusView[0]);
     when(stats.getActiveThreadCount()).thenReturn(3);
     when(stats.getThreadLimit()).thenReturn(64);
     lenient()
@@ -127,12 +127,12 @@ class LegacyDiagnosticPortTest {
   @Test
   void snapshot_whenQueueContainsDownloadsAndUploads_countsExpectedRequestCategories()
       throws Exception {
-    DownloadRequestStatus download = mock(DownloadRequestStatus.class);
-    UploadFileRequestStatus uploadFile = mock(UploadFileRequestStatus.class);
-    UploadDirRequestStatus uploadDir = mock(UploadDirRequestStatus.class);
-    RequestStatus ignored = mock(RequestStatus.class);
-    when(fcpServer.getGlobalRequests())
-        .thenReturn(new RequestStatus[] {download, uploadFile, uploadDir, ignored});
+    QueueDownloadStatusView download = mock(QueueDownloadStatusView.class);
+    QueueUploadFileStatusView uploadFile = mock(QueueUploadFileStatusView.class);
+    QueueUploadDirStatusView uploadDir = mock(QueueUploadDirStatusView.class);
+    QueueRequestStatusView ignored = mock(QueueRequestStatusView.class);
+    when(queueBackend.getGlobalRequests())
+        .thenReturn(new QueueRequestStatusView[] {download, uploadFile, uploadDir, ignored});
 
     DiagnosticSectionSnapshot queueSection = findSection(port.snapshot(), "Queue:");
 
@@ -181,7 +181,6 @@ class LegacyDiagnosticPortTest {
   void snapshot_whenOptionalDataAbsent_returnsBestEffortReport() {
     when(node.isNodeDiagnosticsEnabled()).thenReturn(false);
     when(bandwidthStatsPutter.getLatestBWData()).thenReturn(null);
-    when(core.getEndpoints().getFCPServer()).thenReturn(null);
 
     DiagnosticReportSnapshot snapshot = assertDoesNotThrow(port::snapshot);
 
@@ -196,6 +195,27 @@ class LegacyDiagnosticPortTest {
             "Queue:"),
         snapshot.sections().stream().map(DiagnosticSectionSnapshot::title).toList());
     assertEquals(List.of("bandwidth error", ""), findSection(snapshot, "Bandwidth:").lines());
+  }
+
+  @Test
+  void snapshot_whenQueueBackendUnavailable_rendersDatabaseDisabledSentinel() throws Exception {
+    when(queueBackend.getGlobalRequests())
+        .thenThrow(new RequestQueueUnavailableException("Persistent request queue unavailable"));
+
+    DiagnosticSectionSnapshot queueSection = findSection(port.snapshot(), "Queue:");
+
+    assertEquals(List.of("DatabaseDisabledException", ""), queueSection.lines());
+  }
+
+  @Test
+  void snapshot_whenQueueServerMissing_treatsQueueAsEmpty() throws Exception {
+    DiagnosticSectionSnapshot emptyQueueSection = findSection(port.snapshot(), "Queue:");
+    when(queueBackend.getGlobalRequests())
+        .thenThrow(new IllegalStateException("FCP server unavailable"));
+
+    DiagnosticSectionSnapshot fallbackQueueSection = findSection(port.snapshot(), "Queue:");
+
+    assertEquals(emptyQueueSection.lines(), fallbackQueueSection.lines());
   }
 
   private void stubThreadSnapshot(List<NodeThreadInfo> threads) {
