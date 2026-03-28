@@ -9,6 +9,7 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.PersistentListJob;
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.TransientListJob;
@@ -50,7 +51,7 @@ import org.slf4j.LoggerFactory;
  * @see FCPConnectionHandler
  * @see RequestStatusCache
  */
-public final class PersistentRequestClient {
+public final class PersistentRequestClient implements PersistentRequestClientHandle {
   private static final Logger LOG = LoggerFactory.getLogger(PersistentRequestClient.class);
 
   /**

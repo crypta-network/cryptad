@@ -10,6 +10,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
+import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.crypt.ChecksumChecker;
@@ -294,6 +295,29 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
     return persistenceType2 == Persistence.FOREVER
         ? handler.getForeverClient()
         : handler.getRebootClient();
+  }
+
+  /**
+   * Reconstitutes the FCP-local persistent owner from the client-owned seam handle.
+   *
+   * <p>{@code ClientRequest} is an FCP runtime type, so it still needs the concrete {@link
+   * PersistentRequestClient} in order to obtain low-level request clients during deserialization
+   * and resume. The client layer never performs this cast; it remains local to the FCP
+   * implementation and therefore expects the active FCP coordinator to return the matching runtime
+   * handle shape.
+   *
+   * @param handle opaque persistent-request client handle returned by the configured coordinator
+   * @return FCP persistent client that owns this request during recovery and resume
+   * @throws IllegalStateException if the configured coordinator returns a handle that is
+   *     incompatible with the FCP runtime implementation
+   */
+  private static PersistentRequestClient requirePersistentRequestClient(
+      PersistentRequestClientHandle handle) {
+    if (handle instanceof PersistentRequestClient client) {
+      return client;
+    }
+    throw new IllegalStateException(
+        "Persistent request client handle is not a PersistentRequestClient: " + handle);
   }
 
   /**
@@ -976,7 +1000,9 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
     // We can't wait until onResume() to get the client, because it may be used in the
     // constructors.
     PersistentRequestClient client =
-        context.persistentRoot.makeClient(reqID.globalQueue, reqID.clientName);
+        requirePersistentRequestClient(
+            context.persistentRequestCoordinator.getOrCreateClientHandle(
+                reqID.globalQueue, reqID.clientName));
     RequestClient lowLevelClient = client.lowLevelClient(realTime);
     return new PersistentState(
         realTime,
@@ -998,19 +1024,23 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * <p>This method is invoked by the owning {@link ClientRequester} immediately after the request
    * has been read from persistent storage. It recreates transient collaborators such as the {@link
    * PersistentRequestClient}, low-level {@link RequestClient} and any subclass state via {@link
-   * #innerResume(ClientContext)} before registering the request with the persistent root again.
+   * #innerResume(ClientContext)} before registering the request with the persistent-request
+   * coordinator again.
    *
-   * @param context client context that provides access to persistent roots and utility factories
+   * @param context client context that provides access to the persistent-request coordinator and
+   *     utility factories
    * @throws ResumeFailedException if the request cannot be reattached to the runtime environment
    */
   @Override
   public final void onResume(ClientContext context) throws ResumeFailedException {
-    client = context.persistentRoot.makeClient(global, clientName);
+    client =
+        requirePersistentRequestClient(
+            context.persistentRequestCoordinator.getOrCreateClientHandle(global, clientName));
     lowLevelClient = client.lowLevelClient(realTime);
     innerResume(context);
     ClientRequester req = getClientRequest();
     if (req != null) req.onResume(context); // Can legally be null.
-    context.persistentRoot.resume(this, global, clientName);
+    context.persistentRequestCoordinator.resumePersistentRequest(this, global, clientName);
   }
 
   /**

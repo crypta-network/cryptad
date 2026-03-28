@@ -1,7 +1,7 @@
 package network.crypta.client.async;
 
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.node.ClientContextResources;
 import network.crypta.support.compress.RealCompressor;
 
@@ -15,7 +15,7 @@ import network.crypta.support.compress.RealCompressor;
  * @param uskManager manager for USK coordination and updates
  * @param compressor compressor implementation used in client pipelines
  * @param checker datastore checker used for verification work
- * @param persistentRoot persistent request root for durable request coordination
+ * @param persistentRequestCoordinator persistent request coordinator for durable request ownership
  * @param linkFilterExceptionProvider provider for link filter exceptions
  */
 public record ClientContextServices(
@@ -23,5 +23,5 @@ public record ClientContextServices(
     USKManager uskManager,
     RealCompressor compressor,
     DatastoreChecker checker,
-    PersistentRequestRoot persistentRoot,
+    PersistentRequestCoordinator persistentRequestCoordinator,
     LinkFilterExceptionProvider linkFilterExceptionProvider) {}

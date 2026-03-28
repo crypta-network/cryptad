@@ -6,9 +6,9 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.crypt.CryptoResumeContext;
 import network.crypta.crypt.MasterSecret;
@@ -169,8 +169,8 @@ public class ClientContext implements CryptoResumeContext {
    */
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
 
-  /** Root for persistent request coordination, including recovery across restarts. */
-  public final PersistentRequestRoot persistentRoot;
+  /** Coordinator for persistent request ownership, including recovery across restarts. */
+  public final PersistentRequestCoordinator persistentRequestCoordinator;
 
   private final FetchContext defaultPersistentFetchContext;
   private final InsertContext defaultPersistentInsertContext;
@@ -235,7 +235,7 @@ public class ClientContext implements CryptoResumeContext {
     this.linkFilterExceptionProvider = services.linkFilterExceptionProvider();
     this.memoryLimitedJobRunner = runtime.memoryLimitedJobRunner();
     this.tempRAFFactory = rafFactories.tempRAFFactory();
-    this.persistentRoot = services.persistentRoot();
+    this.persistentRequestCoordinator = services.persistentRequestCoordinator();
     this.dummyJobRunner = new DummyJobRunner(mainExecutorInternal, this);
     this.defaultPersistentFetchContext = defaults.defaultPersistentFetchContext();
     this.defaultPersistentInsertContext = defaults.defaultPersistentInsertContext();

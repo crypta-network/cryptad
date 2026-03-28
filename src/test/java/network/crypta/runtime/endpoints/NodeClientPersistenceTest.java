@@ -405,20 +405,10 @@ class NodeClientPersistenceTest {
         () -> assertSame(cryptoSecretTransient, context.cryptoSecretTransient),
         () -> assertSame(config, context.getConfig()),
         () -> assertSame(executor, context.getMainExecutor()),
-        () -> assertSame(fileRafTransient, context.getFileRandomAccessBufferFactory(false)),
         () ->
-            assertInstanceOf(
-                DiskSpaceCheckingRandomAccessBufferFactory.class,
-                context.getFileRandomAccessBufferFactory(true)),
-        () -> assertSame(persistentRafFactory, context.getRandomAccessBufferFactory(true)));
-    ArgumentCaptor<PersistentRequestCatalog> catalogCaptor =
-        ArgumentCaptor.forClass(PersistentRequestCatalog.class);
-    ArgumentCaptor<PersistentRequestRecoveryCodec> recoveryCodecCaptor =
-        ArgumentCaptor.forClass(PersistentRequestRecoveryCodec.class);
-    verify(clientLayerPersister)
-        .configurePersistenceAdapters(catalogCaptor.capture(), recoveryCodecCaptor.capture());
-    assertInstanceOf(CoreFcpPersistentRequestCatalog.class, catalogCaptor.getValue());
-    assertInstanceOf(FcpPersistentRequestRecoveryCodec.class, recoveryCodecCaptor.getValue());
+            assertContextPersistentStorageFactories(
+                context, fileRafTransient, persistentRafFactory));
+    assertPersistenceAdaptersConfigured(clientLayerPersister);
   }
 
   @Test
@@ -469,7 +459,7 @@ class NodeClientPersistenceTest {
             mock(InsertContext.class));
     ClientContext context = persistence.createClientContext(node, params);
 
-    PersistentRequestRoot root = context.persistentRoot;
+    PersistentRequestRoot root = (PersistentRequestRoot) context.persistentRequestCoordinator;
     PersistentRequestClient client = root.registerForeverClient("client", null);
     ClientRequest request = mock(ClientRequest.class);
     when(request.hasFinished()).thenReturn(false);
@@ -529,6 +519,29 @@ class NodeClientPersistenceTest {
     SubConfig nodeConfig = mock(SubConfig.class);
     when(nodeConfig.getString("clientThrottleFile")).thenReturn(throttleFile.getAbsolutePath());
     return nodeConfig;
+  }
+
+  private static void assertContextPersistentStorageFactories(
+      ClientContext context,
+      FileRandomAccessBufferFactory fileRafTransient,
+      MaybeEncryptedRandomAccessBufferFactory persistentRafFactory) {
+    assertSame(fileRafTransient, context.getFileRandomAccessBufferFactory(false));
+    assertInstanceOf(
+        DiskSpaceCheckingRandomAccessBufferFactory.class,
+        context.getFileRandomAccessBufferFactory(true));
+    assertSame(persistentRafFactory, context.getRandomAccessBufferFactory(true));
+  }
+
+  private static void assertPersistenceAdaptersConfigured(
+      ClientLayerPersister clientLayerPersister) {
+    ArgumentCaptor<PersistentRequestCatalog> catalogCaptor =
+        ArgumentCaptor.forClass(PersistentRequestCatalog.class);
+    ArgumentCaptor<PersistentRequestRecoveryCodec> recoveryCodecCaptor =
+        ArgumentCaptor.forClass(PersistentRequestRecoveryCodec.class);
+    verify(clientLayerPersister)
+        .configurePersistenceAdapters(catalogCaptor.capture(), recoveryCodecCaptor.capture());
+    assertInstanceOf(CoreFcpPersistentRequestCatalog.class, catalogCaptor.getValue());
+    assertInstanceOf(FcpPersistentRequestRecoveryCodec.class, recoveryCodecCaptor.getValue());
   }
 
   private static Node newNode(Ticker ticker, File runDir) {

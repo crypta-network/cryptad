@@ -2,6 +2,8 @@ package network.crypta.clients.fcp;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.persistence.PersistentRequestClientHandle;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -128,10 +130,32 @@ class PersistentRequestRootTest {
     TestClientRequest request =
         new TestClientRequest(root.getGlobalForeverClient(), "id-1", true, true, true);
 
-    root.resume(request, true, "ignored-name");
+    PersistentRequestClientHandle resumed =
+        root.resumePersistentRequest(request, true, "ignored-name");
 
     assertTrue(root.hasRequest(new RequestIdentifier(true, null, "id-1", RequestType.GET)));
     assertNull(root.getForeverClient("ignored-name", null));
+    assertSame(root.getGlobalForeverClient(), resumed);
+  }
+
+  @Test
+  void getOrCreateClientHandle_whenNamedClient_returnsPersistentClientHandle() {
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    PersistentRequestClient expected = root.registerForeverClient("clientA", null);
+
+    PersistentRequestClientHandle handle = root.getOrCreateClientHandle(false, "clientA");
+
+    assertSame(expected, handle);
+  }
+
+  @Test
+  void resumePersistentRequest_whenHandleIsNotClientRequest_rejectsHandle() {
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    PersistentRequestHandle handle = org.mockito.Mockito.mock(PersistentRequestHandle.class);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> root.resumePersistentRequest(handle, false, "clientA"));
   }
 
   @Test

@@ -13,7 +13,7 @@ import network.crypta.support.io.ResumeFailedException;
  * requests and can therefore re‑establish any necessary persistent state after a restart.
  *
  * <p>When the node restarts, {@link #onResume(ClientContext)} is invoked so the client can
- * re-register with the persistence infrastructure (for example {@code PersistentRequestRoot},
+ * re-register with the persistence infrastructure (for example, the persistent-request coordinator,
  * persistent temporary buckets, or trackers) before normal processing continues. The returned
  * {@link #getRequestClient()} value is consulted by the schedulers to group related work and apply
  * per‑client limits, persistence, and real‑time flags. Implementations should be lightweight and
@@ -36,14 +36,14 @@ public interface ClientBaseCallback {
    * Resumes a persistent request after a node restart.
    *
    * <p>This method is invoked during node recovery so the client can re-register any durable
-   * resources and state needed by the request, such as entries under {@code PersistentRequestRoot},
+   * resources and state needed by the request, such as persistent-request coordinator entries,
    * persistent temporary buckets, or file trackers. Implementations should treat repeated calls as
    * safe and avoid expensive work unless required to restore correctness. Heavy I/O or long‑running
-   * computations should be minimized to keep startup responsive.
+   * computations should be minimized to keep the startup responsive.
    *
-   * @param context Non-null execution context providing access to schedulers, persistence roots,
+   * @param context Non-null execution context providing access to schedulers, persistence services,
    *     bucket factories, file trackers, and other services necessary to reattach state.
-   * @throws network.crypta.support.io.ResumeFailedException If persisted state is missing,
+   * @throws network.crypta.support.io.ResumeFailedException If the persisted state is missing,
    *     incompatible, or corrupt such that the request cannot be safely resumed by this client.
    */
   void onResume(ClientContext context) throws ResumeFailedException;
