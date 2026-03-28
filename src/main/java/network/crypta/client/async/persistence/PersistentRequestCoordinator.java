@@ -12,7 +12,9 @@ package network.crypta.client.async.persistence;
  * <p>The contract stays intentionally small. It does not expose request catalogs, queue mutation
  * primitives, or transport callbacks. Those details remain in the runtime implementation so the
  * client package can preserve existing checkpoint and restart behavior while avoiding a direct
- * dependency on endpoint-specific types.
+ * dependency on endpoint-specific types. Any runtime-local adaptation from the opaque handle back
+ * to protocol-specific owner state remains the responsibility of the runtime code that supplied the
+ * coordinator.
  *
  * @see PersistentRequestClientHandle
  * @see PersistentRequestHandle

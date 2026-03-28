@@ -297,6 +297,20 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
         : handler.getRebootClient();
   }
 
+  /**
+   * Reconstitutes the FCP-local persistent owner from the client-owned seam handle.
+   *
+   * <p>{@code ClientRequest} is an FCP runtime type, so it still needs the concrete {@link
+   * PersistentRequestClient} in order to obtain low-level request clients during deserialization
+   * and resume. The client layer never performs this cast; it remains local to the FCP
+   * implementation and therefore expects the active FCP coordinator to return the matching runtime
+   * handle shape.
+   *
+   * @param handle opaque persistent-request client handle returned by the configured coordinator
+   * @return FCP persistent client that owns this request during recovery and resume
+   * @throws IllegalStateException if the configured coordinator returns a handle that is
+   *     incompatible with the FCP runtime implementation
+   */
   private static PersistentRequestClient requirePersistentRequestClient(
       PersistentRequestClientHandle handle) {
     if (handle instanceof PersistentRequestClient client) {
