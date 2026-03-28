@@ -45,8 +45,8 @@
  * <ul>
  *   <li>Uses node‑level request senders and failure tracking; see {@link
  *       network.crypta.node.FailureTable} for related back‑off decisions.
- *   <li>Exposes progress and lifecycle to client interfaces, including the FCP layer (for example,
- *       {@link network.crypta.clients.fcp.PersistentRequestClient}).
+ *   <li>Exposes progress and lifecycle to client interfaces, including the FCP layer and the
+ *       client-owned persistent-request seam.
  * </ul>
  */
 package network.crypta.client.async;

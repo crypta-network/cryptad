@@ -9,9 +9,9 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.crypt.CryptoResumeContext;
 import network.crypta.crypt.MasterSecret;
@@ -90,7 +90,8 @@ class ClientContextTest {
     fileRAFPersistent = mock(FileRandomAccessBufferFactory.class);
     RealCompressor realCompressor = mock(RealCompressor.class);
     DatastoreChecker datastoreChecker = mock(DatastoreChecker.class);
-    PersistentRequestRoot persistentRoot = mock(PersistentRequestRoot.class);
+    PersistentRequestCoordinator persistentRequestCoordinator =
+        mock(PersistentRequestCoordinator.class);
     MasterSecret cryptoSecretTransient = mock(MasterSecret.class);
     LinkFilterExceptionProvider linkFilterExceptionProvider =
         mock(LinkFilterExceptionProvider.class);
@@ -156,7 +157,7 @@ class ClientContextTest {
                 uskManager,
                 realCompressor,
                 datastoreChecker,
-                persistentRoot,
+                persistentRequestCoordinator,
                 linkFilterExceptionProvider),
             new ClientContextDefaults(defaultFetchCtx, defaultInsertCtx, config));
 
