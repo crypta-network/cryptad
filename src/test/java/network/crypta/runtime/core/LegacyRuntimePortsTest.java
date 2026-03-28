@@ -142,7 +142,7 @@ class LegacyRuntimePortsTest {
                 snapshot.queueSupportPort()),
         () ->
             assertInstanceOf(
-                loadClass("network.crypta.runtime.admin.LegacyQueueCompletionPort"),
+                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort"),
                 snapshot.queueCompletionPort()),
         () ->
             assertInstanceOf(
@@ -150,11 +150,11 @@ class LegacyRuntimePortsTest {
                 snapshot.queuePagePort()),
         () ->
             assertInstanceOf(
-                loadClass("network.crypta.runtime.admin.LegacyQueueDownloadPort"),
+                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort"),
                 snapshot.queueDownloadPort()),
         () ->
             assertInstanceOf(
-                loadClass("network.crypta.runtime.admin.LegacyQueueInsertPort"),
+                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort"),
                 snapshot.queueInsertPort()),
         () ->
             assertInstanceOf(
