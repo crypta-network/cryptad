@@ -13,25 +13,24 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext;
-import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.KnownUnsafeContentTypeException;
-import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
-import network.crypta.clients.fcp.DownloadRequestStatus;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.RequestStatus;
-import network.crypta.clients.fcp.UploadDirRequestStatus;
-import network.crypta.clients.fcp.UploadFileRequestStatus;
-import network.crypta.clients.fcp.UploadRequestStatus;
-import network.crypta.clients.http.ProgressCellContext;
-import network.crypta.clients.http.QueueToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.runtime.admin.queue.page.QueueCompressionState;
+import network.crypta.runtime.admin.queue.page.QueuePageBackend;
+import network.crypta.runtime.admin.queue.page.QueuePageDownloadView;
+import network.crypta.runtime.admin.queue.page.QueuePageRequestView;
+import network.crypta.runtime.admin.queue.page.QueuePageUploadDirView;
+import network.crypta.runtime.admin.queue.page.QueuePageUploadFileView;
+import network.crypta.runtime.admin.queue.page.QueuePageUploadView;
+import network.crypta.runtime.admin.queue.page.QueueProgressCellContext;
+import network.crypta.runtime.admin.queue.page.QueueProgressCellRenderer;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
@@ -53,9 +52,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Each render reads the current daemon state directly. The adapter does not cache queue data or
  * retain request-specific HTML trees between calls. That preserves the legacy queue page behavior
- * while moving live traversal logic behind the runtime SPI boundary introduced for the queue GET
- * path. When FCP access is required, the adapter resolves {@code FCPServer} lazily through {@code
- * NodeClientCore} so startup order remains unchanged.
+ * while moving live traversal logic behind the runtime-owned queue-page seam used by this adapter.
  *
  * <p>The class is intentionally internal to the root daemon module. It translates daemon-owned
  * request status objects into detached {@link QueuePageSnapshot} instances and plain-text key-list
@@ -127,18 +124,22 @@ final class LegacyQueuePagePort implements QueuePagePort {
   private static final char[] HEX_ARRAY = "0123456789abcdef".toCharArray();
 
   private final NodeClientCore core;
+  private final QueuePageBackend queueBackend;
 
   /**
    * Creates the legacy queue-page adapter for one daemon instance.
    *
-   * <p>The adapter keeps only a reference to {@link NodeClientCore}. It resolves queue readers,
-   * request starters, and lazy FCP access from that core when individual render methods execute.
+   * <p>The adapter keeps only the daemon core plus the runtime-owned queue-page backend. Queue
+   * reads flow through the backend seam, while scheduler counts, security-level checks, and local
+   * path selection still come from the client core.
    *
    * @param core daemon core that provides queue state, request schedulers, and lazy endpoint access
+   * @param queueBackend runtime-owned queue-page backend used to read the current global queue
    * @throws NullPointerException if {@code core} is {@code null}
    */
-  LegacyQueuePagePort(NodeClientCore core) {
-    this.core = Objects.requireNonNull(core);
+  LegacyQueuePagePort(NodeClientCore core, QueuePageBackend queueBackend) {
+    this.core = Objects.requireNonNull(core, "core");
+    this.queueBackend = Objects.requireNonNull(queueBackend, "queueBackend");
   }
 
   /**
@@ -153,14 +154,14 @@ final class LegacyQueuePagePort implements QueuePagePort {
   public QueuePageSnapshot renderPage(QueuePageRequest request)
       throws RequestQueueUnavailableException {
     Objects.requireNonNull(request, "request");
-    RequestStatus[] reqs = globalRequests();
+    QueuePageRequestView[] reqs = globalRequests();
     QueuePartitions partitions = partitionRequests(reqs, request.uploads());
     if (!partitions.hasAny()) {
       return new QueuePageSnapshot(
           emptyPageTitle(request.uploads()), buildEmptyQueueContent(request.uploads()));
     }
 
-    Comparator<RequestStatus> jobComparator =
+    Comparator<QueuePageRequestView> jobComparator =
         createJobComparator(request.sortBy(), request.reversed());
     sortPartitions(partitions, jobComparator);
     logTotals(partitions);
@@ -223,14 +224,14 @@ final class LegacyQueuePagePort implements QueuePagePort {
    */
   @Override
   public String renderKeyList(boolean uploads) throws RequestQueueUnavailableException {
-    RequestStatus[] reqs = globalRequests();
+    QueuePageRequestView[] reqs = globalRequests();
     StringBuilder sb = new StringBuilder();
-    for (RequestStatus req : reqs) {
-      if (!uploads && req instanceof DownloadRequestStatus get) {
-        FreenetURI uri = get.getURI();
+    for (QueuePageRequestView req : reqs) {
+      if (!uploads && req instanceof QueuePageDownloadView get) {
+        FreenetURI uri = get.getUri();
         sb.append(uri).append('\n');
-      } else if (uploads && req instanceof UploadRequestStatus put) {
-        FreenetURI uri = put.getURI();
+      } else if (uploads && req instanceof QueuePageUploadView put) {
+        FreenetURI uri = put.getFinalUri();
         if (uri != null) {
           sb.append(uri).append('\n');
         }
@@ -240,26 +241,17 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   /**
-   * Resolves the live global request array through the lazily available FCP endpoint.
+   * Returns the live global request array through the runtime-owned queue-page seam.
    *
-   * <p>The queue runtime port must not force early {@code FCPServer} construction during daemon
-   * startup. This helper therefore resolves the endpoint on demand for each render. A missing FCP
-   * server is treated as an empty queue snapshot, while persistence-disabled failures are mapped to
-   * the runtime SPI exception used by the HTTP layer.
+   * <p>The backend owns protocol-specific lookup rules such as lazy endpoint resolution, absent
+   * backends yielding an empty queue, and translation of persistence failures into the runtime SPI
+   * exception used by the HTTP layer.
    *
-   * @return current global requests, or an empty array if the FCP endpoint is not yet available
+   * @return current global requests, or an empty array if the queue backend is unavailable
    * @throws RequestQueueUnavailableException if the persistent request queue cannot be read
    */
-  private RequestStatus[] globalRequests() throws RequestQueueUnavailableException {
-    FCPServer fcpServer = core.getEndpoints().getFCPServer();
-    if (fcpServer == null) {
-      return new RequestStatus[0];
-    }
-    try {
-      return fcpServer.getGlobalRequests();
-    } catch (PersistenceDisabledException e) {
-      throw new RequestQueueUnavailableException("Persistent request queue unavailable", e);
-    }
+  private QueuePageRequestView[] globalRequests() throws RequestQueueUnavailableException {
+    return queueBackend.getGlobalRequests();
   }
 
   private void addAlertSummaryPlaceholder(HTMLNode contentNode) {
@@ -295,24 +287,24 @@ final class LegacyQueuePagePort implements QueuePagePort {
     };
   }
 
-  private QueuePartitions partitionRequests(RequestStatus[] reqs, boolean uploads) {
+  private QueuePartitions partitionRequests(QueuePageRequestView[] reqs, boolean uploads) {
     QueuePartitions partitions = new QueuePartitions();
     if (LOG.isDebugEnabled()) {
       LOG.debug("Request count: {}", reqs.length);
     }
-    for (RequestStatus req : reqs) {
-      if (req instanceof DownloadRequestStatus download && !uploads) {
+    for (QueuePageRequestView req : reqs) {
+      if (req instanceof QueuePageDownloadView download && !uploads) {
         handleDownloadPartition(download, partitions);
-      } else if (req instanceof UploadFileRequestStatus upload && uploads) {
+      } else if (req instanceof QueuePageUploadFileView upload && uploads) {
         handleUploadFilePartition(upload, partitions);
-      } else if (req instanceof UploadDirRequestStatus upload && uploads) {
+      } else if (req instanceof QueuePageUploadDirView upload && uploads) {
         handleUploadDirPartition(upload, partitions);
       }
     }
     return partitions;
   }
 
-  private void handleUploadDirPartition(UploadDirRequestStatus upload, QueuePartitions partitions) {
+  private void handleUploadDirPartition(QueuePageUploadDirView upload, QueuePartitions partitions) {
     if (upload.hasSucceeded()) {
       partitions.completedDirUpload.add(upload);
     } else if (upload.hasFinished()) {
@@ -332,7 +324,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private void handleUploadFilePartition(
-      UploadFileRequestStatus upload, QueuePartitions partitions) {
+      QueuePageUploadFileView upload, QueuePartitions partitions) {
     if (upload.hasSucceeded()) {
       partitions.completedUpload.add(upload);
     } else if (upload.hasFinished()) {
@@ -351,7 +343,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
     partitions.added = true;
   }
 
-  private void handleDownloadPartition(DownloadRequestStatus download, QueuePartitions partitions) {
+  private void handleDownloadPartition(QueuePageDownloadView download, QueuePartitions partitions) {
     if (download.hasSucceeded()) {
       if (download.toTempSpace()) {
         partitions.completedDownloadToTemp.add(download);
@@ -374,7 +366,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
     partitions.added = true;
   }
 
-  private void handleFinishedDownload(DownloadRequestStatus download, QueuePartitions partitions) {
+  private void handleFinishedDownload(QueuePageDownloadView download, QueuePartitions partitions) {
     FetchExceptionMode failureCode = download.getFailureCode();
     String mimeType = normalizeMimeType(download, failureCode);
     switch (failureCode) {
@@ -384,8 +376,8 @@ final class LegacyQueuePagePort implements QueuePagePort {
     }
   }
 
-  private String normalizeMimeType(DownloadRequestStatus download, FetchExceptionMode failureCode) {
-    String mimeType = download.getMIMEType();
+  private String normalizeMimeType(QueuePageDownloadView download, FetchExceptionMode failureCode) {
+    String mimeType = download.getMimeType();
     if (mimeType == null
         && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
             || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
@@ -394,7 +386,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
             "MIME type is null but failure code is {} for {} : {}",
             FetchException.getMessage(failureCode),
             download.getIdentifier(),
-            download.getURI());
+            download.getUri());
       }
       return DefaultMIMETypes.DEFAULT_MIME_TYPE;
     }
@@ -402,7 +394,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private void addUnknownMimeFailure(
-      DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
+      QueuePageDownloadView download, QueuePartitions partitions, String mimeType) {
     String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
     partitions
         .failedUnknownMIMEType
@@ -411,10 +403,10 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private void handleBadMimeFailure(
-      DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
+      QueuePageDownloadView download, QueuePartitions partitions, String mimeType) {
     String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
     FilterMIMEType type = ContentFilter.getMIMEType(normalizedMimeType);
-    Map<String, List<DownloadRequestStatus>> bucket =
+    Map<String, List<QueuePageDownloadView>> bucket =
         type == null ? partitions.failedUnknownMIMEType : partitions.failedBadMIMEType;
     if (type == null) {
       LOG.error(
@@ -424,8 +416,8 @@ final class LegacyQueuePagePort implements QueuePagePort {
     bucket.computeIfAbsent(normalizedMimeType, _ -> new ArrayList<>()).add(download);
   }
 
-  private Comparator<RequestStatus> createJobComparator(String sortBy, boolean reversed) {
-    Comparator<RequestStatus> baseComparator =
+  private Comparator<QueuePageRequestView> createJobComparator(String sortBy, boolean reversed) {
+    Comparator<QueuePageRequestView> baseComparator =
         switch (sortBy) {
           case "id" -> this::compareById;
           case "size" -> this::compareBySize;
@@ -446,7 +438,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
     };
   }
 
-  private int compareById(RequestStatus first, RequestStatus second) {
+  private int compareById(QueuePageRequestView first, QueuePageRequestView second) {
     int result = first.getIdentifier().compareToIgnoreCase(second.getIdentifier());
     if (result == 0) {
       result = first.getIdentifier().compareTo(second.getIdentifier());
@@ -454,11 +446,11 @@ final class LegacyQueuePagePort implements QueuePagePort {
     return result;
   }
 
-  private int compareBySize(RequestStatus first, RequestStatus second) {
+  private int compareBySize(QueuePageRequestView first, QueuePageRequestView second) {
     return Fields.compare(first.getTotalBlocks(), second.getTotalBlocks());
   }
 
-  private int compareByProgress(RequestStatus first, RequestStatus second) {
+  private int compareByProgress(QueuePageRequestView first, QueuePageRequestView second) {
     boolean firstFinalized = first.isTotalFinalized();
     boolean secondFinalized = second.isTotalFinalized();
     if (firstFinalized && !secondFinalized) {
@@ -472,15 +464,15 @@ final class LegacyQueuePagePort implements QueuePagePort {
     return Fields.compare(firstProgress, secondProgress);
   }
 
-  private int compareByLastActivity(RequestStatus first, RequestStatus second) {
+  private int compareByLastActivity(QueuePageRequestView first, QueuePageRequestView second) {
     return Fields.compare(first.getLastSuccess(), second.getLastSuccess());
   }
 
-  private int compareByLastFailure(RequestStatus first, RequestStatus second) {
+  private int compareByLastFailure(QueuePageRequestView first, QueuePageRequestView second) {
     return Fields.compare(first.getLastFailure(), second.getLastFailure());
   }
 
-  private int compareByPriorityThenId(RequestStatus first, RequestStatus second) {
+  private int compareByPriorityThenId(QueuePageRequestView first, QueuePageRequestView second) {
     int result = Fields.compare(first.getPriority(), second.getPriority());
     if (result == 0) {
       result = first.getIdentifier().compareTo(second.getIdentifier());
@@ -488,7 +480,8 @@ final class LegacyQueuePagePort implements QueuePagePort {
     return result;
   }
 
-  private void sortPartitions(QueuePartitions partitions, Comparator<RequestStatus> jobComparator) {
+  private void sortPartitions(
+      QueuePartitions partitions, Comparator<QueuePageRequestView> jobComparator) {
     partitions.completedDownloadToDisk.sort(jobComparator);
     partitions.completedDownloadToTemp.sort(jobComparator);
     partitions.completedUpload.sort(jobComparator);
@@ -801,7 +794,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
       RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      Comparator<RequestStatus> jobComparator) {
+      Comparator<QueuePageRequestView> jobComparator) {
     addBadMimeFailures(tableContext, contentNode, partitions, jobComparator);
     addUnknownMimeFailures(tableContext, contentNode, partitions, jobComparator);
   }
@@ -810,11 +803,11 @@ final class LegacyQueuePagePort implements QueuePagePort {
       RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      Comparator<RequestStatus> jobComparator) {
+      Comparator<QueuePageRequestView> jobComparator) {
     String[] types = partitions.failedBadMIMEType.keySet().toArray(new String[0]);
     Arrays.sort(types);
     for (String type : types) {
-      List<DownloadRequestStatus> getters = partitions.failedBadMIMEType.get(type);
+      List<QueuePageDownloadView> getters = partitions.failedBadMIMEType.get(type);
       String atype = type.replace("-", "--").replace('/', '-');
       contentNode.addChild("a", "id", "failedDownload-badtype-" + atype);
       FilterMIMEType typeHandler = ContentFilter.getMIMEType(type);
@@ -865,11 +858,11 @@ final class LegacyQueuePagePort implements QueuePagePort {
       RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      Comparator<RequestStatus> jobComparator) {
+      Comparator<QueuePageRequestView> jobComparator) {
     String[] types = partitions.failedUnknownMIMEType.keySet().toArray(new String[0]);
     Arrays.sort(types);
     for (String type : types) {
-      List<DownloadRequestStatus> getters = partitions.failedUnknownMIMEType.get(type);
+      List<QueuePageDownloadView> getters = partitions.failedUnknownMIMEType.get(type);
       String atype = type.replace("-", "--").replace('/', '-');
       contentNode.addChild("a", "id", "failedDownload-unknowntype-" + atype);
       HTMLNode failedContent =
@@ -1315,7 +1308,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
 
   private HTMLNode createRequestTable(
       RequestTableContext tableContext,
-      List<? extends RequestStatus> requests,
+      List<? extends QueuePageRequestView> requests,
       QueueColumn[] columns,
       String id,
       QueueType queueType,
@@ -1325,7 +1318,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
 
   private HTMLNode createRequestTable(
       RequestTableContext tableContext,
-      List<? extends RequestStatus> requests,
+      List<? extends QueuePageRequestView> requests,
       QueueColumn[] columns,
       String id,
       String mimeType,
@@ -1393,11 +1386,11 @@ final class LegacyQueuePagePort implements QueuePagePort {
 
   private void addRequestRows(
       HTMLNode table,
-      List<? extends RequestStatus> requests,
+      List<? extends QueuePageRequestView> requests,
       QueueColumn[] columns,
       RowRenderContext rowContext) {
     int index = 0;
-    for (RequestStatus clientRequest : requests) {
+    for (QueuePageRequestView clientRequest : requests) {
       HTMLNode requestRow =
           table.addChild("tr", ATTR_CLASS, PRIORITY + clientRequest.getPriority());
       requestRow.addChild(createCheckboxCell(clientRequest, index++));
@@ -1411,13 +1404,13 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private HTMLNode createColumnCell(
-      QueueColumn column, RequestStatus clientRequest, RowRenderContext rowContext) {
+      QueueColumn column, QueuePageRequestView clientRequest, RowRenderContext rowContext) {
     return switch (column) {
       case IDENTIFIER ->
           createIdentifierCell(
-              clientRequest.getURI(),
+              clientRequest.getUri(),
               clientRequest.getIdentifier(),
-              clientRequest instanceof UploadDirRequestStatus);
+              clientRequest instanceof QueuePageUploadDirView);
       case SIZE -> createSizeCellForRequest(clientRequest, rowContext.advancedModeEnabled);
       case MIME_TYPE -> createMimeTypeCell(clientRequest);
       case PERSISTENCE ->
@@ -1425,10 +1418,10 @@ final class LegacyQueuePagePort implements QueuePagePort {
       case KEY -> createKeyCellForRequest(clientRequest);
       case FILENAME -> createFilenameCellForRequest(clientRequest);
       case PRIORITY -> createPriorityCell(clientRequest.getPriority(), rowContext.priorityClasses);
-      case FILES -> createNumberCell(((UploadDirRequestStatus) clientRequest).getNumberOfFiles());
+      case FILES -> createNumberCell(((QueuePageUploadDirView) clientRequest).getNumberOfFiles());
       case TOTAL_SIZE ->
           createSizeCell(
-              ((UploadDirRequestStatus) clientRequest).getTotalDataSize(),
+              ((QueuePageUploadDirView) clientRequest).getTotalDataSize(),
               true,
               rowContext.advancedModeEnabled);
       case PROGRESS ->
@@ -1600,7 +1593,7 @@ final class LegacyQueuePagePort implements QueuePagePort {
     return queueType.isUpload && !queueType.isCompleted;
   }
 
-  private HTMLNode createCheckboxCell(RequestStatus clientRequest, int counter) {
+  private HTMLNode createCheckboxCell(QueuePageRequestView clientRequest, int counter) {
     HTMLNode cell = new HTMLNode("td", ATTR_CLASS, "checkbox-cell");
     cell.addChild(
         TAG_INPUT,
@@ -1610,11 +1603,11 @@ final class LegacyQueuePagePort implements QueuePagePort {
         });
     FreenetURI uri;
     long size = -1;
-    if (clientRequest instanceof DownloadRequestStatus) {
-      uri = clientRequest.getURI();
+    if (clientRequest instanceof QueuePageDownloadView) {
+      uri = clientRequest.getUri();
       size = clientRequest.getDataSize();
-    } else if (clientRequest instanceof UploadRequestStatus status) {
-      uri = status.getFinalURI();
+    } else if (clientRequest instanceof QueuePageUploadView status) {
+      uri = status.getFinalUri();
       size = clientRequest.getDataSize();
     } else {
       uri = null;
@@ -1731,52 +1724,52 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private HTMLNode createSizeCellForRequest(
-      RequestStatus clientRequest, boolean advancedModeEnabled) {
+      QueuePageRequestView clientRequest, boolean advancedModeEnabled) {
     boolean isFinal =
-        !(clientRequest instanceof DownloadRequestStatus) || clientRequest.isTotalFinalized();
+        !(clientRequest instanceof QueuePageDownloadView) || clientRequest.isTotalFinalized();
     return createSizeCell(clientRequest.getDataSize(), isFinal, advancedModeEnabled);
   }
 
-  private HTMLNode createMimeTypeCell(RequestStatus clientRequest) {
-    if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
-      return createTypeCell(downloadStatus.getMIMEType());
+  private HTMLNode createMimeTypeCell(QueuePageRequestView clientRequest) {
+    if (clientRequest instanceof QueuePageDownloadView downloadStatus) {
+      return createTypeCell(downloadStatus.getMimeType());
     }
-    if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
-      return createTypeCell(uploadStatus.getMIMEType());
+    if (clientRequest instanceof QueuePageUploadFileView uploadStatus) {
+      return createTypeCell(uploadStatus.getMimeType());
     }
     return null;
   }
 
-  private HTMLNode createKeyCellForRequest(RequestStatus clientRequest) {
-    if (clientRequest instanceof DownloadRequestStatus) {
-      return createKeyCell(clientRequest.getURI(), false);
+  private HTMLNode createKeyCellForRequest(QueuePageRequestView clientRequest) {
+    if (clientRequest instanceof QueuePageDownloadView) {
+      return createKeyCell(clientRequest.getUri(), false);
     }
-    if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
-      return createKeyCell(uploadStatus.getFinalURI(), false);
+    if (clientRequest instanceof QueuePageUploadFileView uploadStatus) {
+      return createKeyCell(uploadStatus.getFinalUri(), false);
     }
-    return createKeyCell(((UploadDirRequestStatus) clientRequest).getFinalURI(), true);
+    return createKeyCell(((QueuePageUploadDirView) clientRequest).getFinalUri(), true);
   }
 
-  private HTMLNode createFilenameCellForRequest(RequestStatus clientRequest) {
-    if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
+  private HTMLNode createFilenameCellForRequest(QueuePageRequestView clientRequest) {
+    if (clientRequest instanceof QueuePageDownloadView downloadStatus) {
       return createFilenameCell(downloadStatus.getDestFilename());
     }
-    if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
+    if (clientRequest instanceof QueuePageUploadFileView uploadStatus) {
       return createFilenameCell(uploadStatus.getOrigFilename());
     }
     return null;
   }
 
   private HTMLNode createProgressCellForRequest(
-      RequestStatus clientRequest, boolean advancedModeEnabled, boolean isUploadQueue) {
-    COMPRESS_STATE compressing =
-        clientRequest instanceof UploadFileRequestStatus uploadStatus
-            ? uploadStatus.isCompressing()
-            : COMPRESS_STATE.WORKING;
+      QueuePageRequestView clientRequest, boolean advancedModeEnabled, boolean isUploadQueue) {
+    QueueCompressionState compressing =
+        clientRequest instanceof QueuePageUploadFileView uploadStatus
+            ? uploadStatus.getCompressionState()
+            : QueueCompressionState.WORKING;
     boolean finalizedTotal =
-        clientRequest instanceof UploadFileRequestStatus || clientRequest.isTotalFinalized();
-    ProgressCellContext progressContext =
-        new ProgressCellContext(
+        clientRequest instanceof QueuePageUploadFileView || clientRequest.isTotalFinalized();
+    QueueProgressCellContext progressContext =
+        new QueueProgressCellContext(
             advancedModeEnabled, clientRequest.isStarted(), compressing, isUploadQueue);
     SplitfileProgressCounts progressCounts =
         new SplitfileProgressCounts(
@@ -1787,17 +1780,17 @@ final class LegacyQueuePagePort implements QueuePagePort {
             clientRequest.getMinBlocks(),
             clientRequest.getMinBlocks(),
             finalizedTotal);
-    return QueueToadlet.createProgressCell(progressContext, progressCounts);
+    return QueueProgressCellRenderer.createProgressCell(progressContext, progressCounts);
   }
 
-  private HTMLNode createCompatModeCellForRequest(RequestStatus clientRequest) {
-    if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
+  private HTMLNode createCompatModeCellForRequest(QueuePageRequestView clientRequest) {
+    if (clientRequest instanceof QueuePageDownloadView downloadStatus) {
       return createCompatModeCell(downloadStatus);
     }
     return new HTMLNode("td");
   }
 
-  private HTMLNode createCompatModeCell(DownloadRequestStatus get) {
+  private HTMLNode createCompatModeCell(QueuePageDownloadView get) {
     HTMLNode compatCell = new HTMLNode("td", ATTR_CLASS, "request-compat-mode");
     InsertContext.CompatibilityMode[] compat = get.getCompatibilityMode();
     if (!(compat[0] == InsertContext.CompatibilityMode.COMPAT_UNKNOWN
@@ -1953,18 +1946,18 @@ final class LegacyQueuePagePort implements QueuePagePort {
   }
 
   private static final class QueuePartitions {
-    private final List<DownloadRequestStatus> completedDownloadToDisk = new ArrayList<>();
-    private final List<DownloadRequestStatus> completedDownloadToTemp = new ArrayList<>();
-    private final List<UploadFileRequestStatus> completedUpload = new ArrayList<>();
-    private final List<UploadDirRequestStatus> completedDirUpload = new ArrayList<>();
-    private final List<DownloadRequestStatus> failedDownload = new ArrayList<>();
-    private final List<UploadFileRequestStatus> failedUpload = new ArrayList<>();
-    private final List<UploadDirRequestStatus> failedDirUpload = new ArrayList<>();
-    private final List<DownloadRequestStatus> uncompletedDownload = new ArrayList<>();
-    private final List<UploadFileRequestStatus> uncompletedUpload = new ArrayList<>();
-    private final List<UploadDirRequestStatus> uncompletedDirUpload = new ArrayList<>();
-    private final Map<String, List<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
-    private final Map<String, List<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
+    private final List<QueuePageDownloadView> completedDownloadToDisk = new ArrayList<>();
+    private final List<QueuePageDownloadView> completedDownloadToTemp = new ArrayList<>();
+    private final List<QueuePageUploadFileView> completedUpload = new ArrayList<>();
+    private final List<QueuePageUploadDirView> completedDirUpload = new ArrayList<>();
+    private final List<QueuePageDownloadView> failedDownload = new ArrayList<>();
+    private final List<QueuePageUploadFileView> failedUpload = new ArrayList<>();
+    private final List<QueuePageUploadDirView> failedDirUpload = new ArrayList<>();
+    private final List<QueuePageDownloadView> uncompletedDownload = new ArrayList<>();
+    private final List<QueuePageUploadFileView> uncompletedUpload = new ArrayList<>();
+    private final List<QueuePageUploadDirView> uncompletedDirUpload = new ArrayList<>();
+    private final Map<String, List<QueuePageDownloadView>> failedUnknownMIMEType = new HashMap<>();
+    private final Map<String, List<QueuePageDownloadView>> failedBadMIMEType = new HashMap<>();
     private short lowestQueuedPrio = RequestStarter.PAUSED_PRIORITY_CLASS;
     private long totalQueuedDownloadSize;
     private long totalQueuedUploadSize;

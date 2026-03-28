@@ -4,18 +4,16 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import network.crypta.client.async.ClientRequestScheduler;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.clients.fcp.DownloadRequestStatus;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.RequestStatus;
-import network.crypta.clients.fcp.UploadFileRequestStatus;
-import network.crypta.clients.fcp.UploadRequestStatus;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarterGroup;
-import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.admin.queue.page.QueuePageBackend;
+import network.crypta.runtime.admin.queue.page.QueuePageDownloadView;
+import network.crypta.runtime.admin.queue.page.QueuePageRequestView;
+import network.crypta.runtime.admin.queue.page.QueuePageUploadFileView;
+import network.crypta.runtime.admin.queue.page.QueuePageUploadView;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
@@ -43,8 +41,7 @@ import static org.mockito.Mockito.when;
 class LegacyQueuePagePortTest {
 
   @Mock private NodeClientCore core;
-  @Mock private ClientEndpoints endpoints;
-  @Mock private FCPServer fcp;
+  @Mock private QueuePageBackend queueBackend;
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private Node node;
@@ -59,28 +56,27 @@ class LegacyQueuePagePortTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(core.getEndpoints()).thenReturn(endpoints);
     when(core.getNode()).thenReturn(node);
     when(core.getRequestStarters()).thenReturn(requestStarters);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
     when(node.network().darknetConnections()).thenReturn(new DarknetPeerNode[0]);
     setRequestStarterField("chkFetchSchedulerBulk", chkFetchSchedulerBulk);
     setRequestStarterField("chkFetchSchedulerRT", chkFetchSchedulerRT);
-    port = new LegacyQueuePagePort(core);
+    port = new LegacyQueuePagePort(core, queueBackend);
   }
 
   @Test
   void renderPage_whenUploadQueueHasCompletedRequest_returnsDetachedHtmlSnapshot()
       throws Exception {
-    UploadFileRequestStatus upload = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
+    QueuePageUploadFileView upload = org.mockito.Mockito.mock(QueuePageUploadFileView.class);
     when(upload.hasSucceeded()).thenReturn(true);
     when(upload.getIdentifier()).thenReturn("upload-1");
     when(upload.getPriority()).thenReturn((short) 2);
     when(upload.getOrigFilename()).thenReturn(new File("hello.txt"));
     when(upload.getPreferredFilenameSafe()).thenReturn("hello.txt");
     when(upload.getDataSize()).thenReturn(123L);
-    when(upload.getFinalURI()).thenReturn(sampleUri());
-    when(fcp.getGlobalRequests()).thenReturn(new RequestStatus[] {upload});
+    when(upload.getFinalUri()).thenReturn(sampleUri());
+    when(upload.getUri()).thenReturn(sampleUri());
+    when(queueBackend.getGlobalRequests()).thenReturn(new QueuePageRequestView[] {upload});
 
     QueuePageSnapshot snapshot = port.renderPage(new QueuePageRequest(true, false, null, false));
 
@@ -109,8 +105,9 @@ class LegacyQueuePagePortTest {
   }
 
   @Test
-  void renderPage_whenFcpServerMissing_returnsEmptyDownloadsSnapshot() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(null);
+  void renderPage_whenQueueBackendReturnsNoRequests_returnsEmptyDownloadsSnapshot()
+      throws Exception {
+    when(queueBackend.getGlobalRequests()).thenReturn(new QueuePageRequestView[0]);
     when(core.getDownloadsDir()).thenReturn(new File("downloads"));
     when(core.allowDownloadTo(any(File.class))).thenReturn(true);
 
@@ -120,18 +117,18 @@ class LegacyQueuePagePortTest {
     assertTrue(snapshot.contentHtmlTemplate().contains("queue-empty"));
     assertTrue(snapshot.contentHtmlTemplate().contains("queueDownloadForm"));
     assertTrue(snapshot.contentHtmlTemplate().contains("<!--CRYPTA_ALERT_SUMMARY-->"));
-    verifyNoInteractions(fcp);
   }
 
   @Test
   void renderKeyList_whenDownloadsRequested_returnsOnlyDownloadUris() throws Exception {
-    DownloadRequestStatus download = org.mockito.Mockito.mock(DownloadRequestStatus.class);
-    UploadRequestStatus upload = org.mockito.Mockito.mock(UploadRequestStatus.class);
+    QueuePageDownloadView download = org.mockito.Mockito.mock(QueuePageDownloadView.class);
+    QueuePageUploadView upload = org.mockito.Mockito.mock(QueuePageUploadView.class);
     FreenetURI downloadUri = sampleUri();
     FreenetURI uploadUri = sampleUri();
-    when(download.getURI()).thenReturn(downloadUri);
-    when(upload.getURI()).thenReturn(uploadUri);
-    when(fcp.getGlobalRequests()).thenReturn(new RequestStatus[] {download, upload});
+    when(download.getUri()).thenReturn(downloadUri);
+    when(upload.getFinalUri()).thenReturn(uploadUri);
+    when(queueBackend.getGlobalRequests())
+        .thenReturn(new QueuePageRequestView[] {download, upload});
 
     String keyList = port.renderKeyList(false);
 
@@ -140,15 +137,15 @@ class LegacyQueuePagePortTest {
 
   @Test
   void renderKeyList_whenUploadsRequested_skipsNullUploadUris() throws Exception {
-    DownloadRequestStatus download = org.mockito.Mockito.mock(DownloadRequestStatus.class);
-    UploadRequestStatus uploadWithUri = org.mockito.Mockito.mock(UploadRequestStatus.class);
-    UploadRequestStatus uploadWithoutUri = org.mockito.Mockito.mock(UploadRequestStatus.class);
+    QueuePageDownloadView download = org.mockito.Mockito.mock(QueuePageDownloadView.class);
+    QueuePageUploadView uploadWithUri = org.mockito.Mockito.mock(QueuePageUploadView.class);
+    QueuePageUploadView uploadWithoutUri = org.mockito.Mockito.mock(QueuePageUploadView.class);
     FreenetURI uploadUri = sampleUri();
-    when(download.getURI()).thenReturn(sampleUri());
-    when(uploadWithUri.getURI()).thenReturn(uploadUri);
-    when(uploadWithoutUri.getURI()).thenReturn(null);
-    when(fcp.getGlobalRequests())
-        .thenReturn(new RequestStatus[] {download, uploadWithUri, uploadWithoutUri});
+    when(download.getUri()).thenReturn(sampleUri());
+    when(uploadWithUri.getFinalUri()).thenReturn(uploadUri);
+    when(uploadWithoutUri.getFinalUri()).thenReturn(null);
+    when(queueBackend.getGlobalRequests())
+        .thenReturn(new QueuePageRequestView[] {download, uploadWithUri, uploadWithoutUri});
 
     String keyList = port.renderKeyList(true);
 
@@ -156,20 +153,12 @@ class LegacyQueuePagePortTest {
   }
 
   @Test
-  void renderKeyList_whenFcpServerMissing_returnsEmptyString() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(null);
-
-    String keyList = port.renderKeyList(false);
-
-    assertEquals("", keyList);
-    verifyNoInteractions(fcp);
-  }
-
-  @Test
-  void renderPage_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
+  void renderPage_whenQueueBackendUnavailable_propagatesRequestQueueUnavailableException()
       throws Exception {
-    PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(fcp.getGlobalRequests()).thenThrow(cause);
+    IllegalStateException cause = new IllegalStateException("queue disabled");
+    RequestQueueUnavailableException failure =
+        new RequestQueueUnavailableException("Persistent request queue unavailable", cause);
+    when(queueBackend.getGlobalRequests()).thenThrow(failure);
 
     RequestQueueUnavailableException thrown =
         assertThrows(
@@ -180,14 +169,13 @@ class LegacyQueuePagePortTest {
   }
 
   @Test
-  void lazyFcpLookup_whenPortConstructed_defersEndpointAccessUntilMethodCall() throws Exception {
-    verifyNoInteractions(endpoints, fcp);
-    when(fcp.getGlobalRequests()).thenReturn(new RequestStatus[0]);
+  void queueBackendLookup_whenPortConstructed_defersBackendReadUntilMethodCall() throws Exception {
+    verifyNoInteractions(queueBackend);
+    when(queueBackend.getGlobalRequests()).thenReturn(new QueuePageRequestView[0]);
 
     port.renderKeyList(false);
 
-    verify(endpoints).getFCPServer();
-    verify(fcp).getGlobalRequests();
+    verify(queueBackend).getGlobalRequests();
   }
 
   private FreenetURI sampleUri() {
