@@ -10,13 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentStatsPutter;
-import network.crypta.clients.fcp.DownloadRequestStatus;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.RequestStatus;
-import network.crypta.clients.fcp.UploadDirRequestStatus;
-import network.crypta.clients.fcp.UploadFileRequestStatus;
 import network.crypta.config.SubConfig;
 import network.crypta.fs.AppEnv;
 import network.crypta.io.xfer.BlockReceiver;
@@ -34,6 +28,11 @@ import network.crypta.node.stats.DataStoreInstanceType;
 import network.crypta.node.stats.DataStoreStats;
 import network.crypta.node.stats.StatsNotAvailableException;
 import network.crypta.node.stats.StoreAccessStats;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.admin.queue.QueueDownloadStatusView;
+import network.crypta.runtime.admin.queue.QueueRequestStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadDirStatusView;
+import network.crypta.runtime.admin.queue.QueueUploadFileStatusView;
 import network.crypta.runtime.diagnostics.NodeDiagnostics;
 import network.crypta.runtime.diagnostics.ThreadDiagnostics;
 import network.crypta.runtime.diagnostics.threads.NodeThreadInfo;
@@ -41,6 +40,7 @@ import network.crypta.runtime.diagnostics.threads.NodeThreadSnapshot;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.BandwidthStatsContainer;
 import network.crypta.support.SizeUtil;
 
@@ -50,8 +50,8 @@ import network.crypta.support.SizeUtil;
  * <p>This adapter keeps the existing diagnostic traversal inside the daemon root module while
  * exposing only detached line-oriented report sections to higher layers. It preserves the legacy
  * `/diagnostic/` page's plain-text structure, queue aggregation, peer counting, bandwidth summary,
- * and thread-diagnostics formatting without leaking {@link Node}, {@link FCPServer}, request
- * status, or thread snapshot types across the runtime boundary.
+ * and thread-diagnostics formatting without leaking {@link Node}, queue-backend implementation
+ * details, or thread snapshot types across the runtime boundary.
  *
  * <p>The adapter is intentionally report-oriented for this slice. It does not define a reusable
  * metrics schema, and it does not perform HTTP access control. Callers request one snapshot per
@@ -109,8 +109,11 @@ final class LegacyDiagnosticPort implements DiagnosticPort {
   /** Live daemon node traversed while building one detached diagnostic snapshot. */
   private final Node node;
 
-  /** Live client core used for bandwidth persistence and FCP queue access. */
+  /** Live client core used for bandwidth persistence access. */
   private final NodeClientCore core;
+
+  /** Runtime-owned queue backend seam used for queue diagnostics. */
+  private final QueueAdminBackend queueBackend;
 
   /** Cached node statistics view used by several report sections. */
   private final NodeStats stats;
@@ -140,10 +143,12 @@ final class LegacyDiagnosticPort implements DiagnosticPort {
    *
    * @param node live daemon node whose runtime state will be traversed during snapshot creation
    * @param core live client core that exposes persistence and FCP endpoint access
+   * @param queueBackend runtime-owned queue backend seam for queue diagnostics
    */
-  LegacyDiagnosticPort(Node node, NodeClientCore core) {
+  LegacyDiagnosticPort(Node node, NodeClientCore core, QueueAdminBackend queueBackend) {
     this.node = Objects.requireNonNull(node);
     this.core = Objects.requireNonNull(core);
+    this.queueBackend = Objects.requireNonNull(queueBackend);
     this.stats = node.network().stats();
     this.peers = node.network().peers();
     this.baseL10n =
@@ -894,13 +899,13 @@ final class LegacyDiagnosticPort implements DiagnosticPort {
   private DiagnosticSectionSnapshot queueSection() {
     List<String> lines = new ArrayList<>();
     try {
-      RequestStatus[] requests = globalRequests();
+      QueueRequestStatusView[] requests = globalRequests();
       if (requests.length < 1) {
         lines.add(baseL10n.getString("QueueToadlet.globalQueueIsEmpty"));
       } else {
         appendQueueCounts(lines, requests);
       }
-    } catch (PersistenceDisabledException _) {
+    } catch (RequestQueueUnavailableException _) {
       lines.add(DATABASE_DISABLED);
     }
     lines.add("");
@@ -908,30 +913,33 @@ final class LegacyDiagnosticPort implements DiagnosticPort {
   }
 
   /**
-   * Reads the current global request list from the FCP server when present.
+   * Reads the current global request list from the queue backend.
    *
-   * @return current global request snapshots, or an empty array when no FCP server exists
-   * @throws PersistenceDisabledException if the persistence layer rejects queue access
+   * @return current global request snapshots, or an empty array when no queue server exists
+   * @throws RequestQueueUnavailableException if the persistence layer rejects queue access
    */
-  private RequestStatus[] globalRequests() throws PersistenceDisabledException {
-    FCPServer fcpServer = core.getEndpoints().getFCPServer();
-    return fcpServer == null ? new RequestStatus[0] : fcpServer.getGlobalRequests();
+  private QueueRequestStatusView[] globalRequests() throws RequestQueueUnavailableException {
+    try {
+      return queueBackend.getGlobalRequests();
+    } catch (IllegalStateException _) {
+      return new QueueRequestStatusView[0];
+    }
   }
 
   /**
    * Appends the legacy download and upload queue counts.
    *
    * @param lines destination list for rendered queue lines
-   * @param requests global request snapshots returned by the FCP server
+   * @param requests global request snapshots returned by the queue backend
    */
-  private void appendQueueCounts(List<String> lines, RequestStatus[] requests) {
+  private void appendQueueCounts(List<String> lines, QueueRequestStatusView[] requests) {
     long totalQueuedDownload = 0;
     long totalQueuedUpload = 0;
-    for (RequestStatus request : requests) {
-      if (request instanceof DownloadRequestStatus) {
+    for (QueueRequestStatusView request : requests) {
+      if (request instanceof QueueDownloadStatusView) {
         totalQueuedDownload++;
-      } else if (request instanceof UploadFileRequestStatus
-          || request instanceof UploadDirRequestStatus) {
+      } else if (request instanceof QueueUploadFileStatusView
+          || request instanceof QueueUploadDirStatusView) {
         totalQueuedUpload++;
       }
     }

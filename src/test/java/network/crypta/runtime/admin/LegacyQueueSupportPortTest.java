@@ -2,11 +2,10 @@ package network.crypta.runtime.admin;
 
 import java.io.File;
 import java.nio.file.Path;
-import network.crypta.clients.fcp.FCPServer;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
-import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
 import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,8 +29,7 @@ import static org.mockito.Mockito.when;
 class LegacyQueueSupportPortTest {
 
   @Mock private NodeClientCore core;
-  @Mock private ClientEndpoints endpoints;
-  @Mock private FCPServer fcp;
+  @Mock private QueueAdminBackend queueBackend;
   @Mock private Node node;
   @Mock private NodeStorageSubsystem storage;
 
@@ -41,14 +39,12 @@ class LegacyQueueSupportPortTest {
 
   @BeforeEach
   void setUp() {
-    port = new LegacyQueueSupportPort(core);
+    port = new LegacyQueueSupportPort(core, queueBackend);
   }
 
   @Test
-  void isQueueBackendEnabled_whenQueried_delegatesToFcpServerFlag() {
-    when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
-    when(fcp.isEnabled()).thenReturn(true).thenReturn(false);
+  void isQueueBackendEnabled_whenQueried_delegatesToBackendFlag() {
+    when(queueBackend.isEnabled()).thenReturn(true).thenReturn(false);
 
     assertTrue(port.isQueueBackendEnabled());
     assertFalse(port.isQueueBackendEnabled());
