@@ -1,9 +1,8 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -95,7 +94,7 @@ class SimpleUserAlertTest {
   }
 
   @Test
-  void getFCPMessage_whenCalled_expectFeedFieldsReflectAlert() {
+  void getFeedEvent_whenCalled_expectFeedFieldsReflectAlert() {
     // Arrange
     String title = "Feed Title";
     String text = "Feed body text";
@@ -107,18 +106,17 @@ class SimpleUserAlertTest {
     assertTrue(updatedTime > 0L);
 
     // Act
-    FCPMessage msg = alert.getFCPMessage();
-    SimpleFieldSet fs = msg.getFieldSet();
+    BasicUserAlertFeedEvent event = (BasicUserAlertFeedEvent) alert.getFeedEvent();
 
     // Assert
-    assertEquals("Feed", msg.getName());
-    assertEquals(title, fs.get("Header"));
-    assertEquals(shortText, fs.get("ShortText"));
-    assertEquals(String.valueOf(priority), fs.get("PriorityClass"));
-    assertEquals(String.valueOf(updatedTime), fs.get("UpdatedTime"));
+    assertEquals(title, event.header());
+    assertEquals(shortText, event.shortText());
+    assertEquals(text, event.text());
+    assertEquals(priority, event.priorityClass());
+    assertEquals(updatedTime, event.updatedTime());
 
-    // Data length is encoded length of the plain text
+    // Basic feed events preserve the plain-text body exactly as exposed by the alert.
     int expectedLen = text.getBytes(UTF_8).length;
-    assertEquals(String.valueOf(expectedLen), fs.get("DataLength"));
+    assertEquals(expectedLen, event.text().getBytes(UTF_8).length);
   }
 }

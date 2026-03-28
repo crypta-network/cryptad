@@ -24,9 +24,9 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.alerts.feed.UserAlertFeedSubscriber;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
 import org.slf4j.Logger;
@@ -47,8 +47,8 @@ import static java.util.Arrays.stream;
  *
  * <p>Concurrency: registration and state updates synchronize on internal collections, while
  * subscriber notifications are dispatched asynchronously to avoid blocking alert updates. The
- * manager is mutable and not thread-safe for external iteration; call {@link #getAlerts()} to
- * obtain a stable array.
+ * manager is mutable and not thread-safe for external iteration; call {@link #getAlerts()} to get a
+ * stable array.
  *
  * <p>Responsibilities include:
  *
@@ -77,13 +77,13 @@ public class UserAlertManager implements Comparator<UserAlert> {
   // No point keeping them sorted as some alerts can change priority.
   private final Set<UserAlert> alerts;
   private final NodeClientCore core;
-  private final Set<FCPConnectionHandler> subscribers;
+  private final Set<UserAlertFeedSubscriber> subscribers;
   private final Map<UserEvent.Type, UserEvent> events;
   private final Set<UserEvent.Type> unregisteredEventTypes;
   private long lastUpdated;
 
   /**
-   * Creates a manager bound to the given core and initializes empty alert state.
+   * Creates a manager bound to the given core and initializes an empty alert state.
    *
    * <p>The manager stores alerts in mutable collections, tracks the most recent update time, and
    * prepares to notify FCP subscribers asynchronously. Callers should typically construct this once
@@ -125,7 +125,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * Registers an event alert, replacing any previously registered event of the same type.
    *
    * <p>Events are treated specially: only the newest {@link UserEvent} for a given type is kept in
-   * the alerts list. If the event type has been permanently unregistered, this call is ignored.
+   * the alert list. If the event type has been permanently unregistered, this call is ignored.
    * Registration updates the timestamp and sends an asynchronous FCP notification to subscribers.
    *
    * @param event the event to register; its type determines replacement behavior
@@ -155,8 +155,8 @@ public class UserAlertManager implements Comparator<UserAlert> {
         .getMainExecutor()
         .execute(
             () -> {
-              for (FCPConnectionHandler subscriber : subscribers)
-                subscriber.send(alert.getFCPMessage());
+              for (UserAlertFeedSubscriber subscriber : subscribers)
+                subscriber.send(alert.getFeedEvent());
             },
             "UserAlertManager callback executor");
   }
@@ -236,7 +236,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * <p>The returned array is a stable snapshot at the time of call and is sorted using the manager
    * comparator. It is safe for callers to iterate without holding locks, but the snapshot will not
-   * reflect subsequent registrations or dismissals. Callers should not mutate or retain elements
+   * reflect later registrations or dismissals. Callers should not mutate or retain elements
    * expecting live updates.
    *
    * @return a newly allocated array sorted by alert priority and recency
@@ -266,7 +266,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
   @Override
   public int compare(UserAlert a0, UserAlert a1) {
     if (a0 == a1)
-      return 0; // common case, also we should be consistent with == even with proxyuseralert's
+      return 0; // the common case, also we should be consistent with == even with proxyuseralert's
     int priorityComparison = Short.compare(a0.getPriorityClass(), a1.getPriorityClass());
     if (priorityComparison != 0) {
       return priorityComparison;
@@ -300,7 +300,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * <p>This convenience overload delegates to {@link #createAlerts(boolean)} with {@code
    * showOnlyErrors=true}. It is commonly used by status views that want to avoid rendering
-   * lower-severity information, while still providing a consistent HTML structure.
+   * lower-severity information while still providing a consistent HTML structure.
    *
    * @return an HTML node containing error-level alerts, or an empty marker node
    */
@@ -357,7 +357,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * <p>The generated node includes CSS classes based on the alert priority class, the localized
    * title as a header, and the full HTML body from the alert. If the alert is dismissable, a
-   * standard dismiss form is appended. This method does not catch exceptions from the alert
+   * standard dismission form is appended. This method does not catch exceptions from the alert
    * implementation; callers should guard if failures must not propagate.
    *
    * @param userAlert the alert to render; must be non-null and already validated
@@ -377,12 +377,12 @@ public class UserAlertManager implements Comparator<UserAlert> {
   }
 
   /**
-   * Builds a dismiss button form for a given alert.
+   * Builds a Dismiss button form for a given alert.
    *
-   * <p>If the alert can be dismissed, this method generates a form that posts to the alerts
-   * endpoint with the alert hash code and form password. An optional redirect target can be
-   * provided to return users to the originating page after dismissal. Non-dismissable alerts return
-   * an empty container.
+   * <p>If the alert can be dismissed, this method generates a form that posts to the alert endpoint
+   * with the alert hash code and form password. An optional redirect target can be provided to
+   * return users to the originating page after dismissal. Non-dismissable alerts return an empty
+   * container.
    *
    * @param userAlert the alert whose dismissal form should be generated
    * @param redirectToAfterDisable optional redirect target after dismissal, or {@code null}
@@ -556,13 +556,13 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * Registers a subscriber and immediately sends the current valid alerts.
    *
    * <p>The subscriber is added to the internal subscriber set and then receives a snapshot of all
-   * valid alerts via asynchronous FCP callbacks. The snapshot is taken at execution time on the
+   * valid alerts via asynchronous feed callbacks. The snapshot is taken at execution time on the
    * executor, so it reflects the state at that moment. Registering the same subscriber multiple
-   * times is safe because the set de-duplicates entries.
+   * times is safe because the set deduplicates entries.
    *
-   * @param subscriber the FCP connection that should receive alert notifications
+   * @param subscriber the feed subscriber that should receive alert notifications
    */
-  public void watch(final FCPConnectionHandler subscriber) {
+  public void watch(final UserAlertFeedSubscriber subscriber) {
     subscribers.add(subscriber);
     // Run off-thread, because of locking, and because client
     // callbacks may take some time
@@ -571,10 +571,9 @@ public class UserAlertManager implements Comparator<UserAlert> {
         .execute(
             () -> {
               for (UserAlert alert : getAlerts())
-                if (alert.isValid()) subscriber.send(alert.getFCPMessage());
+                if (alert.isValid()) subscriber.send(alert.getFeedEvent());
             },
             "UserAlertManager callback executor");
-    subscribers.add(subscriber);
   }
 
   /**
@@ -583,9 +582,9 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * <p>This method removes the subscriber from the internal set. It does not attempt to cancel any
    * in-flight asynchronous notifications already queued on the executor.
    *
-   * @param subscriber the FCP connection to remove from the subscriber list
+   * @param subscriber the feed subscriber to remove from the subscriber list
    */
-  public void unwatch(FCPConnectionHandler subscriber) {
+  public void unwatch(UserAlertFeedSubscriber subscriber) {
     subscribers.remove(subscriber);
   }
 
@@ -597,7 +596,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
   /**
    * Builds an Atom feed document containing the current alerts.
    *
-   * <p>The feed uses the provided start URI as the base for links to the alerts page and is updated
+   * <p>The feed uses the provided start URI as the base for links to the alert page and is updated
    * with the most recent alert timestamp. Each valid alert becomes a feed entry containing its
    * title, summary, and full text. The generated XML is intended for lightweight status polling and
    * does not include pagination or history beyond the current alert snapshot.
@@ -664,6 +663,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static class XmlBuilder implements ElementBuilder {
 
     @Override

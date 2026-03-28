@@ -3,20 +3,16 @@ package network.crypta.runtime.alerts;
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.URIFeedMessage;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.runtime.alerts.feed.UriUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.mock;
@@ -188,7 +184,7 @@ class DownloadFeedUserAlertTest {
   }
 
   @Test
-  void getFCPMessage_whenPopulated_expectURIFeedWithFields() throws MalformedURLException {
+  void getFeedEvent_whenPopulated_expectURIFeedWithFields() throws MalformedURLException {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Frank");
@@ -200,35 +196,26 @@ class DownloadFeedUserAlertTest {
 
     long updatedTime = alert.getUpdatedTime();
     String expectedTitle = alert.getTitle();
-    String expectedShort = alert.getShortText();
-    int expectedPriority = alert.getPriorityClass();
     int descriptionLen = description.getBytes(StandardCharsets.UTF_8).length;
 
     // Act
-    FCPMessage msg = alert.getFCPMessage();
-
-    // Assert basic type
-    URIFeedMessage uriMsg = assertInstanceOf(URIFeedMessage.class, msg);
-    assertEquals("URIFeed", uriMsg.getName());
+    UriUserAlertFeedEvent event = (UriUserAlertFeedEvent) alert.getFeedEvent();
 
     // Assert fields present and correct
-    SimpleFieldSet fs = uriMsg.getFieldSet();
-    assertEquals(expectedTitle, fs.get("Header"));
-    assertEquals(expectedShort, fs.get("ShortText"));
-    assertEquals(Integer.toString(expectedPriority), fs.get("PriorityClass"));
-    assertEquals(Long.toString(updatedTime), fs.get("UpdatedTime"));
-    assertEquals("Frank", fs.get("SourceNodeName"));
-    assertEquals(uri.toString(), fs.get("URI"));
-    assertEquals(Integer.toString(descriptionLen), fs.get("DescriptionLength"));
-    // composed was set, sent omitted (-1), received set
-    assertEquals(Long.toString(123L), fs.get("TimeComposed"));
-    assertNull(fs.get("TimeSent"));
-    assertEquals(Long.toString(789L), fs.get("TimeReceived"));
+    assertEquals(expectedTitle, event.header());
+    assertEquals(alert.getShortText(), event.shortText());
+    assertEquals(alert.getText(), event.text());
+    assertEquals(alert.getPriorityClass(), event.priorityClass());
+    assertEquals(updatedTime, event.updatedTime());
+    assertEquals("Frank", event.metadata().sourceNodeName());
+    assertEquals(123L, event.metadata().composed());
+    assertEquals(-1L, event.metadata().sent());
+    assertEquals(789L, event.metadata().received());
+    assertEquals(uri, event.uri());
+    assertEquals(description, event.description());
 
-    // DataLength is the sum of bucket sizes; at least check it's >= text length + description
-    // length
     int textLen = alert.getText().getBytes(StandardCharsets.UTF_8).length;
-    int dataLen = Integer.parseInt(fs.get("DataLength"));
-    assertEquals(textLen + descriptionLen, dataLen);
+    assertEquals(textLen, event.text().getBytes(StandardCharsets.UTF_8).length);
+    assertEquals(descriptionLen, event.description().getBytes(StandardCharsets.UTF_8).length);
   }
 }

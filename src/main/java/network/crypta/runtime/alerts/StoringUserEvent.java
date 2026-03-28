@@ -2,17 +2,18 @@ package network.crypta.runtime.alerts;
 
 import java.util.Iterator;
 import java.util.Map;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
  * Base class for user alerts that keep a live collection of related, dismissible events.
  *
  * <p>This type stores events in a shared {@link Map} and provides common behavior to render a
- * combined HTML view, emit an FCP feed message, and coordinate dismissal. Subclasses typically add
- * the domain-specific fields that describe a single event and implement {@link #getEventText()} and
- * {@link #getEventHTMLText()} to produce textual and structured HTML representations respectively.
+ * combined HTML view, emit a runtime-owned feed event, and coordinate dismissal. Subclasses
+ * typically add the domain-specific fields that describe a single event and implement {@link
+ * #getEventText()} and {@link #getEventHTMLText()} to produce textual and structured HTML
+ * representations respectively.
  *
  * <p>The backing collection is supplied by the caller and is not copied. This class synchronizes on
  * that map when iterating and mutating it, so all accesses performed here are serialized against
@@ -28,13 +29,12 @@ import network.crypta.support.HTMLNode;
  *
  * <ul>
  *   <li>Aggregates HTML for all stored events in the order reported by the map.
- *   <li>Builds a minimal {@code FeedMessage} from the plain-text representation.
+ *   <li>Builds a minimal feed event from the plain-text representation.
  *   <li>Removes all events on dismissing, invoking per-event cleanup hooks.
  * </ul>
  *
  * @param <T> the concrete subtype, enabling type-safe storage of homogeneous events
  * @see AbstractUserEvent
- * @see network.crypta.clients.fcp.FCPMessage
  * @see network.crypta.support.HTMLNode
  */
 public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends AbstractUserEvent {
@@ -77,12 +77,12 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
   }
 
   /**
-   * Returns the plain-text representation for this single stored event instance.
+   * Returns the plain-text representation for this single-stored event instance.
    *
    * <p>Implementations should return a human-readable description suitable for logs, feed entries,
    * and other plain-text channels. The text should not contain HTML markup and should be reasonably
    * concise to fit compact UI surfaces. The returned value is used as the title and body in the
-   * generated {@code FeedMessage}.
+   * generated feed event.
    *
    * @return descriptive text for this event instance; never includes HTML tags
    */
@@ -122,12 +122,12 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation builds a minimal {@link FeedMessage} using the same text for the
-   * subject, summary, and body. Priority and update time are taken from this event’s metadata.
+   * <p>This implementation builds a minimal feed event using the same text for the subject,
+   * summary, and body. Priority and update time are taken from this event’s metadata.
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    return new FeedMessage(
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BasicUserAlertFeedEvent(
         getEventText(), getEventText(), getEventText(), getPriorityClass(), getUpdatedTime());
   }
 

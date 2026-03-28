@@ -7,12 +7,12 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.Locale;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.N2NFeedMessageParams;
-import network.crypta.clients.fcp.TextFeedMessage;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.runtime.alerts.feed.NodeToNodeFeedMetadata;
+import network.crypta.runtime.alerts.feed.TextUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -22,8 +22,8 @@ import network.crypta.support.HTMLNode;
  * path (composed, sent, and received). It also carries lightweight identity information about the
  * source darknet peer and a reference to the originating {@link PeerContext}. The alert exposes
  * multiple readouts tailored to different front-ends: a localized plain-text title and body, a
- * concise short text for summaries, an {@link HTMLNode} fragment for HTML renderers, and an {@link
- * FCPMessage} view for programmatic consumption via FCP.
+ * concise short text for summaries, an {@link HTMLNode} fragment for HTML renderers, and a
+ * runtime-owned feed-event view for programmatic consumption.
  *
  * <p>Instances are mostly immutable after construction. The only mutable parts are the cached
  * {@code sourceNodeName} and {@code sourcePeer} strings, which may be refreshed opportunistically
@@ -226,8 +226,8 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
       start = idx + 1;
     }
     lines.add(text.substring(start));
-    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
-      lines.remove(lines.size() - 1);
+    while (!lines.isEmpty() && lines.getLast().isEmpty()) {
+      lines.removeLast();
     }
     return lines.toArray(new String[0]);
   }
@@ -246,27 +246,24 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
   }
 
   /**
-   * Returns an FCP representation of this alert for consumption by external clients.
+   * Returns a runtime-owned feed-event representation of this alert for consumption by external
+   * clients.
    *
-   * <p>The returned {@link TextFeedMessage} mirrors the data shown in the UI: title, short text,
-   * full text, priority, update time, peer name, timestamps, and the raw message body.
+   * <p>The returned event mirrors the data shown in the UI: title, short text, full text, priority,
+   * update time, peer name, timestamps, and the raw message body.
    *
-   * @return a non-null {@link FCPMessage} describing the alert contents
+   * @return a non-null feed event describing the alert contents
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    N2NFeedMessageParams params =
-        new N2NFeedMessageParams(
-            getTitle(),
-            getShortText(),
-            getText(),
-            getPriorityClass(),
-            getUpdatedTime(),
-            sourceNodeName,
-            composedTime,
-            sentTime,
-            receivedTime);
-    return new TextFeedMessage(params, messageText);
+  public UserAlertFeedEvent getFeedEvent() {
+    return new TextUserAlertFeedEvent(
+        getTitle(),
+        getShortText(),
+        getText(),
+        getPriorityClass(),
+        getUpdatedTime(),
+        getMetadata(),
+        messageText);
   }
 
   /**
@@ -350,5 +347,9 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
       sourcePeer = pn.getPeer().toString();
     }
     return true;
+  }
+
+  private NodeToNodeFeedMetadata getMetadata() {
+    return new NodeToNodeFeedMetadata(sourceNodeName, composedTime, sentTime, receivedTime);
   }
 }

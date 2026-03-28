@@ -1,7 +1,7 @@
 package network.crypta.runtime.alerts;
 
 import network.crypta.client.async.alerts.ClientAlert;
-import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -24,11 +24,10 @@ import network.crypta.support.HTMLNode;
  *   <li>Plain and HTML bodies: {@link #getText()} and {@link #getHTMLText()}.
  *   <li>Dismissal behavior: {@link #userCanDismiss()}, {@link #onDismiss()}, and {@link
  *       #shouldUnregisterOnDismiss()}.
- *   <li>External propagation: {@link #getFCPMessage()} for FCP subscribers.
+ *   <li>External propagation: {@link #getFeedEvent()} for feed subscribers.
  * </ul>
  *
  * @see network.crypta.runtime.alerts.UserAlertManager
- * @see network.crypta.clients.fcp.FeedMessage
  */
 public interface UserAlert extends ClientAlert {
 
@@ -155,13 +154,13 @@ public interface UserAlert extends ClientAlert {
   boolean isEventNotification();
 
   /**
-   * Produces the message that will be sent to subscribers of the FCP feed that mirrors user alerts
-   * for remote clients. Implementations should populate the message with the same values exposed by
-   * this interface so consumers observe consistent data across protocols.
+   * Produces the runtime-owned feed event that will be sent to subscribers watching user alerts.
+   * Implementations should populate the event with the same values exposed by this interface so
+   * downstream transport adapters can mirror alert behavior consistently.
    *
-   * @return an FCP message describing this alert for subscribing FCP clients; never {@code null}.
+   * @return a runtime-owned feed event describing this alert; never {@code null}.
    */
-  FCPMessage getFCPMessage();
+  UserAlertFeedEvent getFeedEvent();
 
   /**
    * Returns the moment the alert was last updated, expressed as milliseconds since the Unix epoch

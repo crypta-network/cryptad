@@ -10,12 +10,14 @@ import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.feed.UserAlertFeedSubscriber;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,11 +31,29 @@ class CoreFcpMessageRuntimeSupportTest {
 
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
-  @Mock private UserAlertManager alerts;
   @Mock private Node node;
   @Mock private NodeNetworkSubsystem network;
   @Mock private PeerNode peerNode;
   @Mock private FCPConnectionHandler handler;
+
+  private static final class RecordingAlerts extends UserAlertManager {
+    private FcpUserAlertFeedSubscriber watched;
+    private FcpUserAlertFeedSubscriber unwatched;
+
+    private RecordingAlerts() {
+      super(org.mockito.Mockito.mock(NodeClientCore.class));
+    }
+
+    @Override
+    public void watch(UserAlertFeedSubscriber subscriber) {
+      watched = (FcpUserAlertFeedSubscriber) subscriber;
+    }
+
+    @Override
+    public void unwatch(UserAlertFeedSubscriber subscriber) {
+      unwatched = (FcpUserAlertFeedSubscriber) subscriber;
+    }
+  }
 
   @Test
   void constructor_whenCoreNull_throwsNullPointerException() {
@@ -54,23 +74,41 @@ class CoreFcpMessageRuntimeSupportTest {
   }
 
   @Test
-  void watchFeeds_whenEnabledTrue_watchesHandler() {
-    when(core.getAlerts()).thenReturn(alerts);
+  void watchFeeds_whenEnabledTrue_wrapsHandlerInFeedSubscriber() {
+    RecordingAlerts recordingAlerts = new RecordingAlerts();
+    when(core.getAlerts()).thenReturn(recordingAlerts);
     CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
 
     support.watchFeeds(handler, true);
 
-    verify(alerts).watch(handler);
+    assertNotNull(recordingAlerts.watched);
+    assertSame(handler, recordingAlerts.watched.handler());
   }
 
   @Test
-  void watchFeeds_whenEnabledFalse_unwatchesHandler() {
-    when(core.getAlerts()).thenReturn(alerts);
+  void watchFeeds_whenEnabledFalse_wrapsHandlerInFeedSubscriber() {
+    RecordingAlerts recordingAlerts = new RecordingAlerts();
+    when(core.getAlerts()).thenReturn(recordingAlerts);
     CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
 
     support.watchFeeds(handler, false);
 
-    verify(alerts).unwatch(handler);
+    assertNotNull(recordingAlerts.unwatched);
+    assertSame(handler, recordingAlerts.unwatched.handler());
+  }
+
+  @Test
+  void watchFeeds_whenSameHandlerToggled_expectStableSubscriberEquality() {
+    RecordingAlerts recordingAlerts = new RecordingAlerts();
+    when(core.getAlerts()).thenReturn(recordingAlerts);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+
+    support.watchFeeds(handler, true);
+    support.watchFeeds(handler, false);
+
+    assertNotNull(recordingAlerts.watched);
+    assertNotNull(recordingAlerts.unwatched);
+    assertEquals(recordingAlerts.watched, recordingAlerts.unwatched);
   }
 
   @Test
