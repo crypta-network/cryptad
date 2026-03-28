@@ -51,8 +51,9 @@ Selection rules:
 
 - Include only files ending in `.java`.
 - Keep files newly added relative to `Base ref:` plus untracked Java files.
-- Exclude paths under `src/test/`, `src/testFixtures/`, `src/integrationTest/`, and
-  `src/functionalTest/`.
+- Exclude files under any `src/test/`, `src/testFixtures/`, `src/integrationTest/`, or
+  `src/functionalTest/` source root, including nested module layouts such as
+  `module-a/src/test/java/...`.
 - Exclude basenames ending with `Test.java`, `Tests.java`, `IT.java`, or `ITCase.java`, even when
   those files live outside the excluded test source roots.
 - Keep `package-info.java` when it is newly added and not under an excluded test source root.

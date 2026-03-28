@@ -8,11 +8,11 @@ import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
-EXCLUDED_TEST_ROOTS = (
-    PurePosixPath("src/test"),
-    PurePosixPath("src/testFixtures"),
-    PurePosixPath("src/integrationTest"),
-    PurePosixPath("src/functionalTest"),
+EXCLUDED_TEST_ROOT_NAMES = (
+    "test",
+    "testFixtures",
+    "integrationTest",
+    "functionalTest",
 )
 EXCLUDED_TEST_SUFFIXES = ("Test.java", "Tests.java", "IT.java", "ITCase.java")
 
@@ -44,14 +44,18 @@ def normalize_repo_relative(repo_root: Path, raw_path: str) -> PurePosixPath:
     return PurePosixPath(normalized)
 
 
-def is_under(path: PurePosixPath, prefix: PurePosixPath) -> bool:
-    return path == prefix or prefix in path.parents
+def has_excluded_test_root(path: PurePosixPath) -> bool:
+    parts = path.parts
+    for index in range(len(parts) - 1):
+        if parts[index] == "src" and parts[index + 1] in EXCLUDED_TEST_ROOT_NAMES:
+            return True
+    return False
 
 
 def is_non_test_java_file(path: PurePosixPath) -> bool:
     if path.suffix != ".java":
         return False
-    if any(is_under(path, prefix) for prefix in EXCLUDED_TEST_ROOTS):
+    if has_excluded_test_root(path):
         return False
     if path.name.endswith(EXCLUDED_TEST_SUFFIXES):
         return False
