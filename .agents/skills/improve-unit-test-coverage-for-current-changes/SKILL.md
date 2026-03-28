@@ -52,8 +52,8 @@ Start from the current working tree, not the branch diff.
 
 Use deterministic Git commands:
 
-- `git diff --name-only --diff-filter=ACMR HEAD -- src/main/java src/test/java`
-- `git ls-files --others --exclude-standard -- src/main/java src/test/java`
+- `git diff --name-only --diff-filter=ACMR HEAD -- '*.java'`
+- `git ls-files --others --exclude-standard -- '*.java'`
 
 Then inspect actual hunks for each candidate file:
 
@@ -61,8 +61,10 @@ Then inspect actual hunks for each candidate file:
 
 Apply these filters:
 
-- Prioritize changed production Java files under `src/main/java`.
-- Include changed or new test files under `src/test/java`.
+- Keep only Java files that live under any `src/main/java/` or `src/test/java/` source root,
+  including nested module layouts such as `launcher-desktop/src/main/java/...`.
+- Prioritize changed production Java files under any `src/main/java/` source root.
+- Include changed or new test files under any `src/test/java/` source root.
 - Ignore docs, generated files, formatting-only churn, and unrelated build changes unless they directly affect the tests you need to run.
 - If `Limit to:` is provided, intersect the Git-derived list with that path or subtree.
 
@@ -93,8 +95,10 @@ behavior.
 
 For each changed production class:
 
-1. Look for an existing dedicated test class with the same basename under `src/test/java`.
-2. Search for broader package tests that already exercise the class.
+1. Look for an existing dedicated test class with the same basename under the corresponding
+   `src/test/java` source root, usually in the same module as the changed production class.
+2. Search for broader package tests in that module or shared top-level tests that already exercise
+   the class.
 3. Create a new `<ClassName>Test` only when no sensible existing home exists.
 
 Prefer updating one existing test file over scattering small assertions across many files.
