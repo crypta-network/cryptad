@@ -6,6 +6,8 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.alerts.ClientAlert;
+import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -15,8 +17,6 @@ import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.RequestScheduler;
 import network.crypta.node.RequestStarterGroup;
-import network.crypta.runtime.alerts.UserAlert;
-import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.DummyJobRunner;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -74,7 +74,7 @@ public class ClientContext implements CryptoResumeContext {
   private ClientRequestScheduler chkFetchSchedulerRT;
   private ClientRequestScheduler sskInsertSchedulerRT;
   private ClientRequestScheduler chkInsertSchedulerRT;
-  private UserAlertManager alerts;
+  private ClientAlertSink alerts;
 
   private final PriorityAwareExecutor mainExecutorInternal;
 
@@ -244,14 +244,14 @@ public class ClientContext implements CryptoResumeContext {
   }
 
   /**
-   * Initializes request schedulers and user-alert manager after construction. This is expected to
-   * be called during node startup once {@link RequestStarterGroup} is created.
+   * Initializes request schedulers and alert posting after construction. This is expected to be
+   * called during node startup once {@link RequestStarterGroup} is created.
    *
    * @param starters Group of request schedulers for CHK/SSK fetch/insert in bulk and real-time
    *     modes.
-   * @param alerts User alert manager for surfacing notifications to end users.
+   * @param alerts Sink for surfacing client-layer notifications to operator-facing surfaces.
    */
-  public void init(RequestStarterGroup starters, UserAlertManager alerts) {
+  public void init(RequestStarterGroup starters, ClientAlertSink alerts) {
     this.sskFetchSchedulerBulk = starters.sskFetchSchedulerBulk;
     this.chkFetchSchedulerBulk = starters.chkFetchSchedulerBulk;
     this.sskInsertSchedulerBulk = starters.sskPutSchedulerBulk;
@@ -473,17 +473,17 @@ public class ClientContext implements CryptoResumeContext {
   }
 
   /**
-   * Posts a user-facing alert. When the alert manager is not yet available, the alert is scheduled
-   * to be posted as soon as initialization completes.
+   * Posts a client-layer alert. When the alert sink is not yet available, the alert is scheduled to
+   * be posted as soon as initialization completes.
    *
-   * @param alert The alert to register; must be a non-null instance.
+   * @param alert The alert to post; must be a non-null instance.
    */
-  public void postUserAlert(final UserAlert alert) {
+  public void postUserAlert(final ClientAlert alert) {
     if (alerts == null) {
       // Wait until after startup
-      ticker.queueTimedJob(() -> alerts.register(alert), "Post alert", 0L, false, false);
+      ticker.queueTimedJob(() -> alerts.post(alert), "Post alert", 0L, false, false);
     } else {
-      alerts.register(alert);
+      alerts.post(alert);
     }
   }
 

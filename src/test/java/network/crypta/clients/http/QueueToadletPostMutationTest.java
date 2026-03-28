@@ -35,6 +35,7 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManagerClientAlertSink;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.QueueCompletionPort;
@@ -309,7 +310,7 @@ class QueueToadletPostMutationTest {
     when(network.executor()).thenReturn(executor);
 
     ClientContext context = createClientContext();
-    context.init(starters, alerts);
+    context.init(starters, new UserAlertManagerClientAlertSink(alerts));
     when(core.getClientContext()).thenReturn(context);
 
     when(fcp.getGlobalRequest(anyString())).thenReturn(null);

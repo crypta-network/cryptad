@@ -1,12 +1,13 @@
 package network.crypta.runtime.alerts;
 
+import network.crypta.client.async.alerts.ClientAlert;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.support.HTMLNode;
 
 /**
  * Describes a user-facing alert emitted by the node and consumed by UI surfaces and external
- * clients. Implementations provide human-readable text (plain and optionally HTML), priority,
- * lifecycle hooks, and metadata used for de-duplication and feeds. Alerts may be dismissible by the
+ * clients. Implementations provide human-readable text (plain and optional HTML), priority,
+ * lifecycle hooks, and metadata used for deduplication and feeds. Alerts may be dismissible by the
  * end user or persist until programmatically unregistered by the producer.
  *
  * <p>Typical usage in consumers follows this pattern: check {@link #isValid()} under appropriate
@@ -29,11 +30,11 @@ import network.crypta.support.HTMLNode;
  * @see network.crypta.runtime.alerts.UserAlertManager
  * @see network.crypta.clients.fcp.FeedMessage
  */
-public interface UserAlert {
+public interface UserAlert extends ClientAlert {
 
   /**
    * Indicates whether the alert is user-dismissible. Non-dismissible alerts remain visible until
-   * their producer unregisters them or marks them invalid. User interfaces may hide the dismiss
+   * their producer unregisters them or marks them invalid. User interfaces may hide the dismissed
    * affordance when this returns {@code false} and show a specific button label otherwise.
    *
    * @return {@code true} when a user action can dismiss the alert; {@code false} when the alert
@@ -53,7 +54,7 @@ public interface UserAlert {
   /**
    * Returns the full content of the alert as plain text. This text must be safe to render without
    * HTML interpretation and should contain all details necessary for a user who cannot render HTML.
-   * Lines may be separated by newlines; callers are free to wrap as needed for display.
+   * Newlines may separate lines; callers are free to wrap as needed for display.
    *
    * @return plain-text body of the alert; non-null, suitable for text-only renderers and feeds.
    */
@@ -92,7 +93,7 @@ public interface UserAlert {
   /**
    * Reports whether the alert is currently valid and should be shown. Callers that consume multiple
    * fields from an alert are encouraged to synchronize on the alert instance, check this flag, and
-   * then read the remaining fields to obtain a consistent snapshot for rendering.
+   * then read the remaining fields to get a consistent snapshot for rendering.
    *
    * @return {@code true} if the alert remains relevant and should be displayed; {@code false}
    *     otherwise.

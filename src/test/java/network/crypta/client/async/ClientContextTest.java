@@ -9,6 +9,8 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.alerts.ClientAlert;
+import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -17,8 +19,6 @@ import network.crypta.crypt.CryptoResumeContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.ClientContextResources;
-import network.crypta.runtime.alerts.UserAlert;
-import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.DummyJobRunner;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -168,23 +169,47 @@ class ClientContextTest {
   }
 
   @Test
-  void init_whenCalled_setsAlertsUsedByPostUserAlert() {
-    UserAlertManager alerts = mock(UserAlertManager.class);
-    // We don't need actual schedulers here; a mock is fine (fields read as null)
+  void init_whenCalled_setsSchedulersAndUsesConfiguredAlertSink() {
+    ClientAlertSink alerts = mock(ClientAlertSink.class);
+    ClientRequestScheduler sskFetchBulk = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler chkFetchBulk = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler sskInsertBulk = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler chkInsertBulk = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler sskFetchRT = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler chkFetchRT = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler sskInsertRT = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler chkInsertRT = mock(ClientRequestScheduler.class);
     network.crypta.node.RequestStarterGroup starters =
         mock(network.crypta.node.RequestStarterGroup.class);
+    setField(starters, "sskFetchSchedulerBulk", sskFetchBulk);
+    setField(starters, "chkFetchSchedulerBulk", chkFetchBulk);
+    setField(starters, "sskPutSchedulerBulk", sskInsertBulk);
+    setField(starters, "chkPutSchedulerBulk", chkInsertBulk);
+    setField(starters, "sskFetchSchedulerRT", sskFetchRT);
+    setField(starters, "chkFetchSchedulerRT", chkFetchRT);
+    setField(starters, "sskPutSchedulerRT", sskInsertRT);
+    setField(starters, "chkPutSchedulerRT", chkInsertRT);
 
     ctx.init(starters, alerts);
 
-    UserAlert alert = mock(UserAlert.class);
+    assertSame(sskFetchBulk, ctx.getSskFetchScheduler(false));
+    assertSame(chkFetchBulk, ctx.getChkFetchScheduler(false));
+    assertSame(sskInsertBulk, ctx.getSskInsertScheduler(false));
+    assertSame(chkInsertBulk, ctx.getChkInsertScheduler(false));
+    assertSame(sskFetchRT, ctx.getSskFetchScheduler(true));
+    assertSame(chkFetchRT, ctx.getChkFetchScheduler(true));
+    assertSame(sskInsertRT, ctx.getSskInsertScheduler(true));
+    assertSame(chkInsertRT, ctx.getChkInsertScheduler(true));
+
+    ClientAlert alert = mock(ClientAlert.class);
     ctx.postUserAlert(alert);
-    verify(alerts, times(1)).register(alert);
+    verify(alerts, times(1)).post(alert);
   }
 
   @Test
   void postUserAlert_whenAlertsNull_schedulesAndRunsLater() {
     // Ensure alerts are null (do not call init())
-    UserAlert alert = mock(UserAlert.class);
+    ClientAlert alert = mock(ClientAlert.class);
     ctx.postUserAlert(alert);
 
     FakeTicker fakeTicker = (FakeTicker) ticker;
@@ -193,11 +218,25 @@ class ClientContextTest {
     assertNotNull(fakeTicker.lastJob);
 
     // Set alerts, then run the queued job
-    UserAlertManager alerts = mock(UserAlertManager.class);
+    ClientAlertSink alerts = mock(ClientAlertSink.class);
     setField(ctx, "alerts", alerts);
     fakeTicker.runLast();
 
-    verify(alerts, times(1)).register(alert);
+    verify(alerts, times(1)).post(alert);
+  }
+
+  @Test
+  void postUserAlert_whenAlertsAlreadyInitialized_postsImmediatelyWithoutQueueing() {
+    ClientAlertSink alerts = mock(ClientAlertSink.class);
+    ClientAlert alert = mock(ClientAlert.class);
+    FakeTicker fakeTicker = (FakeTicker) ticker;
+    setField(ctx, "alerts", alerts);
+
+    ctx.postUserAlert(alert);
+
+    verify(alerts, times(1)).post(alert);
+    assertNull(fakeTicker.lastJob);
+    assertNull(fakeTicker.lastName);
   }
 
   @Test
