@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class HealingDecisionSupplierTest {
@@ -117,6 +118,29 @@ class HealingDecisionSupplierTest {
 
     // Assert
     assertThat("Darknet should always heal", result, Matchers.equalTo(true));
+  }
+
+  @Test
+  void shouldHeal_whenOpennetDisabled_currentNodeLocationSupplierNotInvoked() {
+    Supplier<Double> nodeLocationThrowing =
+        () -> {
+          throw new AssertionError(
+              "Node location supplier must not be called when opennet is disabled");
+        };
+    HealingDecisionSupplier supplier =
+        new HealingDecisionSupplier(nodeLocationThrowing, () -> false, () -> 0.2);
+
+    boolean result = supplier.shouldHeal(0.33);
+
+    assertTrue(result);
+  }
+
+  @Test
+  void shouldHeal_whenOpennetSupplierReturnsNull_throwsNullPointerException() {
+    HealingDecisionSupplier supplier =
+        new HealingDecisionSupplier(() -> 0.25, () -> null, () -> 0.2);
+
+    assertThrows(NullPointerException.class, () -> supplier.shouldHeal(0.33));
   }
 
   @Test

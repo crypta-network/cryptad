@@ -22,6 +22,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertManagerClientAlertSink;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.endpoints.ClientEndpoints;
@@ -358,7 +359,7 @@ public final class NodeClientCore implements Persistable {
     requestStarters = createRequestStarters(node, portNumber, init, throttleFS);
     transfers = new NodeClientCoreTransfers(this);
 
-    clientContext.init(requestStarters, alerts);
+    clientContext.init(requestStarters, new UserAlertManagerClientAlertSink(alerts));
 
     setupSecretAndInitStorage(databaseKey, persistentSecret);
 
