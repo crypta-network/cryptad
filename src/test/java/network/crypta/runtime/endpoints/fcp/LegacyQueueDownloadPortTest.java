@@ -1,4 +1,4 @@
-package network.crypta.runtime.admin;
+package network.crypta.runtime.endpoints.fcp;
 
 import java.io.File;
 import network.crypta.client.async.PersistenceDisabledException;
