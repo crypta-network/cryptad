@@ -1,9 +1,8 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -84,8 +83,8 @@ class TimeSkewDetectedUserAlertTest {
   }
 
   @Test
-  @DisplayName("getFCPMessage_whenCalled_containsExpectedFields")
-  void getFCPMessage_whenCalled_containsExpectedFields() {
+  @DisplayName("getFeedEvent_whenCalled_containsExpectedFields")
+  void getFeedEvent_whenCalled_containsExpectedFields() {
     // Arrange
     TimeSkewDetectedUserAlert alert = new TimeSkewDetectedUserAlert();
     long updated = alert.getUpdatedTime();
@@ -95,17 +94,16 @@ class TimeSkewDetectedUserAlertTest {
     String shortText = NodeL10n.getBase().getString("TimeSkewDetectedUserAlert.shortText");
 
     // Act
-    FCPMessage msg = alert.getFCPMessage();
-    SimpleFieldSet fs = msg.getFieldSet();
+    BasicUserAlertFeedEvent event = (BasicUserAlertFeedEvent) alert.getFeedEvent();
 
-    // Assert: message name and fields match the alert
-    assertEquals("Feed", msg.getName());
-    assertEquals(title, fs.get("Header"));
-    assertEquals(shortText, fs.get("ShortText"));
-    assertEquals(String.valueOf(UserAlert.CRITICAL_ERROR), fs.get("PriorityClass"));
-    assertEquals(String.valueOf(updated), fs.get("UpdatedTime"));
+    // Assert: event fields match the alert
+    assertEquals(title, event.header());
+    assertEquals(shortText, event.shortText());
+    assertEquals(text, event.text());
+    assertEquals(UserAlert.CRITICAL_ERROR, event.priorityClass());
+    assertEquals(updated, event.updatedTime());
 
     int expectedLen = text.getBytes(UTF_8).length;
-    assertEquals(String.valueOf(expectedLen), fs.get("DataLength"));
+    assertEquals(expectedLen, event.text().getBytes(UTF_8).length);
   }
 }

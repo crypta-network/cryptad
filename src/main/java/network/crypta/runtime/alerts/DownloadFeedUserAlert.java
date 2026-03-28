@@ -2,13 +2,13 @@ package network.crypta.runtime.alerts;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.N2NFeedMessageParams;
-import network.crypta.clients.fcp.URIFeedMessage;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.runtime.alerts.feed.NodeToNodeFeedMetadata;
+import network.crypta.runtime.alerts.feed.UriUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -34,11 +34,10 @@ import network.crypta.support.HTMLNode;
  *   <li>Title and text are localized via {@link NodeL10n} using resource keys scoped to this class.
  *   <li>HTML output is minimal and safe for embedding in simple views; it deliberately avoids
  *       arbitrary markup beyond line breaks and a link to the URI.
- *   <li>Conversion to FCP is provided by {@link #getFCPMessage()} using {@link URIFeedMessage} for
+ *   <li>Conversion to a runtime-owned feed event is provided by {@link #getFeedEvent()} for
  *       downstream clients.
  * </ul>
  *
- * @see URIFeedMessage
  * @see NodeToNodeMessageUserAlert
  */
 public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNodeMessageUserAlert {
@@ -82,9 +81,9 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * Returns a localized, human-readable title summarizing the announcement source.
    *
    * <p>The title interpolates the peer name into a localized resource string. It is intended for
-   * compact UIs such as notification lists where a short, readable label is preferred over the full
-   * text body. The value is computed on each call rather than cached, so recent name changes can be
-   * reflected after {@link #isValid()} refreshes the peer name.
+   * compact UIs such as notification lists where a short, readable label is preferred over the
+   * full-text body. The value is computed on each call rather than cached, so recent name changes
+   * can be reflected after {@link #isValid()} refreshes the peer name.
    *
    * @return a non-{@code null} localized title including the source peer name; suitable for short
    *     labels and summaries
@@ -182,8 +181,8 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
       start = idx + 1;
     }
     lines.add(text.substring(start));
-    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
-      lines.remove(lines.size() - 1);
+    while (!lines.isEmpty() && lines.getLast().isEmpty()) {
+      lines.removeLast();
     }
     return lines.toArray(new String[0]);
   }
@@ -211,28 +210,25 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
   }
 
   /**
-   * Converts this alert into an FCP message for clients.
+   * Converts this alert into a runtime-owned feed event for clients.
    *
-   * <p>The returned {@link URIFeedMessage} includes the localized title, short and long text,
-   * priority class, update time, peer name, the provided timestamps, target URI, and description.
-   * No additional transformation is applied beyond field mapping.
+   * <p>The returned event includes the localized title, short and long text, priority class, update
+   * time, peer name, the provided timestamps, target URI, and description. No additional
+   * transformation is applied beyond field mapping.
    *
-   * @return a non-{@code null} {@link FCPMessage} conveying this alert to FCP consumers
+   * @return a non-{@code null} feed event conveying this alert to subscribed consumers
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    N2NFeedMessageParams params =
-        new N2NFeedMessageParams(
-            getTitle(),
-            getShortText(),
-            getText(),
-            getPriorityClass(),
-            getUpdatedTime(),
-            sourceNodeName,
-            composed,
-            sent,
-            received);
-    return new URIFeedMessage(params, uri, description);
+  public UserAlertFeedEvent getFeedEvent() {
+    return new UriUserAlertFeedEvent(
+        getTitle(),
+        getShortText(),
+        getText(),
+        getPriorityClass(),
+        getUpdatedTime(),
+        getMetadata(),
+        uri,
+        description);
   }
 
   /**
@@ -249,5 +245,9 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
     DarknetPeerNode pn = (DarknetPeerNode) peerRef.get();
     if (pn != null) sourceNodeName = pn.getName();
     return true;
+  }
+
+  private NodeToNodeFeedMetadata getMetadata() {
+    return new NodeToNodeFeedMetadata(sourceNodeName, composed, sent, received);
   }
 }

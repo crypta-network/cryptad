@@ -1,12 +1,10 @@
 package network.crypta.runtime.alerts;
 
 import java.io.File;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -14,7 +12,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,11 +56,7 @@ class DiskSpaceUserAlertTest {
 
     lenient().when(core.getTempDir()).thenReturn(tempDir);
 
-    if (persistentDirOrNull == null) {
-      lenient().when(core.getPersistentTempDir()).thenReturn(null);
-    } else {
-      lenient().when(core.getPersistentTempDir()).thenReturn(persistentDirOrNull);
-    }
+    lenient().when(core.getPersistentTempDir()).thenReturn(persistentDirOrNull);
     return new DiskSpaceUserAlert(core);
   }
 
@@ -182,7 +175,7 @@ class DiskSpaceUserAlertTest {
   }
 
   @Test
-  void getFCPMessage_containsExpectedFields_andUpdatedTimeMatches() {
+  void getFeedEvent_containsExpectedFields_andUpdatedTimeMatches() {
     long shortLimit = 2_000L;
     long longLimit = 10_000L;
     File temp = new FakeFile("/tmp/temp-space", shortLimit - 1); // TRANSIENT
@@ -193,18 +186,16 @@ class DiskSpaceUserAlertTest {
     long updated = alert.getUpdatedTime();
     assertTrue(updated > 0);
 
-    FCPMessage msg = alert.getFCPMessage();
-    assertInstanceOf(FeedMessage.class, msg);
-    SimpleFieldSet fs = msg.getFieldSet();
+    BasicUserAlertFeedEvent event = (BasicUserAlertFeedEvent) alert.getFeedEvent();
 
-    assertEquals(alert.getTitle(), fs.get("Header"));
-    assertEquals(alert.getShortText(), fs.get("ShortText"));
-    assertEquals(alert.getPriorityClass(), fs.getShort("PriorityClass", (short) -1));
-    assertEquals(updated, fs.getLong("UpdatedTime", -1L));
+    assertEquals(alert.getTitle(), event.header());
+    assertEquals(alert.getShortText(), event.shortText());
+    assertEquals(text, event.text());
+    assertEquals(alert.getPriorityClass(), event.priorityClass());
+    assertEquals(updated, event.updatedTime());
 
     int textLen = text.getBytes(UTF_8).length;
-    assertEquals(textLen, fs.getInt("TextLength", -1));
-    assertEquals(textLen, fs.getInt("DataLength", -1));
+    assertEquals(textLen, event.text().getBytes(UTF_8).length);
   }
 
   @Test

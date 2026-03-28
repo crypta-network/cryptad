@@ -1,13 +1,13 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
  * Abstract base implementation of a {@link UserAlert} that centralizes common storage and
  * boilerplate for user-facing alerts. Subclasses provide human-readable content (plain and optional
- * HTML), and may override behavior such as dismissal handling, validity updates, and feed
+ * HTML) and may override behavior such as dismissal handling, validity updates, and feed
  * serialization.
  *
  * <p>Usage typically follows a read-mostly pattern: producers construct an alert and register it
@@ -26,8 +26,7 @@ import network.crypta.support.HTMLNode;
  *       <ul>
  *         <li>Capture title, short/long text, and optional HTML fragment.
  *         <li>Track severity and default dismissal behavior.
- *         <li>Provide an {@link network.crypta.clients.fcp.FCPMessage FCP} representation for
- *             remote subscribers.
+ *         <li>Provide a runtime-owned feed representation for remote subscribers.
  *       </ul>
  * </ul>
  *
@@ -80,7 +79,7 @@ public abstract class AbstractUserAlert implements UserAlert {
    * contained values after construction. Callers may pass {@code null} for the {@code body} when a
    * subclass overrides content accessors.
    *
-   * @param userCanDismiss whether a user interface should offer a dismiss control; when set to
+   * @param userCanDismiss whether a user interface should offer a Dismiss control; when set to
    *     {@code false}, only producers should unregister or invalidate the alert.
    * @param title localized, succinct title suitable for list headers and notification banners; may
    *     be {@code null} if subclasses override {@link #getTitle()}.
@@ -205,8 +204,8 @@ public abstract class AbstractUserAlert implements UserAlert {
   }
 
   @Override
-  public FCPMessage getFCPMessage() {
-    return new FeedMessage(
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BasicUserAlertFeedEvent(
         getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
   }
 
@@ -226,8 +225,7 @@ public abstract class AbstractUserAlert implements UserAlert {
    */
   public record Body(String text, String shortText, HTMLNode htmlText) {
     /**
-     * Factory method for convenience when constructing a {@link Body} with the three content
-     * components.
+     * Factory method for convenience when constructing a {@link Body} with the three content parts.
      *
      * @param text full, plain-text body; may be {@code null}.
      * @param shortText compact summary for constrained UI; may be {@code null}.
@@ -242,9 +240,9 @@ public abstract class AbstractUserAlert implements UserAlert {
   /**
    * Encapsulates dismissal-related options for an alert.
    *
-   * <p>The button text is intended for direct display and should be localized. The unregister flag
-   * indicates whether a dismissal should also remove the alert from its manager, rather than just
-   * marking it invalid.
+   * <p>The button text is intended for direct display and should be localized. The unregistered
+   * flag indicates whether a dismissal should also remove the alert from its manager, rather than
+   * just marking it invalid.
    *
    * @param dismissButtonText localized label to show on the dismiss action; may be {@code null} to
    *     use a default or omit the label entirely.

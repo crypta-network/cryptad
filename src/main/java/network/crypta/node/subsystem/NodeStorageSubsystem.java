@@ -491,8 +491,8 @@ public final class NodeStorageSubsystem {
         }
 
         @Override
-        public network.crypta.clients.fcp.FCPMessage getFCPMessage() {
-          return new network.crypta.clients.fcp.FeedMessage(
+        public network.crypta.runtime.alerts.feed.UserAlertFeedEvent getFeedEvent() {
+          return new network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent(
               getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
         }
 

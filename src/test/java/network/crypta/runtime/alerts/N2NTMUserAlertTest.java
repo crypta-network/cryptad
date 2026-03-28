@@ -2,15 +2,13 @@ package network.crypta.runtime.alerts;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.TimeZone;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.TextFeedMessage;
 import network.crypta.io.comm.Peer;
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.runtime.alerts.feed.TextUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -177,7 +176,7 @@ class N2NTMUserAlertTest {
   }
 
   @Test
-  void getFCPMessage_whenConstructed_expectFieldSetContainsSourceAndTimes() throws Exception {
+  void getFeedEvent_whenConstructed_expectFieldSetContainsSourceAndTimes() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
     when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
@@ -193,24 +192,24 @@ class N2NTMUserAlertTest {
         new N2NTMUserAlert(alertContext(7, composed, sent, received), messageText, 123L);
 
     // Act
-    FCPMessage fcp = alert.getFCPMessage();
+    TextUserAlertFeedEvent event = (TextUserAlertFeedEvent) alert.getFeedEvent();
 
     // Assert
-    assertNotNull(fcp, "FCP message must not be null");
-    assertEquals(TextFeedMessage.NAME, fcp.getName());
-    var fs = fcp.getFieldSet();
-    assertEquals("Alice", fs.get("SourceNodeName"));
-    assertEquals(Long.toString(composed), fs.get("TimeComposed"));
-    assertEquals(Long.toString(sent), fs.get("TimeSent"));
-    assertEquals(Long.toString(received), fs.get("TimeReceived"));
-    // Verify the additional bucket length for MessageText is present and equals payload size
-    assertEquals(
-        Integer.toString(messageText.getBytes(StandardCharsets.UTF_8).length),
-        fs.get("MessageTextLength"));
+    assertNotNull(event, "Feed event must not be null");
+    assertEquals("Alice", event.metadata().sourceNodeName());
+    assertEquals(composed, event.metadata().composed());
+    assertEquals(sent, event.metadata().sent());
+    assertEquals(received, event.metadata().received());
+    assertEquals(messageText, event.messageText());
+    assertEquals(alert.getTitle(), event.header());
+    assertEquals(alert.getShortText(), event.shortText());
+    assertEquals(alert.getText(), event.text());
+    assertEquals(alert.getPriorityClass(), event.priorityClass());
+    assertEquals(alert.getUpdatedTime(), event.updatedTime());
   }
 
   @Test
-  void getFCPMessage_whenMessageNull_expectZeroLengthMessageTextBucket() throws Exception {
+  void getFeedEvent_whenMessageNull_expectNullMessageText() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
     when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
@@ -219,10 +218,10 @@ class N2NTMUserAlertTest {
     N2NTMUserAlert alert = new N2NTMUserAlert(alertContext(7, 0L, 1_000L, 2_000L), null, 123L);
 
     // Act
-    FCPMessage fcp = alert.getFCPMessage();
+    TextUserAlertFeedEvent event = (TextUserAlertFeedEvent) alert.getFeedEvent();
 
     // Assert
-    assertEquals("0", fcp.getFieldSet().get("MessageTextLength"));
+    assertNull(event.messageText());
   }
 
   @Test

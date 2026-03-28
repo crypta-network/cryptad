@@ -2,18 +2,19 @@ package network.crypta.runtime.alerts;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import network.crypta.clients.fcp.BookmarkFeed;
-import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
+import network.crypta.runtime.alerts.feed.BookmarkUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.NodeToNodeFeedMetadata;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 
 /**
  * User alert that conveys a bookmark suggestion received from a peer via a node-to-node message.
- * The alert presents both a human-readable summary and a structured payload suitable for
- * programmatic consumption (FCP {@link network.crypta.clients.fcp.BookmarkFeed}).
+ * The alert presents both a human-readable summary and a structured runtime-owned feed payload
+ * suitable for programmatic consumption.
  *
  * <p>Instances are created when a remote peer shares a bookmark entry, typically containing a name,
  * an optional description, and a {@link FreenetURI}. The alert renders a short title, a plain-text
@@ -29,7 +30,8 @@ import network.crypta.support.HTMLNode;
  * <ul>
  *   <li>Renders localized text using {@link NodeL10n} keys scoped to this alert.
  *   <li>Generates an HTML node tree for rich presentation, including bookmark actions.
- *   <li>Exposes an FCP representation via {@link #getFCPMessage()} for client protocols.
+ *   <li>Exposes a runtime-owned feed representation via {@link #getFeedEvent()} for downstream
+ *       protocols.
  * </ul>
  *
  * <pre>{@code
@@ -37,7 +39,7 @@ import network.crypta.support.HTMLNode;
  * var context = new NodeToNodeAlertContext(peer, fileNo, composed, sent, received);
  * var alert = new BookmarkFeedUserAlert(context, name, desc, true, uri);
  * HTMLNode view = alert.getHTMLText();
- * BookmarkFeed fcp = alert.getFCPMessage();
+ * BookmarkUserAlertFeedEvent feedEvent = (BookmarkUserAlertFeedEvent) alert.getFeedEvent();
  * }</pre>
  *
  * @see AbstractUserAlert
@@ -119,7 +121,7 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * peer’s display name, the bookmark URI, and the optional description when provided. Newlines in
    * the description are preserved to keep author-intended formatting. This output is
    * audience-focused and primarily intended for display; consumers that need structured data should
-   * prefer {@link #getFCPMessage()} instead of parsing this text. The method does not alter the
+   * prefer {@link #getFeedEvent()} instead of parsing this text. The method does not alter the
    * object state and can be called multiple times without side effects.
    *
    * @return a human-readable, plain-text body with stable keys and values; never {@code null},
@@ -216,8 +218,8 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
       start = idx + 1;
     }
     lines.add(text.substring(start));
-    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
-      lines.remove(lines.size() - 1);
+    while (!lines.isEmpty() && lines.getLast().isEmpty()) {
+      lines.removeLast();
     }
     return lines.toArray(new String[0]);
   }
@@ -239,27 +241,26 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
   }
 
   /**
-   * Returns an FCP {@link BookmarkFeed} message equivalent to the current alert content. The
-   * returned object carries the same title, text, priority, timestamps, and bookmark details used
-   * by the UI, enabling remote clients to process or display the alert consistently.
+   * Returns a runtime-owned feed event equivalent to the current alert content. The returned object
+   * carries the same title, text, priority, timestamps, and bookmark details used by the UI,
+   * enabling downstream clients to process or display the alert consistently.
    *
-   * @return a new {@link BookmarkFeed} instance encapsulating this alert’s data; the caller gains
-   *     full ownership of the returned object.
+   * @return a new feed event encapsulating this alert’s data; the caller gains full ownership of
+   *     the returned object.
    */
   @Override
-  public BookmarkFeed getFCPMessage() {
-    N2NFeedMessageParams params =
-        new N2NFeedMessageParams(
-            getTitle(),
-            getShortText(),
-            getText(),
-            getPriorityClass(),
-            getUpdatedTime(),
-            sourceNodeName,
-            composed,
-            sent,
-            received);
-    return new BookmarkFeed(params, name, uri, description, hasAnActivelink);
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BookmarkUserAlertFeedEvent(
+        getTitle(),
+        getShortText(),
+        getText(),
+        getPriorityClass(),
+        getUpdatedTime(),
+        getMetadata(),
+        name,
+        uri,
+        description,
+        hasAnActivelink);
   }
 
   /**
@@ -275,5 +276,9 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
     DarknetPeerNode pn = (DarknetPeerNode) peerRef.get();
     if (pn != null) sourceNodeName = pn.getName();
     return true;
+  }
+
+  private NodeToNodeFeedMetadata getMetadata() {
+    return new NodeToNodeFeedMetadata(sourceNodeName, composed, sent, received);
   }
 }

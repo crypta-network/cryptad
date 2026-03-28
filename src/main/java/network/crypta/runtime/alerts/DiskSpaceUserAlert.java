@@ -1,10 +1,10 @@
 package network.crypta.runtime.alerts;
 
 import java.io.File;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
  * @see NodeClientCore
  * @see UserAlert
  * @see HTMLNode
- * @see FCPMessage
  * @author toad
  */
 public class DiskSpaceUserAlert implements UserAlert {
@@ -49,16 +48,16 @@ public class DiskSpaceUserAlert implements UserAlert {
     /** Everything is OK. */
     OK,
     /**
-     * Not enough space to start persistent requests: Space on persistent-temp-* < long term limit.
+     * Not enough space to start persistent requests: Space on persistent-temp-* < long-term limit.
      */
     PERSISTENT,
     /**
-     * Not enough space to start transient requests, finish persistent requests or do anything much:
-     * Space on temp-* < short term limit
+     * Not enough space to start transient requests, finish persistent requests, or do anything
+     * much: Space on temp-* < short-term limit
      */
     TRANSIENT,
     /**
-     * Not enough space to complete persistent requests: Space on persistent-temp-* < short term
+     * Not enough space to complete persistent requests: Space on persistent-temp-* < short-term
      * limit.
      */
     PERSISTENT_COMPLETION;
@@ -228,7 +227,7 @@ public class DiskSpaceUserAlert implements UserAlert {
    *
    * <p>An alert is considered valid when a recent evaluation determined that free space is below
    * one of the configured thresholds. The result is cached for a short interval; callers should be
-   * prepared for the return value to change after subsequent evaluations.
+   * prepared for the return value to change after further evaluations.
    *
    * @return {@code true} when a short‑term, long‑term, or completion threshold is breached; {@code
    *     false} otherwise
@@ -282,8 +281,8 @@ public class DiskSpaceUserAlert implements UserAlert {
   /**
    * Callback invoked when the alert is dismissed; no additional action is required.
    *
-   * <p>Disk‑space status is re‑checked independently on subsequent cycles, so there is nothing to
-   * clean up locally when the current banner is hidden.
+   * <p>Disk‑space status is re‑checked independently on later cycles, so there is nothing to clean
+   * up locally when the current banner is hidden.
    */
   @Override
   public void onDismiss() {
@@ -317,25 +316,25 @@ public class DiskSpaceUserAlert implements UserAlert {
   }
 
   /**
-   * Produces an {@link FCPMessage} describing the alert for feed consumers.
+   * Produces a runtime-owned feed event describing the alert for feed consumers.
    *
    * <p>The message carries the title, short text, full text, priority class, and the last updated
    * timestamp so remote clients can present and sort entries consistently. The payload contains no
    * filesystem paths beyond the directory name string already included in the text.
    *
-   * @return an immutable FCP message representing the current alert state
+   * @return an immutable feed event representing the current alert state
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    return new FeedMessage(
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BasicUserAlertFeedEvent(
         getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
   }
 
   /**
    * Returns the timestamp (milliseconds since epoch) of the last status evaluation.
    *
-   * <p>The value is updated whenever the alert re‑evaluates disk space and may lag behind current
-   * wall‑clock time by up to the internal caching interval.
+   * <p>The value is updated whenever the alert re‑evaluates disk space and may lag behind the
+   * current wall‑clock time by up to the internal caching interval.
    *
    * @return the last evaluation time in milliseconds, suitable for sorting or freshness checks
    */

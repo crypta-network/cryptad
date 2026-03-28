@@ -12,13 +12,13 @@ import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathFactory;
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.fcp.FCPConnectionHandler;
-import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.L10nTestUtils;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedSubscriber;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -704,20 +704,20 @@ class UserAlertManagerTest {
             "invalid");
     userAlertManager.register(validAlert);
     userAlertManager.register(invalidAlert);
-    FCPConnectionHandler subscriber = mock(FCPConnectionHandler.class);
+    UserAlertFeedSubscriber subscriber = mock(UserAlertFeedSubscriber.class);
 
     // Act
     userAlertManager.watch(subscriber);
 
     // Assert
-    verify(subscriber).send(validAlert.getFCPMessage());
-    verify(subscriber, never()).send(invalidAlert.getFCPMessage());
+    verify(subscriber).send(validAlert.getFeedEvent());
+    verify(subscriber, never()).send(invalidAlert.getFeedEvent());
   }
 
   @Test
   void watch_whenNewAlertRegistered_expectSubscriberNotified() {
     // Arrange
-    FCPConnectionHandler subscriber = mock(FCPConnectionHandler.class);
+    UserAlertFeedSubscriber subscriber = mock(UserAlertFeedSubscriber.class);
     userAlertManager.watch(subscriber);
     TestAlert alert =
         new TestAlert(
@@ -727,13 +727,13 @@ class UserAlertManagerTest {
     userAlertManager.register(alert);
 
     // Assert
-    verify(subscriber).send(alert.getFCPMessage());
+    verify(subscriber).send(alert.getFeedEvent());
   }
 
   @Test
   void unwatch_whenSubscriberRemoved_expectNoFurtherNotifications() {
     // Arrange
-    FCPConnectionHandler subscriber = mock(FCPConnectionHandler.class);
+    UserAlertFeedSubscriber subscriber = mock(UserAlertFeedSubscriber.class);
     userAlertManager.watch(subscriber);
     userAlertManager.unwatch(subscriber);
     TestAlert alert =
@@ -794,7 +794,7 @@ class UserAlertManagerTest {
     private final boolean eventNotification;
     private final long updatedTime;
     private final String anchor;
-    private final FCPMessage fcpMessage;
+    private final UserAlertFeedEvent feedEvent;
     private boolean dismissed;
 
     private TestAlert(
@@ -818,7 +818,7 @@ class UserAlertManagerTest {
       this.eventNotification = eventNotification;
       this.updatedTime = updatedTime;
       this.anchor = anchor;
-      this.fcpMessage = mock(FCPMessage.class);
+      this.feedEvent = mock(UserAlertFeedEvent.class);
     }
 
     @Override
@@ -837,8 +837,8 @@ class UserAlertManagerTest {
     }
 
     @Override
-    public FCPMessage getFCPMessage() {
-      return fcpMessage;
+    public UserAlertFeedEvent getFeedEvent() {
+      return feedEvent;
     }
 
     @Override

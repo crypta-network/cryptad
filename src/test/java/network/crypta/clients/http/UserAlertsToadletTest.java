@@ -3,11 +3,11 @@ package network.crypta.clients.http;
 import java.net.URI;
 import javax.naming.SizeLimitExceededException;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.runtime.alerts.AbstractNodeToNodeFileOfferUserAlert;
 import network.crypta.runtime.alerts.NodeToNodeMessageUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -338,7 +338,7 @@ class UserAlertsToadletTest {
     }
 
     @Override
-    public FCPMessage getFCPMessage() {
+    public UserAlertFeedEvent getFeedEvent() {
       return null;
     }
 
@@ -435,7 +435,7 @@ class UserAlertsToadletTest {
     }
 
     @Override
-    public FCPMessage getFCPMessage() {
+    public UserAlertFeedEvent getFeedEvent() {
       return null;
     }
 

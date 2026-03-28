@@ -1,12 +1,12 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.Version;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.io.DatastoreUtil;
 
@@ -324,16 +324,16 @@ public class DatastoreTooSmallAlert implements UserAlert {
   }
 
   /**
-   * Produces an FCP feed message containing the alert content for consumption by FCP clients.
+   * Produces a runtime-owned feed event containing the alert content for subscribed clients.
    *
    * <p>The message includes the title, summary, full text, priority, and an updated timestamp. The
    * content is generated on demand and reflects the current configuration.
    *
-   * @return a new {@link FCPMessage} describing this alert; never {@code null}.
+   * @return a new feed event describing this alert; never {@code null}.
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    return new FeedMessage(
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BasicUserAlertFeedEvent(
         getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
   }
 }

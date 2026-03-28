@@ -1,16 +1,14 @@
 package network.crypta.runtime.alerts;
 
 import java.nio.file.Path;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.Version;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 
@@ -52,42 +49,18 @@ class DatastoreTooSmallAlertTest {
   private void registerSizeOptions(long storeSizeBytes, long clientCacheBytes, long slashdotBytes) {
     // Register the three size options (as sizes)
     nodeConfig.register(
-        "storeSize",
-        storeSizeBytes,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
+        "storeSize", storeSizeBytes, new Option.Meta(0, false, true, "", ""), null, true);
     nodeConfig.register(
-        "clientCacheSize",
-        clientCacheBytes,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
+        "clientCacheSize", clientCacheBytes, new Option.Meta(0, false, true, "", ""), null, true);
     nodeConfig.register(
-        "slashdotCacheSize",
-        slashdotBytes,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
+        "slashdotCacheSize", slashdotBytes, new Option.Meta(0, false, true, "", ""), null, true);
 
     // Also required by DATASTORE_SIZE._setDatastoreSize but not directly used here; harmless to
     // set.
+    nodeConfig.register("inputBandwidthLimit", 0, new Option.Meta(0, false, true, "", ""), null);
+    nodeConfig.register("outputBandwidthLimit", 0, new Option.Meta(0, false, true, "", ""), null);
     nodeConfig.register(
-        "inputBandwidthLimit",
-        0,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.IntCallback) null);
-    nodeConfig.register(
-        "outputBandwidthLimit",
-        0,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.IntCallback) null);
-    nodeConfig.register(
-        "slashdotCacheLifetime",
-        0L,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.LongCallback) null,
-        false);
+        "slashdotCacheLifetime", 0L, new Option.Meta(0, false, true, "", ""), null, false);
   }
 
   private void registerDismissed(String initial) {
@@ -98,10 +71,7 @@ class DatastoreTooSmallAlertTest {
       initVal = 0;
     }
     nodeConfig.register(
-        "datastoreTooSmallDismissed",
-        initVal,
-        new Option.Meta(0, false, true, "", ""),
-        (network.crypta.config.IntCallback) null);
+        "datastoreTooSmallDismissed", initVal, new Option.Meta(0, false, true, "", ""), null);
   }
 
   private static long expectedCurrentGiB(long store, long client, long slashdot) {
@@ -245,21 +215,18 @@ class DatastoreTooSmallAlertTest {
   }
 
   @Test
-  void getFCPMessage_whenCalled_containsTitleShortTextAndTime() {
+  void getFeedEvent_whenCalled_containsTitleShortTextAndTime() {
     registerSizeOptions(1 * GIB, 0, 0);
     registerDismissed("0");
     DatastoreTooSmallAlert alert = new DatastoreTooSmallAlert(core);
 
-    FCPMessage msg = alert.getFCPMessage();
-    assertInstanceOf(FeedMessage.class, msg, "Expected FeedMessage implementation");
+    BasicUserAlertFeedEvent event = (BasicUserAlertFeedEvent) alert.getFeedEvent();
+    assertEquals(alert.getTitle(), event.header());
+    assertEquals(alert.getShortText(), event.shortText());
+    assertEquals(alert.getText(), event.text());
+    assertEquals(UserAlert.WARNING, event.priorityClass());
 
-    SimpleFieldSet fs = msg.getFieldSet();
-    assertEquals(alert.getTitle(), fs.get("Header"));
-    assertEquals(alert.getShortText(), fs.get("ShortText"));
-    int pc = Integer.parseInt(fs.get("PriorityClass"));
-    assertEquals(UserAlert.WARNING, pc);
-
-    long updated = Long.parseLong(fs.get("UpdatedTime"));
+    long updated = event.updatedTime();
     long now = System.currentTimeMillis();
     // Within a reasonable bound of 'now'
     assertTrue(updated <= now && updated > now - 10_000L, "Updated time should be recent");

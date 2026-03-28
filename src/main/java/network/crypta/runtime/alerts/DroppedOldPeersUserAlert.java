@@ -7,10 +7,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PeerTooOldException;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,17 +21,17 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This alert accumulates the display names of peers that were rejected due to an older
  * encryption protocol or build, along with the highest observed incompatible build number and its
- * build date. It renders human‑readable text and simple HTML content, and it can also be serialized
- * into an {@code FCP} {@link network.crypta.clients.fcp.FCPMessage} to notify external clients.
+ * build date. It renders human-readable text and simple HTML content, and it can also be serialized
+ * into a runtime-owned feed event to notify external clients.
  *
  * <p>Typical usage: create an instance early in peer loading, call {@link #add(PeerTooOldException,
  * String)} for each incompatible peer, and, if non‑empty, register the alert with the system alert
  * service. The instance is mutable while peers are being processed; once registered and shown to
- * users it is usually treated as immutable.
+ * users, it is usually treated as immutable.
  *
  * <ul>
  *   <li>Not thread‑safe: update it from a single thread.
- *   <li>Displays a filename where references to dropped peers are persisted by callers.
+ *   <li>Displays a filename where callers persist references to dropped peers.
  *   <li>Emits a critical‑priority alert intended to be user‑dismissible.
  * </ul>
  */
@@ -75,11 +75,11 @@ public class DroppedOldPeersUserAlert implements UserAlert {
    *
    * <p>When {@code name} is {@code null}, the peer is recorded as {@code (unknown name)}; otherwise
    * the name is stored quoted to make UI rendering unambiguous. The alert tracks the maximum build
-   * number observed across all adds and uses the corresponding build date for titles.
+   * number observed across all adding and uses the corresponding build date for titles.
    *
    * <p>This method logs an error‑level summary about the rejection. It does not throw.
    *
-   * @param e details about the version mismatch including the other node's build number and date;
+   * @param e details about the version mismatch, including the other node's build number and date,
    *     must be non‑null.
    * @param name display name of the peer, or {@code null} when unknown; empty strings are allowed
    *     and will be quoted.
@@ -239,7 +239,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
    */
   @Override
   public void isValid(boolean validity) {
-    // Ignore, will be unregistered on dismiss.
+    // Ignore, will be unregistered on dismissing.
   }
 
   /** {@inheritDoc} */
@@ -277,16 +277,16 @@ public class DroppedOldPeersUserAlert implements UserAlert {
   }
 
   /**
-   * Serializes the alert into an FCP feed message.
+   * Serializes the alert into a runtime-owned feed event.
    *
-   * <p>The returned message contains the title, short text, full text bytes length, priority class,
+   * <p>The returned message contains the title, short text, full-text bytes length, priority class,
    * and the creation time as the updated time. The message does not include attachments.
    *
-   * @return a new {@code Feed} message conveying the alert; safe to send to external clients.
+   * @return a new feed event conveying the alert; safe to send to external clients.
    */
   @Override
-  public FCPMessage getFCPMessage() {
-    return new FeedMessage(
+  public UserAlertFeedEvent getFeedEvent() {
+    return new BasicUserAlertFeedEvent(
         getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
   }
 

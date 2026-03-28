@@ -82,9 +82,9 @@ record CoreFcpMessageRuntimeSupport(NodeClientCore core) implements FcpMessageRu
   @Override
   public void watchFeeds(FCPConnectionHandler handler, boolean enabled) {
     if (enabled) {
-      core.getAlerts().watch(handler);
+      core.getAlerts().watch(new FcpUserAlertFeedSubscriber(handler));
     } else {
-      core.getAlerts().unwatch(handler);
+      core.getAlerts().unwatch(new FcpUserAlertFeedSubscriber(handler));
     }
   }
 

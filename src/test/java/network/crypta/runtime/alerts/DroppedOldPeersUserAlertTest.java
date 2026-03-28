@@ -6,11 +6,10 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
-import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PeerTooOldException;
+import network.crypta.runtime.alerts.feed.BasicUserAlertFeedEvent;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -120,25 +119,24 @@ class DroppedOldPeersUserAlertTest {
   }
 
   @Test
-  void getFCPMessage_whenBuilt_expectFieldsMatchAlert(@TempDir java.nio.file.Path tmp) {
+  void getFeedEvent_whenBuilt_expectFieldsMatchAlert(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
         new DroppedOldPeersUserAlert(tmp.resolve("peers.bin").toFile());
     alert.add(new PeerTooOldException("r", 42, Instant.ofEpochMilli(1234)), "Zed");
 
     // Act
-    FCPMessage msg = alert.getFCPMessage();
-    SimpleFieldSet fs = msg.getFieldSet();
+    BasicUserAlertFeedEvent event = (BasicUserAlertFeedEvent) alert.getFeedEvent();
 
-    // Assert: name and key fields match, including data length matching full text bytes length
-    assertEquals("Feed", msg.getName());
-    assertEquals(alert.getTitle(), fs.get("Header"));
-    assertEquals(alert.getShortText(), fs.get("ShortText"));
-    assertEquals(String.valueOf(UserAlert.CRITICAL_ERROR), fs.get("PriorityClass"));
-    assertEquals(String.valueOf(alert.getUpdatedTime()), fs.get("UpdatedTime"));
+    // Assert: fields match the alert, including encoded plain-text length
+    assertEquals(alert.getTitle(), event.header());
+    assertEquals(alert.getShortText(), event.shortText());
+    assertEquals(alert.getText(), event.text());
+    assertEquals(UserAlert.CRITICAL_ERROR, event.priorityClass());
+    assertEquals(alert.getUpdatedTime(), event.updatedTime());
 
     int expectedLen = alert.getText().getBytes(UTF_8).length;
-    assertEquals(String.valueOf(expectedLen), fs.get("DataLength"));
+    assertEquals(expectedLen, event.text().getBytes(UTF_8).length);
   }
 
   @Test

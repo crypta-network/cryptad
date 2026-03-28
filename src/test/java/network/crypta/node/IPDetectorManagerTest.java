@@ -14,6 +14,7 @@ import network.crypta.compat.PortForwardProvider;
 import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -359,7 +360,7 @@ class IPDetectorManagerTest {
           }
 
           @Override
-          public network.crypta.clients.fcp.FCPMessage getFCPMessage() {
+          public UserAlertFeedEvent getFeedEvent() {
             return null;
           }
 
