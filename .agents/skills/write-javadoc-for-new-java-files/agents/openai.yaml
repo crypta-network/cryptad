@@ -1,0 +1,4 @@
+interface:
+  display_name: "Javadoc New Java Files"
+  short_description: "Document newly added non-test Java files"
+  default_prompt: "Use $write-javadoc-for-new-java-files to find newly added non-test Java files in git and apply the single-file write-javadoc workflow to each one."

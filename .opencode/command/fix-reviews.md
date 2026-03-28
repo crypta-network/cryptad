@@ -1,1 +1,0 @@
-validate the latest review comments (using websearch if you need to get up-to-date information) and fix them if necessary.

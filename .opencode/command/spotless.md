@@ -1,1 +1,0 @@
-run gradle spotless
