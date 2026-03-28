@@ -1,1 +1,0 @@
-JUnit6 test classes and methods should generally have package visibility. Change their visibility to the default package visibility to fix all the issues: "Remove this 'public' modifier." in file $1.

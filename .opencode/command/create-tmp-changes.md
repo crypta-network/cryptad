@@ -1,1 +1,0 @@
-Write a tmp_changes.md to log your changes for the next session when context is lost.
