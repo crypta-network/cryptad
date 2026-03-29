@@ -13,7 +13,6 @@ import java.util.Objects;
 import java.util.StringTokenizer;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.fcp.AddPeer;
 import network.crypta.config.ConfigException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
@@ -23,6 +22,7 @@ import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.Version;
 import network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode;
 import network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -305,7 +305,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   /**
-   * Renders the connections page and optional message-type breakdowns.
+   * Renders the Connections page and optional message-type breakdowns.
    *
    * <p>The handler validates access, resolves download endpoints for the current node reference,
    * builds sorted peer tables, and writes the resulting HTML response. When no peers exist, it
@@ -571,11 +571,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private StringBuilder fetchReferenceViaUrl(String urltext) throws IOException {
     try {
       FreenetURI refUri = new FreenetURI(urltext);
-      return AddPeer.getReferenceFromFreenetURI(refUri, client);
+      return PeerReferenceTextLoader.readFromFreenetUri(refUri, client);
     } catch (MalformedURLException | FetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urltext);
       URL url = buildUrl(urltext);
-      return AddPeer.getReferenceFromURL(url);
+      return PeerReferenceTextLoader.readFromUrl(url);
     }
   }
 

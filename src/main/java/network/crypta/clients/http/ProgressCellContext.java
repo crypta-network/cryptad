@@ -1,6 +1,6 @@
 package network.crypta.clients.http;
 
-import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
+import network.crypta.runtime.admin.queue.page.QueueCompressionState;
 
 /**
  * Bundles rendering flags needed for queue progress cells.
@@ -17,4 +17,4 @@ import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
  * @param upload {@code true} when rendering an upload progress cell
  */
 public record ProgressCellContext(
-    boolean advancedMode, boolean started, COMPRESS_STATE compressing, boolean upload) {}
+    boolean advancedMode, boolean started, QueueCompressionState compressing, boolean upload) {}

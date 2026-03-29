@@ -13,10 +13,10 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.events.SplitfileProgressCounts;
-import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
-import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.admin.queue.page.QueueProgressCellContext;
+import network.crypta.runtime.admin.queue.page.QueueProgressCellRenderer;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -75,7 +75,6 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see FProxyRegistrar
- * @see network.crypta.clients.fcp.RequestStatus
  */
 public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final Logger LOG = LoggerFactory.getLogger(QueueToadlet.class);
@@ -149,8 +148,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String ATTR_VALUE = "value";
   private static final String ATTR_CHECKED = "checked";
   private static final String ATTR_CLASS = "class";
-  private static final String ATTR_STYLE = "style";
-  private static final String ATTR_TITLE = "title";
   private static final String TAG_LABEL = "label";
   private static final String TAG_TABLE = "table";
   private static final String INPUT_TYPE_HIDDEN = "hidden";
@@ -158,8 +155,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String INFOBOX_ERROR = "infobox-error";
   private static final String PRIORITY = "priority";
   private static final String SORT_BY = "sortBy";
-  private static final String UNKNOWN = "unknown";
-  private static final String CSS_WIDTH_PREFIX = "width: ";
   private static final String QUEUE_TOADLET_PREFIX = "QueueToadlet.";
 
   /**
@@ -570,7 +565,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
         try {
           downloadsDir = getDownloadsDir(downloadPath);
-        } catch (NotAllowedException e) {
+        } catch (DownloadTargetNotAllowedException e) {
           downloadDisallowedPage(e, downloadPath, ctx);
           return true;
         }
@@ -640,7 +635,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       String downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
       try {
         return new DownloadTarget(target, getDownloadsDir(downloadPath));
-      } catch (NotAllowedException e) {
+      } catch (DownloadTargetNotAllowedException e) {
         downloadDisallowedPage(e, downloadPath, ctx);
         return null;
       }
@@ -717,6 +712,11 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       alertContent.addChild(
           "a", "href", path(), NodeL10n.getBase().getString("Toadlet.returnToQueuepage"));
       writeHTMLReply(ctx, 200, "OK", page.generate());
+    }
+
+    /** Signals that the requested download target is not allowed for this queue operation. */
+    private static final class DownloadTargetNotAllowedException extends Exception {
+      private DownloadTargetNotAllowedException() {}
     }
 
     private record DownloadTarget(String target, File downloadsDir) {}
@@ -1583,7 +1583,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     private void downloadDisallowedPage(
-        NotAllowedException e, String downloadPath, ToadletContext ctx)
+        DownloadTargetNotAllowedException e, String downloadPath, ToadletContext ctx)
         throws IOException, ToadletContextClosedException {
       PageNode page = ctx.getPageMaker().getPageNode(l10n(DOWNLOAD_FILES), ctx);
       HTMLNode contentNode = page.getContentNode();
@@ -1603,12 +1603,12 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           || (ctx.getContainer().publicGatewayMode() && !ctx.isAllowedFullAccess());
     }
 
-    private File getDownloadsDir(String downloadPath) throws NotAllowedException {
+    private File getDownloadsDir(String downloadPath) throws DownloadTargetNotAllowedException {
       File downloadsDir = new File(downloadPath);
       // Invalid if it's disallowed, doesn't exist, isn't a directory, or can't be created.
       if (!transferAccessPort.allowDownloadTo(downloadsDir)
           || !((downloadsDir.exists() && downloadsDir.isDirectory()) || !downloadsDir.mkdirs())) {
-        throw new NotAllowedException();
+        throw new DownloadTargetNotAllowedException();
       }
       return downloadsDir;
     }
@@ -1846,134 +1846,13 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @param counts progress counters for the request.
    * @return HTML node representing the progress cell, ready to attach.
    */
+  @SuppressWarnings("unused")
   public static HTMLNode createProgressCell(
       ProgressCellContext context, SplitfileProgressCounts counts) {
-    HTMLNode progressCell = new HTMLNode("td", ATTR_CLASS, "request-progress");
-    if (handleEarlyProgressMessages(context, progressCell)) {
-      return progressCell;
-    }
-
-    int adjustedTotal =
-        adjustTotal(context.advancedMode(), counts.minSuccessfulBlocks(), counts.totalBlocks());
-
-    if ((counts.succeedBlocks() < 0) || (adjustedTotal <= 0)) {
-      progressCell.addChild("span", ATTR_CLASS, "progress_fraction_unknown", l10n(UNKNOWN));
-    } else {
-      addProgressBar(
-          progressCell, counts, adjustedTotal, counts.finalizedTotal(), context.upload());
-    }
-    return progressCell;
-  }
-
-  private static boolean handleEarlyProgressMessages(
-      ProgressCellContext context, HTMLNode progressCell) {
-    if (!context.started()) {
-      progressCell.addChild("#", l10n("starting"));
-      return true;
-    }
-    if (context.compressing() == COMPRESS_STATE.WAITING && context.advancedMode()) {
-      progressCell.addChild("#", l10n("awaitingCompression"));
-      return true;
-    }
-    if (context.compressing() != COMPRESS_STATE.WORKING) {
-      progressCell.addChild("#", l10n("compressing"));
-      return true;
-    }
-    return false;
-  }
-
-  private static int adjustTotal(boolean advancedMode, int min, int total) {
-    return (!advancedMode || total < min) ? min : total;
-  }
-
-  private static void addProgressBar(
-      HTMLNode progressCell,
-      SplitfileProgressCounts progressCounts,
-      int adjustedTotal,
-      boolean finalized,
-      boolean upload) {
-    int fetchedPercent = (int) (progressCounts.succeedBlocks() / (double) adjustedTotal * 100);
-    int failedPercent = (int) (progressCounts.failedBlocks() / (double) adjustedTotal * 100);
-    int fatallyFailedPercent =
-        (int) (progressCounts.fatallyFailedBlocks() / (double) adjustedTotal * 100);
-    int minPercent = (int) (progressCounts.minSuccessfulBlocks() / (double) adjustedTotal * 100);
-    HTMLNode progressBar = progressCell.addChild("div", ATTR_CLASS, "progressbar");
-    progressBar.addChild(
-        "div",
-        new String[] {ATTR_CLASS, ATTR_STYLE},
-        new String[] {"progressbar-done", CSS_WIDTH_PREFIX + fetchedPercent + "%;"});
-
-    if (progressCounts.failedBlocks() > 0) {
-      progressBar.addChild(
-          "div",
-          new String[] {ATTR_CLASS, ATTR_STYLE},
-          new String[] {"progressbar-failed", CSS_WIDTH_PREFIX + failedPercent + "%;"});
-    }
-    if (progressCounts.fatallyFailedBlocks() > 0) {
-      progressBar.addChild(
-          "div",
-          new String[] {ATTR_CLASS, ATTR_STYLE},
-          new String[] {"progressbar-failed2", CSS_WIDTH_PREFIX + fatallyFailedPercent + "%;"});
-    }
-    if ((progressCounts.succeedBlocks()
-            + progressCounts.failedBlocks()
-            + progressCounts.fatallyFailedBlocks())
-        < progressCounts.minSuccessfulBlocks()) {
-      progressBar.addChild(
-          "div",
-          new String[] {ATTR_CLASS, ATTR_STYLE},
-          new String[] {
-            "progressbar-min", CSS_WIDTH_PREFIX + (minPercent - fetchedPercent) + "%;"
-          });
-    }
-
-    String prefix =
-        '('
-            + Integer.toString(progressCounts.succeedBlocks())
-            + "/ "
-            + progressCounts.minSuccessfulBlocks()
-            + "): ";
-    addProgressTitle(
-        progressBar,
-        progressCounts.succeedBlocks(),
-        progressCounts.minSuccessfulBlocks(),
-        finalized,
-        upload,
-        prefix);
-  }
-
-  private static void addProgressTitle(
-      HTMLNode progressBar,
-      int fetched,
-      int min,
-      boolean finalized,
-      boolean upload,
-      String prefix) {
-    double percent = min == 0 ? 0.0 : (fetched / (double) min) * 100.0;
-    double roundedPercent = Math.round(percent * 10.0) / 10.0;
-    String percentText = roundedPercent + "%";
-    if (finalized) {
-      progressBar.addChild(
-          "div",
-          new String[] {ATTR_CLASS, ATTR_TITLE},
-          new String[] {"progress_fraction_finalized", prefix + l10n("progressbarAccurate")},
-          percentText);
-      return;
-    }
-    String text = fetched + " (" + percentText + "??)";
-    progressBar.addChild(
-        "div",
-        new String[] {ATTR_CLASS, ATTR_TITLE},
-        new String[] {
-          "progress_fraction_not_finalized",
-          prefix
-              + NodeL10n.getBase()
-                  .getString(
-                      upload
-                          ? QUEUE_TOADLET_PREFIX + "uploadProgressbarNotAccurate"
-                          : QUEUE_TOADLET_PREFIX + "progressbarNotAccurate")
-        },
-        text);
+    QueueProgressCellContext progressContext =
+        new QueueProgressCellContext(
+            context.advancedMode(), context.started(), context.compressing(), context.upload());
+    return QueueProgressCellRenderer.createProgressCell(progressContext, counts);
   }
 
   private HTMLNode createPanicBox(PageMaker pageMaker, ToadletContext ctx) {
