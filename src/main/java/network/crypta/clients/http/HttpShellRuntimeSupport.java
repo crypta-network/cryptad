@@ -123,9 +123,9 @@ public interface HttpShellRuntimeSupport {
   /**
    * Creates the root FProxy collaborators required before the shell registers child toadlets.
    *
-   * <p>Implementations may perform daemon-side publication as part of this operation because the
-   * root FProxy wiring still belongs to the daemon-backed bootstrap path. Callers should treat the
-   * result as a one-time bootstrap bundle for the current shell instance.
+   * <p>Implementations assemble the daemon-backed collaborators required for root FProxy startup,
+   * and callers then pass the resulting bundle through the HTTP registration path. Callers should
+   * treat the result as a one-time bootstrap bundle for the current shell instance.
    *
    * @param publicGatewayMode whether the shell should bootstrap public-gateway bookmark behavior
    * @return bootstrap bundle containing the bookmark manager, interactive client, and root FProxy

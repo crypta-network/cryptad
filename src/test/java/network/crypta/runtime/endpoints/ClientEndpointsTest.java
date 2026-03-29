@@ -1,7 +1,6 @@
 package network.crypta.runtime.endpoints;
 
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.config.Config;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -31,7 +30,6 @@ class ClientEndpointsTest {
   @Mock private FcpEndpointHandle fcpEndpoint;
   @Mock private TextModeClientInterfaceServer tmci;
   @Mock private HttpShellContainer toadletContainer;
-  @Mock private FProxyToadlet fproxy;
   @Mock private TextModeClientInterface directTmci;
   @Mock private UserAlertManager userAlertManager;
 
@@ -50,17 +48,7 @@ class ClientEndpointsTest {
     assertSame(fcpEndpoint, endpoints.getFcpEndpoint());
     assertSame(tmci, endpoints.getTextModeClientInterface());
     assertSame(toadletContainer, endpoints.getToadletContainer());
-    assertNull(endpoints.getFProxy());
     assertNull(endpoints.getDirectTMCI());
-  }
-
-  @Test
-  void setFProxy_whenAssigned_updatesGetter() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
-
-    endpoints.setFProxy(fproxy);
-
-    assertSame(fproxy, endpoints.getFProxy());
   }
 
   @Test

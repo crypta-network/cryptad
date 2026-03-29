@@ -2,7 +2,6 @@ package network.crypta.runtime.endpoints;
 
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
@@ -23,10 +22,10 @@ import network.crypta.support.io.TempBucketFactory;
  * node initialization, register any startup alerts, and then start the endpoints once the core is
  * ready.
  *
- * <p>Thread-safety is limited to safe publication of a small set of references via atomic holders;
- * the underlying endpoint implementations define their own concurrency guarantees. Callers should
- * avoid mutating the endpoint state concurrently unless the respective component documents that it
- * is safe to do so.
+ * <p>Thread-safety is limited to safe publication of the optional direct TMCI reference via an
+ * atomic holder; the underlying endpoint implementations define their own concurrency guarantees.
+ * Callers should avoid mutating the endpoint state concurrently unless the respective component
+ * documents that it is safe to do so.
  *
  * <ul>
  *   <li>Holds the endpoint instances and exposes read-only accessors.
@@ -42,7 +41,6 @@ public final class ClientEndpoints {
   private final TextModeClientInterfaceServer tmci;
   private final HttpShellContainer toadletContainer;
   private final AtomicReference<TextModeClientInterface> directTMCI = new AtomicReference<>();
-  private final AtomicReference<FProxyToadlet> fproxy = new AtomicReference<>();
   private UserAlert startingUpAlert;
 
   /**
@@ -93,34 +91,6 @@ public final class ClientEndpoints {
    */
   public FcpEndpointHandle getFcpEndpoint() {
     return fcpEndpoint;
-  }
-
-  /**
-   * Returns the currently configured FProxy toadlet, if any.
-   *
-   * <p>This value may be {@code null} when no FProxy has been installed or before configuration
-   * occurs. The reference is stored in an atomic holder for safe publication across threads, but it
-   * does not imply that the toadlet implementation itself is thread-safe. The returned reference is
-   * the direct instance currently published by this bundle.
-   *
-   * @return the current FProxy toadlet, or {@code null} when not set.
-   */
-  public FProxyToadlet getFProxy() {
-    return fproxy.get();
-  }
-
-  /**
-   * Sets the FProxy toadlet reference to expose via {@link #getFProxy()}.
-   *
-   * <p>The provided reference is stored as-is and can be {@code null} to clear a previous value.
-   * This method performs no additional registration or lifecycle actions, so callers must ensure
-   * the toadlet is registered with the container elsewhere if required. The update becomes visible
-   * to other threads via the atomic reference.
-   *
-   * @param fproxy FProxy toadlet instance to publish, or {@code null} to clear.
-   */
-  public void setFProxy(FProxyToadlet fproxy) {
-    this.fproxy.set(fproxy);
   }
 
   /**

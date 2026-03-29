@@ -5,7 +5,6 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyRuntimeSupport;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellFProxyBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -124,12 +123,8 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpSh
             client.getFetchContext(),
             new RequestClientBuilder().realTime().build());
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
-    HttpShellFProxyBootstrap bootstrap =
-        HttpShellFProxyBootstrap.create(
-            bookmarkManager, client, fproxyRuntimeSupport, fetchTracker);
-    FProxyToadlet fproxy = bootstrap.fproxy();
-    core.getEndpoints().setFProxy(fproxy);
-    return bootstrap;
+    return HttpShellFProxyBootstrap.create(
+        bookmarkManager, client, fproxyRuntimeSupport, fetchTracker);
   }
 
   /**

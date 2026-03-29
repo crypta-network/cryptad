@@ -17,7 +17,6 @@ import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.runtime.alerts.UserAlertManager;
-import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -108,7 +107,6 @@ class SimpleToadletServerTest {
     PersistentConfig nodeConfig = new PersistentConfig(new SimpleFieldSet(true));
     Ticker ticker = mock(Ticker.class);
     ClientContext clientContext = mock(ClientContext.class);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
@@ -118,7 +116,6 @@ class SimpleToadletServerTest {
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
     when(core.getRuntimePorts()).thenReturn(runtimePorts);
-    when(core.getEndpoints()).thenReturn(endpoints);
     when(core.getAlerts()).thenReturn(alerts);
     when(core.getNode().getConfig()).thenReturn(nodeConfig);
     when(core.getNode().network().ticker()).thenReturn(ticker);
@@ -156,7 +153,6 @@ class SimpleToadletServerTest {
     }
 
     ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<FProxyToadlet> fproxyCaptor = ArgumentCaptor.forClass(FProxyToadlet.class);
     verify(runtimePorts, times(1)).randomness();
     verify(randomnessPort, times(1)).fillSecureRandom(randomCaptor.capture());
     assertSame(FProxyToadlet.random, randomCaptor.getValue());
@@ -164,12 +160,11 @@ class SimpleToadletServerTest {
     verify(core, times(1)).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
     verify(core, times(1)).getAlerts();
     verify(core, never()).getRandom();
-    verify(endpoints, times(1)).setFProxy(fproxyCaptor.capture());
     assertEquals(1, registrarCalls.get());
     assertSame(client, dependenciesRef.get().client());
     assertSame(runtimePorts, dependenciesRef.get().runtimePorts());
     assertSame(nodeConfig, dependenciesRef.get().config());
-    assertSame(fproxyCaptor.getValue(), dependenciesRef.get().fproxy());
+    assertInstanceOf(FProxyToadlet.class, dependenciesRef.get().fproxy());
   }
 
   @Test

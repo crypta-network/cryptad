@@ -48,9 +48,9 @@ public class M3UFilter implements ContentDataFilter {
   static final int MAX_URI_LENGTH = 16384;
   static final String BAD_URI_REPLACEMENT = "#bad-uri-removed";
 
-  // pass-through for most files accessed via a playlist, likely through an external
-  // player. See FProxyToadlet.maxLengthNoProgress for the default. This value must
-  // be synchronized with the test data!
+  // Pass through most files accessed via a playlist, likely through an external
+  // player. Keep this limit aligned with the HTTP no-progress default and the
+  // corresponding test data.
 
   // Future: Add parsing of ext-comments to allow for gapless playback.
 
