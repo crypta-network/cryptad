@@ -1,4 +1,4 @@
-package network.crypta.clients.http.complexhtmlnodes;
+package network.crypta.runtime.peers.html;
 
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;

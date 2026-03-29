@@ -1,4 +1,4 @@
-package network.crypta.clients.http.complexhtmlnodes;
+package network.crypta.runtime.peers.html;
 
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
@@ -9,7 +9,7 @@ import network.crypta.support.HTMLNode;
  *
  * <p>This node builds a small HTML fragment consisting of a title, an introductory sentence, and a
  * radio-button group for selecting a {@link DarknetPeerNode.FRIEND_VISIBILITY} value. The full
- * subtree is created eagerly in the constructor so callers can simply add the instance to a larger
+ * subtree is created eagerly in the constructor, so callers can simply add the instance to a larger
  * page structure without further configuration.
  *
  * <p>Notable behaviors:
