@@ -1,12 +1,12 @@
 package network.crypta.runtime.alerts;
 
 import java.io.File;
-import network.crypta.clients.http.complexhtmlnodes.PeerTrustInputForAddPeerBoxNode;
-import network.crypta.clients.http.complexhtmlnodes.PeerVisibilityInputForAddPeerBoxNode;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
+import network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode;
+import network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode;
 import network.crypta.support.HTMLNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
  * renders explanatory text and an HTML form that posts to the {@code /friends/} endpoint so a user
  * may import the offered peers in a single action. The form includes hidden authentication ({@code
  * formPassword}) and fields for peer trust and visibility created by {@link
- * network.crypta.clients.http.complexhtmlnodes.PeerTrustInputForAddPeerBoxNode} and {@link
- * network.crypta.clients.http.complexhtmlnodes.PeerVisibilityInputForAddPeerBoxNode}.
+ * network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode} and {@link
+ * network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode}.
  *
  * <p>Typical usage is indirect: clients call {@link #createAlert(Node)} to scan for offers and, if
  * any are found, this class registers itself with the alert subsystem. The alert can be dismissed

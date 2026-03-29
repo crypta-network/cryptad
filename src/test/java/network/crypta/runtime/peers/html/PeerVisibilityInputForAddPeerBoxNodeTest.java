@@ -1,4 +1,4 @@
-package network.crypta.clients.http.complexhtmlnodes;
+package network.crypta.runtime.peers.html;
 
 import java.io.File;
 import java.util.List;

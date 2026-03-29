@@ -1,4 +1,4 @@
-package network.crypta.clients.http.complexhtmlnodes;
+package network.crypta.runtime.peers.html;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -191,14 +191,8 @@ class PeerTrustInputForAddPeerBoxNodeTest {
       baseField.setAccessible(true);
       baseField.set(null, base);
     } catch (ReflectiveOperationException e) {
-      throw linkageError("Failed to set NodeL10n base via reflection", e);
+      throw new LinkageError("Failed to set NodeL10n base via reflection", e);
     }
-  }
-
-  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
-    LinkageError error = new LinkageError(message);
-    error.initCause(e);
-    return error;
   }
 
   private static List<HTMLNode> brChildren(HTMLNode node) {
