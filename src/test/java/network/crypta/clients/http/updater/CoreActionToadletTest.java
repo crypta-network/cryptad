@@ -1,8 +1,9 @@
-package network.crypta.runtime.updater;
+package network.crypta.clients.http.updater;
 
 import java.io.File;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClient;
@@ -11,6 +12,7 @@ import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.fs.AppEnv;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
+import network.crypta.runtime.updater.UpdaterPaths;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
@@ -96,6 +98,31 @@ class CoreActionToadletTest {
 
     toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
 
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        (ArgumentCaptor<MultiValueTable<String, String>>)
+            (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
+    assertEquals("/alerts/", headersCaptor.getValue().getFirst("Location"));
+  }
+
+  @Test
+  void handleMethodPOST_whenActionUnknownAndCoreUpdaterAvailable_expectRedirect() throws Exception {
+    // Arrange
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("unknown");
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    // Act
+    toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
+
+    // Assert
     ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
@@ -211,22 +238,119 @@ class CoreActionToadletTest {
     verify(ctx).writeData(any(), anyInt(), anyInt());
   }
 
+  @Test
+  void handleMethodPOST_whenInstallSnapInsideSnapSandbox_expectGuidancePage() throws Exception {
+    // Arrange
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+
+    File baseDir = tempDir.resolve("node").toFile();
+    File updatesDir = new File(baseDir, "updates/core");
+    File installer = new File(updatesDir, "cryptad.snap");
+    assertTrue(updatesDir.mkdirs() || updatesDir.isDirectory());
+    assertTrue(installer.createNewFile());
+
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
+    when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
+        .thenReturn(installer.getAbsolutePath());
+    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
+        .thenReturn(Optional.of(installer.toPath()));
+
+    AppEnv appEnv = mock(AppEnv.class);
+    when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
+    when(appEnv.isServiceMode()).thenReturn(false);
+    when(appEnv.isSnap()).thenReturn(true);
+    replaceAppEnv(toadlet, appEnv);
+
+    stubHtmlContext(ctx);
+
+    // Act
+    toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
+
+    // Assert
+    verify(ctx)
+        .sendReplyHeaders(eq(200), eq("OK"), isNull(), eq("text/html; charset=utf-8"), anyLong());
+    String html = captureWrittenHtml(ctx);
+    assertTrue(
+        html.contains("This app is running inside a Snap sandbox and cannot elevate privileges."));
+    assertTrue(html.contains("Run this command in terminal:"));
+    assertTrue(html.contains("sudo snap install --dangerous"));
+    assertTrue(html.contains(installer.getAbsolutePath()));
+  }
+
+  @Test
+  void handleMethodPOST_whenOpenStoreSnapInsideSnapSandbox_expectManualCommandPage()
+      throws Exception {
+    // Arrange
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("openStore");
+    when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("snap");
+    when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("network.crypta");
+    when(request.getPartAsStringFailsafe(eq("url"), anyInt())).thenReturn("");
+
+    AppEnv appEnv = mock(AppEnv.class);
+    when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
+    when(appEnv.isFlatpak()).thenReturn(false);
+    when(appEnv.isSnap()).thenReturn(true);
+    replaceAppEnv(toadlet, appEnv);
+
+    stubHtmlContext(ctx);
+
+    // Act
+    toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
+
+    // Assert
+    verify(ctx)
+        .sendReplyHeaders(eq(200), eq("OK"), isNull(), eq("text/html; charset=utf-8"), anyLong());
+    String html = captureWrittenHtml(ctx);
+    assertTrue(html.contains("cannot perform snap installs"));
+    assertTrue(html.contains("sudo snap install network.crypta"));
+  }
+
   private static void stubHtmlContext(ToadletContext ctx) throws Exception {
     PageMaker pageMaker = mock(PageMaker.class);
     PageNode pageNode = mock(PageNode.class);
-    HTMLNode contentNode = new HTMLNode("div");
-    HTMLNode infoboxNode = new HTMLNode("div");
+    HTMLNode pageRoot = new HTMLNode("html");
+    HTMLNode bodyNode = pageRoot.addChild("body");
+    HTMLNode contentNode = bodyNode.addChild("div");
 
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx), any(PageMaker.RenderParameters.class)))
         .thenReturn(pageNode);
     when(pageNode.getContentNode()).thenReturn(contentNode);
-    when(pageNode.generate()).thenReturn("<html></html>");
+    when(pageNode.generate()).thenAnswer(_ -> pageRoot.generate());
     when(pageMaker.getInfobox(anyString(), anyString(), eq(contentNode), anyString(), eq(true)))
-        .thenReturn(infoboxNode);
+        .thenAnswer(
+            invocation ->
+                contentNode.addChild(
+                    "div", "class", "infobox " + invocation.getArgument(0, String.class)));
 
     doNothing().when(ctx).sendReplyHeaders(anyInt(), anyString(), any(), any(), anyLong());
     doNothing().when(ctx).writeData(any(), anyInt(), anyInt());
+  }
+
+  private static String captureWrittenHtml(ToadletContext ctx) throws Exception {
+    ArgumentCaptor<byte[]> dataCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> offsetCaptor = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<Integer> lengthCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(ctx).writeData(dataCaptor.capture(), offsetCaptor.capture(), lengthCaptor.capture());
+    return new String(
+        dataCaptor.getValue(),
+        offsetCaptor.getValue(),
+        lengthCaptor.getValue(),
+        StandardCharsets.UTF_8);
   }
 
   private static void replaceAppEnv(CoreActionToadlet toadlet, AppEnv appEnv) throws Exception {

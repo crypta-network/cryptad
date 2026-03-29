@@ -22,7 +22,6 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.SplitfileProgressEvent;
-import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
@@ -31,6 +30,7 @@ import network.crypta.node.Version;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.io.FileBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -556,7 +556,7 @@ public class CoreUpdater extends NodeUpdater {
       links.addChild(buildOpenStoreForm(kind, id, storeUrl));
       links.addChild("#", "  ");
     } else if (hasText(storeUrl)) {
-      links.addChild("a", "href", ExternalLinkToadlet.escape(storeUrl), "Open in Store");
+      links.addChild("a", "href", ExternalLinkSupport.escape(storeUrl), "Open in Store");
       links.addChild("#", "  ");
     }
     return links;
@@ -564,7 +564,7 @@ public class CoreUpdater extends NodeUpdater {
 
   private static void addReleaseNotesLink(HTMLNode links, String releasePageUrl) {
     if (hasText(releasePageUrl)) {
-      links.addChild("a", "href", ExternalLinkToadlet.escape(releasePageUrl), "Release Notes");
+      links.addChild("a", "href", ExternalLinkSupport.escape(releasePageUrl), "Release Notes");
       links.addChild("#", "  ");
     }
   }
