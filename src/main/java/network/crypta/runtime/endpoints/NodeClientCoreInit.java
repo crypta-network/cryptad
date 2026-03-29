@@ -1,9 +1,9 @@
 package network.crypta.runtime.endpoints;
 
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 
 /**
  * Bundles configuration inputs required to initialize {@link NodeClientCore}.
@@ -23,7 +23,7 @@ import network.crypta.node.NodeClientCore;
  *
  * <ul>
  *   <li>Holding the root {@link Config} and relevant {@link SubConfig} sections.
- *   <li>Providing access to the {@link SimpleToadletServer} used by HTTP toadlets.
+ *   <li>Providing access to the {@link HttpShellContainer} used by HTTP toadlets.
  *   <li>Keeping startup wiring cohesive and easy to pass across layers.
  * </ul>
  *
@@ -38,10 +38,10 @@ import network.crypta.node.NodeClientCore;
  * @param config root configuration container used by client-core subsystems; may be {@code null}
  * @param nodeConfig node-specific sub-configuration used during initialization; may be {@code null}
  * @param installConfig installation sub-configuration for path and store setup; may be {@code null}
- * @param toadlets HTTP toadlet server instance used for client endpoints; may be {@code null}
+ * @param toadlets HTTP shell container instance used for client endpoints; may be {@code null}
  * @see NodeClientCore
  * @see NodeClientPersistence
  * @see ClientEndpoints
  */
 public record NodeClientCoreInit(
-    Config config, SubConfig nodeConfig, SubConfig installConfig, SimpleToadletServer toadlets) {}
+    Config config, SubConfig nodeConfig, SubConfig installConfig, HttpShellContainer toadlets) {}

@@ -1,7 +1,6 @@
 package network.crypta.runtime.services;
 
 import java.io.File;
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.BooleanCallback;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
@@ -21,6 +20,8 @@ import network.crypta.runtime.alerts.TimeSkewDetectedUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.endpoints.http.HttpShellContainers;
 import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
@@ -28,8 +29,8 @@ import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -43,8 +44,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -70,14 +71,18 @@ class NodeServicesSubsystemTest {
   void startWebInterface_whenInitialized_startsAndExposesToadletServer() throws Exception {
     NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
     when(config.createSubConfig("fproxy")).thenReturn(subConfig);
+    HttpShellContainer toadlets = mock(HttpShellContainer.class);
 
-    try (MockedConstruction<SimpleToadletServer> construction =
-        mockConstruction(SimpleToadletServer.class)) {
+    try (MockedStatic<HttpShellContainers> factoryMock = mockStatic(HttpShellContainers.class)) {
+      factoryMock.when(() -> HttpShellContainers.create(subConfig, executor)).thenReturn(toadlets);
+
       subsystem.startWebInterface(config, executor);
 
-      assertSame(construction.constructed().getFirst(), subsystem.toadlets());
-      verify(subConfig).finishedInitialization();
-      verify(construction.constructed().getFirst()).start();
+      assertSame(toadlets, subsystem.toadlets());
+      InOrder order = inOrder(subConfig, toadlets);
+      order.verify(subConfig).finishedInitialization();
+      order.verify(toadlets).start();
+      factoryMock.verify(() -> HttpShellContainers.create(subConfig, executor));
     }
   }
 

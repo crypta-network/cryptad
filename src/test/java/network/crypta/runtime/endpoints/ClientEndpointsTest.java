@@ -3,13 +3,13 @@ package network.crypta.runtime.endpoints;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class ClientEndpointsTest {
 
   @Mock private FCPServer fcpServer;
   @Mock private TextModeClientInterfaceServer tmci;
-  @Mock private SimpleToadletServer toadletContainer;
+  @Mock private HttpShellContainer toadletContainer;
   @Mock private FProxyToadlet fproxy;
   @Mock private TextModeClientInterface directTmci;
   @Mock private UserAlertManager userAlertManager;
@@ -168,7 +168,7 @@ class ClientEndpointsTest {
   @Test
   void create_whenDatabaseHealthy_loadsFcpAndWiresEndpoints() {
     Config config = Mockito.mock(Config.class);
-    SimpleToadletServer toadlets = Mockito.mock(SimpleToadletServer.class);
+    HttpShellContainer toadlets = Mockito.mock(HttpShellContainer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
     Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);
@@ -198,7 +198,7 @@ class ClientEndpointsTest {
   @Test
   void create_whenDatabaseKilled_skipsFcpLoad() {
     Config config = Mockito.mock(Config.class);
-    SimpleToadletServer toadlets = Mockito.mock(SimpleToadletServer.class);
+    HttpShellContainer toadlets = Mockito.mock(HttpShellContainer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
     Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);

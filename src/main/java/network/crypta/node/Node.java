@@ -43,6 +43,7 @@ import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
@@ -706,7 +707,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             storage.getDatabaseKey(),
             persistentSecret);
     services.setClientCore(clientCoreLocal);
-    services.toadlets().setRuntimeSupport(new CoreHttpShellRuntimeSupport(clientCoreLocal));
+    HttpShellContainer toadlets = services.toadlets();
+    toadlets.setRuntimeSupport(new CoreHttpShellRuntimeSupport(clientCoreLocal));
 
     services.registerJvmVersionAlertIfNeeded();
 
@@ -1144,8 +1146,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       PersistentConfig config, RandomSource r, RandomSource weakRandom) throws NodeInitException {
     services.startWebInterface(config, executor);
     NativeThread entropyGatheringThread = bootstrap.createEntropyGatheringThread();
-    bootstrap.setupRandomSources(
-        r, weakRandom, services.toadlets(), entropyGatheringThread, userDir);
+    HttpShellContainer toadlets = services.toadlets();
+    bootstrap.setupRandomSources(r, weakRandom, toadlets, entropyGatheringThread, userDir);
     services.initNodeNameUserAlert();
     network.initLocationManager();
     network.initLocalhost();
@@ -1994,10 +1996,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // Note: this is a hack
     // toadlet server should start after all initialized
     // to see NodeClientCore line 437
-    if (services.toadlets().isEnabled()) {
-      services.toadlets().finishStart();
-      services.toadlets().createFproxy();
-      services.toadlets().removeStartupToadlet();
+    HttpShellContainer toadlets = services.toadlets();
+    if (toadlets.isEnabled()) {
+      toadlets.finishStart();
+      toadlets.createFproxy();
+      toadlets.removeStartupToadlet();
     }
   }
 
@@ -2030,7 +2033,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return false;
   }
 
-  /** Delete files from old BDB-index datastore. */
+  /** Delete files from the old BDB-index datastore. */
   private void deleteOldBDBIndexStoreFiles() {
     File dbDir = storage.getStoreProgramDir().file("database-" + network.darknetPortNumber());
     FileUtil.removeAll(dbDir);

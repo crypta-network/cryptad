@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.ClientContext;
@@ -12,8 +13,6 @@ import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
-import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.config.PersistentConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
@@ -23,6 +22,7 @@ import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.PriorityAwareExecutor;
@@ -68,7 +68,7 @@ class NodeClientCoreTest {
   private Node node;
 
   @Mock private SecurityLevels securityLevels;
-  @Mock private SimpleToadletServer toadlets;
+  @Mock private HttpShellContainer toadlets;
   @Mock private RequestStarterGroup requestStarters;
   @Mock private ClientRequestScheduler schedulerBulk;
   @Mock private ClientRequestScheduler schedulerRt;
@@ -266,16 +266,14 @@ class NodeClientCoreTest {
   }
 
   @Test
-  void linkFilterProvider_and_fproxyFlags_and_bookmarks_areDelegatedToToadletContainer() {
-    BookmarkManager bm = Mockito.mock(BookmarkManager.class);
-    when(toadlets.getBookmarks()).thenReturn(bm);
-    when(toadlets.getBookmarkURIs()).thenReturn(new network.crypta.keys.FreenetURI[0]);
+  void linkFilterProvider_and_fproxyFlags_areDelegatedToToadletContainer() {
+    URI uri = URI.create("http://127.0.0.1/filter");
+    when(toadlets.isLinkExcepted(uri)).thenReturn(true);
     when(toadlets.isAdvancedModeEnabled()).thenReturn(true);
     when(toadlets.isFProxyJavascriptEnabled()).thenReturn(true);
 
     assertSame(toadlets, core.getEndpoints().getToadletContainer());
-    assertSame(bm, core.getEndpoints().getToadletContainer().getBookmarks());
-    assertEquals(0, core.getEndpoints().getToadletContainer().getBookmarkURIs().length);
+    assertTrue(core.getEndpoints().getToadletContainer().isLinkExcepted(uri));
     assertTrue(core.isAdvancedModeEnabled());
     assertTrue(core.isFProxyJavascriptEnabled());
   }

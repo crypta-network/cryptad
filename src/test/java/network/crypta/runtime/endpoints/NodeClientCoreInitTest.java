@@ -1,8 +1,8 @@
 package network.crypta.runtime.endpoints;
 
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -17,7 +17,7 @@ class NodeClientCoreInitTest {
   @Mock private Config config;
   @Mock private SubConfig nodeConfig;
   @Mock private SubConfig installConfig;
-  @Mock private SimpleToadletServer toadlets;
+  @Mock private HttpShellContainer toadlets;
 
   @Test
   void constructor_withNonNullDependencies_storesReferences() {
