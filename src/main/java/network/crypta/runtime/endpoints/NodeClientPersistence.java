@@ -9,11 +9,9 @@ import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
-import network.crypta.clients.fcp.ClientRequest;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
@@ -24,9 +22,8 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.Persistable;
-import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
-import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
-import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
+import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestServices;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
@@ -43,9 +40,10 @@ import network.crypta.support.io.TempBucketFactory;
  * <p>This helper isolates the construction of persistence infrastructure that would otherwise
  * sprawl across the client-core initialization flow. Callers typically construct an instance early
  * in node startup, configure disk-checking factories once storage directories are known, and then
- * use it to build the {@link ClientContext} and FCP server wiring. The instance owns a shared
- * {@link PersistentRequestRoot} so persistent request registration is consistent across the
- * client-layer components it creates.
+ * use it to build the {@link ClientContext} and FCP endpoint wiring. Concrete persistent-request
+ * infrastructure is hidden behind the bridge package, so registration remains consistent across the
+ * client-layer components it creates without exposing concrete FCP endpoint or owner types directly
+ * from this package.
  *
  * <p>State is initialized in stages: the disk checker and persistent RAF factory are {@code null}
  * until {@link #initDiskChecker(FilenameGenerator, File, long, TempBucketFactory, boolean)} is
@@ -57,21 +55,23 @@ import network.crypta.support.io.TempBucketFactory;
  * <ul>
  *   <li>Creating and starting a configurable persister for throttle state.
  *   <li>Building persistent random-access buffer factories with optional encryption.
- *   <li>Exposing persistent requests and wiring FCP server state.
- *   <li>Constructing {@link ClientContext} with shared persistent roots.
+ *   <li>Exposing persistent requests and wiring the FCP endpoint handle.
+ *   <li>Constructing {@link ClientContext} with shared persistent-request coordination.
  * </ul>
  *
  * @see NodeClientCore
  * @see ClientContext
- * @see PersistentRequestRoot
  */
 public final class NodeClientPersistence {
   private final ConfigurablePersister persister;
-  private final PersistentRequestRoot persistentRoot = new PersistentRequestRoot();
+  private final FcpPersistentRequestServices fcpPersistentRequestServices =
+      new FcpPersistentRequestServices();
+  private final PersistentRequestCoordinator persistentRequestCoordinator =
+      fcpPersistentRequestServices.coordinator();
   private final PersistentRequestCatalog persistentRequestCatalog =
-      new CoreFcpPersistentRequestCatalog(persistentRoot);
+      fcpPersistentRequestServices.catalog();
   private final PersistentRequestRecoveryCodec persistentRequestRecoveryCodec =
-      new FcpPersistentRequestRecoveryCodec();
+      fcpPersistentRequestServices.recoveryCodec();
   private DiskSpaceCheckingRandomAccessBufferFactory diskChecker;
   private MaybeEncryptedRandomAccessBufferFactory persistentRafFactory;
   private final int sortOrderAfter;
@@ -268,50 +268,49 @@ public final class NodeClientPersistence {
   }
 
   /**
-   * Creates the FCP server configured for this node and client core.
+   * Creates the FCP endpoint handle configured for this node and client core.
    *
-   * <p>The server is constructed via a local dependency bundle, so the remaining core-backed
-   * runtime adapters stay localized to the FCP bootstrap seam. It shares this instance's persistent
-   * request root so durable requests can be managed consistently across reconnections.
+   * <p>The endpoint is constructed via a local dependency bundle, so the remaining core-backed
+   * runtime adapters stay localized to the FCP bootstrap seam. The persistent request
+   * implementation is supplied by the bridge package and remains hidden behind the seam.
    *
    * @param node node instance supplying configuration and shared services.
-   * @param core client core used by the FCP server for callbacks.
+   * @param core client core used by the FCP endpoint for callbacks.
    * @param runtimePorts runtime SPI bridge passed to the FCP infrastructure.
-   * @return the configured FCP server instance from {@code maybeCreate}.
+   * @return the configured FCP endpoint handle from the bridge seam.
    */
-  public FCPServer createFcpServer(Node node, NodeClientCore core, RuntimePorts runtimePorts) {
-    return FCPServer.maybeCreate(
-        CoreFcpServerDependenciesFactory.create(core, runtimePorts, persistentRoot),
-        node.getConfig());
+  public FcpEndpointHandle createFcpEndpointHandle(
+      Node node, NodeClientCore core, RuntimePorts runtimePorts) {
+    return fcpPersistentRequestServices.createEndpointHandle(node, core, runtimePorts);
   }
 
   /**
    * Returns a snapshot of all currently registered persistent requests.
    *
-   * <p>The snapshot is provided by the shared {@link PersistentRequestRoot} and may include global
-   * and per-client persistent requests. The returned array is a point-in-time view; later request
-   * registrations or removals are not reflected in the array. The concrete request instances may
-   * still be {@link ClientRequest} objects, but callers should depend on the narrower persistent
-   * request handle seam.
+   * <p>The snapshot is provided by the bridge-owned persistent request services and may include
+   * global and per-client persistent requests. The returned array is a point-in-time view; later
+   * request registrations or removals are not reflected in the array. Callers should depend on the
+   * narrower persistent request handle seam rather than concrete request implementations.
    *
    * @return an array of persistent request handles; never {@code null}.
    */
   public PersistentRequestHandle[] getPersistentRequests() {
-    return persistentRoot.getPersistentRequests();
+    return fcpPersistentRequestServices.getPersistentRequests();
   }
 
   /**
    * Builds a fully wired {@link ClientContext} for client-layer operations.
    *
    * <p>This method assembles the context from the supplied schedulers, factories, and defaults,
-   * wiring in the persistent request root and disk checker owned by this instance. Callers should
-   * invoke {@link #initDiskChecker} first; otherwise a {@link NullPointerException} is thrown to
-   * signal the missing persistence wiring. The returned context is a new object and does not mutate
-   * any of the provided collaborators beyond normal constructor usage.
+   * wiring in the persistent-request coordinator and disk checker owned by this instance. Callers
+   * should invoke {@link #initDiskChecker} first; otherwise a {@link NullPointerException} is
+   * thrown to signal the missing persistence wiring. The returned context is a new object and does
+   * not mutate any of the provided collaborators beyond normal constructor usage.
    *
    * @param node node instance supplying boot id and configuration references.
    * @param params bundle of runtime, storage, service, and default context dependencies.
-   * @return newly constructed client context with wired factories and persistent root.
+   * @return newly constructed client context with wired factories and persistent-request
+   *     coordination.
    * @throws NullPointerException if the disk checker has not been initialized.
    */
   public ClientContext createClientContext(Node node, ClientContextInitParams params) {
@@ -346,7 +345,7 @@ public final class NodeClientPersistence {
             params.uskManager(),
             params.compressor(),
             params.storeChecker(),
-            persistentRoot,
+            persistentRequestCoordinator,
             init.toadlets());
     ClientContextDefaults defaults =
         new ClientContextDefaults(

@@ -109,7 +109,7 @@ public final class LegacyQueueCompletionPort implements QueueCompletionPort {
   }
 
   private FCPServer fcpServer() {
-    FCPServer fcpServer = core.getEndpoints().getFCPServer();
+    FCPServer fcpServer = FcpEndpointHandles.serverOrNull(core.getEndpoints().getFcpEndpoint());
     if (fcpServer == null) {
       throw new IllegalStateException("FCP server unavailable");
     }

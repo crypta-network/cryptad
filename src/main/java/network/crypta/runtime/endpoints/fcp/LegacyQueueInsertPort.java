@@ -394,7 +394,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
     if (clientEndpoints == null) {
       throw new RequestQueueUnavailableException("Persistent request queue unavailable");
     }
-    FCPServer fcpServer = clientEndpoints.getFCPServer();
+    FCPServer fcpServer = FcpEndpointHandles.serverOrNull(clientEndpoints.getFcpEndpoint());
     if (fcpServer == null) {
       throw new RequestQueueUnavailableException("Persistent request queue unavailable");
     }

@@ -46,7 +46,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void isEnabled_whenNoFcpServerPresent_returnsFalse() {
-    when(endpoints.getFCPServer()).thenReturn(null);
+    when(endpoints.getFcpEndpoint()).thenReturn(null);
 
     assertFalse(backend.isEnabled());
   }
@@ -60,7 +60,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void isEnabled_whenServerPresent_delegatesToEnabledFlag() {
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.isEnabled()).thenReturn(true).thenReturn(false);
 
     assertTrue(backend.isEnabled());
@@ -73,7 +73,7 @@ class FcpQueueAdminBackendTest {
     UploadFileRequestStatus uploadFile = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
     UploadDirRequestStatus uploadDir = org.mockito.Mockito.mock(UploadDirRequestStatus.class);
     RequestStatus generic = org.mockito.Mockito.mock(RequestStatus.class);
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests())
         .thenReturn(new RequestStatus[] {download, uploadFile, uploadDir, generic});
 
@@ -111,7 +111,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void getGlobalRequests_whenServerUnavailable_throwsIllegalStateException() {
-    when(endpoints.getFCPServer()).thenReturn(null);
+    when(endpoints.getFcpEndpoint()).thenReturn(null);
 
     IllegalStateException thrown =
         assertThrows(IllegalStateException.class, backend::getGlobalRequests);
@@ -123,7 +123,7 @@ class FcpQueueAdminBackendTest {
   void getGlobalRequests_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
       throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests()).thenThrow(cause);
 
     RequestQueueUnavailableException thrown =
@@ -134,7 +134,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void removeGlobalRequestBlocking_whenCalled_delegatesToServer() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.removeGlobalRequestBlocking("request-1")).thenReturn(true);
 
     assertTrue(backend.removeGlobalRequestBlocking("request-1"));
@@ -146,7 +146,7 @@ class FcpQueueAdminBackendTest {
       removeGlobalRequestBlocking_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
           throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.removeGlobalRequestBlocking("request-1")).thenThrow(cause);
 
     RequestQueueUnavailableException thrown =
@@ -159,7 +159,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void restartBlocking_whenCalled_delegatesToServer() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.restartBlocking("request-1", true)).thenReturn(true);
 
     assertTrue(backend.restartBlocking("request-1", true));
@@ -170,7 +170,7 @@ class FcpQueueAdminBackendTest {
   void restartBlocking_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
       throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.restartBlocking("request-1", false)).thenThrow(cause);
 
     RequestQueueUnavailableException thrown =
@@ -183,7 +183,7 @@ class FcpQueueAdminBackendTest {
 
   @Test
   void modifyGlobalRequestBlocking_whenCalled_delegatesToServer() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.modifyGlobalRequestBlocking("request-1", "new-token", (short) 3))
         .thenReturn(true);
 
@@ -196,7 +196,7 @@ class FcpQueueAdminBackendTest {
       modifyGlobalRequestBlocking_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
           throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.modifyGlobalRequestBlocking("request-1", null, (short) 7)).thenThrow(cause);
 
     RequestQueueUnavailableException thrown =

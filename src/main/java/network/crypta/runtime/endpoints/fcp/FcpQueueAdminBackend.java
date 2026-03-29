@@ -152,7 +152,7 @@ public final class FcpQueueAdminBackend implements QueueAdminBackend {
 
   private FCPServer fcpServerOrNull() {
     var endpoints = core.getEndpoints();
-    return endpoints == null ? null : endpoints.getFCPServer();
+    return endpoints == null ? null : FcpEndpointHandles.serverOrNull(endpoints.getFcpEndpoint());
   }
 
   private QueueRequestStatusView[] adapt(RequestStatus[] statuses) {

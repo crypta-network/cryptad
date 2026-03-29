@@ -22,7 +22,7 @@ import network.crypta.runtime.spi.RequestQueueUnavailableException;
  * not force early endpoint initialization during startup.
  *
  * <p>The adapter preserves the current queue-download behavior exactly: each request is bridged to
- * the legacy blocking persistent-global-request call, disk-download disablement is delegated to the
+ * the legacy-blocking persistent-global-request call, disk-download disablement is delegated to the
  * client core, and policy rejections and persistence failures are mapped to the SPI-specific
  * checked exceptions expected by higher layers.
  *
@@ -83,7 +83,7 @@ public final class LegacyQueueDownloadPort implements QueueDownloadPort {
   }
 
   private FCPServer fcpServer() {
-    FCPServer fcpServer = core.getEndpoints().getFCPServer();
+    FCPServer fcpServer = FcpEndpointHandles.serverOrNull(core.getEndpoints().getFcpEndpoint());
     if (fcpServer == null) {
       throw new IllegalStateException("FCP server unavailable");
     }

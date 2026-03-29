@@ -68,7 +68,7 @@ class LegacyQueueDownloadPortTest {
   @Test
   void enqueueDownload_whenCalled_resolvesFcpLazilyAndForwardsExpectedValues() throws Exception {
     when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcp));
     QueueDownloadRequest request =
         new QueueDownloadRequest(
             "CHK@", true, "text/plain", "forever", "disk", new File("/tmp/downloads"));
@@ -79,7 +79,7 @@ class LegacyQueueDownloadPortTest {
 
     ArgumentCaptor<PersistentGlobalRequestParams> paramsCaptor =
         ArgumentCaptor.forClass(PersistentGlobalRequestParams.class);
-    verify(endpoints).getFCPServer();
+    verify(endpoints).getFcpEndpoint();
     verify(fcp).makePersistentGlobalRequestBlocking(paramsCaptor.capture());
     PersistentGlobalRequestParams params = paramsCaptor.getValue();
     assertEquals("CHK@", params.fetchURI().toString());
@@ -95,7 +95,7 @@ class LegacyQueueDownloadPortTest {
   void enqueueDownload_whenNotAllowed_translatesToQueueDownloadRejectedException()
       throws Exception {
     when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcp));
     NotAllowedException cause = new NotAllowedException();
     doThrow(cause)
         .when(fcp)
@@ -115,7 +115,7 @@ class LegacyQueueDownloadPortTest {
   void enqueueDownload_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
       throws Exception {
     when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcp));
     PersistenceDisabledException cause = new PersistenceDisabledException();
     doThrow(cause)
         .when(fcp)
