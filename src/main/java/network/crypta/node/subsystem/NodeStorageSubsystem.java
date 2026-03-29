@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.crypt.DSAPublicKey;
@@ -48,6 +47,8 @@ import network.crypta.node.stats.NotAvailNodeStoreStats;
 import network.crypta.node.stats.StoreCallbackStats;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManagerStoreAlertSink;
+import network.crypta.runtime.endpoints.http.security.PasswordFormPageRenderer;
+import network.crypta.runtime.endpoints.http.security.PasswordPromptOptions;
 import network.crypta.store.BlockMetadata;
 import network.crypta.store.CHKStore;
 import network.crypta.store.FreenetStore;
@@ -499,8 +500,8 @@ public final class NodeStorageSubsystem {
         @Override
         public HTMLNode getHTMLText() {
           HTMLNode content = new HTMLNode("div");
-          network.crypta.clients.http.SecurityLevelsToadlet.generatePasswordFormPage(
-              new PasswordFormOptions(false, false, false, false, null, null),
+          PasswordFormPageRenderer.generate(
+              new PasswordPromptOptions(false, false, false, false, null, null),
               node.services().clientCore().getEndpoints().getToadletContainer(),
               content);
           return content;
@@ -755,7 +756,7 @@ public final class NodeStorageSubsystem {
   }
 
   /**
-   * Initializes datastore sizing fields during startup configuration load.
+   * Initializes datastore sizing fields during the startup configuration load.
    *
    * @param storeSize configured datastore size in bytes
    * @throws NodeInitException if the size is invalid for the current store type
@@ -830,7 +831,7 @@ public final class NodeStorageSubsystem {
   }
 
   /**
-   * Initializes client-cache sizing fields during startup configuration load.
+   * Initializes client-cache sizing fields during the startup configuration load.
    *
    * @param storeSize configured client-cache size in bytes
    * @throws NodeInitException if the configured size is below the minimum allowed size
@@ -1800,7 +1801,7 @@ public final class NodeStorageSubsystem {
    * Sets slashdot-cache entry lifetime for all slashdot stores.
    *
    * @param value new lifetime value in milliseconds
-   * @throws InvalidConfigValueException if lifetime value is negative
+   * @throws InvalidConfigValueException if the lifetime value is negative
    */
   public void setSlashdotCacheLifetime(long value) throws InvalidConfigValueException {
     if (value < 0) throw new InvalidConfigValueException("Must be positive!");
@@ -2560,7 +2561,7 @@ public final class NodeStorageSubsystem {
   }
 
   /**
-   * Switches client-cache backend type and reinitializes backing stores.
+   * Switches the client-cache backend type and reinitializes backing stores.
    *
    * @param value requested client-cache backend type
    * @throws InvalidConfigValueException if the type is invalid or initialization cannot complete

@@ -12,6 +12,7 @@ import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
@@ -467,7 +468,7 @@ class NodeClientPersistenceTest {
     client.resume(request);
 
     // Act
-    ClientRequest[] requests = persistence.getPersistentRequests();
+    PersistentRequestHandle[] requests = persistence.getPersistentRequests();
 
     // Assert
     assertTrue(Arrays.asList(requests).contains(request));

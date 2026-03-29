@@ -9,6 +9,7 @@ import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
@@ -289,11 +290,13 @@ public final class NodeClientPersistence {
    *
    * <p>The snapshot is provided by the shared {@link PersistentRequestRoot} and may include global
    * and per-client persistent requests. The returned array is a point-in-time view; later request
-   * registrations or removals are not reflected in the array.
+   * registrations or removals are not reflected in the array. The concrete request instances may
+   * still be {@link ClientRequest} objects, but callers should depend on the narrower persistent
+   * request handle seam.
    *
-   * @return an array of persistent client requests; never {@code null}.
+   * @return an array of persistent request handles; never {@code null}.
    */
-  public ClientRequest[] getPersistentRequests() {
+  public PersistentRequestHandle[] getPersistentRequests() {
     return persistentRoot.getPersistentRequests();
   }
 
