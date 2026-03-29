@@ -2,12 +2,14 @@ package network.crypta.runtime.admin;
 
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeFile;
 import network.crypta.runtime.admin.queue.QueueAdminBackend;
 import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort;
+import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
 
 /**
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
@@ -42,7 +44,8 @@ public final class AdminRuntimePortsFactory {
   public static AdminRuntimePortsBundle create(Node node, NodeClientCore core) {
     QueueAdminBackend queueBackend = new FcpQueueAdminBackend(core);
     return new AdminRuntimePortsBundle(
-        new LegacyConnectionsPagePort(node, core),
+        new LegacyConnectionsPagePort(
+            node, new HttpGeoIpCountryLookup(NodeFile.IPV4_TO_COUNTRY.getFile(node))),
         new LegacyConnectionsSupportPort(node),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),

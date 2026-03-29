@@ -8,8 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.clients.http.geoip.IPConverter.Country;
-import network.crypta.clients.http.geoip.IPConverter;
 import network.crypta.config.SubConfig;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockTransmitter;
@@ -19,8 +17,6 @@ import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeFile;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.OpennetPeerNodeStatus;
@@ -31,6 +27,8 @@ import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.PeerStatusCounts;
 import network.crypta.node.RequestTracker;
 import network.crypta.node.Version;
+import network.crypta.runtime.admin.geoip.GeoIpCountryInfo;
+import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
@@ -186,16 +184,19 @@ final class LegacyConnectionsPagePort implements ConnectionsPagePort {
   /** Shared peer manager facade used for status lookups and routing metadata. */
   private final PeerManager peers;
 
+  /** Runtime-owned GeoIP seam used to render optional country flags beside peer addresses. */
+  private final GeoIpCountryLookup geoIpCountryLookup;
+
   /**
    * Creates the daemon-side adapter for the legacy connections pages.
    *
    * @param node live node that supplies peer, routing, and bandwidth state for each render
-   * @param core live client core validated to preserve the legacy wiring contract for this adapter
+   * @param geoIpCountryLookup runtime-owned GeoIP lookup used for optional address flag rendering
    * @throws NullPointerException if either argument is {@code null}
    */
-  LegacyConnectionsPagePort(Node node, NodeClientCore core) {
+  LegacyConnectionsPagePort(Node node, GeoIpCountryLookup geoIpCountryLookup) {
     this.node = Objects.requireNonNull(node);
-    Objects.requireNonNull(core);
+    this.geoIpCountryLookup = Objects.requireNonNull(geoIpCountryLookup);
     this.stats = node.network().stats();
     this.peers = node.network().peers();
   }
@@ -841,10 +842,12 @@ final class LegacyConnectionsPagePort implements ConnectionsPagePort {
       }
 
       HTMLNode addressRow = peerRow.addChild("td", ATTR_CLASS, "peer-address");
-      IPConverter ipc = IPConverter.getInstance(NodeFile.IPV4_TO_COUNTRY.getFile(node));
-      Country country = ipc.locateIP(peerNodeStatus.getPeerAddressBytes());
-      if (country != null) {
-        country.renderFlagIcon(addressRow);
+      GeoIpCountryInfo country = geoIpCountryLookup.locate(peerNodeStatus.getPeerAddressBytes());
+      if (country != null && country.staticFlagUrl() != null) {
+        addressRow.addChild(
+            "img",
+            new String[] {"src", ATTR_CLASS, ATTR_TITLE},
+            new String[] {country.staticFlagUrl(), "flag", country.displayName()});
       }
 
       String address =
