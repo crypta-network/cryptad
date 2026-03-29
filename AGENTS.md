@@ -23,8 +23,10 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
+- **$improve-unit-test-coverage-for-current-changes** — Improve unit test coverage for the current uncommitted Java changes with targeted Gradle runs and one final full-suite pass.
 - **$cryptad-runtime-debugging** — Debug live or reproducible Cryptad JVM failures on Windows, macOS, and Linux using `jcmd`, `jdb`, thread dumps, and the default JDWP listener on `127.0.0.1:5005`.
 - **$cryptad-write-release-notes** — Draft or review GitHub release notes and changelog artifacts for Cryptad builds, including `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
+- **$write-javadoc-for-new-java-files** — Apply the repo’s `write-javadoc` workflow to every newly added non-test Java file in the current working tree or since a base ref.
 - **$cryptad-writing-guides** — Apply Cryptad prose conventions for README/docs content, release notes, migration notes, and other operator-facing writing.
 - **$cryptad-style-docs** — Apply Cryptad Java style, file layout rules, and long-lived documentation/commenting practices.
 - **$web-search** — Use both Exa and Tavily for external/current web research, then cross-check sources before answering.
@@ -56,7 +58,9 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **Release operations:** For `release/<build-number>` branch creation/stabilization, version bumping, tagging, and merge-back flow, load `$cryptad-release-workflow`.
 - **Release notes/changelog:** For GitHub Releases or changelog artifact work, load `$cryptad-write-release-notes` and `$cryptad-writing-guides`.
 - **Hotfix operations:** For urgent production fixes via `hotfix/<build-number>`, including tags and back-merges, load `$cryptad-hotfix-workflow`.
+- **Coverage work for local changes:** When improving unit coverage for the current uncommitted Java diff, load `$improve-unit-test-coverage-for-current-changes`.
 - **Prose/Javadoc writing:** For README/docs/release-note writing, and when using the generic `write-javadoc` skill in this repo, also load `$cryptad-writing-guides`.
+- **New Java file Javadoc:** When newly added non-test Java files need package/class/member docs, load `$write-javadoc-for-new-java-files` and `$cryptad-writing-guides`.
 - **Web research:** For the latest/current external information or multi-source fact checks, load `$web-search`.
 
 ## Quick commands (high-level)
