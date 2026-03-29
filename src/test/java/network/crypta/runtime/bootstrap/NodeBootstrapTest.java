@@ -1,8 +1,6 @@
 package network.crypta.runtime.bootstrap;
 
 import java.util.Random;
-import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.StartupToadlet;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppDirs;
@@ -11,6 +9,7 @@ import network.crypta.fs.ServiceDirs;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.ProgramDirectory;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -236,12 +235,9 @@ class NodeBootstrapTest {
     NodeBootstrap bootstrap = new NodeBootstrap(mock(Node.class));
     RandomSource randomSource = mock(RandomSource.class);
     RandomSource weakRandom = mock(RandomSource.class);
-    SimpleToadletServer toadletServer = mock(SimpleToadletServer.class);
-    StartupToadlet startupToadlet = mock(StartupToadlet.class);
+    HttpShellContainer toadletServer = mock(HttpShellContainer.class);
     NativeThread entropyThread = mock(NativeThread.class);
     ProgramDirectory userDir = mock(ProgramDirectory.class);
-
-    when(toadletServer.getStartupToadlet()).thenReturn(startupToadlet);
 
     bootstrap.setupRandomSources(randomSource, weakRandom, toadletServer, entropyThread, userDir);
 
@@ -249,7 +245,7 @@ class NodeBootstrapTest {
     assertSame(NodeStarter.getGlobalSecureRandom(), bootstrap.secureRandom());
     assertSame(weakRandom, bootstrap.fastWeakRandom());
     assertTrue(bootstrap.isPrngReady());
-    verify(startupToadlet).setIsPRNGReady();
+    verify(toadletServer).markStartupPrngReady();
     verify(entropyThread, never()).start();
   }
 
@@ -259,19 +255,16 @@ class NodeBootstrapTest {
     NodeBootstrap spyBootstrap = org.mockito.Mockito.spy(bootstrap);
     RandomSource randomSource = mock(RandomSource.class);
     Random fallbackRandom = new Random(7);
-    SimpleToadletServer toadletServer = mock(SimpleToadletServer.class);
-    StartupToadlet startupToadlet = mock(StartupToadlet.class);
+    HttpShellContainer toadletServer = mock(HttpShellContainer.class);
     NativeThread entropyThread = mock(NativeThread.class);
     ProgramDirectory userDir = mock(ProgramDirectory.class);
-
-    when(toadletServer.getStartupToadlet()).thenReturn(startupToadlet);
     doReturn(fallbackRandom).when(spyBootstrap).createRandom();
 
     spyBootstrap.setupRandomSources(randomSource, null, toadletServer, entropyThread, userDir);
 
     verify(spyBootstrap).createRandom();
     assertSame(fallbackRandom, spyBootstrap.fastWeakRandom());
-    verify(startupToadlet).setIsPRNGReady();
+    verify(toadletServer).markStartupPrngReady();
     verify(entropyThread, never()).start();
   }
 

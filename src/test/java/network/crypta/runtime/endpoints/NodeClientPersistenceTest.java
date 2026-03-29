@@ -18,7 +18,6 @@ import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpServerDependencies;
 import network.crypta.clients.fcp.PersistentRequestClient;
 import network.crypta.clients.fcp.PersistentRequestRoot;
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -33,6 +32,7 @@ import network.crypta.node.Persistable;
 import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
 import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
 import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -274,7 +274,7 @@ class NodeClientPersistenceTest {
             mock(Config.class),
             mock(SubConfig.class),
             mock(SubConfig.class),
-            mock(SimpleToadletServer.class));
+            mock(HttpShellContainer.class));
     FetchContext defaultFetchContext = mock(FetchContext.class);
     InsertContext defaultInsertContext = mock(InsertContext.class);
 
@@ -351,7 +351,7 @@ class NodeClientPersistenceTest {
     RealCompressor compressor = mock(RealCompressor.class);
     DatastoreChecker storeChecker = mock(DatastoreChecker.class);
     MasterSecret cryptoSecretTransient = new MasterSecret(new byte[64]);
-    SimpleToadletServer toadlets = mock(SimpleToadletServer.class);
+    HttpShellContainer toadlets = mock(HttpShellContainer.class);
     NodeClientCoreInit init =
         new NodeClientCoreInit(config, mock(SubConfig.class), mock(SubConfig.class), toadlets);
     FetchContext defaultFetchContext = mock(FetchContext.class);
@@ -454,7 +454,7 @@ class NodeClientPersistenceTest {
                 config,
                 mock(SubConfig.class),
                 mock(SubConfig.class),
-                mock(SimpleToadletServer.class)),
+                mock(HttpShellContainer.class)),
             mock(FetchContext.class),
             mock(InsertContext.class));
     ClientContext context = persistence.createClientContext(node, params);

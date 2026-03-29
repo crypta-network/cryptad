@@ -1,7 +1,6 @@
 package network.crypta.runtime.services;
 
 import java.io.File;
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.BooleanCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
@@ -19,10 +18,11 @@ import network.crypta.runtime.alerts.SimpleUserAlert;
 import network.crypta.runtime.alerts.TimeSkewDetectedUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.endpoints.http.HttpShellContainers;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
-import network.crypta.support.io.ArrayBucketFactory;
 
 /**
  * Wires node-facing services such as the web UI, diagnostics, updater, and alert helpers.
@@ -54,7 +54,7 @@ import network.crypta.support.io.ArrayBucketFactory;
  */
 public final class NodeServicesSubsystem {
   private final Node node;
-  private SimpleToadletServer toadlets;
+  private HttpShellContainer toadlets;
   private network.crypta.node.NodeClientCore clientCore;
   private network.crypta.runtime.updater.NodeUpdateManager nodeUpdater;
   private DefaultNodeDiagnostics nodeDiagnostics;
@@ -82,7 +82,7 @@ public final class NodeServicesSubsystem {
   /**
    * Starts the FProxy web interface using the provided configuration and executor.
    *
-   * <p>This method creates a dedicated {@link SimpleToadletServer} instance, finalizes the
+   * <p>This method creates a dedicated {@link HttpShellContainer} instance, finalizes the
    * corresponding {@code fproxy} sub-configuration, and starts the HTTP listener. It is expected to
    * be called once during startup; repeated calls replace the stored reference but may leak
    * resources if an existing server is still running. Configuration errors are wrapped into a
@@ -96,7 +96,7 @@ public final class NodeServicesSubsystem {
       throws NodeInitException {
     SubConfig fproxyConfig = config.createSubConfig("fproxy");
     try {
-      toadlets = new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor);
+      toadlets = HttpShellContainers.create(fproxyConfig, executor);
       fproxyConfig.finishedInitialization();
       toadlets.start();
     } catch (InvalidConfigValueException e4) {
@@ -106,7 +106,7 @@ public final class NodeServicesSubsystem {
   }
 
   /**
-   * Returns the current FProxy toadlet server instance if one has been started.
+   * Returns the current HTTP shell container if one has been started.
    *
    * <p>The reference is assigned by {@link #startWebInterface(PersistentConfig,
    * PriorityAwareExecutor)} and remains {@code null} until that method succeeds. Callers should
@@ -114,9 +114,9 @@ public final class NodeServicesSubsystem {
    * accessor performs no synchronization, so callers should handle {@code null} during early
    * startup.
    *
-   * @return the active {@link SimpleToadletServer}, or {@code null} if not started yet.
+   * @return the active {@link HttpShellContainer}, or {@code null} if not started yet.
    */
-  public SimpleToadletServer toadlets() {
+  public HttpShellContainer toadlets() {
     return toadlets;
   }
 

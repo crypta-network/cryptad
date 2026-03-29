@@ -4,28 +4,28 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
-import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 
 /**
- * Bundles client-facing endpoints (FCP, TMCI, and HTTP toadlet container) and their lifecycle.
+ * Bundles client-facing endpoints (FCP, TMCI, and HTTP shell container) and their lifecycle.
  *
  * <p>This type centralizes the node's externally visible interfaces so callers can wire them
  * consistently during startup and expose simple accessors during runtime. It holds the FCP server,
- * the optional text-mode interface, and the HTTP toadlet container, and it exposes a small set of
+ * the optional text-mode interface, and the HTTP shell container, and it exposes a small set of
  * methods that delegate to those collaborators. Typical usage is to build an instance during node
  * initialization, register any startup alerts, and then start the endpoints once the core is ready.
  *
  * <p>Thread-safety is limited to safe publication of a small set of references via atomic holders;
  * the underlying endpoint implementations define their own concurrency guarantees. Callers should
- * avoid mutating endpoint state concurrently unless the respective component documents that it is
- * safe to do so.
+ * avoid mutating the endpoint state concurrently unless the respective component documents that it
+ * is safe to do so.
  *
  * <ul>
  *   <li>Holds the endpoint instances and exposes read-only accessors.
@@ -34,13 +34,13 @@ import network.crypta.support.io.TempBucketFactory;
  * </ul>
  *
  * @see FCPServer
- * @see SimpleToadletServer
+ * @see HttpShellContainer
  * @see TextModeClientInterfaceServer
  */
 public final class ClientEndpoints {
   private final FCPServer fcpServer;
   private final TextModeClientInterfaceServer tmci;
-  private final SimpleToadletServer toadletContainer;
+  private final HttpShellContainer toadletContainer;
   private final AtomicReference<TextModeClientInterface> directTMCI = new AtomicReference<>();
   private final AtomicReference<FProxyToadlet> fproxy = new AtomicReference<>();
   private UserAlert startingUpAlert;
@@ -70,12 +70,12 @@ public final class ClientEndpoints {
    *
    * @param fcpServer FCP server instance to expose and manage for the node.
    * @param tmci text-mode client interface server, or {@code null} when disabled.
-   * @param toadletContainer HTTP toadlet container used for browser-facing endpoints.
+   * @param toadletContainer HTTP shell container used for browser-facing endpoints.
    */
   public ClientEndpoints(
       FCPServer fcpServer,
       TextModeClientInterfaceServer tmci,
-      SimpleToadletServer toadletContainer) {
+      HttpShellContainer toadletContainer) {
     this.fcpServer = fcpServer;
     this.tmci = tmci;
     this.toadletContainer = toadletContainer;
@@ -85,7 +85,7 @@ public final class ClientEndpoints {
    * Returns the FCP server associated with this bundle.
    *
    * <p>The returned reference is the same instance supplied at construction time and is not wrapped
-   * or proxied. The call is inexpensive and side-effect free, and it does not guarantee that the
+   * or proxied. The call is inexpensive and side-effect-free, and it does not guarantee that the
    * server has been started or loaded. Use it when wiring other components that already manage the
    * server lifecycle.
    *
@@ -112,10 +112,10 @@ public final class ClientEndpoints {
   /**
    * Sets the FProxy toadlet reference to expose via {@link #getFProxy()}.
    *
-   * <p>The provided reference is stored as-is and can be {@code null} to clear a previous value. No
-   * additional registration or lifecycle actions are performed by this method, so callers must
-   * ensure the toadlet is registered with the container elsewhere if required. The update becomes
-   * visible to other threads via the atomic reference.
+   * <p>The provided reference is stored as-is and can be {@code null} to clear a previous value.
+   * This method performs no additional registration or lifecycle actions, so callers must ensure
+   * the toadlet is registered with the container elsewhere if required. The update becomes visible
+   * to other threads via the atomic reference.
    *
    * @param fproxy FProxy toadlet instance to publish, or {@code null} to clear.
    */
@@ -124,7 +124,7 @@ public final class ClientEndpoints {
   }
 
   /**
-   * Returns the HTTP toadlet container used by this bundle.
+   * Returns the HTTP shell container used by this bundle.
    *
    * <p>The container is expected to be non-null and shared with other components that register
    * toadlets. This method simply returns the stored reference without modification and does not
@@ -133,12 +133,12 @@ public final class ClientEndpoints {
    *
    * @return the toadlet container instance for HTTP endpoints and requests.
    */
-  public SimpleToadletServer getToadletContainer() {
+  public HttpShellContainer getToadletContainer() {
     return toadletContainer;
   }
 
   /**
-   * Returns the text-mode client interface server, if one was created.
+   * Returns the text-mode client interface server if one was created.
    *
    * <p>The text-mode interface is optional and may be {@code null} when disabled by configuration.
    * Callers must handle the absence of this endpoint and should not attempt to start it directly
@@ -206,12 +206,12 @@ public final class ClientEndpoints {
   }
 
   /**
-   * Configures the bucket factory used by the HTTP toadlet container.
+   * Configures the bucket factory used by the HTTP shell container.
    *
-   * <p>The provided factory is passed directly to {@link SimpleToadletServer#setBucketFactory} and
+   * <p>The provided factory is passed directly to {@link HttpShellContainer#setBucketFactory} and
    * becomes the source of temporary buckets for future requests. The method does not validate the
    * factory beyond the container's own checks, and it does not create any buckets immediately.
-   * Configuration applies to subsequent requests only.
+   * Configuration applies to later requests only.
    *
    * @param tempBucketFactory bucket factory to install for temporary storage.
    */
@@ -264,10 +264,10 @@ public final class ClientEndpoints {
   /**
    * Returns whether the toadlet container is in advanced mode.
    *
-   * <p>This is a simple delegation to {@link SimpleToadletServer#isAdvancedModeEnabled()} and has
-   * no side effects. The returned value reflects the container's current configuration and may
-   * change if that configuration is updated elsewhere. It does not imply any access control
-   * changes. It is read-only.
+   * <p>This is a simple delegation to {@link HttpShellContainer#isAdvancedModeEnabled()} and has no
+   * side effects. The returned value reflects the container's current configuration and may change
+   * if that configuration is updated elsewhere. It does not imply any access control changes. It is
+   * read-only.
    *
    * @return {@code true} when advanced mode is enabled, otherwise {@code false}.
    */
@@ -278,7 +278,7 @@ public final class ClientEndpoints {
   /**
    * Returns whether FProxy JavaScript support is enabled.
    *
-   * <p>This is a direct delegation to {@link SimpleToadletServer#isFProxyJavascriptEnabled()} and
+   * <p>This is a direct delegation to {@link HttpShellContainer#isFProxyJavascriptEnabled()} and
    * does not alter the container state. The return value is a snapshot of the container's current
    * configuration at the time of the call. It does not enable or disable scripts. It is
    * informational only.
@@ -294,11 +294,11 @@ public final class ClientEndpoints {
    *
    * <p>The method conditionally creates the text-mode interface server, creates an FCP server via
    * the persistence layer, and registers that server as the download cache in the client context.
-   * If the node has not killed its database, it loads persistent requests immediately. No endpoints
-   * are started by this method; callers typically invoke {@link #maybeStart()} once the node is
-   * ready. When direct TMCI is enabled, it is created but not started; callers must register it on
-   * the endpoints bundle and schedule it after {@link NodeClientCore#getEndpoints()} is assigned.
-   * The returned instance captures the created references and does not perform any additional
+   * If the node has not killed its database, it loads persistent requests immediately. This method
+   * starts no endpoints; callers typically invoke {@link #maybeStart()} once the node is ready.
+   * When direct TMCI is enabled, it is created but not started; callers must register it on the
+   * endpoint bundle and schedule it after {@link NodeClientCore#getEndpoints()} is assigned. The
+   * returned instance captures the created references and does not perform any additional
    * initialization beyond the steps described above.
    *
    * <pre>{@code
@@ -313,8 +313,7 @@ public final class ClientEndpoints {
    * @param init initializer providing configuration and toadlet container access.
    * @param persistence persistence layer responsible for creating the FCP server.
    * @param clientContext client context updated with the FCP download cache.
-   * @return an {@link InitResult} containing the endpoints bundle and optional direct TMCI
-   *     instance.
+   * @return an {@link InitResult} containing the endpoint bundle and optional direct TMCI instance.
    */
   public static InitResult create(
       Node node,
