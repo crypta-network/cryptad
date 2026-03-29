@@ -81,7 +81,7 @@ public final class FcpQueuePageBackend implements QueuePageBackend {
 
   private FCPServer fcpServerOrNull() {
     var endpoints = core.getEndpoints();
-    return endpoints == null ? null : endpoints.getFCPServer();
+    return endpoints == null ? null : FcpEndpointHandles.serverOrNull(endpoints.getFcpEndpoint());
   }
 
   private QueuePageRequestView[] adapt(RequestStatus[] statuses) {

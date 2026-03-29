@@ -1,7 +1,6 @@
 package network.crypta.runtime.endpoints;
 
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.config.Config;
 import network.crypta.node.Node;
@@ -9,6 +8,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(MockitoExtension.class)
 class ClientEndpointsTest {
 
-  @Mock private FCPServer fcpServer;
+  @Mock private FcpEndpointHandle fcpEndpoint;
   @Mock private TextModeClientInterfaceServer tmci;
   @Mock private HttpShellContainer toadletContainer;
   @Mock private FProxyToadlet fproxy;
@@ -45,9 +45,9 @@ class ClientEndpointsTest {
 
   @Test
   void constructor_whenProvidedDependencies_returnsSameInstances() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
-    assertSame(fcpServer, endpoints.getFCPServer());
+    assertSame(fcpEndpoint, endpoints.getFcpEndpoint());
     assertSame(tmci, endpoints.getTextModeClientInterface());
     assertSame(toadletContainer, endpoints.getToadletContainer());
     assertNull(endpoints.getFProxy());
@@ -56,7 +56,7 @@ class ClientEndpointsTest {
 
   @Test
   void setFProxy_whenAssigned_updatesGetter() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.setFProxy(fproxy);
 
@@ -65,7 +65,7 @@ class ClientEndpointsTest {
 
   @Test
   void setDirectTMCI_whenAssigned_updatesGetter() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.setDirectTMCI(directTmci);
 
@@ -74,36 +74,36 @@ class ClientEndpointsTest {
 
   @Test
   void loadPersistentRequestsIfNeeded_whenCalled_loadInvoked() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.loadPersistentRequestsIfNeeded();
 
-    Mockito.verify(fcpServer).load();
+    Mockito.verify(fcpEndpoint).load();
   }
 
   @Test
   void maybeStart_whenTmciPresent_startsFcpAndTmci() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.maybeStart();
 
-    Mockito.verify(fcpServer).maybeStart();
+    Mockito.verify(fcpEndpoint).maybeStart();
     Mockito.verify(tmci).start();
   }
 
   @Test
   void maybeStart_whenTmciNull_startsFcpOnly() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, null, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, null, toadletContainer);
 
     endpoints.maybeStart();
 
-    Mockito.verify(fcpServer).maybeStart();
+    Mockito.verify(fcpEndpoint).maybeStart();
   }
 
   @Test
   void configureBucketFactory_whenCalled_delegatesToToadletContainer() {
     TempBucketFactory tempBucketFactory = Mockito.mock(TempBucketFactory.class);
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.configureBucketFactory(tempBucketFactory);
 
@@ -112,7 +112,7 @@ class ClientEndpointsTest {
 
   @Test
   void registerStartupAlerts_whenCalled_registersAlertAndStoresForUnregister() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
     UserAlert alert = Mockito.mock(UserAlert.class);
     String title = "Title";
     String longText = "Long";
@@ -138,7 +138,7 @@ class ClientEndpointsTest {
 
   @Test
   void unregisterStartupAlert_whenMissing_doesNothing() {
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     endpoints.unregisterStartupAlert(userAlertManager);
 
@@ -148,7 +148,7 @@ class ClientEndpointsTest {
   @Test
   void isAdvancedModeEnabled_whenQueried_delegatesToToadletContainer() {
     Mockito.when(toadletContainer.isAdvancedModeEnabled()).thenReturn(true);
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     boolean enabled = endpoints.isAdvancedModeEnabled();
 
@@ -158,7 +158,7 @@ class ClientEndpointsTest {
   @Test
   void isFProxyJavascriptEnabled_whenQueried_delegatesToToadletContainer() {
     Mockito.when(toadletContainer.isFProxyJavascriptEnabled()).thenReturn(false);
-    ClientEndpoints endpoints = new ClientEndpoints(fcpServer, tmci, toadletContainer);
+    ClientEndpoints endpoints = new ClientEndpoints(fcpEndpoint, tmci, toadletContainer);
 
     boolean enabled = endpoints.isFProxyJavascriptEnabled();
 
@@ -171,7 +171,8 @@ class ClientEndpointsTest {
     HttpShellContainer toadlets = Mockito.mock(HttpShellContainer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
-    Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);
+    Mockito.when(persistence.createFcpEndpointHandle(node, core, runtimePorts))
+        .thenReturn(fcpEndpoint);
     Mockito.when(core.killedDatabase()).thenReturn(false);
 
     try (MockedStatic<TextModeClientInterfaceServer> tmciMock =
@@ -184,15 +185,15 @@ class ClientEndpointsTest {
           ClientEndpoints.create(node, core, runtimePorts, init, persistence, clientContext);
       ClientEndpoints endpoints = initResult.endpoints();
 
-      assertSame(fcpServer, endpoints.getFCPServer());
+      assertSame(fcpEndpoint, endpoints.getFcpEndpoint());
       assertSame(tmci, endpoints.getTextModeClientInterface());
       assertSame(toadlets, endpoints.getToadletContainer());
       tmciMock.verify(() -> TextModeClientInterfaceServer.maybeCreate(node, core, config));
     }
 
-    Mockito.verify(persistence).createFcpServer(node, core, runtimePorts);
-    Mockito.verify(clientContext).setDownloadCache(fcpServer);
-    Mockito.verify(fcpServer).load();
+    Mockito.verify(persistence).createFcpEndpointHandle(node, core, runtimePorts);
+    Mockito.verify(clientContext).setDownloadCache(fcpEndpoint);
+    Mockito.verify(fcpEndpoint).load();
   }
 
   @Test
@@ -201,7 +202,8 @@ class ClientEndpointsTest {
     HttpShellContainer toadlets = Mockito.mock(HttpShellContainer.class);
     NodeClientCoreInit init = new NodeClientCoreInit(config, null, null, toadlets);
 
-    Mockito.when(persistence.createFcpServer(node, core, runtimePorts)).thenReturn(fcpServer);
+    Mockito.when(persistence.createFcpEndpointHandle(node, core, runtimePorts))
+        .thenReturn(fcpEndpoint);
     Mockito.when(core.killedDatabase()).thenReturn(true);
 
     try (MockedStatic<TextModeClientInterfaceServer> tmciMock =
@@ -214,12 +216,12 @@ class ClientEndpointsTest {
           ClientEndpoints.create(node, core, runtimePorts, init, persistence, clientContext);
       ClientEndpoints endpoints = initResult.endpoints();
 
-      assertSame(fcpServer, endpoints.getFCPServer());
+      assertSame(fcpEndpoint, endpoints.getFcpEndpoint());
       assertSame(tmci, endpoints.getTextModeClientInterface());
       assertSame(toadlets, endpoints.getToadletContainer());
     }
 
-    Mockito.verify(fcpServer, Mockito.never()).load();
-    Mockito.verify(clientContext).setDownloadCache(fcpServer);
+    Mockito.verify(fcpEndpoint, Mockito.never()).load();
+    Mockito.verify(clientContext).setDownloadCache(fcpEndpoint);
   }
 }

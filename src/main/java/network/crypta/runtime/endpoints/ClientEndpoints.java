@@ -2,13 +2,13 @@ package network.crypta.runtime.endpoints;
 
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeClientCoreSupport;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
@@ -17,10 +17,11 @@ import network.crypta.support.io.TempBucketFactory;
  * Bundles client-facing endpoints (FCP, TMCI, and HTTP shell container) and their lifecycle.
  *
  * <p>This type centralizes the node's externally visible interfaces so callers can wire them
- * consistently during startup and expose simple accessors during runtime. It holds the FCP server,
- * the optional text-mode interface, and the HTTP shell container, and it exposes a small set of
- * methods that delegate to those collaborators. Typical usage is to build an instance during node
- * initialization, register any startup alerts, and then start the endpoints once the core is ready.
+ * consistently during startup and expose simple accessors during runtime. It holds the FCP endpoint
+ * handle, the optional text-mode interface, and the HTTP shell container, and it exposes a small
+ * set of methods that delegate to those collaborators. Typical usage is to build an instance during
+ * node initialization, register any startup alerts, and then start the endpoints once the core is
+ * ready.
  *
  * <p>Thread-safety is limited to safe publication of a small set of references via atomic holders;
  * the underlying endpoint implementations define their own concurrency guarantees. Callers should
@@ -33,12 +34,11 @@ import network.crypta.support.io.TempBucketFactory;
  *   <li>Registers and unregisters a startup alert during initialization.
  * </ul>
  *
- * @see FCPServer
  * @see HttpShellContainer
  * @see TextModeClientInterfaceServer
  */
 public final class ClientEndpoints {
-  private final FCPServer fcpServer;
+  private final FcpEndpointHandle fcpEndpoint;
   private final TextModeClientInterfaceServer tmci;
   private final HttpShellContainer toadletContainer;
   private final AtomicReference<TextModeClientInterface> directTMCI = new AtomicReference<>();
@@ -68,31 +68,31 @@ public final class ClientEndpoints {
    * storing the references, and it does not perform any lifecycle work such as starting servers or
    * registering alerts.
    *
-   * @param fcpServer FCP server instance to expose and manage for the node.
+   * @param fcpEndpoint FCP endpoint handle to expose and manage for the node.
    * @param tmci text-mode client interface server, or {@code null} when disabled.
    * @param toadletContainer HTTP shell container used for browser-facing endpoints.
    */
   public ClientEndpoints(
-      FCPServer fcpServer,
+      FcpEndpointHandle fcpEndpoint,
       TextModeClientInterfaceServer tmci,
       HttpShellContainer toadletContainer) {
-    this.fcpServer = fcpServer;
+    this.fcpEndpoint = fcpEndpoint;
     this.tmci = tmci;
     this.toadletContainer = toadletContainer;
   }
 
   /**
-   * Returns the FCP server associated with this bundle.
+   * Returns the FCP endpoint handle associated with this bundle.
    *
-   * <p>The returned reference is the same instance supplied at construction time and is not wrapped
-   * or proxied. The call is inexpensive and side-effect-free, and it does not guarantee that the
-   * server has been started or loaded. Use it when wiring other components that already manage the
-   * server lifecycle.
+   * <p>The returned reference is the same instance supplied at construction time. The call is
+   * inexpensive and side-effect-free, and it does not guarantee that the endpoint has been started
+   * or loaded. Bridge code that still needs concrete FCP operations can unwrap the handle through
+   * {@code network.crypta.runtime.endpoints.fcp.FcpEndpointHandles}.
    *
-   * @return the FCP server instance owned by this bundle.
+   * @return the FCP endpoint handle owned by this bundle.
    */
-  public FCPServer getFCPServer() {
-    return fcpServer;
+  public FcpEndpointHandle getFcpEndpoint() {
+    return fcpEndpoint;
   }
 
   /**
@@ -179,27 +179,27 @@ public final class ClientEndpoints {
   }
 
   /**
-   * Loads persistent requests through the FCP server.
+   * Loads persistent requests through the FCP endpoint handle.
    *
-   * <p>This method delegates directly to {@link FCPServer#load()} without checking any additional
-   * conditions. It is up to the caller to decide whether loading is required for the current node
-   * state, such as skipping it when a database has been intentionally reset. The method itself does
-   * not cache or record whether loading has been performed.
+   * <p>This method delegates directly to the underlying FCP endpoint handle without checking any
+   * additional conditions. It is up to the caller to decide whether loading is required for the
+   * current node state, such as skipping it when a database has been intentionally reset. The
+   * method itself does not cache or record whether loading has been performed.
    */
   public void loadPersistentRequestsIfNeeded() {
-    fcpServer.load();
+    fcpEndpoint.load();
   }
 
   /**
    * Starts the client-facing endpoints when appropriate.
    *
-   * <p>The FCP server is asked to start via {@link FCPServer#maybeStart()}, and the text-mode
-   * interface server is started only if it is present. This method does not create new endpoints
-   * and performs no retries; it simply forwards to the underlying components. It is safe to call
-   * multiple times if the underlying components implement idempotent start logic.
+   * <p>The FCP endpoint handle is asked to start, and the text-mode interface server is started
+   * only if it is present. This method does not create new endpoints and performs no retries; it
+   * simply forwards to the underlying components. It is safe to call multiple times if the
+   * underlying components implement idempotent start logic.
    */
   public void maybeStart() {
-    fcpServer.maybeStart();
+    fcpEndpoint.maybeStart();
     if (tmci != null) {
       tmci.start();
     }
@@ -292,13 +292,13 @@ public final class ClientEndpoints {
   /**
    * Builds a fully wired {@link ClientEndpoints} instance from core node components.
    *
-   * <p>The method conditionally creates the text-mode interface server, creates an FCP server via
-   * the persistence layer, and registers that server as the download cache in the client context.
-   * If the node has not killed its database, it loads persistent requests immediately. This method
-   * starts no endpoints; callers typically invoke {@link #maybeStart()} once the node is ready.
-   * When direct TMCI is enabled, it is created but not started; callers must register it on the
-   * endpoint bundle and schedule it after {@link NodeClientCore#getEndpoints()} is assigned. The
-   * returned instance captures the created references and does not perform any additional
+   * <p>The method conditionally creates the text-mode interface server, creates an FCP endpoint
+   * handle via the persistence layer, and registers that handle as the download cache in the client
+   * context. If the node has not killed its database, it loads persistent requests immediately.
+   * This method starts no endpoints; callers typically invoke {@link #maybeStart()} once the node
+   * is ready. When direct TMCI is enabled, it is created but not started; callers must register it
+   * on the endpoint bundle and schedule it after {@link NodeClientCore#getEndpoints()} is assigned.
+   * The returned instance captures the created references and does not perform any additional
    * initialization beyond the steps described above.
    *
    * <pre>{@code
@@ -311,7 +311,7 @@ public final class ClientEndpoints {
    * @param core client core used by endpoint factories and alert registration.
    * @param runtimePorts runtime SPI bridge passed to the FCP infrastructure.
    * @param init initializer providing configuration and toadlet container access.
-   * @param persistence persistence layer responsible for creating the FCP server.
+   * @param persistence persistence layer responsible for creating the FCP endpoint handle.
    * @param clientContext client context updated with the FCP download cache.
    * @return an {@link InitResult} containing the endpoint bundle and optional direct TMCI instance.
    */
@@ -325,12 +325,12 @@ public final class ClientEndpoints {
     TextModeClientInterfaceServer.InitResult tmciInit =
         TextModeClientInterfaceServer.maybeCreate(node, core, init.config());
     TextModeClientInterfaceServer tmci = tmciInit.server();
-    FCPServer fcpServer = persistence.createFcpServer(node, core, runtimePorts);
-    clientContext.setDownloadCache(fcpServer);
+    FcpEndpointHandle fcpEndpoint = persistence.createFcpEndpointHandle(node, core, runtimePorts);
+    clientContext.setDownloadCache(fcpEndpoint);
     if (!core.killedDatabase()) {
-      fcpServer.load();
+      fcpEndpoint.load();
     }
     return new InitResult(
-        new ClientEndpoints(fcpServer, tmci, init.toadlets()), tmciInit.directTMCI());
+        new ClientEndpoints(fcpEndpoint, tmci, init.toadlets()), tmciInit.directTMCI());
   }
 }

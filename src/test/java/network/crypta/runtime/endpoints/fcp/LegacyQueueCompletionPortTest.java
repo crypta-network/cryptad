@@ -20,12 +20,12 @@ import network.crypta.client.async.HealingQueue;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.USKManager;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientPut;
 import network.crypta.clients.fcp.ClientPutDir;
 import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
@@ -112,7 +112,7 @@ class LegacyQueueCompletionPortTest {
     when(node.getUserDir()).thenReturn(userDir.dir());
     when(node.network()).thenReturn(network);
     when(network.executor()).thenReturn(executor);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcp));
 
     doAnswer(
             invocation -> {
@@ -189,7 +189,7 @@ class LegacyQueueCompletionPortTest {
 
   @Test
   void ensureTrackingStarted_whenFcpServerUnavailable_throwsIllegalStateException() {
-    when(endpoints.getFCPServer()).thenReturn(null);
+    when(endpoints.getFcpEndpoint()).thenReturn(null);
 
     IllegalStateException thrown =
         assertThrows(IllegalStateException.class, () -> port.ensureTrackingStarted(false));
@@ -411,7 +411,8 @@ class LegacyQueueCompletionPortTest {
         org.mockito.Mockito.mock(FileRandomAccessBufferFactory.class);
     RealCompressor rc = org.mockito.Mockito.mock(RealCompressor.class);
     DatastoreChecker checker = org.mockito.Mockito.mock(DatastoreChecker.class);
-    PersistentRequestRoot persistentRoot = org.mockito.Mockito.mock(PersistentRequestRoot.class);
+    PersistentRequestCoordinator persistentRoot =
+        org.mockito.Mockito.mock(PersistentRequestCoordinator.class);
     MasterSecret masterSecret = org.mockito.Mockito.mock(MasterSecret.class);
     LinkFilterExceptionProvider linkFilterExceptionProvider =
         org.mockito.Mockito.mock(LinkFilterExceptionProvider.class);

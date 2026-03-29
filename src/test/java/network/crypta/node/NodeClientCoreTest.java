@@ -23,6 +23,7 @@ import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -130,7 +131,8 @@ class NodeClientCoreTest {
     setField(core, "tempDir", coreTempDir);
     setField(core, "persistentTempDir", persistentTempDir);
 
-    ClientEndpoints endpoints = new ClientEndpoints(Mockito.mock(FCPServer.class), null, toadlets);
+    ClientEndpoints endpoints =
+        new ClientEndpoints(FcpEndpointHandles.wrap(Mockito.mock(FCPServer.class)), null, toadlets);
     setField(core, "endpoints", endpoints);
     setField(core, "requestStarters", requestStarters);
     transfers = Mockito.mock(NodeClientCoreTransfers.class);

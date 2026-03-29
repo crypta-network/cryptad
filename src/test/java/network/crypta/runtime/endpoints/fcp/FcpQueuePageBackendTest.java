@@ -62,18 +62,18 @@ class FcpQueuePageBackendTest {
   @Test
   void getGlobalRequests_whenConstructed_defersFcpLookupUntilMethodCall() throws Exception {
     verifyNoInteractions(endpoints, fcpServer);
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests()).thenReturn(new RequestStatus[0]);
 
     backend.getGlobalRequests();
 
-    verify(endpoints).getFCPServer();
+    verify(endpoints).getFcpEndpoint();
     verify(fcpServer).getGlobalRequests();
   }
 
   @Test
   void getGlobalRequests_whenFcpServerMissing_returnsEmptyArray() throws Exception {
-    when(endpoints.getFCPServer()).thenReturn(null);
+    when(endpoints.getFcpEndpoint()).thenReturn(null);
 
     QueuePageRequestView[] views = backend.getGlobalRequests();
 
@@ -94,7 +94,7 @@ class FcpQueuePageBackendTest {
   void getGlobalRequests_whenPersistenceDisabled_translatesToRequestQueueUnavailableException()
       throws Exception {
     PersistenceDisabledException cause = new PersistenceDisabledException();
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests()).thenThrow(cause);
 
     RequestQueueUnavailableException thrown =
@@ -116,7 +116,7 @@ class FcpQueuePageBackendTest {
     byte[] overrideKey = new byte[] {0x01, 0x23};
     FreenetURI downloadUri = sampleUri("index_d51.xml");
     FreenetURI uploadUri = sampleUri("upload.txt");
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests())
         .thenReturn(new RequestStatus[] {download, uploadFile, uploadDir});
 
@@ -208,7 +208,7 @@ class FcpQueuePageBackendTest {
     Instant lastSuccess = Instant.parse("2026-03-28T12:34:56Z");
     Instant lastFailure = Instant.parse("2026-03-28T12:35:56Z");
     FreenetURI uri = sampleUri("generic.txt");
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests()).thenReturn(new RequestStatus[] {genericStatus});
     when(genericStatus.getIdentifier()).thenReturn("generic-1");
     when(genericStatus.hasSucceeded()).thenReturn(true);
@@ -265,7 +265,7 @@ class FcpQueuePageBackendTest {
     UploadFileRequestStatus waiting = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
     UploadFileRequestStatus compressing = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
     UploadFileRequestStatus working = org.mockito.Mockito.mock(UploadFileRequestStatus.class);
-    when(endpoints.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcpServer));
     when(fcpServer.getGlobalRequests())
         .thenReturn(new RequestStatus[] {waiting, compressing, working});
     when(waiting.isCompressing()).thenReturn(COMPRESS_STATE.WAITING);

@@ -17,8 +17,6 @@ import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpServerDependencies;
-import network.crypta.clients.fcp.PersistentRequestClient;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -32,6 +30,8 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.Persistable;
 import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
 import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
+import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
 import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -460,12 +460,10 @@ class NodeClientPersistenceTest {
             mock(InsertContext.class));
     ClientContext context = persistence.createClientContext(node, params);
 
-    PersistentRequestRoot root = (PersistentRequestRoot) context.persistentRequestCoordinator;
-    PersistentRequestClient client = root.registerForeverClient("client", null);
     ClientRequest request = mock(ClientRequest.class);
     when(request.hasFinished()).thenReturn(false);
     when(request.isPersistentForever()).thenReturn(true);
-    client.resume(request);
+    context.persistentRequestCoordinator.resumePersistentRequest(request, true, "client");
 
     // Act
     PersistentRequestHandle[] requests = persistence.getPersistentRequests();
@@ -475,7 +473,7 @@ class NodeClientPersistenceTest {
   }
 
   @Test
-  void createFcpServer_whenCalled_expectDelegatesToMaybeCreate(@TempDir File tempDir)
+  void createFcpEndpointHandle_whenCalled_expectDelegatesToMaybeCreate(@TempDir File tempDir)
       throws NodeInitException {
     // Arrange
     Persistable persistable = mock(Persistable.class);
@@ -498,20 +496,24 @@ class NodeClientPersistenceTest {
           .when(
               () ->
                   CoreFcpServerDependenciesFactory.create(
-                      eq(core), eq(runtimePorts), any(PersistentRequestRoot.class)))
+                      eq(core),
+                      eq(runtimePorts),
+                      any(network.crypta.clients.fcp.PersistentRequestRoot.class)))
           .thenReturn(dependencies);
       fcpServerMock
           .when(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)))
           .thenReturn(expected);
 
-      FCPServer result = persistence.createFcpServer(node, core, runtimePorts);
+      FcpEndpointHandle result = persistence.createFcpEndpointHandle(node, core, runtimePorts);
 
       // Assert
-      assertSame(expected, result);
+      assertSame(expected, FcpEndpointHandles.unwrap(result));
       factoryMock.verify(
           () ->
               CoreFcpServerDependenciesFactory.create(
-                  eq(core), eq(runtimePorts), any(PersistentRequestRoot.class)));
+                  eq(core),
+                  eq(runtimePorts),
+                  any(network.crypta.clients.fcp.PersistentRequestRoot.class)));
       fcpServerMock.verify(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)));
     }
   }

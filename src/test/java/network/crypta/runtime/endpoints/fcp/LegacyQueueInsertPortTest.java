@@ -26,15 +26,14 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.client.async.USKManager;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.ClientPut;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.PersistentRequestClient;
-import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
@@ -101,7 +100,6 @@ class LegacyQueueInsertPortTest {
   @Mock private FCPServer fcp;
   @Mock private ClientLayerPersister jobRunner;
   @Mock private PersistentTempBucketFactory persistentTempBucketFactory;
-  @Mock private PersistentRequestRoot persistentRoot;
   @Mock private RuntimePorts runtimePorts;
   @Mock private TransferAccessPort transferAccessPort;
   @Mock private PriorityAwareExecutor executor;
@@ -112,11 +110,9 @@ class LegacyQueueInsertPortTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    PersistentRequestClient persistentClient =
-        new PersistentRequestClient(
-            "global", null, true, null, Persistence.FOREVER, persistentRoot);
+    PersistentRequestClient persistentClient = mock(PersistentRequestClient.class);
     when(core.getEndpoints()).thenReturn(endpoints);
-    when(endpoints.getFCPServer()).thenReturn(fcp);
+    when(endpoints.getFcpEndpoint()).thenReturn(FcpEndpointHandles.wrap(fcp));
     when(core.getClientLayerPersister()).thenReturn(jobRunner);
     when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
     when(core.getRuntimePorts()).thenReturn(runtimePorts);
@@ -167,7 +163,7 @@ class LegacyQueueInsertPortTest {
     assertEquals(QueueInsertOutcome.STARTED, outcome);
     assertTrue(copiedBeforeQueue.get());
     assertTrue(checkpointRequested.get());
-    verify(endpoints).getFCPServer();
+    verify(endpoints).getFcpEndpoint();
     verify(fcp).startBlocking(any(ClientRequest.class));
   }
 
@@ -321,7 +317,7 @@ class LegacyQueueInsertPortTest {
     RandomAccessBucket copiedBucket = mock(RandomAccessBucket.class);
     when(copiedBucket.getOutputStream()).thenReturn(new ByteArrayOutputStream());
     when(persistentTempBucketFactory.makeBucket(anyLong())).thenReturn(copiedBucket);
-    when(endpoints.getFCPServer()).thenReturn(null);
+    when(endpoints.getFcpEndpoint()).thenReturn(null);
 
     RequestQueueUnavailableException thrown =
         assertThrows(
@@ -388,8 +384,8 @@ class LegacyQueueInsertPortTest {
         org.mockito.Mockito.mock(FileRandomAccessBufferFactory.class);
     RealCompressor rc = org.mockito.Mockito.mock(RealCompressor.class);
     DatastoreChecker checker = org.mockito.Mockito.mock(DatastoreChecker.class);
-    PersistentRequestRoot clientContextPersistentRoot =
-        org.mockito.Mockito.mock(PersistentRequestRoot.class);
+    PersistentRequestCoordinator clientContextPersistentRequestCoordinator =
+        org.mockito.Mockito.mock(PersistentRequestCoordinator.class);
     MasterSecret masterSecret = org.mockito.Mockito.mock(MasterSecret.class);
     LinkFilterExceptionProvider linkFilterExceptionProvider =
         org.mockito.Mockito.mock(LinkFilterExceptionProvider.class);
@@ -415,7 +411,7 @@ class LegacyQueueInsertPortTest {
             uskManager,
             rc,
             checker,
-            clientContextPersistentRoot,
+            clientContextPersistentRequestCoordinator,
             linkFilterExceptionProvider),
         new ClientContextDefaults(fetchContext, insertContext, config));
   }
