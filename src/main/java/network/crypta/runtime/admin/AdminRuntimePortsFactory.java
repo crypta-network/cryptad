@@ -3,8 +3,6 @@ package network.crypta.runtime.admin;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
-import network.crypta.runtime.admin.queue.QueueAdminBackend;
-import network.crypta.runtime.admin.queue.page.QueuePageBackend;
 import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 
@@ -39,22 +37,21 @@ public final class AdminRuntimePortsFactory {
    * @return immutable bundle containing the moved admin and page-oriented runtime adapters
    */
   public static AdminRuntimePortsBundle create(Node node, NodeClientCore core) {
-    QueueAdminBackend queueBackend = FcpQueuePorts.adminBackend(core);
-    QueuePageBackend queuePageBackend = FcpQueuePorts.pageBackend(core);
+    FcpQueuePorts.Bundle queuePorts = FcpQueuePorts.create(core);
     GeoIpCountryLookup geoIpCountryLookup = HttpGeoIpCountryLookups.forNode(node);
     return new AdminRuntimePortsBundle(
         new LegacyConnectionsPagePort(node, geoIpCountryLookup),
         new LegacyConnectionsSupportPort(node),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
-        new LegacyDiagnosticPort(node, core, queueBackend),
+        new LegacyDiagnosticPort(node, core, queuePorts.adminBackend()),
         new LegacyPageChromePort(node),
-        FcpQueuePorts.completionPort(core),
-        new LegacyQueuePagePort(core, queuePageBackend),
-        FcpQueuePorts.downloadPort(core),
-        FcpQueuePorts.insertPort(core),
-        new LegacyQueueMutationPort(queueBackend),
-        new LegacyQueueSupportPort(core, queueBackend),
+        queuePorts.completionPort(),
+        new LegacyQueuePagePort(core, queuePorts.pageBackend()),
+        queuePorts.downloadPort(),
+        queuePorts.insertPort(),
+        new LegacyQueueMutationPort(queuePorts.adminBackend()),
+        new LegacyQueueSupportPort(core, queuePorts.adminBackend()),
         new LegacyStatisticsPort(node, core),
         new LegacyFirstTimeWizardPort(node, core),
         new LegacyToadletSymlinkPort(node, core),
