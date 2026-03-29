@@ -26,9 +26,10 @@ Use this skill when you need to:
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
   `network.crypta.support*`, `network.crypta.support.transport.ip`,
-  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
-  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
-  `network.crypta.node.SemiOrderedShutdownHook`.
+  `network.crypta.support.http`, `network.crypta.io.AddressIdentifier`,
+  `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
+  `network.crypta.node.FastRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
+  `network.crypta.support.IllegalValueException`.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the `network.crypta.store.alerts`
   seam.
@@ -39,8 +40,12 @@ Use this skill when you need to:
 - `:interop-wire` owns the narrow wire/message/schema/version/probe nucleus:
   leaf-safe `network.crypta.io.comm` message/schema classes, `network.crypta.node.Version`,
   `network.crypta.node.probe.Error` and `Type`, and `network.crypta.support.Serializer`.
-- `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources.
-  Its public APIs now re-export `:foundation-support` and `:foundation-fs` where needed.
+- `:foundation-config` owns the main `network.crypta.config` and `network.crypta.l10n` sources,
+  plus shared setup helpers such as `DatastoreSizingSupport`. Its public APIs now re-export
+  `:foundation-support` and `:foundation-fs` where needed.
+- `:foundation-compat` owns extracted compatibility helpers under `network.crypta.compat`,
+  including the wizard-neutral bandwidth support moved to
+  `network.crypta.compat.bandwidth`.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
   `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
   moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
@@ -97,6 +102,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :interop-wire:compileJava`
 - Compile the config/l10n leaf when you touched extracted config or l10n sources:
   - `./gradlew :foundation-config:classes`
+- Compile the compat leaf when you touched extracted compatibility helpers such as
+  `network.crypta.compat.bandwidth`:
+  - `./gradlew :foundation-compat:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
 - Compile the root project and its unchanged test tree against the leaf-module layout:

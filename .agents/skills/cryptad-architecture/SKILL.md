@@ -22,9 +22,10 @@ Use this skill when you need to:
   - `:foundation-support` → the current stable generic subset of `network.crypta.support`,
     `network.crypta.support.api`, `network.crypta.support.io`,
     `network.crypta.support.compress`, `network.crypta.support.math`,
-    `network.crypta.support.transport.ip`, plus `network.crypta.io.AddressIdentifier`,
-    `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
-    `network.crypta.node.FastRunnable`, and `network.crypta.node.SemiOrderedShutdownHook`
+    `network.crypta.support.transport.ip`, and `network.crypta.support.http`, plus
+    `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+    `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
+    `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`
   - `:foundation-store-contracts` → neutral `network.crypta.store` contracts
     `BlockMetadata`, `GetPubkey`, `StorableBlock`, plus the `network.crypta.store.alerts` seam
     (`StoreAlertSink`, `StoreMaintenanceAlertKind`, `StoreMaintenanceAlertSource`)
@@ -37,11 +38,12 @@ Use this skill when you need to:
     selected `network.crypta.io.comm` types, `network.crypta.node.Version`,
     `network.crypta.node.probe.Error`, `network.crypta.node.probe.Type`, and
     `network.crypta.support.Serializer`
-  - `:foundation-config` → `network.crypta.config`, `network.crypta.l10n`, and the main l10n
-    resources; public config APIs re-export `:foundation-support` and `:foundation-fs` where they
-    expose shared types
+  - `:foundation-config` → `network.crypta.config`, `network.crypta.l10n`, the main l10n
+    resources, and shared setup helpers such as `DatastoreSizingSupport`; public config APIs
+    re-export `:foundation-support` and `:foundation-fs` where they expose shared types
   - `:foundation-fs` → `network.crypta.fs`
-  - `:foundation-compat` → `network.crypta.compat`
+  - `:foundation-compat` → `network.crypta.compat`, including
+    `network.crypta.compat.bandwidth`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
@@ -56,12 +58,15 @@ Use this skill when you need to:
     `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`.
     Page-oriented adapters such as `LegacyConnectionsPagePort`,
     `LegacyConnectionsSupportPort`, `LegacyDarknetConnectionsPort`,
-    `LegacyDarknetMessagingPort`, `LegacyQueuePagePort`, `LegacyQueueDownloadPort`,
-    `LegacyQueueInsertPort`, `LegacyQueueMutationPort`, `LegacyQueueSupportPort`,
-    `LegacyQueueCompletionPort`, `LegacyPageChromePort`, `LegacyDiagnosticPort`,
+    `LegacyDarknetMessagingPort`, `LegacyQueuePagePort`, `LegacyQueueMutationPort`,
+    `LegacyQueueSupportPort`, `LegacyPageChromePort`, `LegacyDiagnosticPort`,
     `LegacyStatisticsPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
     `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort` now live in
-    `network.crypta.runtime.admin`.
+    `network.crypta.runtime.admin`, supported by queue helper seams under
+    `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`.
+    Queue completion/download/insert bridges now live under
+    `network.crypta.runtime.endpoints.fcp` as `LegacyQueueCompletionPort`,
+    `LegacyQueueDownloadPort`, and `LegacyQueueInsertPort`.
 - The large cyclic daemon core still lives in the root project:
   most of `network.crypta.node`, the daemon-coupled transport/socket/filter side of
   `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`, the
@@ -100,7 +105,7 @@ Use this skill when you need to:
   (`NodeStarter`, `NodeBootstrap`, `NodeCli`, `NodeConfigManager`, `LoggingConfigHandler`)
 - Runtime SPI nucleus and daemon-backed core adapters: `network.crypta.runtime.core`
 - Page-oriented admin/runtime adapters: `network.crypta.runtime.admin`
-- Operator-facing alerts: `network.crypta.runtime.alerts`
+- Operator-facing alerts and alert-feed seams: `network.crypta.runtime.alerts`
 - Endpoint bootstrap glue for FCP/HTTP/TMCI: `network.crypta.runtime.endpoints`
 - Service coordination: `network.crypta.runtime.services`
 - Core/plugin update subsystem: `network.crypta.runtime.updater`
@@ -141,6 +146,10 @@ Use this skill when you need to:
 
 ### Client APIs
 - High-level client: `network.crypta.client`
+  - The async client layer now also owns client-local seams under
+    `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence` so
+    runtime/FCP bridges can post alerts and recover durable requests without owning those
+    contracts.
 - FCP: `network.crypta.clients.fcp`
   - Runtime-facing execution, randomness, lifecycle, transfer-policy, and config access now come
     through `RuntimePorts`.
@@ -152,6 +161,10 @@ Use this skill when you need to:
   - Package-local seams split the remaining daemon-backed work by concern:
     `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
     `FcpInsertRuntimeSupport`.
+  - FCP-local runtime bridges now also own persistent-request recovery, queue backends, and alert
+    feed adapters such as `CoreFcpPersistentRequestCatalog`, `FcpPersistentRequestRecoveryCodec`,
+    `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`, and
+    `FcpUserAlertFeedMessageFactory`.
 - HTTP interface: `network.crypta.clients.http`
   - The migrated management and shell slices no longer depend directly on live daemon peers or
     node-info exports for their core data flow.
@@ -205,10 +218,14 @@ Use this skill when you need to:
 - Root adapters in `network.crypta.runtime.admin`: `LegacyConnectionsPagePort`,
   `LegacyConnectionsSupportPort`, `LegacyDarknetConnectionsPort`,
   `LegacyDarknetMessagingPort`, `LegacyDiagnosticPort`, `LegacyStatisticsPort`,
-  `LegacyPageChromePort`, `LegacyQueuePagePort`, `LegacyQueueDownloadPort`,
-  `LegacyQueueInsertPort`, `LegacyQueueMutationPort`, `LegacyQueueSupportPort`,
-  `LegacyQueueCompletionPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
-  `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort`
+  `LegacyPageChromePort`, `LegacyQueuePagePort`, `LegacyQueueMutationPort`,
+  `LegacyQueueSupportPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
+  `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort`, plus queue helper seams under
+  `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`
+- Root adapters in `network.crypta.runtime.endpoints.fcp`: `LegacyQueueCompletionPort`,
+  `LegacyQueueDownloadPort`, `LegacyQueueInsertPort`, `CoreFcpPersistentRequestCatalog`,
+  `FcpPersistentRequestRecoveryCodec`, `FcpQueueAdminBackend`, `FcpQueuePageBackend`,
+  `FcpUserAlertFeedSubscriber`, and `FcpUserAlertFeedMessageFactory`
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`
@@ -220,6 +237,7 @@ Use this skill when you need to:
 - Type-safe configuration with persistence
 - Main localization sources and `crypta.l10n.en.properties` also live in `:foundation-config`
   under `network.crypta.l10n`.
+- Shared setup helpers such as `DatastoreSizingSupport` also live in `:foundation-config`.
 - Higher layers should prefer the narrow `RuntimePorts` sub-port that already covers the needed
   operation (`config()`, `peer()`, `nodeInfo()`, `connectionsPage()`, `connectionsSupport()`,
   `darknetConnections()`, `darknetMessaging()`, `queuePage()`, `queueDownload()`,
@@ -234,11 +252,12 @@ Use this skill when you need to:
 - Logging, data structures, threading, helpers
 - `:foundation-support` now owns the stable generic support subset across `network.crypta.support`,
   `network.crypta.support.api`, `network.crypta.support.io`,
-  `network.crypta.support.compress`, `network.crypta.support.math`, and
-  `network.crypta.support.transport.ip`.
+  `network.crypta.support.compress`, `network.crypta.support.math`,
+  `network.crypta.support.transport.ip`, and `network.crypta.support.http`.
 - `:foundation-support` also owns `network.crypta.io.AddressIdentifier`,
   `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FastRunnable`,
-  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.SerializationLimits`.
+  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
+  and `network.crypta.support.SerializationLimits`.
 - The root project still owns daemon-coupled support code and higher-level wiring that is not yet
   stable enough to extract cleanly.
 
@@ -250,16 +269,18 @@ Use this skill when you need to:
 ### Foundation leaf modules
 - `:foundation-support`: stable generic `network.crypta.support*` subset plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
-  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
-  `network.crypta.node.SemiOrderedShutdownHook`
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.http`, and
+  `network.crypta.support.IllegalValueException`
 - `:foundation-store-contracts`: neutral `network.crypta.store` contracts plus
   `network.crypta.store.alerts`
 - `:foundation-crypto-keys`: `network.crypta.crypt`, `network.crypta.keys`
 - `:foundation-store`: reusable `network.crypta.store` implementations
 - `:interop-wire`: wire/message/schema/version/probe nucleus
-- `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`
+- `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`,
+  `DatastoreSizingSupport`
 - `:foundation-fs`: `network.crypta.fs`
-- `:foundation-compat`: `network.crypta.compat`
+- `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:runtime-spi`: `network.crypta.runtime.spi`
 
 ### Vendored library leaf modules

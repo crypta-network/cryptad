@@ -1,19 +1,19 @@
 package network.crypta.runtime.admin;
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.util.Map;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.PeerStatusBook;
 import network.crypta.node.RequestTracker;
+import network.crypta.runtime.admin.geoip.GeoIpCountryInfo;
+import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
@@ -42,14 +42,12 @@ class LegacyConnectionsPagePortTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private Node node;
 
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private NodeClientCore core;
-
   @Mock private NodeStats stats;
   @Mock private PeerManager peers;
   @Mock private PeerStatusBook statusBook;
   @Mock private RequestTracker tracker;
   @Mock private BandwidthStatsContainer bandwidthStats;
+  @Mock private GeoIpCountryLookup geoIpCountryLookup;
 
   private LegacyConnectionsPagePort port;
 
@@ -64,7 +62,6 @@ class LegacyConnectionsPagePortTest {
     when(node.getMyName()).thenReturn("LocalNode");
     when(node.isAdvancedModeEnabled()).thenReturn(false);
     when(node.isFProxyJavascriptEnabled()).thenReturn(false);
-    when(node.runDir().file("IpToCountry.dat")).thenReturn(new File("build/tmp/IpToCountry.dat"));
     when(node.services()
             .clientCore()
             .getClientLayerPersister()
@@ -86,7 +83,7 @@ class LegacyConnectionsPagePortTest {
     setRunningAverage("routingMissDistanceRT");
     setRunningAverage("backedOffPercent");
 
-    port = new LegacyConnectionsPagePort(node, core);
+    port = new LegacyConnectionsPagePort(node, geoIpCountryLookup);
   }
 
   @Test
@@ -158,6 +155,28 @@ class LegacyConnectionsPagePortTest {
     assertFalse(basic.peerTableHtml().contains("message-count"));
     assertTrue(detailed.peerTableHtml().contains("message-count"));
     assertTrue(detailed.peerTableHtml().contains("CHKData"));
+  }
+
+  @Test
+  void render_whenGeoIpCountryHasFlag_rendersFlagIconMarkupInPeerTable() {
+    byte[] peerAddressBytes = new byte[] {10, 0, 0, 1};
+    DarknetPeerNodeStatus peerStatus = mockDarknetStatus("Alpha", "10.0.0.1:1234", 0.25);
+    when(peerStatus.getPeerAddressBytes()).thenReturn(peerAddressBytes);
+    when(statusBook.getDarknetPeerNodeStatuses(true))
+        .thenReturn(new DarknetPeerNodeStatus[] {peerStatus});
+    when(statusBook.getDarknetPeerNodeStatuses(false))
+        .thenReturn(new DarknetPeerNodeStatus[] {peerStatus});
+    when(statusBook.getPeerNodeStatuses(true)).thenReturn(new PeerNodeStatus[] {peerStatus});
+    when(geoIpCountryLookup.locate(peerAddressBytes))
+        .thenReturn(new GeoIpCountryInfo("United States", "/static/icon/flags/us.png"));
+
+    ConnectionsPageSnapshot snapshot =
+        port.render(
+            new ConnectionsPageRequest(ConnectionsPageKind.DARKNET, false, false, null, false));
+
+    assertTrue(snapshot.peerTableHtml().contains("class=\"flag\""));
+    assertTrue(snapshot.peerTableHtml().contains("/static/icon/flags/us.png"));
+    assertTrue(snapshot.peerTableHtml().contains("title=\"United States\""));
   }
 
   @Test

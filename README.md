@@ -170,9 +170,10 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:foundation-support` owns the current stable generic support subset under
   `network.crypta.support`, `network.crypta.support.api`, `network.crypta.support.io`,
   `network.crypta.support.compress`, `network.crypta.support.math`,
-  `network.crypta.support.transport.ip`, plus `network.crypta.io.AddressIdentifier`,
-  `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
-  `network.crypta.node.FastRunnable`, and `network.crypta.node.SemiOrderedShutdownHook`.
+  `network.crypta.support.transport.ip`, and `network.crypta.support.http`, plus
+  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the store-maintenance alert seam under
   `network.crypta.store.alerts`.
@@ -185,11 +186,12 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.io.comm` message/schema classes, `network.crypta.node.Version`,
   `network.crypta.node.probe.Error` and `Type`, and `network.crypta.support.Serializer`.
 - `:foundation-config` owns `network.crypta.config`, `network.crypta.l10n`, and the main
-  `network/crypta/l10n/crypta.l10n.en.properties` resource. Its public APIs now export
-  `:foundation-support` and `:foundation-fs` where config types expose `SimpleFieldSet` or
-  filesystem-facing value types.
+  `network/crypta/l10n/crypta.l10n.en.properties` resource plus shared config helpers such as
+  `DatastoreSizingSupport`. Its public APIs now export `:foundation-support` and `:foundation-fs`
+  where config types expose `SimpleFieldSet` or filesystem-facing value types.
 - `:foundation-fs` owns `network.crypta.fs`.
-- `:foundation-compat` owns `network.crypta.compat`.
+- `:foundation-compat` owns `network.crypta.compat`, including compatibility helpers such as the
+  extracted bandwidth-detection support under `network.crypta.compat.bandwidth`.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
@@ -207,7 +209,9 @@ Cryptad now uses a partial multi-project Gradle build.
   daemon-coupled support/UI wiring.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
-  leaf-owned messages, and package-local seams such as
+  leaf-owned messages, client-owned seams such as `network.crypta.client.async.alerts` and
+  `network.crypta.client.async.persistence`, runtime-owned seams such as
+  `network.crypta.runtime.alerts.feed`, and package-local bridges such as
   `network.crypta.runtime.core.LegacyRuntimePorts`,
   `network.crypta.clients.http.BookmarkEditorToadletRuntimePorts`,
   `network.crypta.clients.http.ConfigToadletRuntimePorts`,
@@ -219,7 +223,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.clients.http.WelcomeToadletRuntimePorts`,
   `network.crypta.clients.http.FProxyRuntimeSupport`,
   `network.crypta.clients.http.HttpShellRuntimeSupport`,
-  `network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport`, and
+  `network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport`,
+  `network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend`,
+  `network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend`,
+  `network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog`,
+  `network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec`, and
   `network.crypta.clients.http.bookmark.BookmarkRuntimeSupport`.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
@@ -486,9 +494,10 @@ cd build/jpackage/Crypta.app/Contents
 
 Root build also includes:
 - `:foundation-support`: extracted stable support/api/io/compress/math/transport subset plus
-  `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
-  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
-  `network.crypta.node.SemiOrderedShutdownHook`.
+  `network.crypta.support.http`, `network.crypta.io.AddressIdentifier`,
+  `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
+  `network.crypta.node.FastRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
+  `network.crypta.support.IllegalValueException`.
 - `:foundation-store-contracts`: neutral store contracts plus the store-maintenance alert seam
   shared by store code and root runtime/UI adapters.
 - `:foundation-crypto-keys`: extracted `network.crypta.crypt`, `network.crypta.keys`, and the
@@ -497,15 +506,17 @@ Root build also includes:
   salted-hash storage code.
 - `:interop-wire`: extracted wire/message/schema/address/version/probe nucleus plus
   `network.crypta.support.Serializer`.
-- `:foundation-config`: extracted config/l10n code and main l10n resources. Its public APIs
-  re-export `:foundation-support` and `:foundation-fs` where required.
+- `:foundation-config`: extracted config/l10n code, main l10n resources, and shared sizing helpers
+  such as `DatastoreSizingSupport`. Its public APIs re-export `:foundation-support` and
+  `:foundation-fs` where required.
 - `:launcher-desktop`: Swing launcher code and desktop/theme detection dependencies.
 - `:thirdparty-onion`: Onion FEC and related vendored sources/resources.
 - `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
   and other infrastructure code.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
-  leaf modules used by the root daemon.
+  leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
+  bandwidth-detection helpers now used by first-time setup flows.
 
 ### Spotless + Dependency Verification
 
@@ -572,13 +583,20 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   transport/socket/filter side of `network.crypta.io.comm`, and `Message` now depends on the
   minimal `MessageSource` seam rather than directly on `PeerContext`.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
-  (`network.crypta.clients.http`). FCP now consumes execution, randomness, transfer policy,
+  (`network.crypta.clients.http`). The async client layer now also owns client-local seams under
+  `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence` so runtime
+  bridges can publish alerts and recover durable requests without owning those contracts. FCP now
+  consumes execution, randomness, transfer policy,
   lifecycle, config access, and detached peer mutations through `RuntimePorts` and FCP-local
   adapters instead of reaching directly into daemon internals for those concerns. FCP bootstrap now
   flows through `FcpServerDependencies` and `CoreFcpServerDependenciesFactory`, with package-local
   seams such as `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`,
   `FcpFetchRuntimeSupport`, and `FcpInsertRuntimeSupport` splitting server-owned, message-owned,
-  GET/fetch, and insert/USK concerns.
+  GET/fetch, and insert/USK concerns. FCP-local runtime bridges now also own persistent-request
+  catalog and recovery seams plus queue and alert-feed adapters such as
+  `CoreFcpPersistentRequestCatalog`, `FcpPersistentRequestRecoveryCodec`,
+  `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`, and
+  `FcpUserAlertFeedMessageFactory`.
   The migrated HTTP management and shell slices now cross the boundary in two layers:
   `RuntimePorts` for JDK-only detached runtime state and package-local helpers such as
   `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
@@ -604,22 +622,27 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`;
   `runtime.admin` owns page-oriented adapters such as `LegacyConnectionsPagePort`,
   `LegacyQueuePagePort`, `LegacyPageChromePort`, `LegacyFirstTimeWizardPort`, and
-  `LegacyWelcomePagePort`; `runtime.alerts` owns operator-facing alerts and
-  `UserAlertManagerStoreAlertSink`; `runtime.endpoints` owns FCP/HTTP/TMCI bootstrap glue such as
-  `ClientEndpoints`, `NodeClientCoreInit`, `NodeClientPersistence`, and the HTTP-local runtime
-  adapters in `runtime.endpoints.http`; `runtime.services` owns `NodeServicesSubsystem`; and
-  `runtime.updater` owns `NodeUpdateManager`, `CoreUpdater`, and `CoreActionToadlet`.
+  `LegacyWelcomePagePort`, plus queue diagnostics/mutation/page seams under
+  `runtime.admin.queue` and `runtime.admin.queue.page`; `runtime.alerts` owns operator-facing
+  alerts, `UserAlertManagerStoreAlertSink`, and the runtime-owned alert-feed seam under
+  `runtime.alerts.feed`; `runtime.endpoints` owns FCP/HTTP/TMCI bootstrap glue such as
+  `ClientEndpoints`, `NodeClientCoreInit`, `NodeClientPersistence`, the HTTP-local runtime adapters
+  in `runtime.endpoints.http`, and FCP-local bridges for queue completion/download/insert,
+  persistent-request recovery, queue admin/page backends, and alert-feed subscriptions under
+  `runtime.endpoints.fcp`; `runtime.services` owns `NodeServicesSubsystem`; and `runtime.updater`
+  owns `NodeUpdateManager`, `CoreUpdater`, and `CoreActionToadlet`.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
   `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
   `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
-  filesystem-facing types. Higher layers should still prefer `RuntimePorts#config()` and the root
+  filesystem-facing types. Shared setup helpers such as `DatastoreSizingSupport` now also live in
+  this leaf. Higher layers should still prefer `RuntimePorts#config()` and the root
   `network.crypta.runtime.core.LegacyConfigPort` bridge instead of reaching through daemon
   internals.
 - Support foundation leaf (`:foundation-support`): stable generic support, support-api,
-  support-io, support-compress, support-math, and transport-IP classes plus
+  support-io, support-compress, support-math, transport-IP, and support-http classes plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
-  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`, and
-  `network.crypta.node.SemiOrderedShutdownHook`.
+  `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
   foundation leaf; daemon-coupled support code still remains in root.
@@ -629,9 +652,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:foundation-store-contracts` provides neutral store contracts and alert seams,
   `:foundation-crypto-keys` provides `network.crypta.crypt` and `network.crypta.keys`,
   `:foundation-store` provides reusable store implementations, `:interop-wire` provides the
-  wire/version/probe nucleus, `:foundation-config` provides config/l10n,
+  wire/version/probe nucleus, `:foundation-config` provides config/l10n plus datastore-sizing
+  helpers,
   `:foundation-fs` provides `network.crypta.fs`, and `:foundation-compat` provides
-  `network.crypta.compat`.
+  `network.crypta.compat` plus compatibility helpers such as the extracted bandwidth-detection
+  support.
 - Runtime boundary leaf: `:runtime-spi` provides `network.crypta.runtime.spi`.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
