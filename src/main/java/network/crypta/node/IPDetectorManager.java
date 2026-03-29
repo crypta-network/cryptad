@@ -9,8 +9,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import network.crypta.clients.http.ConnectivityToadlet;
-import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.compat.DetectedIP;
 import network.crypta.compat.ExternalIpDetector;
 import network.crypta.compat.ForwardPort;
@@ -26,9 +24,11 @@ import network.crypta.runtime.alerts.AbstractUserAlert;
 import network.crypta.runtime.alerts.ProxyUserAlert;
 import network.crypta.runtime.alerts.SimpleUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.endpoints.http.ConnectivityPagePaths;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.transport.ip.IPUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,7 +87,7 @@ public class IPDetectorManager implements ForwardPortCallback {
     @Override
     public HTMLNode getHTMLText() {
       HTMLNode div = new HTMLNode("div");
-      String url = ExternalLinkToadlet.escape(HTMLEncoder.encode(l10n("portForwardHelpURL")));
+      String url = ExternalLinkSupport.escape(HTMLEncoder.encode(l10n("portForwardHelpURL")));
       boolean maybeForwarded = true;
       for (int portNotForwarded : portsNotForwarded) {
         if (portNotForwarded < 0) {
@@ -113,7 +113,7 @@ public class IPDetectorManager implements ForwardPortCallback {
                   HTMLNode.text(Math.abs(portsNotForwarded[0])),
                   HTMLNode.text(Math.abs(portsNotForwarded[1])),
                   HTMLNode.link(url),
-                  HTMLNode.link(ConnectivityToadlet.CONNECTIVITY_PATH)
+                  HTMLNode.link(ConnectivityPagePaths.CONNECTIVITY_PATH)
                 });
       } else {
         LOG.error(
@@ -293,7 +293,7 @@ public class IPDetectorManager implements ForwardPortCallback {
                   new String[] {"link", "port"},
                   new HTMLNode[] {
                     HTMLNode.link(
-                        ExternalLinkToadlet.escape(
+                        ExternalLinkSupport.escape(
                             "http://wiki.freenetproject.org/FirewallAndRouterIssues")),
                     HTMLNode.text(portsNotForwarded[0])
                   });
@@ -305,7 +305,7 @@ public class IPDetectorManager implements ForwardPortCallback {
                   new String[] {"link", L10N_PORT1, L10N_PORT2},
                   new HTMLNode[] {
                     HTMLNode.link(
-                        ExternalLinkToadlet.escape(
+                        ExternalLinkSupport.escape(
                             "http://wiki.freenetproject.org/FirewallAndRouterIssues")),
                     HTMLNode.text(portsNotForwarded[0]),
                     HTMLNode.text(portsNotForwarded[1])
@@ -543,9 +543,10 @@ public class IPDetectorManager implements ForwardPortCallback {
   /* Heuristics for when to run IP detection (e.g., STUN-like probing).
    *
    * - After a failed attempt that yielded no usable IP, wait 5 minutes before retrying.
-   * - If a direct (public) IP was detected and either (a) no peers are older than
-   *   30 minutes or (b) we have connected to at least two distinct real-IP peers since
-   *   startup, skip detection (we might still be firewalled, so this is not a hard ban).
+   * - If a direct (public) IP was detected, we may skip detection.
+   *   Skip when either (a) no peers are older than 30 minutes or (b) we have
+   *   connected to at least two distinct real-IP peers since startup.
+   *   We might still be firewalled, so this is not a hard ban.
    * - With zero peers: run at most once every 6 hours (time not persisted across restarts).
    * - With peers present: skip if detection ran within the last hour.
    * - Guard against bogus peer reports:
@@ -1178,8 +1179,7 @@ public class IPDetectorManager implements ForwardPortCallback {
   public void addConnectionTypeBox(HTMLNode contentNode) {
     if (node.services().clientCore() == null) return;
     if (node.services().clientCore().getAlerts() == null) return;
-    if (proxyAlert == null) {
-      LOG.error("start() not called yet");
+    if (isProxyAlertMissing("addConnectionTypeBox")) {
       return;
     }
     if (proxyAlert.isValid())
@@ -1187,11 +1187,11 @@ public class IPDetectorManager implements ForwardPortCallback {
   }
 
   /**
-   * Returns the current connection-type notice as a detached snapshot, if one is active.
+   * Returns the current connection-type notice as a detached snapshot if one is active.
    *
    * <p>Precondition: {@link #start()} has been called. If not, a log entry is emitted and the
    * method returns {@code null}. The returned value includes both plain-text fields and a rendered
-   * HTML alert fragment so HTTP surfaces can preserve the legacy alert infobox, forwarding-help
+   * HTML alert fragment, so HTTP surfaces can preserve the legacy alert infobox, forwarding-help
    * links, and dismissal controls without depending on daemon-only alert types.
    *
    * @return detached notice snapshot, or {@code null} when no connection-type notice is active
@@ -1200,8 +1200,7 @@ public class IPDetectorManager implements ForwardPortCallback {
     if (node.services().clientCore() == null) return null;
     var alerts = node.services().clientCore().getAlerts();
     if (alerts == null) return null;
-    if (proxyAlert == null) {
-      LOG.error("start() not called yet");
+    if (isProxyAlertMissing("connectionTypeNotice")) {
       return null;
     }
     if (!proxyAlert.isValid()) {
@@ -1209,6 +1208,14 @@ public class IPDetectorManager implements ForwardPortCallback {
     }
     return new ConnectivityNoticeSnapshot(
         proxyAlert.getTitle(), proxyAlert.getText(), alerts.renderAlert(proxyAlert).generate());
+  }
+
+  private boolean isProxyAlertMissing(String caller) {
+    if (proxyAlert == null) {
+      LOG.error("start() not called before {}", caller);
+      return true;
+    }
+    return false;
   }
 
   /**

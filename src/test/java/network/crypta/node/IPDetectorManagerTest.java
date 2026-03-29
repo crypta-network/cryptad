@@ -14,8 +14,12 @@ import network.crypta.compat.PortForwardProvider;
 import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.alerts.ProxyUserAlert;
+import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.feed.UserAlertFeedEvent;
 import network.crypta.runtime.services.NodeServicesSubsystem;
+import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -31,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -278,105 +284,70 @@ class IPDetectorManagerTest {
   }
 
   @Test
+  void addConnectionTypeBox_whenProxyAlertMissing_doesNothing() {
+    IPDetectorManager mgr = newManager();
+
+    NodeClientCore core = mock(NodeClientCore.class);
+    UserAlertManager alerts = mock(UserAlertManager.class);
+    when(core.getAlerts()).thenReturn(alerts);
+    when(node.services().clientCore()).thenReturn(core);
+
+    HTMLNode root = new HTMLNode("div");
+
+    mgr.addConnectionTypeBox(root);
+
+    assertTrue(root.getChildren().isEmpty());
+  }
+
+  @Test
   void addConnectionTypeBox_whenProxyAlertValid_renders() throws Exception {
     IPDetectorManager mgr = newManager();
 
     // Provide a client core + alerts that can render
     NodeClientCore core = mock(NodeClientCore.class);
-    network.crypta.runtime.alerts.UserAlertManager alerts =
-        mock(network.crypta.runtime.alerts.UserAlertManager.class);
+    UserAlertManager alerts = mock(UserAlertManager.class);
     when(core.getAlerts()).thenReturn(alerts);
     when(node.services().clientCore()).thenReturn(core);
     when(alerts.renderAlert(any())).thenReturn(new HTMLNode("div"));
-
-    // Install a ProxyUserAlert with an underlying always-valid alert via reflection
-    network.crypta.runtime.alerts.ProxyUserAlert proxy =
-        new network.crypta.runtime.alerts.ProxyUserAlert(alerts, false);
-    proxy.setAlert(
-        new network.crypta.runtime.alerts.UserAlert() {
-          @Override
-          public boolean userCanDismiss() {
-            return true;
-          }
-
-          @Override
-          public String getTitle() {
-            return "t";
-          }
-
-          @Override
-          public String getText() {
-            return "x";
-          }
-
-          @Override
-          public HTMLNode getHTMLText() {
-            return new HTMLNode("div");
-          }
-
-          @Override
-          public short getPriorityClass() {
-            return 0;
-          }
-
-          @Override
-          public boolean isValid() {
-            return true;
-          }
-
-          @Override
-          public void isValid(boolean validity) {
-            // Intentionally empty: this test stub does not track the alert lifecycle state.
-          }
-
-          @Override
-          public String dismissButtonText() {
-            return "d";
-          }
-
-          @Override
-          public boolean shouldUnregisterOnDismiss() {
-            return false;
-          }
-
-          @Override
-          public void onDismiss() {
-            // Intentionally empty: no side effects are needed for dismissal in this test.
-          }
-
-          @Override
-          public String anchor() {
-            return "a";
-          }
-
-          @Override
-          public String getShortText() {
-            return "s";
-          }
-
-          @Override
-          public boolean isEventNotification() {
-            return false;
-          }
-
-          @Override
-          public UserAlertFeedEvent getFeedEvent() {
-            return null;
-          }
-
-          @Override
-          public long getUpdatedTime() {
-            return System.currentTimeMillis();
-          }
-        });
-
-    Field f = IPDetectorManager.class.getDeclaredField("proxyAlert");
-    f.setAccessible(true);
-    f.set(mgr, proxy);
+    setProxyAlert(mgr, newValidProxyAlert(alerts));
 
     HTMLNode root = new HTMLNode("div");
     mgr.addConnectionTypeBox(root);
     assertFalse(root.getChildren().isEmpty());
+  }
+
+  @Test
+  void connectionTypeNotice_whenProxyAlertMissing_returnsNull() {
+    IPDetectorManager mgr = newManager();
+
+    NodeClientCore core = mock(NodeClientCore.class);
+    UserAlertManager alerts = mock(UserAlertManager.class);
+    when(core.getAlerts()).thenReturn(alerts);
+    when(node.services().clientCore()).thenReturn(core);
+
+    ConnectivityNoticeSnapshot notice = mgr.connectionTypeNotice();
+
+    assertNull(notice);
+  }
+
+  @Test
+  void connectionTypeNotice_whenProxyAlertValid_returnsDetachedSnapshot() throws Exception {
+    IPDetectorManager mgr = newManager();
+
+    NodeClientCore core = mock(NodeClientCore.class);
+    UserAlertManager alerts = mock(UserAlertManager.class);
+    HTMLNode renderedAlert = new HTMLNode("div", "id", "alert");
+    when(core.getAlerts()).thenReturn(alerts);
+    when(node.services().clientCore()).thenReturn(core);
+    when(alerts.renderAlert(any())).thenReturn(renderedAlert);
+    setProxyAlert(mgr, newValidProxyAlert(alerts));
+
+    ConnectivityNoticeSnapshot notice = mgr.connectionTypeNotice();
+
+    assertNotNull(notice);
+    assertEquals("t", notice.title());
+    assertEquals("x", notice.text());
+    assertEquals(renderedAlert.generate(), notice.renderedAlertHtml());
   }
 
   @Test
@@ -472,5 +443,94 @@ class IPDetectorManagerTest {
 
     // Expect a detection run to be scheduled despite the hourly throttle.
     verify(executor, times(1)).execute(any(Runnable.class), any(String.class));
+  }
+
+  private static ProxyUserAlert newValidProxyAlert(UserAlertManager alerts) {
+    ProxyUserAlert proxy = new ProxyUserAlert(alerts, false);
+    proxy.setAlert(
+        new UserAlert() {
+          @Override
+          public boolean userCanDismiss() {
+            return true;
+          }
+
+          @Override
+          public String getTitle() {
+            return "t";
+          }
+
+          @Override
+          public String getText() {
+            return "x";
+          }
+
+          @Override
+          public HTMLNode getHTMLText() {
+            return new HTMLNode("div");
+          }
+
+          @Override
+          public short getPriorityClass() {
+            return 0;
+          }
+
+          @Override
+          public boolean isValid() {
+            return true;
+          }
+
+          @Override
+          public void isValid(boolean validity) {
+            // Intentionally empty: this test stub does not track the alert lifecycle state.
+          }
+
+          @Override
+          public String dismissButtonText() {
+            return "d";
+          }
+
+          @Override
+          public boolean shouldUnregisterOnDismiss() {
+            return false;
+          }
+
+          @Override
+          public void onDismiss() {
+            // Intentionally empty: no side effects are needed for dismissal in this test.
+          }
+
+          @Override
+          public String anchor() {
+            return "a";
+          }
+
+          @Override
+          public String getShortText() {
+            return "s";
+          }
+
+          @Override
+          public boolean isEventNotification() {
+            return false;
+          }
+
+          @Override
+          public UserAlertFeedEvent getFeedEvent() {
+            return null;
+          }
+
+          @Override
+          public long getUpdatedTime() {
+            return System.currentTimeMillis();
+          }
+        });
+    return proxy;
+  }
+
+  private static void setProxyAlert(IPDetectorManager target, ProxyUserAlert proxy)
+      throws ReflectiveOperationException {
+    Field field = IPDetectorManager.class.getDeclaredField("proxyAlert");
+    field.setAccessible(true);
+    field.set(target, proxy);
   }
 }

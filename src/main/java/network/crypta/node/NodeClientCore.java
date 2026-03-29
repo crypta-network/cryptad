@@ -9,7 +9,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
-import network.crypta.clients.fcp.ClientRequest;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.config.BooleanCallback;
 import network.crypta.config.IntCallback;
 import network.crypta.config.InvalidConfigValueException;
@@ -1520,9 +1520,9 @@ public final class NodeClientCore implements Persistable {
    * array as read-only and avoid modifying its elements. The accessor performs no I/O and returns
    * the in-memory snapshot immediately.
    *
-   * @return snapshot array of persisted {@link ClientRequest} entries at call time.
+   * @return snapshot array of persisted {@link PersistentRequestHandle} entries at call time.
    */
-  public ClientRequest[] getPersistentRequests() {
+  public PersistentRequestHandle[] getPersistentRequests() {
     return persistence.getPersistentRequests();
   }
 

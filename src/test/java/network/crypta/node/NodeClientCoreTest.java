@@ -10,6 +10,7 @@ import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
+import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
@@ -471,7 +472,7 @@ class NodeClientCoreTest {
     ClientRequest[] requests = new ClientRequest[] {Mockito.mock(ClientRequest.class)};
     when(persistence.getPersistentRequests()).thenReturn(requests);
 
-    ClientRequest[] persisted = core.getPersistentRequests();
+    PersistentRequestHandle[] persisted = core.getPersistentRequests();
 
     assertSame(requests, persisted);
   }

@@ -3,7 +3,6 @@ package network.crypta.node;
 import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Map;
-import network.crypta.clients.http.DarknetConnectionsToadlet;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
@@ -13,11 +12,11 @@ import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
  * Immutable snapshot of a {@link PeerNode}'s observable state.
  *
  * <p>Instances are constructed from a live {@link PeerNode} and copy the values required by
- * presentation and diagnostics (for example {@link DarknetConnectionsToadlet}). Copying avoids
- * reading mutable state from the node while rendering and therefore reduces race conditions.
+ * presentation and diagnostics. Copying avoids reading mutable state from the node while rendering
+ * and therefore reduces race conditions.
  *
- * <p>Threading: this object is read-only and thread-safe after construction. No synchronization is
- * required by callers.
+ * <p>Threading: this object is read-only and thread-safe after construction. Callers require no
+ * synchronization.
  *
  * <p>Nullability: some address fields may be {@code null} when the peer is not known yet or the
  * address cannot be resolved.
@@ -127,8 +126,6 @@ public class PeerNodeStatus {
 
   private final long messageQueueLengthTime;
 
-  // int's because that's what they are transferred as
-
   /**
    * Aggregate "real‑time" inbound load view for this peer.
    *
@@ -236,17 +233,17 @@ public class PeerNodeStatus {
   /**
    * Returns the approximate size of the outbound message queue for this peer.
    *
-   * @return number of bytes currently queued for send; monotonically decreases as data is sent and
-   *     increases as messages are enqueued
+   * @return the number of bytes currently queued for sending; monotonically decreases as data is
+   *     sent and increases as messages are enqueued
    */
   public long getMessageQueueLengthBytes() {
     return messageQueueLengthBytes;
   }
 
   /**
-   * Returns a rough estimate of how long it will take to drain the outbound queue.
+   * Returns an estimate of how long it will take to drain the outbound queue.
    *
-   * @return estimated time to empty the send queue in milliseconds
+   * @return estimated time to empty the sending queue in milliseconds
    */
   public long getMessageQueueLengthTime() {
     return messageQueueLengthTime;
@@ -258,7 +255,7 @@ public class PeerNodeStatus {
    * <p>Available only when the snapshot was built with {@code noHeavy=false}; otherwise returns
    * {@code null}.
    *
-   * @return a map of message type to count, or {@code null}
+   * @return a map of message types to count, or {@code null}
    */
   public Map<String, Long> getLocalMessagesReceived() {
     return localMessagesReceived;
@@ -270,7 +267,7 @@ public class PeerNodeStatus {
    * <p>Available only when the snapshot was built with {@code noHeavy=false}; otherwise returns
    * {@code null}.
    *
-   * @return a map of message type to count, or {@code null}
+   * @return a map of message types to count, or {@code null}
    */
   public Map<String, Long> getLocalMessagesSent() {
     return localMessagesSent;
@@ -341,7 +338,7 @@ public class PeerNodeStatus {
   }
 
   /**
-   * Indicates whether our version is considered invalid by the peer according to public exchange.
+   * Indicates whether the peer considers our version invalid, according to public exchange.
    *
    * @return {@code true} if the peer reported our version as invalid
    */
@@ -451,7 +448,8 @@ public class PeerNodeStatus {
    * @return address and port formatted for display
    */
   public String getPeerAddressAndPort() {
-    if (peerAddressBytes != null && peerAddressBytes.length == 16) { // IPv6 address have [] around
+    if (peerAddressBytes != null
+        && peerAddressBytes.length == 16) { // IPv6 addresses have [] around
       return '[' + peerAddress + "]:" + peerPort;
     } else {
       return peerAddress + ':' + peerPort;
@@ -624,7 +622,7 @@ public class PeerNodeStatus {
   /**
    * Returns the number of bytes received from this peer since the node started.
    *
-   * @return cumulative bytes since current process start
+   * @return cumulative bytes since the current process start
    */
   public long getTotalInputSinceStartup() {
     return totalBytesInSinceStartup;
@@ -633,7 +631,7 @@ public class PeerNodeStatus {
   /**
    * Returns the number of bytes sent to this peer since the node started.
    *
-   * @return cumulative bytes since current process start
+   * @return cumulative bytes since the current process start
    */
   public long getTotalOutputSinceStartup() {
     return totalBytesOutSinceStartup;

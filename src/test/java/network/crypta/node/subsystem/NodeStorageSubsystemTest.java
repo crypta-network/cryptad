@@ -3,6 +3,8 @@ package network.crypta.node.subsystem;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.security.SecureRandom;
+import network.crypta.clients.http.PasswordFormOptions;
+import network.crypta.clients.http.SecurityLevelsToadlet;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.keys.CHKBlock;
@@ -16,10 +18,13 @@ import network.crypta.node.SecurityLevels;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
+import network.crypta.runtime.endpoints.ClientEndpoints;
+import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.store.CHKStore;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
+import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -216,6 +223,36 @@ class NodeStorageSubsystemTest {
   }
 
   @Test
+  void masterPasswordUserAlert_getHTMLText_whenRendered_matchesLegacyPasswordForm()
+      throws Exception {
+    HttpShellContainer container = org.mockito.Mockito.mock(HttpShellContainer.class);
+    when(container.addFormChild(any(HTMLNode.class), anyString(), anyString()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(0);
+              String target = invocation.getArgument(1);
+              String id = invocation.getArgument(2);
+              HTMLNode form = parent.addChild("form");
+              form.addAttribute("target", target);
+              form.addAttribute("id", id);
+              return form;
+            });
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
+    when(clientCore.getEndpoints()).thenReturn(new ClientEndpoints(null, null, container));
+
+    HTMLNode expectedContent = new HTMLNode("div");
+    SecurityLevelsToadlet.generatePasswordFormPage(
+        new PasswordFormOptions(false, false, false, false, null, null),
+        container,
+        expectedContent);
+
+    HTMLNode renderedContent = getMasterPasswordUserAlert(subsystem).getHTMLText();
+
+    assertEquals(expectedContent.generate(), renderedContent.generate());
+  }
+
+  @Test
   void setStorePreallocate_whenSaltHashBeforeStoresInitialized_doesNotThrow() {
     subsystem.setStoreType(Node.TYPE_SALT_HASH);
 
@@ -287,5 +324,12 @@ class NodeStorageSubsystemTest {
     Field field = target.getClass().getDeclaredField("chkDatastore");
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static UserAlert getMasterPasswordUserAlert(NodeStorageSubsystem target)
+      throws ReflectiveOperationException {
+    Field field = target.getClass().getDeclaredField("masterPasswordUserAlert");
+    field.setAccessible(true);
+    return (UserAlert) field.get(target);
   }
 }

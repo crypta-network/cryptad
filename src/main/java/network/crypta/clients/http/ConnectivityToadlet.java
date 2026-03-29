@@ -5,6 +5,7 @@ import java.net.URI;
 import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.endpoints.http.ConnectivityPagePaths;
 import network.crypta.runtime.spi.ConnectivityGapSnapshot;
 import network.crypta.runtime.spi.ConnectivityListenerPortSnapshot;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
@@ -34,15 +35,13 @@ public class ConnectivityToadlet extends Toadlet {
   private static final String EMPTY_HEADER_LABEL = " ";
   private static final String CONNECTIVITY_PORT_CLASS = "connectivity-port";
   private static final String CONNECTIVITY_IP_CLASS = "connectivity-ip";
-  private static final String PATH_DELIMITER = "/";
   private static final int GAP_COLUMNS = 5;
 
   /**
    * Publicly visible path segment for registering the connectivity dashboard endpoint, including
    * leading and trailing slashes as expected by the toadlet router for consistent URL generation.
    */
-  public static final String CONNECTIVITY_PATH =
-      String.join(PATH_DELIMITER, "", "connectivity", "");
+  public static final String CONNECTIVITY_PATH = ConnectivityPagePaths.CONNECTIVITY_PATH;
 
   private record TrafficContext(String noreply, String local, String remote, long now) {}
 
