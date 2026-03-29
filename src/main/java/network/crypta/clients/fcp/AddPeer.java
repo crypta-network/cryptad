@@ -5,27 +5,24 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
-import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
 import network.crypta.runtime.spi.PeerSnapshot;
 import network.crypta.runtime.spi.PeerTrust;
 import network.crypta.runtime.spi.PeerVisibility;
-import network.crypta.support.MediaType;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -158,18 +155,10 @@ public final class AddPeer extends FCPMessage {
   }
 
   /**
-   * Fetches a peer reference document from the given URL.
+   * Delegates to the neutral peer-reference text loader for regular URLs.
    *
-   * <p>This helper opens a {@link URLConnection}, selects an appropriate character set using {@link
-   * MediaType#getCharsetRobustOrUTF(String)} based on the {@code Content-Type} header, and reads
-   * the entire response as text. Lines are appended to a {@link StringBuilder} in order with single
-   * {@code '\n'} separators, producing a form that can later be parsed into a {@link
-   * SimpleFieldSet} representation of the peer reference.
-   *
-   * <p>The connection's input stream is closed automatically when the method returns, but the
-   * {@link URLConnection} itself is not further configured (for example, no timeouts are changed).
-   * Callers are expected to provide a URL that yields a small text document containing the desired
-   * reference.
+   * <p>The returned buffer and newline-joining behavior match the runtime-owned loader used by the
+   * HTTP and console adapters.
    *
    * @param url absolute URL pointing to a textual peer reference document; must not be {@code null}
    * @return mutable buffer containing the full textual contents of the response, including trailing
@@ -178,37 +167,16 @@ public final class AddPeer extends FCPMessage {
    *     reason, including network errors or unexpected end-of-stream conditions
    */
   public static StringBuilder getReferenceFromURL(URL url) throws IOException {
-    StringBuilder ref = new StringBuilder(1024);
-
-    URLConnection uc = url.openConnection();
-    try (InputStream is = uc.getInputStream();
-        BufferedReader in =
-            new BufferedReader(
-                new InputStreamReader(is, MediaType.getCharsetRobustOrUTF(uc.getContentType())))) {
-
-      String line;
-      while ((line = in.readLine()) != null) {
-        ref.append(line).append('\n');
-      }
-      return ref;
-    }
+    return PeerReferenceTextLoader.readFromUrl(url);
   }
 
   /**
-   * Fetches a peer reference document from a {@link FreenetURI}.
+   * Delegates to the neutral peer-reference text loader for Freenet URIs.
    *
-   * <p>The supplied {@link HighLevelSimpleClient} is used to request up to approximately
-   * 31&nbsp;000 bytes of data from the given URI. The response is exposed as a {@link Bucket}, from
-   * which this method opens an input stream and reads the contents as text using {@link
-   * MediaType#getCharsetRobustOrUTF(String)} with a {@code text/plain} content type hint. Each line
-   * of text is appended to a {@link StringBuilder} with a single {@code '\n'} separator, producing
-   * a buffer suitable for later parsing into a {@link SimpleFieldSet}.
+   * <p>The supplied client still performs the legacy 31,000-byte fetch, and the returned text keeps
+   * the same newline-joining behavior as the URL path.
    *
-   * <p>The client instance is not closed or modified by this method; callers remain responsible for
-   * its lifecycle and any broader request management. This helper focuses purely on efficiently
-   * retrieving small textual reference documents.
-   *
-   * @param url Freenet URI locating the remotely stored peer reference document; must not be {@code
+   * @param uri Freenet URI locating the remotely stored peer reference document; must not be {@code
    *     null}
    * @param client high-level client instance used to perform the fetch within the appropriate
    *     request priority class and security context; must be configured for the target node
@@ -220,22 +188,8 @@ public final class AddPeer extends FCPMessage {
    *     failures, timeouts, or protocol-level error responses
    */
   public static StringBuilder getReferenceFromFreenetURI(
-      FreenetURI url, HighLevelSimpleClient client) throws IOException, FetchException {
-    StringBuilder ref = new StringBuilder(1024); // the 1024 is the initial capacity
-
-    try (Bucket bucket = client.fetch(url, 31000).asBucket();
-        // limit to 31k, which should suffice even if we add many more ipv6 addresses
-        InputStream is = bucket.getInputStream();
-        BufferedReader in =
-            new BufferedReader(
-                new InputStreamReader(is, MediaType.getCharsetRobustOrUTF("text/plain")))) {
-
-      String line;
-      while ((line = in.readLine()) != null) {
-        ref.append(line).append('\n');
-      }
-      return ref;
-    }
+      FreenetURI uri, HighLevelSimpleClient client) throws IOException, FetchException {
+    return PeerReferenceTextLoader.readFromFreenetUri(uri, client);
   }
 
   /**
@@ -347,11 +301,11 @@ public final class AddPeer extends FCPMessage {
               .getServer()
               .messageRuntimeSupport()
               .makeClient(FcpPriorityClasses.IMMEDIATE_SPLITFILE, true, true);
-      return AddPeer.getReferenceFromFreenetURI(refUri, client);
+      return getReferenceFromFreenetURI(refUri, client);
     } catch (MalformedURLException | FetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urlString);
       URL url = createUrlFromString(urlString);
-      return AddPeer.getReferenceFromURL(url);
+      return getReferenceFromURL(url);
     }
   }
 

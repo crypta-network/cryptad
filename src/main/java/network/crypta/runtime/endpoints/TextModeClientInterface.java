@@ -49,7 +49,6 @@ import network.crypta.client.events.EventDumper;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.ContentFilterRequest;
-import network.crypta.clients.fcp.AddPeer;
 import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppEnv;
 import network.crypta.io.comm.Peer;
@@ -69,6 +68,7 @@ import network.crypta.node.PeerTooOldException;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
@@ -1166,7 +1166,7 @@ public class TextModeClientInterface implements Runnable {
       } else {
         outsb.append("Given string seems to be an URL, loading...\r\n");
         URL url = parseUrl(key);
-        content = AddPeer.getReferenceFromURL(url).toString();
+        content = PeerReferenceTextLoader.readFromUrl(url).toString();
       }
     } else {
       content = readLines(reader, true);

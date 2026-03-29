@@ -1,18 +1,16 @@
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import network.crypta.client.ClientMetadata;
-import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
@@ -22,8 +20,6 @@ import network.crypta.runtime.spi.PeerTrust;
 import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.Bucket;
-import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -138,34 +135,34 @@ class AddPeerTest {
   }
 
   @Test
-  void getReferenceFromURL_whenFileHasTwoLines_readsBothLinesWithTrailingNewlines(
-      @TempDir Path tempDir) throws IOException {
-    Path file = tempDir.resolve("peer-ref.txt");
-    Files.writeString(file, "line1\nline2\n", StandardCharsets.UTF_8);
+  void getReferenceFromURL_whenCalled_delegatesToPeerReferenceTextLoader() throws IOException {
+    URL url = mock(URL.class);
+    StringBuilder reference = new StringBuilder("line1\nline2\n");
 
-    URL url = file.toUri().toURL();
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader.when(() -> PeerReferenceTextLoader.readFromUrl(url)).thenReturn(reference);
 
-    StringBuilder result = AddPeer.getReferenceFromURL(url);
-
-    assertEquals("line1\nline2\n", result.toString());
+      assertSame(reference, AddPeer.getReferenceFromURL(url));
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromUrl(url));
+    }
   }
 
   @Test
-  void getReferenceFromFreenetURI_whenClientReturnsBucket_readsBucketContent() throws Exception {
-    Bucket bucket = new ArrayBucket();
-    try (OutputStream out = bucket.getOutputStream()) {
-      out.write("ref-line-1\nref-line-2\n".getBytes(StandardCharsets.UTF_8));
-    }
-
-    FetchResult fetchResult = FetchResult.create(new ClientMetadata("text/plain"), bucket);
+  void getReferenceFromFreenetURI_whenCalled_delegatesToPeerReferenceTextLoader() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    when(client.fetch(any(FreenetURI.class), eq(31000L))).thenReturn(fetchResult);
-
     FreenetURI uri = mock(FreenetURI.class);
+    StringBuilder reference = new StringBuilder("ref-line-1\nref-line-2\n");
 
-    StringBuilder result = AddPeer.getReferenceFromFreenetURI(uri, client);
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader
+          .when(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client))
+          .thenReturn(reference);
 
-    assertEquals("ref-line-1\nref-line-2\n", result.toString());
+      assertSame(reference, AddPeer.getReferenceFromFreenetURI(uri, client));
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client));
+    }
   }
 
   @Test
@@ -184,12 +181,12 @@ class AddPeerTest {
 
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
 
-    try (MockedStatic<AddPeer> mockedAddPeer =
-        Mockito.mockStatic(AddPeer.class, Mockito.CALLS_REAL_METHODS)) {
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        Mockito.mockStatic(PeerReferenceTextLoader.class)) {
       StringBuilder reference = new StringBuilder();
       reference.append("identity=peer-url\n");
-      mockedAddPeer
-          .when(() -> AddPeer.getReferenceFromFreenetURI(any(FreenetURI.class), eq(client)))
+      mockedLoader
+          .when(() -> PeerReferenceTextLoader.readFromFreenetUri(any(FreenetURI.class), eq(client)))
           .thenReturn(reference);
       when(messageRuntimeSupport.makeClient(
               RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true))
