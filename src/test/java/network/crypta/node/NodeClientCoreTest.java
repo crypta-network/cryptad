@@ -13,7 +13,6 @@ import network.crypta.client.async.USKManager;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.config.PersistentConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
@@ -282,11 +281,7 @@ class NodeClientCoreTest {
   }
 
   @Test
-  void fproxySetterGetter_and_myName_delegations_work() {
-    FProxyToadlet fproxy = Mockito.mock(FProxyToadlet.class);
-    core.getEndpoints().setFProxy(fproxy);
-    assertSame(fproxy, core.getEndpoints().getFProxy());
-
+  void myName_and_endpointDelegations_work() {
     when(node.getMyName()).thenReturn("MyNode");
     assertEquals("MyNode", core.getMyName());
   }

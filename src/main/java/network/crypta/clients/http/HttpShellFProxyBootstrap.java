@@ -11,15 +11,14 @@ import network.crypta.clients.http.bookmark.BookmarkManager;
  * resulting collaborators when it registers child toadlets and bookmark-dependent views. This
  * record keeps that handoff explicit and minimal: the bookmark manager carries the daemon-backed
  * bookmark runtime, the interactive client is shared by HTTP toadlets, and the root {@link
- * FProxyToadlet} has already been published to client endpoints by the time the shell receives this
- * bundle.
+ * FProxyToadlet} is returned directly to the shell bootstrap path for registration.
  *
- * <p>This record is public only so runtime-owned HTTP bootstrap adapters can construct and return
+ * <p>This record is public only, so runtime-owned HTTP bootstrap adapters can construct and return
  * the bundle from outside {@code network.crypta.clients.http}. It is not a new platform API.
  *
  * @param bookmarkManager bookmark manager wired against the daemon-backed bookmark runtime support
  * @param client interactive client shared by HTTP toadlets created during shell startup
- * @param fproxy root FProxy toadlet that has already been connected to daemon client endpoints
+ * @param fproxy root FProxy toadlet constructed during bootstrap and handed to the registrar flow
  */
 public record HttpShellFProxyBootstrap(
     BookmarkManager bookmarkManager, HighLevelSimpleClient client, FProxyToadlet fproxy) {

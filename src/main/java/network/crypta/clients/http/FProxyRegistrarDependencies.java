@@ -22,7 +22,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param client shared interactive client used by registered HTTP toadlets
  * @param runtimePorts detached runtime ports exposed to the HTTP shell
  * @param config node configuration used to list sub-config toadlets
- * @param fproxy prebuilt root FProxy toadlet already published to client endpoints
+ * @param fproxy prebuilt root FProxy toadlet handed to the registrar for root-path registration
  */
 record FProxyRegistrarDependencies(
     HighLevelSimpleClient client, RuntimePorts runtimePorts, Config config, FProxyToadlet fproxy) {

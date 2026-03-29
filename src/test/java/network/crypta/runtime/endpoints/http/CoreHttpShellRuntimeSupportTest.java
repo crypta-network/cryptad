@@ -22,7 +22,6 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
-import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -46,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -233,13 +233,12 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   @Test
-  void createFProxyBootstrap_whenInvoked_constructsDependenciesAndPublishesFProxy() {
+  void createFProxyBootstrap_whenInvoked_constructsDependenciesAndReturnsBootstrap() {
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     ClientContext clientContext = mock(ClientContext.class);
     FetchContext fetchContext = mock(FetchContext.class);
-    ClientEndpoints endpoints = mock(ClientEndpoints.class);
     AtomicReference<List<Object>> bookmarkManagerArguments = new AtomicReference<>();
     AtomicReference<List<Object>> fetchTrackerArguments = new AtomicReference<>();
     AtomicReference<List<Object>> fproxyArguments = new AtomicReference<>();
@@ -247,7 +246,6 @@ class CoreHttpShellRuntimeSupportTest {
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
     when(client.getFetchContext()).thenReturn(fetchContext);
-    when(core.getEndpoints()).thenReturn(endpoints);
     CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
 
     try (MockedConstruction<BookmarkManager> bookmarkManagers =
@@ -280,7 +278,7 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
       assertSame(client, bootstrap.client());
       assertSame(fproxies.constructed().getFirst(), bootstrap.fproxy());
-      verify(endpoints).setFProxy(fproxies.constructed().getFirst());
+      verify(core, never()).getEndpoints();
     }
   }
 
