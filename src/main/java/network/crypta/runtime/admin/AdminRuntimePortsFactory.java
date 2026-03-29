@@ -2,14 +2,11 @@ package network.crypta.runtime.admin;
 
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeFile;
+import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
 import network.crypta.runtime.admin.queue.QueueAdminBackend;
-import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
-import network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
+import network.crypta.runtime.admin.queue.page.QueuePageBackend;
+import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
+import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 
 /**
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
@@ -42,19 +39,20 @@ public final class AdminRuntimePortsFactory {
    * @return immutable bundle containing the moved admin and page-oriented runtime adapters
    */
   public static AdminRuntimePortsBundle create(Node node, NodeClientCore core) {
-    QueueAdminBackend queueBackend = new FcpQueueAdminBackend(core);
+    QueueAdminBackend queueBackend = FcpQueuePorts.adminBackend(core);
+    QueuePageBackend queuePageBackend = FcpQueuePorts.pageBackend(core);
+    GeoIpCountryLookup geoIpCountryLookup = HttpGeoIpCountryLookups.forNode(node);
     return new AdminRuntimePortsBundle(
-        new LegacyConnectionsPagePort(
-            node, new HttpGeoIpCountryLookup(NodeFile.IPV4_TO_COUNTRY.getFile(node))),
+        new LegacyConnectionsPagePort(node, geoIpCountryLookup),
         new LegacyConnectionsSupportPort(node),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
         new LegacyDiagnosticPort(node, core, queueBackend),
         new LegacyPageChromePort(node),
-        new LegacyQueueCompletionPort(core),
-        new LegacyQueuePagePort(core, new FcpQueuePageBackend(core)),
-        new LegacyQueueDownloadPort(core),
-        new LegacyQueueInsertPort(core),
+        FcpQueuePorts.completionPort(core),
+        new LegacyQueuePagePort(core, queuePageBackend),
+        FcpQueuePorts.downloadPort(core),
+        FcpQueuePorts.insertPort(core),
         new LegacyQueueMutationPort(queueBackend),
         new LegacyQueueSupportPort(core, queueBackend),
         new LegacyStatisticsPort(node, core),
