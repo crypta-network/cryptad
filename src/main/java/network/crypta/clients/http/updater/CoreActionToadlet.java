@@ -1,4 +1,4 @@
-package network.crypta.runtime.updater;
+package network.crypta.clients.http.updater;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -24,6 +24,7 @@ import network.crypta.fs.AppEnv;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
+import network.crypta.runtime.updater.UpdaterPaths;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;

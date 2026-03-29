@@ -558,7 +558,7 @@
 
   <Match>
     <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-    <Class name="network.crypta.runtime.updater.CoreActionToadlet"/>
+    <Class name="network.crypta.clients.http.updater.CoreActionToadlet"/>
     <Method name="isOstree"/>
   </Match>
 
@@ -1418,7 +1418,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.runtime.updater.CoreActionToadlet"/>
+    <Class name="network.crypta.clients.http.updater.CoreActionToadlet"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

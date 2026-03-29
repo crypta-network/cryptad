@@ -1,4 +1,4 @@
-package network.crypta.runtime.updater;
+package network.crypta.clients.http.updater;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -11,6 +11,7 @@ import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.fs.AppEnv;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
+import network.crypta.runtime.updater.UpdaterPaths;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;

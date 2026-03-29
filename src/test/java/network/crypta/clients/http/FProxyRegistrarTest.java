@@ -166,7 +166,7 @@ class FProxyRegistrarTest {
             .filter(
                 registered ->
                     registered.toadlet()
-                        instanceof network.crypta.runtime.updater.CoreActionToadlet)
+                        instanceof network.crypta.clients.http.updater.CoreActionToadlet)
             .findFirst()
             .orElseThrow();
     assertSame(
