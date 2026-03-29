@@ -4,3 +4,8 @@ plugins {
 }
 
 version = rootProject.version
+
+dependencies {
+  implementation(project(":foundation-support"))
+  implementation(libs.slf4jApi)
+}

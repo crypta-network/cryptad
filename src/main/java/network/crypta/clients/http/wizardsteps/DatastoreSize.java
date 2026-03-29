@@ -3,21 +3,15 @@ package network.crypta.clients.http.wizardsteps;
 import java.util.Objects;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
-import network.crypta.config.ConfigException;
-import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.DatastoreSizingSupport;
 import network.crypta.config.Option;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
-import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
 /**
  * Wizard step that renders and applies a datastore sizing choice.
@@ -44,7 +38,6 @@ import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
  * @see Step
  */
 public class DatastoreSize implements Step {
-  private static final Logger LOG = LoggerFactory.getLogger(DatastoreSize.class);
   private static final String ATTR_SELECTED = "selected";
   private static final String ATTR_VALUE = "value";
   private static final String TAG_OPTION = "option";
@@ -141,7 +134,11 @@ public class DatastoreSize implements Step {
     // be more
     boolean firsttime = !request.isPartSet("singlestep");
 
-    setDatastoreSizeInternal(request.getPartAsStringFailsafe("ds", 20), firsttime, config);
+    DatastoreSizingSupport.setDatastoreSize(
+        request.getPartAsStringFailsafe("ds", 20),
+        firsttime,
+        config,
+        DatastoreUtil::maxDatastoreSize);
     if (firsttime) {
       return FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name();
     } else {
@@ -162,64 +159,8 @@ public class DatastoreSize implements Step {
    * @param config configuration instance that will be updated in-place with the derived values
    */
   public static void setDatastoreSize(String selectedStoreSize, Config config) {
-    setDatastoreSizeInternal(selectedStoreSize, true, config);
-  }
-
-  private static void setDatastoreSizeInternal(
-      String selectedStoreSize, boolean firsttime, Config config) {
-    try {
-      long size = Fields.parseLong(selectedStoreSize);
-
-      long maxDatastoreSize = DatastoreUtil.maxDatastoreSize();
-      if (size > maxDatastoreSize) {
-        throw new InvalidConfigValueException(
-            "Attempting to set DatastoreSize ("
-                + size
-                + ") larger than maxDatastoreSize ("
-                + maxDatastoreSize / ONE_GIB
-                + " GiB)");
-      }
-
-      // client cache: 10% up to 200MB
-      long clientCacheSize = Math.min(size / 10, 200L * 1024 * 1024);
-      // recent requests cache / slashdot cache / ULPR cache
-      int upstreamLimit = config.get("node").getInt("outputBandwidthLimit");
-      int downstreamLimit = config.get("node").getInt("inputBandwidthLimit");
-      // is used for remote stuff, so go by the minimum of the two
-      int limit;
-      if (downstreamLimit <= 0) limit = upstreamLimit;
-      else limit = Math.min(downstreamLimit, upstreamLimit);
-      // A 35 KiB/sec limit has been seen to have 0.5 store writes per second.
-      // Reserving enough room to cache everything only doubles that rate.
-      // Most traffic is at a low enough HTL to go to the datastore instead.
-      // That means this slashdot cache estimate could probably be smaller.
-      long lifetime = config.get("node").getLong("slashdotCacheLifetime");
-      long maxSlashdotCacheSize = (lifetime / 1000) * limit;
-      long slashdotCacheSize = Math.min(size / 10, maxSlashdotCacheSize);
-
-      long storeSize = size - (clientCacheSize + slashdotCacheSize);
-
-      if (LOG.isInfoEnabled()) {
-        LOG.info("Setting datastore size to {}", Fields.longToString(storeSize, true));
-      }
-      config.get("node").set("storeSize", Fields.longToString(storeSize, true));
-      if (firsttime) config.get("node").set("storeType", "salt-hash");
-      if (LOG.isInfoEnabled()) {
-        LOG.info("Setting client cache size to {}", Fields.longToString(clientCacheSize, true));
-      }
-      config.get("node").set("clientCacheSize", Fields.longToString(clientCacheSize, true));
-      if (firsttime) config.get("node").set("clientCacheType", "salt-hash");
-      if (LOG.isInfoEnabled()) {
-        LOG.info(
-            "Setting slashdot/ULPR/recent requests cache size to {}",
-            Fields.longToString(slashdotCacheSize, true));
-      }
-      config.get("node").set("slashdotCacheSize", Fields.longToString(slashdotCacheSize, true));
-
-      LOG.info("The storeSize has been set to {}", selectedStoreSize);
-    } catch (ConfigException e) {
-      LOG.error("Unexpected configuration error; please report this issue.", e);
-    }
+    DatastoreSizingSupport.setDatastoreSize(
+        selectedStoreSize, config, DatastoreUtil::maxDatastoreSize);
   }
 
   private static void addDatastoreSizeOptions(

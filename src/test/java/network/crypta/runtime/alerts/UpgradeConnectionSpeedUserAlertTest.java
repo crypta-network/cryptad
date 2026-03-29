@@ -1,6 +1,6 @@
 package network.crypta.runtime.alerts;
 
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.compat.bandwidth.BandwidthLimit;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;

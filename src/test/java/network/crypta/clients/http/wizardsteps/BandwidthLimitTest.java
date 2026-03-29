@@ -28,8 +28,9 @@ class BandwidthLimitTest {
   @SuppressWarnings({"java:S3415"})
   void minimumMonthlyLimitGiB_whenCalculated_expectMatchesFormula() {
     double expectedGiB =
-        2 * MIN_BYTES_PER_SECOND * BandwidthLimit.SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
-    double minimumMonthlyLimitGiB = BandwidthLimit.minimumMonthlyLimitGiB(MIN_BYTES_PER_SECOND);
+        2 * MIN_BYTES_PER_SECOND * WizardBandwidthLimit.SECONDS_PER_MONTH / DatastoreUtil.ONE_GIB;
+    double minimumMonthlyLimitGiB =
+        WizardBandwidthLimit.minimumMonthlyLimitGiB(MIN_BYTES_PER_SECOND);
 
     assertEquals(expectedGiB, minimumMonthlyLimitGiB, 1e-12d);
     assertTrue(minimumMonthlyLimitGiB > 0, "Minimum monthly limit should be positive");
@@ -42,20 +43,20 @@ class BandwidthLimitTest {
     String key = "l10n.key";
     boolean maybeDefault = true;
 
-    BandwidthLimit limit = new BandwidthLimit(down, up, key, maybeDefault);
+    WizardBandwidthLimit limit = new WizardBandwidthLimit(down, up, key, maybeDefault);
 
-    assertEquals(down, limit.downBytes);
-    assertEquals(up, limit.upBytes);
-    assertEquals(key, limit.descriptionKey);
-    assertTrue(limit.maybeDefault);
+    assertEquals(down, limit.downBytes());
+    assertEquals(up, limit.upBytes());
+    assertEquals(key, limit.descriptionKey());
+    assertTrue(limit.maybeDefault());
   }
 
   @Test
   void constructor_whenDescriptionKeyNull_expectNullPreserved() {
-    BandwidthLimit limit = new BandwidthLimit(1L, 2L, null, false);
+    WizardBandwidthLimit limit = new WizardBandwidthLimit(1L, 2L, null, false);
 
-    assertNull(limit.descriptionKey);
-    assertFalse(limit.maybeDefault);
+    assertNull(limit.descriptionKey());
+    assertFalse(limit.maybeDefault());
   }
 
   @Test
@@ -63,12 +64,13 @@ class BandwidthLimitTest {
     long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
+    WizardBandwidthLimit limit =
+        WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(MIN_BYTES_PER_SECOND, limit.downBytes);
-    assertEquals(MIN_BYTES_PER_SECOND, limit.upBytes);
-    assertEquals("Monthly bandwidth limit", limit.descriptionKey);
-    assertFalse(limit.maybeDefault);
+    assertEquals(MIN_BYTES_PER_SECOND, limit.downBytes());
+    assertEquals(MIN_BYTES_PER_SECOND, limit.upBytes());
+    assertEquals("Monthly bandwidth limit", limit.descriptionKey());
+    assertFalse(limit.maybeDefault());
   }
 
   @Test
@@ -76,10 +78,11 @@ class BandwidthLimitTest {
     long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + 10L;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
+    WizardBandwidthLimit limit =
+        WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(MIN_BYTES_PER_SECOND + 8L, limit.downBytes);
-    assertEquals(MIN_BYTES_PER_SECOND + 2L, limit.upBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 8L, limit.downBytes());
+    assertEquals(MIN_BYTES_PER_SECOND + 2L, limit.upBytes());
   }
 
   @Test
@@ -87,15 +90,16 @@ class BandwidthLimitTest {
     long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + 1L;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
+    WizardBandwidthLimit limit =
+        WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.downBytes);
-    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.upBytes);
+    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.downBytes());
+    assertEquals(MIN_BYTES_PER_SECOND + 1L, limit.upBytes());
   }
 
   @ParameterizedTest
   @DisplayName(
-      "BandwidthLimit.fromMonthlyBudget(bytesPerMonth, min): min+ -> down>=up and >= minimum")
+      "WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, min): min+ -> down>=up and >= minimum")
   @ValueSource(longs = {0L, 1L, 2L, 10L, 123L, 999L})
   void
       fromMonthlyBudget_whenBytesPerMonthAtOrAboveMinimum_expectDownAtLeastUpAndSumWithinCeilBounds(
@@ -103,13 +107,14 @@ class BandwidthLimitTest {
     long bytesPerSecond = 2L * MIN_BYTES_PER_SECOND + extraBytesPerSecond;
     long bytesPerMonth = bytesPerMonthFromBytesPerSecond(bytesPerSecond);
 
-    BandwidthLimit limit = BandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
+    WizardBandwidthLimit limit =
+        WizardBandwidthLimit.fromMonthlyBudget(bytesPerMonth, MIN_BYTES_PER_SECOND);
 
-    assertTrue(limit.downBytes >= limit.upBytes, "Expected downBytes >= upBytes");
-    assertTrue(limit.downBytes >= MIN_BYTES_PER_SECOND, "Expected downBytes >= minimum");
-    assertTrue(limit.upBytes >= MIN_BYTES_PER_SECOND, "Expected upBytes >= minimum");
+    assertTrue(limit.downBytes() >= limit.upBytes(), "Expected downBytes >= upBytes");
+    assertTrue(limit.downBytes() >= MIN_BYTES_PER_SECOND, "Expected downBytes >= minimum");
+    assertTrue(limit.upBytes() >= MIN_BYTES_PER_SECOND, "Expected upBytes >= minimum");
 
-    long sum = limit.downBytes + limit.upBytes;
+    long sum = limit.downBytes() + limit.upBytes();
     assertTrue(sum >= bytesPerSecond, "Ceil should not under-allocate total bandwidth");
     assertTrue(sum < bytesPerSecond + 2L, "Ceil of two values should add < 2 bytes/sec overhead");
   }

@@ -1,7 +1,7 @@
 package network.crypta.node;
 
-import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.compat.BandwidthIndicator;
+import network.crypta.compat.bandwidth.BandwidthLimit;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UpgradeConnectionSpeedUserAlert;

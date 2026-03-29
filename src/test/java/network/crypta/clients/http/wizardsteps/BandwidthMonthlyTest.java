@@ -39,7 +39,7 @@ class BandwidthMonthlyTest {
   private static final long KIB = 1024L;
   private static final long MIN_BANDWIDTH_KIB = 256L;
   private static final double MIN_MONTHLY_LIMIT_GIB =
-      BandwidthLimit.minimumMonthlyLimitGiB(MIN_BANDWIDTH_KIB * KIB);
+      WizardBandwidthLimit.minimumMonthlyLimitGiB(MIN_BANDWIDTH_KIB * KIB);
   private static final String PARAM_CAP_TO = "capTo";
   private static final String PARAM_PARSE_TARGET = "parseTarget";
   private static final String PARAM_PARSE_ERROR = "parseError";
@@ -103,13 +103,15 @@ class BandwidthMonthlyTest {
     assertTrue(step.wizardComplete, "Wizard must be marked complete on success");
 
     long bytesPerMonth = Math.round(Double.parseDouble(capTo) * DatastoreUtil.ONE_GIB);
-    BandwidthLimit expected =
-        BandwidthLimit.fromMonthlyBudget(bytesPerMonth, DEFAULT_SNAPSHOT.minBandwidthKiB() * KIB);
+    WizardBandwidthLimit expected =
+        WizardBandwidthLimit.fromMonthlyBudget(
+            bytesPerMonth, DEFAULT_SNAPSHOT.minBandwidthKiB() * KIB);
 
     assertEquals(2, step.setBandwidthCalls.size(), "Should set download and upload bandwidth");
     assertEquals(
-        new SetCall(Long.toString(expected.downBytes), false), step.setBandwidthCalls.get(0));
-    assertEquals(new SetCall(Long.toString(expected.upBytes), true), step.setBandwidthCalls.get(1));
+        new SetCall(Long.toString(expected.downBytes()), false), step.setBandwidthCalls.get(0));
+    assertEquals(
+        new SetCall(Long.toString(expected.upBytes()), true), step.setBandwidthCalls.get(1));
   }
 
   @Test
@@ -304,7 +306,8 @@ class BandwidthMonthlyTest {
     String html = pageContent.generate();
     assertHtmlHasHiddenCapToInput(
         html,
-        Double.toString(BandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB)));
+        Double.toString(
+            WizardBandwidthLimit.minimumMonthlyLimitGiB(snapshot.minBandwidthKiB() * KIB)));
   }
 
   private static void assertHtmlHasHiddenCapToInput(String html, String value) {
