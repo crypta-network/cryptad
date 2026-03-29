@@ -1,11 +1,31 @@
 package network.crypta.runtime.updater;
 
+import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.util.List;
+import java.util.Map;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.keys.FreenetURI;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.Ticker;
+import network.crypta.support.http.ExternalLinkSupport;
 import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyShort;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+@SuppressWarnings("java:S100")
 class CoreUpdaterTest {
   @Test
   void parseJson_minimal() {
@@ -59,5 +79,79 @@ class CoreUpdaterTest {
     assertNull(CoreUpdater.parseStrictIntegerVersion("1.2.3+build123"));
     assertNull(CoreUpdater.parseStrictIntegerVersion("1501beta"));
     assertNull(CoreUpdater.parseStrictIntegerVersion("999999999999999999999"));
+  }
+
+  @Test
+  void buildLinksNode_whenReleaseAndStoreUrlsPresent_expectEscapedExternalLinks() throws Exception {
+    // Arrange
+    CoreUpdater updater = createCoreUpdater();
+    String releasePageUrl = "https://example.com/releases/core?q=a%20b";
+    String storeUrl = "https://store.example.com/apps/core?id=cryptad%20pkg";
+    CoreInfo info = new CoreInfo("1501", releasePageUrl, Map.of(), null, null);
+    PackageSpec spec = new PackageSpec(null, null, storeUrl);
+
+    // Act
+    HTMLNode links = invokeBuildLinksNode(updater, info, spec, "amd64.deb");
+    List<HTMLNode> anchors =
+        links.getChildren().stream().filter(node -> "a".equals(node.getName())).toList();
+
+    // Assert
+    assertEquals(2, anchors.size());
+    assertEquals(
+        ExternalLinkSupport.escape(releasePageUrl), anchors.get(0).getAttributes().get("href"));
+    assertEquals("Release Notes", anchors.get(0).generateChildren());
+    assertEquals(ExternalLinkSupport.escape(storeUrl), anchors.get(1).getAttributes().get("href"));
+    assertEquals("Open in Store", anchors.get(1).generateChildren());
+  }
+
+  private static CoreUpdater createCoreUpdater() throws Exception {
+    NodeUpdateManager manager = mock(NodeUpdateManager.class);
+    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
+    NodeClientCore core = mock(NodeClientCore.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    Ticker ticker = mock(Ticker.class);
+
+    when(manager.getNode()).thenReturn(node);
+    when(node.services().clientCore()).thenReturn(core);
+    when(node.network().ticker()).thenReturn(ticker);
+    when(core.makeClient(anyShort(), anyBoolean(), anyBoolean())).thenReturn(client);
+    when(client.getFetchContext()).thenReturn(createFetchContext());
+
+    return new CoreUpdater(defaultParams(manager));
+  }
+
+  private static NodeUpdaterParams defaultParams(NodeUpdateManager manager)
+      throws MalformedURLException {
+    return new NodeUpdaterParams(
+        manager,
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/info/1200"),
+        1200,
+        -1,
+        Integer.MAX_VALUE,
+        "core-info-",
+        1325);
+  }
+
+  private static FetchContext createFetchContext() {
+    SimpleEventProducer eventProducer = new SimpleEventProducer();
+    return new FetchContext(
+        FetchContextOptions.builder()
+            .limits(Long.MAX_VALUE, Long.MAX_VALUE, 1024 * 1024)
+            .archiveLimits(1, 1, 1, false)
+            .retryLimits(0, 0, 0)
+            .splitfileLimits(true, 1, 1)
+            .behavior(true, false, false)
+            .clientOptions(eventProducer, false, true)
+            .filterOverrides(null, null, null)
+            .build());
+  }
+
+  private static HTMLNode invokeBuildLinksNode(
+      CoreUpdater updater, CoreInfo info, PackageSpec spec, String chosenKey) throws Exception {
+    Method buildLinksNode =
+        CoreUpdater.class.getDeclaredMethod(
+            "buildLinksNode", CoreInfo.class, PackageSpec.class, String.class);
+    buildLinksNode.setAccessible(true);
+    return (HTMLNode) buildLinksNode.invoke(updater, info, spec, chosenKey);
   }
 }
