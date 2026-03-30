@@ -1150,7 +1150,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.ClientContextResources"/>
+    <Class name="network.crypta.client.async.ClientContextResources"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

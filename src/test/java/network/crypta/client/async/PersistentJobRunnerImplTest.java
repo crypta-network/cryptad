@@ -1,6 +1,5 @@
 package network.crypta.client.async;
 
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.CheatingTicker;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
@@ -9,7 +8,8 @@ import network.crypta.support.WaitableExecutor;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PersistentJobRunnerImplTest {
 
@@ -64,7 +64,7 @@ class PersistentJobRunnerImplTest {
     // Act
     jobRunner.setCheckpointASAP();
     assertFalse(jobRunner.mustCheckpoint());
-    jobRunner.queue(ctx -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
+    jobRunner.queue(_ -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     exec.waitForIdle();
 
     // Assert

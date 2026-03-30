@@ -6,11 +6,11 @@ import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientContextDefaults;
 import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextResources;
 import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientRequestSelector;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.RemoveRandom.RemoveRandomReturn;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -122,7 +122,7 @@ class RandomGrabArrayTest {
     RemoveRandomParent parent = mock(RemoveRandomParent.class);
     RandomGrabArray rga = new RandomGrabArray(parent, root);
 
-    TestItem item = new TestItem("A", -1); // would be considered cancelled if context present
+    TestItem item = new TestItem("A", -1); // would be considered canceled if context present
 
     rga.add(item, null); // context null → skip finished check
 
@@ -253,8 +253,8 @@ class RandomGrabArrayTest {
     ClientContext ctx = ctxWithSeed(12345); // deterministic
 
     long now = 10_000L;
-    // Fill with >= MAX_EXCLUDED items so limited path is used first.
-    // All items are ready (0) but exclusion list defers them to the same time.
+    // Fill with >= MAX_EXCLUDED items so a limited path is used first.
+    // All items are ready (0), but the exclusion list defers them to the same time.
     final int n = RandomGrabArray.MAX_EXCLUDED + 2; // 12
     long wake = now + 42_000L;
     for (int i = 0; i < n; i++) {

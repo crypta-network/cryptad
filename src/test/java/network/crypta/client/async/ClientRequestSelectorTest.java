@@ -23,7 +23,6 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
 import network.crypta.node.BaseSendableGet;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SendableGet;

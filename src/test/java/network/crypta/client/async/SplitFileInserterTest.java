@@ -12,7 +12,6 @@ import network.crypta.client.Metadata;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -283,8 +282,7 @@ class SplitFileInserterTest {
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -308,8 +306,7 @@ class SplitFileInserterTest {
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -334,8 +331,7 @@ class SplitFileInserterTest {
     InsertContext ic = newInsertContext();
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -355,8 +351,7 @@ class SplitFileInserterTest {
     ic.setGetCHKOnly(true);
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -378,8 +373,7 @@ class SplitFileInserterTest {
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -403,7 +397,7 @@ class SplitFileInserterTest {
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
                 SplitFileInserterStorage.class,
-                (mock, ctx) -> {
+                (mock, _) -> {
                   when(mock.getRAF()).thenReturn(raf);
                   when(mock.encodeMetadata()).thenReturn(md);
                 });
@@ -431,7 +425,7 @@ class SplitFileInserterTest {
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
                 SplitFileInserterStorage.class,
-                (mock, ctx) -> {
+                (mock, _) -> {
                   when(mock.getRAF()).thenReturn(raf);
                   when(mock.encodeMetadata()).thenReturn(md);
                 });
@@ -463,8 +457,7 @@ class SplitFileInserterTest {
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -485,8 +478,7 @@ class SplitFileInserterTest {
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
 
@@ -509,7 +501,7 @@ class SplitFileInserterTest {
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
                 SplitFileInserterStorage.class,
-                (mock, ctx) -> {
+                (mock, _) -> {
                   when(mock.getRAF()).thenReturn(raf);
                   // Mockito mocks expose default 0 for fields; getLength() should mirror it.
                 });
@@ -527,8 +519,7 @@ class SplitFileInserterTest {
     InsertContext ic = newInsertContext();
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
       SplitFileInserter sfi = newInserter(true, false, ic, storageConst, senderConst);
@@ -542,8 +533,7 @@ class SplitFileInserterTest {
     InsertContext ic = newInsertContext();
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
       SplitFileInserter sfi = newInserter(true, false, ic, storageConst, senderConst);
@@ -557,8 +547,7 @@ class SplitFileInserterTest {
     InsertContext ic = newInsertContext();
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
       SplitFileInserter sfi = newInserter(true, false, ic, storageConst, senderConst);
@@ -574,8 +563,7 @@ class SplitFileInserterTest {
     when(parent.getPriorityClass()).thenReturn((short) 42);
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
       SplitFileInserter sfi = newInserter(true, false, ic, storageConst, senderConst);
@@ -588,8 +576,7 @@ class SplitFileInserterTest {
     InsertContext ic = newInsertContext();
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
-                SplitFileInserterStorage.class,
-                (mock, ctx) -> when(mock.getRAF()).thenReturn(raf));
+                SplitFileInserterStorage.class, (mock, _) -> when(mock.getRAF()).thenReturn(raf));
         MockedConstruction<SplitFileInserterSender> senderConst =
             Mockito.mockConstruction(SplitFileInserterSender.class)) {
       SplitFileInserter sfi = newInserter(true, true, ic, storageConst, senderConst);

@@ -27,7 +27,6 @@ import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;

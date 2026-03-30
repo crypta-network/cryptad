@@ -5,7 +5,6 @@ import java.util.Random;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.node.BaseSendableGet;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
@@ -63,7 +62,7 @@ class ClientRequestSchedulerTest {
 
   @BeforeEach
   void setUp() {
-    // Minimal, real ClientContext with mostly dummies to satisfy field access
+    // Minimal, real ClientContext with most dummies to satisfy field access
     PriorityAwareExecutor mainExecutor = mock(PriorityAwareExecutor.class);
     Ticker ticker = mock(Ticker.class);
     ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
@@ -207,7 +206,7 @@ class ClientRequestSchedulerTest {
     when(g1.getWakeupTime(same(context), anyLong())).thenReturn(0L);
     when(g1.preRegister(same(context), eq(true))).thenReturn(false);
 
-    // Cancelled path calls preRegister(..., false) and does not register
+    // Canceled path calls preRegister(..., false) and does not register
     when(g2.isCancelled()).thenReturn(true);
 
     sched.register(null, new SendableGet[] {g1, g2}, false, null, true);
