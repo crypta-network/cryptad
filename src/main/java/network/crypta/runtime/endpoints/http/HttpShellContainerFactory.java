@@ -24,6 +24,20 @@ import network.crypta.support.PriorityAwareExecutor;
 public interface HttpShellContainerFactory {
 
   /**
+   * Returns the default runtime-owned HTTP shell factory.
+   *
+   * <p>The default entry point preserves the existing legacy bridge construction path while keeping
+   * concrete shell-host knowledge inside {@code network.crypta.runtime.endpoints.http}. Callers
+   * outside this package can therefore depend on the seam without naming {@link
+   * HttpShellContainers} directly.
+   *
+   * @return factory that creates the current runtime-owned HTTP shell container bridge
+   */
+  static HttpShellContainerFactory defaultFactory() {
+    return HttpShellContainers::create;
+  }
+
+  /**
    * Creates a new HTTP shell container for the supplied FProxy configuration and executor.
    *
    * <p>Implementations should translate the provided runtime configuration into a concrete shell
