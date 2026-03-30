@@ -20,6 +20,7 @@ import network.crypta.support.PriorityAwareExecutor;
  *
  * @see HttpShellContainer
  */
+@FunctionalInterface
 public interface HttpShellContainerFactory {
 
   /**
