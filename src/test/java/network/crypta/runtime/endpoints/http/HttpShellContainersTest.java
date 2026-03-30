@@ -59,7 +59,7 @@ class HttpShellContainersTest {
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
               when(server.isLinkExcepted(uri)).thenReturn(true);
             })) {
-      HttpShellContainerFactory factory = HttpShellContainers::create;
+      HttpShellContainerFactory factory = HttpShellContainerFactory.defaultFactory();
       HttpShellContainer container = factory.create(fproxyConfig, executor);
 
       assertEquals(1, construction.constructed().size());

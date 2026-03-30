@@ -42,9 +42,8 @@ import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
-import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
-import network.crypta.runtime.endpoints.http.HttpShellContainers;
+import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
@@ -586,7 +585,7 @@ public final class Node implements TimeSkewDetectorCallback {
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
     this.bootstrap = new NodeBootstrap(this);
-    this.services = new NodeServicesSubsystem(this, HttpShellContainers::create);
+    this.services = new NodeServicesSubsystem(this);
     NodeConfigManager configManager = new NodeConfigManager(this);
     this.network = new NodeNetworkSubsystem(this);
     this.storage = new NodeStorageSubsystem(this);
@@ -709,7 +708,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             persistentSecret);
     services.setClientCore(clientCoreLocal);
     HttpShellContainer toadlets = services.toadlets();
-    toadlets.setRuntimeSupport(new CoreHttpShellRuntimeSupport(clientCoreLocal));
+    toadlets.setRuntimeSupport(HttpShellRuntimeSupportFactory.coreBacked().create(clientCoreLocal));
 
     services.registerJvmVersionAlertIfNeeded();
 

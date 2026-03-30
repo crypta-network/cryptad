@@ -20,7 +20,6 @@ import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
-import network.crypta.runtime.endpoints.http.HttpShellContainers;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -78,15 +77,15 @@ public final class NodeServicesSubsystem {
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    */
   public NodeServicesSubsystem(Node node) {
-    this(node, HttpShellContainers::create);
+    this(node, HttpShellContainerFactory.defaultFactory());
   }
 
   /**
    * Creates a services subsystem bound to a specific node instance and HTTP shell factory seam.
    *
    * <p>The supplied factory controls HTTP shell construction while preserving the existing startup
-   * order and lifecycle. Production code should pass the runtime package's static construction
-   * helper explicitly, while tests may inject a mock or stub implementation.
+   * order and lifecycle. Tests may inject a mock or stub implementation while production code can
+   * continue to use the default runtime-owned seam entry point.
    *
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    * @param httpShellContainerFactory factory used to create the runtime-owned HTTP shell container
