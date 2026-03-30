@@ -14,6 +14,7 @@ import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
+import network.crypta.runtime.core.NodeClientCoreSupport;
 import network.crypta.store.KeyCollisionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

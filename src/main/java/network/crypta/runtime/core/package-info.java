@@ -7,6 +7,10 @@
  * ownership re-home only; it keeps the existing behavior, constructors, and lifecycle semantics
  * intact.
  *
+ * <p>The package also owns runtime/bootstrap helpers such as {@link
+ * network.crypta.runtime.core.NodeClientCoreSupport}, which stay adjacent to the core orchestration
+ * code that uses them.
+ *
  * <p>The package exists so the runtime boundary can stay explicit while the daemon-specific core
  * continues to evolve independently of the page-oriented admin adapters.
  */

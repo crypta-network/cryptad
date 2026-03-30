@@ -15,7 +15,6 @@ import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.node.ClientContextInitParams;
 import network.crypta.node.ConfigurablePersister;
 import network.crypta.node.ConfigurablePersisterParams;
 import network.crypta.node.Node;

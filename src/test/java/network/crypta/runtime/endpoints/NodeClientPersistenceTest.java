@@ -22,7 +22,6 @@ import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientContextInitParams;
 import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;

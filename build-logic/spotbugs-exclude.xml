@@ -145,7 +145,7 @@
   -->
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.ClientContextInitParams"/>
+    <Class name="network.crypta.runtime.endpoints.ClientContextInitParams"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.endpoints;
 
 import java.util.Random;
 import network.crypta.client.FetchContext;
@@ -8,8 +8,8 @@ import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.runtime.endpoints.NodeClientCoreInit;
-import network.crypta.runtime.endpoints.NodeClientPersistence;
+import network.crypta.node.ClientContextResources;
+import network.crypta.node.NodeClientCore;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;

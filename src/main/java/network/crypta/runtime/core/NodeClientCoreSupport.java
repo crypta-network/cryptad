@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.core;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +34,13 @@ import network.crypta.keys.Key;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.ClientContextResources;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeInitException;
+import network.crypta.node.PeerRoutingSelectionParams;
+import network.crypta.node.RecentlyFailedReturn;
+import network.crypta.node.RequestStarter;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.runtime.alerts.DatastoreTooSmallAlert;
 import network.crypta.runtime.alerts.DiskSpaceUserAlert;
@@ -473,7 +480,7 @@ public final class NodeClientCoreSupport {
    * severity to communicate that the node is still initializing. Callers typically register the
    * alert at startup and remove or replace it once initialization completes.
    *
-   * @param title localized title shown in the alerts list.
+   * @param title localized title shown in the alert list.
    * @param longText detailed message describing the startup state.
    * @param shortText short message used for condensed alert displays.
    * @return newly constructed user alert for startup status.
@@ -500,7 +507,7 @@ public final class NodeClientCoreSupport {
   }
 
   /**
-   * Registers disk-space related user alerts.
+   * Registers disk-space-related user alerts.
    *
    * <p>This method wires both the disk-space warning and datastore-too-small warning alerts into
    * the provided manager. It does not perform any evaluation itself; the alert instances handle
