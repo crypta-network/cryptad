@@ -78,15 +78,15 @@ public final class NodeServicesSubsystem {
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    */
   public NodeServicesSubsystem(Node node) {
-    this(node, HttpShellContainers.defaultFactory());
+    this(node, HttpShellContainers::create);
   }
 
   /**
    * Creates a services subsystem bound to a specific node instance and HTTP shell factory seam.
    *
    * <p>The supplied factory controls HTTP shell construction while preserving the existing startup
-   * order and lifecycle. Production code should pass the runtime package's default factory
-   * explicitly, while tests may inject a mock or stub implementation.
+   * order and lifecycle. Production code should pass the runtime package's static construction
+   * helper explicitly, while tests may inject a mock or stub implementation.
    *
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    * @param httpShellContainerFactory factory used to create the runtime-owned HTTP shell container

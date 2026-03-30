@@ -586,7 +586,7 @@ public final class Node implements TimeSkewDetectorCallback {
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
     this.bootstrap = new NodeBootstrap(this);
-    this.services = new NodeServicesSubsystem(this, HttpShellContainers.defaultFactory());
+    this.services = new NodeServicesSubsystem(this, HttpShellContainers::create);
     NodeConfigManager configManager = new NodeConfigManager(this);
     this.network = new NodeNetworkSubsystem(this);
     this.storage = new NodeStorageSubsystem(this);
