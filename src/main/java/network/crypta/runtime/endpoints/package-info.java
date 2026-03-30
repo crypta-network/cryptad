@@ -6,6 +6,9 @@
  * and keep their existing collaboration patterns, including package-private TMCI access, but they
  * now sit under a neutral runtime-oriented package instead of {@code network.crypta.node}.
  *
+ * <p>The package also owns {@link network.crypta.runtime.endpoints.ClientContextInitParams}, the
+ * immutable bootstrap bundle used to assemble client context dependencies during node startup.
+ *
  * <p>The intent is ownership clarification only. These types still depend on daemon-local services
  * such as {@code Node}, {@code NodeClientCore}, queue persistence, and HTTP bootstrap helpers, but
  * the FCP-specific concrete types now live behind the bridge package in {@code
