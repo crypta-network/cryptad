@@ -2,9 +2,6 @@ package network.crypta.runtime.admin;
 
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
-import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 
 /**
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
@@ -29,29 +26,30 @@ public final class AdminRuntimePortsFactory {
    * <p>Callers normally invoke this once while assembling {@link
    * network.crypta.runtime.core.LegacyRuntimePorts}. The returned bundle contains the exact legacy
    * adapter set that was moved out of {@code network.crypta.runtime.core}, with queue-oriented
-   * adapters bound to {@code core} and page or node-state adapters bound to {@code node}. The
-   * method performs no validation beyond the constructors it delegates to.
+   * adapters bound to {@code core}, page or node-state adapters bound to {@code node}, and
+   * bridge-owned construction supplied by the runtime composition root. The method performs no
+   * validation beyond the constructors it delegates to.
    *
    * @param node live daemon node used by node-backed admin adapters and page state lookups
    * @param core live client core used by queue, wizard, and persistence-oriented adapters
+   * @param bridgeInputs runtime-owned bridge seams and ports constructed by the composition root
    * @return immutable bundle containing the moved admin and page-oriented runtime adapters
    */
-  public static AdminRuntimePortsBundle create(Node node, NodeClientCore core) {
-    FcpQueuePorts.Bundle queuePorts = FcpQueuePorts.create(core);
-    GeoIpCountryLookup geoIpCountryLookup = HttpGeoIpCountryLookups.forNode(node);
+  public static AdminRuntimePortsBundle create(
+      Node node, NodeClientCore core, AdminRuntimeBridgeInputs bridgeInputs) {
     return new AdminRuntimePortsBundle(
-        new LegacyConnectionsPagePort(node, geoIpCountryLookup),
+        new LegacyConnectionsPagePort(node, bridgeInputs.geoIpCountryLookup()),
         new LegacyConnectionsSupportPort(node),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
-        new LegacyDiagnosticPort(node, core, queuePorts.adminBackend()),
+        new LegacyDiagnosticPort(node, core, bridgeInputs.queueAdminBackend()),
         new LegacyPageChromePort(node),
-        queuePorts.completionPort(),
-        new LegacyQueuePagePort(core, queuePorts.pageBackend()),
-        queuePorts.downloadPort(),
-        queuePorts.insertPort(),
-        new LegacyQueueMutationPort(queuePorts.adminBackend()),
-        new LegacyQueueSupportPort(core, queuePorts.adminBackend()),
+        bridgeInputs.queueCompletionPort(),
+        new LegacyQueuePagePort(core, bridgeInputs.queuePageBackend()),
+        bridgeInputs.queueDownloadPort(),
+        bridgeInputs.queueInsertPort(),
+        new LegacyQueueMutationPort(bridgeInputs.queueAdminBackend()),
+        new LegacyQueueSupportPort(core, bridgeInputs.queueAdminBackend()),
         new LegacyStatisticsPort(node, core),
         new LegacyFirstTimeWizardPort(node, core),
         new LegacyToadletSymlinkPort(node, core),
