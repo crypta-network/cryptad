@@ -1158,7 +1158,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="network.crypta.node.ConfigurablePersisterParams"/>
+    <Class name="network.crypta.runtime.persistence.ConfigurablePersisterParams"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

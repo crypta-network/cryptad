@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.persistence;
 
 import java.io.File;
 import java.io.IOException;
@@ -6,6 +6,7 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.NodeInitException;
 import network.crypta.support.Ticker;
 
 /**

@@ -13,6 +13,8 @@ import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTimeCallback;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.runtime.bootstrap.NodeStarter;
+import network.crypta.runtime.persistence.Persistable;
+import network.crypta.runtime.persistence.Persister;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
@@ -327,7 +329,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
   final TimeDecayingRunningAverage localChkInsertBytesReceivedAverage;
   final TimeDecayingRunningAverage localSskInsertBytesReceivedAverage;
 
-  // Bytes used by successful chk/ssk request/insert.
+  // Bytes used by a successful chk / ssk request / insert.
   // Note: These are used to determine whether to accept a request,
   // hence they should be roughly representative of incoming - NOT LOCAL -
   // requests. Therefore, while we DO report local successful requests,
@@ -392,7 +394,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
   /** Next time to update the node I/O stats */
   private long nextNodeIOStatsUpdateTime = -1;
 
-  /** Node I/O stats update interval (milliseconds) */
+  /** Node I/O stats' update interval (milliseconds) */
   private static final long NODE_IO_STATS_UPDATE_INTERVAL = 2000;
 
   // various metrics
@@ -540,7 +542,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
   /** Next time to update PeerManagerUserAlert stats */
   private long nextPeerManagerUserAlertStatsUpdateTime = -1;
 
-  /** PeerManagerUserAlert stats update interval (milliseconds) */
+  /** PeerManagerUserAlert stats' update interval (milliseconds) */
   private static final long PEER_MANAGER_USER_ALERT_STATS_UPDATE_INTERVAL = 1000; // 1 second
 
   // Backoff stats
@@ -612,7 +614,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
    *
    * @param node owning node instance
    * @param sortOrder base sort order for config registration
-   * @param statsConfig stats configuration helper
+   * @param statsConfig stats' configuration helper
    * @throws NodeInitException if initialization fails
    */
   public NodeStats(Node node, int sortOrder, NodeStatsConfig statsConfig) throws NodeInitException {
@@ -977,7 +979,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
   static final long DEFAULT_TRANSITION_PERIOD = MINUTES.toMillis(4);
 
   /**
-   * Relatively high minimum overhead. A low overhead estimate becomes a self-fulfilling prophecy,
+   * Relatively high minimum overhead. A low-overhead estimate becomes a self-fulfilling prophecy,
    * and it takes a long time to shake it off as the averages gradually increase. If we accept no
    * requests, then everything is overhead! Whereas with a high minimum overhead, the worst case is
    * that more stuff succeeds than expected. We have a few timeouts (because output bandwidth
@@ -1293,7 +1295,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
     long totalOverhead = getSentOverhead();
     long uptime = node.network().uptime();
 
-    /* The fraction of output bytes which are used for requests */
+    /* The fraction of output bytes that are used for requests */
     // Consider using a shorter average; evaluate behavior when bwlimit changes
 
     double totalCouldSend =
@@ -1686,7 +1688,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Returns the decaying average throttling delay across all packet sending.
+   * Returns the decaying average throttling delay across all packet sendings.
    *
    * <p>This aggregate includes both realtime and bulk observations and is used by alerting logic
    * that does not distinguish channels. Values are in milliseconds and represent the throttle delay
@@ -3562,7 +3564,7 @@ public final class NodeStats implements Persistable, BlockTimeCallback {
             "Announcements: {} average {}",
             totalAnnouncements,
             (totalAnnounceForwards * 1.0) / totalAnnouncements);
-      // Could add to the stats page
+      // Could add to the Stats page
     }
     OpennetManager om = node.network().opennet();
     if (om != null && source instanceof SeedClientPeerNode peerNode)
