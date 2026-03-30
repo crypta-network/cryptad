@@ -7,9 +7,9 @@ import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.ArrayBucketFactory;
 
 /**
- * Factory helpers for runtime-owned HTTP shell container wiring.
+ * Default factory provider for runtime-owned HTTP shell container wiring.
  *
- * <p>This utility centralizes creation of the runtime-facing HTTP shell seam, so bootstrap and
+ * <p>This class centralizes creation of the runtime-facing HTTP shell seam, so bootstrap and
  * service code do not instantiate the legacy HTTP shell implementation directly. The class has no
  * policy of its own: it preserves the existing concrete construction path, including the current
  * bucket-factory choice and executor handoff, and simply returns the narrow {@link
@@ -21,8 +21,23 @@ import network.crypta.support.io.ArrayBucketFactory;
  * localized to this package rather than spreading new direct references back into bootstrap or
  * endpoint wiring code.
  */
-public final class HttpShellContainers {
+public final class HttpShellContainers implements HttpShellContainerFactory {
+  private static final HttpShellContainerFactory DEFAULT_FACTORY = new HttpShellContainers();
+
   private HttpShellContainers() {}
+
+  /**
+   * Returns the default runtime-owned HTTP shell container factory.
+   *
+   * <p>This preserves the legacy {@link SimpleToadletServer}-backed construction path behind a
+   * narrow seam so runtime bootstrap code can depend on factory injection instead of static helper
+   * calls.
+   *
+   * @return singleton factory preserving the current concrete HTTP shell construction behavior
+   */
+  public static HttpShellContainerFactory defaultFactory() {
+    return DEFAULT_FACTORY;
+  }
 
   /**
    * Creates the runtime-owned HTTP shell container backed by {@link SimpleToadletServer}.
@@ -41,7 +56,8 @@ public final class HttpShellContainers {
    * @throws InvalidConfigValueException if the supplied FProxy configuration cannot produce a valid
    *     concrete shell server
    */
-  public static HttpShellContainer create(SubConfig fproxyConfig, PriorityAwareExecutor executor)
+  @Override
+  public HttpShellContainer create(SubConfig fproxyConfig, PriorityAwareExecutor executor)
       throws InvalidConfigValueException {
     return new SimpleToadletServerHttpShellContainer(
         new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor));

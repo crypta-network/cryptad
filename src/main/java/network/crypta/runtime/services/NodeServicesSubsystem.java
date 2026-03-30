@@ -19,6 +19,7 @@ import network.crypta.runtime.alerts.TimeSkewDetectedUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
 import network.crypta.runtime.endpoints.http.HttpShellContainers;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
@@ -54,6 +55,7 @@ import network.crypta.support.Ticker;
  */
 public final class NodeServicesSubsystem {
   private final Node node;
+  private final HttpShellContainerFactory httpShellContainerFactory;
   private HttpShellContainer toadlets;
   private network.crypta.node.NodeClientCore clientCore;
   private network.crypta.runtime.updater.NodeUpdateManager nodeUpdater;
@@ -76,7 +78,22 @@ public final class NodeServicesSubsystem {
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    */
   public NodeServicesSubsystem(Node node) {
+    this(node, HttpShellContainers.defaultFactory());
+  }
+
+  /**
+   * Creates a services subsystem bound to a specific node instance and HTTP shell factory seam.
+   *
+   * <p>The supplied factory controls HTTP shell construction while preserving the existing startup
+   * order and lifecycle. Production code should pass the runtime package's default factory
+   * explicitly, while tests may inject a mock or stub implementation.
+   *
+   * @param node owning node used for configuration, storage, and service wiring; must be non-null.
+   * @param httpShellContainerFactory factory used to create the runtime-owned HTTP shell container
+   */
+  public NodeServicesSubsystem(Node node, HttpShellContainerFactory httpShellContainerFactory) {
     this.node = node;
+    this.httpShellContainerFactory = httpShellContainerFactory;
   }
 
   /**
@@ -96,7 +113,7 @@ public final class NodeServicesSubsystem {
       throws NodeInitException {
     SubConfig fproxyConfig = config.createSubConfig("fproxy");
     try {
-      toadlets = HttpShellContainers.create(fproxyConfig, executor);
+      toadlets = httpShellContainerFactory.create(fproxyConfig, executor);
       fproxyConfig.finishedInitialization();
       toadlets.start();
     } catch (InvalidConfigValueException e4) {

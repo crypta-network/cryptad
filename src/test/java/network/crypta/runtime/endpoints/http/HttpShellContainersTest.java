@@ -38,7 +38,8 @@ import static org.mockito.Mockito.when;
 class HttpShellContainersTest {
 
   @Test
-  void create_whenCalled_wrapsSimpleToadletServerAndDelegatesSeamMethods() throws Exception {
+  void defaultFactory_whenCreateCalled_wrapsSimpleToadletServerAndDelegatesSeamMethods()
+      throws Exception {
     SubConfig fproxyConfig = mock(SubConfig.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     StartupToadlet startupToadlet = mock(StartupToadlet.class);
@@ -58,7 +59,8 @@ class HttpShellContainersTest {
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
               when(server.isLinkExcepted(uri)).thenReturn(true);
             })) {
-      HttpShellContainer container = HttpShellContainers.create(fproxyConfig, executor);
+      HttpShellContainerFactory factory = HttpShellContainers.defaultFactory();
+      HttpShellContainer container = factory.create(fproxyConfig, executor);
 
       assertEquals(1, construction.constructed().size());
       SimpleToadletServer server = construction.constructed().getFirst();

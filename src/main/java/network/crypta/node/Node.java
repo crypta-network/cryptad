@@ -44,6 +44,7 @@ import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.endpoints.http.HttpShellContainers;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
@@ -585,7 +586,7 @@ public final class Node implements TimeSkewDetectorCallback {
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
     this.bootstrap = new NodeBootstrap(this);
-    this.services = new NodeServicesSubsystem(this);
+    this.services = new NodeServicesSubsystem(this, HttpShellContainers.defaultFactory());
     NodeConfigManager configManager = new NodeConfigManager(this);
     this.network = new NodeNetworkSubsystem(this);
     this.storage = new NodeStorageSubsystem(this);
