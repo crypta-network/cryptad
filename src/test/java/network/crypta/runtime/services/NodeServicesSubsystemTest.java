@@ -2,6 +2,7 @@ package network.crypta.runtime.services;
 
 import java.io.File;
 import network.crypta.config.BooleanCallback;
+import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -21,7 +22,7 @@ import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.diagnostics.DefaultNodeDiagnostics;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
-import network.crypta.runtime.endpoints.http.HttpShellContainers;
+import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
 import network.crypta.runtime.updater.NodeUpdateManager;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.PriorityAwareExecutor;
@@ -41,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.inOrder;
@@ -66,42 +66,30 @@ class NodeServicesSubsystemTest {
   @Mock private PersistentConfig config;
   @Mock private SubConfig subConfig;
   @Mock private PriorityAwareExecutor executor;
+  @Mock private HttpShellContainerFactory httpShellContainerFactory;
 
   @Test
   void startWebInterface_whenInitialized_startsAndExposesToadletServer() throws Exception {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     when(config.createSubConfig("fproxy")).thenReturn(subConfig);
     HttpShellContainer toadlets = mock(HttpShellContainer.class);
+    when(httpShellContainerFactory.create(subConfig, executor)).thenReturn(toadlets);
 
-    try (MockedStatic<HttpShellContainers> factoryMock = mockStatic(HttpShellContainers.class)) {
-      factoryMock.when(() -> HttpShellContainers.create(subConfig, executor)).thenReturn(toadlets);
+    subsystem.startWebInterface(config, executor);
 
-      subsystem.startWebInterface(config, executor);
-
-      assertSame(toadlets, subsystem.toadlets());
-      InOrder order = inOrder(subConfig, toadlets);
-      order.verify(subConfig).finishedInitialization();
-      order.verify(toadlets).start();
-      factoryMock.verify(() -> HttpShellContainers.create(subConfig, executor));
-    }
+    assertSame(toadlets, subsystem.toadlets());
+    InOrder order = inOrder(httpShellContainerFactory, subConfig, toadlets);
+    order.verify(httpShellContainerFactory).create(subConfig, executor);
+    order.verify(subConfig).finishedInitialization();
+    order.verify(toadlets).start();
   }
 
   @Test
-  void startWebInterface_whenConfigInvalid_throwsNodeInitException() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+  void startWebInterface_whenConfigInvalid_throwsNodeInitException() throws Exception {
+    NodeServicesSubsystem subsystem = newSubsystem();
     when(config.createSubConfig("fproxy")).thenReturn(subConfig);
-    when(subConfig.getString(anyString()))
-        .thenAnswer(
-            invocation -> {
-              String key = invocation.getArgument(0, String.class);
-              if ("css".equals(key)) {
-                return "bad:css";
-              }
-              if ("refilterPolicy".equals(key)) {
-                return "RE_FILTER";
-              }
-              return "";
-            });
+    when(httpShellContainerFactory.create(subConfig, executor))
+        .thenThrow(new InvalidConfigValueException("bad:css"));
 
     NodeInitException ex =
         assertThrows(NodeInitException.class, () -> subsystem.startWebInterface(config, executor));
@@ -112,7 +100,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void initUpdater_whenMaybeCreateReturns_setsUpdater() throws Exception {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     NodeUpdateManager updater = mock(NodeUpdateManager.class);
 
     try (MockedStatic<NodeUpdateManager> mocked = mockStatic(NodeUpdateManager.class)) {
@@ -126,7 +114,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void initDiagnostics_whenNetworkProvided_createsDiagnostics() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     when(network.stats()).thenReturn(mock(network.crypta.node.NodeStats.class));
     when(network.ticker()).thenReturn(ticker);
 
@@ -138,7 +126,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void initNodeNameUserAlert_whenCalled_createsAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
 
     subsystem.initNodeNameUserAlert();
 
@@ -148,7 +136,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void registerJvmVersionAlertIfNeeded_whenEol_registersAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
@@ -163,7 +151,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void registerNotEnoughNiceLevelsAlert_whenClientCorePresent_registersAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
@@ -174,7 +162,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void warnIfNotUsingWrapper_whenWarningRequired_registersAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
@@ -185,7 +173,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void warnIfNotUsingWrapper_whenUsingWrapper_skipsAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
 
     subsystem.warnIfNotUsingWrapper(true, false);
@@ -195,7 +183,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void registerCantDeletePasswordFileAlert_whenClientCorePresent_registersCriticalAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     when(node.storage()).thenReturn(storage);
@@ -208,7 +196,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void configurePeersOffersFrefFiles_whenDismissed_unregistersExistingAlert() throws Exception {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     PeersOffersUserAlert existingAlert = mock(PeersOffersUserAlert.class);
@@ -229,7 +217,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void configurePeersOffersFrefFiles_whenNotDismissed_createsAlert() throws Exception {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     when(subConfig.getBoolean(PEERS_OFFERS_DISMISSED)).thenReturn(false);
 
     ArgumentCaptor<BooleanCallback> captor = ArgumentCaptor.forClass(BooleanCallback.class);
@@ -249,7 +237,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void maybeCreatePeersOffersAlertIfNeeded_whenNotDismissedAndHasFiles_createsAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     when(subConfig.getBoolean(PEERS_OFFERS_DISMISSED)).thenReturn(false);
 
     subsystem.configurePeersOffersFrefFiles(subConfig, 1);
@@ -263,7 +251,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void setTimeSkewDetectedUserAlert_whenCalledTwice_registersOnce() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
@@ -275,7 +263,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void createVisibilityAlert_whenNotShown_registersAndQueuesStore() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     when(node.network()).thenReturn(network);
@@ -296,7 +284,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void createVisibilityAlert_whenDismissed_clearsFlagPersistsAndUnregistersAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     when(node.network()).thenReturn(network);
@@ -318,7 +306,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void createVisibilityAlert_whenRegistered_usesExistingLocalizedVisibilityStrings() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     when(node.network()).thenReturn(network);
@@ -346,7 +334,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void maybeRegisterVisibilityAlert_whenAlertsNotReady_queuesRetry() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setShowFriendsVisibilityAlert(true);
     when(node.network()).thenReturn(network);
     when(network.ticker()).thenReturn(ticker);
@@ -359,7 +347,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void clearVisibilityAlert_whenCalled_unregistersAlertAndResetsFlag() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
     subsystem.setShowFriendsVisibilityAlert(true);
     when(clientCore.getAlerts()).thenReturn(alerts);
@@ -372,7 +360,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void registerJvmVersionAlertIfNeeded_whenNoClientCore_skipsAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
 
     subsystem.registerJvmVersionAlertIfNeeded();
 
@@ -381,7 +369,7 @@ class NodeServicesSubsystemTest {
 
   @Test
   void registerNotEnoughNiceLevelsAlert_whenNoClientCore_skipsAlert() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
 
     subsystem.registerNotEnoughNiceLevelsAlert();
 
@@ -390,11 +378,15 @@ class NodeServicesSubsystemTest {
 
   @Test
   void warnIfNotUsingWrapper_whenSkipped_doesNotRegister() {
-    NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
+    NodeServicesSubsystem subsystem = newSubsystem();
     subsystem.setClientCore(clientCore);
 
     subsystem.warnIfNotUsingWrapper(false, true);
 
     verify(alerts, never()).register(any(UserAlert.class));
+  }
+
+  private NodeServicesSubsystem newSubsystem() {
+    return new NodeServicesSubsystem(node, httpShellContainerFactory);
   }
 }
