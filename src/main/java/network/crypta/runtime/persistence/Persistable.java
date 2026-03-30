@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.persistence;
 
 import network.crypta.support.SimpleFieldSet;
 
@@ -7,9 +7,8 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>The interface models components whose state is written to durable storage using the {@link
  * SimpleFieldSet} textual format. Implementations commonly use it to expose throttling or
- * rate‑limiting configuration. This type performs no I/O itself; callers obtain a snapshot and
- * persist it via {@link SimpleFieldSet#writeTo(java.io.Writer)} or {@link
- * SimpleFieldSet#toString()}.
+ * rate‑limiting configuration. This type performs no I/O itself; callers get a snapshot and persist
+ * it via {@link SimpleFieldSet#writeTo(java.io.Writer)} or {@link SimpleFieldSet#toString()}.
  *
  * <p>Threading: the consistency of the snapshot with respect to concurrent updates is
  * implementation‑specific.

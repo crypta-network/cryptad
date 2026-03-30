@@ -31,6 +31,7 @@ import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
 import network.crypta.runtime.endpoints.TextModeClientInterface;
+import network.crypta.runtime.persistence.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Base64;
 import network.crypta.support.MemoryLimitedJobRunner;

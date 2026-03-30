@@ -1,9 +1,10 @@
-package network.crypta.node;
+package network.crypta.runtime.persistence;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.FileUtil;
@@ -24,7 +25,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * execution is driven by a {@link Ticker} instance, which calls {@link #run()} on the daemon thread
  * it manages. Callers must initialize file paths before starting.
  */
-class Persister implements Runnable {
+public class Persister implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(Persister.class);
 
   /** Interval between scheduled persistence attempts (milliseconds). */
@@ -64,10 +65,28 @@ class Persister implements Runnable {
   final Persistable persistable;
 
   private final Ticker ps;
-  // Paths are package-private so subclasses in this package can set them before start().
+  // Paths are package-private, so subclasses in this package can set them before start().
   File persistTemp;
   File persistTarget;
   private boolean started;
+
+  /**
+   * Returns the temporary file path used for atomic persistence writes.
+   *
+   * @return a snapshot of the current temporary-file destination
+   */
+  public File getPersistTemp() {
+    return persistTemp == null ? null : new File(persistTemp.toString());
+  }
+
+  /**
+   * Returns the final file path used for persisted snapshots.
+   *
+   * @return a snapshot of the current target-file destination
+   */
+  public File getPersistTarget() {
+    return persistTarget == null ? null : new File(persistTarget.toString());
+  }
 
   /**
    * Performs one persistence cycle and re-schedules the next run.
@@ -94,8 +113,8 @@ class Persister implements Runnable {
       LOG.debug("Trying to persist throttles...");
     }
 
-    // Ensure parent directories exist so persistence doesn't fail on missing temp/target paths.
-    if (!ensureParentDirectory(persistTemp) || !ensureParentDirectory(persistTarget)) {
+    // Abort when either parent directory cannot be created.
+    if (cannotEnsureParentDirectory(persistTemp) || cannotEnsureParentDirectory(persistTarget)) {
       return;
     }
 
@@ -118,17 +137,17 @@ class Persister implements Runnable {
     }
   }
 
-  /** Creates the parent directory for a file if it does not already exist. */
-  private boolean ensureParentDirectory(File file) {
+  /** Returns whether the parent directory for a file could not be made available. */
+  private boolean cannotEnsureParentDirectory(File file) {
     File parent = file.getAbsoluteFile().getParentFile();
     if (parent == null || parent.exists()) {
-      return true;
+      return false;
     }
     if (parent.mkdirs()) {
-      return true;
+      return false;
     }
     LOG.error("Could not create directory for throttle persistence: {}", parent);
-    return false;
+    return true;
   }
 
   /**
@@ -164,7 +183,7 @@ class Persister implements Runnable {
   }
 
   /**
-   * Starts periodic persistence and registers a shutdown write.
+   * Starts periodic persistence and registers a shutdown writing.
    *
    * <p>Subsequent calls are ignored after the first successful start. The first persistence happens
    * immediately in the calling thread; later runs are scheduled via the supplied {@link Ticker}.

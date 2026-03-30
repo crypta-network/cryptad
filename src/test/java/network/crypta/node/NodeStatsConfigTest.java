@@ -113,8 +113,8 @@ class NodeStatsConfigTest {
 
     // Assert
     assertEquals(sortOrderBase + 4, result.sortOrder());
-    assertEquals(new File(runDir, "node-throttle.dat"), result.persister().persistTarget);
-    assertEquals(new File(runDir, "node-throttle.dat.tmp"), result.persister().persistTemp);
+    assertEquals(new File(runDir, "node-throttle.dat"), result.persister().getPersistTarget());
+    assertEquals(new File(runDir, "node-throttle.dat.tmp"), result.persister().getPersistTemp());
   }
 
   @Test

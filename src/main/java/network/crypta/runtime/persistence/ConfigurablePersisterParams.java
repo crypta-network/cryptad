@@ -1,4 +1,4 @@
-package network.crypta.node;
+package network.crypta.runtime.persistence;
 
 import java.io.File;
 import network.crypta.config.Option;
