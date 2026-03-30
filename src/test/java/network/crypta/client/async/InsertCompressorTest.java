@@ -20,7 +20,6 @@ import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -392,7 +391,7 @@ class InsertCompressorTest {
         "amountOfDataToCheckCompressionRatio",
         32768L,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.config.LongCallback) null,
+        null,
         true);
     node.register(
         "minimumCompressionPercentage",

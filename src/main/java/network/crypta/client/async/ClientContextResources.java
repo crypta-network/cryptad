@@ -1,13 +1,12 @@
-package network.crypta.node;
+package network.crypta.client.async;
 
 import network.crypta.client.ArchiveManager;
-import network.crypta.client.async.HealingQueue;
 
 /**
  * Bundles resources required to initialize a {@link network.crypta.client.async.ClientContext}.
  *
  * <p>This record groups the core collaborators that client-layer components need when wiring a
- * {@code ClientContext}. It acts as a simple, immutable carrier for prebuilt services so callers
+ * {@code ClientContext}. It acts as a simple, immutable carrier for prebuilt services, so callers
  * can pass a single value through setup paths rather than a long parameter list. Instances are
  * typically created during node startup and shared with persistence and request orchestration code,
  * which then reads the references without mutation. The record does not validate, copy, or lazily
@@ -33,8 +32,8 @@ public record ClientContextResources(ArchiveManager archiveManager, HealingQueue
    * <p>This accessor returns exactly the instance supplied to the record constructor without
    * performing validation or defensive copying. The method is idempotent and has no side effects.
    * Callers should expect the same reference for the lifetime of this record and handle a {@code
-   * null} value if the resource was intentionally omitted by the creator. Thread-safety and
-   * mutability are determined solely by the referenced {@link ArchiveManager} implementation.
+   * null} value if the creator intentionally omitted the resource. Thread-safety and mutability are
+   * determined solely by the referenced {@link ArchiveManager} implementation.
    *
    * @return the configured archive manager instance, or {@code null} when absent
    */

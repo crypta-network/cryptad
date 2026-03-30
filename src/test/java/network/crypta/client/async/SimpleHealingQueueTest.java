@@ -10,7 +10,6 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -225,6 +224,7 @@ class SimpleHealingQueueTest {
   }
 
   /** No-op ticker used to satisfy ClientContext construction. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class NoopTicker implements Ticker {
     private final PriorityAwareExecutor exec;
 

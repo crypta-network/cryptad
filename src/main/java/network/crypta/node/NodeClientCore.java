@@ -6,6 +6,7 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextResources;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;

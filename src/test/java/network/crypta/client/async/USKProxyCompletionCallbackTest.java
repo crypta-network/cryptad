@@ -13,7 +13,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.compress.Compressor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -165,7 +164,7 @@ class USKProxyCompletionCallbackTest {
     USK usk = makeUSK("siteA", 2);
     USKProxyCompletionCallback cb = new USKProxyCompletionCallback(usk, downstream, false);
 
-    // Build an SSK with a different docName prefix so turnMySSKIntoUSK will not convert it.
+    // Build an SSK with a different docName prefix, so turnMySSKIntoUSK will not convert it.
     FreenetURI nonMatchingSSK =
         new FreenetURI(
             "SSK",

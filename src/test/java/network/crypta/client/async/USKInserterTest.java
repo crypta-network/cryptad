@@ -23,7 +23,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.keys.Key;
 import network.crypta.keys.USK;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;

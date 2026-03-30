@@ -1,7 +1,6 @@
-package network.crypta.node;
+package network.crypta.client.async;
 
 import network.crypta.client.ArchiveManager;
-import network.crypta.client.async.HealingQueue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;

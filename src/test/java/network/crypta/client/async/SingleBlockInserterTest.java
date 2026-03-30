@@ -12,7 +12,6 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -136,7 +135,6 @@ class SingleBlockInserterTest {
         bucket,
         FreenetURI.EMPTY_CHK_URI,
         /*isMetadata*/ false,
-        /*sourceLength*/ 0,
         /*token*/ 7,
         /*addToParent*/ true,
         /*dontSendEncoded*/ true,
@@ -156,7 +154,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ false,
@@ -186,7 +183,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -214,7 +210,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -241,7 +236,6 @@ class SingleBlockInserterTest {
               realBucket,
               FreenetURI.EMPTY_CHK_URI,
               /*isMetadata*/ false,
-              /*sourceLength*/ 0,
               /*token*/ 1,
               /*addToParent*/ false,
               /*dontSendEncoded*/ true,
@@ -275,7 +269,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -301,7 +294,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -321,7 +313,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -346,7 +337,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -371,7 +361,6 @@ class SingleBlockInserterTest {
             bucket,
             FreenetURI.EMPTY_CHK_URI,
             /*isMetadata*/ true,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -390,7 +379,6 @@ class SingleBlockInserterTest {
             bucket,
             new FreenetURI("SSK", "doc"),
             /*isMetadata*/ false,
-            /*sourceLength*/ 0,
             /*token*/ 1,
             /*addToParent*/ false,
             /*dontSendEncoded*/ true,
@@ -425,6 +413,7 @@ class SingleBlockInserterTest {
   // --- Test helpers ---
 
   /** No-op ticker used to satisfy ClientContext construction. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class NoopTicker implements Ticker {
     private final PriorityAwareExecutor exec;
 
@@ -465,14 +454,13 @@ class SingleBlockInserterTest {
       Bucket data,
       FreenetURI uri,
       boolean isMetadata,
-      int sourceLength,
       int token,
       boolean addToParent,
       boolean dontSendEncoded,
       Object tokenObject,
       boolean freeData) {
     return new SingleBlockInserter(
-        new BlockInsertPayload(data, uri, (short) -1, isMetadata, sourceLength, (byte) 0, null),
+        new BlockInsertPayload(data, uri, (short) -1, isMetadata, 0, (byte) 0, null),
         new BlockInsertParams(parent, insertCtx, cb, token, tokenObject, addToParent, ctx),
         new BlockInsertOptions(false, false, freeData, 0),
         dontSendEncoded);

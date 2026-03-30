@@ -2,7 +2,6 @@ package network.crypta.client.async;
 
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.compress.RealCompressor;
 
 /**

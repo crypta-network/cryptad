@@ -16,6 +16,7 @@ import network.crypta.client.InsertContextOptions;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientContextDefaults;
 import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextResources;
 import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
@@ -32,7 +33,6 @@ import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.node.ClientContextResources;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -294,10 +294,10 @@ class ClientGetPersistenceIOTest {
     ClientContext context = newClientContext();
     ChecksumChecker checker = mock(ChecksumChecker.class);
     ClientGetter getter = mock(ClientGetter.class);
-    ClientGet request = newRequestWithState("req-1", false);
+    ClientGet request = newRequestWithState();
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(new byte[0]));
 
-    byte[] payload = serializeTransientProgress(42L, "text/plain");
+    byte[] payload = serializeTransientProgress();
     when(checker.checksumReaderWithLength(input, context.tempBucketFactory, 65536))
         .thenReturn(new ByteArrayInputStream(payload));
     when(getter.resumeFromTrivialProgress(any(DataInputStream.class), eq(context)))
@@ -415,27 +415,22 @@ class ClientGetPersistenceIOTest {
             .build());
   }
 
-  private static ClientGet newRequestWithState(String identifier, boolean global) {
+  private static ClientGet newRequestWithState() {
     ClientGet request =
         mock(ClientGet.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
-    setField(request, ClientRequest.class, "identifier", identifier);
-    setField(request, ClientRequest.class, "global", global);
+    setField(request, ClientRequest.class, "identifier", "req-1");
+    setField(request, ClientRequest.class, "global", false);
     setField(request, ClientGet.class, "state", new ClientGetState(request));
     setField(request, ClientGet.class, "persistenceLock", new ClientGet().persistenceLock());
     return request;
   }
 
-  private static byte[] serializeTransientProgress(long length, String mimeType)
-      throws IOException {
+  private static byte[] serializeTransientProgress() throws IOException {
     ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     try (DataOutputStream out = new DataOutputStream(buffer)) {
-      out.writeLong(length);
-      if (mimeType != null) {
-        out.writeBoolean(true);
-        out.writeUTF(mimeType);
-      } else {
-        out.writeBoolean(false);
-      }
+      out.writeLong(42L);
+      out.writeBoolean(true);
+      out.writeUTF("text/plain");
       new CompatibilityAnalyser().writeTo(out);
       ClientGetGetterFactory.writeExpectedHashes(out, null);
     }
@@ -449,9 +444,7 @@ class ClientGetPersistenceIOTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (ReflectiveOperationException e) {
-      LinkageError error = new LinkageError("Failed to set field: " + fieldName);
-      error.initCause(e);
-      throw error;
+      throw new LinkageError("Failed to set field: " + fieldName, e);
     }
   }
 

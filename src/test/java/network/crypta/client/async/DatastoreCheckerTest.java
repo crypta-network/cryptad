@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
-import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
