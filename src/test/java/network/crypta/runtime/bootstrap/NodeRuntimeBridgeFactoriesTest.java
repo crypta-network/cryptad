@@ -9,6 +9,7 @@ import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
+import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
 import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
 import org.junit.jupiter.api.Test;
@@ -27,10 +28,13 @@ class NodeRuntimeBridgeFactoriesTest {
   void constructor_whenAdminRuntimeBridgeInputsFactoryIsNull_throws() {
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
+    HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
 
     assertThrows(
         NullPointerException.class,
-        () -> new NodeRuntimeBridgeFactories(null, httpShellRuntimeSupportFactory));
+        () ->
+            new NodeRuntimeBridgeFactories(
+                null, httpShellRuntimeSupportFactory, httpShellContainerFactory));
   }
 
   @Test
@@ -38,10 +42,28 @@ class NodeRuntimeBridgeFactoriesTest {
     NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
         fixture.adminRuntimeBridgeInputsFactory();
+    HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
 
     assertThrows(
         NullPointerException.class,
-        () -> new NodeRuntimeBridgeFactories(adminRuntimeBridgeInputsFactory, null));
+        () ->
+            new NodeRuntimeBridgeFactories(
+                adminRuntimeBridgeInputsFactory, null, httpShellContainerFactory));
+  }
+
+  @Test
+  void constructor_whenHttpShellContainerFactoryIsNull_throws() {
+    NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        fixture.adminRuntimeBridgeInputsFactory();
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
+        ignoredCore -> mock(HttpShellRuntimeSupport.class);
+
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            new NodeRuntimeBridgeFactories(
+                adminRuntimeBridgeInputsFactory, httpShellRuntimeSupportFactory, null));
   }
 
   @Test
@@ -55,9 +77,12 @@ class NodeRuntimeBridgeFactoriesTest {
             .create(fixture.node(), fixture.core());
     HttpShellRuntimeSupport runtimeSupport =
         runtimeBridgeFactories.httpShellRuntimeSupportFactory().create(fixture.core());
+    HttpShellContainerFactory httpShellContainerFactory =
+        runtimeBridgeFactories.httpShellContainerFactory();
 
     assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
     assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
+    assertNotNull(httpShellContainerFactory);
     assertInstanceOf(FcpQueueAdminBackend.class, bridgeInputs.queueAdminBackend());
     assertInstanceOf(HttpGeoIpCountryLookup.class, bridgeInputs.geoIpCountryLookup());
     CoreHttpShellRuntimeSupport coreRuntimeSupport =

@@ -45,6 +45,7 @@ import network.crypta.runtime.bootstrap.NodeRuntimeBridgeFactories;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
 import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.Fields;
@@ -593,11 +594,13 @@ public final class Node implements TimeSkewDetectorCallback {
         nodeRuntimeBridgeFactories.adminRuntimeBridgeInputsFactory();
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         nodeRuntimeBridgeFactories.httpShellRuntimeSupportFactory();
+    HttpShellContainerFactory httpShellContainerFactory =
+        nodeRuntimeBridgeFactories.httpShellContainerFactory();
     this.executor = executor;
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
     this.bootstrap = new NodeBootstrap(this);
-    this.services = new NodeServicesSubsystem(this);
+    this.services = new NodeServicesSubsystem(this, httpShellContainerFactory);
     NodeConfigManager configManager = new NodeConfigManager(this);
     this.network = new NodeNetworkSubsystem(this);
     this.storage = new NodeStorageSubsystem(this);

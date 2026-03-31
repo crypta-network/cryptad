@@ -67,25 +67,11 @@ public final class NodeServicesSubsystem {
   private TimeSkewDetectedUserAlert timeSkewDetectedUserAlert;
 
   /**
-   * Creates a services subsystem bound to a specific node instance.
-   *
-   * <p>The new instance starts with all service references unset and should be populated by the
-   * node's startup sequence. The {@code node} reference is used to access configuration, network
-   * components, and storage when alert or service wiring occurs. This constructor performs no I/O
-   * and does not start any services.
-   *
-   * @param node owning node used for configuration, storage, and service wiring; must be non-null.
-   */
-  public NodeServicesSubsystem(Node node) {
-    this(node, HttpShellContainerFactory.defaultFactory());
-  }
-
-  /**
    * Creates a services subsystem bound to a specific node instance and HTTP shell factory seam.
    *
    * <p>The supplied factory controls HTTP shell construction while preserving the existing startup
-   * order and lifecycle. Tests may inject a mock or stub implementation while production code can
-   * continue to use the default runtime-owned seam entry point.
+   * order and lifecycle. Tests may inject a mock or stub implementation while production code uses
+   * the bootstrap-selected seam entry point.
    *
    * @param node owning node used for configuration, storage, and service wiring; must be non-null.
    * @param httpShellContainerFactory factory used to create the runtime-owned HTTP shell container
