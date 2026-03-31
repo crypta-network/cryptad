@@ -24,7 +24,7 @@ import network.crypta.runtime.alerts.AbstractUserAlert;
 import network.crypta.runtime.alerts.ProxyUserAlert;
 import network.crypta.runtime.alerts.SimpleUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
-import network.crypta.runtime.endpoints.http.ConnectivityPagePaths;
+import network.crypta.runtime.http.ConnectivityPagePaths;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;

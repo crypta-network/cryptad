@@ -1,9 +1,9 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.runtime.http;
 
 /**
  * Publishes runtime-owned HTTP path constants that other layers can reuse safely.
  *
- * <p>This type gives the runtime endpoint layer a stable place to describe routes that must remain
+ * <p>This type gives the runtime HTTP layer a stable place to describe routes that must remain
  * visible to non-HTTP code. The main use case in this package is the connectivity dashboard, which
  * node classes need to reference when they generate status text and operator guidance. Keeping the
  * canonical route here avoids a direct dependency on legacy toadlet implementations while

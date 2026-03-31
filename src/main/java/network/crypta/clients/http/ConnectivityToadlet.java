@@ -5,7 +5,7 @@ import java.net.URI;
 import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.runtime.endpoints.http.ConnectivityPagePaths;
+import network.crypta.runtime.http.ConnectivityPagePaths;
 import network.crypta.runtime.spi.ConnectivityGapSnapshot;
 import network.crypta.runtime.spi.ConnectivityListenerPortSnapshot;
 import network.crypta.runtime.spi.ConnectivityNoticeSnapshot;

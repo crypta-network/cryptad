@@ -1,10 +1,10 @@
-package network.crypta.runtime.endpoints.http.security;
+package network.crypta.runtime.http.security;
 
 /**
  * Captures the detached state needed to render the shared master-password form.
  *
- * <p>This record mirrors the legacy HTTP-layer password form options while keeping ownership in the
- * runtime endpoint package. Node and runtime services can assemble one immutable snapshot, pass it
+ * <p>This record mirrors the legacy HTTP-layer password form options while keeping ownership in a
+ * neutral runtime package. Node and runtime services can assemble one immutable snapshot, pass it
  * across the architectural boundary, and let the renderer bridge translate it into adapter-owned
  * types only at the final rendering step. That keeps the seam explicit and avoids leaking UI helper
  * classes back into core code.

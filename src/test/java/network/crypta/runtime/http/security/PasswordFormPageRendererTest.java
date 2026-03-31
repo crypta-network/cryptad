@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.security;
+package network.crypta.runtime.http.security;
 
 import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.clients.http.SecurityLevelsToadlet;
@@ -29,6 +29,22 @@ class PasswordFormPageRendererTest {
         new PasswordFormOptions(false, false, false, true, "HIGH", "/next"),
         container,
         legacyContent);
+
+    assertEquals(legacyContent.generate(), bridgedContent.generate());
+  }
+
+  @Test
+  void generate_whenFirstTimeWizardWithNullOptionals_matchesLegacySecurityLevelsRendering() {
+    PasswordPromptOptions options =
+        new PasswordPromptOptions(false, true, false, false, null, null);
+
+    HTMLNode bridgedContent = new HTMLNode("div");
+    HTMLNode legacyContent = new HTMLNode("div");
+    ToadletContainer container = stubContainer();
+
+    PasswordFormPageRenderer.generate(options, container, bridgedContent);
+    SecurityLevelsToadlet.generatePasswordFormPage(
+        new PasswordFormOptions(false, true, false, false, null, null), container, legacyContent);
 
     assertEquals(legacyContent.generate(), bridgedContent.generate());
   }
