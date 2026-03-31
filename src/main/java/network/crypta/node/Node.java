@@ -42,6 +42,7 @@ import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
+import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.services.NodeServicesSubsystem;
@@ -701,6 +702,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     NodeClientCore clientCoreLocal =
         new NodeClientCore(
             this,
+            AdminRuntimeBridgeInputsFactories.coreBacked(),
             clientCoreInit,
             network.darknetPortNumber(),
             sortOrder,

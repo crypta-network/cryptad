@@ -25,7 +25,7 @@ import network.crypta.runtime.spi.QueueInsertPort;
  * <ul>
  *   <li>Queue read and mutation seams stay grouped in one handoff object.
  *   <li>GeoIP lookup wiring stays explicit without widening {@code runtime-spi}.
- *   <li>Construction ownership stays in runtime core, not in {@code runtime.admin}.
+ *   <li>Construction ownership stays in the composition root, not in {@code runtime.admin}.
  * </ul>
  *
  * @param queueAdminBackend queue backend seam used by diagnostics, support helpers, and generic

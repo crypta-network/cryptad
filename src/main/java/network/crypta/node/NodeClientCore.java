@@ -22,7 +22,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
-import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
+import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.UserAlertManagerClientAlertSink;
 import network.crypta.runtime.bootstrap.NodeStarter;
@@ -33,8 +33,6 @@ import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
 import network.crypta.runtime.endpoints.TextModeClientInterface;
-import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 import network.crypta.runtime.persistence.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Base64;
@@ -192,6 +190,7 @@ public final class NodeClientCore implements Persistable {
 
   NodeClientCore(
       Node node,
+      AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory,
       NodeClientCoreInit init,
       int portNumber,
       int sortOrder,
@@ -390,7 +389,8 @@ public final class NodeClientCore implements Persistable {
     sortOrder = transferPolicy.registerDownloadAllowedDirs(init, sortOrder);
 
     sortOrder = transferPolicy.registerUploadAllowedDirs(init, sortOrder);
-    runtimePorts = new LegacyRuntimePorts(node, this, createAdminRuntimeBridgeInputs(node, this));
+    runtimePorts =
+        new LegacyRuntimePorts(node, this, adminRuntimeBridgeInputsFactory.create(node, this));
 
     LOG.info("Initializing USK Manager");
     uskManager.init(getClientContext());
@@ -594,18 +594,6 @@ public final class NodeClientCore implements Persistable {
       long uid = random.nextLong();
       if (uid != -1) return uid;
     }
-  }
-
-  private static AdminRuntimeBridgeInputs createAdminRuntimeBridgeInputs(
-      Node node, NodeClientCore core) {
-    FcpQueuePorts.Bundle queuePorts = FcpQueuePorts.create(core);
-    return new AdminRuntimeBridgeInputs(
-        queuePorts.adminBackend(),
-        queuePorts.pageBackend(),
-        queuePorts.completionPort(),
-        queuePorts.downloadPort(),
-        queuePorts.insertPort(),
-        HttpGeoIpCountryLookups.forNode(node));
   }
 
   private FilenameGenerator createTempFilenameGeneratorOrThrow() throws NodeInitException {
