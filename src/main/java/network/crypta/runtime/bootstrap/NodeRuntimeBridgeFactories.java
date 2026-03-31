@@ -3,6 +3,7 @@ package network.crypta.runtime.bootstrap;
 import java.util.Objects;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
+import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
 import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 
 /**
@@ -15,7 +16,7 @@ import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
  *
  * <p>Typical startup paths create one instance during bootstrap, thread it through {@link
  * network.crypta.runtime.bootstrap.NodeStarter}, and then let the node reuse those seams at the
- * same construction points where it previously hard-coded the legacy endpoint pair. The record is
+ * same construction points where it previously hard-coded the legacy endpoint seams. The record is
  * immutable and carries no caching or policy beyond that wiring choice, so startup order and bridge
  * behavior stay aligned with the existing daemon bootstrap flow.
  *
@@ -23,32 +24,39 @@ import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
  *     client core
  * @param httpShellRuntimeSupportFactory factory for HTTP shell runtime support used by the toadlet
  *     container
+ * @param httpShellContainerFactory factory for HTTP shell container creation used by the service
+ *     subsystem
  */
 public record NodeRuntimeBridgeFactories(
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory,
-    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory) {
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory,
+    HttpShellContainerFactory httpShellContainerFactory) {
 
   /**
    * Creates a bootstrap bridge-factory bundle.
    *
-   * <p>Both factories are required because node construction expects explicit seams for the admin
-   * runtime bridge inputs and the HTTP shell runtime support path. The constructor only validates
-   * presence; it does not invoke the factories, cache runtime state, or trigger any endpoint
-   * startup work on its own.
+   * <p>All factories are required because node construction expects explicit seams for the admin
+   * runtime bridge inputs, the HTTP shell runtime support path, and the HTTP shell container
+   * creation path. The constructor only validates presence; it does not invoke the factories, cache
+   * runtime state, or trigger any endpoint startup work on its own.
    *
    * @param adminRuntimeBridgeInputsFactory factory for admin bridge inputs passed into the client
    *     core during node construction
    * @param httpShellRuntimeSupportFactory factory for HTTP shell runtime support created after the
    *     client core exists
-   * @throws NullPointerException if either factory reference is {@code null}
+   * @param httpShellContainerFactory factory for HTTP shell container creation used by {@code
+   *     NodeServicesSubsystem}
+   * @throws NullPointerException if any factory reference is {@code null}
    */
   public NodeRuntimeBridgeFactories {
     Objects.requireNonNull(adminRuntimeBridgeInputsFactory, "adminRuntimeBridgeInputsFactory");
     Objects.requireNonNull(httpShellRuntimeSupportFactory, "httpShellRuntimeSupportFactory");
+    Objects.requireNonNull(httpShellContainerFactory, "httpShellContainerFactory");
   }
 
   /**
-   * Returns the legacy default bridge-factory pair backed by the current endpoint implementations.
+   * Returns the legacy default bridge-factory bundle backed by the current endpoint
+   * implementations.
    *
    * <p>This helper centralizes the existing production default in the bootstrap package. Callers
    * that need the historical daemon wiring can therefore get the same admin and HTTP shell bridge
@@ -59,6 +67,7 @@ public record NodeRuntimeBridgeFactories(
   public static NodeRuntimeBridgeFactories coreBacked() {
     return new NodeRuntimeBridgeFactories(
         AdminRuntimeBridgeInputsFactories.coreBacked(),
-        HttpShellRuntimeSupportFactory.coreBacked());
+        HttpShellRuntimeSupportFactory.coreBacked(),
+        HttpShellContainerFactory.defaultFactory());
   }
 }

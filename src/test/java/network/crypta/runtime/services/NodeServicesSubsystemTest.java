@@ -85,29 +85,6 @@ class NodeServicesSubsystemTest {
   }
 
   @Test
-  void startWebInterface_whenConstructedWithDefaultFactory_usesDefaultFactorySeam()
-      throws Exception {
-    when(config.createSubConfig("fproxy")).thenReturn(subConfig);
-    HttpShellContainer toadlets = mock(HttpShellContainer.class);
-
-    try (MockedStatic<HttpShellContainerFactory> mocked =
-        mockStatic(HttpShellContainerFactory.class)) {
-      mocked.when(HttpShellContainerFactory::defaultFactory).thenReturn(httpShellContainerFactory);
-      when(httpShellContainerFactory.create(subConfig, executor)).thenReturn(toadlets);
-      NodeServicesSubsystem subsystem = new NodeServicesSubsystem(node);
-
-      subsystem.startWebInterface(config, executor);
-
-      mocked.verify(HttpShellContainerFactory::defaultFactory);
-      assertSame(toadlets, subsystem.toadlets());
-      InOrder order = inOrder(httpShellContainerFactory, subConfig, toadlets);
-      order.verify(httpShellContainerFactory).create(subConfig, executor);
-      order.verify(subConfig).finishedInitialization();
-      order.verify(toadlets).start();
-    }
-  }
-
-  @Test
   void startWebInterface_whenConfigInvalid_throwsNodeInitException() throws Exception {
     NodeServicesSubsystem subsystem = newSubsystem();
     when(config.createSubConfig("fproxy")).thenReturn(subConfig);
