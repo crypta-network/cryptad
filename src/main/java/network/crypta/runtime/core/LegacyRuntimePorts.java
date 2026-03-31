@@ -1,14 +1,13 @@
 package network.crypta.runtime.core;
 
 import java.io.File;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimePortsBundle;
 import network.crypta.runtime.admin.AdminRuntimePortsFactory;
-import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
@@ -96,8 +95,9 @@ public final class LegacyRuntimePorts implements RuntimePorts {
    *
    * @param node live daemon node that provides execution, randomness, and lifecycle behavior
    * @param core live client core that provides transfer-policy checks and directory access
+   * @param bridgeInputs runtime-owned admin bridge seams assembled by the composition root
    */
-  public LegacyRuntimePorts(Node node, NodeClientCore core) {
+  public LegacyRuntimePorts(Node node, NodeClientCore core, AdminRuntimeBridgeInputs bridgeInputs) {
     this.node = node;
     this.core = core;
     this.executionPort =
@@ -176,17 +176,8 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.nodeInfoPort = new LegacyNodeInfoPort(node);
     this.peerPort = new LegacyPeerPort(node);
 
-    FcpQueuePorts.Bundle queuePorts = FcpQueuePorts.create(core);
-    AdminRuntimeBridgeInputs bridgeInputs =
-        new AdminRuntimeBridgeInputs(
-            queuePorts.adminBackend(),
-            queuePorts.pageBackend(),
-            queuePorts.completionPort(),
-            queuePorts.downloadPort(),
-            queuePorts.insertPort(),
-            HttpGeoIpCountryLookups.forNode(node));
     AdminRuntimePortsBundle adminRuntimePorts =
-        AdminRuntimePortsFactory.create(node, core, bridgeInputs);
+        AdminRuntimePortsFactory.create(node, core, Objects.requireNonNull(bridgeInputs));
     this.connectionsPagePort = adminRuntimePorts.connectionsPage();
     this.connectionsSupportPort = adminRuntimePorts.connectionsSupport();
     this.darknetConnectionsPort = adminRuntimePorts.darknetConnections();

@@ -5,6 +5,13 @@ import java.util.Random;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
+import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.admin.queue.page.QueuePageBackend;
+import network.crypta.runtime.spi.QueueCompletionPort;
+import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +45,12 @@ class LegacyRuntimePortsTest {
 
   @Mock private PriorityAwareExecutor executor;
   @Mock private RandomSource secureRandom;
+  @Mock private QueueAdminBackend queueAdminBackend;
+  @Mock private QueuePageBackend queuePageBackend;
+  @Mock private QueueCompletionPort queueCompletionPort;
+  @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueInsertPort queueInsertPort;
+  @Mock private GeoIpCountryLookup geoIpCountryLookup;
 
   private final Random weakRandom = new Random(1234L);
   private final File downloadsDir = new File("downloads");
@@ -57,7 +70,15 @@ class LegacyRuntimePortsTest {
     when(core.getAllowedUploadDirs()).thenReturn(allowedUploadDirs);
     when(core.getAllowedDownloadDirs()).thenReturn(allowedDownloadDirs);
 
-    ports = new LegacyRuntimePorts(node, core);
+    AdminRuntimeBridgeInputs bridgeInputs =
+        new AdminRuntimeBridgeInputs(
+            queueAdminBackend,
+            queuePageBackend,
+            queueCompletionPort,
+            queueDownloadPort,
+            queueInsertPort,
+            geoIpCountryLookup);
+    ports = new LegacyRuntimePorts(node, core, bridgeInputs);
   }
 
   @Test
@@ -105,7 +126,7 @@ class LegacyRuntimePortsTest {
   }
 
   @Test
-  void getters_whenRequested_expectLegacyAdapterTypes() {
+  void getters_whenRequested_expectInjectedBridgePortsAndLegacyAdapterTypes() {
     PortsSnapshot snapshot = capturePorts();
 
     assertAll(
@@ -140,22 +161,13 @@ class LegacyRuntimePortsTest {
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyQueueSupportPort"),
                 snapshot.queueSupportPort()),
-        () ->
-            assertInstanceOf(
-                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort"),
-                snapshot.queueCompletionPort()),
+        () -> assertSame(queueCompletionPort, snapshot.queueCompletionPort()),
         () ->
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyQueuePagePort"),
                 snapshot.queuePagePort()),
-        () ->
-            assertInstanceOf(
-                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort"),
-                snapshot.queueDownloadPort()),
-        () ->
-            assertInstanceOf(
-                loadClass("network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort"),
-                snapshot.queueInsertPort()),
+        () -> assertSame(queueDownloadPort, snapshot.queueDownloadPort()),
+        () -> assertSame(queueInsertPort, snapshot.queueInsertPort()),
         () ->
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyQueueMutationPort"),
