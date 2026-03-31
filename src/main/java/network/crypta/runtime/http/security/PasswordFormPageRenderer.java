@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.security;
+package network.crypta.runtime.http.security;
 
 import java.util.Objects;
 import network.crypta.clients.http.PasswordFormOptions;
