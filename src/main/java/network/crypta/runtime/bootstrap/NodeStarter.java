@@ -306,7 +306,12 @@ public class NodeStarter implements WrapperListener {
 
     Node node =
         Node.createForBootstrap(
-            config, params.getRandom(), params.getRandom(), null, params.getExecutor());
+            config,
+            params.getRandom(),
+            params.getRandom(),
+            null,
+            params.getExecutor(),
+            NodeRuntimeBridgeFactories.coreBacked());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -554,7 +559,9 @@ public class NodeStarter implements WrapperListener {
     initSSL(cfg);
 
     try {
-      node = Node.createForBootstrap(cfg, null, null, this, executor);
+      node =
+          Node.createForBootstrap(
+              cfg, null, null, this, executor, NodeRuntimeBridgeFactories.coreBacked());
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");
