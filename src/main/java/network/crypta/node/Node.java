@@ -38,11 +38,12 @@ import network.crypta.node.subsystem.NodeMessagingSubsystem;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
+import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
+import network.crypta.runtime.bootstrap.NodeRuntimeBridgeFactories;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
-import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.services.NodeServicesSubsystem;
@@ -549,6 +550,7 @@ public final class Node implements TimeSkewDetectorCallback {
    * @param weakRandom the fast random source, or {@code null} to derive one from the secure source
    * @param ns the associated starter, or {@code null} for test bootstrap
    * @param executor the executor used by the node runtime
+   * @param runtimeBridgeFactories bootstrap-selected runtime bridge factories
    * @return a newly constructed node instance
    * @throws NodeInitException if the node initialization fails
    */
@@ -557,9 +559,10 @@ public final class Node implements TimeSkewDetectorCallback {
       RandomSource r,
       RandomSource weakRandom,
       NodeStarter ns,
-      PriorityAwareExecutor executor)
+      PriorityAwareExecutor executor,
+      NodeRuntimeBridgeFactories runtimeBridgeFactories)
       throws NodeInitException {
-    return new Node(config, r, weakRandom, ns, executor);
+    return new Node(config, r, weakRandom, ns, executor, runtimeBridgeFactories);
   }
 
   /**
@@ -573,6 +576,7 @@ public final class Node implements TimeSkewDetectorCallback {
    *     will be used, seeded from the secure PRNG.
    * @param ns NodeStarter
    * @param executor Executor
+   * @param runtimeBridgeFactories Bootstrap-selected runtime bridge factories
    * @throws NodeInitException If the node initialization fails.
    */
   Node(
@@ -580,8 +584,15 @@ public final class Node implements TimeSkewDetectorCallback {
       RandomSource r,
       RandomSource weakRandom,
       NodeStarter ns,
-      PriorityAwareExecutor executor)
+      PriorityAwareExecutor executor,
+      NodeRuntimeBridgeFactories runtimeBridgeFactories)
       throws NodeInitException {
+    NodeRuntimeBridgeFactories nodeRuntimeBridgeFactories =
+        Objects.requireNonNull(runtimeBridgeFactories, "runtimeBridgeFactories");
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        nodeRuntimeBridgeFactories.adminRuntimeBridgeInputsFactory();
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
+        nodeRuntimeBridgeFactories.httpShellRuntimeSupportFactory();
     this.executor = executor;
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
@@ -702,7 +713,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     NodeClientCore clientCoreLocal =
         new NodeClientCore(
             this,
-            AdminRuntimeBridgeInputsFactories.coreBacked(),
+            adminRuntimeBridgeInputsFactory,
             clientCoreInit,
             network.darknetPortNumber(),
             sortOrder,
@@ -710,7 +721,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             persistentSecret);
     services.setClientCore(clientCoreLocal);
     HttpShellContainer toadlets = services.toadlets();
-    toadlets.setRuntimeSupport(HttpShellRuntimeSupportFactory.coreBacked().create(clientCoreLocal));
+    toadlets.setRuntimeSupport(httpShellRuntimeSupportFactory.create(clientCoreLocal));
 
     services.registerJvmVersionAlertIfNeeded();
 

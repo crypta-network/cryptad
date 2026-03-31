@@ -7,6 +7,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.CryptoRandoms;
@@ -94,8 +95,9 @@ class NodeStarterTest {
     params.setExecutor(mock(network.crypta.support.PriorityAwareExecutor.class));
 
     // Capture constructor arguments and provide a mock PeerManager for getPeers()
-    java.util.concurrent.atomic.AtomicReference<PersistentConfig> capturedCfg =
-        new java.util.concurrent.atomic.AtomicReference<>();
+    AtomicReference<PersistentConfig> capturedCfg = new AtomicReference<>();
+    AtomicReference<NodeRuntimeBridgeFactories> capturedRuntimeBridgeFactories =
+        new AtomicReference<>();
 
     try (MockedConstruction<Node> mocked =
         Mockito.mockConstruction(
@@ -105,6 +107,10 @@ class NodeStarterTest {
               Object arg0 = context.arguments().getFirst();
               if (arg0 instanceof PersistentConfig pc) {
                 capturedCfg.set(pc);
+              }
+              Object arg5 = context.arguments().get(5);
+              if (arg5 instanceof NodeRuntimeBridgeFactories runtimeBridgeFactories) {
+                capturedRuntimeBridgeFactories.set(runtimeBridgeFactories);
               }
               // getPeers() must not return null because createTestNode() calls removeAllPeers()
               PeerManager peerManager = mock(PeerManager.class);
@@ -131,6 +137,7 @@ class NodeStarterTest {
       // Per-port derived paths exist under base/port
       File portDir = new File(tmpDir, "12345");
       assertEquals(new File(portDir, "throttle.dat").toString(), sfs.get("node.throttleFile"));
+      assertValidRuntimeBridgeFactories(capturedRuntimeBridgeFactories.get());
 
       // And ensure the peer list is cleared on the returned node
       verify(node.network().peers(), times(1)).removeAllPeers();
@@ -144,6 +151,8 @@ class NodeStarterTest {
     NodeStarter ns = newNodeStarterViaReflection();
     int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
     String[] args = startupArgs(tmpDir);
+    AtomicReference<NodeRuntimeBridgeFactories> capturedRuntimeBridgeFactories =
+        new AtomicReference<>();
 
     try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
         MockedConstruction<NativeThread> nativeThreadCtor =
@@ -151,16 +160,22 @@ class NodeStarterTest {
         MockedConstruction<Node> nodeCtor =
             Mockito.mockConstruction(
                 Node.class,
-                (mock, _) ->
-                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
-                        .when(mock)
-                        .start(false))) {
+                (mock, context) -> {
+                  Object arg5 = context.arguments().get(5);
+                  if (arg5 instanceof NodeRuntimeBridgeFactories runtimeBridgeFactories) {
+                    capturedRuntimeBridgeFactories.set(runtimeBridgeFactories);
+                  }
+                  Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                      .when(mock)
+                      .start(false);
+                })) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(true);
       Integer result = ns.start(args);
 
       assertEquals(expectedExitCode, result);
       assertEquals(1, nodeCtor.constructed().size());
       assertEquals(1, nativeThreadCtor.constructed().size());
+      assertValidRuntimeBridgeFactories(capturedRuntimeBridgeFactories.get());
       wm.verify(() -> WrapperManager.signalStarting(500000), times(1));
       wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
     }
@@ -486,5 +501,12 @@ class NodeStarterTest {
     File dir = Files.createTempDirectory(prefix).toFile();
     dir.deleteOnExit();
     return dir;
+  }
+
+  private static void assertValidRuntimeBridgeFactories(
+      NodeRuntimeBridgeFactories runtimeBridgeFactories) {
+    assertNotNull(runtimeBridgeFactories);
+    assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
+    assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
   }
 }

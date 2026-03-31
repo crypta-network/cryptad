@@ -3,7 +3,8 @@
  *
  * <p>This package groups the neutral runtime helpers that handle CLI parsing, startup logging
  * configuration, the wrapper lifecycle bridge, program-directory setup, and early bootstrap/config
- * wiring during daemon startup. The classes remain part of the daemon runtime and preserve their
+ * wiring during daemon startup. It also owns the default selection of runtime bridge factories
+ * passed into the node kernel. The classes remain part of the daemon runtime and preserve their
  * existing behavior, but they are not part of the routing, storage, or message kernel.
  */
 package network.crypta.runtime.bootstrap;
