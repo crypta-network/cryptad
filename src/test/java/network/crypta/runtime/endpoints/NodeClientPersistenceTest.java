@@ -31,7 +31,7 @@ import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
 import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.persistence.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MemoryLimitedJobRunner;

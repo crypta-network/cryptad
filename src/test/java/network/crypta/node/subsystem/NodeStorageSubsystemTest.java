@@ -19,7 +19,7 @@ import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.endpoints.ClientEndpoints;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.store.CHKStore;
 import network.crypta.store.FreenetStore;

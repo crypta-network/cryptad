@@ -3,6 +3,7 @@ package network.crypta.runtime.endpoints.http;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.ArrayBucketFactory;
 

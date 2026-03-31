@@ -16,7 +16,7 @@ import network.crypta.fs.ServiceDirs;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.ProgramDirectory;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;

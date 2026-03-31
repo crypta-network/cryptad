@@ -2,7 +2,7 @@ package network.crypta.runtime.endpoints;
 
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;

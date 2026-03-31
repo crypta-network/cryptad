@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.runtime.http;
 
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
@@ -7,10 +7,10 @@ import network.crypta.support.PriorityAwareExecutor;
 /**
  * Creates runtime-owned {@link HttpShellContainer} instances for node-facing HTTP services.
  *
- * <p>This interface is the narrow seam between runtime bootstrap code and the concrete HTTP shell
- * bridge implementation. Callers such as the node services subsystem depend on this factory instead
- * of naming a specific shell host directly. That keeps concrete bridge construction localized to
- * the runtime HTTP endpoint package and makes startup wiring easier to test.
+ * <p>This interface is the narrow seam between runtime bootstrap code and whichever HTTP shell
+ * bridge binding a composition root selects. Callers such as the node services subsystem depend on
+ * this factory instead of naming a specific shell host directly. That keeps concrete bridge
+ * construction out of higher-level runtime code and makes startup wiring easier to test.
  *
  * <p>The contract is intentionally small. A factory implementation receives the already-selected
  * FProxy sub-configuration and executor, constructs a matching shell container, and returns the
@@ -22,20 +22,6 @@ import network.crypta.support.PriorityAwareExecutor;
  */
 @FunctionalInterface
 public interface HttpShellContainerFactory {
-
-  /**
-   * Returns the default runtime-owned HTTP shell factory.
-   *
-   * <p>The default entry point preserves the existing legacy bridge construction path while keeping
-   * concrete shell-host knowledge inside {@code network.crypta.runtime.endpoints.http}. Callers
-   * outside this package can therefore depend on the seam without naming {@link
-   * HttpShellContainers} directly.
-   *
-   * @return factory that creates the current runtime-owned HTTP shell container bridge
-   */
-  static HttpShellContainerFactory defaultFactory() {
-    return HttpShellContainers::create;
-  }
 
   /**
    * Creates a new HTTP shell container for the supplied FProxy configuration and executor.

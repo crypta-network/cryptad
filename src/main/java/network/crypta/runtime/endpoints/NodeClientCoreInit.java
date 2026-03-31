@@ -3,7 +3,7 @@ package network.crypta.runtime.endpoints;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeClientCore;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 
 /**
  * Bundles configuration inputs required to initialize {@link NodeClientCore}.
