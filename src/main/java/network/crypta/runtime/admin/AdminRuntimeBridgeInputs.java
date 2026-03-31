@@ -10,12 +10,11 @@ import network.crypta.runtime.spi.QueueInsertPort;
 /**
  * Carries the runtime-owned bridge inputs needed to assemble the admin runtime-port bundle.
  *
- * <p>{@link network.crypta.runtime.core.LegacyRuntimePorts} creates this record at the runtime
- * composition root after it has already chosen the concrete bridge factories for queue handling and
- * GeoIP lookup. {@link AdminRuntimePortsFactory} then consumes the record and wires the legacy
- * admin adapters without importing endpoint-owned factory entry points. That keeps the wiring
- * explicit while preserving the existing daemon-backed behavior for queue pages, queue mutations,
- * diagnostics, and connections-page country rendering.
+ * <p>The runtime composition root creates this record after it has already chosen the concrete
+ * bridge factories for queue handling and GeoIP lookup. {@link AdminRuntimePortsFactory} then
+ * consumes the record and wires the legacy admin adapters without importing endpoint-owned factory
+ * entry points. That keeps the wiring explicit while preserving the existing daemon-backed behavior
+ * for queue pages, queue mutations, diagnostics, and connections-page country rendering.
  *
  * <p>The record is intentionally mechanical. It does not validate, normalize, cache, or lazily
  * resolve any of its members. Callers are expected to populate every component with the live seam

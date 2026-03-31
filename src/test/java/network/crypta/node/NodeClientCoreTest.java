@@ -18,6 +18,10 @@ import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
+import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
+import network.crypta.runtime.admin.queue.QueueAdminBackend;
+import network.crypta.runtime.admin.queue.page.QueuePageBackend;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.endpoints.ClientEndpoints;
@@ -25,6 +29,9 @@ import network.crypta.runtime.endpoints.NodeClientPersistence;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
 import network.crypta.runtime.endpoints.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
+import network.crypta.runtime.spi.QueueCompletionPort;
+import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueInsertPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
@@ -84,6 +91,12 @@ class NodeClientCoreTest {
   @Mock private PersistentConfig config;
   @Mock private PriorityAwareExecutor executor;
   @Mock private IPDetectorManager ipDetectorManager;
+  @Mock private QueueAdminBackend queueAdminBackend;
+  @Mock private QueuePageBackend queuePageBackend;
+  @Mock private QueueCompletionPort queueCompletionPort;
+  @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueInsertPort queueInsertPort;
+  @Mock private GeoIpCountryLookup geoIpCountryLookup;
 
   @TempDir Path tempDir; // base dir for downloads and test files
 
@@ -138,7 +151,15 @@ class NodeClientCoreTest {
     uskManager = Mockito.mock(USKManager.class);
     setField(core, "transfers", transfers);
     setField(core, "uskManager", uskManager);
-    runtimePorts = new LegacyRuntimePorts(node, core);
+    AdminRuntimeBridgeInputs bridgeInputs =
+        new AdminRuntimeBridgeInputs(
+            queueAdminBackend,
+            queuePageBackend,
+            queueCompletionPort,
+            queueDownloadPort,
+            queueInsertPort,
+            geoIpCountryLookup);
+    runtimePorts = new LegacyRuntimePorts(node, core, bridgeInputs);
     setField(core, "runtimePorts", runtimePorts);
     NodeIPDetector nodeIpDetector = Mockito.mock(NodeIPDetector.class);
     setField(nodeIpDetector, NodeIPDetector.class, "ipDetectorManager", ipDetectorManager);
