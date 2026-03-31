@@ -8,7 +8,7 @@ import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.NodeClientCoreSupport;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.TempBucketFactory;
 

@@ -14,6 +14,8 @@ import network.crypta.clients.http.StartupToadlet;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletRegistration;
 import network.crypta.config.SubConfig;
+import network.crypta.runtime.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.BucketFactory;
@@ -59,7 +61,7 @@ class HttpShellContainersTest {
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
               when(server.isLinkExcepted(uri)).thenReturn(true);
             })) {
-      HttpShellContainerFactory factory = HttpShellContainerFactory.defaultFactory();
+      HttpShellContainerFactory factory = HttpShellBridgeFactories.defaultContainerFactory();
       HttpShellContainer container = factory.create(fproxyConfig, executor);
 
       assertEquals(1, construction.constructed().size());

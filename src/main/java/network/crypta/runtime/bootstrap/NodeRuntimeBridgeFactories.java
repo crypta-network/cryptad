@@ -3,8 +3,9 @@ package network.crypta.runtime.bootstrap;
 import java.util.Objects;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
-import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
-import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
+import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
+import network.crypta.runtime.http.HttpShellContainerFactory;
+import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
 
 /**
  * Bootstrap-owned selection of runtime bridge factories for {@link network.crypta.node.Node}.
@@ -67,7 +68,7 @@ public record NodeRuntimeBridgeFactories(
   public static NodeRuntimeBridgeFactories coreBacked() {
     return new NodeRuntimeBridgeFactories(
         AdminRuntimeBridgeInputsFactories.coreBacked(),
-        HttpShellRuntimeSupportFactory.coreBacked(),
-        HttpShellContainerFactory.defaultFactory());
+        HttpShellBridgeFactories.coreBackedRuntimeSupportFactory(),
+        HttpShellBridgeFactories.defaultContainerFactory());
   }
 }

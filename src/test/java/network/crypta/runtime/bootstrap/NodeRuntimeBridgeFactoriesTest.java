@@ -9,9 +9,9 @@ import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
-import network.crypta.runtime.endpoints.http.HttpShellContainerFactory;
-import network.crypta.runtime.endpoints.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
+import network.crypta.runtime.http.HttpShellContainerFactory;
+import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;

@@ -27,7 +27,7 @@ import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
-import network.crypta.runtime.endpoints.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;

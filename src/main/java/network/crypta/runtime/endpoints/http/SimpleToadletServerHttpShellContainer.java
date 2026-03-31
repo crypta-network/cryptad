@@ -11,6 +11,7 @@ import network.crypta.clients.http.PermanentRedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletRegistration;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.TempBucketFactory;

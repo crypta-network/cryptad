@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.runtime.http;
 
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
