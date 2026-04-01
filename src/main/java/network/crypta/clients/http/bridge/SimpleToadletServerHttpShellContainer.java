@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import java.net.URI;
 import network.crypta.clients.http.SimpleToadletServer;

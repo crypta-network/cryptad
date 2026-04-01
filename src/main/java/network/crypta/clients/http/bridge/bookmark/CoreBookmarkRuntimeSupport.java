@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.bookmark;
+package network.crypta.clients.http.bridge.bookmark;
 
 import java.io.File;
 import java.util.Objects;
@@ -22,8 +22,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * bookmark-local operations into the existing node services for user-directory file resolution, USK
  * subscription management, update-priority prefetch, and ticker-backed delayed work. That keeps
  * bookmark loading, update handling, and lazy persistence behavior stable while moving the direct
- * core dependency out of {@link BookmarkManager} and into runtime-owned HTTP endpoint bootstrap
- * code.
+ * core dependency out of {@link BookmarkManager} and into the adapter-owned HTTP bridge layer.
  *
  * <p>The adapter is intentionally small and keeps only an immutable reference to the supplied node
  * core. It is not a general-purpose node facade. Callers are expected to construct it close to

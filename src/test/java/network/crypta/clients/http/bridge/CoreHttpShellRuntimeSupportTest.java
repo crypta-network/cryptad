@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.util.List;
@@ -12,6 +12,7 @@ import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellFProxyBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -22,7 +23,6 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
-import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;

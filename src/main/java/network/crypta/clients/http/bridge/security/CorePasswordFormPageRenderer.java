@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.security;
+package network.crypta.clients.http.bridge.security;
 
 import java.util.Objects;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
@@ -10,7 +10,7 @@ import network.crypta.runtime.http.security.PasswordPromptOptions;
 import network.crypta.support.HTMLNode;
 
 /**
- * Endpoint-owned default implementation of the shared password prompt renderer seam.
+ * Adapter-owned default implementation of the shared password prompt renderer seam.
  *
  * <p>This renderer keeps the runtime-owned password prompt seam detached from legacy HTTP adapter
  * classes while still producing the exact markup expected by the existing administrative web UI. It
@@ -20,7 +20,7 @@ import network.crypta.support.HTMLNode;
  *
  * <p>The implementation is intentionally narrow and stateless. It preserves the historical
  * submitting routing rules, keeps the established {@code masterPasswordForm} identifier, and avoids
- * embedding policy decisions in the endpoint layer. Callers are expected to supply the prompt state
+ * embedding policy decisions in the bridge layer. Callers are expected to supply the prompt state
  * and the surrounding HTTP shell context; this class only maps and forwards that state to the
  * legacy renderer.
  *
@@ -34,7 +34,7 @@ public final class CorePasswordFormPageRenderer implements PasswordFormPageRende
   static final String MASTER_PASSWORD_FORM = "masterPasswordForm";
 
   /**
-   * Creates the default endpoint-backed password prompt renderer.
+   * Creates the default adapter-backed password prompt renderer.
    *
    * <p>The renderer holds no mutable state and performs no work until {@link
    * #generate(PasswordPromptOptions, HttpShellContainer, HTMLNode)} is invoked. Reusing one

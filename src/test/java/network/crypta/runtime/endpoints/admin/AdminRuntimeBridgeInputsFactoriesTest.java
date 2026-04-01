@@ -2,6 +2,7 @@ package network.crypta.runtime.endpoints.admin;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookup;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
@@ -12,7 +13,6 @@ import network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort;
 import network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertAll;

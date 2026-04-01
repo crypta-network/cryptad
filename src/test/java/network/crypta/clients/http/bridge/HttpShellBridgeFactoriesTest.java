@@ -1,8 +1,9 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.PriorityAwareExecutor;

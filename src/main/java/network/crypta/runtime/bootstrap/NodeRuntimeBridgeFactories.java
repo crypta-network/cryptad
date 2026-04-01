@@ -1,11 +1,11 @@
 package network.crypta.runtime.bootstrap;
 
 import java.util.Objects;
+import network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointBridgeFactories;
 import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
-import network.crypta.runtime.endpoints.http.security.CorePasswordFormPageRenderer;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
@@ -77,8 +77,8 @@ public record NodeRuntimeBridgeFactories(
   }
 
   /**
-   * Returns the legacy default bridge-factory bundle backed by the current endpoint
-   * implementations.
+   * Returns the legacy default bridge-factory bundle backed by the current endpoint-selected
+   * adapter implementations.
    *
    * <p>This helper centralizes the existing production default in the bootstrap package. Callers
    * that need the historical daemon wiring can therefore get the same admin, FCP persistence, and

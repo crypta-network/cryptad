@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.geoip;
+package network.crypta.clients.http.bridge.geoip;
 
 import java.io.File;
 import network.crypta.node.Node;
@@ -8,9 +8,9 @@ import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
 /**
  * Factory methods for HTTP-backed GeoIP country lookups.
  *
- * <p>This utility keeps the file-selection logic for the HTTP GeoIP bridge inside the bridge
- * package. Runtime-admin code can ask for a {@link GeoIpCountryLookup} without depending on the
- * concrete {@link HttpGeoIpCountryLookup} constructor or on the daemon's GeoIP database path
+ * <p>This utility keeps the file-selection logic for the HTTP GeoIP bridge inside the adapter-owned
+ * bridge package. Runtime-admin code can ask for a {@link GeoIpCountryLookup} without depending on
+ * the concrete {@link HttpGeoIpCountryLookup} constructor or on the daemon's GeoIP database path
  * lookup. The returned lookup preserves the existing behavior of the HTTP bridge: it reads the
  * current IPv4-to-country database for the supplied node and delegates country resolution to the
  * legacy HTTP adapter.

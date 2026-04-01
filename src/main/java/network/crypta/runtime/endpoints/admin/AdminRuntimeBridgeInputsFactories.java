@@ -1,9 +1,9 @@
 package network.crypta.runtime.endpoints.admin;
 
+import network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookups;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.fcp.FcpQueuePorts;
-import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookups;
 
 /**
  * Endpoint-owned factory entry points for admin bridge inputs.
