@@ -1,29 +1,20 @@
 package network.crypta.runtime.bootstrap;
 
 import java.util.Objects;
-import network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
-import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
-import network.crypta.runtime.endpoints.fcp.FcpEndpointBridgeFactories;
-import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.http.security.PasswordFormPageRenderer;
 
 /**
- * Bootstrap-owned selection of runtime bridge factories for {@link network.crypta.node.Node}.
+ * Immutable holder of already-selected runtime bridge factories for {@link
+ * network.crypta.node.Node}.
  *
- * <p>This holder keeps the composition-root decision about which runtime bridge implementations to
- * use out of the node kernel. Bootstrap code selects the seam implementations once, then passes
- * them into {@code Node} so the node can stay focused on coordination and lifecycle rather than on
- * choosing endpoint-backed defaults for admin bridges, FCP persistence, or HTTP helpers.
- *
- * <p>Typical startup paths create one instance during bootstrap, thread it through {@link
- * network.crypta.runtime.bootstrap.NodeStarter}, and then let the node reuse those seams at the
- * same construction points where it previously hard-coded the legacy endpoint seams. The record is
- * immutable and carries no caching or policy beyond that wiring choice, so startup order and bridge
- * behavior stay aligned with the existing daemon bootstrap flow. The contained factories are
+ * <p>Bootstrap code selects the seam implementations elsewhere, stores them in this record, and
+ * then passes the holder into {@code Node} so node construction can stay focused on coordination
+ * and lifecycle rather than on choosing production defaults. The record is immutable and carries no
+ * caching or policy beyond retaining the already-selected seams. The contained factories are
  * expected to be a compatible set rather than arbitrary independent choices. In particular, the
  * current legacy-backed HTTP shell container still requires a runtime-support implementation that
  * can also satisfy the legacy HTTP adapter contract.
@@ -74,26 +65,5 @@ public record NodeRuntimeBridgeFactories(
     Objects.requireNonNull(httpShellRuntimeSupportFactory, "httpShellRuntimeSupportFactory");
     Objects.requireNonNull(httpShellContainerFactory, "httpShellContainerFactory");
     Objects.requireNonNull(passwordFormPageRenderer, "passwordFormPageRenderer");
-  }
-
-  /**
-   * Returns the legacy default bridge-factory bundle backed by the current endpoint-selected
-   * adapter implementations.
-   *
-   * <p>This helper centralizes the existing production default in the bootstrap package. Callers
-   * that need the historical daemon wiring can therefore get the same admin, FCP persistence, and
-   * HTTP shell bridge choices without making the node kernel depend on the endpoint-owned static
-   * entry points.
-   *
-   * @return bridge factories that preserve the current core-backed admin, FCP, and HTTP shell
-   *     wiring
-   */
-  public static NodeRuntimeBridgeFactories coreBacked() {
-    return new NodeRuntimeBridgeFactories(
-        AdminRuntimeBridgeInputsFactories.coreBacked(),
-        FcpEndpointBridgeFactories.coreBackedPersistentRequestServicesFactory(),
-        HttpShellBridgeFactories.coreBackedRuntimeSupportFactory(),
-        HttpShellBridgeFactories.defaultContainerFactory(),
-        new CorePasswordFormPageRenderer());
   }
 }

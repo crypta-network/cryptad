@@ -7,10 +7,10 @@
  * non-HTTP runtime code may reference without depending on endpoint-owned bridge implementations.
  *
  * <p>Concrete bridge implementations now live under {@code network.crypta.clients.http.bridge},
- * while the default production binding entry points remain in {@code
- * network.crypta.runtime.endpoints.http}. Callers that need the historical daemon wiring should
- * choose those bindings at bootstrap time. They should then pass only the seam interfaces and
- * runtime-owned helpers from this package into higher-level runtime components such as node
- * construction, service startup, and detached status rendering.
+ * while the default production binding selection now lives in {@code
+ * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories}. Callers that need the
+ * historical daemon wiring should choose those bindings at bootstrap time, then pass only the seam
+ * interfaces and runtime-owned helpers from this package into higher-level runtime components such
+ * as node construction, service startup, and detached status rendering.
  */
 package network.crypta.runtime.http;

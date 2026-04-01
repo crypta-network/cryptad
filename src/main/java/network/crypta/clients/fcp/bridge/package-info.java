@@ -9,8 +9,8 @@
  * wrapping. Higher-level runtime packages should depend on the runtime-owned interfaces, not on the
  * concrete bridge classes collected here.
  *
- * <p>Typical bootstrap still begins at {@code
- * network.crypta.runtime.endpoints.fcp.FcpEndpointBridgeFactories}, which selects the default
+ * <p>Typical bootstrap now begins in {@code
+ * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories}, which selects the default
  * production binding and then hands only seam types upstream. This package keeps the concrete
  * adapter behavior behind that boundary, so the current FCP startup sequence, persistent-request
  * recovery path, queue semantics, and alert delivery behavior remain unchanged while ownership is
