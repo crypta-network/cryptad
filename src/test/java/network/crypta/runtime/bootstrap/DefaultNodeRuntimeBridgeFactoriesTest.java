@@ -27,7 +27,6 @@ import org.mockito.MockedConstruction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
@@ -67,11 +66,6 @@ class DefaultNodeRuntimeBridgeFactoriesTest {
       assertInstanceOf(HttpShellContainer.class, container);
     }
 
-    assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
-    assertNotNull(runtimeBridgeFactories.persistentRequestEndpointServicesFactory());
-    assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
-    assertNotNull(httpShellContainerFactory);
-    assertNotNull(passwordFormPageRenderer);
     assertInstanceOf(FcpQueueAdminBackend.class, bridgeInputs.queueAdminBackend());
     assertInstanceOf(FcpQueuePageBackend.class, bridgeInputs.queuePageBackend());
     assertInstanceOf(LegacyQueueCompletionPort.class, bridgeInputs.queueCompletionPort());
