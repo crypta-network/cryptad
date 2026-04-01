@@ -1,10 +1,10 @@
 package network.crypta.runtime.endpoints.http;
 
-import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
@@ -46,6 +46,7 @@ class HttpShellBridgeFactoriesTest {
 
     CoreHttpShellRuntimeSupport coreRuntimeSupport =
         assertInstanceOf(CoreHttpShellRuntimeSupport.class, runtimeSupport);
+    assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);
     assertSame(core, coreRuntimeSupport.core());
   }
 }

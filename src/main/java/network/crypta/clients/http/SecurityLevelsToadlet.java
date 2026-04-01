@@ -1101,6 +1101,19 @@ public class SecurityLevelsToadlet extends Toadlet {
   static final String PATH = System.getProperty(PATH_PROPERTY, "/seclevels/");
 
   /**
+   * Returns the already-resolved routing path used by this toadlet class.
+   *
+   * <p>This accessor exposes the same cached value that backs {@link #path()}, allowing callers to
+   * build links and form targets that stay aligned with the registered handler even if the backing
+   * system property changes later in process lifetime.
+   *
+   * @return canonical cached toadlet path, resolved during class initialization.
+   */
+  public static String resolvedPath() {
+    return PATH;
+  }
+
+  /**
    * Returns the routing path for this toadlet. The value comes from the {@code
    * network.crypta.seclevels.path} system property when set, otherwise falls back to {@code
    * /seclevels/}. Callers should treat the path as a stable identifier for hyperlink generation and

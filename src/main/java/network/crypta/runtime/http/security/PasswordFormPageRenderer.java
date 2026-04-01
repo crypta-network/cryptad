@@ -1,9 +1,7 @@
 package network.crypta.runtime.http.security;
 
 import java.util.Objects;
-import network.crypta.clients.http.PasswordFormOptions;
-import network.crypta.clients.http.SecurityLevelsToadlet;
-import network.crypta.clients.http.ToadletContainer;
+import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -20,7 +18,22 @@ import network.crypta.support.HTMLNode;
  * implementation.
  */
 public final class PasswordFormPageRenderer {
+  private static final String MASTER_PASSWORD_FORM = "masterPasswordForm";
+
   private PasswordFormPageRenderer() {}
+
+  /**
+   * Returns the cached security-levels form target used by the legacy HTTP renderer.
+   *
+   * <p>This keeps runtime-owned callers aligned with the actual route mounted by {@code
+   * SecurityLevelsToadlet}. The underlying toadlet resolves and caches its path during class
+   * initialization, so using this helper avoids drift if the backing system property changes later.
+   *
+   * @return canonical cached security-levels route used by the legacy HTTP shell.
+   */
+  public static String resolvedSecurityLevelsPath() {
+    return network.crypta.clients.http.SecurityLevelsToadlet.resolvedPath();
+  }
 
   /**
    * Renders the shared password form through the existing HTTP implementation.
@@ -35,26 +48,38 @@ public final class PasswordFormPageRenderer {
    *     rendered for the user.
    * @param ctx container used to create the form element with the correct submission endpoint and
    *     surrounding HTTP context.
+   * @param securityLevelsPath configurable submission target for the standard security-levels page
+   *     flow. This value is ignored when the prompt is being rendered for the first-time wizard,
+   *     which always submits to the wizard-owned endpoint.
    * @param content HTML node that receives explanatory text and the generated form structure from
    *     the delegated renderer.
    * @throws NullPointerException if any argument is {@code null}, because the underlying renderer
    *     requires all inputs to be present.
    */
   public static void generate(
-      PasswordPromptOptions options, ToadletContainer ctx, HTMLNode content) {
+      PasswordPromptOptions options,
+      HttpShellContainer ctx,
+      String securityLevelsPath,
+      HTMLNode content) {
     Objects.requireNonNull(options, "options");
     Objects.requireNonNull(ctx, "ctx");
+    Objects.requireNonNull(securityLevelsPath, "securityLevelsPath");
     Objects.requireNonNull(content, "content");
 
-    SecurityLevelsToadlet.generatePasswordFormPage(
-        new PasswordFormOptions(
+    String postTo =
+        options.forFirstTimeWizard()
+            ? network.crypta.clients.http.FirstTimeWizardToadlet.TOADLET_URL
+            : securityLevelsPath;
+    HTMLNode form = ctx.addFormChild(content, postTo, MASTER_PASSWORD_FORM);
+    network.crypta.clients.http.SecurityLevelsToadlet.generatePasswordFormPage(
+        new network.crypta.clients.http.PasswordFormOptions(
             options.wasWrong(),
             options.forFirstTimeWizard(),
             options.forDowngrade(),
             options.forUpgrade(),
             options.physicalSecurityLevel(),
             options.redirect()),
-        ctx,
+        form,
         content);
   }
 }

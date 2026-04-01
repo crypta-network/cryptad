@@ -1,24 +1,16 @@
 package network.crypta.runtime.endpoints.http;
 
-import java.io.File;
-import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
-import network.crypta.clients.http.HttpShellRuntimeSupport;
-import network.crypta.clients.http.PageMaker.THEME;
-import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.StartupToadlet;
-import network.crypta.clients.http.Toadlet;
-import network.crypta.clients.http.ToadletRegistration;
 import network.crypta.config.SubConfig;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.http.HttpShellContainerFactory;
+import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
-import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,11 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
@@ -45,9 +40,11 @@ class HttpShellContainersTest {
     SubConfig fproxyConfig = mock(SubConfig.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     StartupToadlet startupToadlet = mock(StartupToadlet.class);
-    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    HttpShellRuntimeSupport runtimeSupport = legacyCompatibleRuntimeSupport();
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
     URI uri = URI.create("http://127.0.0.1/filter");
+    HTMLNode parentNode = mock(HTMLNode.class);
+    HTMLNode formNode = mock(HTMLNode.class);
     AtomicReference<List<?>> constructorArgs = new AtomicReference<>();
 
     try (MockedConstruction<SimpleToadletServer> construction =
@@ -60,6 +57,7 @@ class HttpShellContainersTest {
               when(server.isAdvancedModeEnabled()).thenReturn(true);
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
               when(server.isLinkExcepted(uri)).thenReturn(true);
+              when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
             })) {
       HttpShellContainerFactory factory = HttpShellBridgeFactories.defaultContainerFactory();
       HttpShellContainer container = factory.create(fproxyConfig, executor);
@@ -83,105 +81,65 @@ class HttpShellContainersTest {
       assertTrue(container.isAdvancedModeEnabled());
       assertTrue(container.isLinkExcepted(uri));
       assertFalse(container.isFProxyJavascriptEnabled());
+      assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
 
-      verify(server).setRuntimeSupport(runtimeSupport);
+      verify(server)
+          .setRuntimeSupport((network.crypta.clients.http.HttpShellRuntimeSupport) runtimeSupport);
       verify(server).setBucketFactory(tempBucketFactory);
       verify(server).createFproxy();
       verify(server).finishStart();
       verify(server).removeStartupToadlet();
       verify(server).start();
+      verify(server).addFormChild(parentNode, "/submit", "form");
       verify(startupToadlet).setIsPRNGReady();
     }
   }
 
   @Test
   void
-      simpleToadletServerHttpShellContainer_whenReadOnlyDelegationsQueried_expectDelegateValuesReturned()
-          throws Exception {
-    // Arrange
+      simpleToadletServerHttpShellContainer_whenRuntimeMethodsQueried_expectDelegateValuesReturned() {
     SimpleToadletServer server = mock(SimpleToadletServer.class);
     HttpShellContainer container = new SimpleToadletServerHttpShellContainer(server);
     URI uri = URI.create("http://127.0.0.1:8888/test");
-    InetAddress remoteAddress = InetAddress.getLoopbackAddress();
-    Toadlet toadlet = mock(Toadlet.class);
     HTMLNode parentNode = mock(HTMLNode.class);
     HTMLNode formNode = mock(HTMLNode.class);
-    BucketFactory bucketFactory = mock(BucketFactory.class);
-    PageMaker pageMaker = mock(PageMaker.class);
-    THEME theme = THEME.CRYPTAFORGE;
-    REFILTER_POLICY reFilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
-    File overrideFile = new File("override.css");
 
-    when(server.findToadlet(uri)).thenReturn(toadlet);
-    when(server.getTheme()).thenReturn(theme);
-    when(server.getFormPassword()).thenReturn("form-password");
-    when(server.isAllowedFullAccess(remoteAddress)).thenReturn(true);
-    when(server.doRobots()).thenReturn(false);
+    when(server.isEnabled()).thenReturn(true);
     when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
-    when(server.enablePersistentConnections()).thenReturn(true);
-    when(server.enableInlinePrefetch()).thenReturn(false);
-    when(server.enableExtendedMethodHandling()).thenReturn(true);
-    when(server.enableCachingForChkAndSskKeys()).thenReturn(false);
-    when(server.getBucketFactory()).thenReturn(bucketFactory);
-    when(server.allowPosts()).thenReturn(true);
-    when(server.publicGatewayMode()).thenReturn(false);
-    when(server.enableActivelinks()).thenReturn(true);
-    when(server.sendAllThemes()).thenReturn(false);
-    when(server.isFProxyWebPushingEnabled()).thenReturn(true);
-    when(server.disableProgressPage()).thenReturn(false);
-    when(server.getPageMaker()).thenReturn(pageMaker);
-    when(server.fproxyHasCompletedWizard()).thenReturn(true);
-    when(server.getReFilterPolicy()).thenReturn(reFilterPolicy);
-    when(server.getOverrideFile()).thenReturn(overrideFile);
-    when(server.getURL()).thenReturn("http://127.0.0.1:8888/");
-    when(server.getURL("example.test")).thenReturn("http://example.test:8888/");
-    when(server.isSSL()).thenReturn(true);
-    when(server.generateUniqueID()).thenReturn(1234L);
+    when(server.isAdvancedModeEnabled()).thenReturn(false);
+    when(server.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(server.isLinkExcepted(uri)).thenReturn(true);
 
-    // Act + Assert
-    assertSame(toadlet, container.findToadlet(uri));
-    assertSame(theme, container.getTheme());
-    assertEquals("form-password", container.getFormPassword());
-    assertTrue(container.isAllowedFullAccess(remoteAddress));
-    assertFalse(container.doRobots());
+    assertTrue(container.isEnabled());
     assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
-    assertTrue(container.enablePersistentConnections());
-    assertFalse(container.enableInlinePrefetch());
-    assertTrue(container.enableExtendedMethodHandling());
-    assertFalse(container.enableCachingForChkAndSskKeys());
-    assertSame(bucketFactory, container.getBucketFactory());
-    assertTrue(container.allowPosts());
-    assertFalse(container.publicGatewayMode());
-    assertTrue(container.enableActivelinks());
-    assertFalse(container.sendAllThemes());
-    assertTrue(container.isFProxyWebPushingEnabled());
-    assertFalse(container.disableProgressPage());
-    assertSame(pageMaker, container.getPageMaker());
-    assertTrue(container.fproxyHasCompletedWizard());
-    assertSame(reFilterPolicy, container.getReFilterPolicy());
-    assertSame(overrideFile, container.getOverrideFile());
-    assertEquals("http://127.0.0.1:8888/", container.getURL());
-    assertEquals("http://example.test:8888/", container.getURL("example.test"));
-    assertTrue(container.isSSL());
-    assertEquals(1234L, container.generateUniqueID());
+    assertFalse(container.isAdvancedModeEnabled());
+    assertTrue(container.isFProxyJavascriptEnabled());
+    assertTrue(container.isLinkExcepted(uri));
   }
 
   @Test
-  void simpleToadletServerHttpShellContainer_whenMutationMethodsInvoked_expectDelegateCalled() {
-    // Arrange
+  void simpleToadletServerHttpShellContainer_whenRuntimeSupportLacksLegacyBridge_throws() {
     SimpleToadletServer server = mock(SimpleToadletServer.class);
     HttpShellContainer container = new SimpleToadletServerHttpShellContainer(server);
-    Toadlet toadlet = mock(Toadlet.class);
-    ToadletRegistration registration = mock(ToadletRegistration.class);
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
 
-    // Act
-    container.register(toadlet, registration);
-    container.unregister(toadlet);
-    container.setAdvancedMode(true);
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class, () -> container.setRuntimeSupport(runtimeSupport));
 
-    // Assert
-    verify(server).register(toadlet, registration);
-    verify(server).unregister(toadlet);
-    verify(server).setAdvancedMode(true);
+    assertEquals(
+        "SimpleToadletServerHttpShellContainer requires runtimeSupport to also implement "
+            + "network.crypta.clients.http.HttpShellRuntimeSupport; pair custom "
+            + "HttpShellRuntimeSupportFactory bindings with a compatible "
+            + "HttpShellContainerFactory",
+        exception.getMessage());
+    verifyNoInteractions(server);
+  }
+
+  private static HttpShellRuntimeSupport legacyCompatibleRuntimeSupport() {
+    return (HttpShellRuntimeSupport)
+        mock(
+            network.crypta.clients.http.HttpShellRuntimeSupport.class,
+            withSettings().extraInterfaces(HttpShellRuntimeSupport.class));
   }
 }

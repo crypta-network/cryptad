@@ -1,19 +1,10 @@
 package network.crypta.runtime.endpoints.http;
 
-import java.io.File;
-import java.net.InetAddress;
 import java.net.URI;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
-import network.crypta.clients.http.HttpShellRuntimeSupport;
-import network.crypta.clients.http.PageMaker.THEME;
-import network.crypta.clients.http.PageMaker;
-import network.crypta.clients.http.PermanentRedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.Toadlet;
-import network.crypta.clients.http.ToadletRegistration;
 import network.crypta.runtime.http.HttpShellContainer;
+import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 
 /**
@@ -55,7 +46,15 @@ final class SimpleToadletServerHttpShellContainer implements HttpShellContainer 
 
   @Override
   public void setRuntimeSupport(HttpShellRuntimeSupport runtimeSupport) {
-    delegate.setRuntimeSupport(runtimeSupport);
+    if (!(runtimeSupport
+        instanceof network.crypta.clients.http.HttpShellRuntimeSupport legacySupport)) {
+      throw new IllegalArgumentException(
+          "SimpleToadletServerHttpShellContainer requires runtimeSupport to also implement "
+              + "network.crypta.clients.http.HttpShellRuntimeSupport; pair custom "
+              + "HttpShellRuntimeSupportFactory bindings with a compatible "
+              + "HttpShellContainerFactory");
+    }
+    delegate.setRuntimeSupport(legacySupport);
   }
 
   @Override
@@ -104,142 +103,7 @@ final class SimpleToadletServerHttpShellContainer implements HttpShellContainer 
   }
 
   @Override
-  public void register(Toadlet t, ToadletRegistration registration) {
-    delegate.register(t, registration);
-  }
-
-  @Override
-  public void unregister(Toadlet t) {
-    delegate.unregister(t);
-  }
-
-  @Override
-  public Toadlet findToadlet(URI uri) throws PermanentRedirectException {
-    return delegate.findToadlet(uri);
-  }
-
-  @Override
-  public THEME getTheme() {
-    return delegate.getTheme();
-  }
-
-  @Override
-  public String getFormPassword() {
-    return delegate.getFormPassword();
-  }
-
-  @Override
-  public boolean isAllowedFullAccess(InetAddress remoteAddr) {
-    return delegate.isAllowedFullAccess(remoteAddr);
-  }
-
-  @Override
-  public boolean doRobots() {
-    return delegate.doRobots();
-  }
-
-  @Override
   public HTMLNode addFormChild(HTMLNode parentNode, String target, String name) {
     return delegate.addFormChild(parentNode, target, name);
-  }
-
-  @Override
-  public boolean enablePersistentConnections() {
-    return delegate.enablePersistentConnections();
-  }
-
-  @Override
-  public boolean enableInlinePrefetch() {
-    return delegate.enableInlinePrefetch();
-  }
-
-  @Override
-  public boolean enableExtendedMethodHandling() {
-    return delegate.enableExtendedMethodHandling();
-  }
-
-  @Override
-  public boolean enableCachingForChkAndSskKeys() {
-    return delegate.enableCachingForChkAndSskKeys();
-  }
-
-  @Override
-  public BucketFactory getBucketFactory() {
-    return delegate.getBucketFactory();
-  }
-
-  @Override
-  public boolean allowPosts() {
-    return delegate.allowPosts();
-  }
-
-  @Override
-  public boolean publicGatewayMode() {
-    return delegate.publicGatewayMode();
-  }
-
-  @Override
-  public boolean enableActivelinks() {
-    return delegate.enableActivelinks();
-  }
-
-  @Override
-  public boolean sendAllThemes() {
-    return delegate.sendAllThemes();
-  }
-
-  @Override
-  public boolean isFProxyWebPushingEnabled() {
-    return delegate.isFProxyWebPushingEnabled();
-  }
-
-  @Override
-  public boolean disableProgressPage() {
-    return delegate.disableProgressPage();
-  }
-
-  @Override
-  public PageMaker getPageMaker() {
-    return delegate.getPageMaker();
-  }
-
-  @Override
-  public void setAdvancedMode(boolean enabled) {
-    delegate.setAdvancedMode(enabled);
-  }
-
-  @Override
-  public boolean fproxyHasCompletedWizard() {
-    return delegate.fproxyHasCompletedWizard();
-  }
-
-  @Override
-  public REFILTER_POLICY getReFilterPolicy() {
-    return delegate.getReFilterPolicy();
-  }
-
-  @Override
-  public File getOverrideFile() {
-    return delegate.getOverrideFile();
-  }
-
-  @Override
-  public String getURL() {
-    return delegate.getURL();
-  }
-
-  @Override
-  public String getURL(String host) {
-    return delegate.getURL(host);
-  }
-
-  @Override
-  public boolean isSSL() {
-    return delegate.isSSL();
-  }
-
-  @Override
-  public long generateUniqueID() {
-    return delegate.generateUniqueID();
   }
 }
