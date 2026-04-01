@@ -33,6 +33,7 @@ include(
   ":foundation-fs",
   ":foundation-compat",
   ":runtime-spi",
+  ":runtime-node",
   ":thirdparty-onion",
   ":thirdparty-legacy",
   ":launcher-desktop",

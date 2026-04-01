@@ -196,6 +196,9 @@ Cryptad now uses a partial multi-project Gradle build.
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
   first-time-wizard, symlinker, and welcome-page slices.
+- `:runtime-node` is an extraction-prep scaffold. It currently owns only selected
+  `network.crypta.runtime.*` package docs and selective-output ownership metadata seeds while the
+  behaviorful runtime classes remain in the root project.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -210,25 +213,18 @@ Cryptad now uses a partial multi-project Gradle build.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
   leaf-owned messages, client-owned seams such as `network.crypta.client.async.alerts` and
-  `network.crypta.client.async.persistence`, runtime-owned seams such as
-  `network.crypta.runtime.alerts.feed`, and package-local bridges such as
-  `network.crypta.runtime.core.LegacyRuntimePorts`,
-  `network.crypta.clients.http.BookmarkEditorToadletRuntimePorts`,
-  `network.crypta.clients.http.ConfigToadletRuntimePorts`,
-  `network.crypta.clients.http.ConnectionsToadletRuntimePorts`,
-  `network.crypta.clients.http.FileInsertWizardToadletRuntimePorts`,
-  `network.crypta.clients.http.FirstTimeWizardToadletRuntimePorts`,
-  `network.crypta.clients.http.QueueToadletRuntimePorts`, and
-  `network.crypta.clients.http.SecurityLevelsToadletRuntimePorts`,
-  `network.crypta.clients.http.WelcomeToadletRuntimePorts`,
-  `network.crypta.clients.http.FProxyRuntimeSupport`,
-  `network.crypta.clients.http.HttpShellRuntimeSupport`,
-  `network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport`,
-  `network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend`,
-  `network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend`,
-  `network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog`,
-  `network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec`, and
-  `network.crypta.clients.http.bookmark.BookmarkRuntimeSupport`.
+  `network.crypta.client.async.persistence`, and runtime-owned seams such as
+  `network.crypta.runtime.alerts.feed`, `network.crypta.runtime.fcp`,
+  `network.crypta.runtime.http`, `network.crypta.runtime.http.security`,
+  `network.crypta.runtime.peers.reference`, and `network.crypta.runtime.persistence`.
+- Default production bridge selection now starts in
+  `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`. Concrete adapter
+  implementations stay in `network.crypta.clients.fcp.bridge`,
+  `network.crypta.clients.http.bridge`, and `network.crypta.clients.http.updater`, while
+  higher-level runtime code depends on runtime-owned seam types such as
+  `network.crypta.runtime.endpoints.fcp.FcpEndpointHandle`,
+  `network.crypta.runtime.http.HttpShellContainer`, and
+  `network.crypta.runtime.http.security.PasswordFormPageRenderer`.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
@@ -514,6 +510,8 @@ Root build also includes:
 - `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
   and other infrastructure code.
+- `:runtime-node`: extraction-prep scaffold that currently owns selected
+  `network.crypta.runtime.*` package docs and selective-output ownership metadata seeds only.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
   bandwidth-detection helpers now used by first-time setup flows.
@@ -565,6 +563,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+    `:runtime-node`,
     `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
@@ -592,20 +591,17 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   flows through `FcpServerDependencies` and `CoreFcpServerDependenciesFactory`, with package-local
   seams such as `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`,
   `FcpFetchRuntimeSupport`, and `FcpInsertRuntimeSupport` splitting server-owned, message-owned,
-  GET/fetch, and insert/USK concerns. FCP-local runtime bridges now also own persistent-request
-  catalog and recovery seams plus queue and alert-feed adapters such as
-  `CoreFcpPersistentRequestCatalog`, `FcpPersistentRequestRecoveryCodec`,
-  `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`, and
-  `FcpUserAlertFeedMessageFactory`.
-  The migrated HTTP management and shell slices now cross the boundary in two layers:
-  `RuntimePorts` for JDK-only detached runtime state and package-local helpers such as
-  `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
-  `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`. Those paths now cover config
-  export and persistence, connectivity and friends/strangers snapshots, selected-peer actions,
-  queue page/download/insert/mutation/support and completion flows, security-level state and
-  warnings, shared page chrome, core-update actions, first-time-wizard snapshots plus current
-  bandwidth limits, symlinker persistence, welcome-page reads/actions, bookmark runtime wiring,
-  and N2NTM compose/send flows.
+  GET/fetch, and insert/USK concerns. Runtime-owned FCP seam types now live under
+  `network.crypta.runtime.fcp` and `network.crypta.runtime.endpoints.fcp`, while concrete
+  persistent-request services, queue adapters, alert-feed adapters, and endpoint-handle wrappers
+  now live under `network.crypta.clients.fcp.bridge`.
+  The migrated HTTP management and shell slices now cross the boundary in three layers:
+  `RuntimePorts` for JDK-only detached runtime state, runtime-owned shell and password-prompt seams
+  under `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
+  helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`,
+  `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`. Concrete HTTP shell, bookmark,
+  GeoIP, security-page, and updater-action adapters now live under
+  `network.crypta.clients.http.bridge` and `network.crypta.clients.http.updater`.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
   `RuntimePorts`, `ConfigPort`, `NodeInfoPort`, `PeerPort`, `ConnectionsPagePort`,
   `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `QueuePagePort`,
@@ -616,7 +612,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`.
 - Runtime package families (`network.crypta.runtime.*`): `runtime.bootstrap` owns startup and CLI
-  wiring such as `NodeStarter`, `NodeBootstrap`, `NodeCli`, and `NodeConfigManager`;
+  wiring such as `NodeStarter`, `NodeBootstrap`, `NodeCli`, `NodeConfigManager`, and
+  `DefaultNodeRuntimeBridgeFactories`;
   `runtime.core` owns the runtime SPI nucleus such as `LegacyRuntimePorts`,
   `LegacyConfigPort`, `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
   `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`;
@@ -626,11 +623,13 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `runtime.admin.queue` and `runtime.admin.queue.page`; `runtime.alerts` owns operator-facing
   alerts, `UserAlertManagerStoreAlertSink`, and the runtime-owned alert-feed seam under
   `runtime.alerts.feed`; `runtime.endpoints` owns FCP/HTTP/TMCI bootstrap glue such as
-  `ClientEndpoints`, `NodeClientCoreInit`, `NodeClientPersistence`, the HTTP-local runtime adapters
-  in `runtime.endpoints.http`, and FCP-local bridges for queue completion/download/insert,
-  persistent-request recovery, queue admin/page backends, and alert-feed subscriptions under
-  `runtime.endpoints.fcp`; `runtime.services` owns `NodeServicesSubsystem`; and `runtime.updater`
-  owns `NodeUpdateManager`, `CoreUpdater`, and `CoreActionToadlet`.
+  `ClientEndpoints`, `NodeClientCoreInit`, `NodeClientPersistence`, and the
+  `runtime.endpoints.fcp.FcpEndpointHandle` seam; `runtime.fcp` owns the persistent-request
+  endpoint seams used during startup; `runtime.http` owns shell container and shell-support seams,
+  with password-prompt contracts under `runtime.http.security`; `runtime.persistence` owns the
+  extracted persister helpers; `runtime.services` owns `NodeServicesSubsystem`; and
+  `runtime.updater` owns `NodeUpdateManager` and `CoreUpdater`, while the `/core-update/` HTTP
+  action layer now lives in `network.crypta.clients.http.updater`.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
   `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
   `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
@@ -657,7 +656,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:foundation-fs` provides `network.crypta.fs`, and `:foundation-compat` provides
   `network.crypta.compat` plus compatibility helpers such as the extracted bandwidth-detection
   support.
-- Runtime boundary leaf: `:runtime-spi` provides `network.crypta.runtime.spi`.
+- Runtime boundary leaves: `:runtime-spi` provides `network.crypta.runtime.spi`, while
+  `:runtime-node` is the extraction-prep scaffold that currently owns selected
+  `network.crypta.runtime.*` package docs and ownership metadata seeds only.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 

@@ -1,0 +1,21 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :runtime-node owns them
+# now.
+# Keep this list limited to extraction-prep package-info outputs only.
+
+network/crypta/runtime/admin/package-info*
+network/crypta/runtime/admin/geoip/package-info*
+network/crypta/runtime/admin/queue/package-info*
+network/crypta/runtime/admin/queue/page/package-info*
+network/crypta/runtime/alerts/package-info*
+network/crypta/runtime/alerts/feed/package-info*
+network/crypta/runtime/bootstrap/package-info*
+network/crypta/runtime/core/package-info*
+network/crypta/runtime/endpoints/package-info*
+network/crypta/runtime/endpoints/fcp/package-info*
+network/crypta/runtime/fcp/package-info*
+network/crypta/runtime/http/package-info*
+network/crypta/runtime/http/security/package-info*
+network/crypta/runtime/peers/html/package-info*
+network/crypta/runtime/peers/reference/package-info*
+network/crypta/runtime/persistence/package-info*
+network/crypta/runtime/updater/package-info*
