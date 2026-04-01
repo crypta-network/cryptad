@@ -4,8 +4,10 @@ import java.util.Objects;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.admin.AdminRuntimeBridgeInputsFactories;
 import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
+import network.crypta.runtime.endpoints.http.security.CorePasswordFormPageRenderer;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
+import network.crypta.runtime.http.security.PasswordFormPageRenderer;
 
 /**
  * Bootstrap-owned selection of runtime bridge factories for {@link network.crypta.node.Node}.
@@ -30,20 +32,23 @@ import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
  *     container
  * @param httpShellContainerFactory factory for HTTP shell container creation used by the service
  *     subsystem
+ * @param passwordFormPageRenderer runtime-owned seam used to render the shared master-password
+ *     prompt
  */
 public record NodeRuntimeBridgeFactories(
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory,
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory,
-    HttpShellContainerFactory httpShellContainerFactory) {
+    HttpShellContainerFactory httpShellContainerFactory,
+    PasswordFormPageRenderer passwordFormPageRenderer) {
 
   /**
    * Creates a bootstrap bridge-factory bundle.
    *
-   * <p>All factories are required because node construction expects explicit seams for the admin
-   * runtime bridge inputs, the HTTP shell runtime support path, and the HTTP shell container
-   * creation path. The constructor only validates presence; it does not invoke the factories, prove
-   * cross-factory compatibility, cache runtime state, or trigger any endpoint startup work on its
-   * own.
+   * <p>All supplied seams are required because node construction expects explicit bindings for the
+   * admin runtime bridge inputs, the HTTP shell runtime support path, the HTTP shell container
+   * creation path, and the shared password-form renderer. The constructor only validates presence;
+   * it does not invoke factories, prove cross-binding compatibility, cache runtime state, or
+   * trigger any endpoint startup work on its own.
    *
    * @param adminRuntimeBridgeInputsFactory factory for admin bridge inputs passed into the client
    *     core during node construction
@@ -51,12 +56,15 @@ public record NodeRuntimeBridgeFactories(
    *     client core exists
    * @param httpShellContainerFactory factory for HTTP shell container creation used by {@code
    *     NodeServicesSubsystem}
-   * @throws NullPointerException if any factory reference is {@code null}
+   * @param passwordFormPageRenderer renderer used by node-owned password alerts without exposing
+   *     endpoint-owned HTTP helpers to runtime packages
+   * @throws NullPointerException if any supplied seam reference is {@code null}
    */
   public NodeRuntimeBridgeFactories {
     Objects.requireNonNull(adminRuntimeBridgeInputsFactory, "adminRuntimeBridgeInputsFactory");
     Objects.requireNonNull(httpShellRuntimeSupportFactory, "httpShellRuntimeSupportFactory");
     Objects.requireNonNull(httpShellContainerFactory, "httpShellContainerFactory");
+    Objects.requireNonNull(passwordFormPageRenderer, "passwordFormPageRenderer");
   }
 
   /**
@@ -73,6 +81,7 @@ public record NodeRuntimeBridgeFactories(
     return new NodeRuntimeBridgeFactories(
         AdminRuntimeBridgeInputsFactories.coreBacked(),
         HttpShellBridgeFactories.coreBackedRuntimeSupportFactory(),
-        HttpShellBridgeFactories.defaultContainerFactory());
+        HttpShellBridgeFactories.defaultContainerFactory(),
+        new CorePasswordFormPageRenderer());
   }
 }

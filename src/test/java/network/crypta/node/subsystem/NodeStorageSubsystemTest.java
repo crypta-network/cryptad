@@ -3,8 +3,6 @@ package network.crypta.node.subsystem;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.security.SecureRandom;
-import network.crypta.clients.http.PasswordFormOptions;
-import network.crypta.clients.http.SecurityLevelsToadlet;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.keys.CHKBlock;
@@ -20,6 +18,8 @@ import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.http.HttpShellContainer;
+import network.crypta.runtime.http.security.PasswordFormPageRenderer;
+import network.crypta.runtime.http.security.PasswordPromptOptions;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.store.CHKStore;
 import network.crypta.store.FreenetStore;
@@ -42,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,12 +54,24 @@ class NodeStorageSubsystemTest {
   @Mock private NodeServicesSubsystem services;
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alerts;
+  @Mock private PasswordFormPageRenderer passwordFormPageRenderer;
 
   private NodeStorageSubsystem subsystem;
 
   @BeforeEach
   void setUp() {
-    subsystem = new NodeStorageSubsystem(node);
+    subsystem = new NodeStorageSubsystem(node, passwordFormPageRenderer);
+  }
+
+  @Test
+  void constructor_whenNodeIsNull_throwsNullPointerException() {
+    assertThrows(
+        NullPointerException.class, () -> new NodeStorageSubsystem(null, passwordFormPageRenderer));
+  }
+
+  @Test
+  void constructor_whenPasswordFormPageRendererIsNull_throwsNullPointerException() {
+    assertThrows(NullPointerException.class, () -> new NodeStorageSubsystem(node, null));
   }
 
   @Test
@@ -223,82 +235,28 @@ class NodeStorageSubsystemTest {
   }
 
   @Test
-  void masterPasswordUserAlert_getHTMLText_whenRendered_matchesLegacyPasswordForm()
+  void masterPasswordUserAlert_getHTMLText_whenRendered_delegatesToPasswordFormPageRenderer()
       throws Exception {
     HttpShellContainer container = org.mockito.Mockito.mock(HttpShellContainer.class);
-    when(container.addFormChild(any(HTMLNode.class), anyString(), anyString()))
-        .thenAnswer(
-            invocation -> {
-              HTMLNode parent = invocation.getArgument(0);
-              String target = invocation.getArgument(1);
-              String id = invocation.getArgument(2);
-              HTMLNode form = parent.addChild("form");
-              form.addAttribute("target", target);
-              form.addAttribute("id", id);
-              return form;
-            });
     when(node.services()).thenReturn(services);
     when(services.clientCore()).thenReturn(clientCore);
     when(clientCore.getEndpoints()).thenReturn(new ClientEndpoints(null, null, container));
-
-    HTMLNode expectedContent = new HTMLNode("div");
-    HTMLNode expectedForm = expectedContent.addChild("form");
-    expectedForm.addAttribute("target", SecurityLevelsToadlet.resolvedPath());
-    expectedForm.addAttribute("id", "masterPasswordForm");
-    SecurityLevelsToadlet.generatePasswordFormPage(
-        new PasswordFormOptions(false, false, false, false, null, null),
-        expectedForm,
-        expectedContent);
+    PasswordPromptOptions expectedOptions =
+        new PasswordPromptOptions(false, false, false, false, null, null);
+    doAnswer(
+            invocation -> {
+              HTMLNode content = invocation.getArgument(2);
+              content.addChild("p", "rendered");
+              return null;
+            })
+        .when(passwordFormPageRenderer)
+        .generate(
+            any(PasswordPromptOptions.class), any(HttpShellContainer.class), any(HTMLNode.class));
 
     HTMLNode renderedContent = getMasterPasswordUserAlert(subsystem).getHTMLText();
 
-    assertEquals(expectedContent.generate(), renderedContent.generate());
-  }
-
-  @Test
-  void
-      masterPasswordUserAlert_getHTMLText_whenSecurityLevelsPropertyChangesAfterPathResolution_usesResolvedRoute()
-          throws Exception {
-    HttpShellContainer container = org.mockito.Mockito.mock(HttpShellContainer.class);
-    when(container.addFormChild(any(HTMLNode.class), anyString(), anyString()))
-        .thenAnswer(
-            invocation -> {
-              HTMLNode parent = invocation.getArgument(0);
-              String target = invocation.getArgument(1);
-              String id = invocation.getArgument(2);
-              HTMLNode form = parent.addChild("form");
-              form.addAttribute("target", target);
-              form.addAttribute("id", id);
-              return form;
-            });
-    when(node.services()).thenReturn(services);
-    when(services.clientCore()).thenReturn(clientCore);
-    when(clientCore.getEndpoints()).thenReturn(new ClientEndpoints(null, null, container));
-
-    String originalProperty = System.getProperty("network.crypta.seclevels.path");
-    String resolvedPath = SecurityLevelsToadlet.resolvedPath();
-    System.setProperty("network.crypta.seclevels.path", "/changed-after-init/");
-
-    try {
-      HTMLNode expectedContent = new HTMLNode("div");
-      HTMLNode expectedForm = expectedContent.addChild("form");
-      expectedForm.addAttribute("target", resolvedPath);
-      expectedForm.addAttribute("id", "masterPasswordForm");
-      SecurityLevelsToadlet.generatePasswordFormPage(
-          new PasswordFormOptions(false, false, false, false, null, null),
-          expectedForm,
-          expectedContent);
-
-      HTMLNode renderedContent = getMasterPasswordUserAlert(subsystem).getHTMLText();
-
-      assertEquals(expectedContent.generate(), renderedContent.generate());
-    } finally {
-      if (originalProperty == null) {
-        System.clearProperty("network.crypta.seclevels.path");
-      } else {
-        System.setProperty("network.crypta.seclevels.path", originalProperty);
-      }
-    }
+    assertTrue(renderedContent.generate().contains("<p>rendered</p>"));
+    verify(passwordFormPageRenderer).generate(expectedOptions, container, renderedContent);
   }
 
   @Test

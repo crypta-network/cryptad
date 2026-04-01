@@ -5,9 +5,9 @@ package network.crypta.runtime.http.security;
  *
  * <p>This record mirrors the legacy HTTP-layer password form options while keeping ownership in a
  * neutral runtime package. Node and runtime services can assemble one immutable snapshot, pass it
- * across the architectural boundary, and let the renderer bridge translate it into adapter-owned
- * types only at the final rendering step. That keeps the seam explicit and avoids leaking UI helper
- * classes back into core code.
+ * across the architectural boundary, and let the selected renderer implementation translate it into
+ * adapter-owned types only at the final rendering step. That keeps the seam explicit and avoids
+ * leaking UI helper classes back into core code.
  *
  * <p>Each component maps directly to one rendering decision or post-submit behavior. The record
  * does not validate combinations or interpret policy. It simply preserves the prompt state so
