@@ -9,9 +9,11 @@ import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
+import network.crypta.runtime.endpoints.http.security.CorePasswordFormPageRenderer;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
+import network.crypta.runtime.http.security.PasswordFormPageRenderer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -29,12 +31,16 @@ class NodeRuntimeBridgeFactoriesTest {
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
     HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
+    PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
 
     assertThrows(
         NullPointerException.class,
         () ->
             new NodeRuntimeBridgeFactories(
-                null, httpShellRuntimeSupportFactory, httpShellContainerFactory));
+                null,
+                httpShellRuntimeSupportFactory,
+                httpShellContainerFactory,
+                passwordFormPageRenderer));
   }
 
   @Test
@@ -43,12 +49,16 @@ class NodeRuntimeBridgeFactoriesTest {
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
         fixture.adminRuntimeBridgeInputsFactory();
     HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
+    PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
 
     assertThrows(
         NullPointerException.class,
         () ->
             new NodeRuntimeBridgeFactories(
-                adminRuntimeBridgeInputsFactory, null, httpShellContainerFactory));
+                adminRuntimeBridgeInputsFactory,
+                null,
+                httpShellContainerFactory,
+                passwordFormPageRenderer));
   }
 
   @Test
@@ -58,12 +68,35 @@ class NodeRuntimeBridgeFactoriesTest {
         fixture.adminRuntimeBridgeInputsFactory();
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
+    PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
 
     assertThrows(
         NullPointerException.class,
         () ->
             new NodeRuntimeBridgeFactories(
-                adminRuntimeBridgeInputsFactory, httpShellRuntimeSupportFactory, null));
+                adminRuntimeBridgeInputsFactory,
+                httpShellRuntimeSupportFactory,
+                null,
+                passwordFormPageRenderer));
+  }
+
+  @Test
+  void constructor_whenPasswordFormPageRendererIsNull_throws() {
+    NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        fixture.adminRuntimeBridgeInputsFactory();
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
+        ignoredCore -> mock(HttpShellRuntimeSupport.class);
+    HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
+
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            new NodeRuntimeBridgeFactories(
+                adminRuntimeBridgeInputsFactory,
+                httpShellRuntimeSupportFactory,
+                httpShellContainerFactory,
+                null));
   }
 
   @Test
@@ -79,15 +112,19 @@ class NodeRuntimeBridgeFactoriesTest {
         runtimeBridgeFactories.httpShellRuntimeSupportFactory().create(fixture.core());
     HttpShellContainerFactory httpShellContainerFactory =
         runtimeBridgeFactories.httpShellContainerFactory();
+    PasswordFormPageRenderer passwordFormPageRenderer =
+        runtimeBridgeFactories.passwordFormPageRenderer();
 
     assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
     assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
     assertNotNull(httpShellContainerFactory);
+    assertNotNull(passwordFormPageRenderer);
     assertInstanceOf(FcpQueueAdminBackend.class, bridgeInputs.queueAdminBackend());
     assertInstanceOf(HttpGeoIpCountryLookup.class, bridgeInputs.geoIpCountryLookup());
     CoreHttpShellRuntimeSupport coreRuntimeSupport =
         assertInstanceOf(CoreHttpShellRuntimeSupport.class, runtimeSupport);
     assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);
+    assertInstanceOf(CorePasswordFormPageRenderer.class, passwordFormPageRenderer);
     assertSame(fixture.core(), coreRuntimeSupport.core());
   }
 

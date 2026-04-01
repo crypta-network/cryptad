@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -279,6 +280,7 @@ public final class NodeStorageSubsystem {
   private CachingFreenetStoreTracker cachingFreenetStoreTracker;
 
   private volatile boolean storePreallocate;
+  private final PasswordFormPageRenderer passwordFormPageRenderer;
 
   /**
    * Creates the storage subsystem facade for a running node instance.
@@ -287,9 +289,12 @@ public final class NodeStorageSubsystem {
    * SSK store operations. Heavy store initialization is deferred to explicit init methods.
    *
    * @param node owning node used for services, statistics, and lifecycle coordination
+   * @param passwordFormPageRenderer renderer used for the shared master-password prompt
    */
-  public NodeStorageSubsystem(Node node) {
-    this.node = node;
+  public NodeStorageSubsystem(Node node, PasswordFormPageRenderer passwordFormPageRenderer) {
+    this.node = Objects.requireNonNull(node, "node");
+    this.passwordFormPageRenderer =
+        Objects.requireNonNull(passwordFormPageRenderer, "passwordFormPageRenderer");
     this.getPubKey = new NodeGetPubkey(node);
   }
 
@@ -500,10 +505,9 @@ public final class NodeStorageSubsystem {
         @Override
         public HTMLNode getHTMLText() {
           HTMLNode content = new HTMLNode("div");
-          PasswordFormPageRenderer.generate(
+          passwordFormPageRenderer.generate(
               new PasswordPromptOptions(false, false, false, false, null, null),
               node.services().clientCore().getEndpoints().getToadletContainer(),
-              PasswordFormPageRenderer.resolvedSecurityLevelsPath(),
               content);
           return content;
         }
