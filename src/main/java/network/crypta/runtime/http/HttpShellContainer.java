@@ -39,7 +39,8 @@ public interface HttpShellContainer extends LinkFilterExceptionProvider {
    * adapter for later callbacks rather than copying or translating it. Because {@link
    * HttpShellRuntimeSupport} is only a marker seam in this PR, container implementations may still
    * require additional implementation-specific interfaces on the same object. The default
-   * production pairing supplied by {@code NodeRuntimeBridgeFactories.coreBacked()} satisfies that
+   * production pairing supplied by {@link
+   * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories#coreBacked()} satisfies that
    * requirement; custom bridge bindings must supply a compatible container/support pair.
    *
    * @param runtimeSupport daemon-backed adapter that serves later HTTP shell callbacks and runtime

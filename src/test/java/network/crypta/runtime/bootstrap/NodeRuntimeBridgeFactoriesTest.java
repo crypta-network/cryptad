@@ -1,11 +1,6 @@
 package network.crypta.runtime.bootstrap;
 
 import java.io.File;
-import network.crypta.clients.fcp.bridge.FcpPersistentRequestServices;
-import network.crypta.clients.fcp.bridge.FcpQueueAdminBackend;
-import network.crypta.clients.http.bridge.CoreHttpShellRuntimeSupport;
-import network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookup;
-import network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
@@ -19,9 +14,6 @@ import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
 import network.crypta.runtime.http.security.PasswordFormPageRenderer;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -137,43 +129,34 @@ class NodeRuntimeBridgeFactoriesTest {
   }
 
   @Test
-  void coreBacked_whenCreated_exposesCurrentEndpointBackedFactories() {
+  void accessors_whenCreated_returnConstructorArguments() {
     NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        fixture.adminRuntimeBridgeInputsFactory();
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        () -> mock(PersistentRequestEndpointServices.class);
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
+        ignoredCore -> mock(HttpShellRuntimeSupport.class);
+    HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
+    PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
 
-    NodeRuntimeBridgeFactories runtimeBridgeFactories = NodeRuntimeBridgeFactories.coreBacked();
-    AdminRuntimeBridgeInputs bridgeInputs =
-        runtimeBridgeFactories
-            .adminRuntimeBridgeInputsFactory()
-            .create(fixture.node(), fixture.core());
-    PersistentRequestEndpointServices persistentRequestEndpointServices =
-        runtimeBridgeFactories.persistentRequestEndpointServicesFactory().create();
-    PersistentRequestEndpointServices anotherPersistentRequestEndpointServices =
-        runtimeBridgeFactories.persistentRequestEndpointServicesFactory().create();
-    HttpShellRuntimeSupport runtimeSupport =
-        runtimeBridgeFactories.httpShellRuntimeSupportFactory().create(fixture.core());
-    HttpShellContainerFactory httpShellContainerFactory =
-        runtimeBridgeFactories.httpShellContainerFactory();
-    PasswordFormPageRenderer passwordFormPageRenderer =
-        runtimeBridgeFactories.passwordFormPageRenderer();
+    NodeRuntimeBridgeFactories runtimeBridgeFactories =
+        new NodeRuntimeBridgeFactories(
+            adminRuntimeBridgeInputsFactory,
+            persistentRequestEndpointServicesFactory,
+            httpShellRuntimeSupportFactory,
+            httpShellContainerFactory,
+            passwordFormPageRenderer);
 
-    assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
-    assertNotNull(runtimeBridgeFactories.persistentRequestEndpointServicesFactory());
-    assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
-    assertNotNull(httpShellContainerFactory);
-    assertNotNull(passwordFormPageRenderer);
-    assertInstanceOf(FcpQueueAdminBackend.class, bridgeInputs.queueAdminBackend());
-    assertInstanceOf(HttpGeoIpCountryLookup.class, bridgeInputs.geoIpCountryLookup());
-    assertInstanceOf(FcpPersistentRequestServices.class, persistentRequestEndpointServices);
-    assertInstanceOf(FcpPersistentRequestServices.class, anotherPersistentRequestEndpointServices);
-    assertNotSame(
-        persistentRequestEndpointServices,
-        anotherPersistentRequestEndpointServices,
-        "core-backed FCP persistent-request services should be created on demand");
-    CoreHttpShellRuntimeSupport coreRuntimeSupport =
-        assertInstanceOf(CoreHttpShellRuntimeSupport.class, runtimeSupport);
-    assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);
-    assertInstanceOf(CorePasswordFormPageRenderer.class, passwordFormPageRenderer);
-    assertSame(fixture.core(), coreRuntimeSupport.core());
+    assertSame(
+        adminRuntimeBridgeInputsFactory, runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
+    assertSame(
+        persistentRequestEndpointServicesFactory,
+        runtimeBridgeFactories.persistentRequestEndpointServicesFactory());
+    assertSame(
+        httpShellRuntimeSupportFactory, runtimeBridgeFactories.httpShellRuntimeSupportFactory());
+    assertSame(httpShellContainerFactory, runtimeBridgeFactories.httpShellContainerFactory());
+    assertSame(passwordFormPageRenderer, runtimeBridgeFactories.passwordFormPageRenderer());
   }
 
   private record NodeRuntimeBridgeFactoriesFixture(Node node, NodeClientCore core, File geoIpDb) {

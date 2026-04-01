@@ -311,7 +311,7 @@ public class NodeStarter implements WrapperListener {
             params.getRandom(),
             null,
             params.getExecutor(),
-            NodeRuntimeBridgeFactories.coreBacked());
+            DefaultNodeRuntimeBridgeFactories.coreBacked());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -561,7 +561,7 @@ public class NodeStarter implements WrapperListener {
     try {
       node =
           Node.createForBootstrap(
-              cfg, null, null, this, executor, NodeRuntimeBridgeFactories.coreBacked());
+              cfg, null, null, this, executor, DefaultNodeRuntimeBridgeFactories.coreBacked());
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");

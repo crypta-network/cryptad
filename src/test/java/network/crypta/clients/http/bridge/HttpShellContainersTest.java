@@ -6,9 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.StartupToadlet;
 import network.crypta.config.SubConfig;
-import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
 import network.crypta.runtime.http.HttpShellContainer;
-import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -60,8 +58,7 @@ class HttpShellContainersTest {
               when(server.isLinkExcepted(uri)).thenReturn(true);
               when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
             })) {
-      HttpShellContainerFactory factory = HttpShellBridgeFactories.defaultContainerFactory();
-      HttpShellContainer container = factory.create(fproxyConfig, executor);
+      HttpShellContainer container = HttpShellContainers.create(fproxyConfig, executor);
 
       assertEquals(1, construction.constructed().size());
       SimpleToadletServer server = construction.constructed().getFirst();

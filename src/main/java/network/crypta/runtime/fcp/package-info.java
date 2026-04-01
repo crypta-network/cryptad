@@ -7,8 +7,8 @@
  * persistent-request snapshot, and ask the endpoint layer to create an FCP handle later in startup.
  *
  * <p>Concrete bridge implementations now live in {@code network.crypta.clients.fcp.bridge}, while
- * the default production bindings remain in {@code network.crypta.runtime.endpoints.fcp}. Bootstrap
- * code selects those bindings once, threads only these seam types through node construction, and
+ * bootstrap-owned code in {@code network.crypta.runtime.bootstrap} selects the default production
+ * bindings. Higher-level runtime code threads only these seam types through node construction and
  * keeps the endpoint-owned request root and server bootstrap details behind that boundary. That
  * split preserves the current startup order while making the composition-root choice explicit.
  */
