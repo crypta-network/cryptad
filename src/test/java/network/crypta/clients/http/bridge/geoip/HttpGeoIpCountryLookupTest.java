@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.geoip;
+package network.crypta.clients.http.bridge.geoip;
 
 import java.io.File;
 import network.crypta.clients.http.geoip.IPConverter;

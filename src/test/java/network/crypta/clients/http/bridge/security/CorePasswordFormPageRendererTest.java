@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http.security;
+package network.crypta.clients.http.bridge.security;
 
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.clients.http.PasswordFormOptions;

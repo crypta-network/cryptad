@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.util.Objects;
@@ -9,6 +9,7 @@ import network.crypta.clients.http.HttpShellFProxyBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.Config;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
@@ -16,19 +17,18 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.runtime.alerts.UserAlertManager;
-import network.crypta.runtime.endpoints.http.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 
 /**
  * Adapts {@link NodeClientCore} to the narrow runtime surface used by {@link SimpleToadletServer}.
  *
- * <p>This record keeps the remaining HTTP-shell coupling under runtime-owned HTTP endpoint
- * bootstrap code instead of letting the server reach directly into the daemon core. Callers
- * normally create one instance during a server bootstrap and then treat it as an immutable
- * delegate. The adapter is intentionally HTTP-local rather than a reusable platform API: it still
- * exposes alerts, config storage, upload permission checks, and FProxy bootstrap work because those
- * behaviors remain part of the HTTP shell in the current architecture.
+ * <p>This record keeps the remaining HTTP-shell coupling inside the adapter-owned HTTP bridge layer
+ * instead of letting the server reach directly into the daemon core. Callers normally create one
+ * instance during a server bootstrap and then treat it as an immutable delegate. The adapter is
+ * intentionally HTTP-local rather than a reusable platform API: it still exposes alerts, config
+ * storage, upload permission checks, and FProxy bootstrap work because those behaviors remain part
+ * of the HTTP shell in the current architecture.
  *
  * @param core daemon core that backs delegated shell services and FProxy bootstrap wiring
  */

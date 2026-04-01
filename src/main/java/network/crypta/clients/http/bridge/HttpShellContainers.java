@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.InvalidConfigValueException;
@@ -8,7 +8,7 @@ import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.ArrayBucketFactory;
 
 /**
- * Static factory helpers for runtime-owned HTTP shell container wiring.
+ * Static factory helpers for adapter-owned HTTP shell container wiring.
  *
  * <p>This class centralizes creation of the runtime-facing HTTP shell seam, so bootstrap and
  * service code do not instantiate the legacy HTTP shell implementation directly. The class has no
@@ -20,13 +20,13 @@ import network.crypta.support.io.ArrayBucketFactory;
  * seam, while the bridge package retains the knowledge that the current backing implementation is
  * {@link SimpleToadletServer}. Future changes to the concrete shell host can therefore stay
  * localized to this package rather than spreading new direct references back into bootstrap or
- * endpoint wiring code.
+ * runtime wiring code.
  */
 public final class HttpShellContainers {
   private HttpShellContainers() {}
 
   /**
-   * Creates the runtime-owned HTTP shell container backed by {@link SimpleToadletServer}.
+   * Creates the adapter-owned HTTP shell container bridge backed by {@link SimpleToadletServer}.
    *
    * <p>The returned wrapper preserves the existing FProxy shell construction path. It builds a new
    * {@link SimpleToadletServer} with the same runtime-selected {@link ArrayBucketFactory} and
@@ -38,7 +38,7 @@ public final class HttpShellContainers {
    *     related shell settings
    * @param executor priority-aware executor that the HTTP shell should use for its background and
    *     request-adjacent work
-   * @return runtime-owned wrapper around a newly created concrete HTTP shell host
+   * @return runtime-facing wrapper around a newly created concrete HTTP shell host
    * @throws InvalidConfigValueException if the supplied FProxy configuration cannot produce a valid
    *     concrete shell server
    */

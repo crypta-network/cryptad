@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.util.Objects;
@@ -13,12 +13,11 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 /**
  * Core-backed implementation of {@link FProxyRuntimeSupport}.
  *
- * <p>This adapter is the runtime-owned HTTP bootstrap seam between {@link FProxyToadlet} and {@link
+ * <p>This adapter is the adapter-owned HTTP bridge between {@link FProxyToadlet} and {@link
  * NodeClientCore}. It translates the broad daemon API into the small set of values and callbacks
  * that FProxy currently consumes, including threat-level state, download policy, and the node
  * executor used for background follow-up work. The adapter stays package-private because it is an
- * internal wiring detail of runtime-owned HTTP endpoint bootstrap, not a reusable cross-module
- * contract.
+ * internal wiring detail of HTTP bridge assembly, not a reusable cross-module contract.
  *
  * <p>The record is immutable after construction and delegates every call directly to the wrapped
  * core. It does not cache mutable security state or configuration snapshots, so callers continue to

@@ -1,4 +1,4 @@
-package network.crypta.runtime.endpoints.http;
+package network.crypta.clients.http.bridge;
 
 import java.net.URI;
 import java.util.List;
@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.StartupToadlet;
 import network.crypta.config.SubConfig;
+import network.crypta.runtime.endpoints.http.HttpShellBridgeFactories;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
