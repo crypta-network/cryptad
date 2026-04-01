@@ -9,6 +9,7 @@ import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
@@ -16,7 +17,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * <p>This service keeps the legacy {@link PersistentRequestRoot}, request-catalog adapter, recovery
  * codec, and FCP endpoint creation logic inside {@code runtime.endpoints.fcp}. Callers in the
- * top-level runtime package interact only with the narrower client-owned persistence seams and the
+ * top-level runtime package interact only with the narrower runtime-owned {@link
+ * PersistentRequestEndpointServices} seam, the client-owned persistence seams it exposes, and the
  * runtime-owned {@link FcpEndpointHandle}.
  *
  * <p>Each instance owns one shared persistent-request root and the adapters derived from it. That
@@ -26,7 +28,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  * client-layer persistence wiring, and later ask it to create the endpoint handle that will expose
  * the same persistent state to the running node.
  */
-public final class FcpPersistentRequestServices {
+public final class FcpPersistentRequestServices implements PersistentRequestEndpointServices {
   private final PersistentRequestRoot persistentRoot;
   private final PersistentRequestCatalog catalog;
   private final PersistentRequestRecoveryCodec recoveryCodec;
@@ -48,6 +50,7 @@ public final class FcpPersistentRequestServices {
    *
    * @return persistent-request coordinator backed by the bridge-owned request root
    */
+  @Override
   public PersistentRequestCoordinator coordinator() {
     return persistentRoot;
   }
@@ -61,6 +64,7 @@ public final class FcpPersistentRequestServices {
    *
    * @return persistent-request catalog backed by the bridge-owned request root
    */
+  @Override
   public PersistentRequestCatalog catalog() {
     return catalog;
   }
@@ -74,6 +78,7 @@ public final class FcpPersistentRequestServices {
    *
    * @return recovery codec that restores FCP persistent requests through the seam
    */
+  @Override
   public PersistentRequestRecoveryCodec recoveryCodec() {
     return recoveryCodec;
   }
@@ -88,6 +93,7 @@ public final class FcpPersistentRequestServices {
    *
    * @return snapshot of persistent request handles; never {@code null}
    */
+  @Override
   public PersistentRequestHandle[] getPersistentRequests() {
     return persistentRoot.getPersistentRequests();
   }
@@ -107,7 +113,8 @@ public final class FcpPersistentRequestServices {
    * @return runtime-owned handle that wraps the configured FCP server
    * @throws NullPointerException if any required dependency is {@code null}
    */
-  public FcpEndpointHandle createEndpointHandle(
+  @Override
+  public FcpEndpointHandle createFcpEndpointHandle(
       Node node, NodeClientCore core, RuntimePorts runtimePorts) {
     Node nonNullNode = Objects.requireNonNull(node, "node");
     FCPServer server =

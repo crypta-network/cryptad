@@ -19,7 +19,8 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
-import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestServices;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.persistence.ConfigurablePersister;
 import network.crypta.runtime.persistence.ConfigurablePersisterParams;
 import network.crypta.runtime.persistence.Persistable;
@@ -40,9 +41,9 @@ import network.crypta.support.io.TempBucketFactory;
  * sprawl across the client-core initialization flow. Callers typically construct an instance early
  * in node startup, configure disk-checking factories once storage directories are known, and then
  * use it to build the {@link ClientContext} and FCP endpoint wiring. Concrete persistent-request
- * infrastructure is hidden behind the bridge package, so registration remains consistent across the
- * client-layer components it creates without exposing concrete FCP endpoint or owner types directly
- * from this package.
+ * infrastructure is supplied through a runtime-owned seam selected at bootstrap time, so
+ * registration remains consistent across the client-layer components it creates without exposing
+ * endpoint-owned bridge classes directly from this package.
  *
  * <p>State is initialized in stages: the disk checker and persistent RAF factory are {@code null}
  * until {@link #initDiskChecker(FilenameGenerator, File, long, TempBucketFactory, boolean)} is
@@ -63,14 +64,10 @@ import network.crypta.support.io.TempBucketFactory;
  */
 public final class NodeClientPersistence {
   private final ConfigurablePersister persister;
-  private final FcpPersistentRequestServices fcpPersistentRequestServices =
-      new FcpPersistentRequestServices();
-  private final PersistentRequestCoordinator persistentRequestCoordinator =
-      fcpPersistentRequestServices.coordinator();
-  private final PersistentRequestCatalog persistentRequestCatalog =
-      fcpPersistentRequestServices.catalog();
-  private final PersistentRequestRecoveryCodec persistentRequestRecoveryCodec =
-      fcpPersistentRequestServices.recoveryCodec();
+  private final PersistentRequestEndpointServices persistentRequestEndpointServices;
+  private final PersistentRequestCoordinator persistentRequestCoordinator;
+  private final PersistentRequestCatalog persistentRequestCatalog;
+  private final PersistentRequestRecoveryCodec persistentRequestRecoveryCodec;
   private DiskSpaceCheckingRandomAccessBufferFactory diskChecker;
   private MaybeEncryptedRandomAccessBufferFactory persistentRafFactory;
   private final int sortOrderAfter;
@@ -88,11 +85,33 @@ public final class NodeClientPersistence {
    * @param nodeConfig configuration section used to register the throttle file option.
    * @param node node instance providing ticker and run directory settings.
    * @param initialSortOrder starting sort order for configuration registration.
+   * @param persistentRequestEndpointServicesFactory factory that supplies the FCP persistent
+   *     request bundle used by client-layer persistence and endpoint bootstrap
    * @throws NodeInitException if the configured throttle file cannot be created or used.
    */
   public NodeClientPersistence(
-      Persistable persistable, SubConfig nodeConfig, Node node, int initialSortOrder)
+      Persistable persistable,
+      SubConfig nodeConfig,
+      Node node,
+      int initialSortOrder,
+      PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory)
       throws NodeInitException {
+    persistentRequestEndpointServices =
+        Objects.requireNonNull(
+            Objects.requireNonNull(
+                    persistentRequestEndpointServicesFactory,
+                    "persistentRequestEndpointServicesFactory")
+                .create(),
+            "persistentRequestEndpointServices");
+    persistentRequestCoordinator =
+        Objects.requireNonNull(
+            persistentRequestEndpointServices.coordinator(), "persistentRequestCoordinator");
+    persistentRequestCatalog =
+        Objects.requireNonNull(
+            persistentRequestEndpointServices.catalog(), "persistentRequestCatalog");
+    persistentRequestRecoveryCodec =
+        Objects.requireNonNull(
+            persistentRequestEndpointServices.recoveryCodec(), "persistentRequestRecoveryCodec");
     int sortOrder = initialSortOrder;
     persister =
         new ConfigurablePersister(
@@ -270,8 +289,9 @@ public final class NodeClientPersistence {
    * Creates the FCP endpoint handle configured for this node and client core.
    *
    * <p>The endpoint is constructed via a local dependency bundle, so the remaining core-backed
-   * runtime adapters stay localized to the FCP bootstrap seam. The persistent request
-   * implementation is supplied by the bridge package and remains hidden behind the seam.
+   * runtime adapters stay localized to the FCP bootstrap seam. The persistent-request
+   * implementation is supplied through the injected runtime seam and remains hidden behind that
+   * boundary.
    *
    * @param node node instance supplying configuration and shared services.
    * @param core client core used by the FCP endpoint for callbacks.
@@ -280,21 +300,21 @@ public final class NodeClientPersistence {
    */
   public FcpEndpointHandle createFcpEndpointHandle(
       Node node, NodeClientCore core, RuntimePorts runtimePorts) {
-    return fcpPersistentRequestServices.createEndpointHandle(node, core, runtimePorts);
+    return persistentRequestEndpointServices.createFcpEndpointHandle(node, core, runtimePorts);
   }
 
   /**
    * Returns a snapshot of all currently registered persistent requests.
    *
-   * <p>The snapshot is provided by the bridge-owned persistent request services and may include
-   * global and per-client persistent requests. The returned array is a point-in-time view; later
-   * request registrations or removals are not reflected in the array. Callers should depend on the
-   * narrower persistent request handle seam rather than concrete request implementations.
+   * <p>The snapshot is provided by the injected persistent-request services and may include global
+   * and per-client persistent requests. The returned array is a point-in-time view; later request
+   * registrations or removals are not reflected in the array. Callers should depend on the narrower
+   * persistent request handle seam rather than concrete request implementations.
    *
    * @return an array of persistent request handles; never {@code null}.
    */
   public PersistentRequestHandle[] getPersistentRequests() {
-    return fcpPersistentRequestServices.getPersistentRequests();
+    return persistentRequestEndpointServices.getPersistentRequests();
   }
 
   /**

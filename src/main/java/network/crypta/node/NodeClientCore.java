@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Objects;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
@@ -25,6 +26,7 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.UserAlertManagerClientAlertSink;
+import network.crypta.runtime.bootstrap.NodeRuntimeBridgeFactories;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.core.LegacyRuntimePorts;
 import network.crypta.runtime.core.NodeClientCoreSupport;
@@ -33,6 +35,7 @@ import network.crypta.runtime.endpoints.ClientEndpoints;
 import network.crypta.runtime.endpoints.NodeClientCoreInit;
 import network.crypta.runtime.endpoints.NodeClientPersistence;
 import network.crypta.runtime.endpoints.TextModeClientInterface;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.persistence.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Base64;
@@ -190,13 +193,19 @@ public final class NodeClientCore implements Persistable {
 
   NodeClientCore(
       Node node,
-      AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory,
+      NodeRuntimeBridgeFactories runtimeBridgeFactories,
       NodeClientCoreInit init,
       int portNumber,
       int sortOrder,
       DatabaseKey databaseKey,
       MasterSecret persistentSecret)
       throws NodeInitException {
+    NodeRuntimeBridgeFactories nodeRuntimeBridgeFactories =
+        Objects.requireNonNull(runtimeBridgeFactories, "runtimeBridgeFactories");
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        nodeRuntimeBridgeFactories.adminRuntimeBridgeInputsFactory();
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        nodeRuntimeBridgeFactories.persistentRequestEndpointServicesFactory();
     this.node = node;
     this.random = node.bootstrap().random();
 
@@ -210,7 +219,9 @@ public final class NodeClientCore implements Persistable {
     compressor = new RealCompressor();
     this.formPassword = Base64.encode(pwdBuf);
     alerts = new UserAlertManager(this);
-    persistence = new NodeClientPersistence(this, init.nodeConfig(), node, sortOrder);
+    persistence =
+        new NodeClientPersistence(
+            this, init.nodeConfig(), node, sortOrder, persistentRequestEndpointServicesFactory);
     sortOrder = persistence.getSortOrderAfter();
 
     SimpleFieldSet throttleFS = persistence.readThrottle();
