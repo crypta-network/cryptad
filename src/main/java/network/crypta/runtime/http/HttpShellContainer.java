@@ -1,18 +1,16 @@
 package network.crypta.runtime.http;
 
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.http.HttpShellRuntimeSupport;
-import network.crypta.clients.http.ToadletContainer;
+import network.crypta.support.HTMLNode;
 import network.crypta.support.io.TempBucketFactory;
 
 /**
  * Runtime-owned seam for the HTTP shell host used during bootstrap and endpoint wiring.
  *
  * <p>This interface isolates runtime code from the concrete legacy HTTP shell implementation while
- * still exposing the small set of operations that bootstrap and endpoint wiring need. Callers keep
- * using the shared {@link ToadletContainer} and {@link LinkFilterExceptionProvider} contracts for
- * normal toadlet registration and filtering behavior, and they use this seam only for the remaining
- * shell lifecycle hooks that are still runtime-owned.
+ * still exposing only the small set of operations that non-adapter runtime code still needs.
+ * Callers use this seam for lifecycle, filtering, and a few shell-level rendering/configuration
+ * queries without depending on the broader legacy HTTP container contract.
  *
  * <p>The intent is structural rather than behavioral. Implementations preserve the existing shell
  * startup order, FProxy creation flow, and startup-page behavior, but runtime packages no longer
@@ -20,7 +18,7 @@ import network.crypta.support.io.TempBucketFactory;
  * ownership boundaries narrower while allowing future HTTP-shell changes to stay behind a
  * runtime-local abstraction.
  */
-public interface HttpShellContainer extends ToadletContainer, LinkFilterExceptionProvider {
+public interface HttpShellContainer extends LinkFilterExceptionProvider {
 
   /**
    * Starts the underlying HTTP shell listener when the shell is configured to run.
@@ -38,7 +36,11 @@ public interface HttpShellContainer extends ToadletContainer, LinkFilterExceptio
    * <p>This hook connects the shell to the daemon-backed services that require a live {@code
    * NodeClientCore}. Callers usually provide this after the core exists but before the shell
    * finishes its final startup sequence. Implementations are expected to retain the supplied
-   * adapter for later callbacks rather than copying or translating it.
+   * adapter for later callbacks rather than copying or translating it. Because {@link
+   * HttpShellRuntimeSupport} is only a marker seam in this PR, container implementations may still
+   * require additional implementation-specific interfaces on the same object. The default
+   * production pairing supplied by {@code NodeRuntimeBridgeFactories.coreBacked()} satisfies that
+   * requirement; custom bridge bindings must supply a compatible container/support pair.
    *
    * @param runtimeSupport daemon-backed adapter that serves later HTTP shell callbacks and runtime
    *     lookups
@@ -57,6 +59,20 @@ public interface HttpShellContainer extends ToadletContainer, LinkFilterExceptio
    *     temporary storage work
    */
   void setBucketFactory(TempBucketFactory tempBucketFactory);
+
+  /**
+   * Appends a form node configured with the shell's hidden form password.
+   *
+   * <p>Runtime-owned callers use this when they need the existing HTTP shell to create a form that
+   * behaves the same way as shell-generated forms, including the expected submission target and
+   * hidden password field handling.
+   *
+   * @param parentNode HTML node that receives the form as a child
+   * @param target submission target path for the form
+   * @param name optional form name or identifier
+   * @return created form node
+   */
+  HTMLNode addFormChild(HTMLNode parentNode, String target, String name);
 
   /**
    * Indicates whether the HTTP shell is configured to run.
@@ -89,6 +105,20 @@ public interface HttpShellContainer extends ToadletContainer, LinkFilterExceptio
    * current FProxy behavior and should not use this seam to reorder or broaden endpoint startup.
    */
   void createFproxy();
+
+  /**
+   * Reports whether advanced mode is enabled for HTTP shell consumers.
+   *
+   * @return {@code true} when advanced mode features should be shown
+   */
+  boolean isAdvancedModeEnabled();
+
+  /**
+   * Reports whether FProxy JavaScript helpers are enabled.
+   *
+   * @return {@code true} when FProxy JavaScript support is enabled
+   */
+  boolean isFProxyJavascriptEnabled();
 
   /**
    * Removes the temporary startup toadlet once shell startup is complete.

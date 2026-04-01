@@ -1,7 +1,6 @@
 package network.crypta.runtime.bootstrap;
 
 import java.io.File;
-import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
@@ -11,6 +10,7 @@ import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
 import network.crypta.runtime.http.HttpShellContainerFactory;
+import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
 import org.junit.jupiter.api.Test;
 
@@ -87,6 +87,7 @@ class NodeRuntimeBridgeFactoriesTest {
     assertInstanceOf(HttpGeoIpCountryLookup.class, bridgeInputs.geoIpCountryLookup());
     CoreHttpShellRuntimeSupport coreRuntimeSupport =
         assertInstanceOf(CoreHttpShellRuntimeSupport.class, runtimeSupport);
+    assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);
     assertSame(fixture.core(), coreRuntimeSupport.core());
   }
 

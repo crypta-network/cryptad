@@ -1,6 +1,5 @@
 package network.crypta.runtime.http;
 
-import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 
 /**
@@ -32,8 +31,7 @@ public interface HttpShellRuntimeSupportFactory {
    *
    * @param core daemon core that the returned runtime support delegates to for node-backed
    *     operations
-   * @return a runtime support bridge compatible with the current HTTP shell implementation for the
-   *     supplied daemon core
+   * @return a runtime-owned support bridge for the supplied daemon core
    */
   HttpShellRuntimeSupport create(NodeClientCore core);
 }

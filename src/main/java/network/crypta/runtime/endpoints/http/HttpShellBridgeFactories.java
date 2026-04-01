@@ -45,7 +45,9 @@ public final class HttpShellBridgeFactories {
    * CoreHttpShellRuntimeSupport} instances for the supplied client core. Bootstrap code typically
    * chooses this binding once, stores it alongside the other runtime seams, and invokes it later
    * after the node has created a live {@code NodeClientCore}. The method itself does not retain the
-   * core or initialize any shell state.
+   * core or initialize any shell state. The created support objects are intentionally compatible
+   * with both the runtime-owned seam and the legacy HTTP shell adapter, so they match the default
+   * container factory returned by {@link #defaultContainerFactory()}.
    *
    * @return factory that creates the current endpoint-backed HTTP shell runtime support bridge for
    *     a supplied daemon core

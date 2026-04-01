@@ -19,7 +19,10 @@ import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
  * network.crypta.runtime.bootstrap.NodeStarter}, and then let the node reuse those seams at the
  * same construction points where it previously hard-coded the legacy endpoint seams. The record is
  * immutable and carries no caching or policy beyond that wiring choice, so startup order and bridge
- * behavior stay aligned with the existing daemon bootstrap flow.
+ * behavior stay aligned with the existing daemon bootstrap flow. The contained factories are
+ * expected to be a compatible set rather than arbitrary independent choices. In particular, the
+ * current legacy-backed HTTP shell container still requires a runtime-support implementation that
+ * can also satisfy the legacy HTTP adapter contract.
  *
  * @param adminRuntimeBridgeInputsFactory factory for the admin/runtime bridge inputs used by the
  *     client core
@@ -38,8 +41,9 @@ public record NodeRuntimeBridgeFactories(
    *
    * <p>All factories are required because node construction expects explicit seams for the admin
    * runtime bridge inputs, the HTTP shell runtime support path, and the HTTP shell container
-   * creation path. The constructor only validates presence; it does not invoke the factories, cache
-   * runtime state, or trigger any endpoint startup work on its own.
+   * creation path. The constructor only validates presence; it does not invoke the factories, prove
+   * cross-factory compatibility, cache runtime state, or trigger any endpoint startup work on its
+   * own.
    *
    * @param adminRuntimeBridgeInputsFactory factory for admin bridge inputs passed into the client
    *     core during node construction

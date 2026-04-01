@@ -32,7 +32,8 @@ import network.crypta.support.Ticker;
  *
  * @param core daemon core that backs delegated shell services and FProxy bootstrap wiring
  */
-public record CoreHttpShellRuntimeSupport(NodeClientCore core) implements HttpShellRuntimeSupport {
+public record CoreHttpShellRuntimeSupport(NodeClientCore core)
+    implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   /**
    * Creates a core-backed HTTP runtime adapter.
    *

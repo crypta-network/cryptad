@@ -503,6 +503,7 @@ public final class NodeStorageSubsystem {
           PasswordFormPageRenderer.generate(
               new PasswordPromptOptions(false, false, false, false, null, null),
               node.services().clientCore().getEndpoints().getToadletContainer(),
+              PasswordFormPageRenderer.resolvedSecurityLevelsPath(),
               content);
           return content;
         }

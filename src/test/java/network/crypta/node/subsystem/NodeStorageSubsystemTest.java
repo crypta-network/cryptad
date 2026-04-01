@@ -242,14 +242,63 @@ class NodeStorageSubsystemTest {
     when(clientCore.getEndpoints()).thenReturn(new ClientEndpoints(null, null, container));
 
     HTMLNode expectedContent = new HTMLNode("div");
+    HTMLNode expectedForm = expectedContent.addChild("form");
+    expectedForm.addAttribute("target", SecurityLevelsToadlet.resolvedPath());
+    expectedForm.addAttribute("id", "masterPasswordForm");
     SecurityLevelsToadlet.generatePasswordFormPage(
         new PasswordFormOptions(false, false, false, false, null, null),
-        container,
+        expectedForm,
         expectedContent);
 
     HTMLNode renderedContent = getMasterPasswordUserAlert(subsystem).getHTMLText();
 
     assertEquals(expectedContent.generate(), renderedContent.generate());
+  }
+
+  @Test
+  void
+      masterPasswordUserAlert_getHTMLText_whenSecurityLevelsPropertyChangesAfterPathResolution_usesResolvedRoute()
+          throws Exception {
+    HttpShellContainer container = org.mockito.Mockito.mock(HttpShellContainer.class);
+    when(container.addFormChild(any(HTMLNode.class), anyString(), anyString()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parent = invocation.getArgument(0);
+              String target = invocation.getArgument(1);
+              String id = invocation.getArgument(2);
+              HTMLNode form = parent.addChild("form");
+              form.addAttribute("target", target);
+              form.addAttribute("id", id);
+              return form;
+            });
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
+    when(clientCore.getEndpoints()).thenReturn(new ClientEndpoints(null, null, container));
+
+    String originalProperty = System.getProperty("network.crypta.seclevels.path");
+    String resolvedPath = SecurityLevelsToadlet.resolvedPath();
+    System.setProperty("network.crypta.seclevels.path", "/changed-after-init/");
+
+    try {
+      HTMLNode expectedContent = new HTMLNode("div");
+      HTMLNode expectedForm = expectedContent.addChild("form");
+      expectedForm.addAttribute("target", resolvedPath);
+      expectedForm.addAttribute("id", "masterPasswordForm");
+      SecurityLevelsToadlet.generatePasswordFormPage(
+          new PasswordFormOptions(false, false, false, false, null, null),
+          expectedForm,
+          expectedContent);
+
+      HTMLNode renderedContent = getMasterPasswordUserAlert(subsystem).getHTMLText();
+
+      assertEquals(expectedContent.generate(), renderedContent.generate());
+    } finally {
+      if (originalProperty == null) {
+        System.clearProperty("network.crypta.seclevels.path");
+      } else {
+        System.setProperty("network.crypta.seclevels.path", originalProperty);
+      }
+    }
   }
 
   @Test
