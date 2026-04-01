@@ -85,7 +85,7 @@ public final class ClientEndpoints {
    * <p>The returned reference is the same instance supplied at construction time. The call is
    * inexpensive and side-effect-free, and it does not guarantee that the endpoint has been started
    * or loaded. Bridge code that still needs concrete FCP operations can unwrap the handle through
-   * {@code network.crypta.runtime.endpoints.fcp.FcpEndpointHandles}.
+   * {@code network.crypta.clients.fcp.bridge.FcpEndpointHandles}.
    *
    * @return the FCP endpoint handle owned by this bundle.
    */

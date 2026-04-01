@@ -1,11 +1,11 @@
 /**
- * Endpoint-owned FCP bridge implementations and default bindings.
+ * Runtime-owned FCP seam bindings and endpoint handle surface.
  *
- * <p>This package adapts daemon- and runtime-backed services to the narrow runtime-support seams
- * defined in {@code network.crypta.clients.fcp} and {@code network.crypta.runtime.fcp}. The types
- * here keep the concrete FCP server, persistent-request root, and default production bindings owned
- * by bridge-local wrappers such as {@code FcpEndpointHandle}, {@code FcpPersistentRequestServices},
- * and {@code FcpEndpointBridgeFactories}, preserving the current protocol behavior without widening
- * {@code runtime-spi}.
+ * <p>This package now contains only the narrow runtime-owned FCP endpoint seam, plus the default
+ * production binding entry point that selects the adapter-owned bridge implementations in {@code
+ * network.crypta.clients.fcp.bridge}. Higher-level runtime/bootstrap code should depend on {@link
+ * network.crypta.runtime.endpoints.fcp.FcpEndpointHandle} and the factory methods on {@link
+ * network.crypta.runtime.endpoints.fcp.FcpEndpointBridgeFactories}, not on the concrete bridge
+ * classes themselves.
  */
 package network.crypta.runtime.endpoints.fcp;
