@@ -1,13 +1,14 @@
 package network.crypta.runtime.endpoints.fcp;
 
+import network.crypta.clients.fcp.bridge.FcpPersistentRequestServices;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 
 /**
  * Endpoint-owned default production bindings for runtime-owned FCP persistence seams.
  *
  * <p>This helper keeps the composition-root knowledge about the current FCP bridge implementation
- * inside the endpoint-owned package. Bootstrap code can call these factories once, select the
- * historical endpoint-backed binding, and then thread only the runtime-owned seam upstream through
+ * inside the runtime endpoint package. Bootstrap code can call these factories once, select the
+ * historical adapter-backed binding, and then thread only the runtime-owned seam upstream through
  * {@code NodeRuntimeBridgeFactories}, {@code Node}, and {@code NodeClientCore}. That preserves the
  * existing bootstrap order and persistent-request behavior without forcing higher-level runtime
  * packages to import {@link FcpPersistentRequestServices} directly.
@@ -29,7 +30,7 @@ public final class FcpEndpointBridgeFactories {
    * one bundle instance for that node startup path. The factory itself remains side-effect free
    * until invoked.
    *
-   * @return factory that creates the current endpoint-backed persistent-request bundle for one
+   * @return factory that creates the current adapter-backed persistent-request bundle for one
    *     client-persistence construction path
    */
   public static PersistentRequestEndpointServicesFactory

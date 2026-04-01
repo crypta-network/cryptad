@@ -1,6 +1,8 @@
 package network.crypta.runtime.bootstrap;
 
 import java.io.File;
+import network.crypta.clients.fcp.bridge.FcpPersistentRequestServices;
+import network.crypta.clients.fcp.bridge.FcpQueueAdminBackend;
 import network.crypta.clients.http.bridge.CoreHttpShellRuntimeSupport;
 import network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookup;
 import network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer;
@@ -9,8 +11,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
-import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestServices;
-import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.http.HttpShellContainerFactory;

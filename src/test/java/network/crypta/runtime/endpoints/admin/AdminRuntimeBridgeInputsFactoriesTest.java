@@ -2,17 +2,17 @@ package network.crypta.runtime.endpoints.admin;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import network.crypta.clients.fcp.bridge.FcpQueueAdminBackend;
+import network.crypta.clients.fcp.bridge.FcpQueuePageBackend;
+import network.crypta.clients.fcp.bridge.LegacyQueueCompletionPort;
+import network.crypta.clients.fcp.bridge.LegacyQueueDownloadPort;
+import network.crypta.clients.fcp.bridge.LegacyQueueInsertPort;
 import network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookup;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
-import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
-import network.crypta.runtime.endpoints.fcp.FcpQueuePageBackend;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueCompletionPort;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueDownloadPort;
-import network.crypta.runtime.endpoints.fcp.LegacyQueueInsertPort;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertAll;

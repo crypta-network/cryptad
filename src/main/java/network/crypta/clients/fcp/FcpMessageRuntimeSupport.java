@@ -29,7 +29,6 @@ import network.crypta.node.probe.Type;
  * </ul>
  *
  * @see FCPServer#messageRuntimeSupport()
- * @see network.crypta.runtime.endpoints.fcp.CoreFcpMessageRuntimeSupport
  */
 public interface FcpMessageRuntimeSupport {
 

@@ -4,7 +4,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
-import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
+import network.crypta.clients.fcp.bridge.CoreFcpPersistentRequestCatalog;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
