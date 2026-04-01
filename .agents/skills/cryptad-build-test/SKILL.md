@@ -21,6 +21,7 @@ Use this skill when you need to:
 - Current leaf projects are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+  `:runtime-node`,
   `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
@@ -55,6 +56,9 @@ Use this skill when you need to:
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
+- `:runtime-node` is the extraction-prep runtime leaf. It currently owns selected
+  `network.crypta.runtime.*` package docs plus selective-output ownership metadata seeds; runtime
+  behavior still lives in the root project.
 - All tests remain in the root project for now and compile against the leaf subprojects through
   the root build.
 - File-system-based l10n tests still run from the root project and use
@@ -107,6 +111,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :foundation-compat:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
+- Compile the runtime-node scaffold when you touched moved runtime package docs or selective-output
+  ownership metadata:
+  - `./gradlew :runtime-node:compileJava`
 - Compile the root project and its unchanged test tree against the leaf-module layout:
   - `./gradlew compileJava compileTestJava`
 

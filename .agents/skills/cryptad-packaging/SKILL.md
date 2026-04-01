@@ -23,6 +23,7 @@ Use this skill when working on:
 - Current contributing leaf modules are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+  `:runtime-node`,
   `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
 - `:foundation-support` and `:foundation-store-contracts` contribute shared runtime classes via
@@ -35,6 +36,9 @@ Use this skill when working on:
   and re-exports `:foundation-support` and `:foundation-fs` where public APIs expose those types.
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
+- The `:runtime-node` JAR is currently only an extraction-prep scaffold for moved runtime package
+  docs and ownership metadata, but it still participates in the root runtime classpath and
+  packaged distribution like the other leaf artifacts.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
 

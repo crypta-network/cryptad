@@ -51,13 +51,13 @@ Use this skill when working on:
 - Actions: `download`, `install`, `openStore`
 - UI: alerts panel shows progress percent when available.
   - Failures surface clear retry guidance (non-fatal errors relabel to “Retry”).
-- Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching remain
-  in `network.crypta.runtime.updater.CoreActionToadlet`.
+- Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching now
+  live in the HTTP adapter layer at `network.crypta.clients.http.updater.CoreActionToadlet`.
 - Daemon-backed availability checks, UI-triggered download start, and downloaded-installer
   containment validation now live behind `CoreUpdateActionPort`.
 
 ## Runtime-boundary classes to inspect
-- HTTP/action layer: `network.crypta.runtime.updater.CoreActionToadlet`
+- HTTP/action layer: `network.crypta.clients.http.updater.CoreActionToadlet`
 - Updater coordinator/state: `network.crypta.runtime.updater.NodeUpdateManager`
 - Core package downloader: `network.crypta.runtime.updater.CoreUpdater`
 - SPI contract: `network.crypta.runtime.spi.CoreUpdateActionPort`

@@ -4,7 +4,7 @@
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
-- Mechanism: `CoreUpdater` subscribes to an update USK, fetches a JSON manifest (`core-info.json`), detects the current platform via `AppEnv`, selects the best package (`<arch>.<ext>`), and downloads it under `updates/core/<version>/`. `CoreActionToadlet` exposes `/core-update/` for Download / Install / Open-in-store actions, while progress appears in the global Alerts panel.
+- Mechanism: `CoreUpdater` subscribes to an update USK, fetches a JSON manifest (`core-info.json`), detects the current platform via `AppEnv`, selects the best package (`<arch>.<ext>`), and downloads it under `updates/core/<version>/`. `network.crypta.clients.http.updater.CoreActionToadlet` exposes `/core-update/` for Download / Install / Open-in-store actions, while progress appears in the global Alerts panel.
 - Scope: Core releases now ship native installers or archives (DEB/RPM/DMG/EXE/Flatpak/Snap/tar). Plugin updates continue to use their existing channels.
 
 ## Artifacts and Keys
@@ -143,7 +143,8 @@
 ## Appendix: Code Path Reference
 - `NodeUpdateManager`: orchestrates CoreUpdater lifecycle, changelog exposure, download state, and auto-download toggles.
 - `CoreUpdater`: subscribes to the update USK, parses `core-info.json`, selects packages based on `AppEnv`, manages `PackageFetcher`, and auto-downloads when allowed.
-- `CoreActionToadlet`: handles `/core-update/` POST actions (download, install, open store) and surfaces status transitions.
+- `network.crypta.clients.http.updater.CoreActionToadlet`: handles `/core-update/` POST actions
+  (download, install, open store) and surfaces status transitions.
 - `PackageFetcher`: wraps the client getter to track splitfile progress and expose retryable status to the UI.
 - `AppEnv`: single source of truth for OS/arch/service detection (replaces direct `os.name` probes).
 - `UpdateOverMandatoryManager`: core JAR UoM paths are disabled (`supportsJarUOM=false`).

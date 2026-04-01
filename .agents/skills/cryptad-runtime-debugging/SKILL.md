@@ -77,8 +77,9 @@ Read `Thread.print -l` in this order:
 Typical Cryptad packages to inspect after a dump:
 
 - `network.crypta.node` for peer management, packet sending, announcers, and schedulers
-- `network.crypta.runtime.updater` for updater state, CoreUpdater, CoreActionToadlet, and
-  NodeUpdateManager
+- `network.crypta.runtime.updater` for updater state, CoreUpdater, and NodeUpdateManager
+- `network.crypta.clients.http.updater` for `/core-update/` handlers and browser-facing updater
+  actions
 - `network.crypta.runtime.endpoints` and `network.crypta.runtime.admin` for FCP/HTTP/TMCI
   bootstrap glue and page-oriented runtime adapters
 - `network.crypta.runtime.alerts` for alert lifecycles and operator-facing state propagation

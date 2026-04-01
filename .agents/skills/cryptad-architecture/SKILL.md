@@ -45,6 +45,8 @@ Use this skill when you need to:
   - `:foundation-compat` → `network.crypta.compat`, including
     `network.crypta.compat.bandwidth`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
+  - `:runtime-node` → extraction-prep scaffold that currently owns selected
+    `network.crypta.runtime.*` package docs plus leaf ownership metadata seeds
   - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
@@ -64,9 +66,8 @@ Use this skill when you need to:
     `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort` now live in
     `network.crypta.runtime.admin`, supported by queue helper seams under
     `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`.
-    Queue completion/download/insert bridges now live under
-    `network.crypta.runtime.endpoints.fcp` as `LegacyQueueCompletionPort`,
-    `LegacyQueueDownloadPort`, and `LegacyQueueInsertPort`.
+    Queue completion/download/insert bridges plus the remaining concrete FCP bridge
+    implementations now live under `network.crypta.clients.fcp.bridge`.
 - The large cyclic daemon core still lives in the root project:
   most of `network.crypta.node`, the daemon-coupled transport/socket/filter side of
   `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`, the
@@ -161,10 +162,10 @@ Use this skill when you need to:
   - Package-local seams split the remaining daemon-backed work by concern:
     `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
     `FcpInsertRuntimeSupport`.
-  - FCP-local runtime bridges now also own persistent-request recovery, queue backends, and alert
-    feed adapters such as `CoreFcpPersistentRequestCatalog`, `FcpPersistentRequestRecoveryCodec`,
-    `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`, and
-    `FcpUserAlertFeedMessageFactory`.
+  - Runtime-owned FCP seam types now live under `network.crypta.runtime.fcp` and
+    `network.crypta.runtime.endpoints.fcp`, while concrete persistent-request services, queue
+    adapters, alert-feed adapters, and endpoint-handle wrappers now live under
+    `network.crypta.clients.fcp.bridge`.
 - HTTP interface: `network.crypta.clients.http`
   - The migrated management and shell slices no longer depend directly on live daemon peers or
     node-info exports for their core data flow.
@@ -179,8 +180,8 @@ Use this skill when you need to:
   - `SecurityLevelsToadlet` uses `SecurityLevelsPort` for detached page state, warning HTML, and
     master-password mutation flows.
   - `PageMaker` reads shared shell status through `PageChromePort`.
-  - `CoreActionToadlet` reaches updater availability, download triggers, and installer-path
-    validation through `CoreUpdateActionPort`.
+  - `network.crypta.clients.http.updater.CoreActionToadlet` reaches updater availability,
+    download triggers, and installer-path validation through `CoreUpdateActionPort`.
   - `FirstTimeWizardToadlet` and `FirstTimeWizardNewToadlet` use `FirstTimeWizardPort` for
     detached snapshot export, validation bounds, bandwidth/security suggestions, current-bandwidth
     rows, and submission handling.
@@ -190,6 +191,8 @@ Use this skill when you need to:
   - FProxy and shell bootstrap now have local package-private seams:
     `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
     `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`.
+  - Concrete HTTP shell, bookmark, GeoIP, and security-page bridge implementations now live under
+    `network.crypta.clients.http.bridge`.
   - `BookmarkEditorToadletRuntimePorts` and `FileInsertWizardToadletRuntimePorts` are small
     page-specific records used to keep constructor surfaces explicit during HTTP wiring.
   - `N2NTMToadlet` uses `DarknetConnectionsPort` and `DarknetMessagingPort` for selected-peer
@@ -222,10 +225,11 @@ Use this skill when you need to:
   `LegacyQueueSupportPort`, `LegacyFirstTimeWizardPort`, `LegacyToadletSymlinkPort`,
   `LegacyWelcomePagePort`, and `LegacyWelcomeActionPort`, plus queue helper seams under
   `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`
-- Root adapters in `network.crypta.runtime.endpoints.fcp`: `LegacyQueueCompletionPort`,
-  `LegacyQueueDownloadPort`, `LegacyQueueInsertPort`, `CoreFcpPersistentRequestCatalog`,
-  `FcpPersistentRequestRecoveryCodec`, `FcpQueueAdminBackend`, `FcpQueuePageBackend`,
-  `FcpUserAlertFeedSubscriber`, and `FcpUserAlertFeedMessageFactory`
+- Adapter-owned concrete FCP bridges in `network.crypta.clients.fcp.bridge`:
+  `LegacyQueueCompletionPort`, `LegacyQueueDownloadPort`, `LegacyQueueInsertPort`,
+  `CoreFcpPersistentRequestCatalog`, `FcpPersistentRequestRecoveryCodec`,
+  `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`,
+  `FcpUserAlertFeedMessageFactory`, `FcpPersistentRequestServices`, and endpoint-handle wrappers
 
 ### Plugin system (`network.crypta.pluginmanager`)
 - Management: `PluginManager`
@@ -282,6 +286,7 @@ Use this skill when you need to:
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:runtime-spi`: `network.crypta.runtime.spi`
+- `:runtime-node`: extraction-prep scaffold for selected `network.crypta.runtime.*` package docs
 
 ### Vendored library leaf modules
 - `:thirdparty-onion`: `com.onionnetworks`
