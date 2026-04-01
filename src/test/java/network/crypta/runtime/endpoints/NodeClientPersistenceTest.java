@@ -13,11 +13,10 @@ import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.async.persistence.PersistentRequestCatalog;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.clients.fcp.ClientRequest;
-import network.crypta.clients.fcp.FCPServer;
-import network.crypta.clients.fcp.FcpServerDependencies;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
@@ -27,10 +26,11 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.runtime.endpoints.fcp.CoreFcpPersistentRequestCatalog;
-import network.crypta.runtime.endpoints.fcp.CoreFcpServerDependenciesFactory;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
-import network.crypta.runtime.endpoints.fcp.FcpEndpointHandles;
 import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestRecoveryCodec;
+import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestServices;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.persistence.Persistable;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -51,7 +51,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -65,7 +64,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,11 +81,113 @@ class NodeClientPersistenceTest {
     Node node = newNode(ticker, tempDir);
 
     // Act
-    NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 7);
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(persistable, nodeConfig, node, 7, newServicesFactory());
 
     // Assert
     assertEquals(8, persistence.getSortOrderAfter());
     assertFalse(persistence.hasPersistentRafFactory());
+  }
+
+  @Test
+  void constructor_whenPersistentRequestEndpointServicesFactoryIsNull_expectNullPointerException() {
+    // Act
+    NullPointerException ex =
+        assertThrows(
+            NullPointerException.class,
+            () ->
+                new NodeClientPersistence(
+                    mock(Persistable.class), mock(SubConfig.class), mock(Node.class), 0, null));
+
+    // Assert
+    assertEquals("persistentRequestEndpointServicesFactory", ex.getMessage());
+  }
+
+  @Test
+  void constructor_whenFactoryReturnsNullServices_expectNullPointerException() {
+    // Act
+    NullPointerException ex =
+        assertThrows(
+            NullPointerException.class,
+            () ->
+                new NodeClientPersistence(
+                    mock(Persistable.class),
+                    mock(SubConfig.class),
+                    mock(Node.class),
+                    0,
+                    () -> null));
+
+    // Assert
+    assertEquals("persistentRequestEndpointServices", ex.getMessage());
+  }
+
+  @Test
+  void constructor_whenServicesCoordinatorIsNull_expectNullPointerException() {
+    // Arrange
+    PersistentRequestEndpointServices services = mock(PersistentRequestEndpointServices.class);
+    when(services.coordinator()).thenReturn(null);
+
+    // Act
+    NullPointerException ex =
+        assertThrows(
+            NullPointerException.class,
+            () ->
+                new NodeClientPersistence(
+                    mock(Persistable.class),
+                    mock(SubConfig.class),
+                    mock(Node.class),
+                    0,
+                    () -> services));
+
+    // Assert
+    assertEquals("persistentRequestCoordinator", ex.getMessage());
+  }
+
+  @Test
+  void constructor_whenServicesCatalogIsNull_expectNullPointerException() {
+    // Arrange
+    PersistentRequestEndpointServices services = mock(PersistentRequestEndpointServices.class);
+    when(services.coordinator()).thenReturn(mock(PersistentRequestCoordinator.class));
+    when(services.catalog()).thenReturn(null);
+
+    // Act
+    NullPointerException ex =
+        assertThrows(
+            NullPointerException.class,
+            () ->
+                new NodeClientPersistence(
+                    mock(Persistable.class),
+                    mock(SubConfig.class),
+                    mock(Node.class),
+                    0,
+                    () -> services));
+
+    // Assert
+    assertEquals("persistentRequestCatalog", ex.getMessage());
+  }
+
+  @Test
+  void constructor_whenServicesRecoveryCodecIsNull_expectNullPointerException() {
+    // Arrange
+    PersistentRequestEndpointServices services = mock(PersistentRequestEndpointServices.class);
+    when(services.coordinator()).thenReturn(mock(PersistentRequestCoordinator.class));
+    when(services.catalog()).thenReturn(mock(PersistentRequestCatalog.class));
+    when(services.recoveryCodec()).thenReturn(null);
+
+    // Act
+    NullPointerException ex =
+        assertThrows(
+            NullPointerException.class,
+            () ->
+                new NodeClientPersistence(
+                    mock(Persistable.class),
+                    mock(SubConfig.class),
+                    mock(Node.class),
+                    0,
+                    () -> services));
+
+    // Assert
+    assertEquals("persistentRequestRecoveryCodec", ex.getMessage());
   }
 
   @Test
@@ -101,7 +201,8 @@ class NodeClientPersistenceTest {
     Ticker ticker = mock(Ticker.class);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     Node node = newNode(ticker, tempDir);
-    NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 0);
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(persistable, nodeConfig, node, 0, newServicesFactory());
 
     // Act
     persistence.startThrottle();
@@ -121,7 +222,8 @@ class NodeClientPersistenceTest {
     Ticker ticker = mock(Ticker.class);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     Node node = newNode(ticker, tempDir);
-    NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 0);
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(persistable, nodeConfig, node, 0, newServicesFactory());
 
     // Act
     persistence.startThrottle();
@@ -140,7 +242,8 @@ class NodeClientPersistenceTest {
     Ticker ticker = mock(Ticker.class);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     Node node = newNode(ticker, tempDir);
-    NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 0);
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(persistable, nodeConfig, node, 0, newServicesFactory());
     FilenameGenerator filenameGenerator = mock(FilenameGenerator.class);
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
     when(tempBucketFactory.getMaxRamUsed()).thenReturn(128L);
@@ -321,7 +424,8 @@ class NodeClientPersistenceTest {
     when(node.getBootId()).thenReturn(123L);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     NodeClientPersistence persistence =
-        new NodeClientPersistence(mock(Persistable.class), nodeConfig, node, 0);
+        new NodeClientPersistence(
+            mock(Persistable.class), nodeConfig, node, 0, newServicesFactory());
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
     when(tempBucketFactory.getMaxRamUsed()).thenReturn(0L);
     File persistentTempDir = new File(tempDir, "persistent");
@@ -412,6 +516,77 @@ class NodeClientPersistenceTest {
   }
 
   @Test
+  void createClientContext_whenFactoryInjected_expectUsesInjectedPersistenceServices(
+      @TempDir File tempDir) throws NodeInitException {
+    // Arrange
+    Ticker ticker = mock(Ticker.class);
+    PersistentConfig config = mock(PersistentConfig.class);
+    Node node = newNode(ticker, tempDir);
+    when(node.getBootId()).thenReturn(321L);
+    SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
+    PersistentRequestEndpointServicesFactory servicesFactory =
+        mock(PersistentRequestEndpointServicesFactory.class);
+    PersistentRequestEndpointServices services = mock(PersistentRequestEndpointServices.class);
+    PersistentRequestCoordinator coordinator = mock(PersistentRequestCoordinator.class);
+    PersistentRequestCatalog catalog = mock(PersistentRequestCatalog.class);
+    PersistentRequestRecoveryCodec recoveryCodec = mock(PersistentRequestRecoveryCodec.class);
+    PersistentRequestHandle[] persistentRequests = {mock(PersistentRequestHandle.class)};
+    when(servicesFactory.create()).thenReturn(services);
+    when(services.coordinator()).thenReturn(coordinator);
+    when(services.catalog()).thenReturn(catalog);
+    when(services.recoveryCodec()).thenReturn(recoveryCodec);
+    when(services.getPersistentRequests()).thenReturn(persistentRequests);
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(mock(Persistable.class), nodeConfig, node, 0, servicesFactory);
+    TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
+    when(tempBucketFactory.getMaxRamUsed()).thenReturn(0L);
+    File persistentTempDir = new File(tempDir, "persistent");
+    assertTrue(persistentTempDir.mkdirs() || persistentTempDir.isDirectory());
+    persistence.initDiskChecker(
+        mock(FilenameGenerator.class), persistentTempDir, 1L, tempBucketFactory, false);
+    ClientLayerPersister clientLayerPersister = mock(ClientLayerPersister.class);
+
+    ClientContextInitParams params =
+        new ClientContextInitParams(
+            clientLayerPersister,
+            mock(PriorityAwareExecutor.class),
+            new ClientContextResources(
+                mock(ArchiveManager.class), mock(network.crypta.client.async.HealingQueue.class)),
+            mock(PersistentTempBucketFactory.class),
+            tempBucketFactory,
+            mock(USKManager.class),
+            mock(RandomSource.class),
+            new Random(9876L),
+            ticker,
+            mock(MemoryLimitedJobRunner.class),
+            mock(FilenameGenerator.class),
+            mock(FilenameGenerator.class),
+            mock(LockableRandomAccessBufferFactory.class),
+            persistence.getPersistentRafFactory(),
+            mock(FileRandomAccessBufferFactory.class),
+            mock(RealCompressor.class),
+            mock(DatastoreChecker.class),
+            new MasterSecret(new byte[64]),
+            new NodeClientCoreInit(
+                config,
+                mock(SubConfig.class),
+                mock(SubConfig.class),
+                mock(HttpShellContainer.class)),
+            mock(FetchContext.class),
+            mock(InsertContext.class));
+
+    // Act
+    ClientContext context = persistence.createClientContext(node, params);
+
+    // Assert
+    assertAll(
+        () -> assertSame(coordinator, context.persistentRequestCoordinator),
+        () -> assertSame(persistentRequests, persistence.getPersistentRequests()));
+    verify(servicesFactory).create();
+    verify(clientLayerPersister).configurePersistenceAdapters(catalog, recoveryCodec);
+  }
+
+  @Test
   void getPersistentRequests_whenRequestResumed_expectIncludesRequest(@TempDir File tempDir)
       throws NodeInitException {
     // Arrange
@@ -421,7 +596,8 @@ class NodeClientPersistenceTest {
     when(node.getBootId()).thenReturn(200L);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     NodeClientPersistence persistence =
-        new NodeClientPersistence(mock(Persistable.class), nodeConfig, node, 0);
+        new NodeClientPersistence(
+            mock(Persistable.class), nodeConfig, node, 0, newServicesFactory());
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
     when(tempBucketFactory.getMaxRamUsed()).thenReturn(0L);
     File persistentTempDir = new File(tempDir, "persistent");
@@ -472,49 +648,33 @@ class NodeClientPersistenceTest {
   }
 
   @Test
-  void createFcpEndpointHandle_whenCalled_expectDelegatesToMaybeCreate(@TempDir File tempDir)
-      throws NodeInitException {
+  void createFcpEndpointHandle_whenFactoryInjected_expectDelegatesToInjectedServices(
+      @TempDir File tempDir) throws NodeInitException {
     // Arrange
     Persistable persistable = mock(Persistable.class);
     Ticker ticker = mock(Ticker.class);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     Node node = newNode(ticker, tempDir);
-    PersistentConfig config = mock(PersistentConfig.class);
-    when(node.getConfig()).thenReturn(config);
-    NodeClientPersistence persistence = new NodeClientPersistence(persistable, nodeConfig, node, 0);
+    PersistentRequestEndpointServicesFactory servicesFactory =
+        mock(PersistentRequestEndpointServicesFactory.class);
+    PersistentRequestEndpointServices services = mock(PersistentRequestEndpointServices.class);
+    FcpEndpointHandle expectedHandle = mock(FcpEndpointHandle.class);
+    when(servicesFactory.create()).thenReturn(services);
+    when(services.coordinator()).thenReturn(mock(PersistentRequestCoordinator.class));
+    when(services.catalog()).thenReturn(mock(PersistentRequestCatalog.class));
+    when(services.recoveryCodec()).thenReturn(mock(PersistentRequestRecoveryCodec.class));
+    NodeClientPersistence persistence =
+        new NodeClientPersistence(persistable, nodeConfig, node, 0, servicesFactory);
     NodeClientCore core = mock(NodeClientCore.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
-    FCPServer expected = mock(FCPServer.class);
-    FcpServerDependencies dependencies = mock(FcpServerDependencies.class);
+    when(services.createFcpEndpointHandle(node, core, runtimePorts)).thenReturn(expectedHandle);
 
     // Act
-    try (MockedStatic<CoreFcpServerDependenciesFactory> factoryMock =
-            mockStatic(CoreFcpServerDependenciesFactory.class);
-        MockedStatic<FCPServer> fcpServerMock = mockStatic(FCPServer.class)) {
-      factoryMock
-          .when(
-              () ->
-                  CoreFcpServerDependenciesFactory.create(
-                      eq(core),
-                      eq(runtimePorts),
-                      any(network.crypta.clients.fcp.PersistentRequestRoot.class)))
-          .thenReturn(dependencies);
-      fcpServerMock
-          .when(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)))
-          .thenReturn(expected);
+    FcpEndpointHandle result = persistence.createFcpEndpointHandle(node, core, runtimePorts);
 
-      FcpEndpointHandle result = persistence.createFcpEndpointHandle(node, core, runtimePorts);
-
-      // Assert
-      assertSame(expected, FcpEndpointHandles.unwrap(result));
-      factoryMock.verify(
-          () ->
-              CoreFcpServerDependenciesFactory.create(
-                  eq(core),
-                  eq(runtimePorts),
-                  any(network.crypta.clients.fcp.PersistentRequestRoot.class)));
-      fcpServerMock.verify(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)));
-    }
+    // Assert
+    assertSame(expectedHandle, result);
+    verify(services).createFcpEndpointHandle(node, core, runtimePorts);
   }
 
   private static SubConfig newNodeConfig(File throttleFile) {
@@ -553,11 +713,15 @@ class NodeClientPersistenceTest {
     return node;
   }
 
+  private static PersistentRequestEndpointServicesFactory newServicesFactory() {
+    return FcpPersistentRequestServices::new;
+  }
+
   private static NodeClientPersistence newPersistence(File tempDir) throws NodeInitException {
     Persistable persistable = mock(Persistable.class);
     Ticker ticker = mock(Ticker.class);
     SubConfig nodeConfig = newNodeConfig(new File(tempDir, "client-throttle.dat"));
     Node node = newNode(ticker, tempDir);
-    return new NodeClientPersistence(persistable, nodeConfig, node, 0);
+    return new NodeClientPersistence(persistable, nodeConfig, node, 0, newServicesFactory());
   }
 }

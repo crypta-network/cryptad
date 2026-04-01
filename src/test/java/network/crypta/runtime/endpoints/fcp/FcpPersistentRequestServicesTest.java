@@ -11,6 +11,7 @@ import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -44,6 +45,7 @@ class FcpPersistentRequestServicesTest {
     assertSame(coordinator, services.coordinator());
     assertSame(catalog, services.catalog());
     assertSame(recoveryCodec, services.recoveryCodec());
+    assertInstanceOf(PersistentRequestEndpointServices.class, services);
     assertInstanceOf(FcpPersistentRequestRecoveryCodec.class, recoveryCodec);
     assertNotNull(coordinator.getOrCreateClientHandle(false, "client-a"));
     assertArrayEquals(new PersistentRequestHandle[0], services.getPersistentRequests());
@@ -52,7 +54,7 @@ class FcpPersistentRequestServicesTest {
   }
 
   @Test
-  void createEndpointHandle_whenCalled_wrapsCreatedServer() {
+  void createFcpEndpointHandle_whenCalled_wrapsCreatedServer() {
     // Arrange
     FcpPersistentRequestServices services = new FcpPersistentRequestServices();
     Node node = mock(Node.class);
@@ -77,7 +79,7 @@ class FcpPersistentRequestServicesTest {
           .when(() -> FCPServer.maybeCreate(eq(dependencies), eq(config)))
           .thenReturn(server);
 
-      FcpEndpointHandle endpointHandle = services.createEndpointHandle(node, core, runtimePorts);
+      FcpEndpointHandle endpointHandle = services.createFcpEndpointHandle(node, core, runtimePorts);
 
       // Assert
       assertSame(server, FcpEndpointHandles.unwrap(endpointHandle));

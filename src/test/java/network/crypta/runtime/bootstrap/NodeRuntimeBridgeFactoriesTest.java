@@ -6,10 +6,13 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
+import network.crypta.runtime.endpoints.fcp.FcpPersistentRequestServices;
 import network.crypta.runtime.endpoints.fcp.FcpQueueAdminBackend;
 import network.crypta.runtime.endpoints.http.CoreHttpShellRuntimeSupport;
 import network.crypta.runtime.endpoints.http.geoip.HttpGeoIpCountryLookup;
 import network.crypta.runtime.endpoints.http.security.CorePasswordFormPageRenderer;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
+import network.crypta.runtime.fcp.PersistentRequestEndpointServicesFactory;
 import network.crypta.runtime.http.HttpShellContainerFactory;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.runtime.http.HttpShellRuntimeSupportFactory;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -28,6 +32,8 @@ class NodeRuntimeBridgeFactoriesTest {
 
   @Test
   void constructor_whenAdminRuntimeBridgeInputsFactoryIsNull_throws() {
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        () -> mock(PersistentRequestEndpointServices.class);
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
     HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
@@ -37,6 +43,28 @@ class NodeRuntimeBridgeFactoriesTest {
         NullPointerException.class,
         () ->
             new NodeRuntimeBridgeFactories(
+                null,
+                persistentRequestEndpointServicesFactory,
+                httpShellRuntimeSupportFactory,
+                httpShellContainerFactory,
+                passwordFormPageRenderer));
+  }
+
+  @Test
+  void constructor_whenPersistentRequestEndpointServicesFactoryIsNull_throws() {
+    NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
+    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
+        fixture.adminRuntimeBridgeInputsFactory();
+    HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
+        ignoredCore -> mock(HttpShellRuntimeSupport.class);
+    HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
+    PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
+
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            new NodeRuntimeBridgeFactories(
+                adminRuntimeBridgeInputsFactory,
                 null,
                 httpShellRuntimeSupportFactory,
                 httpShellContainerFactory,
@@ -48,6 +76,8 @@ class NodeRuntimeBridgeFactoriesTest {
     NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
         fixture.adminRuntimeBridgeInputsFactory();
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        () -> mock(PersistentRequestEndpointServices.class);
     HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
     PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
 
@@ -56,6 +86,7 @@ class NodeRuntimeBridgeFactoriesTest {
         () ->
             new NodeRuntimeBridgeFactories(
                 adminRuntimeBridgeInputsFactory,
+                persistentRequestEndpointServicesFactory,
                 null,
                 httpShellContainerFactory,
                 passwordFormPageRenderer));
@@ -66,6 +97,8 @@ class NodeRuntimeBridgeFactoriesTest {
     NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
         fixture.adminRuntimeBridgeInputsFactory();
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        () -> mock(PersistentRequestEndpointServices.class);
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
     PasswordFormPageRenderer passwordFormPageRenderer = (_, _, _) -> {};
@@ -75,6 +108,7 @@ class NodeRuntimeBridgeFactoriesTest {
         () ->
             new NodeRuntimeBridgeFactories(
                 adminRuntimeBridgeInputsFactory,
+                persistentRequestEndpointServicesFactory,
                 httpShellRuntimeSupportFactory,
                 null,
                 passwordFormPageRenderer));
@@ -85,6 +119,8 @@ class NodeRuntimeBridgeFactoriesTest {
     NodeRuntimeBridgeFactoriesFixture fixture = new NodeRuntimeBridgeFactoriesFixture();
     AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
         fixture.adminRuntimeBridgeInputsFactory();
+    PersistentRequestEndpointServicesFactory persistentRequestEndpointServicesFactory =
+        () -> mock(PersistentRequestEndpointServices.class);
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         ignoredCore -> mock(HttpShellRuntimeSupport.class);
     HttpShellContainerFactory httpShellContainerFactory = mock(HttpShellContainerFactory.class);
@@ -94,6 +130,7 @@ class NodeRuntimeBridgeFactoriesTest {
         () ->
             new NodeRuntimeBridgeFactories(
                 adminRuntimeBridgeInputsFactory,
+                persistentRequestEndpointServicesFactory,
                 httpShellRuntimeSupportFactory,
                 httpShellContainerFactory,
                 null));
@@ -108,6 +145,10 @@ class NodeRuntimeBridgeFactoriesTest {
         runtimeBridgeFactories
             .adminRuntimeBridgeInputsFactory()
             .create(fixture.node(), fixture.core());
+    PersistentRequestEndpointServices persistentRequestEndpointServices =
+        runtimeBridgeFactories.persistentRequestEndpointServicesFactory().create();
+    PersistentRequestEndpointServices anotherPersistentRequestEndpointServices =
+        runtimeBridgeFactories.persistentRequestEndpointServicesFactory().create();
     HttpShellRuntimeSupport runtimeSupport =
         runtimeBridgeFactories.httpShellRuntimeSupportFactory().create(fixture.core());
     HttpShellContainerFactory httpShellContainerFactory =
@@ -116,11 +157,18 @@ class NodeRuntimeBridgeFactoriesTest {
         runtimeBridgeFactories.passwordFormPageRenderer();
 
     assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
+    assertNotNull(runtimeBridgeFactories.persistentRequestEndpointServicesFactory());
     assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
     assertNotNull(httpShellContainerFactory);
     assertNotNull(passwordFormPageRenderer);
     assertInstanceOf(FcpQueueAdminBackend.class, bridgeInputs.queueAdminBackend());
     assertInstanceOf(HttpGeoIpCountryLookup.class, bridgeInputs.geoIpCountryLookup());
+    assertInstanceOf(FcpPersistentRequestServices.class, persistentRequestEndpointServices);
+    assertInstanceOf(FcpPersistentRequestServices.class, anotherPersistentRequestEndpointServices);
+    assertNotSame(
+        persistentRequestEndpointServices,
+        anotherPersistentRequestEndpointServices,
+        "core-backed FCP persistent-request services should be created on demand");
     CoreHttpShellRuntimeSupport coreRuntimeSupport =
         assertInstanceOf(CoreHttpShellRuntimeSupport.class, runtimeSupport);
     assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);

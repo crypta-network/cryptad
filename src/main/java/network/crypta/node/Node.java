@@ -38,7 +38,6 @@ import network.crypta.node.subsystem.NodeMessagingSubsystem;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
-import network.crypta.runtime.admin.AdminRuntimeBridgeInputsFactory;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeRuntimeBridgeFactories;
@@ -591,8 +590,6 @@ public final class Node implements TimeSkewDetectorCallback {
       throws NodeInitException {
     NodeRuntimeBridgeFactories nodeRuntimeBridgeFactories =
         Objects.requireNonNull(runtimeBridgeFactories, "runtimeBridgeFactories");
-    AdminRuntimeBridgeInputsFactory adminRuntimeBridgeInputsFactory =
-        nodeRuntimeBridgeFactories.adminRuntimeBridgeInputsFactory();
     HttpShellRuntimeSupportFactory httpShellRuntimeSupportFactory =
         nodeRuntimeBridgeFactories.httpShellRuntimeSupportFactory();
     HttpShellContainerFactory httpShellContainerFactory =
@@ -719,7 +716,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     NodeClientCore clientCoreLocal =
         new NodeClientCore(
             this,
-            adminRuntimeBridgeInputsFactory,
+            nodeRuntimeBridgeFactories,
             clientCoreInit,
             network.darknetPortNumber(),
             sortOrder,

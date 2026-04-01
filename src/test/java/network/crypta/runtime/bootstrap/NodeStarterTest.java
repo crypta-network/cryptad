@@ -507,6 +507,7 @@ class NodeStarterTest {
       NodeRuntimeBridgeFactories runtimeBridgeFactories) {
     assertNotNull(runtimeBridgeFactories);
     assertNotNull(runtimeBridgeFactories.adminRuntimeBridgeInputsFactory());
+    assertNotNull(runtimeBridgeFactories.persistentRequestEndpointServicesFactory());
     assertNotNull(runtimeBridgeFactories.httpShellRuntimeSupportFactory());
   }
 }
