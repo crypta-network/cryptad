@@ -32,6 +32,7 @@ include(
   ":foundation-config",
   ":foundation-fs",
   ":foundation-compat",
+  ":kernel-content",
   ":runtime-spi",
   ":runtime-node",
   ":adapter-fcp",

@@ -16,6 +16,10 @@ Use this skill when you:
 
 ## Java layout rules
 - Java sources go under `src/*/java/` (for example `src/main/java`, `src/test/java`).
+- For extracted production leaves such as `runtime-node`, `kernel-content`, and the adapter
+  modules, keep `package-info.java` in each production package you add or move. The root boundary
+  tests currently enforce this for `:runtime-node` and `:kernel-content`, and the adapter packages
+  are following the same convention.
 
 ## Style guides
 - Java: follow the Google Java Style Guide.
