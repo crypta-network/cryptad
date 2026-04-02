@@ -1,6 +1,11 @@
 /**
  * Browser-facing HTTP interface for Crypta nodes, often referred to as the FProxy console.
  *
+ * <p>This package is owned by the extracted {@code :adapter-http-legacy-admin} leaf together with
+ * the matching {@code network/crypta/clients/http/**} main resources. The root project no longer
+ * owns this main source/resource tree. The remaining browse and FProxy shell collected here is
+ * boundary-frozen until a later PR narrows or replaces it with smaller seams.
+ *
  * <p>The package provides the lightweight HTTP server surface that lets users browse freesites,
  * upload or insert files, inspect queue progress, and configure the node without embedding a
  * servlet container. Each endpoint is implemented as a {@link network.crypta.clients.http.Toadlet}
@@ -18,6 +23,13 @@
  * rather than HTTP plumbing. The package also contains specialized toadlets for first-time setup,
  * security settings, translation, and bookmark management to cover the full administrative
  * workflow.
+ *
+ * <p>Code outside the HTTP adapter boundary should treat this package as legacy adapter-owned
+ * implementation detail rather than as a new platform API. Runtime and bootstrap code should
+ * continue to depend on runtime-owned seams and the narrow bridge/binding sites instead of growing
+ * new direct dependencies on {@code network.crypta.clients.http.*}. In production, {@code
+ * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories} remains the bootstrap-owned
+ * binding site for the concrete HTTP bridge implementations.
  *
  * <ul>
  *   <li>Implements the public web console and REST-like helper endpoints.

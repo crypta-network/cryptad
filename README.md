@@ -204,7 +204,9 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree plus
   the matching `network/crypta/clients/http/**` main resources such as `staticfiles/**` and
-  `templates/**`.
+  `templates/**`. The root project no longer owns that main source/resource tree, and the
+  remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
+  refines it further.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -227,7 +229,9 @@ Cryptad now uses a partial multi-project Gradle build.
   higher-level runtime code depends on runtime-owned seam types such as
   `network.crypta.runtime.endpoints.fcp.FcpEndpointHandle`,
   `network.crypta.runtime.http.HttpShellContainer`, and
-  `network.crypta.runtime.http.security.PasswordFormPageRenderer`.
+  `network.crypta.runtime.http.security.PasswordFormPageRenderer`. For HTTP, this bootstrap
+  factory remains the production binding site that imports the concrete bridge classes from the
+  extracted adapter leaf.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
@@ -519,7 +523,9 @@ Root build also includes:
 - `:adapter-fcp`: extracted `network.crypta.clients.fcp` adapter code, including
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
-  `network/crypta/clients/http/**` main resources.
+  `network/crypta/clients/http/**` main resources. The root project no longer owns that main
+  HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
+  boundary-frozen for now.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
   bandwidth-detection helpers now used by first-time setup flows.
@@ -613,7 +619,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `FProxyRegistrarDependencies`. Concrete HTTP shell, bookmark, GeoIP, security-page, and
   updater-action adapters now live under `network.crypta.clients.http.bridge` and
   `network.crypta.clients.http.updater`, while root-local bridge selection stays in
-  `DefaultNodeRuntimeBridgeFactories`.
+  `DefaultNodeRuntimeBridgeFactories`. The remaining legacy browse/FProxy tree inside
+  `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines it
+  further, and production code outside the adapter should keep depending on runtime seams rather
+  than taking new `network.crypta.clients.http.*` dependencies.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
   `RuntimePorts`, `ConfigPort`, `NodeInfoPort`, `PeerPort`, `ConnectionsPagePort`,
   `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `QueuePagePort`,

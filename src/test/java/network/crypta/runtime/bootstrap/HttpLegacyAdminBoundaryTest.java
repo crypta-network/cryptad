@@ -1,0 +1,155 @@
+package network.crypta.runtime.bootstrap;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SuppressWarnings("java:S100")
+class HttpLegacyAdminBoundaryTest {
+  private static final Path ROOT_HTTP_MAIN_JAVA =
+      Path.of("src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Path ROOT_HTTP_MAIN_RESOURCES =
+      Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_HTTP_MAIN_JAVA =
+      Path.of(
+          "adapter-http-legacy-admin",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "clients",
+          "http");
+  private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
+      Path.of(
+          "adapter-http-legacy-admin",
+          "src",
+          "main",
+          "resources",
+          "network",
+          "crypta",
+          "clients",
+          "http");
+  private static final Path DEFAULT_BRIDGE_FACTORIES =
+      Path.of(
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "runtime",
+          "bootstrap",
+          "DefaultNodeRuntimeBridgeFactories.java");
+  private static final Pattern LEGACY_HTTP_IMPORT_PATTERN =
+      Pattern.compile("^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.http\\.[^;]+);$");
+  private static final Set<String> EXPECTED_DEFAULT_BRIDGE_FACTORIES_HTTP_IMPORTS =
+      Set.of(
+          "network.crypta.clients.http.bridge.CoreHttpShellRuntimeSupport",
+          "network.crypta.clients.http.bridge.HttpShellContainers",
+          "network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookups",
+          "network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer");
+
+  @Test
+  void mainSourceLayout_whenCheckingLegacyHttpOwnership_expectOnlyAdapterOwnsHttpTree()
+      throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(ADAPTER_HTTP_MAIN_JAVA)),
+        "adapter-http-legacy-admin must own network/crypta/clients/http main sources");
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(ADAPTER_HTTP_MAIN_RESOURCES)),
+        "adapter-http-legacy-admin must own network/crypta/clients/http main resources");
+    assertFalse(
+        Files.exists(repoRoot.resolve(ROOT_HTTP_MAIN_JAVA)),
+        "Root project must not re-own network/crypta/clients/http main sources");
+    assertFalse(
+        Files.exists(repoRoot.resolve(ROOT_HTTP_MAIN_RESOURCES)),
+        "Root project must not re-own network/crypta/clients/http main resources");
+  }
+
+  @Test
+  void mainSources_whenScanningLegacyHttpImports_expectOnlyBootstrapBindingSiteOutsideAdapter()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+    Set<String> bootstrapHttpImports =
+        readLegacyHttpImports(repoRoot.resolve(DEFAULT_BRIDGE_FACTORIES));
+
+    for (Path sourceFile : findMainJavaSources(repoRoot)) {
+      Path relativePath = repoRoot.relativize(sourceFile);
+      if (relativePath.equals(DEFAULT_BRIDGE_FACTORIES)) {
+        continue;
+      }
+
+      Set<String> imports = readLegacyHttpImports(sourceFile);
+      if (!imports.isEmpty() && !relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)) {
+        violations.add(relativePath + " -> " + String.join(", ", imports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Only adapter-http-legacy-admin main sources may import network.crypta.clients.http.*, "
+            + "except the bootstrap binding site."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+    assertEquals(
+        EXPECTED_DEFAULT_BRIDGE_FACTORIES_HTTP_IMPORTS,
+        bootstrapHttpImports,
+        "DefaultNodeRuntimeBridgeFactories must remain the narrow bootstrap-owned HTTP binding "
+            + "site");
+  }
+
+  private static List<Path> findMainJavaSources(Path repoRoot) throws IOException {
+    try (Stream<Path> walk = Files.walk(repoRoot)) {
+      return walk.filter(Files::isRegularFile)
+          .filter(path -> path.getFileName().toString().endsWith(".java"))
+          .filter(path -> !path.getFileName().toString().startsWith("._"))
+          .filter(path -> isMainJavaSource(repoRoot.relativize(path)))
+          .sorted(Comparator.comparing(path -> repoRoot.relativize(path).toString()))
+          .toList();
+    }
+  }
+
+  private static boolean isMainJavaSource(Path relativePath) {
+    String normalized = relativePath.toString().replace(File.separatorChar, '/');
+    return !normalized.startsWith("build/")
+        && !normalized.contains("/build/")
+        && !normalized.startsWith(".gradle/")
+        && !normalized.contains("/.gradle/")
+        && !normalized.startsWith(".git/")
+        && !normalized.contains("/.git/")
+        && (normalized.startsWith("src/main/java/") || normalized.contains("/src/main/java/"));
+  }
+
+  private static Set<String> readLegacyHttpImports(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .map(LEGACY_HTTP_IMPORT_PATTERN::matcher)
+          .filter(Matcher::matches)
+          .map(matcher -> matcher.group(1))
+          .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+  }
+
+  private static Path repoRoot() throws IOException {
+    Path repoRoot = Path.of("").toAbsolutePath().normalize();
+    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
+    return repoRoot.toRealPath();
+  }
+}
