@@ -371,12 +371,14 @@ network/crypta/node/UptimeEstimator.class
 network/crypta/node/UptimeEstimator$*.class
 network/crypta/node/WaitingMultiMessageCallback.class
 network/crypta/node/WaitingMultiMessageCallback$*.class
+network/crypta/node/package-info*
 network/crypta/node/probe/Counter.class
 network/crypta/node/probe/Counter$*.class
 network/crypta/node/probe/Listener.class
 network/crypta/node/probe/Listener$*.class
 network/crypta/node/probe/Probe.class
 network/crypta/node/probe/Probe$*.class
+network/crypta/node/probe/package-info*
 network/crypta/io/AddressMatcher.class
 network/crypta/io/AddressMatcher$*.class
 network/crypta/io/AddressTracker.class
