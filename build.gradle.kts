@@ -26,6 +26,7 @@ val internalLeafProjects =
     project(":foundation-compat"),
     project(":runtime-spi"),
     project(":runtime-node"),
+    project(":adapter-fcp"),
     project(":thirdparty-onion"),
     project(":thirdparty-legacy"),
     project(":launcher-desktop"),
@@ -49,6 +50,7 @@ dependencies {
   implementation(project(":foundation-compat"))
   implementation(project(":runtime-spi"))
   implementation(project(":runtime-node"))
+  implementation(project(":adapter-fcp"))
   implementation(project(":thirdparty-onion"))
   implementation(project(":thirdparty-legacy"))
   implementation(libs.bcprov)
