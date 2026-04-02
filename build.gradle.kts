@@ -24,6 +24,7 @@ val internalLeafProjects =
     project(":foundation-config"),
     project(":foundation-fs"),
     project(":foundation-compat"),
+    project(":kernel-content"),
     project(":runtime-spi"),
     project(":runtime-node"),
     project(":adapter-fcp"),
@@ -49,6 +50,7 @@ dependencies {
   implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(project(":foundation-compat"))
+  implementation(project(":kernel-content"))
   implementation(project(":runtime-spi"))
   implementation(project(":runtime-node"))
   implementation(project(":adapter-fcp"))

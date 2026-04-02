@@ -10,6 +10,7 @@ dependencies {
   implementation(project(":foundation-config"))
   implementation(project(":foundation-crypto-keys"))
   implementation(project(":interop-wire"))
+  implementation(project(":kernel-content"))
   implementation(project(":runtime-spi"))
   implementation(project(":runtime-node"))
 

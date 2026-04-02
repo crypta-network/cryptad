@@ -44,11 +44,15 @@ Use this skill when you need to:
   - `:foundation-fs` → `network.crypta.fs`
   - `:foundation-compat` → `network.crypta.compat`, including
     `network.crypta.compat.bandwidth`
+  - `:kernel-content` → the compile-neutral phase-1 content slice across selected
+    `network.crypta.client`, `network.crypta.client.events`,
+    `network.crypta.client.filter`, `network.crypta.client.async.alerts`, and
+    `network.crypta.support.MediaType`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
-  - `:runtime-node` → extracted daemon runtime body across `network.crypta.client`, large
-    `network.crypta.node` and `network.crypta.runtime.*` slices, `network.crypta.io.xfer`, and
-    the remaining daemon-coupled `network.crypta.support` / `network.crypta.support.io` /
-    `network.crypta.support.api` subset
+  - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
+    `network.crypta.client` body, large `network.crypta.node` and `network.crypta.runtime.*`
+    slices, `network.crypta.io.xfer`, and the remaining daemon-coupled
+    `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   - `:adapter-fcp` → `network.crypta.clients.fcp`, including
     `network.crypta.clients.fcp.bridge`
   - `:adapter-http-legacy-admin` → the full current legacy `network.crypta.clients.http` tree
@@ -78,9 +82,10 @@ Use this skill when you need to:
     root-local bridge selection in
     `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
 - The daemon runtime body now spans extracted leaves plus a thin root composition layer:
-  `:runtime-node` owns the extracted runtime/node/client/support body, `:adapter-fcp` owns the
-  FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources,
-  and the root project keeps tests, packaging, tool entrypoints, and remaining composition glue.
+  `:kernel-content` owns the compile-neutral phase-1 client/content slice, `:runtime-node` owns
+  the remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
+  `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources, and the root
+  project keeps tests, packaging, tool entrypoints, and remaining composition glue.
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, while root keeps `MessageCore`,
   `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
@@ -97,6 +102,10 @@ Use this skill when you need to:
 - Update that metadata whenever a leaf starts owning additional main classes/resources that root
   used to compile/package. This applies to existing leaves such as `:foundation-support` and
   `:foundation-store-contracts` just as much as any future extraction.
+- Root boundary tests now freeze the extracted layout. In particular,
+  `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`, and
+  `HttpLegacyAdminBoundaryTest` guard leaf ownership/import rules, and the runtime/kernel-content
+  tests require `package-info.java` in every production package under those leaves.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
@@ -152,10 +161,16 @@ Use this skill when you need to:
 
 ### Client APIs
 - High-level client: `network.crypta.client`
-  - The async client layer now also owns client-local seams under
-    `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence` so
-    runtime/FCP bridges can post alerts and recover durable requests without owning those
-    contracts.
+  - `:kernel-content` now owns the compile-neutral phase-1 content slice: selected
+    archive/value/helper classes, immutable event values, a conservative subset of filter
+    helper/parser types, the full `network.crypta.client.async.alerts` seam, and
+    `network.crypta.support.MediaType`.
+  - `:runtime-node` still owns the cyclic async scheduler/request engine, high-level client APIs,
+    and the remaining filter/archive surfaces that still depend on request scheduling or node
+    internals.
+  - The async client layer also retains client-local seams under
+    `network.crypta.client.async.persistence` so runtime/FCP bridges can recover durable requests
+    without owning those contracts.
 - FCP: `network.crypta.clients.fcp`
   - This package now lives in `:adapter-fcp`.
   - Runtime-facing execution, randomness, lifecycle, transfer-policy, and config access now come
@@ -295,10 +310,12 @@ Use this skill when you need to:
   `DatastoreSizingSupport`
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
+- `:kernel-content`: compile-neutral phase-1 content slice across selected `network.crypta.client*`
+  classes plus `network.crypta.support.MediaType`
 - `:runtime-spi`: `network.crypta.runtime.spi`
-- `:runtime-node`: extracted daemon runtime body across `network.crypta.client`, large
-  `network.crypta.node` / `network.crypta.runtime.*` slices, `network.crypta.io.xfer`, and the
-  remaining daemon-coupled support helpers
+- `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
+  `network.crypta.client` body, large `network.crypta.node` / `network.crypta.runtime.*` slices,
+  `network.crypta.io.xfer`, and the remaining daemon-coupled support helpers
 - `:adapter-fcp`: `network.crypta.clients.fcp`
 - `:adapter-http-legacy-admin`: `network.crypta.clients.http`
 

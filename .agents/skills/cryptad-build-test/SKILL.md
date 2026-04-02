@@ -20,7 +20,8 @@ Use this skill when you need to:
 - Use root-project tasks by default; the root project remains the daemon/application target.
 - Current leaf projects are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
-  `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
+  `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
+  `:runtime-spi`,
   `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
@@ -47,6 +48,9 @@ Use this skill when you need to:
 - `:foundation-compat` owns extracted compatibility helpers under `network.crypta.compat`,
   including the wizard-neutral bandwidth support moved to
   `network.crypta.compat.bandwidth`.
+- `:kernel-content` owns the compile-neutral phase-1 content slice across selected
+  `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
+  `network.crypta.client.async.alerts`, and `network.crypta.support.MediaType`.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
   `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
   moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
@@ -54,10 +58,14 @@ Use this skill when you need to:
 - When moving additional main classes/resources from root into any extracted leaf, update that
   leaf's `owned-output-patterns.txt` and validate with
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
+- Root boundary tests now freeze the current extracted layout. `RuntimeNodeKernelSplitPrepBoundaryTest`,
+  `KernelContentBoundaryTest`, and `HttpLegacyAdminBoundaryTest` are the focused regression checks
+  for leaf ownership/import boundaries, and the runtime/kernel-content tests enforce
+  `package-info.java` coverage for production packages in those leaves.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
-- `:runtime-node` is the extracted daemon runtime leaf. It now owns large slices of
-  `network.crypta.client`, `network.crypta.node`, `network.crypta.io.xfer`,
+- `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
+  `network.crypta.client` body, `network.crypta.node`, `network.crypta.io.xfer`,
   `network.crypta.runtime.*`, and the remaining daemon-coupled support helpers.
 - `:adapter-fcp` owns `network.crypta.clients.fcp`, including
   `network.crypta.clients.fcp.bridge`.
@@ -93,6 +101,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew test --tests *TestClassName`
 - Run one test method:
   - `./gradlew test --tests *TestClassName.methodName`
+- For extracted-leaf or boundary work, run the focused boundary tests:
+  - `./gradlew test --tests *KernelContentBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest`
 
 ## Compile-only / quick checks
 - Compile only:
@@ -115,6 +125,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Compile the compat leaf when you touched extracted compatibility helpers such as
   `network.crypta.compat.bandwidth`:
   - `./gradlew :foundation-compat:classes`
+- Compile the phase-1 kernel-content leaf when you touched extracted compile-neutral client/content
+  classes:
+  - `./gradlew :kernel-content:compileJava`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
 - Compile the extracted runtime-node leaf when you touched daemon runtime, node, client, xfer, or
