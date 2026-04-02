@@ -21,8 +21,8 @@ Use this skill when you need to:
 - Current leaf projects are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
-  `:runtime-node`,
-  `:thirdparty-onion`, `:thirdparty-legacy`, and `:launcher-desktop`.
+  `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
+  `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -56,9 +56,15 @@ Use this skill when you need to:
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
-- `:runtime-node` is the extraction-prep runtime leaf. It currently owns selected
-  `network.crypta.runtime.*` package docs plus selective-output ownership metadata seeds; runtime
-  behavior still lives in the root project.
+- `:runtime-node` is the extracted daemon runtime leaf. It now owns large slices of
+  `network.crypta.client`, `network.crypta.node`, `network.crypta.io.xfer`,
+  `network.crypta.runtime.*`, and the remaining daemon-coupled support helpers.
+- `:adapter-fcp` owns `network.crypta.clients.fcp`, including
+  `network.crypta.clients.fcp.bridge`.
+- `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree and the
+  matching `network/crypta/clients/http/**` main resources. On the root test/runtime classpath,
+  those resources often resolve from the leaf JAR, so tests must treat them as classpath resources
+  rather than assume a plain filesystem `Path`.
 - All tests remain in the root project for now and compile against the leaf subprojects through
   the root build.
 - File-system-based l10n tests still run from the root project and use
@@ -111,9 +117,14 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :foundation-compat:classes`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
-- Compile the runtime-node scaffold when you touched moved runtime package docs or selective-output
-  ownership metadata:
+- Compile the extracted runtime-node leaf when you touched daemon runtime, node, client, xfer, or
+  remaining support code that now lives there:
   - `./gradlew :runtime-node:compileJava`
+- Compile the FCP adapter leaf when you touched `network.crypta.clients.fcp`:
+  - `./gradlew :adapter-fcp:compileJava`
+- Compile the legacy HTTP adapter leaf when you touched `network.crypta.clients.http` sources or
+  resources:
+  - `./gradlew :adapter-http-legacy-admin:compileJava :adapter-http-legacy-admin:processResources`
 - Compile the root project and its unchanged test tree against the leaf-module layout:
   - `./gradlew compileJava compileTestJava`
 

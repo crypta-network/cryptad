@@ -16,22 +16,21 @@ Use this skill when working on:
 
 ## CoreUpdater migration (conceptual overview)
 - Core package-based updates replace self-updating of `cryptad.jar`.
+- The legacy plugin runtime has been removed. This skill only covers core package update flows.
 - The updater:
   - Fetches `info/<N>` JSON from the existing update USK.
   - Treats `CoreInfo.version` as the release gate: it must be a base-10 integer string and be
     greater than `Version.currentBuildNumber()` for update availability.
   - Selects an OS/arch-specific installer (deb/rpm/dmg/exe/flatpak/snap).
   - Downloads to `nodeDir/updates/core/<version>/`.
-- Plugin updates remain unchanged.
 
 ## System wiring changes
 - Legacy core jar updater was removed.
-- `NodeUpdateManager` now coordinates:
-  - `CoreUpdater` for core packages
-  - `PluginJarUpdater` for plugins
+- `NodeUpdateManager` now coordinates core-package discovery, download, and install signaling.
 - The legacy HTTP updater UI now crosses the runtime boundary through
   `RuntimePorts#coreUpdateAction()` and `network.crypta.runtime.spi.CoreUpdateActionPort`,
-  implemented in the root daemon by `network.crypta.runtime.core.LegacyCoreUpdateActionPort`.
+  implemented by the daemon-backed runtime adapter
+  `network.crypta.runtime.core.LegacyCoreUpdateActionPort` in `:runtime-node`.
 - Core updater state surfaces through CorePackage-named APIs:
   - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
   - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
@@ -52,16 +51,17 @@ Use this skill when working on:
 - UI: alerts panel shows progress percent when available.
   - Failures surface clear retry guidance (non-fatal errors relabel to “Retry”).
 - Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching now
-  live in the HTTP adapter layer at `network.crypta.clients.http.updater.CoreActionToadlet`.
+  live in the HTTP adapter layer at `network.crypta.clients.http.updater.CoreActionToadlet`,
+  currently packaged in `:adapter-http-legacy-admin`.
 - Daemon-backed availability checks, UI-triggered download start, and downloaded-installer
   containment validation now live behind `CoreUpdateActionPort`.
 
 ## Runtime-boundary classes to inspect
-- HTTP/action layer: `network.crypta.clients.http.updater.CoreActionToadlet`
-- Updater coordinator/state: `network.crypta.runtime.updater.NodeUpdateManager`
-- Core package downloader: `network.crypta.runtime.updater.CoreUpdater`
+- HTTP/action layer (`:adapter-http-legacy-admin`): `network.crypta.clients.http.updater.CoreActionToadlet`
+- Updater coordinator/state (`:runtime-node`): `network.crypta.runtime.updater.NodeUpdateManager`
+- Core package downloader (`:runtime-node`): `network.crypta.runtime.updater.CoreUpdater`
 - SPI contract: `network.crypta.runtime.spi.CoreUpdateActionPort`
-- Root adapter: `network.crypta.runtime.core.LegacyCoreUpdateActionPort`
+- Daemon-backed adapter (`:runtime-node`): `network.crypta.runtime.core.LegacyCoreUpdateActionPort`
 - Aggregate runtime entry point: `network.crypta.runtime.spi.RuntimePorts`
 
 ## Platform specifics (selected behaviors)

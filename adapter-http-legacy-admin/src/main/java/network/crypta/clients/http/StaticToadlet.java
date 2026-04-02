@@ -4,8 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLConnection;
 import java.time.Instant;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.l10n.NodeL10n;
@@ -139,13 +141,16 @@ public class StaticToadlet extends Toadlet {
     if (url == null) {
       return null;
     }
-    if (url.getProtocol().equals("jar")) {
-      File f = new File(url.getPath().substring(0, url.getPath().indexOf('!')));
-      return Instant.ofEpochMilli(f.lastModified());
-    } else if (url.getProtocol().equals("file")) {
-      File f = new File(url.getPath());
-      return Instant.ofEpochMilli(f.lastModified());
-    } else {
+    try {
+      URLConnection connection = url.openConnection();
+      if (connection instanceof JarURLConnection jarConnection) {
+        long jarLastModified = jarConnection.getJarFileURL().openConnection().getLastModified();
+        return jarLastModified == 0 ? null : Instant.ofEpochMilli(jarLastModified);
+      }
+
+      long lastModified = connection.getLastModified();
+      return lastModified == 0 ? null : Instant.ofEpochMilli(lastModified);
+    } catch (IOException e) {
       return null;
     }
   }

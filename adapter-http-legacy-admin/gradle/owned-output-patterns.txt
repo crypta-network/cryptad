@@ -1,0 +1,4 @@
+# Aggregated main outputs that must be pruned on non-clean builds because
+# :adapter-http-legacy-admin owns them now.
+
+network/crypta/clients/http/**
