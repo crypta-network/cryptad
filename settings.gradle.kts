@@ -34,6 +34,7 @@ include(
   ":foundation-compat",
   ":runtime-spi",
   ":runtime-node",
+  ":adapter-fcp",
   ":thirdparty-onion",
   ":thirdparty-legacy",
   ":launcher-desktop",
