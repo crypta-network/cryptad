@@ -11,7 +11,7 @@ package network.crypta.io.comm;
  * <p>Thread‑safety: Unless otherwise stated by the implementation, callers should assume that
  * instances are thread‑safe and may be invoked concurrently by the networking stack.
  *
- * <p>Example implementation: {@link UdpSocketHandler}.
+ * <p>Example implementation: the UDP socket handler currently kept in the runtime-node leaf.
  *
  * @author toad
  */

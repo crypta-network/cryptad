@@ -48,10 +48,15 @@ Use this skill when you need to:
     `network.crypta.client`, `network.crypta.client.events`,
     `network.crypta.client.filter`, `network.crypta.client.async.alerts`, and
     `network.crypta.support.MediaType`
+  - `:kernel-transport` → the compile-neutral phase-1 transport slice across selected
+    `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
+    address matchers, allow-list parsing, listener abstractions, I/O statistics collection,
+    throttling, and partially received block assembly
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
     `network.crypta.client` body, large `network.crypta.node` and `network.crypta.runtime.*`
-    slices, `network.crypta.io.xfer`, and the remaining daemon-coupled
+    slices, the retained node-coupled transport/message execution code in `network.crypta.io*`,
+    and the remaining daemon-coupled
     `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   - `:adapter-fcp` → `network.crypta.clients.fcp`, including
     `network.crypta.clients.fcp.bridge`
@@ -82,14 +87,17 @@ Use this skill when you need to:
     root-local bridge selection in
     `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
 - The daemon runtime body now spans extracted leaves plus a thin root composition layer:
-  `:kernel-content` owns the compile-neutral phase-1 client/content slice, `:runtime-node` owns
-  the remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
-  `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources, and the root
-  project keeps tests, packaging, tool entrypoints, and remaining composition glue.
+  `:kernel-content` owns the compile-neutral phase-1 client/content slice,
+  `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
+  `:runtime-node` owns the remaining runtime/node/client/support body, `:adapter-fcp` owns the
+  FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources,
+  and the root project keeps tests, packaging, tool entrypoints, and remaining composition glue.
 - The wire split is intentionally narrow:
-  `:interop-wire` owns the message/schema nucleus, while root keeps `MessageCore`,
-  `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
-  `PeerContext`, incoming-packet filters, socket handlers, and statistics collection.
+  `:interop-wire` owns the message/schema nucleus, `:kernel-transport` owns the compile-neutral
+  transport helper slice (`AllowedHosts`, `NetworkInterface`, `IOStatisticCollector`,
+  `SocketHandler`, `PacketThrottle`, `PartiallyReceivedBlock`, etc.), while `:runtime-node` keeps
+  `MessageCore`, `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
+  `PeerContext`, incoming-packet filters, active socket handlers, and transfer send/receive code.
   `network.crypta.io.comm.Message` now depends on the minimal `MessageSource` seam instead of
   directly on `PeerContext`.
 - `:foundation-config` is the current home for all main `network.crypta.config` and
@@ -103,9 +111,10 @@ Use this skill when you need to:
   used to compile/package. This applies to existing leaves such as `:foundation-support` and
   `:foundation-store-contracts` just as much as any future extraction.
 - Root boundary tests now freeze the extracted layout. In particular,
-  `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`, and
-  `HttpLegacyAdminBoundaryTest` guard leaf ownership/import rules, and the runtime/kernel-content
-  tests require `package-info.java` in every production package under those leaves.
+  `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
+  `KernelTransportBoundaryTest`, and `HttpLegacyAdminBoundaryTest` guard leaf ownership/import
+  rules, and the runtime/kernel-content tests require `package-info.java` in every production
+  package under those leaves.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
@@ -156,8 +165,13 @@ Use this skill when you need to:
 - `:interop-wire` also owns `network.crypta.node.Version`,
   `network.crypta.node.VersionParseException`, `network.crypta.node.probe.Error`,
   `network.crypta.node.probe.Type`, and `network.crypta.support.Serializer`.
-- Root keeps transport-facing code such as `PeerContext`, `MessageCore`, filters, packet/socket
-  handlers, and runtime helpers like `network.crypta.runtime.core.SSL`.
+- `:kernel-transport` owns the compile-neutral transport helper slice across selected
+  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` classes such as
+  `AllowedHosts`, `NetworkInterface`, `IOStatisticCollector`, `SocketHandler`,
+  `PortForwardSensitiveSocketHandler`, `PacketThrottle`, and `PartiallyReceivedBlock`.
+- `:runtime-node` keeps the node-coupled transport-facing code such as `PeerContext`,
+  `MessageCore`, packet filters, active socket handlers, transfer send/receive code, and runtime
+  helpers like `network.crypta.runtime.core.SSL`.
 
 ### Client APIs
 - High-level client: `network.crypta.client`
@@ -312,10 +326,13 @@ Use this skill when you need to:
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:kernel-content`: compile-neutral phase-1 content slice across selected `network.crypta.client*`
   classes plus `network.crypta.support.MediaType`
+- `:kernel-transport`: compile-neutral phase-1 transport slice across selected
+  `network.crypta.io*` helpers
 - `:runtime-spi`: `network.crypta.runtime.spi`
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, large `network.crypta.node` / `network.crypta.runtime.*` slices,
-  `network.crypta.io.xfer`, and the remaining daemon-coupled support helpers
+  the retained node-coupled transport/message execution code, and the remaining daemon-coupled
+  support helpers
 - `:adapter-fcp`: `network.crypta.clients.fcp`
 - `:adapter-http-legacy-admin`: `network.crypta.clients.http`
 

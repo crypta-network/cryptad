@@ -5,8 +5,7 @@ package network.crypta.io.comm;
  *
  * <p>Used by components that observe conditions implying that previously detected connectivity (for
  * example, NAT or firewall port mappings) may no longer be accurate. Implementations should trigger
- * a fresh probe and update the {@link network.crypta.io.AddressTracker} status used by the node for
- * routing and UI hints.
+ * a fresh probe and update the node's address-tracking status used for routing and UI hints.
  *
  * <p>Threading: Callers may invoke methods from I/O or management threads. Implementations should
  * avoid long blocking work on the caller thread.
