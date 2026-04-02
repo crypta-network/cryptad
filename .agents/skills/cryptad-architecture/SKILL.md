@@ -45,16 +45,22 @@ Use this skill when you need to:
   - `:foundation-compat` → `network.crypta.compat`, including
     `network.crypta.compat.bandwidth`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
-  - `:runtime-node` → extraction-prep scaffold that currently owns selected
-    `network.crypta.runtime.*` package docs plus leaf ownership metadata seeds
+  - `:runtime-node` → extracted daemon runtime body across `network.crypta.client`, large
+    `network.crypta.node` and `network.crypta.runtime.*` slices, `network.crypta.io.xfer`, and
+    the remaining daemon-coupled `network.crypta.support` / `network.crypta.support.io` /
+    `network.crypta.support.api` subset
+  - `:adapter-fcp` → `network.crypta.clients.fcp`, including
+    `network.crypta.clients.fcp.bridge`
+  - `:adapter-http-legacy-admin` → the full current legacy `network.crypta.clients.http` tree
+    plus matching `network/crypta/clients/http/**` main resources
   - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
     resources
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports and immutable config DTOs.
-  - The root project implements those ports across `network.crypta.runtime.core` and
-    `network.crypta.runtime.admin`. The runtime nucleus lives in
+  - `:runtime-node` now implements the daemon-backed ports across
+    `network.crypta.runtime.core` and `network.crypta.runtime.admin`. The runtime nucleus lives in
     `network.crypta.runtime.core.LegacyRuntimePorts` plus core adapters such as
     `LegacyConfigPort`, `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`,
     `LegacyRequestQueuePort`, `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`.
@@ -68,14 +74,13 @@ Use this skill when you need to:
     `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`.
     Queue completion/download/insert bridges plus the remaining concrete FCP bridge
     implementations now live under `network.crypta.clients.fcp.bridge`.
-- The large cyclic daemon core still lives in the root project:
-  most of `network.crypta.node`, the daemon-coupled transport/socket/filter side of
-  `network.crypta.io.comm`, `network.crypta.client`, `network.crypta.clients`, the
-  `network.crypta.runtime.bootstrap`, `network.crypta.runtime.core`,
-  `network.crypta.runtime.admin`, `network.crypta.runtime.alerts`,
-  `network.crypta.runtime.endpoints`, `network.crypta.runtime.services`, and
-  `network.crypta.runtime.updater` families, the remaining daemon-coupled support code, and
-  `network.crypta.tools`.
+  - The root project keeps application composition, packaging/runtime tasks, tests, tools, and
+    root-local bridge selection in
+    `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
+- The daemon runtime body now spans extracted leaves plus a thin root composition layer:
+  `:runtime-node` owns the extracted runtime/node/client/support body, `:adapter-fcp` owns the
+  FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources,
+  and the root project keeps tests, packaging, tool entrypoints, and remaining composition glue.
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, while root keeps `MessageCore`,
   `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
@@ -109,7 +114,7 @@ Use this skill when you need to:
 - Operator-facing alerts and alert-feed seams: `network.crypta.runtime.alerts`
 - Endpoint bootstrap glue for FCP/HTTP/TMCI: `network.crypta.runtime.endpoints`
 - Service coordination: `network.crypta.runtime.services`
-- Core/plugin update subsystem: `network.crypta.runtime.updater`
+- Core update subsystem: `network.crypta.runtime.updater`
 
 ### Content storage (`network.crypta.store`)
 - Storage abstractions: `FreenetStore`
@@ -152,6 +157,7 @@ Use this skill when you need to:
     runtime/FCP bridges can post alerts and recover durable requests without owning those
     contracts.
 - FCP: `network.crypta.clients.fcp`
+  - This package now lives in `:adapter-fcp`.
   - Runtime-facing execution, randomness, lifecycle, transfer-policy, and config access now come
     through `RuntimePorts`.
   - `FcpRuntimeAdapters` preserves legacy FCP-local shapes such as `PriorityAwareExecutor` and
@@ -167,6 +173,8 @@ Use this skill when you need to:
     adapters, alert-feed adapters, and endpoint-handle wrappers now live under
     `network.crypta.clients.fcp.bridge`.
 - HTTP interface: `network.crypta.clients.http`
+  - This package now lives in `:adapter-http-legacy-admin` together with the matching
+    `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`.
   - The migrated management and shell slices no longer depend directly on live daemon peers or
     node-info exports for their core data flow.
   - `ConfigToadlet` now takes detached configuration export/update capabilities from
@@ -215,10 +223,12 @@ Use this skill when you need to:
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`
-- Root adapters in `network.crypta.runtime.core`: `LegacyRuntimePorts`, `LegacyConfigPort`,
+- Daemon-backed adapters in `network.crypta.runtime.core` (currently in `:runtime-node`):
+  `LegacyRuntimePorts`, `LegacyConfigPort`,
   `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`, `LegacyRequestQueuePort`,
   `LegacySecurityLevelsPort`, and `LegacyCoreUpdateActionPort`
-- Root adapters in `network.crypta.runtime.admin`: `LegacyConnectionsPagePort`,
+- Daemon-backed adapters in `network.crypta.runtime.admin` (currently in `:runtime-node`):
+  `LegacyConnectionsPagePort`,
   `LegacyConnectionsSupportPort`, `LegacyDarknetConnectionsPort`,
   `LegacyDarknetMessagingPort`, `LegacyDiagnosticPort`, `LegacyStatisticsPort`,
   `LegacyPageChromePort`, `LegacyQueuePagePort`, `LegacyQueueMutationPort`,
@@ -231,10 +241,10 @@ Use this skill when you need to:
   `FcpQueueAdminBackend`, `FcpQueuePageBackend`, `FcpUserAlertFeedSubscriber`,
   `FcpUserAlertFeedMessageFactory`, `FcpPersistentRequestServices`, and endpoint-handle wrappers
 
-### Plugin system (`network.crypta.pluginmanager`)
-- Management: `PluginManager`
-- Capability interfaces: `FredPlugin*`
-- Catalog: `OfficialPlugins`
+### Plugin system
+- The legacy plugin runtime has been removed from the node.
+- Do not expect `network.crypta.pluginmanager`, plugin toadlets, or plugin FCP commands in the
+  current codebase.
 
 ### Configuration (`network.crypta.config`)
 - Main sources live in `:foundation-config`.
@@ -286,7 +296,11 @@ Use this skill when you need to:
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:runtime-spi`: `network.crypta.runtime.spi`
-- `:runtime-node`: extraction-prep scaffold for selected `network.crypta.runtime.*` package docs
+- `:runtime-node`: extracted daemon runtime body across `network.crypta.client`, large
+  `network.crypta.node` / `network.crypta.runtime.*` slices, `network.crypta.io.xfer`, and the
+  remaining daemon-coupled support helpers
+- `:adapter-fcp`: `network.crypta.clients.fcp`
+- `:adapter-http-legacy-admin`: `network.crypta.clients.http`
 
 ### Vendored library leaf modules
 - `:thirdparty-onion`: `com.onionnetworks`
@@ -309,7 +323,8 @@ Use this skill when you need to:
 ### Update system (high level)
 - `NodeUpdateManager` coordinates updates.
 - Core updates use the package-based `CoreUpdater` (see the CoreUpdater skill for details).
-- Plugin updates remain managed by `PluginJarUpdater`.
+- The legacy plugin runtime has been removed; there is no separate plugin updater path in the
+  current node.
 - Core updater state is exposed through CorePackage APIs in `NodeUpdateManager`:
   - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
   - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
