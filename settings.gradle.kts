@@ -35,6 +35,7 @@ include(
   ":runtime-spi",
   ":runtime-node",
   ":adapter-fcp",
+  ":adapter-http-legacy-admin",
   ":thirdparty-onion",
   ":thirdparty-legacy",
   ":launcher-desktop",

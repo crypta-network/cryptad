@@ -5,8 +5,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -106,9 +108,8 @@ class StaticToadletTest {
     URL resourceUrl =
         Objects.requireNonNull(
             StaticToadlet.class.getResource(StaticToadlet.ROOT_PATH + "base.css"));
-    Path resourcePath = Path.of(resourceUrl.toURI());
-    byte[] expectedBytes = Files.readAllBytes(resourcePath);
-    Instant expectedMtime = Instant.ofEpochMilli(resourcePath.toFile().lastModified());
+    byte[] expectedBytes = readAllBytes(resourceUrl);
+    Instant expectedMtime = getResourceMTime(resourceUrl);
 
     InMemoryBucketFactory bucketFactory = new InMemoryBucketFactory();
     when(ctx.getBucketFactory()).thenReturn(bucketFactory);
@@ -142,6 +143,23 @@ class StaticToadletTest {
     assertEquals(expectedBytes.length, lengthCaptor.getValue());
     assertEquals(expectedMtime, dateCaptor.getValue());
     verify(ctx, times(1)).writeData(writtenBucket);
+  }
+
+  private static byte[] readAllBytes(URL resourceUrl) throws IOException {
+    try (InputStream inputStream = resourceUrl.openStream()) {
+      return inputStream.readAllBytes();
+    }
+  }
+
+  private static Instant getResourceMTime(URL resourceUrl) throws IOException {
+    URLConnection connection = resourceUrl.openConnection();
+    if (connection instanceof JarURLConnection jarConnection) {
+      long jarLastModified = jarConnection.getJarFileURL().openConnection().getLastModified();
+      return jarLastModified == 0 ? null : Instant.ofEpochMilli(jarLastModified);
+    }
+
+    long lastModified = connection.getLastModified();
+    return lastModified == 0 ? null : Instant.ofEpochMilli(lastModified);
   }
 
   @Test
