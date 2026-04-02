@@ -196,13 +196,20 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, and MIME helper `network.crypta.support.MediaType`
   classes that stay free of `:runtime-node`, adapter, and root-composition dependencies.
+- `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
+  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
+  address matching, allow-list parsing, listener abstraction, I/O statistics collection, transfer
+  throttling, and partially received block assembly that stay free of `:runtime-node`, adapters,
+  and root-composition dependencies.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
   first-time-wizard, symlinker, and welcome-page slices.
-- `:runtime-node` owns the remaining daemon runtime body across the still-cyclic `network.crypta.client`
-  async/request engine and high-level client APIs, large slices of `network.crypta.node`,
-  `network.crypta.io.xfer`, `network.crypta.runtime.*`, and the remaining daemon-coupled
+- `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
+  `network.crypta.client` async/request engine and high-level client APIs, large slices of
+  `network.crypta.node`, the retained node-coupled transport/message execution code in
+  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer`,
+  `network.crypta.runtime.*`, and the remaining daemon-coupled
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   that has not moved into `:foundation-support`.
 - `:adapter-fcp` owns `network.crypta.clients.fcp`, including
@@ -227,8 +234,9 @@ Cryptad now uses a partial multi-project Gradle build.
   back into aggregated builds.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
-  leaf-owned messages, the new phase-1 `:kernel-content` content slice plus client-owned seams
-  such as `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence`, and
+  leaf-owned messages, the new phase-1 `:kernel-content` content slice, the phase-1
+  `:kernel-transport` helper slice, client-owned seams such as
+  `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence`, and
   runtime-owned seams such as
   `network.crypta.runtime.alerts.feed`, `network.crypta.runtime.fcp`,
   `network.crypta.runtime.http`, `network.crypta.runtime.http.security`,
@@ -272,7 +280,7 @@ For extraction and boundary work, run the focused root boundary tests that freez
 ownership and import rules:
 
 ```bash
-./gradlew test --tests *KernelContentBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest
+./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest
 ```
 
 Those tests also enforce the current extracted-leaf documentation convention that production
@@ -539,11 +547,16 @@ Root build also includes:
 - `:kernel-content`: compile-neutral phase-1 content leaf spanning selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, and `network.crypta.support.MediaType`.
+- `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
+  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
+  allow-list parsing, listener abstraction, statistics collection, throttling, and partially
+  received block assembly.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
   and other infrastructure code.
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, large `network.crypta.node` and `network.crypta.runtime.*`
-  slices, `network.crypta.io.xfer`, and the remaining daemon-coupled support helpers.
+  slices, the retained node-coupled transport/message execution code in `network.crypta.io*`, and
+  the remaining daemon-coupled support helpers.
 - `:adapter-fcp`: extracted `network.crypta.clients.fcp` adapter code, including
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
@@ -601,7 +614,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
-    `:runtime-spi`,
+    `:kernel-transport`, `:runtime-spi`,
     `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
@@ -617,9 +630,13 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Wire/message nucleus (`network.crypta.io.comm`, `network.crypta.node.Version`,
   `network.crypta.node.probe`, `network.crypta.support.Serializer`): `:interop-wire` owns the
   leaf-safe message/schema/address/version/probe subset, including `Message`, `MessageType`,
-  `Peer`, `FreenetInetAddress`, `Version`, and the probe enums. The root project still owns the
-  transport/socket/filter side of `network.crypta.io.comm`, and `Message` now depends on the
-  minimal `MessageSource` seam rather than directly on `PeerContext`.
+  `Peer`, `FreenetInetAddress`, `Version`, and the probe enums. `:kernel-transport` now owns the
+  compile-neutral transport helper slice across selected `network.crypta.io`,
+  `network.crypta.io.comm`, and `network.crypta.io.xfer` classes such as `AllowedHosts`,
+  `NetworkInterface`, `IOStatisticCollector`, `SocketHandler`, `PacketThrottle`, and
+  `PartiallyReceivedBlock`. `:runtime-node` keeps the node-coupled transport/socket/filter and
+  transfer-execution side of `network.crypta.io*`, and `Message` now depends on the minimal
+  `MessageSource` seam rather than directly on `PeerContext`.
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
   (`network.crypta.clients.http`). `:kernel-content` now owns the compile-neutral phase-1 content
   slice: selected client value/archive/helper classes, immutable client event values, a
@@ -702,13 +719,14 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   support.
 - Runtime boundary leaves: `:kernel-content` provides the compile-neutral phase-1 content slice
   across selected `network.crypta.client*` classes plus `network.crypta.support.MediaType`;
-  `:runtime-spi` provides
-  `network.crypta.runtime.spi`; `:runtime-node` provides the extracted daemon runtime body across
-  the remaining cyclic/high-level `network.crypta.client` body, large `network.crypta.node` /
-  `network.crypta.runtime.*` slices, `network.crypta.io.xfer`, and the remaining daemon-coupled
-  support helpers; `:adapter-fcp` provides
-  `network.crypta.clients.fcp`; and `:adapter-http-legacy-admin` provides the current legacy
-  `network.crypta.clients.http` classes and resources.
+  `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
+  `network.crypta.io*` helpers; `:runtime-spi` provides `network.crypta.runtime.spi`;
+  `:runtime-node` provides the extracted daemon runtime body across the remaining cyclic/high-level
+  `network.crypta.client` body, large `network.crypta.node` / `network.crypta.runtime.*` slices,
+  the retained node-coupled transport/message execution code, and the remaining daemon-coupled
+  support helpers; `:adapter-fcp` provides `network.crypta.clients.fcp`; and
+  `:adapter-http-legacy-admin` provides the current legacy `network.crypta.clients.http` classes
+  and resources.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 

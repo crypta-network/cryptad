@@ -1,0 +1,29 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :kernel-transport owns
+# them now.
+
+network/crypta/io/AddressMatcher.class
+network/crypta/io/AddressMatcher$*.class
+network/crypta/io/AllowedHosts.class
+network/crypta/io/AllowedHosts$*.class
+network/crypta/io/EverythingMatcher.class
+network/crypta/io/EverythingMatcher$*.class
+network/crypta/io/Inet4AddressMatcher.class
+network/crypta/io/Inet4AddressMatcher$*.class
+network/crypta/io/Inet6AddressMatcher.class
+network/crypta/io/Inet6AddressMatcher$*.class
+network/crypta/io/NetworkInterface.class
+network/crypta/io/NetworkInterface$*.class
+network/crypta/io/comm/IOStatisticCollector.class
+network/crypta/io/comm/IOStatisticCollector$*.class
+network/crypta/io/comm/PortForwardSensitiveSocketHandler.class
+network/crypta/io/comm/PortForwardSensitiveSocketHandler$*.class
+network/crypta/io/comm/SocketHandler.class
+network/crypta/io/comm/SocketHandler$*.class
+network/crypta/io/xfer/AbortedException.class
+network/crypta/io/xfer/AbortedException$*.class
+network/crypta/io/xfer/PacketThrottle.class
+network/crypta/io/xfer/PacketThrottle$*.class
+network/crypta/io/xfer/PartiallyReceivedBlock.class
+network/crypta/io/xfer/PartiallyReceivedBlock$*.class
+network/crypta/io/xfer/WaitedTooLongException.class
+network/crypta/io/xfer/WaitedTooLongException$*.class
