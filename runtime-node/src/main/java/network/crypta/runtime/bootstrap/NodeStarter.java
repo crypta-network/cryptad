@@ -311,7 +311,7 @@ public class NodeStarter implements WrapperListener {
             params.getRandom(),
             null,
             params.getExecutor(),
-            DefaultNodeRuntimeBridgeFactories.coreBacked());
+            defaultRuntimeBridgeFactories());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -560,8 +560,7 @@ public class NodeStarter implements WrapperListener {
 
     try {
       node =
-          Node.createForBootstrap(
-              cfg, null, null, this, executor, DefaultNodeRuntimeBridgeFactories.coreBacked());
+          Node.createForBootstrap(cfg, null, null, this, executor, defaultRuntimeBridgeFactories());
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");
@@ -592,6 +591,18 @@ public class NodeStarter implements WrapperListener {
       cmd.getErr().println();
       cmd.usage(cmd.getErr());
       return CommandLine.ExitCode.USAGE;
+    }
+  }
+
+  private static NodeRuntimeBridgeFactories defaultRuntimeBridgeFactories() {
+    try {
+      Class<?> factoryClass =
+          Class.forName("network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories");
+      Object bridgeFactories = factoryClass.getMethod("coreBacked").invoke(null);
+      return (NodeRuntimeBridgeFactories) bridgeFactories;
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException(
+          "DefaultNodeRuntimeBridgeFactories must be available from the root composition layer", e);
     }
   }
 

@@ -15,6 +15,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -156,7 +157,7 @@ public final class Metadata implements Serializable {
       short flags = dis.readShort();
       splitfile = (flags & FLAGS_SPLITFILE) == FLAGS_SPLITFILE;
       dbr = (flags & FLAGS_DBR) == FLAGS_DBR;
-      noMIME = (flags & FLAGS_NO_MIME) == FLAGS_NO_MIME;
+      noMIME.set((flags & FLAGS_NO_MIME) == FLAGS_NO_MIME);
       compressedMIME = (flags & FLAGS_COMPRESSED_MIME) == FLAGS_COMPRESSED_MIME;
       extraMetadata = (flags & FLAGS_EXTRA_METADATA) == FLAGS_EXTRA_METADATA;
       fullKeys = (flags & FLAGS_FULL_KEYS) == FLAGS_FULL_KEYS;
@@ -271,7 +272,7 @@ public final class Metadata implements Serializable {
   }
 
   private void readMime(DataInputStream dis) throws IOException, MetadataParseException {
-    if (noMIME) {
+    if (noMIME.get()) {
       mimeType = null;
       if (LOG.isDebugEnabled()) LOG.debug("noMIME enabled");
       return;
@@ -574,11 +575,11 @@ public final class Metadata implements Serializable {
   /** Is a splitfile? */
   boolean splitfile;
 
-  /** Is a DBR */
+  /** Is a DBR? */
   boolean dbr;
 
   /** No MIME type; on by default as not all doctypes have MIME */
-  volatile boolean noMIME = true;
+  final AtomicBoolean noMIME = new AtomicBoolean(true);
 
   /** Compressed MIME type */
   boolean compressedMIME;
@@ -809,7 +810,7 @@ public final class Metadata implements Serializable {
     this.parsedVersion = orig.parsedVersion;
     this.splitfile = orig.splitfile;
     this.dbr = orig.dbr;
-    this.noMIME = orig.noMIME;
+    this.noMIME.set(orig.noMIME.get());
     this.compressedMIME = orig.compressedMIME;
     this.extraMetadata = orig.extraMetadata;
     this.fullKeys = orig.fullKeys;
@@ -1077,7 +1078,7 @@ public final class Metadata implements Serializable {
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
     documentType = DocumentType.SIMPLE_MANIFEST;
-    noMIME = true;
+    noMIME.set(true);
     manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
@@ -1130,7 +1131,7 @@ public final class Metadata implements Serializable {
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
     documentType = DocumentType.SIMPLE_MANIFEST;
-    noMIME = true;
+    noMIME.set(true);
     manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
@@ -1175,7 +1176,7 @@ public final class Metadata implements Serializable {
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
     documentType = DocumentType.SIMPLE_MANIFEST;
-    noMIME = true;
+    noMIME.set(true);
     mimeType = null;
     clientMetadata = new ClientMetadata();
     manifestEntries = new HashMap<>();
@@ -1263,7 +1264,7 @@ public final class Metadata implements Serializable {
    */
   private Metadata(DocumentType docType, String name) {
     hashCode = System.identityHashCode(this);
-    noMIME = true;
+    noMIME.set(true);
     if (docType == DocumentType.ARCHIVE_METADATA_REDIRECT) {
       documentType = docType;
       targetName = name;
@@ -1346,7 +1347,7 @@ public final class Metadata implements Serializable {
         setMIMEType(clientMetadata.getMIMEType());
       } else {
         setMIMEType(DefaultMIMETypes.DEFAULT_MIME_TYPE);
-        noMIME = true;
+        noMIME.set(true);
       }
       FreenetURI uri = target.uri();
       if (uri == null) throw new NullPointerException();
@@ -1499,7 +1500,7 @@ public final class Metadata implements Serializable {
     this.specifySplitfileKey = specifySplitfileKeyValue;
     if (splitfileCryptoKey == null)
       throw new IllegalArgumentException("Splitfile with parsed version 1 must have a crypto key");
-    // Segments layout is managed elsewhere when needed.
+    // Segment layout is managed elsewhere when needed.
   }
 
   private boolean keysInvalid(ClientCHK[] keys) {
@@ -1509,7 +1510,7 @@ public final class Metadata implements Serializable {
 
   /** Set the MIME type to a string. Compresses it if possible for transit. */
   private void setMIMEType(String type) {
-    noMIME = false;
+    noMIME.set(false);
     short s = DefaultMIMETypes.byName(type);
     if (s >= 0) {
       compressedMIME = true;
@@ -1547,7 +1548,7 @@ public final class Metadata implements Serializable {
    * without allocating an intermediate buffer.
    *
    * @return total serialized length in bytes.
-   * @throws MetadataUnresolvedException if unresolved child metadata prevents serialization.
+   * @throws MetadataUnresolvedException if unresolved, child metadata prevents serialization.
    * @throws java.io.UncheckedIOException if an I/O error occurs while counting bytes.
    */
   public long writtenLength() throws MetadataUnresolvedException {
@@ -1826,7 +1827,7 @@ public final class Metadata implements Serializable {
    */
   @SuppressWarnings("unused")
   public boolean isNoMimeEnabled() {
-    return noMIME;
+    return noMIME.get();
   }
 
   /**
@@ -1888,7 +1889,7 @@ public final class Metadata implements Serializable {
     short flags = 0;
     if (splitfile) flags |= FLAGS_SPLITFILE;
     if (dbr) flags |= FLAGS_DBR;
-    if (noMIME) flags |= FLAGS_NO_MIME;
+    if (noMIME.get()) flags |= FLAGS_NO_MIME;
     if (compressedMIME) flags |= FLAGS_COMPRESSED_MIME;
     if (extraMetadata) flags |= FLAGS_EXTRA_METADATA;
     if (fullKeys) flags |= FLAGS_FULL_KEYS;
@@ -1941,7 +1942,7 @@ public final class Metadata implements Serializable {
       dos.writeShort(compressionCodec.metadataID);
       dos.writeLong(decompressedLength);
     }
-    if (noMIME) return;
+    if (noMIME.get()) return;
     if (compressedMIME) {
       int x = compressedMIMEValue;
       if (hasCompressedMIMEParams) x |= 32768;
@@ -2253,7 +2254,7 @@ public final class Metadata implements Serializable {
    *
    * @param bf factory used to allocate the destination bucket; must not be {@code null}.
    * @return a read‑only bucket containing the serialized metadata bytes.
-   * @throws MetadataUnresolvedException if unresolved child metadata prevents serialization.
+   * @throws MetadataUnresolvedException if unresolved, child metadata prevents serialization.
    * @throws IOException if an I/O error occurs while writing to the allocated bucket.
    */
   public RandomAccessBucket toBucket(BucketFactory bf)
@@ -2342,7 +2343,7 @@ public final class Metadata implements Serializable {
     public SimpleManifestComposer() {
       m = new Metadata();
       m.documentType = DocumentType.SIMPLE_MANIFEST;
-      m.noMIME = true;
+      m.noMIME.set(true);
       m.manifestEntries = new HashMap<>();
     }
 
@@ -2401,7 +2402,7 @@ public final class Metadata implements Serializable {
             + " dbr="
             + dbr
             + " noMIME="
-            + noMIME
+            + noMIME.get()
             + " cmime="
             + compressedMIME
             + " extra="
@@ -2427,7 +2428,7 @@ public final class Metadata implements Serializable {
   }
 
   private void dumpline(int indent, StringBuilder sb, String string) {
-    sb.append(" ".repeat(Math.max(0, indent)));
+    sb.repeat(" ", Math.max(0, indent));
     sb.append(string);
     sb.append("\n");
   }
