@@ -2,9 +2,9 @@
  * Client endpoint wiring and TMCI bootstrap support for the runtime boundary.
  *
  * <p>This package groups the legacy endpoint bootstrap cluster that wires the live FCP, HTTP, and
- * text-mode client interfaces from daemon-backed services. The classes remain in the root project
- * and keep their existing collaboration patterns, including package-private TMCI access, but they
- * now sit under a neutral runtime-oriented package instead of {@code network.crypta.node}.
+ * text-mode client interfaces from daemon-backed services. The classes remain part of the daemon
+ * runtime and keep their existing collaboration patterns, including package-private TMCI access,
+ * but they now sit under a neutral runtime-oriented package instead of {@code network.crypta.node}.
  *
  * <p>The package also owns {@link network.crypta.runtime.endpoints.ClientContextInitParams}, the
  * immutable bootstrap bundle used to assemble client context dependencies during node startup.
