@@ -1,18 +1,18 @@
 /**
- * Core daemon node runtime: peer coordination, request orchestration, transport handling, and
+ * Core daemon-owned node runtime: peer coordination, request orchestration, transport handling, and
  * node-owned persistence helpers.
  *
- * <p>This package contains the live daemon body centered on {@code Node} and {@code
+ * <p>This package now spans a split-package boundary across multiple leaves. The {@code
+ * runtime-node} portion contains the live daemon body centered on {@code Node} and {@code
  * NodeClientCore}. It owns peer management, packet and handshake processing, request scheduling,
  * insert and fetch execution, security-level handling, statistics export, and the node-local file
- * and key material helpers that still depend directly on a running daemon instance. The package is
- * therefore broader than the future kernel leaves, but it captures the current post-extraction
- * ownership explicitly.
+ * and key material helpers that still depend directly on a running daemon instance. The smaller
+ * compile-neutral helper slice now lives in {@code :kernel-routing}, while this runtime-owned
+ * portion keeps the cyclic request, peer, and transport engines.
  *
- * <p>For the kernel split preparation baseline, these classes remain in {@code runtime-node}. They
- * are not a stable public extension surface, and this package still mixes transport, routing, and
- * content-adjacent responsibilities that later work will separate into more focused kernel modules.
- * Documenting the boundary here freezes the current structure without moving production code or
+ * <p>These runtime-owned classes are not a stable public extension surface. They still mix
+ * transport, routing, and content-adjacent responsibilities that later work will separate into more
+ * focused kernel modules. Documenting the boundary here freezes the current structure without
  * changing runtime behavior.
  */
 package network.crypta.node;

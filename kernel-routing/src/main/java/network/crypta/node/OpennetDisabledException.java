@@ -5,8 +5,8 @@ import java.io.Serial;
 /**
  * Signals that an operation requires the opennet subsystem, but it is disabled for this node.
  *
- * <p>This is a checked exception used by {@link Node} and related components to indicate that a
- * caller attempted to perform an opennet action when opennet is not enabled in the current runtime
+ * <p>This is a checked exception used by node-facing runtime code to indicate that a caller
+ * attempted to perform an opennet action when opennet is not enabled in the current runtime
  * configuration. The class is immutable and therefore thread-safe.
  */
 public class OpennetDisabledException extends Exception {

@@ -3,6 +3,14 @@ package network.crypta.node;
 import java.io.Serial;
 import network.crypta.keys.KeyBlock;
 
+/**
+ * Exception representing a failure during a low-level PUT operation in the node.
+ *
+ * <p>The {@link #code} field carries a stable integer reason that callers can use for retry,
+ * overload handling, or collision-specific behavior. For collision cases, {@link
+ * #getCollidedBlock()} exposes the conflicting block when one is available. Instances are
+ * effectively immutable and safe to share across threads.
+ */
 public class LowLevelPutException extends Exception {
   @Serial private static final long serialVersionUID = 1L;
 
@@ -41,24 +49,46 @@ public class LowLevelPutException extends Exception {
     };
   }
 
+  /**
+   * Constructs an instance with an explicit message and cause.
+   *
+   * @param code failure reason (one of the defined constants)
+   * @param message detail message; not {@code null}
+   * @param t optional cause; may be {@code null}
+   */
   public LowLevelPutException(int code, String message, Throwable t) {
     super(message, t);
     this.code = code;
     this.collidedBlock = null;
   }
 
+  /**
+   * Constructs an instance using the default description for {@code reason}.
+   *
+   * @param reason failure reason (one of the defined constants)
+   */
   public LowLevelPutException(int reason) {
     super(getMessage(reason));
     this.code = reason;
     this.collidedBlock = null;
   }
 
+  /**
+   * Constructs a collision instance carrying the conflicting block.
+   *
+   * @param collided conflicting block returned by the datastore or peer handling path
+   */
   public LowLevelPutException(KeyBlock collided) {
     super(getMessage(COLLISION));
     this.code = COLLISION;
     this.collidedBlock = collided;
   }
 
+  /**
+   * Returns the conflicting block when the failure reason is {@link #COLLISION}.
+   *
+   * @return the collided block for collision failures, or {@code null} for other failure reasons
+   */
   public KeyBlock getCollidedBlock() {
     return collidedBlock;
   }

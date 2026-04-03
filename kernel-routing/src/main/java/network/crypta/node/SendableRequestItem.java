@@ -12,7 +12,7 @@ package network.crypta.node;
  * efficiently. Use {@link #getKey()} to supply a compact identity suitable for hash-based
  * collections when deduplicating or checking membership.
  *
- * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
+ * @author Matthew Toseland {@code <toad@amphibian.dyndns.org>} (0xE43DA450)
  */
 public interface SendableRequestItem {
 
@@ -33,6 +33,9 @@ public interface SendableRequestItem {
    * a dedicated {@link SendableRequestItemKey} implementation instead (commonly used for transient
    * inserts). The key should define stable {@link Object#equals(Object)} and {@link
    * Object#hashCode()} semantics that reflect the item's logical identity.
+   *
+   * @return a stable lightweight key that identifies this item in queue and membership tracking
+   *     structures
    */
   SendableRequestItemKey getKey();
 }

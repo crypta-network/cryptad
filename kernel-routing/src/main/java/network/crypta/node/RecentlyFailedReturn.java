@@ -21,6 +21,14 @@ public class RecentlyFailedReturn {
   private long wakeup;
 
   /**
+   * Creates an inactive recent-failure tracker.
+   *
+   * <p>New instances start with no active backoff window. Callers typically allocate one tracker
+   * per routing decision and then reuse it as failures are observed.
+   */
+  public RecentlyFailedReturn() {}
+
+  /**
    * Mark this instance as recently failed until the provided wakeup time.
    *
    * <p>The {@code wakeupTime} is an absolute timestamp in milliseconds since the epoch. A later

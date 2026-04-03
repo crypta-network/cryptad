@@ -20,8 +20,7 @@ package network.crypta.node;
  * <pre>{@code
  * RequestClient bulk = new RequestClientBuilder().build();
  * RequestClient rt   = new RequestClientBuilder().realTime().build();
- * }</code>
- * </pre>
+ * }</pre>
  *
  * @author <a href="mailto:bombe@freenetproject.org">David ‘Bombe’ Roden</a>
  */
@@ -29,6 +28,14 @@ public class RequestClientBuilder {
 
   private boolean persistent;
   private boolean realTime;
+
+  /**
+   * Creates a builder with non-persistent, non-real-time defaults.
+   *
+   * <p>Callers may mutate the builder fluently and then call {@link #build()} to capture an
+   * immutable request-client snapshot.
+   */
+  public RequestClientBuilder() {}
 
   /**
    * Enables persistence for subsequently {@link #build() built} clients.
