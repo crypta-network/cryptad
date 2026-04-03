@@ -11,7 +11,7 @@ plugins {
   application
 }
 
-// Update version manually before a new release development starts
+// Update version manually before new release development starts
 version = "3"
 
 val internalLeafProjects =
@@ -28,6 +28,7 @@ val internalLeafProjects =
     project(":kernel-transport"),
     project(":kernel-routing"),
     project(":runtime-spi"),
+    project(":platform-api"),
     project(":runtime-node"),
     project(":adapter-fcp"),
     project(":adapter-http-legacy-admin"),
@@ -56,6 +57,7 @@ dependencies {
   implementation(project(":kernel-transport"))
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
+  implementation(project(":platform-api"))
   implementation(project(":runtime-node"))
   implementation(project(":adapter-fcp"))
   implementation(project(":adapter-http-legacy-admin"))
@@ -323,7 +325,7 @@ val legacyRuntimeAlertsTestPackageDir =
   layout.buildDirectory.dir("classes/java/test/network/crypta/node/useralerts")
 
 // Selective leaf ownership metadata only covers root <-> leaf and leaf <-> leaf moves.
-// Root-local package re-homes still need explicit stale-output pruning so non-clean builds and
+// Root-local package re-homes still need explicit stale-output pruning, so non-clean builds and
 // branch switches do not keep packaging deleted classes from the old package path.
 val pruneLegacyRuntimeAlertsOutputs by
   tasks.registering(Delete::class) {
