@@ -21,7 +21,7 @@ Use this skill when you need to:
 - Current leaf projects are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
-  `:kernel-transport`, `:runtime-spi`,
+  `:kernel-transport`, `:kernel-routing`, `:runtime-spi`,
   `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
@@ -55,6 +55,10 @@ Use this skill when you need to:
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allow-list parsing, listener abstraction, I/O statistics collection, throttling, and partially
   received block assembly.
+- `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
+  `network.crypta.node` value, exception, callback, and request-item helper types such as
+  `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
+  `PeerStatusCounts`, `RecentlyFailedReturn`, and `SendableRequestItem*`.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
   `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
   moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
@@ -63,16 +67,18 @@ Use this skill when you need to:
   leaf's `owned-output-patterns.txt` and validate with
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
 - Root boundary tests now freeze the current extracted layout. `RuntimeNodeKernelSplitPrepBoundaryTest`,
-  `KernelContentBoundaryTest`, `KernelTransportBoundaryTest`, and `HttpLegacyAdminBoundaryTest`
-  are the focused regression checks for leaf ownership/import boundaries, and the
+  `KernelContentBoundaryTest`, `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, and
+  `HttpLegacyAdminBoundaryTest` are the focused regression checks for leaf ownership/import
+  boundaries, and the
   runtime/kernel-content tests enforce `package-info.java` coverage for production packages in
   those leaves.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
-  `network.crypta.client` body, `network.crypta.node`, the retained node-coupled transport/message
-  execution code in `network.crypta.io*`, `network.crypta.runtime.*`, and the remaining
-  daemon-coupled support helpers.
+  `network.crypta.client` body, the remaining peer/request/routing-engine side of
+  `network.crypta.node`, the retained node-coupled transport/message execution code in
+  `network.crypta.io*`, `network.crypta.runtime.*`, and the remaining daemon-coupled support
+  helpers.
 - `:adapter-fcp` owns `network.crypta.clients.fcp`, including
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree and the
@@ -108,7 +114,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Run one test method:
   - `./gradlew test --tests *TestClassName.methodName`
 - For extracted-leaf or boundary work, run the focused boundary tests:
-  - `./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest`
+  - `./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest`
 
 ## Compile-only / quick checks
 - Compile only:
@@ -137,6 +143,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Compile the phase-1 kernel-transport leaf when you touched extracted compile-neutral transport
   helpers:
   - `./gradlew :kernel-transport:compileJava`
+- Compile the phase-1 kernel-routing leaf when you touched extracted compile-neutral routing/helper
+  classes:
+  - `./gradlew :kernel-routing:compileJava`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
 - Compile the extracted runtime-node leaf when you touched daemon runtime, node, client, xfer, or

@@ -12,6 +12,7 @@ dependencies {
   implementation(project(":interop-wire"))
   implementation(project(":kernel-content"))
   implementation(project(":kernel-transport"))
+  implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
   implementation(project(":runtime-node"))
 

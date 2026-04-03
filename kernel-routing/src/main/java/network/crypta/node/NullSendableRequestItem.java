@@ -27,6 +27,14 @@ public class NullSendableRequestItem implements SendableRequestItem, SendableReq
    */
   public static final NullSendableRequestItem nullItem = new NullSendableRequestItem();
 
+  /**
+   * Creates a null-item sentinel.
+   *
+   * <p>Callers normally reuse {@link #nullItem} instead of allocating additional instances, but the
+   * constructor remains public to preserve the historical surface of this lightweight marker type.
+   */
+  public NullSendableRequestItem() {}
+
   /** No-op for the null item; there are no resources to release. */
   @Override
   public void dump() {

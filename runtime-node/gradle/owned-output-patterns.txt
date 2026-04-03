@@ -2,6 +2,9 @@
 # Keep broad subtree globs only where they do not overlap with existing extracted leaves.
 # The :kernel-content phase-1 extraction split network/crypta/client across leaves, so runtime-node
 # must enumerate its remaining client outputs explicitly to avoid overlapping ownership metadata.
+# The :kernel-routing phase-1 extraction likewise split network/crypta/node across leaves, so
+# runtime-node continues to enumerate only the retained node outputs instead of claiming a broad
+# package glob.
 
 network/crypta/client/package-info*
 network/crypta/client/ArchiveElementRequest.class
@@ -219,14 +222,10 @@ network/crypta/node/BandwidthManager.class
 network/crypta/node/BandwidthManager$*.class
 network/crypta/node/BasePeerNode.class
 network/crypta/node/BasePeerNode$*.class
-network/crypta/node/BaseRequestThrottle.class
-network/crypta/node/BaseRequestThrottle$*.class
 network/crypta/node/BaseSendableGet.class
 network/crypta/node/BaseSendableGet$*.class
 network/crypta/node/BaseSender.class
 network/crypta/node/BaseSender$*.class
-network/crypta/node/BlockedTooLongException.class
-network/crypta/node/BlockedTooLongException$*.class
 network/crypta/node/CHKInsertHandler.class
 network/crypta/node/CHKInsertHandler$*.class
 network/crypta/node/CHKInsertSender.class
@@ -249,8 +248,6 @@ network/crypta/node/FailureTableEntry.class
 network/crypta/node/FailureTableEntry$*.class
 network/crypta/node/HandshakeCompletionParams.class
 network/crypta/node/HandshakeCompletionParams$*.class
-network/crypta/node/HighHtlAware.class
-network/crypta/node/HighHtlAware$*.class
 network/crypta/node/HourlyStats.class
 network/crypta/node/HourlyStats$*.class
 network/crypta/node/HourlyStatsRecord.class
@@ -259,8 +256,6 @@ network/crypta/node/IPDetectorManager.class
 network/crypta/node/IPDetectorManager$*.class
 network/crypta/node/InsertHandlerContext.class
 network/crypta/node/InsertHandlerContext$*.class
-network/crypta/node/InsertRoutingOptions.class
-network/crypta/node/InsertRoutingOptions$*.class
 network/crypta/node/InsertTag.class
 network/crypta/node/InsertTag$*.class
 network/crypta/node/KeysFetchingLocally.class
@@ -269,10 +264,6 @@ network/crypta/node/Location.class
 network/crypta/node/Location$*.class
 network/crypta/node/LocationManager.class
 network/crypta/node/LocationManager$*.class
-network/crypta/node/LowLevelGetException.class
-network/crypta/node/LowLevelGetException$*.class
-network/crypta/node/LowLevelPutException.class
-network/crypta/node/LowLevelPutException$*.class
 network/crypta/node/MasterKeys.class
 network/crypta/node/MasterKeys$*.class
 network/crypta/node/MasterKeysFileSizeException.class
@@ -357,12 +348,8 @@ network/crypta/node/NodeSwapMessageHandler.class
 network/crypta/node/NodeSwapMessageHandler$*.class
 network/crypta/node/NodeToNodeMessageListener.class
 network/crypta/node/NodeToNodeMessageListener$*.class
-network/crypta/node/NullSendableRequestItem.class
-network/crypta/node/NullSendableRequestItem$*.class
 network/crypta/node/OfferReplyTag.class
 network/crypta/node/OfferReplyTag$*.class
-network/crypta/node/OpennetDisabledException.class
-network/crypta/node/OpennetDisabledException$*.class
 network/crypta/node/OpennetManager.class
 network/crypta/node/OpennetManager$*.class
 network/crypta/node/OpennetNoderefValidator.class
@@ -443,30 +430,18 @@ network/crypta/node/PeerRoutingSelector.class
 network/crypta/node/PeerRoutingSelector$*.class
 network/crypta/node/PeerStatusBook.class
 network/crypta/node/PeerStatusBook$*.class
-network/crypta/node/PeerStatusCounts.class
-network/crypta/node/PeerStatusCounts$*.class
 network/crypta/node/PeerStatusTracker.class
 network/crypta/node/PeerStatusTracker$*.class
-network/crypta/node/PeerTooOldException.class
-network/crypta/node/PeerTooOldException$*.class
 network/crypta/node/PeerTransport.class
 network/crypta/node/PeerTransport$*.class
 network/crypta/node/PrioRunnable.class
 network/crypta/node/PrioRunnable$*.class
 network/crypta/node/ProgramDirectory.class
 network/crypta/node/ProgramDirectory$*.class
-network/crypta/node/RecentlyFailedReturn.class
-network/crypta/node/RecentlyFailedReturn$*.class
 network/crypta/node/RequestAdmissionContext.class
 network/crypta/node/RequestAdmissionContext$*.class
 network/crypta/node/RequestAdmissionMode.class
 network/crypta/node/RequestAdmissionMode$*.class
-network/crypta/node/RequestClient.class
-network/crypta/node/RequestClient$*.class
-network/crypta/node/RequestClientBuilder.class
-network/crypta/node/RequestClientBuilder$*.class
-network/crypta/node/RequestCompletionListener.class
-network/crypta/node/RequestCompletionListener$*.class
 network/crypta/node/RequestHandler.class
 network/crypta/node/RequestHandler$*.class
 network/crypta/node/RequestHandlerContext.class
@@ -487,16 +462,12 @@ network/crypta/node/RequestTag.class
 network/crypta/node/RequestTag$*.class
 network/crypta/node/RequestTracker.class
 network/crypta/node/RequestTracker$*.class
-network/crypta/node/RequestTransferOptions.class
-network/crypta/node/RequestTransferOptions$*.class
 network/crypta/node/RunningRequestsSnapshot.class
 network/crypta/node/RunningRequestsSnapshot$*.class
 network/crypta/node/SSKInsertHandler.class
 network/crypta/node/SSKInsertHandler$*.class
 network/crypta/node/SSKInsertSender.class
 network/crypta/node/SSKInsertSender$*.class
-network/crypta/node/SecurityLevelListener.class
-network/crypta/node/SecurityLevelListener$*.class
 network/crypta/node/SecurityLevels.class
 network/crypta/node/SecurityLevels$*.class
 network/crypta/node/SeedAnnounceTracker.class
@@ -519,10 +490,6 @@ network/crypta/node/SendableInsert.class
 network/crypta/node/SendableInsert$*.class
 network/crypta/node/SendableRequest.class
 network/crypta/node/SendableRequest$*.class
-network/crypta/node/SendableRequestItem.class
-network/crypta/node/SendableRequestItem$*.class
-network/crypta/node/SendableRequestItemKey.class
-network/crypta/node/SendableRequestItemKey$*.class
 network/crypta/node/SendableRequestSender.class
 network/crypta/node/SendableRequestSender$*.class
 network/crypta/node/SessionKey.class

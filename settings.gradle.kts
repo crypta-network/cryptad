@@ -34,6 +34,7 @@ include(
   ":foundation-compat",
   ":kernel-content",
   ":kernel-transport",
+  ":kernel-routing",
   ":runtime-spi",
   ":runtime-node",
   ":adapter-fcp",
