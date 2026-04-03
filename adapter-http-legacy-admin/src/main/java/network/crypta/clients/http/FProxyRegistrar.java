@@ -356,6 +356,11 @@ final class FProxyRegistrar {
     server.register(
         bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
 
+    PlatformApiToadlet platformApiToadlet = new PlatformApiToadlet(client, runtimePorts);
+    server.register(
+        platformApiToadlet,
+        ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));
+
     BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
     server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
 

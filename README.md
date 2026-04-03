@@ -111,7 +111,7 @@ Choose one of the following options.
     ```
 
 Linux servers (no desktop environment)
-- On systems without a desktop environment, the installer (deb/rpm) creates a systemd unit `cryptad.service` and enables it, but does not start it automatically. You must start it manually after install:
+- On systems without a desktop environment, the installer (deb/rpm) creates a systemd unit `cryptad.service` and enables it, but does not start it automatically. You must start it manually after installation:
   ```bash
   sudo systemctl start cryptad
   ```
@@ -133,7 +133,7 @@ The launcher starts the daemon, streams live logs, detects the FProxy port from 
 Shortcuts (global):
 - ↑/↓ one row; PgUp/PgDn one page.
 - ←/→ move focus among the three buttons (wrap‑around).
-- Enter/Space click focused button; s start/stop; q quit.
+- Enter/Space click the focused button; s start/stop; q quit.
 
 Notes
 - Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear while the wrapper is running.
@@ -198,7 +198,7 @@ Cryptad now uses a partial multi-project Gradle build.
   classes that stay free of `:runtime-node`, adapter, and root-composition dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-  address matching, allow-list parsing, listener abstraction, I/O statistics collection, transfer
+  address matching, allowlist parsing, listener abstraction, I/O statistics collection, transfer
   throttling, and partially received block assembly that stay free of `:runtime-node`, adapters,
   and root-composition dependencies.
 - `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
@@ -210,6 +210,12 @@ Cryptad now uses a partial multi-project Gradle build.
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
   first-time-wizard, symlinker, and welcome-page slices.
+- `:platform-api` owns the transport-neutral read-only Platform API v1 under
+  `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
+  as JSON-oriented responses, and is currently mounted at `/api/v1/` through a thin legacy HTTP
+  bridge in `:adapter-http-legacy-admin`. The initial read-only surface covers node info, peers,
+  config export, connectivity, and security-level snapshots; `GET /api/v1/config` defaults to the
+  effective `CURRENT` section when `sections=` is omitted.
 - `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
   `network.crypta.client` async/request engine and high-level client APIs, large slices of
   `network.crypta.node` after the phase-1 routing/helper move, the retained node-coupled
@@ -224,7 +230,8 @@ Cryptad now uses a partial multi-project Gradle build.
   the matching `network/crypta/clients/http/**` main resources such as `staticfiles/**` and
   `templates/**`. The root project no longer owns that main source/resource tree, and the
   remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
-  refines it further.
+  refines it further. That shell now also hosts the temporary `/api/v1/` mount for
+  `:platform-api`; future Web Shell and AppHost work remain separate.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -300,7 +307,7 @@ packages in `:kernel-content` and `:runtime-node` keep a `package-info.java`.
 ./gradlew compileJava
 ```
 
-- Formatting via Spotless is configured; see the Spotless + Dependency Verification section if verification blocks resolution.
+- Formatting via Spotless is configured; see the Spotless and Dependency Verification section if verification blocks resolution.
 - Gradle daemon is enabled by default; avoid passing `--no-daemon`.
 
 ## Running Your Build
@@ -433,7 +440,7 @@ macOS notes
 Linux behavior and service
 
 - Install location: the app image installs under `/opt/cryptad/Crypta` and the launcher/scripts expect `/opt/cryptad`.
-- Server vs desktop detection:
+- Server vs. desktop detection:
   - Considered a “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active.
   - As a fallback, presence of session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`) also counts as desktop.
   - This avoids mislabeling headless servers that happen to default to `graphical.target`.
@@ -502,7 +509,7 @@ cd build/jpackage/Crypta.app/Contents
 - The Windows batch launcher (`bin/cryptad.bat`) passes a per‑user anchor location to the wrapper: `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"`.
 - The Swing launcher requests a graceful stop by deleting that file; the Java Service Wrapper notices and shuts down the JVM cleanly (running shutdown hooks, flushing logs, etc.).
 - If the process tree is still alive after ~25 seconds, the launcher escalates to `taskkill` (first without `/F`, then with `/F`).
-- Advanced: To change the anchor path, customize the batch file or pass a different property on the command line; a value in `wrapper.conf` is overridden by the batch property.
+- Advanced: To change the anchor path, customize the batch file, or pass a different property on the command line; a value in `wrapper.conf` is overridden by the batch property.
 
 ### Launcher script resolution
 
@@ -555,7 +562,7 @@ Root build also includes:
   `network.crypta.client.async.alerts`, and `network.crypta.support.MediaType`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-  allow-list parsing, listener abstraction, statistics collection, throttling, and partially
+  allowlist parsing, listener abstraction, statistics collection, throttling, and partially
   received block assembly.
 - `:kernel-routing`: compile-neutral phase-1 routing/helper leaf spanning selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
@@ -563,6 +570,8 @@ Root build also includes:
   `PeerStatusCounts`, and `SendableRequestItem*`.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
   and other infrastructure code.
+- `:platform-api`: transport-neutral read-only Platform API v1 built on top of `:runtime-spi`,
+  currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
@@ -625,7 +634,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
-    `:kernel-transport`, `:kernel-routing`, `:runtime-spi`,
+    `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
     `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
@@ -676,6 +685,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
   `staticfiles/**` and `templates/**` resources. The migrated HTTP management and shell slices
   cross the boundary in three layers: `RuntimePorts` for JDK-only detached runtime state,
+  `:platform-api` for the read-only Platform API v1 router and JSON surface currently mounted at
+  `/api/v1/`,
   runtime-owned shell and password-prompt seams under `network.crypta.runtime.http` and
   `network.crypta.runtime.http.security`, and client-local helpers such as
   `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`, and
@@ -720,7 +731,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
-  foundation leaf; daemon-coupled support code still remains in root.
+  foundation leaf; daemon-coupled support code still remains in the root.
 - Launcher/Desktop: `:launcher-desktop` provides `network.crypta.launcher`,
   `com.jthemedetecor`, launcher resources, and desktop-theme integration.
 - Extracted foundations: `:foundation-support` provides the stable generic support subset,
@@ -737,7 +748,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
-  and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`; `:runtime-node`
+  and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
+  `:platform-api` provides the transport-neutral read-only Platform API v1; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled

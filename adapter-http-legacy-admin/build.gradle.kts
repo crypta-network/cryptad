@@ -16,6 +16,7 @@ dependencies {
   implementation(project(":kernel-transport"))
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
+  implementation(project(":platform-api"))
   implementation(project(":runtime-node"))
   implementation(project(":thirdparty-onion"))
 

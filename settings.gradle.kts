@@ -36,6 +36,7 @@ include(
   ":kernel-transport",
   ":kernel-routing",
   ":runtime-spi",
+  ":platform-api",
   ":runtime-node",
   ":adapter-fcp",
   ":adapter-http-legacy-admin",
