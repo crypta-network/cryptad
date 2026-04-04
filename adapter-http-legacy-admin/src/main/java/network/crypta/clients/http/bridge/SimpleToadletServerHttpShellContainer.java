@@ -78,6 +78,11 @@ final class SimpleToadletServerHttpShellContainer implements HttpShellContainer 
   }
 
   @Override
+  public int listenPort() {
+    return delegate.listenPort();
+  }
+
+  @Override
   public void removeStartupToadlet() {
     delegate.removeStartupToadlet();
   }

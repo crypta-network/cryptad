@@ -22,10 +22,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.readiness.LauncherReadinessFiles;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
@@ -47,6 +50,17 @@ import static network.crypta.launcher.LauncherLog.logDebug;
  * </ul>
  */
 public class LauncherController {
+  private record TrackedReadinessFile(
+      Path path,
+      boolean existedWhenTracked,
+      long lastModifiedWhenTracked,
+      Object fileKeyWhenTracked,
+      boolean trackedAfterLaunch) {
+    private TrackedReadinessFile {
+      Objects.requireNonNull(path);
+    }
+  }
+
   private static final ThreadFactory IO_THREAD_FACTORY =
       runnable -> {
         Thread thread = new Thread(runnable, "launcher-io");
@@ -61,7 +75,12 @@ public class LauncherController {
   private final AtomicReference<Process> process = new AtomicReference<>();
   private final AtomicReference<AppState> state = new AtomicReference<>(new AppState());
   private final AtomicReference<Path> wrapperConfPath = new AtomicReference<>();
+  private final AtomicReference<TrackedReadinessFile> readinessTarget = new AtomicReference<>();
+  private final AtomicLong launchStartedAtMillis = new AtomicLong();
   private final AtomicBoolean autoOpenedBrowser = new AtomicBoolean();
+  private final AtomicReference<Integer> pendingLegacyPort = new AtomicReference<>();
+  private final AtomicBoolean startupCompletionObserved = new AtomicBoolean();
+  private final AtomicBoolean logFallbackEnabled = new AtomicBoolean();
   private final AtomicReference<Thread> tailThread = new AtomicReference<>();
   private static final String UNIX_KILL_EXECUTABLE = "/bin/kill";
   private static final String WINDOWS_TASKKILL_EXECUTABLE =
@@ -77,6 +96,11 @@ public class LauncherController {
   private static final long TAIL_MAX_DELAY_MS = 1500L;
   private static final long TAIL_CANCEL_POLL_MS = 50L;
   private static final int TAIL_READ_CHUNK = 64 * 1024;
+  private static final long READINESS_POLL_MS = 100L;
+  private static final String NODE_INITIALIZATION_COMPLETED_MARKER =
+      "Node initialization completed";
+  private final Supplier<Path> readinessFileResolver;
+  private final Supplier<Path> daemonLogFileResolver;
 
   /**
    * Creates a controller rooted at the current working directory.
@@ -94,7 +118,21 @@ public class LauncherController {
    * @param cwd working directory used to locate the {@code cryptad} executable and wrapper files
    */
   public LauncherController(Path cwd) {
+    this(
+        cwd,
+        LauncherUtils::resolveConfiguredLauncherReadinessFile,
+        LauncherUtils::resolveConfiguredLauncherDaemonLogFile);
+  }
+
+  LauncherController(Path cwd, Supplier<Path> readinessFileResolver) {
+    this(cwd, readinessFileResolver, LauncherUtils::resolveConfiguredLauncherDaemonLogFile);
+  }
+
+  LauncherController(
+      Path cwd, Supplier<Path> readinessFileResolver, Supplier<Path> daemonLogFileResolver) {
     this.cwd = Objects.requireNonNull(cwd);
+    this.readinessFileResolver = Objects.requireNonNull(readinessFileResolver);
+    this.daemonLogFileResolver = Objects.requireNonNull(daemonLogFileResolver);
   }
 
   /**
@@ -188,6 +226,18 @@ public class LauncherController {
     updateState(s -> s.withRunning(true).withKnownPort(null));
 
     tryEnableConsoleFlush(cryptadPath);
+    readinessTarget.set(null);
+    launchStartedAtMillis.set(0);
+    pendingLegacyPort.set(null);
+    startupCompletionObserved.set(false);
+    TrackedReadinessFile initialReadinessTarget = prepareStructuredReadinessFile();
+    readinessTarget.set(initialReadinessTarget);
+    logFallbackEnabled.set(true);
+    Path configuredDaemonLogFile = resolveConfiguredDaemonLogFile();
+    long configuredDaemonLogOffset = currentFileLength(configuredDaemonLogFile);
+    Path wrapperConf = LauncherUtils.guessWrapperConfPathForCryptadScript(cryptadPath);
+    Path wrapperLogFile = resolveWrapperLogFile(wrapperConf);
+    long wrapperLogOffset = currentFileLength(wrapperLogFile);
 
     List<String> command = LauncherUtils.buildCryptadCommand(cryptadPath);
     emitLog(
@@ -197,8 +247,10 @@ public class LauncherController {
     pb.redirectErrorStream(true);
 
     Process started;
+    long currentLaunchStartedAtMillis = System.currentTimeMillis();
     try {
       started = pb.start();
+      launchStartedAtMillis.set(currentLaunchStartedAtMillis);
     } catch (Exception e) {
       logDebug("Launcher process start failed", e);
       emitLog(ts() + " ERROR: " + e.getMessage());
@@ -207,8 +259,10 @@ public class LauncherController {
     }
 
     process.set(started);
-    wrapperConfPath.set(LauncherUtils.guessWrapperConfPathForCryptadScript(cryptadPath));
-    startTailingWrapperLogIfAvailable();
+    wrapperConfPath.set(wrapperConf);
+    startTailingWrapperLogIfAvailable(wrapperLogFile, wrapperLogOffset);
+    startWatchingConfiguredDaemonLog(started, configuredDaemonLogFile, configuredDaemonLogOffset);
+    io.execute(() -> waitForStructuredReadiness(started));
     io.execute(() -> readProcessOutput(started));
     io.execute(() -> watchProcess(started));
   }
@@ -220,9 +274,10 @@ public class LauncherController {
       String line;
       while ((line = reader.readLine()) != null) {
         emitLog(line);
+        processStartupDiscoveryLine(line);
         Integer detectedPort = LauncherUtils.parseFProxyPortFromLine(line);
         if (detectedPort != null) {
-          handleDetectedPort(detectedPort);
+          handleLegacyDetectedPort(detectedPort, logFallbackEnabled.get());
         }
       }
     } catch (Exception e) {
@@ -230,7 +285,70 @@ public class LauncherController {
     }
   }
 
-  private void handleDetectedPort(int port) {
+  private void waitForStructuredReadiness(Process started) {
+    while (true) {
+      TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
+      Path currentReadinessFile =
+          currentReadinessTarget != null ? currentReadinessTarget.path() : null;
+      try {
+        if (currentReadinessFile != null) {
+          var readiness = LauncherReadinessFiles.readSnapshot(currentReadinessFile);
+          if (readiness.isPresent()
+              && canConsumeCurrentLaunchReadiness(currentReadinessTarget, readiness.get())) {
+            handleReadyPort(readiness.get().info().uiPort());
+            return;
+          }
+        }
+      } catch (IOException e) {
+        logDebug("Launcher readiness-file reader failed for " + currentReadinessFile, e);
+        fallbackToLegacyReadiness();
+        return;
+      }
+
+      if (!started.isAlive()) {
+        return;
+      }
+
+      try {
+        TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
+      } catch (InterruptedException _) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+  }
+
+  private void handleLegacyDetectedPort(int port, boolean allowAutoLaunch) {
+    if (readinessTarget.get() != null) {
+      pendingLegacyPort.set(port);
+      if (startupCompletionObserved.get()) {
+        fallbackToLegacyReadiness();
+      }
+      return;
+    }
+    publishLegacyPort(port, allowAutoLaunch);
+  }
+
+  private void publishLegacyPort(int port, boolean allowAutoLaunch) {
+    Integer oldPort = state.get().knownPort();
+    if (!Objects.equals(oldPort, port)) {
+      updateState(s -> s.withKnownPort(port));
+    }
+    if (!allowAutoLaunch) {
+      return;
+    }
+    if (readinessTarget.get() == null) {
+      if (startupCompletionObserved.get()) {
+        launchBrowserOnce();
+      } else {
+        launchBrowserOnceIfProcessAlive();
+      }
+    }
+  }
+
+  private void handleReadyPort(int port) {
+    logFallbackEnabled.set(false);
+    pendingLegacyPort.set(null);
     Integer oldPort = state.get().knownPort();
     if (!Objects.equals(oldPort, port)) {
       updateState(s -> s.withKnownPort(port));
@@ -250,7 +368,12 @@ public class LauncherController {
     }
     emitLog(ts() + " cryptad exited with code " + exitCode);
     clearTrackedProcess(started);
-    interruptTailThread();
+    finishTailThreadAfterProcessExit();
+    readinessTarget.set(null);
+    launchStartedAtMillis.set(0);
+    pendingLegacyPort.set(null);
+    startupCompletionObserved.set(false);
+    logFallbackEnabled.set(false);
     updateState(s -> s.withRunning(false));
   }
 
@@ -455,6 +578,297 @@ public class LauncherController {
     }
   }
 
+  private Path resolveConfiguredDaemonLogFile() {
+    try {
+      return daemonLogFileResolver.get();
+    } catch (RuntimeException e) {
+      logDebug("Launcher daemon-log resolution failed", e);
+      return null;
+    }
+  }
+
+  private Path resolveWrapperLogFile(Path wrapperConf) {
+    if (wrapperConf == null) {
+      return null;
+    }
+    String logSpec = readWrapperProperty(wrapperConf, "wrapper.logfile");
+    return LauncherUtils.computeWrapperLogPath(wrapperConf, logSpec);
+  }
+
+  private long currentFileLength(Path path) {
+    if (path == null || !Files.isRegularFile(path)) {
+      return 0L;
+    }
+    try {
+      return Files.size(path);
+    } catch (IOException e) {
+      logDebug("Launcher daemon-log length lookup failed for " + path, e);
+      return 0L;
+    }
+  }
+
+  private void startWatchingConfiguredDaemonLog(Process started, Path logFile, long initialOffset) {
+    if (logFile == null) {
+      return;
+    }
+    io.execute(() -> watchConfiguredDaemonLogForRunDir(started, logFile, initialOffset));
+  }
+
+  private void watchConfiguredDaemonLogForRunDir(
+      Process started, Path logFile, long initialOffset) {
+    long position = initialOffset;
+    StringBuilder leftover = new StringBuilder();
+    while (started.isAlive()) {
+      try {
+        if (Files.isRegularFile(logFile)) {
+          position = readDaemonLogDelta(logFile, position, leftover);
+        }
+      } catch (IOException e) {
+        logDebug("Launcher daemon-log reader failed for " + logFile, e);
+        return;
+      }
+
+      if (!started.isAlive()) {
+        return;
+      }
+
+      try {
+        TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
+      } catch (InterruptedException _) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+  }
+
+  private long readDaemonLogDelta(Path logFile, long position, StringBuilder leftover)
+      throws IOException {
+    long length = Files.size(logFile);
+    if (length < position) {
+      position = 0L;
+      leftover.setLength(0);
+    }
+    if (length <= position) {
+      return position;
+    }
+
+    try (RandomAccessFile handle = new RandomAccessFile(logFile.toFile(), "r")) {
+      handle.seek(position);
+      int toRead = (int) Math.min(length - position, TAIL_READ_CHUNK);
+      byte[] buffer = new byte[toRead];
+      int read = handle.read(buffer);
+      if (read <= 0) {
+        return position;
+      }
+      emitDiscoveryText(leftover, new String(buffer, 0, read, StandardCharsets.UTF_8));
+      return position + read;
+    }
+  }
+
+  private void emitDiscoveryText(StringBuilder leftover, String text) {
+    String[] parts = text.split("\n", -1);
+    if (parts.length == 1) {
+      leftover.append(parts[0]);
+      return;
+    }
+
+    String first = leftover.append(parts[0]).toString();
+    if (!first.isEmpty()) {
+      processStartupDiscoveryLine(first);
+    }
+    leftover.setLength(0);
+
+    for (int i = 1; i < parts.length - 1; i++) {
+      processStartupDiscoveryLine(parts[i]);
+    }
+    String last = parts[parts.length - 1];
+    if (text.endsWith("\n")) {
+      if (!last.isEmpty()) {
+        processStartupDiscoveryLine(last);
+      }
+    } else {
+      leftover.append(last);
+    }
+  }
+
+  private void processStartupDiscoveryLine(String line) {
+    Path detectedRunDir = LauncherUtils.parseResolvedRunDirFromLine(line);
+    if (detectedRunDir != null) {
+      updateStructuredReadinessFile(detectedRunDir);
+    }
+    if (line.contains(NODE_INITIALIZATION_COMPLETED_MARKER)) {
+      handleStartupCompletionSignal();
+    }
+  }
+
+  private void handleStartupCompletionSignal() {
+    startupCompletionObserved.set(true);
+    TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
+    Path currentReadinessFile =
+        currentReadinessTarget != null ? currentReadinessTarget.path() : null;
+    if (currentReadinessFile == null) {
+      return;
+    }
+    try {
+      var readiness = LauncherReadinessFiles.readSnapshot(currentReadinessFile);
+      if (readiness.isPresent()
+          && canConsumeCurrentLaunchReadiness(currentReadinessTarget, readiness.get())) {
+        handleReadyPort(readiness.get().info().uiPort());
+        return;
+      }
+    } catch (IOException e) {
+      logDebug("Launcher readiness-file reader failed for " + currentReadinessFile, e);
+    }
+    if (pendingLegacyPort.get() != null) {
+      fallbackToLegacyReadiness();
+    }
+  }
+
+  private TrackedReadinessFile prepareStructuredReadinessFile() {
+    Path readinessFile;
+    try {
+      readinessFile = readinessFileResolver.get();
+    } catch (RuntimeException e) {
+      logDebug("Launcher readiness-file resolution failed", e);
+      return null;
+    }
+    if (readinessFile == null) {
+      return null;
+    }
+    return captureReadinessTarget(readinessFile, false);
+  }
+
+  private void updateStructuredReadinessFile(Path runDir) {
+    Path nextReadinessFile = LauncherReadinessFiles.resolve(runDir);
+    TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
+    Path currentReadinessFile =
+        currentReadinessTarget != null ? currentReadinessTarget.path() : null;
+    if (Objects.equals(currentReadinessFile, nextReadinessFile)) {
+      return;
+    }
+    readinessTarget.set(captureReadinessTarget(nextReadinessFile, true));
+  }
+
+  private TrackedReadinessFile captureReadinessTarget(Path readinessFile) {
+    return captureReadinessTarget(readinessFile, false);
+  }
+
+  private TrackedReadinessFile captureReadinessTarget(
+      Path readinessFile, boolean trackedAfterLaunch) {
+    boolean existedWhenTracked = Files.isRegularFile(readinessFile);
+    long lastModifiedWhenTracked = Long.MIN_VALUE;
+    Object fileKeyWhenTracked = null;
+    if (existedWhenTracked) {
+      try {
+        lastModifiedWhenTracked = Files.getLastModifiedTime(readinessFile).toMillis();
+      } catch (IOException e) {
+        logDebug("Launcher readiness-file baseline lookup failed for " + readinessFile, e);
+      }
+      fileKeyWhenTracked = readFileKey(readinessFile);
+    }
+    return new TrackedReadinessFile(
+        readinessFile,
+        existedWhenTracked,
+        lastModifiedWhenTracked,
+        fileKeyWhenTracked,
+        trackedAfterLaunch);
+  }
+
+  boolean isCurrentLaunchReadinessFile(Path readinessFile) throws IOException {
+    if (!Files.isRegularFile(readinessFile)) {
+      return false;
+    }
+    var readiness = LauncherReadinessFiles.readSnapshot(readinessFile);
+    if (readiness.isEmpty()) {
+      return false;
+    }
+    TrackedReadinessFile trackedReadinessFile = readinessTarget.get();
+    if (trackedReadinessFile == null
+        || !Objects.equals(trackedReadinessFile.path(), readinessFile)) {
+      trackedReadinessFile = captureReadinessTarget(readinessFile);
+    }
+    return isPotentialCurrentLaunchReadiness(trackedReadinessFile, readiness.get());
+  }
+
+  private boolean canConsumeCurrentLaunchReadiness(
+      TrackedReadinessFile trackedReadinessFile,
+      LauncherReadinessFiles.ReadinessSnapshot readiness) {
+    if (trackedReadinessFile == null
+        || !isPotentialCurrentLaunchReadiness(trackedReadinessFile, readiness)) {
+      return false;
+    }
+    return readiness.lastModifiedTime() > launchStartedAtMillis.get()
+        || hasReadinessFileChangedSinceTracking(
+            trackedReadinessFile, readiness.lastModifiedTime(), readiness.fileKey())
+        || startupCompletionObserved.get();
+  }
+
+  private boolean isPotentialCurrentLaunchReadiness(
+      TrackedReadinessFile trackedReadinessFile,
+      LauncherReadinessFiles.ReadinessSnapshot readiness) {
+    long currentLaunchStartedAtMillis = launchStartedAtMillis.get();
+    if (currentLaunchStartedAtMillis <= 0) {
+      return false;
+    }
+    long lastModifiedTime = readiness.lastModifiedTime();
+    if (lastModifiedTime > currentLaunchStartedAtMillis) {
+      return true;
+    }
+    boolean changedSinceTracking =
+        hasReadinessFileChangedSinceTracking(
+            trackedReadinessFile, lastModifiedTime, readiness.fileKey());
+    if (changedSinceTracking) {
+      return true;
+    }
+    Integer deferredLegacyPort = pendingLegacyPort.get();
+    boolean corroboratedByLegacyPort =
+        deferredLegacyPort != null && deferredLegacyPort == readiness.info().uiPort();
+    if (trackedReadinessFile.existedWhenTracked()) {
+      return trackedReadinessFile.trackedAfterLaunch()
+          && startupCompletionObserved.get()
+          && corroboratedByLegacyPort;
+    }
+    if (lastModifiedTime < currentLaunchStartedAtMillis) {
+      return startupCompletionObserved.get() && corroboratedByLegacyPort;
+    }
+    return corroboratedByLegacyPort;
+  }
+
+  private boolean hasReadinessFileChangedSinceTracking(
+      TrackedReadinessFile trackedReadinessFile, long lastModifiedTime, Object currentFileKey) {
+    if (!trackedReadinessFile.existedWhenTracked()) {
+      return true;
+    }
+    Object trackedFileKey = trackedReadinessFile.fileKeyWhenTracked();
+    if (trackedFileKey != null && currentFileKey != null) {
+      return !trackedFileKey.equals(currentFileKey);
+    }
+    long trackedLastModifiedTime = trackedReadinessFile.lastModifiedWhenTracked();
+    return trackedLastModifiedTime != Long.MIN_VALUE && lastModifiedTime != trackedLastModifiedTime;
+  }
+
+  private void fallbackToLegacyReadiness() {
+    readinessTarget.set(null);
+    Integer deferredLegacyPort = pendingLegacyPort.getAndSet(null);
+    if (deferredLegacyPort != null) {
+      publishLegacyPort(deferredLegacyPort, logFallbackEnabled.get());
+    }
+  }
+
+  private void launchBrowserOnceIfProcessAlive() {
+    Process current = process.get();
+    if (current == null || !current.isAlive()) {
+      return;
+    }
+    launchBrowserOnce();
+  }
+
+  private void launchBrowserOnce() {
+    if (autoOpenedBrowser.compareAndSet(false, true)) {
+      launchBrowser();
+    }
+  }
+
   private boolean tryWindowsGracefulStopViaAnchor(List<Long> pids) {
     Path anchorPath = resolveWindowsAnchorPath();
     if (anchorPath == null) {
@@ -520,21 +934,16 @@ public class LauncherController {
     }
   }
 
-  private void startTailingWrapperLogIfAvailable() {
+  private void startTailingWrapperLogIfAvailable(Path logPath, long initialOffset) {
     interruptTailThread();
-
-    Path conf = wrapperConfPath.get();
-    if (conf == null) {
+    if (logPath == null) {
       return;
     }
-
-    String logSpec = readWrapperProperty(conf, "wrapper.logfile");
-    Path logPath = LauncherUtils.computeWrapperLogPath(conf, logSpec);
     Thread tailer =
         Thread.ofPlatform()
             .name("launcher-log-tail")
             .daemon(true)
-            .unstarted(() -> tailFileWhileAlive(logPath, Thread.currentThread()));
+            .unstarted(() -> tailFileWhileAlive(logPath, initialOffset, Thread.currentThread()));
     tailThread.set(tailer);
     tailer.start();
   }
@@ -546,15 +955,38 @@ public class LauncherController {
     }
   }
 
-  private void tailFileWhileAlive(Path path, Thread tailingThread) {
-    TailState tailState = new TailState();
+  private void finishTailThreadAfterProcessExit() {
+    Thread tailer = tailThread.getAndSet(null);
+    if (tailer == null) {
+      return;
+    }
     try {
-      while (!tailingThread.isInterrupted() && isTrackedProcessAlive()) {
+      tailer.join(TAIL_MAX_DELAY_MS + TAIL_BASE_DELAY_MS);
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+    }
+    if (tailer.isAlive()) {
+      tailer.interrupt();
+    }
+  }
+
+  private void tailFileWhileAlive(Path path, long initialOffset, Thread tailingThread) {
+    TailState tailState = new TailState();
+    tailState.pos = initialOffset;
+    try {
+      while (!tailingThread.isInterrupted()) {
+        boolean processAlive = isTrackedProcessAlive();
         try {
           boolean madeProgress = tailOnce(path, tailState);
+          if (!processAlive && !madeProgress) {
+            return;
+          }
           tailState.idleCount = madeProgress ? 0 : tailState.idleCount + 1;
         } catch (Exception _) {
           resetTailOnError(tailState);
+        }
+        if (!processAlive) {
+          continue;
         }
         if (!sleepWhileThreadActive(tailingThread, calcTailDelayMs(tailState.idleCount))) {
           return;
@@ -662,7 +1094,7 @@ public class LauncherController {
       RandomAccessFile opened = new RandomAccessFile(path.toFile(), "r");
       state.raf = opened;
       state.currentKey = newKey;
-      state.pos = opened.length();
+      state.pos = Math.min(state.pos, opened.length());
     }
   }
 
@@ -675,15 +1107,18 @@ public class LauncherController {
 
     String first = state.leftover.append(parts[0]).toString();
     if (!first.isEmpty()) {
+      processStartupDiscoveryLine(first);
       emitLog(first);
     }
     state.leftover = new StringBuilder();
 
     for (int i = 1; i < parts.length - 1; i++) {
+      processStartupDiscoveryLine(parts[i]);
       emitLog(parts[i]);
     }
     String last = parts[parts.length - 1];
     if (text.endsWith("\n")) {
+      processStartupDiscoveryLine(last);
       emitLog(last);
     } else {
       state.leftover.append(last);

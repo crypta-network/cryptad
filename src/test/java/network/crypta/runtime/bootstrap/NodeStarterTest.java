@@ -1,11 +1,16 @@
 package network.crypta.runtime.bootstrap;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.PrintStream;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.config.PersistentConfig;
@@ -429,6 +434,70 @@ class NodeStarterTest {
       ns.controlEvent(WrapperManager.WRAPPER_CTRL_C_EVENT);
       wm.verify(() -> WrapperManager.stop(0), times(1));
     }
+  }
+
+  @Test
+  void loadConfig_whenConfigOverridesRunDir_emitsFinalLauncherRunDirCompatibilityLine(
+      @TempDir Path tempDir) throws Exception {
+    Path configDir = tempDir.resolve("config");
+    Path dataDir = tempDir.resolve("data");
+    Path cacheDir = tempDir.resolve("cache");
+    Path cliRunDir = tempDir.resolve("run-default");
+    Path logsDir = tempDir.resolve("logs");
+    Path configFile = configDir.resolve("cryptad.ini");
+    Path configuredRunDir = dataDir.resolve("runtime-from-config");
+    Files.createDirectories(configDir);
+    Files.writeString(
+        configFile,
+        "node.install.runDir=${dataDir}/runtime-from-config\nEnd\n",
+        StandardCharsets.UTF_8);
+    var method =
+        NodeStarter.class.getDeclaredMethod(
+            "loadConfig", File.class, Map.class, boolean.class, network.crypta.fs.AppEnv.class);
+    method.setAccessible(true);
+    ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+    PrintStream originalOut = System.out;
+
+    try (PrintStream capture = new PrintStream(stdout, true, StandardCharsets.UTF_8)) {
+      System.setOut(capture);
+      method.invoke(
+          null,
+          configFile.toFile(),
+          Map.of(
+              "configDir", configDir.toString(),
+              "dataDir", dataDir.toString(),
+              "cacheDir", cacheDir.toString(),
+              "runDir", cliRunDir.toString(),
+              "logsDir", logsDir.toString()),
+          false,
+          new network.crypta.fs.AppEnv(Map.of()));
+    } finally {
+      System.setOut(originalOut);
+    }
+
+    String output = stdout.toString(StandardCharsets.UTF_8);
+    assertTrue(output.contains("Run dir:      " + configuredRunDir));
+    assertFalse(output.contains("Run dir:      " + cliRunDir));
+  }
+
+  @Test
+  void emitLauncherStartupCompletionCompatibilityLine_whenCalled_printsCompletionMarker()
+      throws Exception {
+    var method =
+        NodeStarter.class.getDeclaredMethod("emitLauncherStartupCompletionCompatibilityLine");
+    method.setAccessible(true);
+    ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+    PrintStream originalOut = System.out;
+
+    try (PrintStream capture = new PrintStream(stdout, true, StandardCharsets.UTF_8)) {
+      System.setOut(capture);
+      method.invoke(null);
+    } finally {
+      System.setOut(originalOut);
+    }
+
+    String output = stdout.toString(StandardCharsets.UTF_8);
+    assertTrue(output.contains("Node initialization completed"));
   }
 
   // --- helpers ---

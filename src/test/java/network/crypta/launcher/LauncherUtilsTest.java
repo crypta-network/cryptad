@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.readiness.LauncherReadinessFiles;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,7 +27,10 @@ import static network.crypta.launcher.LauncherUtils.findOnPath;
 import static network.crypta.launcher.LauncherUtils.guessWrapperConfPathForCryptadScript;
 import static network.crypta.launcher.LauncherUtils.loadAppIconImage;
 import static network.crypta.launcher.LauncherUtils.parseFProxyPortFromLine;
+import static network.crypta.launcher.LauncherUtils.parseResolvedRunDirFromLine;
 import static network.crypta.launcher.LauncherUtils.parseWrapperProperties;
+import static network.crypta.launcher.LauncherUtils.resolveConfiguredLauncherDaemonLogFile;
+import static network.crypta.launcher.LauncherUtils.resolveConfiguredLauncherReadinessFile;
 import static network.crypta.launcher.LauncherUtils.resolveCryptadPath;
 import static network.crypta.launcher.LauncherUtils.resolveCryptadPathWithEnv;
 import static network.crypta.launcher.LauncherUtils.scanWrapperConfPath;
@@ -70,6 +75,62 @@ class LauncherUtilsTest {
   void parseFProxyPortFromLine_whenNoMatch_expectNull(String line) {
     Integer actual = parseFProxyPortFromLine(line);
     assertNull(actual);
+  }
+
+  @Test
+  void parseResolvedRunDirFromLine_whenPresent_expectParsedPath() {
+    Path actual = parseResolvedRunDirFromLine("INFO Run dir:      /var/lib/cryptad/custom-run");
+    assertEquals(Path.of("/var/lib/cryptad/custom-run"), actual);
+  }
+
+  @Test
+  void parseResolvedRunDirFromLine_whenMissing_expectNull() {
+    assertNull(parseResolvedRunDirFromLine("INFO Data dir:     /var/lib/cryptad/data"));
+  }
+
+  @Test
+  void resolveConfiguredLauncherReadinessFile_whenConfigOverridesRunDir_expectConfiguredPath(
+      @TempDir Path tempDir) throws Exception {
+    Path configDir = Files.createDirectories(tempDir.resolve("config"));
+    Path dataDir = Files.createDirectories(tempDir.resolve("data"));
+    Path cacheDir = Files.createDirectories(tempDir.resolve("cache"));
+    Path defaultRunDir = Files.createDirectories(tempDir.resolve("run-default"));
+    Path logsDir = Files.createDirectories(tempDir.resolve("logs"));
+    Resolved resolvedDirs = new Resolved(configDir, dataDir, cacheDir, defaultRunDir, logsDir);
+    Path configFile = configDir.resolve("cryptad.ini");
+    Files.writeString(
+        configFile,
+        """
+        logger.priority=NORMAL
+        node.install.runDir=${dataDir}/custom-run
+        End
+        """);
+
+    Path actual = resolveConfiguredLauncherReadinessFile(configFile, resolvedDirs);
+
+    assertEquals(LauncherReadinessFiles.resolve(dataDir.resolve("custom-run")), actual);
+  }
+
+  @Test
+  void resolveConfiguredLauncherDaemonLogFile_whenConfigOverridesLogDir_expectConfiguredPath(
+      @TempDir Path tempDir) throws Exception {
+    Path configDir = Files.createDirectories(tempDir.resolve("config"));
+    Path dataDir = Files.createDirectories(tempDir.resolve("data"));
+    Path cacheDir = Files.createDirectories(tempDir.resolve("cache"));
+    Path defaultRunDir = Files.createDirectories(tempDir.resolve("run-default"));
+    Path logsDir = Files.createDirectories(tempDir.resolve("logs"));
+    Resolved resolvedDirs = new Resolved(configDir, dataDir, cacheDir, defaultRunDir, logsDir);
+    Path configFile = configDir.resolve("cryptad.ini");
+    Files.writeString(
+        configFile,
+        """
+        logger.dirname=${dataDir}/custom-logs
+        End
+        """);
+
+    Path actual = resolveConfiguredLauncherDaemonLogFile(configFile, resolvedDirs);
+
+    assertEquals(dataDir.resolve("custom-logs").resolve("crypta-latest.log"), actual);
   }
 
   @Test

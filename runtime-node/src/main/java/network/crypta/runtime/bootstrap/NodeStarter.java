@@ -476,6 +476,24 @@ public class NodeStarter implements WrapperListener {
     }
   }
 
+  @SuppressWarnings("java:S106")
+  private static void emitLauncherRunDirCompatibilityLine(String runDir) {
+    try {
+      System.out.println("Run dir:      " + runDir);
+    } catch (Exception _) {
+      // Do not fail to start up due to launcher compatibility output.
+    }
+  }
+
+  @SuppressWarnings("java:S106")
+  private static void emitLauncherStartupCompletionCompatibilityLine() {
+    try {
+      System.out.println("Node initialization completed");
+    } catch (Exception _) {
+      // Do not fail to start up due to launcher compatibility output.
+    }
+  }
+
   /**
    * The start method is called when the WrapperManager is signaled by the native wrapper code that
    * it can start its application. This method call is expected to return, so a new thread should be
@@ -564,6 +582,7 @@ public class NodeStarter implements WrapperListener {
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");
+      emitLauncherStartupCompletionCompatibilityLine();
     } catch (NodeInitException e) {
       LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
       // Return the exit code so WrapperManager handles process termination without re-entering
@@ -656,8 +675,17 @@ public class NodeStarter implements WrapperListener {
     printResolvedDirectories(resolved, configFilename, serviceMode);
     SimpleFieldSet sfs =
         CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
+    emitLauncherConfiguredRunDirCompatibilityLine(sfs);
     File tmp = new File(configFilename.getPath() + ".tmp");
     return new FreenetFilePersistentConfig(sfs, configFilename, tmp);
+  }
+
+  private static void emitLauncherConfiguredRunDirCompatibilityLine(SimpleFieldSet sfs) {
+    String configuredRunDir = sfs.get("node.install.runDir");
+    if (configuredRunDir == null || configuredRunDir.isBlank()) {
+      return;
+    }
+    emitLauncherRunDirCompatibilityLine(configuredRunDir);
   }
 
   private static void setupLogging(FreenetFilePersistentConfig cfg)

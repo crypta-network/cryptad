@@ -137,7 +137,7 @@ class AddPeerTest {
   @Test
   void getReferenceFromURL_whenCalled_delegatesToPeerReferenceTextLoader() throws IOException {
     URL url = mock(URL.class);
-    StringBuilder reference = new StringBuilder("line1\nline2\n");
+    StringBuilder reference = mock(StringBuilder.class);
 
     try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
         Mockito.mockStatic(PeerReferenceTextLoader.class)) {
@@ -152,7 +152,7 @@ class AddPeerTest {
   void getReferenceFromFreenetURI_whenCalled_delegatesToPeerReferenceTextLoader() throws Exception {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     FreenetURI uri = mock(FreenetURI.class);
-    StringBuilder reference = new StringBuilder("ref-line-1\nref-line-2\n");
+    StringBuilder reference = mock(StringBuilder.class);
 
     try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
         Mockito.mockStatic(PeerReferenceTextLoader.class)) {

@@ -31,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Windows detector backed by registry reads and change notifications through JNA.
+ * Windows detector backed by registry reads and changes notifications through JNA.
  *
  * <p>This implementation reads the user's theme preference from the {@code AppsUseLightTheme}
  * registry value under the standard personalization key. A missing value or a non-zero value is
@@ -116,6 +116,7 @@ class WindowsThemeDetector extends OsThemeDetector {
      *
      * @param themeDetector detector owning the registry query and listener collection
      */
+    @SuppressWarnings("ThreadPriorityCheck")
     DetectorThread(WindowsThemeDetector themeDetector) {
       this.themeDetector = themeDetector;
       this.lastValue = themeDetector.isDark();

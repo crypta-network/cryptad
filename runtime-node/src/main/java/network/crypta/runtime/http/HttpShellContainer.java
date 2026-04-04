@@ -39,9 +39,8 @@ public interface HttpShellContainer extends LinkFilterExceptionProvider {
    * adapter for later callbacks rather than copying or translating it. Because {@link
    * HttpShellRuntimeSupport} is only a marker seam in this PR, container implementations may still
    * require additional implementation-specific interfaces on the same object. The default
-   * production pairing supplied by {@link
-   * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories#coreBacked()} satisfies that
-   * requirement; custom bridge bindings must supply a compatible container/support pair.
+   * production pairing supplied by the root composition layer satisfies that requirement; custom
+   * bridge bindings must supply a compatible container/support pair.
    *
    * @param runtimeSupport daemon-backed adapter that serves later HTTP shell callbacks and runtime
    *     lookups
@@ -106,6 +105,17 @@ public interface HttpShellContainer extends LinkFilterExceptionProvider {
    * current FProxy behavior and should not use this seam to reorder or broaden endpoint startup.
    */
   void createFproxy();
+
+  /**
+   * Returns the local HTTP listen port used for launcher/browser access.
+   *
+   * <p>This is the effective port exposed by the current shell configuration. Runtime code uses it
+   * only to publish the launcher readiness file after normal shell startup is complete; callers
+   * should not treat it as a broader endpoint-discovery API.
+   *
+   * @return local HTTP port for the current shell listener
+   */
+  int listenPort();
 
   /**
    * Reports whether advanced mode is enabled for HTTP shell consumers.

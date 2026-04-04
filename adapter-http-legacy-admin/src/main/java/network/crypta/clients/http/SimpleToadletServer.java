@@ -483,6 +483,18 @@ public final class SimpleToadletServer
         this);
   }
 
+  /**
+   * Returns the configured HTTP listen port used by the current shell instance.
+   *
+   * <p>The launcher readiness protocol consumes this value only after the shell finishes its normal
+   * startup sequence.
+   *
+   * @return configured HTTP port
+   */
+  public int listenPort() {
+    return port;
+  }
+
   private static synchronized void initializeFProxyRandom(RandomnessPort randomnessPort) {
     FProxyToadlet.random = new byte[32];
     randomnessPort.fillSecureRandom(FProxyToadlet.random);
@@ -1268,7 +1280,8 @@ public final class SimpleToadletServer
       maybeGetNetworkInterface();
       thread.start();
       LOG.info("Starting FProxy on {}:{}", bindTo, port);
-      // Keep a plain stdout line for the launcher parser when INFO logs are filtered by default.
+      // Keep a plain stdout line as a compatibility fallback when structured launcher readiness is
+      // unavailable.
       System.out.println("Starting FProxy on " + bindTo + ":" + port);
     }
   }
@@ -1719,6 +1732,7 @@ public final class SimpleToadletServer
    *
    * @return array of {@link FreenetURI} entries; empty when no bookmarks exist.
    */
+  @SuppressWarnings("unused")
   public FreenetURI[] getBookmarkURIs() {
     if (bookmarkManager == null) return new FreenetURI[0];
     return bookmarkManager.getBookmarkURIs();

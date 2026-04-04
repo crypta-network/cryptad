@@ -127,8 +127,10 @@ Build the portable distribution and run the Swing launcher without installing sy
 build/cryptad-dist/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
 ```
 
-The launcher starts the daemon, streams live logs, detects the FProxy port from lines like
-`Starting FProxy on ...:<port>`, and opens `http://localhost:<port>/` on the first successful start.
+The launcher starts the daemon, streams live logs, waits for a structured readiness file under the
+resolved runtime directory (currently `<runDir>/platform-ui.properties`), and opens
+`http://localhost:<port>/` on the first successful start. If the readiness file cannot be used,
+the launcher can still fall back to the legacy `Starting FProxy on ...:<port>` log line.
 
 Shortcuts (global):
 - ↑/↓ one row; PgUp/PgDn one page.
