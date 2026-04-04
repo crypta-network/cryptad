@@ -55,6 +55,7 @@ class HttpShellContainersTest {
               when(server.isEnabled()).thenReturn(true);
               when(server.isAdvancedModeEnabled()).thenReturn(true);
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
+              when(server.listenPort()).thenReturn(8888);
               when(server.isLinkExcepted(uri)).thenReturn(true);
               when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
             })) {
@@ -79,6 +80,7 @@ class HttpShellContainersTest {
       assertTrue(container.isAdvancedModeEnabled());
       assertTrue(container.isLinkExcepted(uri));
       assertFalse(container.isFProxyJavascriptEnabled());
+      assertEquals(8888, container.listenPort());
       assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
 
       verify(server)
@@ -106,12 +108,14 @@ class HttpShellContainersTest {
     when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
     when(server.isAdvancedModeEnabled()).thenReturn(false);
     when(server.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(server.listenPort()).thenReturn(7777);
     when(server.isLinkExcepted(uri)).thenReturn(true);
 
     assertTrue(container.isEnabled());
     assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
     assertFalse(container.isAdvancedModeEnabled());
     assertTrue(container.isFProxyJavascriptEnabled());
+    assertEquals(7777, container.listenPort());
     assertTrue(container.isLinkExcepted(uri));
   }
 

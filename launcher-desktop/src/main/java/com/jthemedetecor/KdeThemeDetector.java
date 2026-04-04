@@ -159,6 +159,7 @@ public class KdeThemeDetector extends OsThemeDetector {
     private final KdeThemeDetector detector;
     private boolean lastValue;
 
+    @SuppressWarnings("ThreadPriorityCheck")
     DetectorThread(@NotNull KdeThemeDetector detector) {
       this.detector = detector;
       this.lastValue = detector.isDark();

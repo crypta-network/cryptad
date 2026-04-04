@@ -1,15 +1,19 @@
 package network.crypta.launcher;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.readiness.LauncherReadinessFiles;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings({"java:S100"})
@@ -42,31 +47,78 @@ class LauncherControllerTest {
 
   @Test
   void start_whenScriptRuns_updatesStateAndReadsPort() throws Exception {
-    LauncherController controller = new LauncherController(tempDir);
+    Path initialReadinessFile = createReadinessFilePath(tempDir, "default-runtime");
+    Path actualReadinessFile = createReadinessFilePath(tempDir, "configured-runtime");
+    Path daemonLogFile = createDaemonLogFilePath(tempDir);
+    Path legacyDetectedMarker = tempDir.resolve("legacy-detected.marker");
+    LauncherController controller =
+        new LauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
     Path wrapperConf = writeWrapperConf(tempDir);
-    writeCryptadScript(tempDir);
+    writeStructuredReadinessCryptadScript(
+        tempDir, actualReadinessFile, daemonLogFile, legacyDetectedMarker);
 
     controller.start();
 
     awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    awaitCondition(
+        () -> Files.exists(legacyDetectedMarker),
+        "legacy FProxy marker before structured readiness");
+    assertFalse(isBrowserAutoOpened(controller));
+    assertNull(controller.getState().knownPort());
+    assertFalse(isBrowserAutoOpened(controller));
+    awaitCondition(() -> Files.exists(actualReadinessFile), "structured readiness file");
     AppState stateWithPort =
         awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
     assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(() -> isBrowserAutoOpened(controller), "browser auto-open after readiness");
+    assertTrue(isBrowserAutoOpened(controller));
 
     AppState stopped =
         awaitState(
             controller, s -> !s.isRunning() && s.knownPort() != null && s.knownPort() == TEST_PORT);
     assertFalse(stopped.isRunning());
 
-    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    awaitLog(logs, l -> l.contains("READY"));
+    assertFalse(logs.stream().anyMatch(l -> l.contains("Run dir:")));
     assertTrue(logs.stream().anyMatch(l -> l.contains("Starting 'cryptad")));
     assertTrue(logs.stream().anyMatch(l -> l.contains("exec:")));
 
     var confLines = Files.readAllLines(wrapperConf, StandardCharsets.UTF_8);
     assertTrue(confLines.stream().anyMatch(l -> l.trim().equals("wrapper.console.flush=TRUE")));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenPreexistingReadinessExists_preservesItWhileIgnoringIt() throws Exception {
+    Path initialReadinessFile = createReadinessFilePath(tempDir, "default-runtime");
+    Path actualReadinessFile = createReadinessFilePath(tempDir, "configured-runtime");
+    Path daemonLogFile = createDaemonLogFilePath(tempDir);
+    LauncherReadinessInfo existingReadiness =
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, 4321, "/");
+    LauncherReadinessFiles.write(actualReadinessFile, existingReadiness);
+    LauncherController controller =
+        new LauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
+
+    writeWrapperConf(tempDir);
+    writeNoReadinessCryptadScript(tempDir, actualReadinessFile.getParent(), daemonLogFile);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitCondition(() -> Files.exists(actualReadinessFile), "pre-existing readiness preservation");
+    assertEquals(existingReadiness, LauncherReadinessFiles.read(actualReadinessFile).orElseThrow());
+    assertNull(controller.getState().knownPort());
+
+    AppState stopped = awaitState(controller, s -> !s.isRunning());
+    assertFalse(stopped.isRunning());
+    assertNull(stopped.knownPort());
+    assertEquals(existingReadiness, LauncherReadinessFiles.read(actualReadinessFile).orElseThrow());
 
     controller.shutdownAndWait();
   }
@@ -110,7 +162,8 @@ class LauncherControllerTest {
 
   @Test
   void stop_whenScriptRunsLong_processStopsAndStateClears() throws Exception {
-    LauncherController controller = new LauncherController(tempDir);
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
 
     writeWrapperConf(tempDir);
     Path heartbeat = tempDir.resolve("heartbeat.log");
@@ -126,6 +179,315 @@ class LauncherControllerTest {
     assertFalse(stopped.isRunning());
     assertFalse(stopped.isStopping());
     awaitFileSizeStable(heartbeat, Duration.ofMillis(2500));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenStructuredReadinessUnavailable_fallsBackToLegacyLogPortDetection()
+      throws Exception {
+    LauncherController controller = new LauncherController(tempDir, () -> null, () -> null);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLegacyPortCryptadScript(tempDir);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    AppState stateWithPort =
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(() -> isBrowserAutoOpened(controller), "legacy fallback browser auto-open");
+    assertTrue(isBrowserAutoOpened(controller));
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenStructuredReadinessNeverPublishedAfterStartupCompletion_fallsBackToLegacyPort()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Path daemonLogFile = createDaemonLogFilePath(tempDir);
+    LauncherController controller =
+        new LauncherController(tempDir, () -> readinessFile, () -> daemonLogFile);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLegacyPortWithoutReadinessCryptadScript(tempDir, daemonLogFile);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    AppState stateWithPort =
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(
+        () -> isBrowserAutoOpened(controller),
+        "legacy fallback browser auto-open after startup completion");
+    assertTrue(isBrowserAutoOpened(controller));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenStructuredReadinessPublishedMalformedAfterStartupCompletion_fallsBackToLegacyPort()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Path daemonLogFile = createDaemonLogFilePath(tempDir);
+    LauncherController controller =
+        new LauncherController(tempDir, () -> readinessFile, () -> daemonLogFile);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLegacyPortWithMalformedReadinessCryptadScript(tempDir, readinessFile, daemonLogFile);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    awaitCondition(() -> Files.exists(readinessFile), "malformed structured readiness file");
+    AppState stateWithPort =
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(
+        () -> isBrowserAutoOpened(controller),
+        "legacy fallback browser auto-open after malformed readiness");
+    assertTrue(isBrowserAutoOpened(controller));
+    assertFalse(LauncherReadinessFiles.read(readinessFile).isPresent());
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenCompletionInfoLogUnavailable_stdoutCompletionFallsBackToLegacyPort()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherController controller =
+        new LauncherController(tempDir, () -> readinessFile, () -> null);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLegacyPortWithStdoutCompletionCryptadScript(tempDir);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    AppState stateWithPort =
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(
+        () -> isBrowserAutoOpened(controller),
+        "legacy fallback browser auto-open after stdout completion");
+    assertTrue(isBrowserAutoOpened(controller));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenDaemonLogDiscoveryUnavailable_wrapperLogCompletionFallsBackToLegacyPort()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Path wrongDaemonLogFile = tempDir.resolve("missing-logs").resolve("crypta-latest.log");
+    Path wrapperLogFile = tempDir.resolve("logs").resolve("wrapper.log");
+    LauncherController controller =
+        new LauncherController(tempDir, () -> readinessFile, () -> wrongDaemonLogFile);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLegacyPortWithWrapperLogCompletionCryptadScript(tempDir, wrapperLogFile);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    AppState stateWithPort =
+        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+    assertEquals(TEST_PORT, stateWithPort.knownPort());
+    awaitCondition(
+        () -> isBrowserAutoOpened(controller),
+        "legacy fallback browser auto-open after wrapper-log completion");
+    assertTrue(isBrowserAutoOpened(controller));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenStructuredReadinessPending_doesNotExposeLegacyPortOrAutoOpen() throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Path heartbeat = tempDir.resolve("heartbeat.log");
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    writeWrapperConf(tempDir);
+    writeLongRunningCryptadScript(tempDir, heartbeat);
+
+    controller.start();
+
+    awaitState(controller, AppState::isRunning);
+    awaitLog(logs, l -> l.contains("Starting FProxy on"));
+    awaitHeartbeat(heartbeat);
+    sleepMillis(300L);
+    assertNull(controller.getState().knownPort());
+    assertFalse(isBrowserAutoOpened(controller));
+
+    controller.stop();
+
+    AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
+    assertFalse(stopped.isRunning());
+    assertNull(stopped.knownPort());
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenMtimeEqualsLaunchStartAndNoLegacyPortEvidence_returnsFalse()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    long launchStartedAtMillis = 17_000L;
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(launchStartedAtMillis));
+
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, launchStartedAtMillis);
+
+    assertFalse(controller.isCurrentLaunchReadinessFile(readinessFile));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenMtimeEqualsLaunchStartAndLegacyPortMatches_returnsTrue()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_000L);
+    setPendingLegacyPort(controller);
+    setTrackedReadinessTarget(controller, readinessFile);
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(17_000L));
+
+    assertTrue(controller.isCurrentLaunchReadinessFile(readinessFile));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenFileChangesAfterTrackingButMtimeRoundsDown_returnsTrue()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_000L);
+    setTrackedReadinessTarget(controller, readinessFile);
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(16_000L));
+
+    assertTrue(controller.isCurrentLaunchReadinessFile(readinessFile));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void canConsumeCurrentLaunchReadiness_whenFileIsReplacedAfterRead_usesReadGeneration()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, 4321, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(16_000L));
+
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_000L);
+    setTrackedReadinessTarget(controller, readinessFile);
+    var staleSnapshot = LauncherReadinessFiles.readSnapshot(readinessFile).orElseThrow();
+
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(18_000L));
+
+    assertFalse(invokeCanConsumeCurrentLaunchReadiness(controller, staleSnapshot));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenTrackedAfterCurrentFileWriteAndMtimeRoundsDown_returnsTrue()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(16_000L));
+
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_000L);
+    setPendingLegacyPort(controller);
+    markStartupCompletionObserved(controller);
+    setTrackedReadinessTarget(controller, readinessFile, true);
+
+    assertTrue(controller.isCurrentLaunchReadinessFile(readinessFile));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenFileIsCreatedAfterTrackingButMtimeRoundsDown_returnsTrue()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Files.deleteIfExists(readinessFile);
+
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_001L);
+    setTrackedReadinessTarget(controller, readinessFile);
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(17_000L));
+
+    assertTrue(controller.isCurrentLaunchReadinessFile(readinessFile));
+
+    controller.shutdownAndWait();
+  }
+
+  @Test
+  void isCurrentLaunchReadinessFile_whenTrackedFilePreexistsAndLegacyPortMatches_returnsFalse()
+      throws Exception {
+    Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    LauncherReadinessFiles.write(
+        readinessFile,
+        new LauncherReadinessInfo(
+            LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
+    Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(17_000L));
+
+    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    setLaunchStartedAtMillis(controller, 17_000L);
+    setPendingLegacyPort(controller);
+    setTrackedReadinessTarget(controller, readinessFile);
+
+    assertFalse(controller.isCurrentLaunchReadinessFile(readinessFile));
 
     controller.shutdownAndWait();
   }
@@ -180,11 +542,27 @@ class LauncherControllerTest {
   }
 
   private static void sleepShort() {
-    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+    sleepMillis(10L);
+  }
+
+  private static void sleepMillis(long millis) {
+    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(millis));
     if (Thread.currentThread().isInterrupted()) {
       Thread.currentThread().interrupt();
       throw new AssertionError("Interrupted while waiting");
     }
+  }
+
+  private static void awaitCondition(ThrowingBooleanSupplier condition, String description)
+      throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (System.nanoTime() < deadline) {
+      if (condition.getAsBoolean()) {
+        return;
+      }
+      sleepShort();
+    }
+    throw new AssertionError("Timed out waiting for " + description);
   }
 
   private static void setPrivateStateField(Object target, Object value) throws Exception {
@@ -198,6 +576,77 @@ class LauncherControllerTest {
       return;
     }
     field.set(target, value);
+  }
+
+  private static boolean isBrowserAutoOpened(LauncherController controller) throws Exception {
+    Field field = controller.getClass().getDeclaredField("autoOpenedBrowser");
+    field.setAccessible(true);
+    return ((java.util.concurrent.atomic.AtomicBoolean) field.get(controller)).get();
+  }
+
+  private static void setLaunchStartedAtMillis(LauncherController controller, long value)
+      throws Exception {
+    Field field = LauncherController.class.getDeclaredField("launchStartedAtMillis");
+    field.setAccessible(true);
+    ((java.util.concurrent.atomic.AtomicLong) field.get(controller)).set(value);
+  }
+
+  private static void setPendingLegacyPort(LauncherController controller) throws Exception {
+    Field field = LauncherController.class.getDeclaredField("pendingLegacyPort");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Integer> ref = (AtomicReference<Integer>) field.get(controller);
+    ref.set(TEST_PORT);
+  }
+
+  private static void markStartupCompletionObserved(LauncherController controller)
+      throws Exception {
+    Field field = LauncherController.class.getDeclaredField("startupCompletionObserved");
+    field.setAccessible(true);
+    ((java.util.concurrent.atomic.AtomicBoolean) field.get(controller)).set(true);
+  }
+
+  private static void setTrackedReadinessTarget(LauncherController controller, Path readinessFile)
+      throws Exception {
+    setTrackedReadinessTarget(controller, readinessFile, false);
+  }
+
+  private static void setTrackedReadinessTarget(
+      LauncherController controller, Path readinessFile, boolean trackedAfterLaunch)
+      throws Exception {
+    var captureMethod =
+        LauncherController.class.getDeclaredMethod(
+            "captureReadinessTarget", Path.class, boolean.class);
+    captureMethod.setAccessible(true);
+    Object target = captureMethod.invoke(controller, readinessFile, trackedAfterLaunch);
+    Field field = LauncherController.class.getDeclaredField("readinessTarget");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Object> ref = (AtomicReference<Object>) field.get(controller);
+    ref.set(target);
+  }
+
+  private static boolean invokeCanConsumeCurrentLaunchReadiness(
+      LauncherController controller, LauncherReadinessFiles.ReadinessSnapshot readiness)
+      throws Exception {
+    Field field = LauncherController.class.getDeclaredField("readinessTarget");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Object> ref = (AtomicReference<Object>) field.get(controller);
+    Object trackedTarget = ref.get();
+    Method method = findCanConsumeCurrentLaunchReadinessMethod();
+    method.setAccessible(true);
+    return (boolean) method.invoke(controller, trackedTarget, readiness);
+  }
+
+  private static Method findCanConsumeCurrentLaunchReadinessMethod() {
+    for (Method method : LauncherController.class.getDeclaredMethods()) {
+      if (method.getName().equals("canConsumeCurrentLaunchReadiness")
+          && method.getParameterCount() == 2) {
+        return method;
+      }
+    }
+    throw new AssertionError("Missing canConsumeCurrentLaunchReadiness helper");
   }
 
   private static void awaitHeartbeat(Path heartbeat) throws Exception {
@@ -230,7 +679,77 @@ class LauncherControllerTest {
     throw new AssertionError("Heartbeat file kept changing; process still appears alive");
   }
 
-  private static void writeCryptadScript(Path baseDir) throws Exception {
+  private static Path createReadinessFilePath(Path baseDir, String runDirName) throws Exception {
+    Path runDir = baseDir.resolve(runDirName);
+    Files.createDirectories(runDir);
+    return LauncherReadinessFiles.resolve(runDir);
+  }
+
+  private static Path createDaemonLogFilePath(Path baseDir) throws Exception {
+    Path logsDir = baseDir.resolve("logs");
+    Files.createDirectories(logsDir);
+    Path daemonLogFile = logsDir.resolve("crypta-latest.log");
+    Files.writeString(daemonLogFile, "", StandardCharsets.UTF_8);
+    return daemonLogFile;
+  }
+
+  private static void writeStructuredReadinessCryptadScript(
+      Path baseDir, Path readinessFile, Path daemonLogFile, Path legacyDetectedMarker)
+      throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String runDir = readinessFile.getParent().toAbsolutePath().toString();
+    Files.createDirectories(readinessFile.getParent());
+    String readinessPath = readinessFile.toAbsolutePath().toString();
+    String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
+    String markerPath = legacyDetectedMarker.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              "echo legacy>\"" + markerPath + "\"",
+              "echo   Run dir:      " + runDir + ">>\"" + daemonLogPath + "\"",
+              "ping -n 2 127.0.0.1 > nul",
+              "(",
+              "echo version=" + LauncherReadinessInfo.VERSION_1,
+              "echo state=" + LauncherReadinessInfo.READY_STATE,
+              "echo ui.port=" + TEST_PORT,
+              "echo ui.root=/",
+              ") > \"" + readinessPath + "\"",
+              "echo READY",
+              "ping -n 2 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "printf 'legacy\\n' > \"" + markerPath + "\"",
+              "printf '  Run dir:      " + runDir + "\\n' >> \"" + daemonLogPath + "\"",
+              "sleep 0.1",
+              "cat <<'EOF' > \"" + readinessPath + "\"",
+              "version=" + LauncherReadinessInfo.VERSION_1,
+              "state=" + LauncherReadinessInfo.READY_STATE,
+              "ui.port=" + TEST_PORT,
+              "ui.root=/",
+              "EOF",
+              "echo \"READY\"",
+              "sleep 0.2");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLegacyPortCryptadScript(Path baseDir) throws Exception {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
@@ -252,6 +771,184 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "echo \"READY\"",
+              "sleep 0.2");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLegacyPortWithoutReadinessCryptadScript(Path baseDir, Path daemonLogFile)
+      throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              "echo Node initialization completed>>\"" + daemonLogPath + "\"",
+              "ping -n 3 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
+              "sleep 0.3");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLegacyPortWithMalformedReadinessCryptadScript(
+      Path baseDir, Path readinessFile, Path daemonLogFile) throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String readinessPath = readinessFile.toAbsolutePath().toString();
+    String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              "(",
+              "echo version=2",
+              "echo state=ready",
+              "echo ui.port=9999",
+              ") > \"" + readinessPath + "\"",
+              "echo Node initialization completed>>\"" + daemonLogPath + "\"",
+              "ping -n 3 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "cat <<'EOF' > \"" + readinessPath + "\"",
+              "version=2",
+              "state=ready",
+              "ui.port=9999",
+              "EOF",
+              "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
+              "sleep 0.3");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLegacyPortWithWrapperLogCompletionCryptadScript(
+      Path baseDir, Path wrapperLogFile) throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String wrapperLogPath = wrapperLogFile.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              "ping -n 3 127.0.0.1 > nul",
+              "echo Node initialization completed>>\"" + wrapperLogPath + "\"",
+              "ping -n 2 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "sleep 0.2",
+              "printf 'Node initialization completed\\n' >> \"" + wrapperLogPath + "\"",
+              "sleep 0.2");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeLegacyPortWithStdoutCompletionCryptadScript(Path baseDir)
+      throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
+              "echo Node initialization completed",
+              "ping -n 3 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
+              "echo \"Node initialization completed\"",
+              "sleep 0.3");
+    }
+    Files.writeString(script, content, StandardCharsets.UTF_8);
+
+    if (!isWindows && !script.toFile().setExecutable(true)) {
+      throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static void writeNoReadinessCryptadScript(Path baseDir, Path runDir, Path daemonLogFile)
+      throws Exception {
+    Path binDir = baseDir.resolve("bin");
+    Files.createDirectories(binDir);
+    boolean isWindows = new AppEnv().isWindows();
+    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    String resolvedRunDir = runDir.toAbsolutePath().toString();
+    String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
+
+    String content;
+    if (isWindows) {
+      content =
+          String.join(
+              "\n",
+              "@echo off",
+              "echo   Run dir:      " + resolvedRunDir + ">>\"" + daemonLogPath + "\"",
+              "echo BOOTING",
+              "ping -n 2 127.0.0.1 > nul");
+    } else {
+      content =
+          String.join(
+              "\n",
+              "#!/usr/bin/env sh",
+              "printf '  Run dir:      " + resolvedRunDir + "\\n' >> \"" + daemonLogPath + "\"",
+              "echo \"BOOTING\"",
               "sleep 0.2");
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
@@ -312,5 +1009,10 @@ class LauncherControllerTest {
         StandardCharsets.UTF_8);
     Files.writeString(logsDir.resolve("wrapper.log"), "", StandardCharsets.UTF_8);
     return conf;
+  }
+
+  @FunctionalInterface
+  private interface ThrowingBooleanSupplier {
+    boolean getAsBoolean() throws Exception;
   }
 }

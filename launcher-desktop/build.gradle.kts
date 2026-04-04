@@ -6,6 +6,7 @@ plugins {
 version = rootProject.version
 
 dependencies {
+  implementation(project(":foundation-config"))
   implementation(project(":foundation-fs"))
   implementation(libs.jna)
   implementation(libs.jnaPlatform)

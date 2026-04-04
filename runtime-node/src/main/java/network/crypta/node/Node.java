@@ -38,6 +38,7 @@ import network.crypta.node.subsystem.NodeMessagingSubsystem;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
+import network.crypta.runtime.bootstrap.LauncherReadinessPublisher;
 import network.crypta.runtime.bootstrap.NodeBootstrap;
 import network.crypta.runtime.bootstrap.NodeConfigManager;
 import network.crypta.runtime.bootstrap.NodeRuntimeBridgeFactories;
@@ -2017,6 +2018,15 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       toadlets.finishStart();
       toadlets.createFproxy();
       toadlets.removeStartupToadlet();
+      publishLauncherReadiness(toadlets);
+    }
+  }
+
+  private void publishLauncherReadiness(HttpShellContainer toadlets) {
+    try {
+      LauncherReadinessPublisher.publishReady(runDir.dir().toPath(), toadlets.listenPort());
+    } catch (IOException | IllegalArgumentException e) {
+      LOG.warn("Failed to publish launcher readiness file under {}", runDir.dir(), e);
     }
   }
 

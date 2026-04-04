@@ -15,7 +15,12 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
+import network.crypta.config.CryptadConfig;
+import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
+import network.crypta.fs.readiness.LauncherReadinessFiles;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
@@ -51,14 +56,21 @@ public final class LauncherUtils {
 
   private static final String CRYPTAD_SCRIPT = "cryptad";
   private static final String CRYPTAD_SCRIPT_WINDOWS = "cryptad.bat";
+  private static final String CONFIG_FILE_NAME = "cryptad.ini";
+  private static final String NODE_INSTALL_RUN_DIR_KEY = "node.install.runDir";
+  private static final String LOGGER_DIRNAME_KEY = "logger.dirname";
+  private static final String DAEMON_LOG_FILE_NAME = "crypta-latest.log";
+  private static final String RUN_DIR_MARKER = "Run dir:";
 
   private LauncherUtils() {}
 
   /**
-   * Parses a likely FProxy listening port from a launcher log line.
+   * Parses a likely FProxy listening port from a legacy launcher log line.
    *
    * <p>The parser uses conservative heuristics and returns {@code null} unless the line appears to
-   * describe FProxy startup and contains a plausible numeric tail after the last colon.
+   * describe FProxy startup and contains a plausible numeric tail after the last colon. The
+   * launcher keeps this only as a narrow compatibility fallback when structured readiness-file
+   * discovery is unavailable.
    *
    * @param line launcher output line to inspect
    * @return parsed port number when recognized, otherwise {@code null}
@@ -84,6 +96,108 @@ public final class LauncherUtils {
       return null;
     }
     return parsePort(tail.substring(0, digits));
+  }
+
+  /**
+   * Parses the daemon's resolved runtime directory from startup diagnostics.
+   *
+   * <p>The node logs a multi-line "Resolved directories" block during bootstrap. When a line
+   * containing the resolved run directory is observed, the launcher can retarget readiness-file
+   * polling to the daemon's actual runtime directory even if configuration or CLI overrides moved
+   * it away from the launcher's default AppDirs or ServiceDirs path.
+   *
+   * @param line launcher output line to inspect
+   * @return normalized run-directory path when present, otherwise {@code null}
+   */
+  public static Path parseResolvedRunDirFromLine(String line) {
+    int idx = line.indexOf(RUN_DIR_MARKER);
+    if (idx < 0) {
+      return null;
+    }
+    String tail = line.substring(idx + RUN_DIR_MARKER.length()).trim();
+    if (tail.isEmpty()) {
+      return null;
+    }
+    try {
+      return Path.of(tail).normalize();
+    } catch (RuntimeException e) {
+      logDebug("Failed parsing launcher runDir from line: " + line, e);
+      return null;
+    }
+  }
+
+  /**
+   * Resolves the readiness file path the daemon is expected to use for this launcher process.
+   *
+   * <p>The launcher first resolves the default base directories from the current environment. If
+   * the normal {@code cryptad.ini} exists under the resolved config directory, the launcher loads
+   * it with the same placeholder expansion used by daemon startup so {@code node.install.runDir}
+   * overrides are honored before startup begins. When the config file is missing or unreadable, the
+   * default resolved run directory remains the fallback.
+   *
+   * @return readiness-file path for the configured or default daemon runtime directory
+   */
+  public static Path resolveConfiguredLauncherReadinessFile() {
+    Resolved resolvedDirs = resolveCurrentProcessDirs();
+    Path configFile = resolvedDirs.configDir().resolve(CONFIG_FILE_NAME);
+    return resolveConfiguredLauncherReadinessFile(configFile, resolvedDirs);
+  }
+
+  static Path resolveConfiguredLauncherReadinessFile(Path configFile, Resolved resolvedDirs) {
+    Path defaultReadinessFile = LauncherReadinessFiles.resolve(resolvedDirs.runDir());
+    if (!Files.isRegularFile(configFile)) {
+      return defaultReadinessFile;
+    }
+    try {
+      String runDir =
+          CryptadConfig.loadExpandingPlaceholders(configFile, resolvedDirs)
+              .get(NODE_INSTALL_RUN_DIR_KEY);
+      if (runDir == null || runDir.isBlank()) {
+        return defaultReadinessFile;
+      }
+      return LauncherReadinessFiles.resolve(Path.of(runDir).normalize());
+    } catch (Exception e) {
+      logDebug(
+          "Failed resolving launcher readiness path from " + configFile + "; using default runDir",
+          e);
+      return defaultReadinessFile;
+    }
+  }
+
+  /**
+   * Resolves the daemon log file path the launcher can watch for startup diagnostics.
+   *
+   * <p>The launcher uses the same placeholder-expanded {@code cryptad.ini} view as daemon startup
+   * so configured {@code logger.dirname} values are honored before the process begins. When the
+   * config file is missing or unreadable, the default resolved logs directory remains the fallback.
+   *
+   * @return expected path to the daemon's rolling startup log
+   */
+  public static Path resolveConfiguredLauncherDaemonLogFile() {
+    Resolved resolvedDirs = resolveCurrentProcessDirs();
+    Path configFile = resolvedDirs.configDir().resolve(CONFIG_FILE_NAME);
+    return resolveConfiguredLauncherDaemonLogFile(configFile, resolvedDirs);
+  }
+
+  static Path resolveConfiguredLauncherDaemonLogFile(Path configFile, Resolved resolvedDirs) {
+    Path logsDir = resolvedDirs.logsDir();
+    if (Files.isRegularFile(configFile)) {
+      try {
+        String configuredLogDir =
+            CryptadConfig.loadExpandingPlaceholders(configFile, resolvedDirs)
+                .get(LOGGER_DIRNAME_KEY);
+        if (configuredLogDir != null && !configuredLogDir.isBlank()) {
+          logsDir = Path.of(configuredLogDir).normalize();
+        }
+      } catch (Exception e) {
+        logDebug(
+            "Failed resolving launcher daemon log path from "
+                + configFile
+                + "; using default logsDir",
+            e);
+      }
+    }
+    return logsDir.resolve(DAEMON_LOG_FILE_NAME);
   }
 
   private static Integer parsePort(String value) {
@@ -390,6 +504,11 @@ public final class LauncherUtils {
       return false;
     }
     return trimmed.substring(0, idx).trim().equals(key);
+  }
+
+  private static Resolved resolveCurrentProcessDirs() {
+    AppEnv env = new AppEnv();
+    return env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
   }
 
   private static Path resolveCryptadPathFromEnv(Path cwd, Map<String, String> env) {

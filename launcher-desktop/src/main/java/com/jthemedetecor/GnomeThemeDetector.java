@@ -223,6 +223,7 @@ class GnomeThemeDetector extends OsThemeDetector {
      *
      * @param detector detector owning the listener set and theme-parsing rules
      */
+    @SuppressWarnings("ThreadPriorityCheck")
     DetectorThread(@NotNull GnomeThemeDetector detector) {
       this.detector = detector;
       this.themeState = detector.readThemeState();

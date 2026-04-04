@@ -1,17 +1,26 @@
 package network.crypta.node;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.file.Path;
+import network.crypta.fs.readiness.LauncherReadinessFiles;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.io.comm.TrafficClass;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.runtime.http.HttpShellContainer;
+import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.objenesis.ObjenesisStd;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +40,16 @@ class NodeTest {
       f.set(target, value);
     } catch (ReflectiveOperationException e) {
       throw new LinkageError("Failed setting field '" + fieldName + "'", e);
+    }
+  }
+
+  private static void invokeFinishToadletsIfEnabled(Node node) {
+    try {
+      Method method = node.getClass().getDeclaredMethod("finishToadletsIfEnabled");
+      method.setAccessible(true);
+      method.invoke(node);
+    } catch (ReflectiveOperationException e) {
+      throw new LinkageError("Failed invoking method 'finishToadletsIfEnabled'", e);
     }
   }
 
@@ -126,5 +145,64 @@ class NodeTest {
     Node node = newNodeInstance();
     // nodeStarter is null by default; short-circuits WrapperManager static call
     assertFalse(node.isUsingWrapper());
+  }
+
+  @Test
+  @DisplayName(
+      "finishToadletsIfEnabled_whenShellEnabled_publishesLauncherReadinessAfterStartupHooks")
+  void finishToadletsIfEnabled_whenShellEnabled_publishesLauncherReadinessAfterStartupHooks(
+      @TempDir Path tempDir) throws Exception {
+    Node node = newNodeInstance();
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    HttpShellContainer toadlets = mock(HttpShellContainer.class);
+    ProgramDirectory runDir = new ProgramDirectory();
+    runDir.move(tempDir.toString());
+    when(services.toadlets()).thenReturn(toadlets);
+    when(toadlets.isEnabled()).thenReturn(true);
+    when(toadlets.listenPort()).thenReturn(8888);
+
+    setField(node, "services", services);
+    setField(node, "runDir", runDir);
+
+    invokeFinishToadletsIfEnabled(node);
+
+    var order = inOrder(toadlets);
+    order.verify(toadlets).isEnabled();
+    order.verify(toadlets).finishStart();
+    order.verify(toadlets).createFproxy();
+    order.verify(toadlets).removeStartupToadlet();
+    order.verify(toadlets).listenPort();
+
+    Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
+    LauncherReadinessInfo actual = LauncherReadinessFiles.read(readinessFile).orElseThrow();
+    assertEquals(LauncherReadinessInfo.ready(8888), actual);
+    assertTrue(actual.isReady());
+  }
+
+  @Test
+  @DisplayName("finishToadletsIfEnabled_whenReadinessPortInvalid_keepsStartupNonFatal")
+  void finishToadletsIfEnabled_whenReadinessPortInvalid_keepsStartupNonFatal(@TempDir Path tempDir)
+      throws Exception {
+    Node node = newNodeInstance();
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    HttpShellContainer toadlets = mock(HttpShellContainer.class);
+    ProgramDirectory runDir = new ProgramDirectory();
+    runDir.move(tempDir.toString());
+    when(services.toadlets()).thenReturn(toadlets);
+    when(toadlets.isEnabled()).thenReturn(true);
+    when(toadlets.listenPort()).thenReturn(0);
+
+    setField(node, "services", services);
+    setField(node, "runDir", runDir);
+
+    invokeFinishToadletsIfEnabled(node);
+
+    var order = inOrder(toadlets);
+    order.verify(toadlets).isEnabled();
+    order.verify(toadlets).finishStart();
+    order.verify(toadlets).createFproxy();
+    order.verify(toadlets).removeStartupToadlet();
+    order.verify(toadlets).listenPort();
+    assertTrue(LauncherReadinessFiles.read(LauncherReadinessFiles.resolve(tempDir)).isEmpty());
   }
 }
