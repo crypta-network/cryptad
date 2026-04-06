@@ -29,6 +29,7 @@ val internalLeafProjects =
     project(":kernel-routing"),
     project(":runtime-spi"),
     project(":platform-api"),
+    project(":platform-apphost"),
     project(":runtime-node"),
     project(":adapter-fcp"),
     project(":adapter-http-legacy-admin"),
@@ -42,6 +43,33 @@ val internalLeafMainJavaSourceDirs =
 
 val internalLeafMainClassDirs =
   internalLeafProjects.map { leaf -> leaf.layout.buildDirectory.dir("classes/java/main") }
+
+val internalLeafProjectsWithLocalTests =
+  internalLeafProjects.filter { leaf ->
+    leaf.layout.projectDirectory.dir("src/test/java").asFile.isDirectory ||
+      leaf.layout.projectDirectory.dir("src/test/kotlin").asFile.isDirectory
+  }
+
+val internalLeafTestSourceDirs =
+  internalLeafProjectsWithLocalTests
+    .flatMap { leaf ->
+      listOf(
+        leaf.layout.projectDirectory.dir("src/test/java"),
+        leaf.layout.projectDirectory.dir("src/test/kotlin"),
+      )
+    }
+    .map { it.asFile }
+    .filter { it.isDirectory }
+
+val internalLeafTestResultDirs =
+  internalLeafProjectsWithLocalTests.map { leaf ->
+    leaf.layout.buildDirectory.dir("test-results/test").get().asFile
+  }
+
+val internalLeafJacocoExecFiles =
+  internalLeafProjectsWithLocalTests.map { leaf ->
+    leaf.layout.buildDirectory.file("jacoco/test.exec")
+  }
 
 dependencies {
   // implementation
@@ -58,6 +86,7 @@ dependencies {
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
   implementation(project(":platform-api"))
+  implementation(project(":platform-apphost"))
   implementation(project(":runtime-node"))
   implementation(project(":adapter-fcp"))
   implementation(project(":adapter-http-legacy-admin"))
@@ -126,6 +155,20 @@ val aggregatedSonarBinaryPaths =
       internalLeafMainClassDirs.map { it.get().asFile })
     .distinct()
     .joinToString(",") { it.absolutePath }
+
+val aggregatedSonarTestPaths =
+  (sourceSets.test.get().allSource.srcDirs + internalLeafTestSourceDirs).distinct().joinToString(
+    ","
+  ) {
+    relativePath(it)
+  }
+
+val aggregatedSonarTestInclusions =
+  (sourceSets.test.get().allSource.srcDirs + internalLeafTestSourceDirs).distinct().joinToString(
+    ","
+  ) {
+    "${relativePath(it)}/**"
+  }
 
 val aggregatedSonarLibraryFiles = sourceSets.main.get().compileClasspath.filter { it.isFile }
 
@@ -324,6 +367,9 @@ val legacyRuntimeAlertsMainPackageDir =
 val legacyRuntimeAlertsTestPackageDir =
   layout.buildDirectory.dir("classes/java/test/network/crypta/node/useralerts")
 
+val legacyPlatformApphostRootTestPackageDir =
+  layout.buildDirectory.dir("classes/java/test/network/crypta/platform/apphost")
+
 // Selective leaf ownership metadata only covers root <-> leaf and leaf <-> leaf moves.
 // Root-local package re-homes still need explicit stale-output pruning, so non-clean builds and
 // branch switches do not keep packaging deleted classes from the old package path.
@@ -347,6 +393,16 @@ val pruneLegacyRuntimeAlertsOutputs by
     delete(staleOutputTrees)
   }
 
+val pruneLegacyPlatformApphostRootTestOutputs by
+  tasks.registering(Delete::class) {
+    val staleOutputTrees = listOf(legacyPlatformApphostRootTestPackageDir)
+    group = "build"
+    description =
+      "Removes stale root AppHost test outputs after the focused suite moved into :platform-apphost"
+    outputs.upToDateWhen { false }
+    delete(staleOutputTrees)
+  }
+
 internalLeafProjects.forEach { leaf ->
   leaf.wireSelectiveLeafOutputPruning(pruneSelectiveLeafOutputs, sharedSelectiveLeafPruneTaskNames)
   leaf.extensions.configure<org.sonarqube.gradle.SonarExtension>("sonar") { isSkipProject = true }
@@ -358,6 +414,15 @@ project.wireSelectiveLeafOutputPruning(
   pruneLegacyRuntimeAlertsOutputs,
   rootSelectiveLeafPruneTaskNames,
 )
+
+project.wireSelectiveLeafOutputPruning(
+  pruneLegacyPlatformApphostRootTestOutputs,
+  rootSelectiveLeafPruneTaskNames,
+)
+
+extensions.extraProperties["cryptad.additionalSonarTestSourceDirs"] = internalLeafTestSourceDirs
+
+extensions.extraProperties["cryptad.additionalSonarTestResultDirs"] = internalLeafTestResultDirs
 
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(pruneSelectiveLeafOutputs)
@@ -374,6 +439,10 @@ tasks.named<Copy>("prepareWrapperLibs") {
 
 tasks.named<JacocoReport>("jacocoTestReport") {
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
+  dependsOn(internalLeafProjectsWithLocalTests.map { "${it.path}:test" })
+  executionData.setFrom(
+    files(layout.buildDirectory.file("jacoco/test.exec"), internalLeafJacocoExecFiles)
+  )
   classDirectories.setFrom(
     files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
   )
@@ -384,6 +453,10 @@ tasks.named<JacocoReport>("jacocoTestReport") {
 
 tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
+  dependsOn(internalLeafProjectsWithLocalTests.map { "${it.path}:test" })
+  executionData.setFrom(
+    files(layout.buildDirectory.file("jacoco/test.exec"), internalLeafJacocoExecFiles)
+  )
   classDirectories.setFrom(
     files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
   )
@@ -392,11 +465,17 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
   )
 }
 
+tasks.named("prepareTestExecutionReport") {
+  dependsOn(internalLeafProjectsWithLocalTests.map { "${it.path}:test" })
+}
+
 sonar {
   properties {
     property("sonar.sources", aggregatedSonarSourcePaths)
     property("sonar.java.binaries", aggregatedSonarBinaryPaths)
     property("sonar.java.libraries", aggregatedSonarLibraryFiles)
+    property("sonar.tests", aggregatedSonarTestPaths)
+    property("sonar.test.inclusions", aggregatedSonarTestInclusions)
   }
 }
 

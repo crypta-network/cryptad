@@ -218,6 +218,10 @@ Cryptad now uses a partial multi-project Gradle build.
   bridge in `:adapter-http-legacy-admin`. The initial read-only surface covers node info, peers,
   config export, connectivity, and security-level snapshots; `GET /api/v1/config` defaults to the
   effective `CURRENT` section when `sections=` is omitted.
+- `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
+  `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
+  lifecycle, and per-start launch-token plumbing for local apps while staying separate from future
+  Web Shell, application-UI, and app update-channel work.
 - `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
   `network.crypta.client` async/request engine and high-level client APIs, large slices of
   `network.crypta.node` after the phase-1 routing/helper move, the retained node-coupled
@@ -574,6 +578,8 @@ Root build also includes:
   and other infrastructure code.
 - `:platform-api`: transport-neutral read-only Platform API v1 built on top of `:runtime-spi`,
   currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
+- `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
+  Future Web Shell, app UI, and update-channel work remain separate and later.
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
@@ -637,7 +643,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-    `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
+    `:platform-apphost`, `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`,
+    `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
@@ -751,7 +758,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
   and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
-  `:platform-api` provides the transport-neutral read-only Platform API v1; `:runtime-node`
+  `:platform-api` provides the transport-neutral read-only Platform API v1; `:platform-apphost`
+  provides the transport-neutral out-of-process AppHost v1 core for installed local apps; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
