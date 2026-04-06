@@ -2,6 +2,24 @@ import cryptad.SonarS8445ImportOrderFormatter
 
 plugins { id("com.diffplug.spotless") }
 
+val kotlinGradleTargets =
+  if (project == rootProject) {
+    fileTree(projectDir) {
+      include("build.gradle.kts")
+      include("settings.gradle.kts")
+      include("*/build.gradle.kts")
+      include("build-logic/build.gradle.kts")
+      include("build-logic/settings.gradle.kts")
+      include("build-logic/src/**/*.gradle.kts")
+    }
+  } else {
+    fileTree(projectDir) {
+      include("build.gradle.kts")
+      include("settings.gradle.kts")
+      include("src/**/*.gradle.kts")
+    }
+  }
+
 spotless {
   java {
     googleJavaFormat("1.28.0").reflowLongStrings()
@@ -21,12 +39,10 @@ spotless {
     endWithNewline()
   }
   kotlinGradle {
-    target("**/*.gradle.kts")
-    // Avoid scanning generated build output (including Spotless' own working directories) and IDE
-    // metadata which may contain non-UTF8 content or filenames.
-    targetExclude("**/build/**")
-    targetExclude("**/.gradle/**")
-    targetExclude("**/.idea/**")
+    // Keep the root task on checked-in Gradle scripts only. The broad repo-wide glob was pulling
+    // generated build-logic outputs into the root target set, which is both wasted work and can
+    // destabilize Spotless path validation on non-clean worktrees.
+    target(kotlinGradleTargets)
     ktfmt("0.58").googleStyle()
   }
 }

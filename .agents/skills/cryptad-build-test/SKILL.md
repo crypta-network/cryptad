@@ -85,8 +85,9 @@ Use this skill when you need to:
   matching `network/crypta/clients/http/**` main resources. On the root test/runtime classpath,
   those resources often resolve from the leaf JAR, so tests must treat them as classpath resources
   rather than assume a plain filesystem `Path`.
-- All tests remain in the root project for now and compile against the leaf subprojects through
-  the root build.
+- Most tests still live in the root project and compile against the leaf subprojects through the
+  root build, but `:platform-apphost` now keeps its focused AppHost tests under
+  `platform-apphost/src/test/java` and they run via `:platform-apphost:test`.
 - File-system-based l10n tests still run from the root project and use
   `foundation-config/src/main/resources/network/crypta/l10n/` as the main resource path.
 
