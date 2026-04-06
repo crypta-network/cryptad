@@ -9,16 +9,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class InstalledAppPathsTest {
+  private static final String SAMPLE_APP_ID = "sample-app";
+
   @TempDir private Path tempDir;
 
   @Test
   void resolveInstalledPath_whenRelativePathEscapesInstalledRoot_expectFailure() {
     InstalledAppPaths paths = paths();
+    Path relativeEscape = Path.of("../outside");
 
     IllegalArgumentException exception =
         assertThrows(
-            IllegalArgumentException.class,
-            () -> paths.resolveInstalledPath(Path.of("../outside")));
+            IllegalArgumentException.class, () -> paths.resolveInstalledPath(relativeEscape));
 
     assertEquals("resolved path must stay under installedRoot: ../outside", exception.getMessage());
   }
@@ -29,7 +31,7 @@ class InstalledAppPathsTest {
     AppManifest manifest =
         new AppManifest(
             1,
-            "sample-app",
+            SAMPLE_APP_ID,
             "Sample App",
             "1.0",
             "/outside",
@@ -46,10 +48,10 @@ class InstalledAppPathsTest {
 
   private InstalledAppPaths paths() {
     return new InstalledAppPaths(
-        "sample-app",
-        tempDir.resolve("installed").resolve("sample-app"),
-        tempDir.resolve("data").resolve("sample-app"),
-        tempDir.resolve("cache").resolve("sample-app"),
-        tempDir.resolve("run").resolve("sample-app"));
+        SAMPLE_APP_ID,
+        tempDir.resolve("installed").resolve(SAMPLE_APP_ID),
+        tempDir.resolve("data").resolve(SAMPLE_APP_ID),
+        tempDir.resolve("cache").resolve(SAMPLE_APP_ID),
+        tempDir.resolve("run").resolve(SAMPLE_APP_ID));
   }
 }

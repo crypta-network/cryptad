@@ -54,6 +54,12 @@ import org.jetbrains.annotations.NotNull;
 public final class LocalProcessAppHost implements AppHost {
   private static final Duration DEFAULT_STOP_TIMEOUT = Duration.ofSeconds(5);
   private static final String TEMP_INSTALL_PREFIX = "app-install-";
+  private static final String LOCAL_DIRECTORY_NAME = "local";
+  private static final String INSTALLED_APPS_DIR_LABEL = "installedAppsDir";
+  private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
+  private static final String PROC_ROOT = "/proc";
+  private static final List<String> WINDOWS_ROOT_ENVIRONMENT_NAMES =
+      List.of("SystemRoot", "SYSTEMROOT", "WINDIR");
   private static final int MAX_SHEBANG_PROBE_BYTES = 4096;
   private static final int DOS_HEADER_SIZE = 64;
   private static final int PE_POINTER_OFFSET = 0x3C;
@@ -77,14 +83,14 @@ public final class LocalProcessAppHost implements AppHost {
           Path.of("/bin").toString(),
           Path.of("/usr", "sbin").toString(),
           Path.of("/sbin").toString(),
-          Path.of("/usr", "local", "bin").toString(),
-          Path.of("/usr", "local", "sbin").toString());
+          Path.of("/usr", LOCAL_DIRECTORY_NAME, "bin").toString(),
+          Path.of("/usr", LOCAL_DIRECTORY_NAME, "sbin").toString());
   private static final List<String> MAC_UNIX_PATH_ENTRIES =
       List.of(
           Path.of("/opt", "homebrew", "bin").toString(),
           Path.of("/opt", "homebrew", "sbin").toString(),
-          Path.of("/opt", "local", "bin").toString(),
-          Path.of("/opt", "local", "sbin").toString());
+          Path.of("/opt", LOCAL_DIRECTORY_NAME, "bin").toString(),
+          Path.of("/opt", LOCAL_DIRECTORY_NAME, "sbin").toString());
   private static final List<String> LINUX_UNIX_PATH_ENTRIES =
       List.of(
           Path.of("/home", "linuxbrew", ".linuxbrew", "bin").toString(),
@@ -102,6 +108,7 @@ public final class LocalProcessAppHost implements AppHost {
    *
    * @param layout filesystem layout managed by the host
    */
+  @SuppressWarnings("unused")
   public LocalProcessAppHost(AppHostLayout layout) {
     this(layout, DEFAULT_STOP_TIMEOUT, new SecureRandom(), new AppEnv());
   }
@@ -135,7 +142,7 @@ public final class LocalProcessAppHost implements AppHost {
     Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
     rejectOverlappingInstallTree(stagingRoot, layout.installedAppsDir());
     Path installedAppsDir = layout.installedAppsDir();
-    ensureManagedDirectory(layout.dataDir(), installedAppsDir, "installedAppsDir");
+    ensureManagedDirectory(layout.dataDir(), installedAppsDir);
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
@@ -287,58 +294,11 @@ public final class LocalProcessAppHost implements AppHost {
     if (trackedRunningProcess == null) {
       return true;
     }
-    List<ProcessHandle> processTree = trackedRunningProcess.processTree();
-    try {
-      Duration reapGracePeriod =
-          stopTimeout.compareTo(Duration.ofMillis(100)) > 0 ? Duration.ofMillis(100) : stopTimeout;
-
-      destroyProcessHandles(descendantHandles(trackedRunningProcess));
-      if (!waitForProcessTreeExit(processTree, reapGracePeriod)) {
-        trackedRunningProcess =
-            refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess);
-        if (trackedRunningProcess == null) {
-          return true;
-        }
-        processTree = trackedRunningProcess.processTree();
-        destroyRootProcess(trackedRunningProcess);
-        if (!waitForProcessTreeExit(processTree, stopTimeout)) {
-          trackedRunningProcess =
-              refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess);
-          if (trackedRunningProcess == null) {
-            return true;
-          }
-          processTree = trackedRunningProcess.processTree();
-          destroyProcessHandlesForcibly(descendantHandles(trackedRunningProcess));
-          if (!waitForProcessTreeExit(processTree, stopTimeout)) {
-            trackedRunningProcess =
-                refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess);
-            if (trackedRunningProcess == null) {
-              return true;
-            }
-            processTree = trackedRunningProcess.processTree();
-            destroyRootProcessForcibly(trackedRunningProcess);
-            waitForProcessExit(trackedRunningProcess.process(), stopTimeout);
-            if (!waitForProcessTreeExit(processTree, stopTimeout)) {
-              if (!preserveRunningState(normalizedAppId, trackedRunningProcess)) {
-                return true;
-              }
-              throw new AppHostException("timed out stopping app: " + appId);
-            }
-          }
-        }
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      if (!preserveRunningState(normalizedAppId, trackedRunningProcess)) {
-        return true;
-      }
-      throw new AppHostException("interrupted while stopping app: " + appId, e);
+    trackedRunningProcess = stopWithEscalation(normalizedAppId, appId, trackedRunningProcess);
+    if (trackedRunningProcess == null) {
+      return true;
     }
-    if (refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess) != null) {
-      throw new AppHostException("timed out stopping app: " + appId);
-    }
-    trackedRunningProcess.exitCleanup().join();
-    runningApps.remove(normalizedAppId, trackedRunningProcess);
+    completeStop(normalizedAppId, appId, trackedRunningProcess);
     return true;
   }
 
@@ -470,10 +430,10 @@ public final class LocalProcessAppHost implements AppHost {
         || secondComparablePath.startsWith(firstComparablePath);
   }
 
-  private static void ensureManagedDirectory(Path baseDirectory, Path directory, String label)
+  private static void ensureManagedDirectory(Path baseDirectory, Path directory)
       throws IOException {
     Path normalized = directory.toAbsolutePath().normalize();
-    validateManagedPathPrefixes(baseDirectory, normalized, label);
+    validateManagedPathPrefixes(baseDirectory, normalized, INSTALLED_APPS_DIR_LABEL);
     Deque<Path> missingSegments = new ArrayDeque<>();
     Path current = normalized;
     while (current != null && !Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
@@ -484,28 +444,30 @@ public final class LocalProcessAppHost implements AppHost {
       current = current.getParent();
     }
     if (current == null) {
-      throw new AppHostException(label + " must resolve beneath an existing filesystem root");
+      throw new AppHostException(
+          INSTALLED_APPS_DIR_LABEL + " must resolve beneath an existing filesystem root");
     }
-    validateManagedDirectoryEntry(current, label);
+    validateManagedDirectoryEntry(current, INSTALLED_APPS_DIR_LABEL);
     while (!missingSegments.isEmpty()) {
       current = current.resolve(missingSegments.pop());
       Files.createDirectory(current);
     }
-    validateManagedDirectoryEntry(normalized, label);
+    validateManagedDirectoryEntry(normalized, INSTALLED_APPS_DIR_LABEL);
     if (!Files.isDirectory(normalized, LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppHostException(label + " must be a directory: " + normalized);
+      throw new AppHostException(INSTALLED_APPS_DIR_LABEL + " must be a directory: " + normalized);
     }
   }
 
   private Path validateInstalledAppsDirectory() throws IOException {
     Path installedAppsDir = layout.installedAppsDir().toAbsolutePath().normalize();
-    validateManagedPathPrefixes(layout.dataDir(), installedAppsDir, "installedAppsDir");
+    validateManagedPathPrefixes(layout.dataDir(), installedAppsDir, INSTALLED_APPS_DIR_LABEL);
     if (!Files.exists(installedAppsDir, LinkOption.NOFOLLOW_LINKS)) {
       return installedAppsDir;
     }
-    validateManagedDirectoryEntry(installedAppsDir, "installedAppsDir");
+    validateManagedDirectoryEntry(installedAppsDir, INSTALLED_APPS_DIR_LABEL);
     if (!Files.isDirectory(installedAppsDir, LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppHostException("installedAppsDir must be a directory: " + installedAppsDir);
+      throw new AppHostException(
+          INSTALLED_APPS_DIR_LABEL + " must be a directory: " + installedAppsDir);
     }
     return installedAppsDir;
   }
@@ -544,7 +506,7 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
-  private static boolean shouldSkipInstalledEntry(Path appRoot) throws IOException {
+  private static boolean shouldSkipInstalledEntry(Path appRoot) {
     if (!Files.isDirectory(appRoot, LinkOption.NOFOLLOW_LINKS)) {
       return true;
     }
@@ -616,45 +578,49 @@ public final class LocalProcessAppHost implements AppHost {
     long handoffDeadline = captureDeadline + STARTUP_POST_CAPTURE_HANDOFF_GRACE_PERIOD.toNanos();
     while (System.nanoTime() < deadline) {
       observedHandles.addAll(snapshotProcessTree(startupSeedHandles(rootHandle, observedHandles)));
-      if (!rootHandle.isAlive()) {
-        break;
-      }
       long now = System.nanoTime();
-      if (now >= handoffDeadline) {
+      if (shouldStopStartupObservation(rootHandle, now, handoffDeadline)) {
         break;
       }
-      long remainingNanos = deadline - now;
-      if (remainingNanos <= 0L) {
-        break;
-      }
-      long pollIntervalNanos =
-          now >= captureDeadline
-              ? STARTUP_HANDOFF_POLL_INTERVAL_NANOS
-              : STARTUP_PROCESS_POLL_INTERVAL_NANOS;
-      long pollNanos = Math.min(remainingNanos, pollIntervalNanos);
-      boolean exited = waitForProcess(process, pollNanos, appId);
-      if (!exited && System.nanoTime() >= handoffDeadline) {
-        break;
-      }
+      waitForStartupObservation(process, appId, deadline, captureDeadline, now);
     }
     capturePostExitProcessTree(rootHandle, observedHandles, appId);
     observedHandles.addAll(snapshotProcessTree(List.of(rootHandle)));
     return aliveHandles(observedHandles);
   }
 
-  private boolean waitForProcess(Process process, long timeoutNanos, String appId)
+  private static boolean shouldStopStartupObservation(
+      ProcessHandle rootHandle, long now, long handoffDeadline) {
+    return !rootHandle.isAlive() || now >= handoffDeadline;
+  }
+
+  private void waitForStartupObservation(
+      Process process, String appId, long deadline, long captureDeadline, long now)
+      throws AppHostException {
+    long remainingNanos = deadline - now;
+    if (remainingNanos <= 0L) {
+      return;
+    }
+    long pollIntervalNanos =
+        now >= captureDeadline
+            ? STARTUP_HANDOFF_POLL_INTERVAL_NANOS
+            : STARTUP_PROCESS_POLL_INTERVAL_NANOS;
+    waitForProcess(process, Math.min(remainingNanos, pollIntervalNanos), appId);
+  }
+
+  private void waitForProcess(Process process, long timeoutNanos, String appId)
       throws AppHostException {
     try {
-      return process.waitFor(timeoutNanos, TimeUnit.NANOSECONDS);
+      process.waitFor(timeoutNanos, TimeUnit.NANOSECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new AppHostException("interrupted while starting app: " + appId, e);
     }
   }
 
-  private static boolean waitForProcessExit(Process process, Duration timeout)
+  private static void waitForProcessExit(Process process, Duration timeout)
       throws InterruptedException {
-    return process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
+    process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
   }
 
   private static void discardChildInput(Process process, String appId) throws IOException {
@@ -707,7 +673,7 @@ public final class LocalProcessAppHost implements AppHost {
           break;
         }
       }
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     } finally {
       refreshObservedProcessTree(appId, process);
@@ -810,8 +776,8 @@ public final class LocalProcessAppHost implements AppHost {
         "PATH",
         String.join(
             ";",
-            Path.of(systemRoot, "System32").toString(),
-            Path.of(systemRoot, "System32", "WindowsPowerShell", "v1.0").toString(),
+            Path.of(systemRoot, WINDOWS_SYSTEM32_DIRECTORY).toString(),
+            Path.of(systemRoot, WINDOWS_SYSTEM32_DIRECTORY, "WindowsPowerShell", "v1.0").toString(),
             systemRoot));
     copyHostEnvironmentValue(environment, "TEMP");
     copyHostEnvironmentValue(environment, "TMP");
@@ -1036,7 +1002,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static String windowsCommandInterpreter() {
-    return Path.of(resolveWindowsRoot(), "System32", "cmd.exe").toString();
+    return Path.of(resolveWindowsRoot(), WINDOWS_SYSTEM32_DIRECTORY, "cmd.exe").toString();
   }
 
   private static String safeUnixPath(AppEnv appEnv) {
@@ -1054,12 +1020,12 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static String resolveWindowsRoot() {
-    String systemRoot = firstNonBlankEnvironmentValue("SystemRoot", "SYSTEMROOT", "WINDIR");
+    String systemRoot = firstNonBlankWindowsRootEnvironmentValue();
     return systemRoot != null ? systemRoot : "C:\\Windows";
   }
 
-  private static String firstNonBlankEnvironmentValue(String... names) {
-    for (String name : names) {
+  private static String firstNonBlankWindowsRootEnvironmentValue() {
+    for (String name : WINDOWS_ROOT_ENVIRONMENT_NAMES) {
       String value = System.getenv(name);
       if (value != null && !value.isBlank()) {
         return value;
@@ -1162,8 +1128,8 @@ public final class LocalProcessAppHost implements AppHost {
           }
 
           @Override
-          public @NotNull FileVisitResult visitFileFailed(@NotNull Path file, IOException exc)
-              throws IOException {
+          public @NotNull FileVisitResult visitFileFailed(
+              @NotNull Path file, @NotNull IOException exc) throws IOException {
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && isAliasedPathEntry(file)) {
               Files.deleteIfExists(file);
               return FileVisitResult.CONTINUE;
@@ -1238,6 +1204,84 @@ public final class LocalProcessAppHost implements AppHost {
     return aliveHandles(processTree).isEmpty();
   }
 
+  private RunningProcess stopWithEscalation(
+      String normalizedAppId, String appId, RunningProcess trackedRunningProcess)
+      throws IOException {
+    RunningProcess current = trackedRunningProcess;
+    try {
+      if (destroyDescendantsAndWaitForExit(current, descendantReapGracePeriod())) {
+        return current;
+      }
+      current = refreshTrackedRunningProcess(normalizedAppId, current);
+      if (current == null || destroyRootAndWaitForExit(current, stopTimeout)) {
+        return current;
+      }
+      current = refreshTrackedRunningProcess(normalizedAppId, current);
+      if (current == null || destroyDescendantsForciblyAndWaitForExit(current, stopTimeout)) {
+        return current;
+      }
+      current = refreshTrackedRunningProcess(normalizedAppId, current);
+      if (current == null) {
+        return null;
+      }
+      return destroyRootForciblyAndWaitForExit(normalizedAppId, appId, current);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      boolean preserved = preserveRunningState(normalizedAppId, current);
+      if (!preserved) {
+        return null;
+      }
+      throw new AppHostException("interrupted while stopping app: " + appId, e);
+    }
+  }
+
+  private Duration descendantReapGracePeriod() {
+    return stopTimeout.compareTo(Duration.ofMillis(100)) > 0 ? Duration.ofMillis(100) : stopTimeout;
+  }
+
+  private static boolean destroyDescendantsAndWaitForExit(
+      RunningProcess runningProcess, Duration timeout) throws InterruptedException {
+    destroyProcessHandles(descendantHandles(runningProcess));
+    return waitForProcessTreeExit(runningProcess.processTree(), timeout);
+  }
+
+  private static boolean destroyRootAndWaitForExit(RunningProcess runningProcess, Duration timeout)
+      throws InterruptedException {
+    destroyRootProcess(runningProcess);
+    return waitForProcessTreeExit(runningProcess.processTree(), timeout);
+  }
+
+  private static boolean destroyDescendantsForciblyAndWaitForExit(
+      RunningProcess runningProcess, Duration timeout) throws InterruptedException {
+    destroyProcessHandlesForcibly(descendantHandles(runningProcess));
+    return waitForProcessTreeExit(runningProcess.processTree(), timeout);
+  }
+
+  private RunningProcess destroyRootForciblyAndWaitForExit(
+      String normalizedAppId, String appId, RunningProcess runningProcess)
+      throws IOException, InterruptedException {
+    destroyRootProcessForcibly(runningProcess);
+    waitForProcessExit(runningProcess.process(), stopTimeout);
+    if (waitForProcessTreeExit(runningProcess.processTree(), stopTimeout)) {
+      return runningProcess;
+    }
+    boolean preserved = preserveRunningState(normalizedAppId, runningProcess);
+    if (!preserved) {
+      return null;
+    }
+    throw new AppHostException("timed out stopping app: " + appId);
+  }
+
+  private void completeStop(
+      String normalizedAppId, String appId, RunningProcess trackedRunningProcess)
+      throws IOException {
+    if (refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess) != null) {
+      throw new AppHostException("timed out stopping app: " + appId);
+    }
+    trackedRunningProcess.exitCleanup().join();
+    runningApps.remove(normalizedAppId, trackedRunningProcess);
+  }
+
   private boolean preserveRunningState(String appId, RunningProcess runningProcess) {
     RunningProcess refreshedRunningProcess = runningProcess.refresh();
     if (refreshedRunningProcess == null) {
@@ -1254,7 +1298,7 @@ public final class LocalProcessAppHost implements AppHost {
       RunningProcess trackedRunningProcess = runningProcess.withProcessTree(processTree);
       runningApps.replace(appId, runningProcess, trackedRunningProcess);
       return trackedRunningProcess;
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       runningProcess.exitCleanup().join();
       runningApps.remove(appId, runningProcess);
       return null;
@@ -1411,7 +1455,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static List<ProcessHandle> findTokenTrackedProcessesWithPs(String token, String appId) {
-    String psCommand = resolveTrustedUnixCommand("ps");
+    String psCommand = resolveTrustedPsCommand();
     if (psCommand == null) {
       return List.of();
     }
@@ -1432,7 +1476,7 @@ public final class LocalProcessAppHost implements AppHost {
     Process process;
     try {
       process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    } catch (IOException e) {
+    } catch (IOException _) {
       return List.of();
     }
     try {
@@ -1488,15 +1532,15 @@ public final class LocalProcessAppHost implements AppHost {
     try {
       long pid = Long.parseLong(pidText);
       return ProcessHandle.of(pid);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return Optional.empty();
     }
   }
 
-  private static String resolveTrustedUnixCommand(String command) {
+  private static String resolveTrustedPsCommand() {
     for (Path trustedDir :
         List.of(Path.of("/usr/bin"), Path.of("/bin"), Path.of("/usr/sbin"), Path.of("/sbin"))) {
-      Path candidate = trustedDir.resolve(command);
+      Path candidate = trustedDir.resolve("ps");
       if (Files.isExecutable(candidate)) {
         return candidate.toString();
       }
@@ -1537,11 +1581,11 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean supportsProcEnvironmentScan() {
-    return Files.isReadable(Path.of("/proc", "self", "environ"));
+    return Files.isReadable(Path.of(PROC_ROOT, "self", "environ"));
   }
 
   private static boolean hasAppHostToken(long pid, String token, String appId) {
-    Path environmentFile = Path.of("/proc", Long.toString(pid), "environ");
+    Path environmentFile = Path.of(PROC_ROOT, Long.toString(pid), "environ");
     if (!Files.isReadable(environmentFile)) {
       return false;
     }
@@ -1594,7 +1638,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean isZombieProcess(ProcessHandle processHandle) {
-    Path statFile = Path.of("/proc", Long.toString(processHandle.pid()), "stat");
+    Path statFile = Path.of(PROC_ROOT, Long.toString(processHandle.pid()), "stat");
     if (!Files.isReadable(statFile)) {
       return false;
     }
@@ -1620,7 +1664,7 @@ public final class LocalProcessAppHost implements AppHost {
   private static boolean isInterpreterManagedPosixLauncherUnchecked(Path executable) {
     try {
       return isInterpreterManagedPosixLauncher(executable);
-    } catch (IOException e) {
+    } catch (IOException _) {
       return false;
     }
   }
@@ -1657,6 +1701,7 @@ public final class LocalProcessAppHost implements AppHost {
         .pid();
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class RunningProcess {
     private final Process process;
     private final RunningAppSnapshot snapshot;

@@ -105,6 +105,7 @@ public record InstalledAppPaths(
    *
    * @throws IOException if the installation parent cannot be created
    */
+  @SuppressWarnings("unused")
   public void ensureInstallParentDirectory() throws IOException {
     Files.createDirectories(installedRoot.getParent());
   }

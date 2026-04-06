@@ -93,15 +93,13 @@ val testExecutionReportFile: Provider<RegularFile> =
 val testResultsDir: Provider<Directory> = layout.buildDirectory.dir("test-results/test")
 val additionalSonarTestSourceDirs: Provider<List<File>> =
   providers.provider {
-    (project.findProperty("cryptad.additionalSonarTestSourceDirs") as? Iterable<*>)?.mapNotNull {
-      it as? File
-    } ?: emptyList()
+    (project.findProperty("cryptad.additionalSonarTestSourceDirs") as? Iterable<*>)
+      ?.filterIsInstance<File>() ?: emptyList()
   }
 val additionalSonarTestResultDirs: Provider<List<File>> =
   providers.provider {
-    (project.findProperty("cryptad.additionalSonarTestResultDirs") as? Iterable<*>)?.mapNotNull {
-      it as? File
-    } ?: emptyList()
+    (project.findProperty("cryptad.additionalSonarTestResultDirs") as? Iterable<*>)
+      ?.filterIsInstance<File>() ?: emptyList()
   }
 
 tasks.register("prepareKotlinTestReports") {

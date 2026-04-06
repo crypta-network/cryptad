@@ -155,11 +155,12 @@ class AppHostBoundaryTest {
   }
 
   private static Path repoRoot() throws IOException {
-    Path directory = Path.of("").toAbsolutePath().normalize();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
     while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
       directory = directory.getParent();
     }
-    assertNotNull(directory, "Could not locate the repo root from " + Path.of("").toAbsolutePath());
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
     return directory.toRealPath();
   }
 }

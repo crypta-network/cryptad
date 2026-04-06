@@ -3,9 +3,11 @@ package network.crypta.platform.apphost.runtime;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -27,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -35,12 +38,15 @@ import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,17 +57,46 @@ class LocalProcessAppHostTest {
   private static final String DUPLICATE_APP_ID = "duplicate-app";
   private static final String MIXED_CASE_APP_ID = "MixedCase-App";
   private static final String NORMALIZED_MIXED_CASE_APP_ID = "mixedcase-app";
+  private static final String PYTHON_DAEMON_APP_ID = "python-daemon-app";
   private static final String APP_VERSION = "2.0.0";
   private static final String DEFAULT_TOKEN = "token";
+  private static final String CACHE_DIR_NAME = "cache";
+  private static final String INSTALLED_DIR_NAME = "installed";
+  private static final String INSTALLED_APPS_DIR_SYMLINK_MESSAGE =
+      "installedAppsDir must not be a symlink";
+  private static final String CONTENT_FILE_NAME = "content.txt";
+  private static final String POSIX_LAUNCH_PATH = "bin/launch";
+  private static final String STARTUP_EXIT_MESSAGE_PREFIX = "app exited during startup: ";
+  private static final String WINDOWS_11 = "Windows 11";
+  private static final String LINUX_OS_NAME = "Linux";
+  private static final String PYTHON3_COMMAND = "python3";
+  private static final String SYSTEM_ENV_COMMAND = "/usr/bin/env";
+  private static final String CHILD_SCRIPT_PATH = "bin/child.sh";
+  private static final String CHILD_PID_FILE_NAME = "child.pid";
+  private static final String WINDOWS_CHILD_EXECUTABLE = "child.exe";
+  private static final String POSIX_START_PATH = "bin/start";
+  private static final String STAGE_DIR_NAME = "stage";
+  private static final String MANIFEST_FILE_NAME = "cryptad-app.properties";
+  private static final String MKFIFO_COMMAND = "mkfifo";
+  private static final String NETWORK_ACCESS_PERMISSION = "network.access";
+  private static final String FILE_READ_PERMISSION = "file.read";
+  private static final List<String> STANDARD_PERMISSIONS =
+      List.of(NETWORK_ACCESS_PERMISSION, FILE_READ_PERMISSION);
+  private static final String STANDARD_PERMISSIONS_TEXT =
+      NETWORK_ACCESS_PERMISSION + "," + FILE_READ_PERMISSION;
+  private static final long POLL_INTERVAL_NANOS = Duration.ofMillis(10).toNanos();
+  private static final String LATE_CHILD_APP_ID = "late-child-app";
+  private static final String SHELL_NOEXEC_APP_ID = "shell-noexec-app";
   private static final String WRAPPER_SCRIPT =
       """
       #!/bin/sh
       set -eu
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       wait "$child"
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String CHILD_PROCESS_SCRIPT =
       """
       #!/bin/sh
@@ -91,33 +126,36 @@ class LocalProcessAppHostTest {
       """
       #!/bin/sh
       set -eu
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       exit 0
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String DAEMONIZING_WRAPPER_DELAYED_EXIT_SCRIPT =
       """
       #!/bin/sh
       set -eu
       echo "$$" > "$CRYPTAD_APP_RUN_DIR/wrapper.pid"
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       sleep 1
       echo exited > "$CRYPTAD_APP_RUN_DIR/wrapper-exited.txt"
       exit 0
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String DAEMONIZING_WRAPPER_POST_CAPTURE_EXIT_SCRIPT =
       """
       #!/bin/sh
       set -eu
       sleep 0.53
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       exit 0
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String DAEMONIZING_WRAPPER_VIA_HELPER_SCRIPT =
       """
       #!/bin/sh
@@ -130,36 +168,39 @@ class LocalProcessAppHostTest {
       #!/bin/sh
       set -eu
       sleep 0.25
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       exit 0
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String POST_CAPTURE_PYTHON_DAEMONIZER =
       """
-      #!/usr/bin/env python3
+      #!/usr/bin/env %s
       import os
       import pathlib
       import subprocess
       import time
 
       time.sleep(0.53)
-      child = subprocess.Popen(["./bin/child.sh"])
-      pathlib.Path(os.environ["CRYPTAD_APP_RUN_DIR"], "child.pid").write_text(
+      child = subprocess.Popen(["./%s"])
+      pathlib.Path(os.environ["CRYPTAD_APP_RUN_DIR"], "%s").write_text(
           f"{child.pid}\\n", encoding="utf-8")
-      """;
+      """
+          .formatted(PYTHON3_COMMAND, CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String LATE_CHILD_DIRECT_EXECUTABLE =
       """
       #!/bin/sh
       set -eu
       sleep 1
-      ./bin/child.sh &
+      ./%s &
       child=$!
-      echo "$child" > "$CRYPTAD_APP_RUN_DIR/child.pid"
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       sleep 0.2
       echo exited > "$CRYPTAD_APP_RUN_DIR/wrapper-exited.txt"
       exit 0
-      """;
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String STDIN_EOF_SCRIPT =
       """
       #!/bin/sh
@@ -229,7 +270,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Path dataDir = tempDir.resolve("data");
-    Path cacheDir = tempDir.resolve("cache");
+    Path cacheDir = tempDir.resolve(CACHE_DIR_NAME);
     Path runDir = tempDir.resolve("run");
     AppHost host =
         new LocalProcessAppHost(
@@ -240,12 +281,12 @@ class LocalProcessAppHostTest {
     Path installParent = Files.createDirectories(dataDir.resolve("apps"));
     Path externalInstalled = Files.createDirectories(tempDir.resolve("external-installed"));
     Files.createSymbolicLink(
-        installParent.resolve("installed"), externalInstalled.toAbsolutePath());
+        installParent.resolve(INSTALLED_DIR_NAME), externalInstalled.toAbsolutePath());
 
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
 
-    assertTrue(exception.getMessage().contains("installedAppsDir must not be a symlink"));
+    assertTrue(exception.getMessage().contains(INSTALLED_APPS_DIR_SYMLINK_MESSAGE));
     try (var children = Files.list(externalInstalled)) {
       assertEquals(List.of(), children.toList());
     }
@@ -257,7 +298,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Path dataDir = tempDir.resolve("data");
-    Path cacheDir = tempDir.resolve("cache");
+    Path cacheDir = tempDir.resolve(CACHE_DIR_NAME);
     Path runDir = tempDir.resolve("run");
     AppHost host =
         new LocalProcessAppHost(
@@ -268,7 +309,7 @@ class LocalProcessAppHostTest {
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
 
     Path installParent = dataDir.resolve("apps");
-    Path installedAppsDir = installParent.resolve("installed");
+    Path installedAppsDir = installParent.resolve(INSTALLED_DIR_NAME);
     Path externalInstalled = tempDir.resolve("external-installed");
     Files.move(installedAppsDir, externalInstalled);
     Files.createSymbolicLink(installedAppsDir, externalInstalled.toAbsolutePath());
@@ -276,10 +317,10 @@ class LocalProcessAppHostTest {
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.uninstall(SAMPLE_APP_ID));
 
-    assertTrue(exception.getMessage().contains("installedAppsDir must not be a symlink"));
+    assertTrue(exception.getMessage().contains(INSTALLED_APPS_DIR_SYMLINK_MESSAGE));
     assertTrue(Files.isDirectory(externalInstalled.resolve(SAMPLE_APP_ID)));
     assertTrue(
-        Files.isRegularFile(externalInstalled.resolve(SAMPLE_APP_ID).resolve("content.txt")));
+        Files.isRegularFile(externalInstalled.resolve(SAMPLE_APP_ID).resolve(CONTENT_FILE_NAME)));
   }
 
   @Test
@@ -288,7 +329,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Path dataDir = tempDir.resolve("data");
-    Path cacheDir = tempDir.resolve("cache");
+    Path cacheDir = tempDir.resolve(CACHE_DIR_NAME);
     Path runDir = tempDir.resolve("run");
     AppHost host =
         new LocalProcessAppHost(
@@ -306,11 +347,15 @@ class LocalProcessAppHostTest {
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.uninstall(SAMPLE_APP_ID));
 
-    assertTrue(exception.getMessage().contains("installedAppsDir must not be a symlink"));
-    assertTrue(Files.isDirectory(externalAppsDir.resolve("installed").resolve(SAMPLE_APP_ID)));
+    assertTrue(exception.getMessage().contains(INSTALLED_APPS_DIR_SYMLINK_MESSAGE));
+    assertTrue(
+        Files.isDirectory(externalAppsDir.resolve(INSTALLED_DIR_NAME).resolve(SAMPLE_APP_ID)));
     assertTrue(
         Files.isRegularFile(
-            externalAppsDir.resolve("installed").resolve(SAMPLE_APP_ID).resolve("content.txt")));
+            externalAppsDir
+                .resolve(INSTALLED_DIR_NAME)
+                .resolve(SAMPLE_APP_ID)
+                .resolve(CONTENT_FILE_NAME)));
   }
 
   @Test
@@ -319,10 +364,14 @@ class LocalProcessAppHostTest {
     AppHost host = host();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path staleInstallDirectory =
-        tempDir.resolve("data").resolve("apps").resolve("installed").resolve("app-install-stale");
+        tempDir
+            .resolve("data")
+            .resolve("apps")
+            .resolve(INSTALLED_DIR_NAME)
+            .resolve("app-install-stale");
     Files.createDirectories(staleInstallDirectory);
     Files.writeString(
-        staleInstallDirectory.resolve("content.txt"), "stale", StandardCharsets.UTF_8);
+        staleInstallDirectory.resolve(CONTENT_FILE_NAME), "stale", StandardCharsets.UTF_8);
 
     assertEquals(List.of(installation), host.listInstalled());
   }
@@ -336,14 +385,14 @@ class LocalProcessAppHostTest {
     Path stagedApp =
         stageInstalledExecutableApp(
             "non-launchable-app",
-            "bin/launch",
+            POSIX_LAUNCH_PATH,
             """
             exit 0
             """,
             Map.of(),
             false);
 
-    Assumptions.assumeFalse(Files.isExecutable(stagedApp.resolve("bin/launch")));
+    Assumptions.assumeFalse(Files.isExecutable(stagedApp.resolve(POSIX_LAUNCH_PATH)));
 
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
@@ -354,7 +403,7 @@ class LocalProcessAppHostTest {
   @Test
   void installFromDirectory_whenWindowsLauncherUsesUnsupportedScript_expectFailure()
       throws IOException {
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), "Windows 11"));
+    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
     Path stagedApp =
         stageInstalledExecutableApp(
             "unsupported-windows-script-app", "bin/launch.ps1", "Write-Output 'hi'\n", Map.of());
@@ -367,7 +416,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void installFromDirectory_whenWindowsLauncherIsGenericMzBlob_expectFailure() throws IOException {
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), "Windows 11"));
+    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
     Path stagedApp =
         stageInstalledExecutableApp("generic-mz-app", "bin/fake.bin", "placeholder", Map.of());
     byte[] fakeMz = new byte[64];
@@ -420,15 +469,7 @@ class LocalProcessAppHostTest {
     Path captureFile = installation.paths().runDir().resolve("captured-env.txt");
     waitForFile(captureFile);
     String capture = Files.readString(captureFile, StandardCharsets.UTF_8);
-    assertTrue(capture.contains("CRYPTAD_APP_ID=" + RUNNER_APP_ID));
-    assertTrue(capture.contains("CRYPTAD_APP_NAME=Runner App"));
-    assertTrue(capture.contains("CRYPTAD_APP_VERSION=" + APP_VERSION));
-    assertTrue(capture.contains("CRYPTAD_APP_DATA_DIR=" + installation.paths().dataDir()));
-    assertTrue(capture.contains("CRYPTAD_APP_CACHE_DIR=" + installation.paths().cacheDir()));
-    assertTrue(capture.contains("CRYPTAD_APP_RUN_DIR=" + installation.paths().runDir()));
-    assertTrue(capture.contains("CRYPTAD_APP_TOKEN=" + running.token()));
-    assertTrue(capture.contains("CRYPTAD_APP_PERMISSIONS=network.access,file.read"));
-    assertTrue(capture.contains("CRYPTAD_APP_UI_ENTRY=/"));
+    assertCapturedEnvironment(installation, running, capture);
 
     assertThrows(AppHostException.class, () -> host.uninstall(RUNNER_APP_ID));
     assertTrue(host.stop(RUNNER_APP_ID));
@@ -440,10 +481,7 @@ class LocalProcessAppHostTest {
     assertTrue(host.stop(RUNNER_APP_ID));
 
     host.uninstall(RUNNER_APP_ID);
-    assertFalse(Files.exists(installation.paths().installedRoot()));
-    assertFalse(Files.exists(installation.paths().dataDir()));
-    assertFalse(Files.exists(installation.paths().cacheDir()));
-    assertFalse(Files.exists(installation.paths().runDir()));
+    assertInstallationPathsRemoved(installation);
     assertTrue(host.listInstalled().isEmpty());
   }
 
@@ -451,15 +489,14 @@ class LocalProcessAppHostTest {
   void start_whenInstalledProcessExitsImmediately_expectFailureAndNoRunningState()
       throws IOException {
     AppHost host = host();
-    host.installFromDirectory(
-        stageInstalledApp(RUNNER_APP_ID, immediateExitScriptContent(new AppEnv())));
+    host.installFromDirectory(stageInstalledRunnerApp(immediateExitScriptContent(new AppEnv())));
 
     Instant started = Instant.now();
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
     Duration elapsed = Duration.between(started, Instant.now());
 
-    assertTrue(exception.getMessage().contains("app exited during startup: " + RUNNER_APP_ID));
+    assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
     assertTrue(elapsed.compareTo(Duration.ofSeconds(3)) < 0);
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     assertTrue(host.listRunning().isEmpty());
@@ -471,12 +508,12 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     AppHost host = host();
-    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID, DELAYED_STARTUP_EXIT_SCRIPT));
+    host.installFromDirectory(stageInstalledRunnerApp(DELAYED_STARTUP_EXIT_SCRIPT));
 
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
 
-    assertTrue(exception.getMessage().contains("app exited during startup: " + RUNNER_APP_ID));
+    assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     assertTrue(host.listRunning().isEmpty());
   }
@@ -523,12 +560,12 @@ class LocalProcessAppHostTest {
         stageInstalledApp(
             RUNNER_APP_ID,
             DAEMONIZING_WRAPPER_IMMEDIATE_EXIT_SCRIPT,
-            Map.of("bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
@@ -565,12 +602,12 @@ class LocalProcessAppHostTest {
         stageInstalledApp(
             RUNNER_APP_ID,
             DAEMONIZING_WRAPPER_DELAYED_EXIT_SCRIPT,
-            Map.of("bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     Path wrapperPidFile = installation.paths().runDir().resolve("wrapper.pid");
     waitForFile(childPidFile);
     waitForFile(wrapperPidFile);
@@ -614,16 +651,16 @@ class LocalProcessAppHostTest {
         stageInstalledApp(
             RUNNER_APP_ID,
             DAEMONIZING_WRAPPER_POST_CAPTURE_EXIT_SCRIPT,
-            Map.of("bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
-      RunningAppSnapshot current = waitForRunningPid(host, RUNNER_APP_ID, childPid);
+      RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertEquals(childPid, current.pid());
@@ -644,23 +681,23 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    Assumptions.assumeTrue(appEnv.onPath("python3"));
+    Assumptions.assumeTrue(appEnv.onPath(PYTHON3_COMMAND));
     AppHost host = host(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledExecutableApp(
-            "python-daemon-app",
-            "bin/launch",
+            PYTHON_DAEMON_APP_ID,
+            POSIX_LAUNCH_PATH,
             POST_CAPTURE_PYTHON_DAEMONIZER,
-            Map.of("bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    RunningAppSnapshot running = host.start("python-daemon-app");
+    RunningAppSnapshot running = host.start(PYTHON_DAEMON_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
-      RunningAppSnapshot current = waitForRunningApp(host, "python-daemon-app");
+      RunningAppSnapshot current = waitForRunningApp(host, PYTHON_DAEMON_APP_ID);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertEquals(childPid, current.pid());
@@ -669,9 +706,9 @@ class LocalProcessAppHostTest {
               .map(LocalProcessAppHostTest::isEffectivelyAlive)
               .orElse(false));
       assertEquals(java.util.List.of(current), host.listRunning());
-      assertTrue(host.stop("python-daemon-app"));
+      assertTrue(host.stop(PYTHON_DAEMON_APP_ID));
       waitForProcessExit(childPid);
-      assertTrue(host.status("python-daemon-app").isEmpty());
+      assertTrue(host.status(PYTHON_DAEMON_APP_ID).isEmpty());
     } finally {
       ProcessHandle.of(childPid).ifPresent(ProcessHandle::destroyForcibly);
     }
@@ -688,17 +725,19 @@ class LocalProcessAppHostTest {
             RUNNER_APP_ID,
             DAEMONIZING_WRAPPER_VIA_HELPER_SCRIPT,
             Map.of(
-                "bin/helper.sh", DELAYED_DAEMONIZING_HELPER_SCRIPT,
-                "bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+                "bin/helper.sh",
+                DELAYED_DAEMONIZING_HELPER_SCRIPT,
+                CHILD_SCRIPT_PATH,
+                DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
-      RunningAppSnapshot current = waitForRunningPid(host, RUNNER_APP_ID, childPid);
+      RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertEquals(childPid, current.pid());
@@ -725,17 +764,19 @@ class LocalProcessAppHostTest {
             RUNNER_APP_ID,
             DAEMONIZING_WRAPPER_VIA_HELPER_SCRIPT,
             Map.of(
-                "bin/helper.sh", DELAYED_DAEMONIZING_HELPER_SCRIPT,
-                "bin/child.sh", DAEMONIZED_CHILD_PROCESS_SCRIPT));
+                "bin/helper.sh",
+                DELAYED_DAEMONIZING_HELPER_SCRIPT,
+                CHILD_SCRIPT_PATH,
+                DAEMONIZED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
-      RunningAppSnapshot current = waitForRunningPid(host, RUNNER_APP_ID, childPid);
+      RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertEquals(childPid, current.pid());
@@ -770,7 +811,8 @@ class LocalProcessAppHostTest {
   void
       recoverWindowsBundleProcesses_whenCommandLineReferencesInstalledBundle_expectLiveChildRecovered() {
     InstalledAppPaths paths =
-        new AppHostLayout(tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"))
+        new AppHostLayout(
+                tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"))
             .pathsFor(RUNNER_APP_ID);
     AppManifest manifest =
         new AppManifest(
@@ -780,7 +822,7 @@ class LocalProcessAppHostTest {
             APP_VERSION,
             "bin/launch.cmd",
             "/",
-            java.util.List.of("network.access", "file.read"),
+            STANDARD_PERMISSIONS,
             4096L,
             1024L);
     Instant startedAt = Instant.parse("2026-04-05T00:00:00Z");
@@ -790,18 +832,19 @@ class LocalProcessAppHostTest {
             7201L,
             null,
             true,
-            Optional.of(paths.installedRoot().resolve("bin").resolve("child.exe").toString()),
-            Optional.of("\"" + paths.installedRoot().resolve("bin").resolve("child.exe") + "\""),
-            Optional.of(startedAt.minusSeconds(5)));
+            paths.installedRoot().resolve("bin").resolve(WINDOWS_CHILD_EXECUTABLE).toString(),
+            "\"" + paths.installedRoot().resolve("bin").resolve(WINDOWS_CHILD_EXECUTABLE) + "\"",
+            startedAt.minusSeconds(5));
     ProcessHandle recoveredChild =
         new InfoProcessHandle(
             7202L,
             null,
             true,
-            Optional.empty(),
-            Optional.of(
-                "\"" + paths.installedRoot().resolve("bin").resolve("child.exe") + "\" --serve"),
-            Optional.of(startedAt.plusMillis(750)));
+            null,
+            "\""
+                + paths.installedRoot().resolve("bin").resolve(WINDOWS_CHILD_EXECUTABLE)
+                + "\" --serve",
+            startedAt.plusMillis(750));
 
     List<ProcessHandle> recovered =
         LocalProcessAppHost.recoverWindowsBundleProcesses(
@@ -815,8 +858,7 @@ class LocalProcessAppHostTest {
   }
 
   @Test
-  void parseTokenTrackedProcesses_whenReaderFails_expectCheckedIoException()
-      throws ReflectiveOperationException {
+  void parseTokenTrackedProcesses_whenReaderFails_expectCheckedIoException() {
     Process process =
         new FailingInputProcess(
             (ProcessHandle.current().pid()
@@ -828,9 +870,7 @@ class LocalProcessAppHostTest {
                 .getBytes(StandardCharsets.UTF_8));
 
     IOException exception =
-        assertThrows(
-            IOException.class,
-            () -> invokeParseTokenTrackedProcesses(process, DEFAULT_TOKEN, RUNNER_APP_ID));
+        assertThrows(IOException.class, () -> invokeParseRunnerTokenTrackedProcesses(process));
 
     assertEquals("simulated ps stream failure", exception.getMessage());
   }
@@ -841,7 +881,7 @@ class LocalProcessAppHostTest {
 
     List<ProcessHandle> recovered =
         LocalProcessAppHost.mergeTokenTrackedProcesses(
-            List.of(), List.of(psRecovered), new AppEnv(Map.of(), "Linux"));
+            List.of(), List.of(psRecovered), new AppEnv(Map.of(), LINUX_OS_NAME));
 
     assertEquals(List.of(7205L), recovered.stream().map(ProcessHandle::pid).toList());
   }
@@ -849,7 +889,8 @@ class LocalProcessAppHostTest {
   @Test
   void recoverWindowsBundleProcesses_whenProcessStartsLongAfterLaunch_expectIgnored() {
     InstalledAppPaths paths =
-        new AppHostLayout(tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"))
+        new AppHostLayout(
+                tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"))
             .pathsFor(RUNNER_APP_ID);
     AppManifest manifest =
         new AppManifest(
@@ -859,7 +900,7 @@ class LocalProcessAppHostTest {
             APP_VERSION,
             "bin/launch.cmd",
             "/",
-            java.util.List.of("network.access", "file.read"),
+            STANDARD_PERMISSIONS,
             4096L,
             1024L);
     Instant startedAt = Instant.parse("2026-04-05T00:00:00Z");
@@ -868,10 +909,11 @@ class LocalProcessAppHostTest {
             7204L,
             null,
             true,
-            Optional.empty(),
-            Optional.of(
-                "\"" + paths.installedRoot().resolve("bin").resolve("child.exe") + "\" --serve"),
-            Optional.of(startedAt.plusSeconds(30)));
+            null,
+            "\""
+                + paths.installedRoot().resolve("bin").resolve(WINDOWS_CHILD_EXECUTABLE)
+                + "\" --serve",
+            startedAt.plusSeconds(30));
 
     List<ProcessHandle> recovered =
         LocalProcessAppHost.recoverWindowsBundleProcesses(
@@ -892,30 +934,30 @@ class LocalProcessAppHostTest {
     AppHost host = host(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledExecutableApp(
-            "late-child-app",
-            "bin/launch",
+            LATE_CHILD_APP_ID,
+            POSIX_LAUNCH_PATH,
             LATE_CHILD_DIRECT_EXECUTABLE,
-            Map.of("bin/child.sh", DETACHED_CHILD_PROCESS_SCRIPT));
+            Map.of(CHILD_SCRIPT_PATH, DETACHED_CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    RunningAppSnapshot running = host.start("late-child-app");
+    RunningAppSnapshot running = host.start(LATE_CHILD_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     Path wrapperExitedFile = installation.paths().runDir().resolve("wrapper-exited.txt");
     waitForFile(wrapperExitedFile);
     try {
-      RunningAppSnapshot current = waitForRunningApp(host, "late-child-app");
+      RunningAppSnapshot current = waitForRunningApp(host, LATE_CHILD_APP_ID);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertTrue(
           ProcessHandle.of(childPid)
               .map(LocalProcessAppHostTest::isEffectivelyAlive)
               .orElse(false));
-      assertTrue(host.stop("late-child-app"));
+      assertTrue(host.stop(LATE_CHILD_APP_ID));
       waitForProcessExit(childPid);
-      assertTrue(host.status("late-child-app").isEmpty());
+      assertTrue(host.status(LATE_CHILD_APP_ID).isEmpty());
     } finally {
       ProcessHandle.of(childPid).ifPresent(ProcessHandle::destroyForcibly);
     }
@@ -975,15 +1017,15 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = host(Duration.ofSeconds(2));
     Path stagedApp =
         stageInstalledApp(
-            RUNNER_APP_ID, WRAPPER_SCRIPT, Map.of("bin/child.sh", CHILD_PROCESS_SCRIPT));
+            RUNNER_APP_ID, WRAPPER_SCRIPT, Map.of(CHILD_SCRIPT_PATH, CHILD_PROCESS_SCRIPT));
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
     host.start(RUNNER_APP_ID);
 
-    Path childPidFile = installation.paths().runDir().resolve("child.pid");
+    Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
@@ -1016,7 +1058,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void launchCommand_whenWindowsBatchScript_expectQuotedCmdWrapper() throws IOException {
-    AppEnv windowsAppEnv = new AppEnv(Map.of(), "Windows 11");
+    AppEnv windowsAppEnv = new AppEnv(Map.of(), WINDOWS_11);
     Path batchScript = Path.of("C:/Users/Alice & Bob/Cryptad Apps^(1)/runner/bin/launch.cmd");
     Path nativeExecutable = Path.of("C:/apps/runner/bin/runner.exe");
 
@@ -1035,7 +1077,7 @@ class LocalProcessAppHostTest {
   @Test
   void launchCommand_whenShebangUsesEnvSplitString_expectInterpreterArgumentPreserved()
       throws IOException {
-    AppEnv appEnv = new AppEnv(Map.of(), "Linux");
+    AppEnv appEnv = new AppEnv(Map.of(), LINUX_OS_NAME);
     Path script = tempDir.resolve("env-shebang.sh");
     Files.writeString(
         script,
@@ -1048,7 +1090,7 @@ class LocalProcessAppHostTest {
 
     List<String> command = LocalProcessAppHost.launchCommand(script, appEnv);
 
-    assertEquals(Path.of("/usr/bin/env").toString(), command.get(0));
+    assertEquals(SYSTEM_ENV_COMMAND, command.get(0));
     assertEquals("-S bash -euo pipefail", command.get(1));
     assertEquals("-c", command.get(2));
     assertEquals(script.toString(), command.get(4));
@@ -1063,7 +1105,7 @@ class LocalProcessAppHostTest {
     Path stagedApp =
         stageInstalledExecutableApp(
             "invalid-shebang-app",
-            "bin/start",
+            POSIX_START_PATH,
             """
             #!/
             exit 0
@@ -1078,20 +1120,21 @@ class LocalProcessAppHostTest {
 
   @Test
   void launchCommand_whenPythonShebangUsesShSuffix_expectInterpreterLaunch() throws IOException {
-    AppEnv appEnv = new AppEnv(Map.of(), "Linux");
+    AppEnv appEnv = new AppEnv(Map.of(), LINUX_OS_NAME);
     Path script = tempDir.resolve("python-launch.sh");
     Files.writeString(
         script,
         """
-        #!/usr/bin/env python3
+        #!/usr/bin/env %s
         print("ok")
-        """,
+        """
+            .formatted(PYTHON3_COMMAND),
         StandardCharsets.UTF_8);
 
     List<String> command = LocalProcessAppHost.launchCommand(script, appEnv);
 
-    assertEquals(Path.of("/usr/bin/env").toString(), command.getFirst());
-    assertEquals("python3", command.get(1));
+    assertEquals(SYSTEM_ENV_COMMAND, command.getFirst());
+    assertEquals(PYTHON3_COMMAND, command.get(1));
     assertEquals(script.toString(), command.get(2));
   }
 
@@ -1100,29 +1143,31 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    Assumptions.assumeTrue(appEnv.onPath("python3"));
+    Assumptions.assumeTrue(appEnv.onPath(PYTHON3_COMMAND));
     AppHost host = host();
     Path stagedApp =
         stageInstalledExecutableApp(
             "non-utf8-launcher-app",
-            "bin/start",
+            POSIX_START_PATH,
             """
-            #!/usr/bin/env python3
+            #!/usr/bin/env %s
             pass
-            """,
+            """
+                .formatted(PYTHON3_COMMAND),
             Map.of(),
             false);
-    Path script = stagedApp.resolve("bin/start");
+    Path script = stagedApp.resolve(POSIX_START_PATH);
     try (OutputStream output = Files.newOutputStream(script)) {
-      output.write("#!/usr/bin/env python3\n".getBytes(StandardCharsets.US_ASCII));
+      output.write(
+          ("#!/usr/bin/env " + PYTHON3_COMMAND + "\n").getBytes(StandardCharsets.US_ASCII));
       output.write(new byte[] {(byte) 0xC3, (byte) 0x28, (byte) '\n'});
     }
 
     List<String> command = LocalProcessAppHost.launchCommand(script, appEnv);
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
 
-    assertEquals(Path.of("/usr/bin/env").toString(), command.getFirst());
-    assertEquals("python3", command.get(1));
+    assertEquals(SYSTEM_ENV_COMMAND, command.getFirst());
+    assertEquals(PYTHON3_COMMAND, command.get(1));
     assertEquals(script.toString(), command.get(2));
     assertEquals("non-utf8-launcher-app", installation.appId());
   }
@@ -1136,8 +1181,7 @@ class LocalProcessAppHostTest {
     AppHost host = host();
     InstalledAppSnapshot installation =
         host.installFromDirectory(
-            stageInstalledApp(
-                RUNNER_APP_ID,
+            stageInstalledRunnerApp(
                 """
                 #!/usr/bin/env bash
                 set -euo pipefail
@@ -1166,8 +1210,8 @@ class LocalProcessAppHostTest {
     InstalledAppSnapshot installation =
         host.installFromDirectory(
             stageInstalledExecutableApp(
-                "shell-noexec-app",
-                "bin/start",
+                SHELL_NOEXEC_APP_ID,
+                POSIX_START_PATH,
                 """
                 #!/bin/sh
                 set -eu
@@ -1179,12 +1223,12 @@ class LocalProcessAppHostTest {
                 Map.of(),
                 false));
 
-    host.start("shell-noexec-app");
+    host.start(SHELL_NOEXEC_APP_ID);
 
     Path confirmationFile = installation.paths().runDir().resolve("noexec-ok.txt");
     waitForFile(confirmationFile);
     assertEquals("ok", Files.readString(confirmationFile, StandardCharsets.UTF_8));
-    assertTrue(host.stop("shell-noexec-app"));
+    assertTrue(host.stop(SHELL_NOEXEC_APP_ID));
   }
 
   @Test
@@ -1194,7 +1238,7 @@ class LocalProcessAppHostTest {
     Assumptions.assumeFalse(appEnv.isWindows());
     AppHost host = host();
     InstalledAppSnapshot installation =
-        host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID, STDIN_EOF_SCRIPT));
+        host.installFromDirectory(stageInstalledRunnerApp(STDIN_EOF_SCRIPT));
 
     host.start(RUNNER_APP_ID);
 
@@ -1211,7 +1255,7 @@ class LocalProcessAppHostTest {
     Assumptions.assumeFalse(appEnv.isWindows());
     AppHost host = host();
     InstalledAppSnapshot installation =
-        host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID, SINGLE_RUN_EXIT_SCRIPT));
+        host.installFromDirectory(stageInstalledRunnerApp(SINGLE_RUN_EXIT_SCRIPT));
 
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
@@ -1219,7 +1263,7 @@ class LocalProcessAppHostTest {
     Path runCountFile = installation.paths().runDir().resolve("run-count.txt");
     waitForFile(runCountFile);
     assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
-    assertTrue(exception.getMessage().contains("app exited during startup: " + RUNNER_APP_ID));
+    assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     assertTrue(host.listRunning().isEmpty());
   }
@@ -1237,7 +1281,7 @@ class LocalProcessAppHostTest {
         snapshot.manifest(),
         snapshot.paths(),
         DEFAULT_TOKEN,
-        new AppEnv(Map.of(), "Linux"));
+        new AppEnv(Map.of(), LINUX_OS_NAME));
 
     assertFalse(environment.containsKey("GITHUB_TOKEN"));
     assertFalse(environment.containsKey("AWS_SECRET_ACCESS_KEY"));
@@ -1277,7 +1321,7 @@ class LocalProcessAppHostTest {
         snapshot.manifest(),
         snapshot.paths(),
         DEFAULT_TOKEN,
-        new AppEnv(Map.of(), "Windows 11"));
+        new AppEnv(Map.of(), WINDOWS_11));
 
     List<String> pathEntries = List.of(environment.get("PATH").replace('\\', '/').split(";"));
     assertTrue(pathEntries.stream().anyMatch(entry -> entry.endsWith("/System32")));
@@ -1290,13 +1334,13 @@ class LocalProcessAppHostTest {
       throws Exception {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    Assumptions.assumeTrue(appEnv.onPath("mkfifo"));
+    Assumptions.assumeTrue(appEnv.onPath(MKFIFO_COMMAND));
     AppHost host = host();
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Path namedPipe = stagedApp.resolve("blocked.pipe");
 
     Process mkfifo =
-        new ProcessBuilder(resolveTrustedCommand("mkfifo"), namedPipe.toString()).start();
+        new ProcessBuilder(resolveTrustedMkfifoCommand(), namedPipe.toString()).start();
     assertEquals(0, waitForExit(mkfifo));
 
     AppHostException exception = installExpectingAppHostException(host, stagedApp);
@@ -1311,12 +1355,13 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     AppHost host = host();
-    Path stagedApp = Files.createDirectories(tempDir.resolve("stage").resolve("manifest-symlink"));
+    Path stagedApp =
+        Files.createDirectories(tempDir.resolve(STAGE_DIR_NAME).resolve("manifest-symlink"));
     Path externalManifest = tempDir.resolve("outside-manifest.properties");
     String externalContent = "outside-secret-data";
     Files.writeString(externalManifest, externalContent, StandardCharsets.UTF_8);
     Files.createSymbolicLink(
-        stagedApp.resolve("cryptad-app.properties"), externalManifest.toAbsolutePath());
+        stagedApp.resolve(MANIFEST_FILE_NAME), externalManifest.toAbsolutePath());
 
     AppHostException exception =
         assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
@@ -1407,7 +1452,7 @@ class LocalProcessAppHostTest {
         assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
 
     assertTrue(exception.getMessage().contains("must not overlap the installed app tree"));
-    assertFalse(Files.exists(tempDir.resolve("data").resolve("apps").resolve("installed")));
+    assertFalse(Files.exists(tempDir.resolve("data").resolve("apps").resolve(INSTALLED_DIR_NAME)));
   }
 
   @Test
@@ -1425,8 +1470,8 @@ class LocalProcessAppHostTest {
         assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
 
     assertTrue(exception.getMessage().contains("must not overlap runDir"));
-    assertTrue(Files.isRegularFile(stagedApp.resolve("cryptad-app.properties")));
-    assertTrue(Files.isRegularFile(stagedApp.resolve("content.txt")));
+    assertTrue(Files.isRegularFile(stagedApp.resolve(MANIFEST_FILE_NAME)));
+    assertTrue(Files.isRegularFile(stagedApp.resolve(CONTENT_FILE_NAME)));
   }
 
   @Test
@@ -1493,8 +1538,8 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(host, RUNNER_APP_ID, snapshot, new ExitedProcess(snapshot.pid()));
 
-    Object runningProcess = runningProcessEntry(host, RUNNER_APP_ID);
-    boolean preserved = invokePreserveRunningState(host, RUNNER_APP_ID, runningProcess);
+    Object runningProcess = runnerProcessEntry(host);
+    boolean preserved = invokePreserveRunnerState(host, runningProcess);
 
     assertFalse(preserved);
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
@@ -1512,7 +1557,7 @@ class LocalProcessAppHostTest {
   private LocalProcessAppHost host(Duration stopTimeout, AppEnv appEnv) {
     return new LocalProcessAppHost(
         new AppHostLayout(
-            tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run")),
+            tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run")),
         stopTimeout,
         new java.security.SecureRandom(),
         appEnv);
@@ -1522,13 +1567,13 @@ class LocalProcessAppHostTest {
     return stageInstalledApp(appId, scriptContent(new AppEnv()), Map.of());
   }
 
-  private Path stageInstalledApp(String appId, String scriptContent) throws IOException {
-    return stageInstalledApp(appId, scriptContent, Map.of());
+  private Path stageInstalledRunnerApp(String scriptContent) throws IOException {
+    return stageInstalledApp(RUNNER_APP_ID, scriptContent, Map.of());
   }
 
   private Path stageInstalledApp(String appId, String scriptContent, Map<String, String> extraFiles)
       throws IOException {
-    Path stagedDir = tempDir.resolve("stage").resolve(appId);
+    Path stagedDir = tempDir.resolve(STAGE_DIR_NAME).resolve(appId);
     return stageInstalledAppAt(stagedDir, appId, scriptContent, extraFiles);
   }
 
@@ -1544,9 +1589,9 @@ class LocalProcessAppHostTest {
     for (Map.Entry<String, String> extraFile : extraFiles.entrySet()) {
       writeStageFile(stagedDir.resolve(extraFile.getKey()), extraFile.getValue(), appEnv);
     }
-    Files.writeString(stagedDir.resolve("content.txt"), "payload", StandardCharsets.UTF_8);
+    Files.writeString(stagedDir.resolve(CONTENT_FILE_NAME), "payload", StandardCharsets.UTF_8);
     Files.writeString(
-        stagedDir.resolve("cryptad-app.properties"),
+        stagedDir.resolve(MANIFEST_FILE_NAME),
         """
         manifest.version=1
         app.id=%s
@@ -1554,11 +1599,12 @@ class LocalProcessAppHostTest {
         app.version=%s
         app.exec=bin/%s
         app.ui.entry=/
-        app.permissions=network.access,file.read
+        app.permissions=%s
         quota.data.bytes=4096
         quota.cache.bytes=1024
         """
-            .formatted(appId, displayName(appId), APP_VERSION, scriptName),
+            .formatted(
+                appId, displayName(appId), APP_VERSION, scriptName, STANDARD_PERMISSIONS_TEXT),
         StandardCharsets.UTF_8);
     return stagedDir;
   }
@@ -1577,14 +1623,14 @@ class LocalProcessAppHostTest {
       boolean executable)
       throws IOException {
     AppEnv appEnv = new AppEnv();
-    Path stagedDir = Files.createDirectories(tempDir.resolve("stage").resolve(appId));
+    Path stagedDir = Files.createDirectories(tempDir.resolve(STAGE_DIR_NAME).resolve(appId));
     writeExecutableStageFile(stagedDir.resolve(execRelativePath), execContent, appEnv, executable);
     for (Map.Entry<String, String> extraFile : extraFiles.entrySet()) {
       writeStageFile(stagedDir.resolve(extraFile.getKey()), extraFile.getValue(), appEnv);
     }
-    Files.writeString(stagedDir.resolve("content.txt"), "payload", StandardCharsets.UTF_8);
+    Files.writeString(stagedDir.resolve(CONTENT_FILE_NAME), "payload", StandardCharsets.UTF_8);
     Files.writeString(
-        stagedDir.resolve("cryptad-app.properties"),
+        stagedDir.resolve(MANIFEST_FILE_NAME),
         """
         manifest.version=1
         app.id=%s
@@ -1592,11 +1638,16 @@ class LocalProcessAppHostTest {
         app.version=%s
         app.exec=%s
         app.ui.entry=/
-        app.permissions=network.access,file.read
+        app.permissions=%s
         quota.data.bytes=4096
         quota.cache.bytes=1024
         """
-            .formatted(appId, displayName(appId), APP_VERSION, execRelativePath),
+            .formatted(
+                appId,
+                displayName(appId),
+                APP_VERSION,
+                execRelativePath,
+                STANDARD_PERMISSIONS_TEXT),
         StandardCharsets.UTF_8);
     return stagedDir;
   }
@@ -1610,16 +1661,17 @@ class LocalProcessAppHostTest {
             APP_VERSION,
             "bin/" + scriptName(new AppEnv()),
             "/",
-            java.util.List.of("network.access", "file.read"),
+            STANDARD_PERMISSIONS,
             4096L,
             1024L);
     InstalledAppPaths paths =
-        new AppHostLayout(tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"))
+        new AppHostLayout(
+                tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"))
             .pathsFor(appId);
     return new RunningAppSnapshot(manifest, paths, DEFAULT_TOKEN, 42L, Instant.EPOCH);
   }
 
-  @SuppressWarnings({"unchecked", "java:S3011"})
+  @SuppressWarnings({"java:S3011"})
   private static void injectRunningProcess(
       LocalProcessAppHost host, String appId, RunningAppSnapshot snapshot, Process process)
       throws ReflectiveOperationException {
@@ -1650,17 +1702,16 @@ class LocalProcessAppHostTest {
   }
 
   @SuppressWarnings({"unchecked", "java:S3011"})
-  private static Object runningProcessEntry(LocalProcessAppHost host, String appId)
+  private static Object runnerProcessEntry(LocalProcessAppHost host)
       throws ReflectiveOperationException {
     Field runningAppsField = LocalProcessAppHost.class.getDeclaredField("runningApps");
     runningAppsField.setAccessible(true);
     Map<String, Object> runningApps = (Map<String, Object>) runningAppsField.get(host);
-    return runningApps.get(appId);
+    return runningApps.get(RUNNER_APP_ID);
   }
 
   @SuppressWarnings("java:S3011")
-  private static boolean invokePreserveRunningState(
-      LocalProcessAppHost host, String appId, Object runningProcess)
+  private static boolean invokePreserveRunnerState(LocalProcessAppHost host, Object runningProcess)
       throws ReflectiveOperationException {
     Class<?> runningProcessClass =
         Class.forName(LocalProcessAppHost.class.getName() + "$RunningProcess");
@@ -1668,31 +1719,32 @@ class LocalProcessAppHostTest {
         LocalProcessAppHost.class.getDeclaredMethod(
             "preserveRunningState", String.class, runningProcessClass);
     preserveRunningState.setAccessible(true);
-    return (boolean) preserveRunningState.invoke(host, appId, runningProcess);
+    return (boolean) preserveRunningState.invoke(host, RUNNER_APP_ID, runningProcess);
   }
 
-  @SuppressWarnings("unchecked")
-  private static List<ProcessHandle> invokeParseTokenTrackedProcesses(
-      Process process, String token, String appId)
+  private static void invokeParseRunnerTokenTrackedProcesses(Process process)
       throws ReflectiveOperationException, IOException {
-    Method parseTokenTrackedProcesses =
-        LocalProcessAppHost.class.getDeclaredMethod(
-            "parseTokenTrackedProcesses", Process.class, String.class, String.class);
-    parseTokenTrackedProcesses.setAccessible(true);
+    MethodHandle parseTokenTrackedProcesses =
+        MethodHandles.privateLookupIn(LocalProcessAppHost.class, MethodHandles.lookup())
+            .findStatic(
+                LocalProcessAppHost.class,
+                "parseTokenTrackedProcesses",
+                MethodType.methodType(List.class, Process.class, String.class, String.class));
     try {
-      return (List<ProcessHandle>) parseTokenTrackedProcesses.invoke(null, process, token, appId);
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof IOException ioException) {
-        throw ioException;
+      parseTokenTrackedProcesses.invoke(process, DEFAULT_TOKEN, RUNNER_APP_ID);
+    } catch (Throwable throwable) {
+      switch (throwable) {
+        case IOException ioException -> throw ioException;
+        case RuntimeException runtimeException -> throw runtimeException;
+        case Error error -> throw error;
+        case ReflectiveOperationException reflectiveOperationException ->
+            throw reflectiveOperationException;
+        default -> {
+          // do nothing
+        }
       }
-      if (cause instanceof RuntimeException runtimeException) {
-        throw runtimeException;
-      }
-      if (cause instanceof Error error) {
-        throw error;
-      }
-      throw e;
+      throw new ReflectiveOperationException(
+          "failed to invoke parseTokenTrackedProcesses", throwable);
     }
   }
 
@@ -1760,8 +1812,29 @@ class LocalProcessAppHostTest {
     """;
   }
 
+  private static void assertCapturedEnvironment(
+      InstalledAppSnapshot installation, RunningAppSnapshot running, String capture) {
+    assertTrue(capture.contains("CRYPTAD_APP_ID=" + RUNNER_APP_ID));
+    assertTrue(capture.contains("CRYPTAD_APP_NAME=Runner App"));
+    assertTrue(capture.contains("CRYPTAD_APP_VERSION=" + APP_VERSION));
+    assertTrue(capture.contains("CRYPTAD_APP_DATA_DIR=" + installation.paths().dataDir()));
+    assertTrue(capture.contains("CRYPTAD_APP_CACHE_DIR=" + installation.paths().cacheDir()));
+    assertTrue(capture.contains("CRYPTAD_APP_RUN_DIR=" + installation.paths().runDir()));
+    assertTrue(capture.contains("CRYPTAD_APP_TOKEN=" + running.token()));
+    assertTrue(capture.contains("CRYPTAD_APP_PERMISSIONS=" + STANDARD_PERMISSIONS_TEXT));
+    assertTrue(capture.contains("CRYPTAD_APP_UI_ENTRY=/"));
+  }
+
+  private static void assertInstallationPathsRemoved(InstalledAppSnapshot installation) {
+    assertFalse(Files.exists(installation.paths().installedRoot()));
+    assertFalse(Files.exists(installation.paths().dataDir()));
+    assertFalse(Files.exists(installation.paths().cacheDir()));
+    assertFalse(Files.exists(installation.paths().runDir()));
+  }
+
   private static AppHostException installExpectingAppHostException(AppHost host, Path stagedApp)
       throws Exception {
+    //noinspection resource
     ExecutorService executor =
         Executors.newSingleThreadExecutor(
             runnable -> {
@@ -1772,7 +1845,7 @@ class LocalProcessAppHostTest {
     try {
       ExecutionException exception =
           installFailure(executor.submit(() -> host.installFromDirectory(stagedApp)), stagedApp);
-      assertTrue(exception.getCause() instanceof AppHostException);
+      assertInstanceOf(AppHostException.class, exception.getCause());
       return (AppHostException) exception.getCause();
     } catch (TimeoutException e) {
       throw new AssertionError("installFromDirectory hung on named pipe: " + stagedApp, e);
@@ -1807,32 +1880,22 @@ class LocalProcessAppHostTest {
       if (running.isPresent()) {
         return running.orElseThrow();
       }
-      try {
-        TimeUnit.MILLISECONDS.sleep(10);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new AssertionError("interrupted while waiting for app to be running: " + appId, e);
-      }
+      pausePolling("interrupted while waiting for app to be running: " + appId);
     }
     throw new AssertionError("timed out waiting for app to be running: " + appId);
   }
 
-  private static RunningAppSnapshot waitForRunningPid(AppHost host, String appId, long pid) {
+  private static RunningAppSnapshot waitForRunningPid(AppHost host, long pid) {
     long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
     while (System.nanoTime() < deadline) {
-      Optional<RunningAppSnapshot> running = host.status(appId);
+      Optional<RunningAppSnapshot> running = host.status(RUNNER_APP_ID);
       if (running.isPresent() && running.orElseThrow().pid() == pid) {
         return running.orElseThrow();
       }
-      try {
-        TimeUnit.MILLISECONDS.sleep(10);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new AssertionError(
-            "interrupted while waiting for app " + appId + " to report pid " + pid, e);
-      }
+      pausePolling("interrupted while waiting for app " + RUNNER_APP_ID + " to report pid " + pid);
     }
-    throw new AssertionError("timed out waiting for app " + appId + " to report pid " + pid);
+    throw new AssertionError(
+        "timed out waiting for app " + RUNNER_APP_ID + " to report pid " + pid);
   }
 
   private static void waitForProcessExit(long pid) throws IOException {
@@ -1872,15 +1935,23 @@ class LocalProcessAppHostTest {
     }
   }
 
-  private static String resolveTrustedCommand(String command) {
+  private static void pausePolling(String interruptMessage) {
+    LockSupport.parkNanos(POLL_INTERVAL_NANOS);
+    if (Thread.interrupted()) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(interruptMessage, new InterruptedException(interruptMessage));
+    }
+  }
+
+  private static String resolveTrustedMkfifoCommand() {
     for (Path trustedDir :
         List.of(Path.of("/usr/bin"), Path.of("/bin"), Path.of("/usr/sbin"), Path.of("/sbin"))) {
-      Path candidate = trustedDir.resolve(command);
+      Path candidate = trustedDir.resolve(MKFIFO_COMMAND);
       if (Files.isExecutable(candidate)) {
         return candidate.toString();
       }
     }
-    throw new AssertionError("trusted command not found: " + command);
+    throw new AssertionError("trusted command not found: " + MKFIFO_COMMAND);
   }
 
   private static String windowsCommandInterpreter() {
@@ -2081,8 +2152,7 @@ class LocalProcessAppHostTest {
 
       @Override
       public boolean destroyForcibly() {
-        LateChildSpawningProcess.this.destroy();
-        return true;
+        return destroy();
       }
 
       @Override
@@ -2160,6 +2230,7 @@ class LocalProcessAppHostTest {
 
     @Override
     public Process destroyForcibly() {
+      destroy();
       return this;
     }
 
@@ -2302,7 +2373,7 @@ class LocalProcessAppHostTest {
 
     @Override
     public void destroy() {
-      // Intentionally blank: this fake process is already exited.
+      // Intentionally blank: this fake process already exits.
     }
 
     @Override
@@ -2367,7 +2438,7 @@ class LocalProcessAppHostTest {
 
     @Override
     public void destroy() {
-      // Intentionally blank: lifecycle is simulated by the handle.
+      // Intentionally blank: the handle simulates lifecycle.
     }
 
     @Override
@@ -2471,7 +2542,7 @@ class LocalProcessAppHostTest {
     }
 
     @Override
-    public int read(byte[] buffer, int off, int len) throws IOException {
+    public int read(byte @NonNull [] buffer, int off, int len) throws IOException {
       if (offset < prefixBytes.length) {
         int bytesToCopy = Math.min(len, prefixBytes.length - offset);
         System.arraycopy(prefixBytes, offset, buffer, off, bytesToCopy);
@@ -2583,17 +2654,17 @@ class LocalProcessAppHostTest {
     private final long pid;
     private final ProcessHandle parent;
     private final boolean alive;
-    private final Optional<String> command;
-    private final Optional<String> commandLine;
-    private final Optional<Instant> startInstant;
+    private final @Nullable String command;
+    private final @Nullable String commandLine;
+    private final @Nullable Instant startInstant;
 
     private InfoProcessHandle(
         long pid,
         ProcessHandle parent,
         boolean alive,
-        Optional<String> command,
-        Optional<String> commandLine,
-        Optional<Instant> startInstant) {
+        @Nullable String command,
+        @Nullable String commandLine,
+        @Nullable Instant startInstant) {
       this.pid = pid;
       this.parent = parent;
       this.alive = alive;
@@ -2612,12 +2683,12 @@ class LocalProcessAppHostTest {
       return new Info() {
         @Override
         public Optional<String> command() {
-          return command;
+          return Optional.ofNullable(command);
         }
 
         @Override
         public Optional<String> commandLine() {
-          return commandLine;
+          return Optional.ofNullable(commandLine);
         }
 
         @Override
@@ -2627,7 +2698,7 @@ class LocalProcessAppHostTest {
 
         @Override
         public Optional<Instant> startInstant() {
-          return startInstant;
+          return Optional.ofNullable(startInstant);
         }
 
         @Override
@@ -2688,6 +2759,7 @@ class LocalProcessAppHostTest {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class FadingProcessHandle implements ProcessHandle {
     private final long pid;
     private final AtomicInteger remainingAliveChecks;
