@@ -15,6 +15,18 @@ import network.crypta.platform.apphost.manifest.AppManifestParser;
 /**
  * Derived filesystem paths for one installed application.
  *
+ * <p>{@code InstalledAppPaths} is the confinement helper for one installed app. It ties the stable
+ * application identifier to the immutable copied bundle root and to the mutable data, cache, and
+ * run directories that the host manages outside the bundle. Runtime code uses this record whenever
+ * it needs to resolve manifest paths, create owned directories, or expose filesystem placement in
+ * snapshots.
+ *
+ * <p>The record normalizes all supplied paths eagerly, so later comparisons operate on canonical
+ * absolute paths instead of caller-provided relative forms. Public helpers also enforce the host's
+ * bundle-root assumptions by rejecting path traversal attempts and by creating mutable directories
+ * only after validating that the target entries are real directories rather than symlinks, aliases,
+ * or regular files.
+ *
  * @param appId stable application identifier
  * @param installedRoot immutable bundle copy root
  * @param dataDir persistent mutable data directory
@@ -47,7 +59,7 @@ public record InstalledAppPaths(
   /**
    * Returns the installed manifest file path.
    *
-   * @return installed manifest path
+   * @return the installed manifest path at the bundle root
    */
   public Path manifestFile() {
     return installedRoot.resolve(AppManifestParser.MANIFEST_FILE_NAME);
@@ -55,6 +67,9 @@ public record InstalledAppPaths(
 
   /**
    * Returns the combined child-process log path.
+   *
+   * <p>This file lives in the mutable run directory and is the conventional sink for combined
+   * stdout and stderr from the launched child process.
    *
    * @return runtime log file path
    */
@@ -65,8 +80,13 @@ public record InstalledAppPaths(
   /**
    * Resolves a relative bundle path beneath the installed root.
    *
+   * <p>The resolved path is normalized and then checked to ensure it still stays within the
+   * installed bundle root. Callers can use this helper when they already trust the logical meaning
+   * of a relative path but still need a guard against path traversal.
+   *
    * @param relativePath relative path inside the installed bundle
    * @return absolute installed-bundle path
+   * @throws IllegalArgumentException if the normalized path escapes the installed bundle root
    */
   public Path resolveInstalledPath(Path relativePath) {
     Objects.requireNonNull(relativePath, "relativePath");
@@ -92,7 +112,11 @@ public record InstalledAppPaths(
   /**
    * Creates the persistent and runtime directories managed by the host.
    *
-   * @throws IOException if any directory cannot be created
+   * <p>Each directory is validated before and after creation, so the host does not silently follow
+   * a symlink, junction, alias, or conflicting regular file when preparing a mutable app state.
+   *
+   * @throws IOException if any directory cannot be created or fails, the host's directory ownership
+   *     checks
    */
   public void ensureMutableDirectories() throws IOException {
     ensureMutableDirectory(dataDir, "dataDir");
@@ -102,6 +126,9 @@ public record InstalledAppPaths(
 
   /**
    * Creates the installation parent directory.
+   *
+   * <p>This helper exists for installation flows that need the parent directory before moving a
+   * copied bundle into place.
    *
    * @throws IOException if the installation parent cannot be created
    */
@@ -113,8 +140,13 @@ public record InstalledAppPaths(
   /**
    * Validates and normalizes an application identifier.
    *
+   * <p>The identifier is trimmed, lower-cased, and validated against the path-safe AppHost naming
+   * pattern before it is used to derive on-disk paths.
+   *
    * @param appId application identifier
    * @return normalized application identifier
+   * @throws IllegalArgumentException if the identifier is blank or does not match the supported
+   *     AppHost id pattern
    */
   public static String normalizeAppId(String appId) {
     Objects.requireNonNull(appId, "appId");

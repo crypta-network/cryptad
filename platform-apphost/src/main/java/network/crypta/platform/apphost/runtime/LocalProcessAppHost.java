@@ -48,8 +48,16 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Default AppHost implementation that launches installed apps out of process.
  *
- * <p>The runtime state remains in memory only. This v1 host does not attempt to restart recovery,
- * sandboxing, or hard quota enforcement.
+ * <p>{@code LocalProcessAppHost} is the concrete AppHost v1 runtime that manages validated app
+ * bundles on the local filesystem and launches them as child processes of the current daemon. It
+ * owns the install-time copy flow, mutable directory preparation, launch environment injection,
+ * process-tree tracking, shutdown escalation, and best-effort recovery for wrapper and daemonizing
+ * launch patterns across supported platforms.
+ *
+ * <p>The implementation keeps the runtime state in memory only. It is intended to be the reusable
+ * local execution core beneath future shell and transport layers, not a full sandbox or persistent
+ * supervisor. It therefore does not attempt to restart recovery across daemon restarts or hard
+ * enforcement of manifest quota hints.
  */
 public final class LocalProcessAppHost implements AppHost {
   private static final Duration DEFAULT_STOP_TIMEOUT = Duration.ofSeconds(5);
@@ -106,6 +114,9 @@ public final class LocalProcessAppHost implements AppHost {
   /**
    * Creates a host bound to the supplied layout.
    *
+   * <p>This convenience constructor uses the default stop timeout, a fresh secure token generator,
+   * and the ambient {@link AppEnv} for platform detection.
+   *
    * @param layout filesystem layout managed by the host
    */
   @SuppressWarnings("unused")
@@ -116,9 +127,13 @@ public final class LocalProcessAppHost implements AppHost {
   /**
    * Creates a host with an explicit stop timeout and token generator.
    *
+   * <p>This overload is primarily useful for tests and controlled embeddings that need a
+   * non-default shutdown policy or deterministic token generation while still using the ambient
+   * platform environment.
+   *
    * @param layout filesystem layout managed by the host
-   * @param stopTimeout bounded timeout used before the force-killing a child process
-   * @param secureRandom secure token generator
+   * @param stopTimeout bounded timeout used before force-killing a child process
+   * @param secureRandom secure token generator for launch-token generation
    */
   public LocalProcessAppHost(
       AppHostLayout layout, Duration stopTimeout, SecureRandom secureRandom) {
@@ -136,6 +151,19 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
+  /**
+   * Installs one app from a local staging directory.
+   *
+   * <p>The staging tree is treated as caller-controlled input. The host validates that tree and
+   * copies it into a temporary managed location. It then parses the copied manifest, validates the
+   * copied executable, provisions the mutable directories that belong to the derived app id, and
+   * moves the copied bundle into place atomically when possible.
+   *
+   * @param stagedAppDirectory staging directory containing {@code cryptad-app.properties}
+   * @return installed application snapshot describing the copied bundle and managed paths
+   * @throws IOException if the staging tree is unsafe, the bundle is invalid, host-owned path
+   *     boundaries are violated, or the copied bundle cannot be installed cleanly
+   */
   @Override
   public synchronized InstalledAppSnapshot installFromDirectory(Path stagedAppDirectory)
       throws IOException {
@@ -162,6 +190,16 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
+  /**
+   * Removes one installed app and its host-owned directories.
+   *
+   * <p>The host revalidates the managed installation tree before deletion and refuses to uninstall
+   * a live app, so callers do not remove files that a running process is still using.
+   *
+   * @param appId stable application identifier
+   * @throws IOException if the app is running, missing, outside the validated managed tree, or any
+   *     owned files cannot be removed
+   */
   @Override
   public synchronized void uninstall(String appId) throws IOException {
     validateInstalledAppsDirectory();
@@ -179,6 +217,16 @@ public final class LocalProcessAppHost implements AppHost {
     deleteRecursively(paths.runDir());
   }
 
+  /**
+   * Lists all installed apps.
+   *
+   * <p>The result is built from the validated managed installation tree and sorted by directory
+   * name. Temporary install leftovers and non-app entries are skipped so stale partial
+   * installations do not poison the whole listing operation.
+   *
+   * @return installed application snapshots sorted by app id
+   * @throws IOException if the managed installation tree cannot be validated or scanned safely
+   */
   @Override
   public synchronized List<InstalledAppSnapshot> listInstalled() throws IOException {
     Path installedAppsDir = validateInstalledAppsDirectory();
@@ -200,6 +248,15 @@ public final class LocalProcessAppHost implements AppHost {
     return List.copyOf(installed);
   }
 
+  /**
+   * Describes one installed app.
+   *
+   * @param appId stable application identifier
+   * @return installed snapshot when present, or {@link Optional#empty()} when the app is not
+   *     currently installed
+   * @throws IOException if the managed installation tree cannot be validated, or the installed
+   *     manifest cannot be read safely
+   */
   @Override
   public synchronized Optional<InstalledAppSnapshot> describe(String appId) throws IOException {
     validateInstalledAppsDirectory();
@@ -211,6 +268,19 @@ public final class LocalProcessAppHost implements AppHost {
         new InstalledAppSnapshot(readInstalledManifest(paths.installedRoot()), paths));
   }
 
+  /**
+   * Starts one installed app as a child process.
+   *
+   * <p>Launch revalidates the installed manifest and executable. It recreates mutable directories
+   * as needed, clears the previous process log, injects a fresh launch token into the child
+   * environment, and then observes the launched process tree long enough to reject immediate
+   * failures or capture a daemonized handoff.
+   *
+   * @param appId stable application identifier
+   * @return running snapshot including the launch token, representative pid, and start timestamp
+   * @throws IOException if the app is not installed, is already running, fails validation at launch
+   *     time, or cannot be launched and tracked as a live process
+   */
   @Override
   public synchronized RunningAppSnapshot start(String appId) throws IOException {
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
@@ -281,6 +351,19 @@ public final class LocalProcessAppHost implements AppHost {
     return liveRunningProcess.snapshot();
   }
 
+  /**
+   * Stops one running app if it is active.
+   *
+   * <p>The shutdown flow refreshes the tracked process tree, attempts graceful termination first,
+   * escalates when needed, and performs a final re-scan before reporting success so that recovered
+   * descendant processes are not left running silently.
+   *
+   * @param appId stable application identifier
+   * @return {@code true} when a running process was found and stopped, or {@code false} when the
+   *     host had no live process for that app id
+   * @throws IOException if a running process tree cannot be shut down cleanly within the configured
+   *     stop timeout
+   */
   @Override
   public synchronized boolean stop(String appId) throws IOException {
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
@@ -302,12 +385,30 @@ public final class LocalProcessAppHost implements AppHost {
     return true;
   }
 
+  /**
+   * Returns the current live process snapshot, if any.
+   *
+   * <p>This method refreshes the tracked runtime state before answering, so callers can still
+   * observe a recovered descendant after the original launcher process has exited.
+   *
+   * @param appId stable application identifier
+   * @return running snapshot when the host still tracks a live process for the app, or {@link
+   *     Optional#empty()} otherwise
+   */
   @Override
   public synchronized Optional<RunningAppSnapshot> status(String appId) {
     RunningProcess runningProcess = liveRunningProcess(InstalledAppPaths.normalizeAppId(appId));
     return runningProcess != null ? Optional.of(runningProcess.snapshot()) : Optional.empty();
   }
 
+  /**
+   * Lists all live child processes.
+   *
+   * <p>The returned list is built from the host's refreshed in-memory runtime view and sorted by
+   * normalized app id for deterministic display and test assertions.
+   *
+   * @return immutable list of running snapshots sorted by app id
+   */
   @Override
   public synchronized List<RunningAppSnapshot> listRunning() {
     List<RunningAppSnapshot> running = new ArrayList<>();

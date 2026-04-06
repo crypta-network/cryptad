@@ -9,6 +9,16 @@ import network.crypta.platform.apphost.InstalledAppPaths;
 /**
  * Parsed v1 manifest for an installed application.
  *
+ * <p>{@code AppManifest} is the immutable normalized form of {@code cryptad-app.properties}. It
+ * carries the small set of metadata that AppHost v1 needs to identify a bundle, resolve its
+ * executable, expose a human-readable name and version, and publish optional permission and quota
+ * hints to higher layers.
+ *
+ * <p>The record stores string fields in their validated canonical form rather than preserving the
+ * source file verbatim. In particular, the app id is lower-cased, required text fields are trimmed,
+ * permissions are copied into a deterministic immutable list, and optional quota fields are checked
+ * for non-negative values before the manifest is exposed to runtime code.
+ *
  * @param manifestVersion manifest schema version
  * @param appId stable path-safe app identifier
  * @param appName human-readable application name
@@ -59,6 +69,10 @@ public record AppManifest(
   /**
    * Returns the executable path as a relative bundle path.
    *
+   * <p>The returned path is normalized but intentionally remains relative. Callers are expected to
+   * resolve it beneath an installed bundle root through {@code InstalledAppPaths} rather than treat
+   * it as an absolute filesystem location on its own.
+   *
    * @return relative executable path inside the installed bundle
    */
   public Path execPath() {
@@ -68,7 +82,10 @@ public record AppManifest(
   /**
    * Returns permissions as a deterministic comma-separated environment value.
    *
-   * @return comma-separated permissions, or an empty string
+   * <p>This is primarily useful for launch-time environment injection and diagnostics where the
+   * host needs a stable textual representation of the manifest permission list.
+   *
+   * @return comma-separated permissions, or an empty string when the manifest declares none
    */
   public String permissionsCsv() {
     return String.join(",", permissions);
@@ -77,8 +94,14 @@ public record AppManifest(
   /**
    * Normalizes and validates an app id.
    *
+   * <p>The method trims the input, lower-cases it using {@link Locale#ROOT}, and validates it
+   * against the same path-safe rules used by {@link InstalledAppPaths}. The result is suitable for
+   * directory naming and for stable identity comparisons across APIs.
+   *
    * @param appId raw application identifier
    * @return normalized lower-case app id
+   * @throws IllegalArgumentException if the identifier is blank or does not match the supported
+   *     AppHost naming pattern
    */
   public static String normalizeAppId(String appId) {
     String normalized = requireNonBlank(appId, "app.id").toLowerCase(Locale.ROOT);

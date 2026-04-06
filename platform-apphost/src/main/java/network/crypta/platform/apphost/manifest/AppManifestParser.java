@@ -14,7 +14,21 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Parser and validator for the v1 app-host manifest format. */
+/**
+ * Parser and validator for the v1 app-host manifest format.
+ *
+ * <p>{@code AppManifestParser} converts the narrow properties-style {@code cryptad-app.properties}
+ * format into an immutable {@link AppManifest}. The parser does not delegate blindly to the full
+ * Java properties reader because AppHost needs tighter control over escaping, UTF-8 handling,
+ * backslash preservation for Windows-style paths, and the small subset of keys that are valid for
+ * the v1 manifest schema.
+ *
+ * <p>Parsing is intentionally strict. The parser rejects missing required properties, unsupported
+ * schema versions, malformed numeric values, invalid permission identifiers, unsafe executable
+ * paths, and ambiguous or blank values before runtime code is allowed to inspect the manifest. That
+ * keeps bundle validation failures close to the source file and gives callers a deterministic
+ * checked exception model.
+ */
 public final class AppManifestParser {
   /** Canonical manifest filename stored at the installed app root. */
   public static final String MANIFEST_FILE_NAME = "cryptad-app.properties";
@@ -35,7 +49,8 @@ public final class AppManifestParser {
    *
    * @param content manifest content in properties-style syntax
    * @return the validated manifest snapshot
-   * @throws IOException if the manifest content is invalid
+   * @throws IOException if the manifest content is invalid, incomplete, or cannot be normalized
+   *     into the AppHost v1 manifest model
    */
   public static AppManifest parseContent(String content) throws IOException {
     return parse(parseProperties(stripLeadingBom(content)));
@@ -44,9 +59,13 @@ public final class AppManifestParser {
   /**
    * Parses a manifest from an on-disk properties file.
    *
+   * <p>The path must refer to a regular file and must not be a symbolic link. Callers that validate
+   * a staged or installed bundle can therefore use this entry point without accidentally following
+   * a manifest that escapes the intended bundle tree.
+   *
    * @param manifestFile path to {@code cryptad-app.properties}
    * @return the validated manifest snapshot
-   * @throws IOException if the file cannot be read or is invalid
+   * @throws IOException if the file cannot be read safely or the manifest content is invalid
    */
   public static AppManifest parse(Path manifestFile) throws IOException {
     if (Files.isSymbolicLink(manifestFile)) {
