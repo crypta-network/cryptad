@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Cryptad Web Shell</title>
+    <link rel="stylesheet" href="static/web-shell.css">
+  </head>
+  <body>
+    <div class="shell-backdrop shell-backdrop-a"></div>
+    <div class="shell-backdrop shell-backdrop-b"></div>
+    <main class="shell" id="shell-root">
+      <header class="hero">
+        <p class="eyebrow">Cryptad node management</p>
+        <h1>Web Shell v1</h1>
+        <p class="lede">
+          Read-only status, snapshot views, and legacy deep links powered by Platform API v1.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
+          <a class="button button-secondary" href="/">Legacy root</a>
+        </div>
+      </header>
+
+      <section class="panel-grid" aria-label="Node snapshots">
+        <article class="panel" id="overview-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Overview</p>
+            <h2>Node greeting</h2>
+          </div>
+          <div class="panel-body" id="overview-body">
+            <p class="loading">Loading node greeting...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="connectivity-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Connectivity</p>
+            <h2>Transport snapshot</h2>
+          </div>
+          <div class="panel-body" id="connectivity-body">
+            <p class="loading">Loading connectivity snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="security-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Security</p>
+            <h2>Threat levels</h2>
+          </div>
+          <div class="panel-body" id="security-body">
+            <p class="loading">Loading security snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="peers-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Peers</p>
+            <h2>Read-only roster</h2>
+          </div>
+          <div class="panel-body" id="peers-body">
+            <p class="loading">Loading peer snapshot...</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel panel-wide" id="legacy-panel">
+        <div class="panel-header">
+          <p class="panel-kicker">Legacy tools</p>
+          <h2>Deep links back to existing admin pages</h2>
+        </div>
+        <p class="panel-description">
+          Actions that still belong to the legacy UI remain reachable here while the shell stays
+          read-only.
+        </p>
+        <ul class="legacy-links" id="legacy-links"></ul>
+      </section>
+    </main>
+
+    <script id="web-shell-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+    <script src="static/web-shell.js" defer></script>
+  </body>
+</html>

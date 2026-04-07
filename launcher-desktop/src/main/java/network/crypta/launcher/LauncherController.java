@@ -13,6 +13,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -29,6 +30,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.readiness.LauncherReadinessFiles;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 
 import static network.crypta.launcher.LauncherLog.logDebug;
 
@@ -55,7 +57,9 @@ public class LauncherController {
       boolean existedWhenTracked,
       long lastModifiedWhenTracked,
       Object fileKeyWhenTracked,
-      boolean trackedAfterLaunch) {
+      LauncherReadinessInfo infoWhenTracked,
+      boolean trackedAfterLaunch,
+      boolean retargetedAfterLaunch) {
     private TrackedReadinessFile {
       Objects.requireNonNull(path);
     }
@@ -77,7 +81,10 @@ public class LauncherController {
   private final AtomicReference<Path> wrapperConfPath = new AtomicReference<>();
   private final AtomicReference<TrackedReadinessFile> readinessTarget = new AtomicReference<>();
   private final AtomicLong launchStartedAtMillis = new AtomicLong();
+  private final Object browserAutoOpenStateLock = new Object();
   private final AtomicBoolean autoOpenedBrowser = new AtomicBoolean();
+  private final AtomicBoolean defaultStructuredAutoOpenedBrowser = new AtomicBoolean();
+  private final AtomicBoolean legacyFallbackAutoOpenedBrowser = new AtomicBoolean();
   private final AtomicReference<Integer> pendingLegacyPort = new AtomicReference<>();
   private final AtomicBoolean startupCompletionObserved = new AtomicBoolean();
   private final AtomicBoolean logFallbackEnabled = new AtomicBoolean();
@@ -223,11 +230,16 @@ public class LauncherController {
     }
 
     emitLog(ts() + " Starting '" + cryptadPath.getFileName() + "' ...");
-    updateState(s -> s.withRunning(true).withKnownPort(null));
+    updateState(
+        s ->
+            s.withRunning(true)
+                .withKnownPort(null)
+                .withKnownUiRoot(LauncherReadinessInfo.DEFAULT_UI_ROOT));
 
     tryEnableConsoleFlush(cryptadPath);
     readinessTarget.set(null);
     launchStartedAtMillis.set(0);
+    resetStructuredAutoOpenState();
     pendingLegacyPort.set(null);
     startupCompletionObserved.set(false);
     TrackedReadinessFile initialReadinessTarget = prepareStructuredReadinessFile();
@@ -286,36 +298,72 @@ public class LauncherController {
   }
 
   private void waitForStructuredReadiness(Process started) {
+    LauncherReadinessFiles.ReadinessSnapshot lastHandledReadiness = null;
     while (true) {
-      TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
-      Path currentReadinessFile =
-          currentReadinessTarget != null ? currentReadinessTarget.path() : null;
-      try {
-        if (currentReadinessFile != null) {
-          var readiness = LauncherReadinessFiles.readSnapshot(currentReadinessFile);
-          if (readiness.isPresent()
-              && canConsumeCurrentLaunchReadiness(currentReadinessTarget, readiness.get())) {
-            handleReadyPort(readiness.get().info().uiPort());
-            return;
-          }
-        }
-      } catch (IOException e) {
-        logDebug("Launcher readiness-file reader failed for " + currentReadinessFile, e);
-        fallbackToLegacyReadiness();
-        return;
-      }
-
-      if (!started.isAlive()) {
-        return;
-      }
-
-      try {
-        TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
-      } catch (InterruptedException _) {
-        Thread.currentThread().interrupt();
+      lastHandledReadiness = pollStructuredReadiness(lastHandledReadiness);
+      if (!started.isAlive() || !sleepForReadinessPoll()) {
         return;
       }
     }
+  }
+
+  private LauncherReadinessFiles.ReadinessSnapshot pollStructuredReadiness(
+      LauncherReadinessFiles.ReadinessSnapshot lastHandledReadiness) {
+    TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
+    Path currentReadinessFile = currentReadinessFile(currentReadinessTarget);
+    try {
+      return handleAvailableStructuredReadiness(
+          currentReadinessTarget, currentReadinessFile, lastHandledReadiness);
+    } catch (IOException e) {
+      logDebug("Launcher readiness-file reader failed for " + currentReadinessFile, e);
+      fallbackToLegacyReadiness();
+      return null;
+    }
+  }
+
+  private LauncherReadinessFiles.ReadinessSnapshot handleAvailableStructuredReadiness(
+      TrackedReadinessFile currentReadinessTarget,
+      Path currentReadinessFile,
+      LauncherReadinessFiles.ReadinessSnapshot lastHandledReadiness)
+      throws IOException {
+    if (currentReadinessFile == null) {
+      return lastHandledReadiness;
+    }
+    var readiness = readStructuredReadinessSnapshot(currentReadinessFile);
+    if (readiness.isEmpty()
+        || !canConsumeCurrentLaunchReadiness(currentReadinessTarget, readiness.get())) {
+      return lastHandledReadiness;
+    }
+    return handleNewStructuredReadiness(readiness.get(), lastHandledReadiness);
+  }
+
+  private LauncherReadinessFiles.ReadinessSnapshot handleNewStructuredReadiness(
+      LauncherReadinessFiles.ReadinessSnapshot currentReadiness,
+      LauncherReadinessFiles.ReadinessSnapshot lastHandledReadiness) {
+    if (currentReadiness.equals(lastHandledReadiness)) {
+      return lastHandledReadiness;
+    }
+    handleStructuredReadiness(currentReadiness.info());
+    return currentReadiness;
+  }
+
+  private static Path currentReadinessFile(TrackedReadinessFile currentReadinessTarget) {
+    return currentReadinessTarget != null ? currentReadinessTarget.path() : null;
+  }
+
+  private boolean sleepForReadinessPoll() {
+    try {
+      TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
+      return true;
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
+  Optional<LauncherReadinessFiles.ReadinessSnapshot> readStructuredReadinessSnapshot(
+      Path readinessFile) throws IOException {
+    return LauncherReadinessFiles.readSnapshot(readinessFile);
   }
 
   private void handleLegacyDetectedPort(int port, boolean allowAutoLaunch) {
@@ -330,9 +378,11 @@ public class LauncherController {
   }
 
   private void publishLegacyPort(int port, boolean allowAutoLaunch) {
-    Integer oldPort = state.get().knownPort();
-    if (!Objects.equals(oldPort, port)) {
-      updateState(s -> s.withKnownPort(port));
+    AppState currentState = state.get();
+    if (!Objects.equals(currentState.knownPort(), port)
+        || !Objects.equals(currentState.knownUiRoot(), LauncherReadinessInfo.DEFAULT_UI_ROOT)) {
+      updateState(
+          s -> s.withKnownUiRoot(LauncherReadinessInfo.DEFAULT_UI_ROOT).withKnownPort(port));
     }
     if (!allowAutoLaunch) {
       return;
@@ -346,15 +396,34 @@ public class LauncherController {
     }
   }
 
-  private void handleReadyPort(int port) {
+  private void handleStructuredReadiness(LauncherReadinessInfo readinessInfo) {
     logFallbackEnabled.set(false);
     pendingLegacyPort.set(null);
-    Integer oldPort = state.get().knownPort();
-    if (!Objects.equals(oldPort, port)) {
-      updateState(s -> s.withKnownPort(port));
+    AppState currentState = state.get();
+    if (!Objects.equals(currentState.knownPort(), readinessInfo.uiPort())
+        || !Objects.equals(currentState.knownUiRoot(), readinessInfo.uiRoot())) {
+      updateState(
+          s -> s.withKnownPort(readinessInfo.uiPort()).withKnownUiRoot(readinessInfo.uiRoot()));
     }
-    if (autoOpenedBrowser.compareAndSet(false, true)) {
+    if (markStructuredBrowserAutoOpened(readinessInfo)) {
       launchBrowser();
+      return;
+    }
+    if (consumeLegacyFallbackPromotion(readinessInfo)) {
+      launchBrowser();
+      return;
+    }
+    if (shouldRelaunchAfterDefaultStructuredPromotion(currentState, readinessInfo)) {
+      launchBrowser();
+    }
+  }
+
+  private boolean shouldRelaunchAfterDefaultStructuredPromotion(
+      AppState currentState, LauncherReadinessInfo readinessInfo) {
+    synchronized (browserAutoOpenStateLock) {
+      return LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(currentState.knownUiRoot())
+          && !LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(readinessInfo.uiRoot())
+          && defaultStructuredAutoOpenedBrowser.compareAndSet(true, false);
     }
   }
 
@@ -371,6 +440,7 @@ public class LauncherController {
     finishTailThreadAfterProcessExit();
     readinessTarget.set(null);
     launchStartedAtMillis.set(0);
+    resetStructuredAutoOpenState();
     pendingLegacyPort.set(null);
     startupCompletionObserved.set(false);
     logFallbackEnabled.set(false);
@@ -713,7 +783,7 @@ public class LauncherController {
       var readiness = LauncherReadinessFiles.readSnapshot(currentReadinessFile);
       if (readiness.isPresent()
           && canConsumeCurrentLaunchReadiness(currentReadinessTarget, readiness.get())) {
-        handleReadyPort(readiness.get().info().uiPort());
+        handleStructuredReadiness(readiness.get().info());
         return;
       }
     } catch (IOException e) {
@@ -735,7 +805,7 @@ public class LauncherController {
     if (readinessFile == null) {
       return null;
     }
-    return captureReadinessTarget(readinessFile, false);
+    return captureReadinessTarget(readinessFile);
   }
 
   private void updateStructuredReadinessFile(Path runDir) {
@@ -746,15 +816,19 @@ public class LauncherController {
     if (Objects.equals(currentReadinessFile, nextReadinessFile)) {
       return;
     }
-    readinessTarget.set(captureReadinessTarget(nextReadinessFile, true));
+    readinessTarget.set(captureRetargetedReadinessTarget(nextReadinessFile));
   }
 
   private TrackedReadinessFile captureReadinessTarget(Path readinessFile) {
-    return captureReadinessTarget(readinessFile, false);
+    return captureReadinessTarget(readinessFile, false, false);
+  }
+
+  private TrackedReadinessFile captureRetargetedReadinessTarget(Path readinessFile) {
+    return captureReadinessTarget(readinessFile, true, true);
   }
 
   private TrackedReadinessFile captureReadinessTarget(
-      Path readinessFile, boolean trackedAfterLaunch) {
+      Path readinessFile, boolean trackedAfterLaunch, boolean retargetedAfterLaunch) {
     boolean existedWhenTracked = Files.isRegularFile(readinessFile);
     long lastModifiedWhenTracked = Long.MIN_VALUE;
     Object fileKeyWhenTracked = null;
@@ -766,12 +840,31 @@ public class LauncherController {
       }
       fileKeyWhenTracked = readFileKey(readinessFile);
     }
+    LauncherReadinessInfo infoWhenTracked =
+        readTrackedReadinessInfo(readinessFile, existedWhenTracked);
     return new TrackedReadinessFile(
         readinessFile,
         existedWhenTracked,
         lastModifiedWhenTracked,
         fileKeyWhenTracked,
-        trackedAfterLaunch);
+        infoWhenTracked,
+        trackedAfterLaunch,
+        retargetedAfterLaunch);
+  }
+
+  private LauncherReadinessInfo readTrackedReadinessInfo(
+      Path readinessFile, boolean existedWhenTracked) {
+    if (!existedWhenTracked) {
+      return null;
+    }
+    try {
+      return LauncherReadinessFiles.readSnapshot(readinessFile)
+          .map(LauncherReadinessFiles.ReadinessSnapshot::info)
+          .orElse(null);
+    } catch (IOException e) {
+      logDebug("Launcher readiness-file baseline read failed for " + readinessFile, e);
+      return null;
+    }
   }
 
   boolean isCurrentLaunchReadinessFile(Path readinessFile) throws IOException {
@@ -826,7 +919,9 @@ public class LauncherController {
     if (trackedReadinessFile.existedWhenTracked()) {
       return trackedReadinessFile.trackedAfterLaunch()
           && startupCompletionObserved.get()
-          && corroboratedByLegacyPort;
+          && corroboratedByLegacyPort
+          && !(trackedReadinessFile.retargetedAfterLaunch()
+              && matchesTrackedReadinessInfo(trackedReadinessFile, readiness));
     }
     if (lastModifiedTime < currentLaunchStartedAtMillis) {
       return startupCompletionObserved.get() && corroboratedByLegacyPort;
@@ -847,12 +942,36 @@ public class LauncherController {
     return trackedLastModifiedTime != Long.MIN_VALUE && lastModifiedTime != trackedLastModifiedTime;
   }
 
+  private boolean matchesTrackedReadinessInfo(
+      TrackedReadinessFile trackedReadinessFile,
+      LauncherReadinessFiles.ReadinessSnapshot readiness) {
+    LauncherReadinessInfo trackedInfo = trackedReadinessFile.infoWhenTracked();
+    return trackedInfo != null && trackedInfo.equals(readiness.info());
+  }
+
   private void fallbackToLegacyReadiness() {
-    readinessTarget.set(null);
-    Integer deferredLegacyPort = pendingLegacyPort.getAndSet(null);
+    updateState(s -> s.withKnownUiRoot(LauncherReadinessInfo.DEFAULT_UI_ROOT));
+    sanitizeStructuredReadinessTrackingAfterFallback();
+    Integer deferredLegacyPort = pendingLegacyPort.get();
     if (deferredLegacyPort != null) {
-      publishLegacyPort(deferredLegacyPort, logFallbackEnabled.get());
+      publishLegacyPort(deferredLegacyPort, false);
+      if (logFallbackEnabled.get()) {
+        if (startupCompletionObserved.get()) {
+          launchLegacyFallbackBrowserOnce();
+        } else {
+          launchLegacyFallbackBrowserOnceIfProcessAlive();
+        }
+      }
     }
+  }
+
+  private void sanitizeStructuredReadinessTrackingAfterFallback() {
+    TrackedReadinessFile currentReadinessTarget = readinessTarget.get();
+    if (currentReadinessTarget == null || !currentReadinessTarget.trackedAfterLaunch()) {
+      return;
+    }
+    readinessTarget.compareAndSet(
+        currentReadinessTarget, captureReadinessTarget(currentReadinessTarget.path()));
   }
 
   private void launchBrowserOnceIfProcessAlive() {
@@ -863,9 +982,55 @@ public class LauncherController {
     launchBrowserOnce();
   }
 
+  private void launchLegacyFallbackBrowserOnceIfProcessAlive() {
+    Process current = process.get();
+    if (current == null || !current.isAlive()) {
+      return;
+    }
+    launchLegacyFallbackBrowserOnce();
+  }
+
   private void launchBrowserOnce() {
-    if (autoOpenedBrowser.compareAndSet(false, true)) {
-      launchBrowser();
+    if (!autoOpenedBrowser.compareAndSet(false, true)) {
+      return;
+    }
+    launchBrowser();
+  }
+
+  private void launchLegacyFallbackBrowserOnce() {
+    synchronized (browserAutoOpenStateLock) {
+      if (!autoOpenedBrowser.compareAndSet(false, true)) {
+        return;
+      }
+      defaultStructuredAutoOpenedBrowser.set(false);
+      legacyFallbackAutoOpenedBrowser.set(true);
+    }
+    launchBrowser();
+  }
+
+  private boolean markStructuredBrowserAutoOpened(LauncherReadinessInfo readinessInfo) {
+    synchronized (browserAutoOpenStateLock) {
+      if (!autoOpenedBrowser.compareAndSet(false, true)) {
+        return false;
+      }
+      defaultStructuredAutoOpenedBrowser.set(
+          LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(readinessInfo.uiRoot()));
+      legacyFallbackAutoOpenedBrowser.set(false);
+      return true;
+    }
+  }
+
+  private boolean consumeLegacyFallbackPromotion(LauncherReadinessInfo readinessInfo) {
+    synchronized (browserAutoOpenStateLock) {
+      return !LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(readinessInfo.uiRoot())
+          && legacyFallbackAutoOpenedBrowser.compareAndSet(true, false);
+    }
+  }
+
+  private void resetStructuredAutoOpenState() {
+    synchronized (browserAutoOpenStateLock) {
+      defaultStructuredAutoOpenedBrowser.set(false);
+      legacyFallbackAutoOpenedBrowser.set(false);
     }
   }
 
@@ -1167,11 +1332,12 @@ public class LauncherController {
    * throwing and may emit warning log lines.
    */
   public void launchBrowser() {
-    Integer port = state.get().knownPort();
+    AppState currentState = state.get();
+    Integer port = currentState.knownPort();
     if (port == null) {
       return;
     }
-    URI uri = URI.create("http://localhost:" + port + "/");
+    URI uri = buildBrowserUri(port, currentState.knownUiRoot());
 
     io.execute(
         () -> {
@@ -1209,6 +1375,25 @@ public class LauncherController {
             ? LINUX_XDG_OPEN_EXECUTABLE
             : LINUX_XDG_OPEN_EXECUTABLE_FALLBACK;
     new ProcessBuilder(xdgOpenExecutable, uri.toString()).start();
+  }
+
+  static URI buildBrowserUri(int port, String uiRoot) {
+    return URI.create("http://localhost:" + port + normalizeUiRoot(uiRoot));
+  }
+
+  static String describeBrowserTarget(Integer port, String uiRoot) {
+    String normalizedUiRoot = normalizeUiRoot(uiRoot);
+    if (port == null) {
+      return "http://localhost:<port>" + normalizedUiRoot;
+    }
+    return buildBrowserUri(port, normalizedUiRoot).toString();
+  }
+
+  static String normalizeUiRoot(String uiRoot) {
+    if (!LauncherReadinessInfo.isValidUiRoot(uiRoot)) {
+      return LauncherReadinessInfo.DEFAULT_UI_ROOT;
+    }
+    return uiRoot.endsWith("/") ? uiRoot : uiRoot + "/";
   }
 
   /**

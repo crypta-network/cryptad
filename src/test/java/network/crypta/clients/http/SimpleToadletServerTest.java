@@ -1,8 +1,11 @@
 package network.crypta.clients.http;
 
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
@@ -14,10 +17,12 @@ import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -39,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -86,6 +92,24 @@ class SimpleToadletServerTest {
   }
 
   @Test
+  void findToadlet_whenShellAliasRequestedWithCatchAllRegistered_redirectsToShellRoot()
+      throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    DummyToadlet catchAllToadlet = new DummyToadlet("/");
+    DummyToadlet shellToadlet = new DummyToadlet(WebShellPaths.SHELL_ROOT);
+    server.register(catchAllToadlet, ToadletRegistration.basic(null, "/", false, false));
+    server.register(
+        shellToadlet, ToadletRegistration.basic(null, WebShellPaths.SHELL_ROOT, true, false));
+
+    PermanentRedirectException ex =
+        assertThrows(
+            PermanentRedirectException.class,
+            () -> server.findToadlet(new URI("http://localhost/app/node")));
+
+    assertEquals(WebShellPaths.SHELL_ROOT, ex.newuri.getPath());
+  }
+
+  @Test
   void findToadlet_whenWizardIncomplete_redirectsToWizardAndPreservesQuery() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
     HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
@@ -99,6 +123,104 @@ class SimpleToadletServerTest {
 
     assertEquals(FirstTimeWizardToadlet.TOADLET_URL, ex.newuri.getPath());
     assertEquals("step=1", ex.newuri.getQuery());
+  }
+
+  @Test
+  void primaryUiRoot_whenWizardIncomplete_returnsLegacyRoot() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+
+    assertEquals("/", server.primaryUiRoot());
+  }
+
+  @Test
+  void primaryUiRoot_whenWizardComplete_returnsWebShellRoot() throws Exception {
+    Config rootConfig = new Config();
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    SimpleToadletServer server = newServerWithDefaults(config);
+    config.set("hasCompletedWizard", true);
+
+    assertEquals(WebShellPaths.SHELL_ROOT, server.primaryUiRoot());
+  }
+
+  @Test
+  @SuppressWarnings({"resource", "MustBeClosedChecker"})
+  void setPrimaryUiRootListener_whenWizardCompletesAfterStartup_notifiesShellRoot()
+      throws Exception {
+    Config rootConfig = new Config();
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    BucketFactory bucketFactory = mock(BucketFactory.class);
+    PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
+    SimpleToadletServer server;
+
+    try (MockedStatic<NetworkInterface> netMock = mockStatic(NetworkInterface.class);
+        MockedStatic<SSLNetworkInterface> sslMock = mockStatic(SSLNetworkInterface.class)) {
+      NetworkInterface iface = mock(NetworkInterface.class);
+      netMock
+          .when(() -> NetworkInterface.create(anyInt(), any(), any(), any(), anyBoolean()))
+          .thenReturn(iface);
+      sslMock
+          .when(() -> SSLNetworkInterface.createSsl(anyInt(), any(), any(), any(), anyBoolean()))
+          .thenReturn(iface);
+      server = new SimpleToadletServer(config, bucketFactory, executor);
+    }
+
+    AtomicReference<String> notifiedUiRoot = new AtomicReference<>();
+    server.setRuntimeSupport(mock(HttpShellRuntimeSupport.class));
+    server.setPrimaryUiRootListener(notifiedUiRoot::set);
+    server.finishStart();
+
+    config.finishedInitialization();
+    config.set("hasCompletedWizard", true);
+
+    assertEquals(WebShellPaths.SHELL_ROOT, server.primaryUiRoot());
+    assertEquals(WebShellPaths.SHELL_ROOT, notifiedUiRoot.get());
+  }
+
+  @Test
+  void notifyPrimaryUiRootChangedIfStarted_whenFinishStartPublishesStateBeforeUnlock_notifiesRoot()
+      throws Exception {
+    Config rootConfig = new Config();
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    SimpleToadletServer server = newServerWithDefaults(config);
+    Method notifyMethod =
+        SimpleToadletServer.class.getDeclaredMethod(
+            "notifyPrimaryUiRootChangedIfStarted", String.class);
+    notifyMethod.setAccessible(true);
+    AtomicReference<String> notifiedUiRoot = new AtomicReference<>();
+    AtomicReference<Throwable> notifierFailure = new AtomicReference<>();
+    CountDownLatch invocationReady = new CountDownLatch(1);
+    CountDownLatch invocationStarted = new CountDownLatch(1);
+
+    server.setRuntimeSupport(mock(HttpShellRuntimeSupport.class));
+    server.setPrimaryUiRootListener(notifiedUiRoot::set);
+
+    Thread notifierThread =
+        Thread.ofPlatform()
+            .name("simple-toadlet-server-ui-root-notifier")
+            .unstarted(
+                () -> {
+                  try {
+                    invocationReady.countDown();
+                    assertTrue(invocationStarted.await(5, TimeUnit.SECONDS));
+                    notifyMethod.invoke(server, LauncherReadinessInfo.DEFAULT_UI_ROOT);
+                  } catch (Throwable t) {
+                    notifierFailure.set(t);
+                  }
+                });
+    notifierThread.start();
+    assertTrue(invocationReady.await(5, TimeUnit.SECONDS));
+
+    synchronized (server) {
+      config.set("hasCompletedWizard", true);
+      invocationStarted.countDown();
+      server.finishStart();
+    }
+
+    notifierThread.join(TimeUnit.SECONDS.toMillis(5));
+
+    assertFalse(notifierThread.isAlive());
+    assertEquals(WebShellPaths.SHELL_ROOT, notifiedUiRoot.get());
+    assertNull(notifierFailure.get());
   }
 
   @Test
@@ -338,10 +460,13 @@ class SimpleToadletServerTest {
     assertFalse(server.isAllowedFullAccess(InetAddress.getLoopbackAddress()));
   }
 
-  @SuppressWarnings({"resource", "MustBeClosedChecker"})
+  @SuppressWarnings({"MustBeClosedChecker"})
   private SimpleToadletServer newServerWithDefaults() throws Exception {
-    Config rootConfig = new Config();
-    SubConfig config = rootConfig.createSubConfig("fproxy");
+    return newServerWithDefaults(new Config().createSubConfig("fproxy"));
+  }
+
+  @SuppressWarnings({"resource", "MustBeClosedChecker"})
+  private SimpleToadletServer newServerWithDefaults(SubConfig config) throws Exception {
     BucketFactory bucketFactory = mock(BucketFactory.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
 

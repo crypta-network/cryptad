@@ -13,6 +13,7 @@ import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 
@@ -355,6 +356,18 @@ final class FProxyRegistrar {
                 runtimePorts.darknetConnections(), runtimePorts.darknetMessaging()));
     server.register(
         bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
+
+    WebShellToadlet webShellToadlet = new WebShellToadlet(client);
+    server.register(
+        webShellToadlet,
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            WebShellPaths.SHELL_ROOT,
+            true,
+            "FProxyToadlet.webShellTitle",
+            "FProxyToadlet.webShell",
+            true,
+            ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot())));
 
     PlatformApiToadlet platformApiToadlet = new PlatformApiToadlet(client, runtimePorts);
     server.register(

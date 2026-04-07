@@ -1,0 +1,343 @@
+:root {
+  color-scheme: dark;
+  --shell-bg: #09111f;
+  --shell-bg-soft: #111a2d;
+  --shell-panel: rgba(18, 28, 48, 0.84);
+  --shell-panel-border: rgba(157, 182, 255, 0.18);
+  --shell-text: #eef3ff;
+  --shell-muted: #aab8d6;
+  --shell-accent: #7bdcff;
+  --shell-accent-2: #8ef0b5;
+  --shell-warm: #ffd17d;
+  --shell-danger: #ff8f8f;
+  --shell-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(123, 220, 255, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(142, 240, 181, 0.12), transparent 26%),
+    linear-gradient(160deg, #04070f 0%, var(--shell-bg) 42%, #0d1630 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--shell-text);
+  font-family:
+    "Avenir Next", "Avenir", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.shell-backdrop-a {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(123, 220, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 75% 18%, rgba(255, 209, 125, 0.16), transparent 20%);
+}
+
+.shell-backdrop-b {
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.03), transparent 40%),
+    radial-gradient(circle at 60% 80%, rgba(142, 240, 181, 0.1), transparent 24%);
+  filter: blur(8px);
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 36px 0 48px;
+}
+
+.hero {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 28px;
+  padding: 28px;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(20, 31, 54, 0.92), rgba(12, 18, 34, 0.82));
+  box-shadow: var(--shell-shadow);
+}
+
+.eyebrow,
+.panel-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--shell-accent);
+}
+
+.hero h1,
+.panel h2 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  line-height: 0.98;
+}
+
+.lede,
+.panel-description,
+.loading,
+.empty-state,
+.error-state {
+  margin: 0;
+  color: var(--shell-muted);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.button:hover,
+.button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(123, 220, 255, 0.48);
+}
+
+.button-primary {
+  color: #03101b;
+  background: linear-gradient(135deg, var(--shell-accent) 0%, var(--shell-accent-2) 100%);
+}
+
+.button-secondary {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.panel {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 24px;
+  background: var(--shell-panel);
+  box-shadow: var(--shell-shadow);
+  backdrop-filter: blur(14px);
+}
+
+.panel-wide {
+  margin-top: 18px;
+}
+
+.panel-header {
+  display: grid;
+  gap: 8px;
+}
+
+.panel-body {
+  display: grid;
+  gap: 12px;
+}
+
+.kv-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 30%) 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.kv-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.kv-label {
+  color: var(--shell-muted);
+  font-weight: 700;
+}
+
+.kv-value {
+  overflow-wrap: anywhere;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--shell-text);
+  font-size: 0.9rem;
+}
+
+.status-pill::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--shell-accent);
+  box-shadow: 0 0 0 4px rgba(123, 220, 255, 0.16);
+}
+
+.status-pill.is-warning::before {
+  background: var(--shell-warm);
+  box-shadow: 0 0 0 4px rgba(255, 209, 125, 0.18);
+}
+
+.status-pill.is-error::before {
+  background: var(--shell-danger);
+  box-shadow: 0 0 0 4px rgba(255, 143, 143, 0.16);
+}
+
+.legacy-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.legacy-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.legacy-links a:hover,
+.legacy-links a:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(123, 220, 255, 0.42);
+  background: rgba(123, 220, 255, 0.08);
+}
+
+.legacy-links a::after {
+  content: "↗";
+  color: var(--shell-accent);
+}
+
+.peer-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+}
+
+.peer-table th,
+.peer-table td {
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.peer-table th {
+  color: var(--shell-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.peer-table td {
+  overflow-wrap: anywhere;
+}
+
+.empty-state,
+.error-state {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.error-state {
+  color: #ffd4d4;
+  background: rgba(255, 143, 143, 0.12);
+}
+
+@media (max-width: 860px) {
+  .shell {
+    width: min(100vw - 20px, 1180px);
+    padding-top: 20px;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .panel {
+    border-radius: 22px;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero {
+    padding: 20px;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .kv-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

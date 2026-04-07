@@ -222,6 +222,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
   lifecycle, and per-start launch-token plumbing for local apps while staying separate from future
   Web Shell, application-UI, and app update-channel work.
+- `:platform-web-shell` owns the first browser-facing Web Shell v1 under
+  `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
+  bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
+  from runtime, adapter, Platform API, and AppHost implementation code. That shell is mounted at
+  `/app/node/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`.
 - `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
   `network.crypta.client` async/request engine and high-level client APIs, large slices of
   `network.crypta.node` after the phase-1 routing/helper move, the retained node-coupled
@@ -237,7 +242,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `templates/**`. The root project no longer owns that main source/resource tree, and the
   remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
   refines it further. That shell now also hosts the temporary `/api/v1/` mount for
-  `:platform-api`; future Web Shell and AppHost work remain separate.
+  `:platform-api` plus the first `/app/node/` Web Shell bridge for `:platform-web-shell`; future
+  AppHost UI and app-update work remain separate.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -580,6 +586,9 @@ Root build also includes:
   currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Future Web Shell, app UI, and update-channel work remain separate and later.
+- `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
+  descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
+  `/app/node/`.
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
@@ -590,7 +599,8 @@ Root build also includes:
 - `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
   HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
-  boundary-frozen for now.
+  boundary-frozen for now. It currently hosts both the temporary `/api/v1/` bridge for
+  `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
   bandwidth-detection helpers now used by first-time setup flows.
@@ -643,7 +653,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-    `:platform-apphost`, `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`,
+    `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`,
     `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
@@ -695,7 +705,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `staticfiles/**` and `templates/**` resources. The migrated HTTP management and shell slices
   cross the boundary in three layers: `RuntimePorts` for JDK-only detached runtime state,
   `:platform-api` for the read-only Platform API v1 router and JSON surface currently mounted at
-  `/api/v1/`,
+  `/api/v1/`, `:platform-web-shell` for the first browser-facing node-management shell currently
+  mounted at `/app/node/`,
   runtime-owned shell and password-prompt seams under `network.crypta.runtime.http` and
   `network.crypta.runtime.http.security`, and client-local helpers such as
   `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`, and
@@ -759,7 +770,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
   and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
   `:platform-api` provides the transport-neutral read-only Platform API v1; `:platform-apphost`
-  provides the transport-neutral out-of-process AppHost v1 core for installed local apps; `:runtime-node`
+  provides the transport-neutral out-of-process AppHost v1 core for installed local apps;
+  `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
+  bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
