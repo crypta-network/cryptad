@@ -95,12 +95,38 @@
   function renderLegacyLinks() {
     clear(sections.legacy);
     for (const link of legacyLinks) {
+      const path = normalizeLegacyLinkPath(link.path);
+      if (!path) {
+        continue;
+      }
       const item = document.createElement("li");
       const anchor = document.createElement("a");
-      anchor.href = link.path;
+      anchor.pathname = path;
+      anchor.search = "";
+      anchor.hash = "";
       anchor.textContent = link.label;
       item.append(anchor);
       sections.legacy.append(item);
+    }
+  }
+
+  function normalizeLegacyLinkPath(value) {
+    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+      return null;
+    }
+    try {
+      const url = new URL(value, window.location.origin);
+      if (
+        url.origin !== window.location.origin ||
+        url.search !== "" ||
+        url.hash !== "" ||
+        url.pathname !== value
+      ) {
+        return null;
+      }
+      return url.pathname;
+    } catch (error) {
+      return null;
     }
   }
 

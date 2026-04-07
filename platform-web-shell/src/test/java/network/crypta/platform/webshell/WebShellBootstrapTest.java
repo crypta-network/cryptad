@@ -7,6 +7,7 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -57,5 +58,15 @@ class WebShellBootstrapTest {
     assertEquals("/stats/", link.path());
     assertEquals("Statistics", link.label());
     assertTrue(link.toString().contains("Statistics"));
+  }
+
+  @Test
+  void legacyLink_whenPathIsSchemeRelativeOrContainsQuery_expectRejected() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new WebShellBootstrap.LegacyLink("//evil.example/", "External"));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new WebShellBootstrap.LegacyLink("/friends/?tab=all", "Friends"));
   }
 }

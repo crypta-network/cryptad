@@ -1,5 +1,6 @@
 package network.crypta.platform.webshell.bootstrap;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.webshell.routes.WebShellPaths;
@@ -85,11 +86,19 @@ public record WebShellBootstrap(
    */
   private static void requireRootPath(String value, String label) {
     requireText(value, label);
-    if (value.charAt(0) != '/') {
-      throw new IllegalArgumentException(label + " must start with '/'");
+    if (value.charAt(0) != '/' || value.startsWith("//")) {
+      throw new IllegalArgumentException(label + " must start with a single leading '/'");
     }
-    if (!value.endsWith("/")) {
-      throw new IllegalArgumentException(label + " must end with '/'");
+    try {
+      URI uri = URI.create("http://localhost" + value);
+      if (!value.equals(uri.getRawPath())
+          || uri.getRawQuery() != null
+          || uri.getRawFragment() != null
+          || !value.endsWith("/")) {
+        throw new IllegalArgumentException(label + " must be a valid absolute root path");
+      }
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " must be a valid absolute root path", e);
     }
   }
 
