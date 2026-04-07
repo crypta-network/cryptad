@@ -11,6 +11,7 @@ import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.testsupport.SpotBugsTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -171,13 +172,13 @@ class NodeTest {
     invokeFinishToadletsIfEnabled(node);
 
     var order = inOrder(toadlets);
-    order.verify(toadlets).isEnabled();
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).isEnabled());
     order.verify(toadlets).setPrimaryUiRootListener(any());
     order.verify(toadlets).finishStart();
     order.verify(toadlets).createFproxy();
     order.verify(toadlets).removeStartupToadlet();
-    order.verify(toadlets).listenPort();
-    order.verify(toadlets).primaryUiRoot();
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).listenPort());
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).primaryUiRoot());
 
     Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
     LauncherReadinessInfo actual = LauncherReadinessFiles.read(readinessFile).orElseThrow();
@@ -244,13 +245,13 @@ class NodeTest {
     invokeFinishToadletsIfEnabled(node);
 
     var order = inOrder(toadlets);
-    order.verify(toadlets).isEnabled();
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).isEnabled());
     order.verify(toadlets).setPrimaryUiRootListener(any());
     order.verify(toadlets).finishStart();
     order.verify(toadlets).createFproxy();
     order.verify(toadlets).removeStartupToadlet();
-    order.verify(toadlets).listenPort();
-    order.verify(toadlets).primaryUiRoot();
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).listenPort());
+    SpotBugsTestSupport.ignoreValue(order.verify(toadlets).primaryUiRoot());
     assertTrue(LauncherReadinessFiles.read(LauncherReadinessFiles.resolve(tempDir)).isEmpty());
   }
 }

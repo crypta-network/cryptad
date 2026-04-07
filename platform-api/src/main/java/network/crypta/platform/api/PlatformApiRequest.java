@@ -53,6 +53,11 @@ public record PlatformApiRequest(
     return queryParameters.getOrDefault(name, List.of());
   }
 
+  @Override
+  public Map<String, List<String>> queryParameters() {
+    return immutableQueryParameters(this.queryParameters);
+  }
+
   /**
    * Copies query parameters into an immutable encounter-order-preserving map.
    *

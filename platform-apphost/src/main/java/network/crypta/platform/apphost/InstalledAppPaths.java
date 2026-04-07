@@ -134,7 +134,7 @@ public record InstalledAppPaths(
    */
   @SuppressWarnings("unused")
   public void ensureInstallParentDirectory() throws IOException {
-    Files.createDirectories(installedRoot.getParent());
+    Files.createDirectories(parentOrThrow(installedRoot, "installedRoot"));
   }
 
   /**
@@ -207,5 +207,13 @@ public record InstalledAppPaths(
     Path expectedRealPath = parent.toRealPath().resolve(entry.getFileName()).normalize();
     Path actualRealPath = entry.toRealPath();
     return !actualRealPath.equals(expectedRealPath);
+  }
+
+  private static Path parentOrThrow(Path path, String label) throws AppHostException {
+    Path parent = path.getParent();
+    if (parent == null) {
+      throw new AppHostException(label + " must not be a filesystem root: " + path);
+    }
+    return parent;
   }
 }

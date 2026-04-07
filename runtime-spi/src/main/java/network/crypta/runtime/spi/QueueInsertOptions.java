@@ -33,7 +33,8 @@ public final class QueueInsertOptions {
       boolean compress, String compatibilityMode, byte[] overrideSplitfileCryptoKey) {
     this.compress = compress;
     this.compatibilityMode = Objects.requireNonNull(compatibilityMode, "compatibilityMode");
-    this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
+    this.overrideSplitfileCryptoKey =
+        overrideSplitfileCryptoKey == null ? null : overrideSplitfileCryptoKey.clone();
   }
 
   /**
@@ -60,7 +61,7 @@ public final class QueueInsertOptions {
    * @return caller-supplied splitfile key bytes, or {@code null} when absent
    */
   public byte[] overrideSplitfileCryptoKey() {
-    return overrideSplitfileCryptoKey;
+    return overrideSplitfileCryptoKey == null ? null : overrideSplitfileCryptoKey.clone();
   }
 
   @Override

@@ -25,6 +25,7 @@ import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.support.BandwidthStatsContainer;
+import network.crypta.testsupport.SpotBugsTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -121,7 +122,7 @@ class LegacyDiagnosticPortTest {
 
     InOrder inOrder = inOrder(bandwidthStatsPutter, collector);
     inOrder.verify(bandwidthStatsPutter).updateData(node);
-    inOrder.verify(collector).getTotalIO();
+    SpotBugsTestSupport.ignoreValue(inOrder.verify(collector).getTotalIO());
   }
 
   @Test

@@ -338,7 +338,7 @@ class SimpleToadletServerTest {
     server.setRuntimeSupport(runtimeSupport);
     boolean originalPanicButtonState = SimpleToadletServer.isPanicButtonToBeShown;
     try {
-      SimpleToadletServer.isPanicButtonToBeShown = true;
+      setPanicButtonToBeShown(true);
 
       server.finishStart();
 
@@ -373,8 +373,12 @@ class SimpleToadletServerTest {
               HttpShellRuntimeSupport.PhysicalThreatLevel.NORMAL);
       assertTrue(SimpleToadletServer.isPanicButtonToBeShown);
     } finally {
-      SimpleToadletServer.isPanicButtonToBeShown = originalPanicButtonState;
+      setPanicButtonToBeShown(originalPanicButtonState);
     }
+  }
+
+  private static void setPanicButtonToBeShown(boolean shown) {
+    SimpleToadletServer.isPanicButtonToBeShown = shown;
   }
 
   @Test

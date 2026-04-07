@@ -66,6 +66,16 @@ public record ConfigFieldSet(
     return directValues.isEmpty() && directSubsets.isEmpty();
   }
 
+  @Override
+  public Map<String, String> directValues() {
+    return immutableDirectValues(this.directValues);
+  }
+
+  @Override
+  public Map<String, ConfigFieldSet> directSubsets() {
+    return immutableDirectSubsets(this.directSubsets);
+  }
+
   private static Map<String, String> immutableDirectValues(Map<String, String> source) {
     Objects.requireNonNull(source, "directValues");
     if (source.isEmpty()) {

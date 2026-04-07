@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import network.crypta.crypt.EntropySource;
@@ -157,6 +158,8 @@ final class FcpRuntimeAdapters {
    * non-owning views over a live runtime port.
    */
   private static final class RandomnessPortRandomSource extends RandomSource {
+    @Serial private static final long serialVersionUID = 1L;
+
     /**
      * Live runtime randomness capability backing this adapter.
      *

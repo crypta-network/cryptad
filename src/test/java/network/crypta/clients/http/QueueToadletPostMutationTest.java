@@ -131,7 +131,7 @@ class QueueToadletPostMutationTest {
 
   @AfterEach
   void tearDown() {
-    SimpleToadletServer.noConfirmPanic = originalNoConfirmPanic;
+    setNoConfirmPanic(originalNoConfirmPanic);
   }
 
   @Test
@@ -256,7 +256,7 @@ class QueueToadletPostMutationTest {
   void handleMethodPOST_whenPanicSelectedAndNoConfirmPanic_callsSupportPortAndRendersBeforeFinish()
       throws Exception {
     QueueToadlet toadlet = createQueueToadlet(false);
-    SimpleToadletServer.noConfirmPanic = true;
+    setNoConfirmPanic(true);
     HTTPRequest request = createRequest(Map.of("panic", "yes"));
     ByteArrayOutputStream body = captureBody(ctx);
 
@@ -274,7 +274,7 @@ class QueueToadletPostMutationTest {
   void handleMethodPOST_whenConfirmPanicSelected_callsSupportPortAndRendersBeforeFinish()
       throws Exception {
     QueueToadlet toadlet = createQueueToadlet(false);
-    SimpleToadletServer.noConfirmPanic = false;
+    setNoConfirmPanic(false);
     HTTPRequest request = createRequest(Map.of("confirmpanic", "yes"));
     ByteArrayOutputStream body = captureBody(ctx);
 
@@ -359,6 +359,10 @@ class QueueToadletPostMutationTest {
                 darknetMessagingPort));
     toadlet.container = container;
     return toadlet;
+  }
+
+  private static void setNoConfirmPanic(boolean enabled) {
+    SimpleToadletServer.noConfirmPanic = enabled;
   }
 
   private ClientContext createClientContext() {

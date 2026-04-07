@@ -1798,4 +1798,99 @@
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     <Class name="org.spaceroots.mantissa.utilities.IntervalsList"/>
   </Match>
+
+  <!--
+    These long-lived request and listener objects intentionally retain live callback/listener
+    references so persisted client requests can resume and in-process event producers can continue
+    dispatching to their registered observers. Marking the fields transient would break those
+    semantics without improving runtime safety.
+  -->
+  <Match>
+    <Bug pattern="SE_BAD_FIELD"/>
+    <Class name="network.crypta.client.async.ClientGetter"/>
+  </Match>
+  <Match>
+    <Bug pattern="SE_BAD_FIELD"/>
+    <Class name="network.crypta.client.async.ClientPutter"/>
+  </Match>
+  <Match>
+    <Bug pattern="SE_BAD_FIELD"/>
+    <Class name="network.crypta.client.events.SimpleEventProducer"/>
+  </Match>
+
+  <!--
+    The datehint terminal callback must remain a non-static inner class so serialized USK inserts
+    keep their enclosing-instance link across resume boundaries. Refactoring it to a static helper
+    would alter persisted state layout.
+  -->
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Class name="network.crypta.client.async.USKInserter$DateHintTerminalCallback"/>
+  </Match>
+
+  <!--
+    These runtime seam bundles intentionally carry live collaborators (ports, handlers, toadlets,
+    queue backends, and request-context owners). Defensive copying is either impossible or would
+    sever the shared lifecycle/identity that callers explicitly rely on.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="~network\.crypta\.clients\.fcp\.bridge\.(?:FcpQueuePorts\$Bundle|FcpUserAlertFeedSubscriber)"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="~network\.crypta\.clients\.fcp\.bridge\.LegacyQueue(?:Completion|Download|Insert)Port"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="~network\.crypta\.clients\.http\.(?:HttpShellFProxyBootstrap|QueueToadletRuntimePorts)"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.bridge.CoreHttpShellRuntimeSupport"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.filter.PushingTagReplacerCallback"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="~network\.crypta\.runtime\.admin\.(?:AdminRuntimeBridgeInputs|AdminRuntimePortsBundle)"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.runtime.admin.LegacyQueueMutationPort"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.runtime.core.LegacyRequestQueuePort"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.runtime.core.LegacyRuntimePorts"/>
+  </Match>
+
+  <!--
+    The config callback wrappers intentionally preserve the historic simple callback names while
+    adapting to the support-layer callback hierarchy. Renaming them would be pure churn and would
+    obscure their role as compatibility shims.
+  -->
+  <Match>
+    <Bug pattern="NM_SAME_SIMPLE_NAME_AS_SUPERCLASS"/>
+    <Class name="~network\.crypta\.config\.(?:Boolean|Int|Long|Short|StringArr|String)Callback"/>
+  </Match>
+
+  <!--
+    AppHost runtime path probing intentionally uses a fixed allow-list of absolute OS paths for the
+    trusted shell, ps binary, proc filesystem, and baseline PATH entries. Those literals are part
+    of the platform-security contract rather than user-derived filenames.
+  -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.platform.apphost.runtime.LocalProcessAppHost"/>
+  </Match>
 </FindBugsFilter>

@@ -85,6 +85,33 @@ class LocalProcessAppHostTest {
   private static final String STANDARD_PERMISSIONS_TEXT =
       NETWORK_ACCESS_PERMISSION + "," + FILE_READ_PERMISSION;
   private static final long POLL_INTERVAL_NANOS = Duration.ofMillis(10).toNanos();
+  private static final LocalProcessAppHost.TimingConfig TEST_TIMING =
+      new LocalProcessAppHost.TimingConfig(
+          Duration.ofMillis(300),
+          Duration.ofMillis(80),
+          Duration.ofMillis(40),
+          Duration.ofMillis(40),
+          Duration.ofMillis(20),
+          Duration.ofMillis(1),
+          Duration.ofMillis(2),
+          Duration.ofMillis(20));
+  private static final Duration TEST_LOOP_SLEEP = Duration.ofMillis(50);
+  private static final Duration TEST_DELAYED_WRAPPER_EXIT = Duration.ofMillis(120);
+  private static final Duration TEST_POST_CAPTURE_DELAY =
+      TEST_TIMING.startupProcessCaptureWindow().plusMillis(10);
+  private static final Duration TEST_LATE_CHILD_DELAY =
+      TEST_TIMING.startupExitGracePeriod().plusMillis(25);
+  private static final Duration TEST_POST_SPAWN_EXIT_DELAY = Duration.ofMillis(40);
+  private static final Duration TEST_SHORT_EXIT_DELAY = Duration.ofMillis(50);
+  private static final String TEST_LOOP_SLEEP_SECONDS = secondsLiteral(TEST_LOOP_SLEEP);
+  private static final String TEST_DELAYED_WRAPPER_EXIT_SECONDS =
+      secondsLiteral(TEST_DELAYED_WRAPPER_EXIT);
+  private static final String TEST_POST_CAPTURE_DELAY_SECONDS =
+      secondsLiteral(TEST_POST_CAPTURE_DELAY);
+  private static final String TEST_LATE_CHILD_DELAY_SECONDS = secondsLiteral(TEST_LATE_CHILD_DELAY);
+  private static final String TEST_POST_SPAWN_EXIT_DELAY_SECONDS =
+      secondsLiteral(TEST_POST_SPAWN_EXIT_DELAY);
+  private static final String TEST_SHORT_EXIT_DELAY_SECONDS = secondsLiteral(TEST_SHORT_EXIT_DELAY);
   private static final String LATE_CHILD_APP_ID = "late-child-app";
   private static final String SHELL_NOEXEC_APP_ID = "shell-noexec-app";
   private static final String WRAPPER_SCRIPT =
@@ -102,26 +129,29 @@ class LocalProcessAppHostTest {
       #!/bin/sh
       trap '' TERM INT
       while :; do
-        sleep 1
+        sleep %s
       done
-      """;
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
   private static final String DAEMONIZED_CHILD_PROCESS_SCRIPT =
       """
       #!/bin/sh
       trap 'exit 0' TERM INT
       while :; do
-        sleep 1
+        sleep %s
       done
-      """;
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
   private static final String DETACHED_CHILD_PROCESS_SCRIPT =
       """
       #!/bin/sh
       trap '' HUP
       trap 'exit 0' TERM INT
       while :; do
-        sleep 1
+        sleep %s
       done
-      """;
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
   private static final String DAEMONIZING_WRAPPER_IMMEDIATE_EXIT_SCRIPT =
       """
       #!/bin/sh
@@ -140,22 +170,22 @@ class LocalProcessAppHostTest {
       ./%s &
       child=$!
       echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
-      sleep 1
+      sleep %s
       echo exited > "$CRYPTAD_APP_RUN_DIR/wrapper-exited.txt"
       exit 0
       """
-          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME, TEST_DELAYED_WRAPPER_EXIT_SECONDS);
   private static final String DAEMONIZING_WRAPPER_POST_CAPTURE_EXIT_SCRIPT =
       """
       #!/bin/sh
       set -eu
-      sleep 0.53
+      sleep %s
       ./%s &
       child=$!
       echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       exit 0
       """
-          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+          .formatted(TEST_POST_CAPTURE_DELAY_SECONDS, CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String DAEMONIZING_WRAPPER_VIA_HELPER_SCRIPT =
       """
       #!/bin/sh
@@ -167,13 +197,13 @@ class LocalProcessAppHostTest {
       """
       #!/bin/sh
       set -eu
-      sleep 0.25
+      sleep %s
       ./%s &
       child=$!
       echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
       exit 0
       """
-          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+          .formatted(TEST_POST_CAPTURE_DELAY_SECONDS, CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
   private static final String POST_CAPTURE_PYTHON_DAEMONIZER =
       """
       #!/usr/bin/env %s
@@ -182,25 +212,33 @@ class LocalProcessAppHostTest {
       import subprocess
       import time
 
-      time.sleep(0.53)
+      time.sleep(%s)
       child = subprocess.Popen(["./%s"])
       pathlib.Path(os.environ["CRYPTAD_APP_RUN_DIR"], "%s").write_text(
           f"{child.pid}\\n", encoding="utf-8")
       """
-          .formatted(PYTHON3_COMMAND, CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+          .formatted(
+              PYTHON3_COMMAND,
+              TEST_POST_CAPTURE_DELAY_SECONDS,
+              CHILD_SCRIPT_PATH,
+              CHILD_PID_FILE_NAME);
   private static final String LATE_CHILD_DIRECT_EXECUTABLE =
       """
       #!/bin/sh
       set -eu
-      sleep 1
+      sleep %s
       ./%s &
       child=$!
       echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
-      sleep 0.2
+      sleep %s
       echo exited > "$CRYPTAD_APP_RUN_DIR/wrapper-exited.txt"
       exit 0
       """
-          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+          .formatted(
+              TEST_LATE_CHILD_DELAY_SECONDS,
+              CHILD_SCRIPT_PATH,
+              CHILD_PID_FILE_NAME,
+              TEST_POST_SPAWN_EXIT_DELAY_SECONDS);
   private static final String STDIN_EOF_SCRIPT =
       """
       #!/bin/sh
@@ -208,9 +246,10 @@ class LocalProcessAppHostTest {
       cat >/dev/null
       echo closed > "$CRYPTAD_APP_RUN_DIR/stdin-closed.txt"
       while :; do
-        sleep 1
+        sleep %s
       done
-      """;
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
   private static final String SINGLE_RUN_EXIT_SCRIPT =
       """
       #!/bin/sh
@@ -227,9 +266,10 @@ class LocalProcessAppHostTest {
       """
       #!/bin/sh
       set -eu
-      sleep 0.1
+      sleep %s
       exit 0
-      """;
+      """
+          .formatted(TEST_SHORT_EXIT_DELAY_SECONDS);
 
   @TempDir private Path tempDir;
 
@@ -533,9 +573,10 @@ class LocalProcessAppHostTest {
         #!/bin/sh
         printf 'escaped' > "$CRYPTAD_APP_RUN_DIR/escaped.txt"
         while :; do
-          sleep 1
+          sleep %s
         done
-        """,
+        """
+            .formatted(TEST_LOOP_SLEEP_SECONDS),
         appEnv);
     Path installedBin = installation.paths().installedRoot().resolve("bin");
     Path relocatedInstalledBin = installation.paths().installedRoot().resolve("bin-original");
@@ -1187,11 +1228,12 @@ class LocalProcessAppHostTest {
                 set -euo pipefail
                 [[ $# -eq 0 ]]
                 letters=(alpha beta)
-                printf '%s' "${letters[0]}" > "$CRYPTAD_APP_RUN_DIR/shebang-ok.txt"
+                printf '%%s' "${letters[0]}" > "$CRYPTAD_APP_RUN_DIR/shebang-ok.txt"
                 while :; do
-                  sleep 1
+                  sleep %s
                 done
-                """));
+                """
+                    .formatted(TEST_LOOP_SLEEP_SECONDS)));
 
     host.start(RUNNER_APP_ID);
 
@@ -1215,11 +1257,12 @@ class LocalProcessAppHostTest {
                 """
                 #!/bin/sh
                 set -eu
-                printf '%s' "ok" > "$CRYPTAD_APP_RUN_DIR/noexec-ok.txt"
+                printf '%%s' "ok" > "$CRYPTAD_APP_RUN_DIR/noexec-ok.txt"
                 while :; do
-                  sleep 1
+                  sleep %s
                 done
-                """,
+                """
+                    .formatted(TEST_LOOP_SLEEP_SECONDS),
                 Map.of(),
                 false));
 
@@ -1560,7 +1603,8 @@ class LocalProcessAppHostTest {
             tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run")),
         stopTimeout,
         new java.security.SecureRandom(),
-        appEnv);
+        appEnv,
+        TEST_TIMING);
   }
 
   private Path stageInstalledApp(String appId) throws IOException {
@@ -1749,20 +1793,36 @@ class LocalProcessAppHostTest {
   }
 
   private static void writeStageFile(Path file, String content, AppEnv appEnv) throws IOException {
-    Files.createDirectories(file.getParent());
+    Files.createDirectories(parentOrThrow(file));
     Files.writeString(file, content, StandardCharsets.UTF_8);
-    if (!appEnv.isWindows() && file.getFileName().toString().endsWith(".sh")) {
+    if (!appEnv.isWindows() && fileNameOrThrow(file).endsWith(".sh")) {
       assertTrue(file.toFile().setExecutable(true, false));
     }
   }
 
   private static void writeExecutableStageFile(
       Path file, String content, AppEnv appEnv, boolean executable) throws IOException {
-    Files.createDirectories(file.getParent());
+    Files.createDirectories(parentOrThrow(file));
     Files.writeString(file, content, StandardCharsets.UTF_8);
     if (!appEnv.isWindows()) {
       assertTrue(file.toFile().setExecutable(executable, false));
     }
+  }
+
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    if (parent == null) {
+      throw new AssertionError("Expected parent for path " + path);
+    }
+    return parent;
+  }
+
+  private static String fileNameOrThrow(Path path) {
+    Path fileName = path.getFileName();
+    if (fileName == null) {
+      throw new AssertionError("Expected file name for path " + path);
+    }
+    return fileName.toString();
   }
 
   private static String displayName(String appId) {
@@ -1794,9 +1854,14 @@ class LocalProcessAppHostTest {
     set -eu
     env > "$CRYPTAD_APP_RUN_DIR/captured-env.txt"
     while :; do
-      sleep 1
+      sleep %s
     done
-    """;
+    """
+        .formatted(TEST_LOOP_SLEEP_SECONDS);
+  }
+
+  private static String secondsLiteral(Duration duration) {
+    return String.format(java.util.Locale.ROOT, "%.3f", duration.toNanos() / 1_000_000_000.0d);
   }
 
   private static String immediateExitScriptContent(AppEnv appEnv) {
@@ -2181,6 +2246,16 @@ class LocalProcessAppHostTest {
       public int compareTo(ProcessHandle other) {
         return Long.compare(pid, other.pid());
       }
+
+      @Override
+      public boolean equals(Object other) {
+        return other instanceof ProcessHandle handle && pid == handle.pid();
+      }
+
+      @Override
+      public int hashCode() {
+        return Long.hashCode(pid);
+      }
     }
   }
 
@@ -2329,6 +2404,16 @@ class LocalProcessAppHostTest {
     @Override
     public int compareTo(ProcessHandle other) {
       return Long.compare(pid, other.pid());
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof ProcessHandle handle && pid == handle.pid();
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(pid);
     }
   }
 
@@ -2648,6 +2733,16 @@ class LocalProcessAppHostTest {
     public int compareTo(ProcessHandle other) {
       return Long.compare(pid, other.pid());
     }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof ProcessHandle handle && pid == handle.pid();
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(pid);
+    }
   }
 
   private static final class InfoProcessHandle implements ProcessHandle {
@@ -2757,6 +2852,16 @@ class LocalProcessAppHostTest {
     public int compareTo(ProcessHandle other) {
       return Long.compare(pid, other.pid());
     }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof ProcessHandle handle && pid == handle.pid();
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(pid);
+    }
   }
 
   @SuppressWarnings("ClassCanBeRecord")
@@ -2853,6 +2958,16 @@ class LocalProcessAppHostTest {
     @Override
     public int compareTo(ProcessHandle other) {
       return Long.compare(pid, other.pid());
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof ProcessHandle handle && pid == handle.pid();
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(pid);
     }
   }
 

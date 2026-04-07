@@ -90,7 +90,7 @@ class SplitFileFetcherTest {
         raf.free();
       }
       rafField.set(fetcher, null);
-    } catch (Exception _) {
+    } catch (ReflectiveOperationException _) {
       // Best-effort cleanup to avoid leaking mapped files on Windows.
     }
     if (!tmp.delete() && tmp.exists()) {

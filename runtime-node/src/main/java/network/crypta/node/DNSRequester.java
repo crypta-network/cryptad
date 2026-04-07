@@ -31,7 +31,7 @@ public class DNSRequester implements Runnable {
   private final Set<Double> recentNodeIdentitySet = new HashSet<>();
   private final Deque<Double> recentNodeIdentityQueue = new ArrayDeque<>();
   // For simulations/tests only; may be set by external harnesses when supported.
-  static boolean disable = false;
+  static volatile boolean disable = false;
   private boolean wakeRequested;
 
   public DNSRequester(Node node) {
