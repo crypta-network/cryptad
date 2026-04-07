@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.fs.readiness.LauncherReadinessFiles;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.io.comm.TrafficClass;
@@ -20,6 +21,8 @@ import org.objenesis.ObjenesisStd;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -160,6 +163,7 @@ class NodeTest {
     when(services.toadlets()).thenReturn(toadlets);
     when(toadlets.isEnabled()).thenReturn(true);
     when(toadlets.listenPort()).thenReturn(8888);
+    when(toadlets.primaryUiRoot()).thenReturn("/app/node/");
 
     setField(node, "services", services);
     setField(node, "runDir", runDir);
@@ -168,15 +172,56 @@ class NodeTest {
 
     var order = inOrder(toadlets);
     order.verify(toadlets).isEnabled();
+    order.verify(toadlets).setPrimaryUiRootListener(any());
     order.verify(toadlets).finishStart();
     order.verify(toadlets).createFproxy();
     order.verify(toadlets).removeStartupToadlet();
     order.verify(toadlets).listenPort();
+    order.verify(toadlets).primaryUiRoot();
 
     Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
     LauncherReadinessInfo actual = LauncherReadinessFiles.read(readinessFile).orElseThrow();
-    assertEquals(LauncherReadinessInfo.ready(8888), actual);
+    assertEquals(LauncherReadinessInfo.ready(8888, "/app/node/"), actual);
     assertTrue(actual.isReady());
+  }
+
+  @Test
+  @DisplayName("finishToadletsIfEnabled_whenPrimaryUiRootChanges_republishesLauncherReadiness")
+  void finishToadletsIfEnabled_whenPrimaryUiRootChanges_republishesLauncherReadiness(
+      @TempDir Path tempDir) throws Exception {
+    Node node = newNodeInstance();
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    HttpShellContainer toadlets = mock(HttpShellContainer.class);
+    ProgramDirectory runDir = new ProgramDirectory();
+    AtomicReference<java.util.function.Consumer<String>> primaryUiRootListener =
+        new AtomicReference<>();
+    runDir.move(tempDir.toString());
+    when(services.toadlets()).thenReturn(toadlets);
+    when(toadlets.isEnabled()).thenReturn(true);
+    when(toadlets.listenPort()).thenReturn(8888);
+    when(toadlets.primaryUiRoot()).thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT);
+    doAnswer(
+            invocation -> {
+              primaryUiRootListener.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(toadlets)
+        .setPrimaryUiRootListener(any());
+
+    setField(node, "services", services);
+    setField(node, "runDir", runDir);
+
+    invokeFinishToadletsIfEnabled(node);
+
+    assertEquals(
+        LauncherReadinessInfo.ready(8888, LauncherReadinessInfo.DEFAULT_UI_ROOT),
+        LauncherReadinessFiles.read(LauncherReadinessFiles.resolve(tempDir)).orElseThrow());
+
+    primaryUiRootListener.get().accept("/app/node/");
+
+    assertEquals(
+        LauncherReadinessInfo.ready(8888, "/app/node/"),
+        LauncherReadinessFiles.read(LauncherReadinessFiles.resolve(tempDir)).orElseThrow());
   }
 
   @Test
@@ -191,6 +236,7 @@ class NodeTest {
     when(services.toadlets()).thenReturn(toadlets);
     when(toadlets.isEnabled()).thenReturn(true);
     when(toadlets.listenPort()).thenReturn(0);
+    when(toadlets.primaryUiRoot()).thenReturn("/app/node/");
 
     setField(node, "services", services);
     setField(node, "runDir", runDir);
@@ -199,10 +245,12 @@ class NodeTest {
 
     var order = inOrder(toadlets);
     order.verify(toadlets).isEnabled();
+    order.verify(toadlets).setPrimaryUiRootListener(any());
     order.verify(toadlets).finishStart();
     order.verify(toadlets).createFproxy();
     order.verify(toadlets).removeStartupToadlet();
     order.verify(toadlets).listenPort();
+    order.verify(toadlets).primaryUiRoot();
     assertTrue(LauncherReadinessFiles.read(LauncherReadinessFiles.resolve(tempDir)).isEmpty());
   }
 }

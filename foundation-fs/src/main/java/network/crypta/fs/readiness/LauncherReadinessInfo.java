@@ -1,5 +1,6 @@
 package network.crypta.fs.readiness;
 
+import java.net.URI;
 import java.util.Objects;
 
 /**
@@ -43,8 +44,8 @@ public record LauncherReadinessInfo(int version, String state, int uiPort, Strin
       throw new IllegalArgumentException("uiPort must be between 1 and 65535");
     }
     Objects.requireNonNull(uiRoot);
-    if (uiRoot.isBlank() || uiRoot.charAt(0) != '/') {
-      throw new IllegalArgumentException("uiRoot must start with '/'");
+    if (!isValidUiRoot(uiRoot)) {
+      throw new IllegalArgumentException("uiRoot must be a valid absolute URI path");
     }
   }
 
@@ -55,7 +56,42 @@ public record LauncherReadinessInfo(int version, String state, int uiPort, Strin
    * @return v1 ready payload for the default UI root
    */
   public static LauncherReadinessInfo ready(int uiPort) {
-    return new LauncherReadinessInfo(VERSION_1, READY_STATE, uiPort, DEFAULT_UI_ROOT);
+    return ready(uiPort, DEFAULT_UI_ROOT);
+  }
+
+  /**
+   * Creates the current ready payload for the supplied UI port and root path.
+   *
+   * @param uiPort HTTP port exposed by the daemon's UI shell
+   * @param uiRoot primary browser-facing root path exposed by that shell
+   * @return v1 ready payload for the supplied UI route
+   */
+  public static LauncherReadinessInfo ready(int uiPort, String uiRoot) {
+    return new LauncherReadinessInfo(VERSION_1, READY_STATE, uiPort, uiRoot);
+  }
+
+  /**
+   * Indicates whether the supplied UI root is safe to embed directly as a raw URI path.
+   *
+   * <p>The readiness protocol carries only browser route paths, not query strings or fragments. A
+   * valid root must therefore be absolute, non-blank, and parse as the raw path portion of an HTTP
+   * URI without adding query or fragment components.
+   *
+   * @param uiRoot candidate readiness UI root
+   * @return {@code true} when the value is a safe absolute raw URI path
+   */
+  public static boolean isValidUiRoot(String uiRoot) {
+    if (uiRoot == null || uiRoot.isBlank() || uiRoot.charAt(0) != '/') {
+      return false;
+    }
+    try {
+      URI uri = URI.create("http://localhost" + uiRoot);
+      return uiRoot.equals(uri.getRawPath())
+          && uri.getRawQuery() == null
+          && uri.getRawFragment() == null;
+    } catch (IllegalArgumentException _) {
+      return false;
+    }
   }
 
   /**

@@ -254,9 +254,10 @@ public final class Launcher {
             launchBtn.setEnabled(
                 state.isRunning() && state.knownPort() != null && !state.isShuttingDown());
             launchBtn.setToolTipText(
-                state.knownPort() == null
-                    ? "Open http://localhost:<port>/ in your browser"
-                    : "Open http://localhost:" + state.knownPort() + "/ in your browser");
+                "Open "
+                    + LauncherController.describeBrowserTarget(
+                        state.knownPort(), state.knownUiRoot())
+                    + " in your browser");
           });
     }
 

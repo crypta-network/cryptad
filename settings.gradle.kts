@@ -38,6 +38,7 @@ include(
   ":runtime-spi",
   ":platform-api",
   ":platform-apphost",
+  ":platform-web-shell",
   ":runtime-node",
   ":adapter-fcp",
   ":adapter-http-legacy-admin",

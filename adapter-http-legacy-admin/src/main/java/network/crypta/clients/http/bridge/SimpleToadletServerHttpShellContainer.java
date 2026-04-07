@@ -1,6 +1,7 @@
 package network.crypta.clients.http.bridge;
 
 import java.net.URI;
+import java.util.function.Consumer;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
@@ -80,6 +81,16 @@ final class SimpleToadletServerHttpShellContainer implements HttpShellContainer 
   @Override
   public int listenPort() {
     return delegate.listenPort();
+  }
+
+  @Override
+  public String primaryUiRoot() {
+    return delegate.primaryUiRoot();
+  }
+
+  @Override
+  public void setPrimaryUiRootListener(Consumer<String> listener) {
+    delegate.setPrimaryUiRootListener(listener);
   }
 
   @Override

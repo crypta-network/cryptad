@@ -31,6 +31,19 @@ class LauncherReadinessFilesTest {
   }
 
   @Test
+  void writeAndRead_whenUiRootNonDefault_expectRoundTripPreservesShellRoot() throws Exception {
+    Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
+    LauncherReadinessInfo expected = LauncherReadinessInfo.ready(8888, "/app/node/");
+
+    LauncherReadinessFiles.write(readinessFile, expected);
+
+    LauncherReadinessInfo actual = LauncherReadinessFiles.read(readinessFile).orElseThrow();
+    assertEquals(expected, actual);
+    assertEquals("/app/node/", actual.uiRoot());
+    assertTrue(actual.isReady());
+  }
+
+  @Test
   void read_whenVersionUnsupported_returnsEmpty() throws Exception {
     Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
     Files.writeString(
@@ -60,6 +73,21 @@ class LauncherReadinessFilesTest {
 
     assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, actual.uiRoot());
     assertTrue(actual.isReady());
+  }
+
+  @Test
+  void read_whenUiRootContainsUnsafeUriCharacters_returnsEmpty() throws Exception {
+    Path readinessFile = LauncherReadinessFiles.resolve(tempDir);
+    Files.writeString(
+        readinessFile,
+        """
+        version=1
+        state=ready
+        ui.port=8888
+        ui.root=/app node/
+        """);
+
+    assertFalse(LauncherReadinessFiles.read(readinessFile).isPresent());
   }
 
   @Test

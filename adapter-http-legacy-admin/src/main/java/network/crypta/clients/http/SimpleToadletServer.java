@@ -10,6 +10,8 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
@@ -25,12 +27,14 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
 import network.crypta.config.StringCallback;
 import network.crypta.config.SubConfig;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.io.AllowedHosts;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PrioRunnable;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.SSL;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -159,6 +163,8 @@ public final class SimpleToadletServer
   private volatile boolean fproxyHasCompletedWizard; // hmmm..
   private volatile boolean disableProgressPage;
   private volatile int maxFproxyConnections;
+  private final AtomicReference<Consumer<String>> primaryUiRootListener =
+      new AtomicReference<>(_ -> {});
 
   private int fproxyConnections;
 
@@ -402,7 +408,6 @@ public final class SimpleToadletServer
 
     @Override
     public void set(Boolean val) {
-      if (get().equals(val)) return;
       ts.enableFProxyJavascript(val);
     }
   }
@@ -493,6 +498,56 @@ public final class SimpleToadletServer
    */
   public int listenPort() {
     return port;
+  }
+
+  /**
+   * Returns the primary first-party browser route exposed by this shell host.
+   *
+   * <p>The launcher readiness protocol uses this route after the shell completes startup. Fresh
+   * installs must continue advertising the historical HTTP root until the first-time wizard gate is
+   * lifted. The shell also requires FProxy JavaScript to remain enabled; otherwise the launcher
+   * must keep landing on the legacy root, because the current Web Shell v1 depends on browser-side
+   * script execution to leave its loading placeholders.
+   *
+   * @return primary browser-facing shell route
+   */
+  public String primaryUiRoot() {
+    return shouldAdvertiseWebShellPrimaryUi()
+        ? WebShellPaths.SHELL_ROOT
+        : LauncherReadinessInfo.DEFAULT_UI_ROOT;
+  }
+
+  /**
+   * Stores a listener that should be notified when the primary UI route changes after startup.
+   *
+   * <p>The server invokes this callback only for runtime transitions that make a different
+   * launcher-facing entry route reachable while the shell is already live, most notably when the
+   * first-time wizard completion flag flips.
+   *
+   * @param listener callback receiving the updated normalized UI root
+   */
+  public void setPrimaryUiRootListener(Consumer<String> listener) {
+    primaryUiRootListener.set(Objects.requireNonNull(listener));
+  }
+
+  private void notifyPrimaryUiRootChangedIfStarted(String previousUiRoot) {
+    Consumer<String> listener;
+    String updatedUiRoot;
+    synchronized (this) {
+      if (!finishedStartup) {
+        return;
+      }
+      listener = primaryUiRootListener.get();
+      updatedUiRoot = primaryUiRoot();
+      if (previousUiRoot != null && Objects.equals(previousUiRoot, updatedUiRoot)) {
+        return;
+      }
+    }
+    listener.accept(updatedUiRoot);
+  }
+
+  private boolean shouldAdvertiseWebShellPrimaryUi() {
+    return fproxyHasCompletedWizard && fProxyJavascriptEnabled;
   }
 
   private static synchronized void initializeFProxyRandom(RandomnessPort randomnessPort) {
@@ -791,7 +846,9 @@ public final class SimpleToadletServer
           @Override
           public void set(Boolean val) {
             if (get().equals(val)) return;
+            String previousUiRoot = primaryUiRoot();
             fproxyHasCompletedWizard = val;
+            notifyPrimaryUiRootChangedIfStarted(previousUiRoot);
           }
         });
     fproxyConfig.register(
@@ -1612,8 +1669,16 @@ public final class SimpleToadletServer
    *
    * @param b {@code true} to permit JavaScript, {@code false} to disable it across pages.
    */
-  public synchronized void enableFProxyJavascript(boolean b) {
-    fProxyJavascriptEnabled = b;
+  public void enableFProxyJavascript(boolean b) {
+    String previousUiRoot;
+    synchronized (this) {
+      if (fProxyJavascriptEnabled == b) {
+        return;
+      }
+      previousUiRoot = primaryUiRoot();
+      fProxyJavascriptEnabled = b;
+    }
+    notifyPrimaryUiRootChangedIfStarted(previousUiRoot);
   }
 
   @Override

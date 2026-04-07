@@ -1,5 +1,6 @@
 package network.crypta.runtime.http;
 
+import java.util.function.Consumer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.io.TempBucketFactory;
@@ -116,6 +117,30 @@ public interface HttpShellContainer extends LinkFilterExceptionProvider {
    * @return local HTTP port for the current shell listener
    */
   int listenPort();
+
+  /**
+   * Returns the primary browser-facing UI root exposed by the current shell host.
+   *
+   * <p>Runtime code uses this only when publishing launcher readiness metadata, so the desktop
+   * launcher can open the intended first-party entry route instead of assuming the legacy HTTP
+   * root. Implementations should return a normalized absolute path that starts and ends with {@code
+   * /}.
+   *
+   * @return primary UI root path for launcher/browser entry
+   */
+  String primaryUiRoot();
+
+  /**
+   * Registers a listener that should be notified when the primary UI root changes at runtime.
+   *
+   * <p>The launcher readiness publisher uses this seam to keep the structured browser-entry route
+   * in sync with shell state transitions that happen after startup, such as the first-time wizard
+   * completing. Implementations should invoke the listener only after the shell is fully started
+   * and the new route is actually reachable. Passing {@code null} is not permitted.
+   *
+   * @param listener callback receiving the updated normalized UI root
+   */
+  void setPrimaryUiRootListener(Consumer<String> listener);
 
   /**
    * Reports whether advanced mode is enabled for HTTP shell consumers.

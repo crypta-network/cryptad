@@ -182,7 +182,7 @@ public final class Node implements TimeSkewDetectorCallback {
       HANDSHAKE_TIMEOUT * 36;
 
   /** Minimum count of handshakes sent per burst. */
-  public static final int MIN_BURSTING_HANDSHAKE_BURST_SIZE = 1; // 1-4 handshake sends per burst
+  public static final int MIN_BURSTING_HANDSHAKE_BURST_SIZE = 1; // 1-4 handshake sending per burst
 
   /** Additional randomized count added to bursting handshake size. */
   public static final int RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE = 3;
@@ -2015,6 +2015,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // to see NodeClientCore line 437
     HttpShellContainer toadlets = services.toadlets();
     if (toadlets.isEnabled()) {
+      toadlets.setPrimaryUiRootListener(
+          uiRoot -> publishLauncherReadiness(toadlets.listenPort(), uiRoot));
       toadlets.finishStart();
       toadlets.createFproxy();
       toadlets.removeStartupToadlet();
@@ -2023,8 +2025,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   private void publishLauncherReadiness(HttpShellContainer toadlets) {
+    publishLauncherReadiness(toadlets.listenPort(), toadlets.primaryUiRoot());
+  }
+
+  private void publishLauncherReadiness(int listenPort, String uiRoot) {
     try {
-      LauncherReadinessPublisher.publishReady(runDir.dir().toPath(), toadlets.listenPort());
+      LauncherReadinessPublisher.publishReady(runDir.dir().toPath(), listenPort, uiRoot);
     } catch (IOException | IllegalArgumentException e) {
       LOG.warn("Failed to publish launcher readiness file under {}", runDir.dir(), e);
     }

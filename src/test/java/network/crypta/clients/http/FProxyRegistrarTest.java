@@ -9,6 +9,8 @@ import network.crypta.config.Config;
 import network.crypta.config.IntCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -146,6 +148,12 @@ class FProxyRegistrarTest {
                 registered ->
                     FirstTimeWizardToadlet.TOADLET_URL.equals(
                         registered.registration().urlPrefix())));
+    assertTrue(
+        registrations.stream()
+            .anyMatch(
+                registered ->
+                    registered.toadlet() instanceof WebShellToadlet
+                        && WebShellPaths.SHELL_ROOT.equals(registered.registration().urlPrefix())));
     RegisteredToadlet wizardRegistration =
         registrations.stream()
             .filter(
@@ -210,6 +218,28 @@ class FProxyRegistrarTest {
         Set.of(FProxyToadlet.CONFIG_PATH + "alpha", FProxyToadlet.CONFIG_PATH + "node"),
         configToadletPrefixes);
     assertFalse(configToadletPrefixes.contains(FProxyToadlet.CONFIG_PATH + "security-levels"));
+  }
+
+  @Test
+  void maybeCreateFProxyEtc_whenWebShellNotPrimary_hidesWebShellMenuLinkUntilShellRootIsPrimary() {
+    when(server.primaryUiRoot())
+        .thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT, WebShellPaths.SHELL_ROOT);
+
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
+
+    ToadletRegistration webShellRegistration =
+        capturedRegistrations().stream()
+            .filter(
+                registered ->
+                    registered.toadlet() instanceof WebShellToadlet
+                        && WebShellPaths.SHELL_ROOT.equals(registered.registration().urlPrefix()))
+            .map(RegisteredToadlet::registration)
+            .findFirst()
+            .orElseThrow();
+
+    assertFalse(webShellRegistration.callback().isEnabled(null));
+    assertTrue(webShellRegistration.callback().isEnabled(null));
   }
 
   private static void registerBandwidthOption(

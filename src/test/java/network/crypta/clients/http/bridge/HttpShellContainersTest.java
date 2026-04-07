@@ -3,9 +3,11 @@ package network.crypta.clients.http.bridge;
 import java.net.URI;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.StartupToadlet;
 import network.crypta.config.SubConfig;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.http.HttpShellContainer;
 import network.crypta.runtime.http.HttpShellRuntimeSupport;
 import network.crypta.support.HTMLNode;
@@ -56,6 +58,7 @@ class HttpShellContainersTest {
               when(server.isAdvancedModeEnabled()).thenReturn(true);
               when(server.isFProxyJavascriptEnabled()).thenReturn(false);
               when(server.listenPort()).thenReturn(8888);
+              when(server.primaryUiRoot()).thenReturn(WebShellPaths.SHELL_ROOT);
               when(server.isLinkExcepted(uri)).thenReturn(true);
               when(server.addFormChild(parentNode, "/submit", "form")).thenReturn(formNode);
             })) {
@@ -70,6 +73,8 @@ class HttpShellContainersTest {
 
       container.setRuntimeSupport(runtimeSupport);
       container.setBucketFactory(tempBucketFactory);
+      Consumer<String> primaryUiRootListener = _ -> {};
+      container.setPrimaryUiRootListener(primaryUiRootListener);
       container.markStartupPrngReady();
       container.createFproxy();
       container.finishStart();
@@ -81,11 +86,13 @@ class HttpShellContainersTest {
       assertTrue(container.isLinkExcepted(uri));
       assertFalse(container.isFProxyJavascriptEnabled());
       assertEquals(8888, container.listenPort());
+      assertEquals(WebShellPaths.SHELL_ROOT, container.primaryUiRoot());
       assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
 
       verify(server)
           .setRuntimeSupport((network.crypta.clients.http.HttpShellRuntimeSupport) runtimeSupport);
       verify(server).setBucketFactory(tempBucketFactory);
+      verify(server).setPrimaryUiRootListener(primaryUiRootListener);
       verify(server).createFproxy();
       verify(server).finishStart();
       verify(server).removeStartupToadlet();
@@ -109,14 +116,20 @@ class HttpShellContainersTest {
     when(server.isAdvancedModeEnabled()).thenReturn(false);
     when(server.isFProxyJavascriptEnabled()).thenReturn(true);
     when(server.listenPort()).thenReturn(7777);
+    when(server.primaryUiRoot()).thenReturn(WebShellPaths.SHELL_ROOT);
     when(server.isLinkExcepted(uri)).thenReturn(true);
+    Consumer<String> primaryUiRootListener = _ -> {};
 
     assertTrue(container.isEnabled());
     assertSame(formNode, container.addFormChild(parentNode, "/submit", "form"));
     assertFalse(container.isAdvancedModeEnabled());
     assertTrue(container.isFProxyJavascriptEnabled());
     assertEquals(7777, container.listenPort());
+    assertEquals(WebShellPaths.SHELL_ROOT, container.primaryUiRoot());
+    container.setPrimaryUiRootListener(primaryUiRootListener);
     assertTrue(container.isLinkExcepted(uri));
+
+    verify(server).setPrimaryUiRootListener(primaryUiRootListener);
   }
 
   @Test

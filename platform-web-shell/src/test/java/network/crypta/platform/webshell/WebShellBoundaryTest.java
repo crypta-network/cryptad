@@ -1,0 +1,157 @@
+package network.crypta.platform.webshell;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SuppressWarnings("java:S100")
+class WebShellBoundaryTest {
+  private static final String MODULE_NAME = "platform-web-shell";
+  private static final Path ROOT_WEB_SHELL_MAIN_JAVA =
+      Path.of("src", "main", "java", "network", "crypta", "platform", "webshell");
+  private static final Path WEB_SHELL_MAIN_JAVA =
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "platform", "webshell");
+  private static final Path OWNERSHIP_METADATA =
+      Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
+  private static final Set<String> FORBIDDEN_IMPORT_PREFIXES =
+      Set.of(
+          "network.crypta.clients.",
+          "network.crypta.runtime.",
+          "network.crypta.node.",
+          "network.crypta.client.",
+          "network.crypta.platform.api.",
+          "network.crypta.platform.apphost.",
+          "network.crypta.launcher.");
+
+  @Test
+  void mainSourceLayout_whenCheckingLeafOwnership_expectLeafOwnsPackageTree() throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(WEB_SHELL_MAIN_JAVA)),
+        ":platform-web-shell must own network/crypta/platform/webshell main sources");
+    assertFalse(
+        Files.exists(repoRoot.resolve(ROOT_WEB_SHELL_MAIN_JAVA)),
+        "Root project must not own network/crypta/platform/webshell main sources");
+  }
+
+  @Test
+  void buildWiring_whenCheckingLeafMetadata_expectOwnedOutputPatternDeclared() throws IOException {
+    Path repoRoot = repoRoot();
+    String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
+    String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
+
+    assertTrue(settings.contains("\":platform-web-shell\""));
+    assertTrue(build.contains("project(\":platform-web-shell\")"));
+    assertTrue(metadata.contains("network/crypta/platform/webshell/**"));
+  }
+
+  @Test
+  void mainSources_whenScanningImports_expectNoRuntimeOrAdapterImports() throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+    Path mainJava = repoRoot.resolve(Path.of(MODULE_NAME, "src", "main", "java"));
+
+    for (Path sourceFile : findJavaSources(mainJava)) {
+      Set<String> imports = readForbiddenImports(sourceFile);
+      if (!imports.isEmpty()) {
+        violations.add(repoRoot.relativize(sourceFile) + " -> " + String.join(", ", imports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        ":platform-web-shell main sources must stay free of runtime, adapter, client, node, and "
+            + "Platform API implementation imports."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenScanningProductionPackages_expectPackageInfoInEveryPackage()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path mainJava = repoRoot.resolve(Path.of(MODULE_NAME, "src", "main", "java"));
+    Set<Path> productionPackages = new TreeSet<>(Comparator.comparing(Path::toString));
+
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(WEB_SHELL_MAIN_JAVA)),
+        ":platform-web-shell main Java tree must exist");
+
+    for (Path sourceFile : findJavaSources(mainJava)) {
+      String fileName = sourceFile.getFileName().toString();
+      if (fileName.equals("package-info.java") || fileName.equals("module-info.java")) {
+        continue;
+      }
+      productionPackages.add(sourceFile.getParent());
+    }
+
+    for (Path packagePath : productionPackages) {
+      assertTrue(
+          Files.isRegularFile(packagePath.resolve("package-info.java")),
+          "Missing package-info.java for " + repoRoot.relativize(packagePath));
+    }
+  }
+
+  private static List<Path> findJavaSources(Path root) throws IOException {
+    try (Stream<Path> walk = Files.walk(root)) {
+      return walk.filter(Files::isRegularFile)
+          .filter(WebShellBoundaryTest::isTrackedJavaSource)
+          .sorted(Comparator.comparing(Path::toString))
+          .toList();
+    }
+  }
+
+  private static boolean isTrackedJavaSource(Path path) {
+    String fileName = path.getFileName().toString();
+    return fileName.endsWith(".java") && !fileName.startsWith("._");
+  }
+
+  private static Set<String> readForbiddenImports(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .filter(line -> line.startsWith("import "))
+          .map(WebShellBoundaryTest::extractImportTarget)
+          .filter(importTarget -> !importTarget.isEmpty())
+          .filter(WebShellBoundaryTest::isForbiddenImport)
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static String extractImportTarget(String line) {
+    String importTarget = line.substring("import ".length()).trim();
+    if (importTarget.startsWith("static ")) {
+      importTarget = importTarget.substring("static ".length()).trim();
+    }
+    return importTarget.endsWith(";")
+        ? importTarget.substring(0, importTarget.length() - 1)
+        : importTarget;
+  }
+
+  private static boolean isForbiddenImport(String importTarget) {
+    return FORBIDDEN_IMPORT_PREFIXES.stream().anyMatch(importTarget::startsWith);
+  }
+
+  private static Path repoRoot() throws IOException {
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
+  }
+}
