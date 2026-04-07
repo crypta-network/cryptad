@@ -62,6 +62,14 @@ val internalLeafTestSourceDirs =
     .map { it.asFile }
     .filter { it.isDirectory }
 
+val rootSonarTestSourceDirs =
+  listOf(
+      layout.projectDirectory.dir("src/test/java"),
+      layout.projectDirectory.dir("src/test/kotlin"),
+    )
+    .map { it.asFile }
+    .filter { it.isDirectory }
+
 val internalLeafTestResultDirs =
   internalLeafProjectsWithLocalTests.map { leaf ->
     leaf.layout.buildDirectory.dir("test-results/test").get().asFile
@@ -159,16 +167,12 @@ val aggregatedSonarBinaryPaths =
     .joinToString(",") { it.absolutePath }
 
 val aggregatedSonarTestPaths =
-  (sourceSets.test.get().allSource.srcDirs + internalLeafTestSourceDirs).distinct().joinToString(
-    ","
-  ) {
+  (rootSonarTestSourceDirs + internalLeafTestSourceDirs).distinct().joinToString(",") {
     relativePath(it)
   }
 
 val aggregatedSonarTestInclusions =
-  (sourceSets.test.get().allSource.srcDirs + internalLeafTestSourceDirs).distinct().joinToString(
-    ","
-  ) {
+  (rootSonarTestSourceDirs + internalLeafTestSourceDirs).distinct().joinToString(",") {
     "${relativePath(it)}/**"
   }
 
