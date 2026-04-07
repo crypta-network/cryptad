@@ -738,7 +738,7 @@ class LocalProcessAppHostTest {
     waitForFile(childPidFile);
     long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
     try {
-      RunningAppSnapshot current = waitForRunningApp(host, PYTHON_DAEMON_APP_ID);
+      RunningAppSnapshot current = waitForRunningPid(host, PYTHON_DAEMON_APP_ID, childPid);
       assertEquals(running.appId(), current.appId());
       assertEquals(running.token(), current.token());
       assertEquals(childPid, current.pid());
@@ -1951,16 +1951,19 @@ class LocalProcessAppHostTest {
   }
 
   private static RunningAppSnapshot waitForRunningPid(AppHost host, long pid) {
+    return waitForRunningPid(host, RUNNER_APP_ID, pid);
+  }
+
+  private static RunningAppSnapshot waitForRunningPid(AppHost host, String appId, long pid) {
     long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
     while (System.nanoTime() < deadline) {
-      Optional<RunningAppSnapshot> running = host.status(RUNNER_APP_ID);
+      Optional<RunningAppSnapshot> running = host.status(appId);
       if (running.isPresent() && running.orElseThrow().pid() == pid) {
         return running.orElseThrow();
       }
-      pausePolling("interrupted while waiting for app " + RUNNER_APP_ID + " to report pid " + pid);
+      pausePolling("interrupted while waiting for app " + appId + " to report pid " + pid);
     }
-    throw new AssertionError(
-        "timed out waiting for app " + RUNNER_APP_ID + " to report pid " + pid);
+    throw new AssertionError("timed out waiting for app " + appId + " to report pid " + pid);
   }
 
   private static void waitForProcessExit(long pid) throws IOException {
