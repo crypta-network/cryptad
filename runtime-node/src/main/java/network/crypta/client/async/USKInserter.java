@@ -169,8 +169,8 @@ public final class USKInserter
    */
   private String externalRequestIdentifierSnapshot;
 
-  /** Active datehint insert phase; null when not currently inserting datehints. */
-  private transient volatile DateHintPhase activeDateHintPhase;
+  /** Active datehint insert phase; null when not currently inserting datehints. Guarded by this. */
+  private transient DateHintPhase activeDateHintPhase;
 
   /** Monotonic identifier for datehint phases; helps ignore stale callbacks. */
   private transient long nextDateHintPhaseId = 1;
