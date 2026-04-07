@@ -66,26 +66,38 @@ public class CleanupTranslations {
    * @throws IOException if reading or writing translation files fails with an I/O error
    */
   public static void main() throws IOException {
+    int exitCode = run(new File("."), STDOUT, STDERR);
+    if (exitCode != 0) {
+      System.exit(exitCode);
+    }
+  }
+
+  static int run(File baseDir, PrintWriter stdout, PrintWriter stderr) throws IOException {
     Logging.bootstrap(Level.ERROR, "");
-    File engFile = new File("src/freenet/l10n/crypta.l10n.en.properties");
-    SimpleFieldSet english = SimpleFieldSet.readFrom(engFile, false, true);
-    File translationDir = new File("src/freenet/l10n");
-    File[] translations = translationDir.listFiles();
-    if (translations == null) {
-      fail(3, "Unable to list translation files in: " + translationDir);
-    } else {
-      for (File translation : translations) {
-        if (isTranslationFile(translation)) {
-          CleanupResult result = cleanupTranslationFile(translation, english);
-          if (result.changed()) {
-            try (FileOutputStream fos = new FileOutputStream(translation);
-                OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
-              osw.write(result.content());
+    try {
+      File engFile = new File(baseDir, "src/freenet/l10n/crypta.l10n.en.properties");
+      SimpleFieldSet english = SimpleFieldSet.readFrom(engFile, false, true);
+      File translationDir = new File(baseDir, "src/freenet/l10n");
+      File[] translations = translationDir.listFiles();
+      if (translations == null) {
+        fail(stderr, 3, "Unable to list translation files in: " + translationDir);
+      } else {
+        for (File translation : translations) {
+          if (isTranslationFile(translation)) {
+            CleanupResult result = cleanupTranslationFile(translation, english, stderr);
+            if (result.changed()) {
+              try (FileOutputStream fos = new FileOutputStream(translation);
+                  OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+                osw.write(result.content());
+              }
+              stdout.println("Rewritten " + translation);
             }
-            STDOUT.println("Rewritten " + translation);
           }
         }
       }
+      return 0;
+    } catch (CleanupFailure failure) {
+      return failure.exitCode;
     }
   }
 
@@ -105,8 +117,8 @@ public class CleanupTranslations {
     return name.startsWith("crypta.l10n.") && !name.equals("crypta.1l0n.en.properties");
   }
 
-  private static CleanupResult cleanupTranslationFile(File file, SimpleFieldSet english)
-      throws IOException {
+  private static CleanupResult cleanupTranslationFile(
+      File file, SimpleFieldSet english, PrintWriter stderr) throws IOException {
     StringWriter output = new StringWriter();
     boolean changed = false;
 
@@ -118,13 +130,13 @@ public class CleanupTranslations {
       while (!finished) {
         String line = br.readLine();
         if (line == null) {
-          fail(4, "File does not end in End: " + file);
+          fail(stderr, 4, "File does not end in End: " + file);
         } else {
           int idx = line.indexOf('=');
           if (idx == -1) {
-            finished = handleEndLine(line, br, output, file);
+            finished = handleEndLine(line, br, output, file, stderr);
           } else {
-            changed |= handleKeyLine(line, idx, english, output, file);
+            changed |= handleKeyLine(line, idx, english, output, file, stderr);
           }
         }
       }
@@ -134,25 +146,34 @@ public class CleanupTranslations {
   }
 
   private static boolean handleEndLine(
-      String line, BufferedReader br, StringWriter output, File file) throws IOException {
+      String line, BufferedReader br, StringWriter output, File file, PrintWriter stderr)
+      throws IOException {
     if (!line.equals("End")) {
-      fail(1, "Line with no equals (file does not end in End???): " + file + " - \"" + line + "\"");
+      fail(
+          stderr,
+          1,
+          "Line with no equals (file does not end in End???): " + file + " - \"" + line + "\"");
     }
 
     output.append(line).append("\n");
     String extra = br.readLine();
     if (extra != null) {
-      fail(2, "Content after End: \"" + extra + "\"");
+      fail(stderr, 2, "Content after End: \"" + extra + "\"");
     }
 
     return true;
   }
 
   private static boolean handleKeyLine(
-      String line, int equalsIndex, SimpleFieldSet english, StringWriter output, File file) {
+      String line,
+      int equalsIndex,
+      SimpleFieldSet english,
+      StringWriter output,
+      File file,
+      PrintWriter stderr) {
     String key = line.substring(0, equalsIndex);
     if (english.get(key) == null) {
-      STDERR.println("Orphaned string: \"" + key + "\" in " + file);
+      stderr.println("Orphaned string: \"" + key + "\" in " + file);
       return true;
     }
 
@@ -160,11 +181,19 @@ public class CleanupTranslations {
     return false;
   }
 
-  private static void fail(int exitCode, String message) {
-    STDERR.println(message);
-    System.exit(exitCode);
-    throw new IllegalStateException(message);
+  private static void fail(PrintWriter stderr, int exitCode, String message) {
+    stderr.println(message);
+    throw new CleanupFailure(exitCode, message);
   }
 
   private record CleanupResult(boolean changed, String content) {}
+
+  private static final class CleanupFailure extends RuntimeException {
+    private final int exitCode;
+
+    private CleanupFailure(int exitCode, String message) {
+      super(message);
+      this.exitCode = exitCode;
+    }
+  }
 }

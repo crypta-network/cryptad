@@ -213,4 +213,58 @@
     <Class name="network.crypta.runtime.alerts.DiskSpaceUserAlertTest"/>
     <Method name="isValid_boolean_noop_doesNotChangeValidity"/>
   </Match>
+
+  <!--
+    These tests intentionally embed absolute paths to verify parser and command-launch behavior
+    against already-resolved paths and trusted system binaries.
+  -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="parseResolvedRunDirFromLine_whenPresent_expectParsedPath"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.platform.apphost.runtime.LocalProcessAppHostTest"/>
+    <Method name="launchCommand_whenWindowsBatchScript_expectQuotedCmdWrapper"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.platform.apphost.runtime.LocalProcessAppHostTest"/>
+    <Method name="resolveTrustedMkfifoCommand"/>
+  </Match>
+
+  <!--
+    These fixture builders intentionally keep LF-oriented text blocks for manifest/script content.
+    Converting them to platform-dependent %n output would add churn without improving test intent.
+  -->
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.platform.apphost.manifest.AppManifestParserTest"/>
+    <Method name="minimalManifest"/>
+  </Match>
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManagerTest"/>
+    <Method name="maybeParseManifest_whenAutoUpdateEnabledAndVersionNewer_expectAutoDownloadStarted"/>
+  </Match>
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManagerTest"/>
+    <Method name="maybeParseManifest_whenAutoUpdateEnabledAndVersionNotInteger_expectNoAutoDownload"/>
+  </Match>
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManagerTest"/>
+    <Method name="setURI_whenPackageDownloadInProgress_expectActiveDownloadCancelled"/>
+  </Match>
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.runtime.updater.NodeUpdateManagerTest"/>
+    <Method name="setURI_whenScopeChanges_expectHasNewCorePackageReset"/>
+  </Match>
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Class name="network.crypta.platform.apphost.runtime.LocalProcessAppHostTest"/>
+  </Match>
 </FindBugsFilter>

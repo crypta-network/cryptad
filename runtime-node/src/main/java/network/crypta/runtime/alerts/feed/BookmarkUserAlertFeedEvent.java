@@ -64,6 +64,11 @@ public record BookmarkUserAlertFeedEvent(
    */
   public BookmarkUserAlertFeedEvent {
     Objects.requireNonNull(metadata, "metadata");
-    Objects.requireNonNull(uri, "uri");
+    uri = new FreenetURI(Objects.requireNonNull(uri, "uri"));
+  }
+
+  @Override
+  public FreenetURI uri() {
+    return new FreenetURI(uri);
   }
 }

@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -137,8 +138,10 @@ class HealingDecisionSupplierTest {
 
   @Test
   void shouldHeal_whenOpennetSupplierReturnsNull_throwsNullPointerException() {
+    Supplier<Boolean> opennetEnabledSupplier = Mockito.mock(Supplier.class);
+    Mockito.when(opennetEnabledSupplier.get()).thenReturn(null);
     HealingDecisionSupplier supplier =
-        new HealingDecisionSupplier(() -> 0.25, () -> null, () -> 0.2);
+        new HealingDecisionSupplier(() -> 0.25, opennetEnabledSupplier, () -> 0.2);
 
     assertThrows(NullPointerException.class, () -> supplier.shouldHeal(0.33));
   }

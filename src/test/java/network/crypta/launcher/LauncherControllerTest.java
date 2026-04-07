@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.readiness.LauncherReadinessFiles;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
@@ -32,14 +33,44 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings({"java:S100"})
 @ExtendWith(MockitoExtension.class)
 class LauncherControllerTest {
+  private static final long POST_STARTUP_SETTLE_MS = 100L;
+  private static final Duration HEARTBEAT_STABLE_FOR = Duration.ofMillis(500);
+  private static final String SHELL_SLEEP_SHORT = "0.05";
+  private static final String SHELL_SLEEP_MEDIUM = "0.10";
+  private static final String SHELL_SLEEP_LONG = "0.20";
+  private static final String SHELL_SLEEP_LOOP = "0.05";
+  private static final LauncherController.TimingConfig TEST_TIMING =
+      new LauncherController.TimingConfig(
+          50L,
+          300L,
+          10L,
+          25L,
+          Duration.ofMillis(300),
+          Duration.ofMillis(300),
+          Duration.ofMillis(100),
+          Duration.ofMillis(50));
   private static final int TEST_PORT = 8888;
   private static final String SHELL_UI_ROOT = "/app/node/";
 
   @TempDir Path tempDir;
 
+  private LauncherController controller() {
+    return controller(LauncherUtils::resolveConfiguredLauncherReadinessFile);
+  }
+
+  private LauncherController controller(Supplier<Path> readinessFileResolver) {
+    return controller(readinessFileResolver, LauncherUtils::resolveConfiguredLauncherDaemonLogFile);
+  }
+
+  private LauncherController controller(
+      Supplier<Path> readinessFileResolver, Supplier<Path> daemonLogFileResolver) {
+    return new LauncherController(
+        tempDir, readinessFileResolver, daemonLogFileResolver, TEST_TIMING);
+  }
+
   @Test
   void start_whenCryptadMissing_logsErrorAndDoesNotRun() {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -57,8 +88,7 @@ class LauncherControllerTest {
     Path actualReadinessFile = createReadinessFilePath(tempDir, "configured-runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
     Path legacyDetectedMarker = tempDir.resolve("legacy-detected.marker");
-    LauncherController controller =
-        new LauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> initialReadinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -106,8 +136,7 @@ class LauncherControllerTest {
     Path actualReadinessFile = createReadinessFilePath(tempDir, "configured-runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
     Path legacyDetectedMarker = tempDir.resolve("legacy-detected.marker");
-    LauncherController controller =
-        new LauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> initialReadinessFile, () -> daemonLogFile);
 
     writeWrapperConf(tempDir);
     writeStructuredReadinessCryptadScript(
@@ -166,8 +195,7 @@ class LauncherControllerTest {
   void start_whenStructuredReadinessPromotesFromDefaultRootToShellRoot_updatesUiRootToShellRoot()
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> null);
+    LauncherController controller = controller(() -> readinessFile, () -> null);
 
     writeWrapperConf(tempDir);
     writeStructuredReadinessPromotionCryptadScript(
@@ -273,11 +301,10 @@ class LauncherControllerTest {
         new LauncherReadinessInfo(
             LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, 4321, "/");
     LauncherReadinessFiles.write(actualReadinessFile, existingReadiness);
-    LauncherController controller =
-        new LauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> initialReadinessFile, () -> daemonLogFile);
 
     writeWrapperConf(tempDir);
-    writeNoReadinessCryptadScript(tempDir, actualReadinessFile.getParent(), daemonLogFile);
+    writeNoReadinessCryptadScript(tempDir, parentOrThrow(actualReadinessFile), daemonLogFile);
 
     controller.start();
 
@@ -296,7 +323,7 @@ class LauncherControllerTest {
 
   @Test
   void stop_whenNoTrackedProcess_noop() throws Exception {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
     AppState initial = new AppState(true, null, false, false);
     setPrivateStateField(controller, initial);
 
@@ -309,7 +336,7 @@ class LauncherControllerTest {
 
   @Test
   void launchBrowser_whenPortMissing_noop() throws Exception {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
     AppState initial = new AppState(false, null, false, false);
     setPrivateStateField(controller, initial);
 
@@ -321,7 +348,7 @@ class LauncherControllerTest {
 
   @Test
   void launchBrowser_whenRunningWithoutDetectedPort_noop() throws Exception {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
     AppState initial = new AppState(true, null, false, false);
     setPrivateStateField(controller, initial);
 
@@ -334,7 +361,7 @@ class LauncherControllerTest {
   @Test
   void stop_whenScriptRunsLong_processStopsAndStateClears() throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
 
     writeWrapperConf(tempDir);
     Path heartbeat = tempDir.resolve("heartbeat.log");
@@ -349,7 +376,7 @@ class LauncherControllerTest {
     AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
     assertFalse(stopped.isRunning());
     assertFalse(stopped.isStopping());
-    awaitFileSizeStable(heartbeat, Duration.ofMillis(2500));
+    awaitFileSizeStable(heartbeat, HEARTBEAT_STABLE_FOR);
 
     controller.shutdownAndWait();
   }
@@ -357,7 +384,7 @@ class LauncherControllerTest {
   @Test
   void start_whenStructuredReadinessUnavailable_fallsBackToLegacyLogPortDetection()
       throws Exception {
-    LauncherController controller = new LauncherController(tempDir, () -> null, () -> null);
+    LauncherController controller = controller(() -> null, () -> null);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -382,8 +409,7 @@ class LauncherControllerTest {
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> readinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -410,8 +436,7 @@ class LauncherControllerTest {
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> readinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -454,7 +479,7 @@ class LauncherControllerTest {
 
     writeWrapperConf(tempDir);
     writeLegacyPortWithoutReadinessButWithRunDirCryptadScript(
-        tempDir, actualReadinessFile.getParent(), daemonLogFile);
+        tempDir, parentOrThrow(actualReadinessFile), daemonLogFile);
 
     controller.start();
 
@@ -486,8 +511,7 @@ class LauncherControllerTest {
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> daemonLogFile);
+    LauncherController controller = controller(() -> readinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -604,8 +628,7 @@ class LauncherControllerTest {
   void start_whenCompletionInfoLogUnavailable_stdoutCompletionFallsBackToLegacyPort()
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> null);
+    LauncherController controller = controller(() -> readinessFile, () -> null);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -633,8 +656,7 @@ class LauncherControllerTest {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path wrongDaemonLogFile = tempDir.resolve("missing-logs").resolve("crypta-latest.log");
     Path wrapperLogFile = tempDir.resolve("logs").resolve("wrapper.log");
-    LauncherController controller =
-        new LauncherController(tempDir, () -> readinessFile, () -> wrongDaemonLogFile);
+    LauncherController controller = controller(() -> readinessFile, () -> wrongDaemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -660,7 +682,7 @@ class LauncherControllerTest {
   void start_whenStructuredReadinessPending_doesNotExposeLegacyPortOrAutoOpen() throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path heartbeat = tempDir.resolve("heartbeat.log");
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
@@ -672,7 +694,7 @@ class LauncherControllerTest {
     awaitState(controller, AppState::isRunning);
     awaitLog(logs, l -> l.contains("Starting FProxy on"));
     awaitHeartbeat(heartbeat);
-    sleepMillis(300L);
+    sleepMillis(POST_STARTUP_SETTLE_MS);
     assertNull(controller.getState().knownPort());
     assertFalse(isBrowserAutoOpened(controller));
 
@@ -696,7 +718,7 @@ class LauncherControllerTest {
     long launchStartedAtMillis = 17_000L;
     Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(launchStartedAtMillis));
 
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, launchStartedAtMillis);
 
     assertFalse(controller.isCurrentLaunchReadinessFile(readinessFile));
@@ -708,7 +730,7 @@ class LauncherControllerTest {
   void isCurrentLaunchReadinessFile_whenMtimeEqualsLaunchStartAndLegacyPortMatches_returnsTrue()
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_000L);
     setPendingLegacyPort(controller);
     setTrackedReadinessTarget(controller, readinessFile);
@@ -727,7 +749,7 @@ class LauncherControllerTest {
   void isCurrentLaunchReadinessFile_whenFileChangesAfterTrackingButMtimeRoundsDown_returnsTrue()
       throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_000L);
     setTrackedReadinessTarget(controller, readinessFile);
     LauncherReadinessFiles.write(
@@ -751,7 +773,7 @@ class LauncherControllerTest {
             LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, 4321, "/"));
     Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(16_000L));
 
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_000L);
     setTrackedReadinessTarget(controller, readinessFile);
     var staleSnapshot = LauncherReadinessFiles.readSnapshot(readinessFile).orElseThrow();
@@ -777,7 +799,7 @@ class LauncherControllerTest {
             LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
     Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(16_000L));
 
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_000L);
     setPendingLegacyPort(controller);
     markStartupCompletionObserved(controller);
@@ -794,7 +816,7 @@ class LauncherControllerTest {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Files.deleteIfExists(readinessFile);
 
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_001L);
     setTrackedReadinessTarget(controller, readinessFile);
     LauncherReadinessFiles.write(
@@ -818,7 +840,7 @@ class LauncherControllerTest {
             LauncherReadinessInfo.VERSION_1, LauncherReadinessInfo.READY_STATE, TEST_PORT, "/"));
     Files.setLastModifiedTime(readinessFile, FileTime.fromMillis(17_000L));
 
-    LauncherController controller = new LauncherController(tempDir, () -> readinessFile);
+    LauncherController controller = controller(() -> readinessFile);
     setLaunchStartedAtMillis(controller, 17_000L);
     setPendingLegacyPort(controller);
     setTrackedReadinessTarget(controller, readinessFile);
@@ -830,7 +852,7 @@ class LauncherControllerTest {
 
   @Test
   void shutdown_setsShuttingDownFlagAndIsIdempotent() {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
 
     controller.shutdown();
     assertTrue(controller.getState().isShuttingDown());
@@ -843,7 +865,7 @@ class LauncherControllerTest {
 
   @Test
   void shutdownAndWait_whenNoProcess_setsShuttingDownFlag() {
-    LauncherController controller = new LauncherController(tempDir);
+    LauncherController controller = controller();
 
     controller.shutdownAndWait();
 
@@ -1124,8 +1146,9 @@ class LauncherControllerTest {
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
     Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
-    String runDir = readinessFile.getParent().toAbsolutePath().toString();
-    Files.createDirectories(readinessFile.getParent());
+    Path readinessDir = parentOrThrow(readinessFile);
+    String runDir = readinessDir.toAbsolutePath().toString();
+    Files.createDirectories(readinessDir);
     String readinessPath = readinessFile.toAbsolutePath().toString();
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
     String markerPath = legacyDetectedMarker.toAbsolutePath().toString();
@@ -1156,7 +1179,7 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "printf 'legacy\\n' > \"" + markerPath + "\"",
               "printf '  Run dir:      " + runDir + "\\n' >> \"" + daemonLogPath + "\"",
-              "sleep 0.1",
+              "sleep " + SHELL_SLEEP_SHORT,
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
@@ -1164,13 +1187,21 @@ class LauncherControllerTest {
               "ui.root=" + uiRoot,
               "EOF",
               "echo \"READY\"",
-              "sleep 0.2");
+              "sleep " + SHELL_SLEEP_MEDIUM);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
     if (!isWindows && !script.toFile().setExecutable(true)) {
       throw new AssertionError("Failed to mark script executable: " + script);
     }
+  }
+
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    if (parent == null) {
+      throw new AssertionError("Expected parent for path " + path);
+    }
+    return parent;
   }
 
   private static void writeStructuredReadinessPromotionCryptadScript(
@@ -1210,21 +1241,21 @@ class LauncherControllerTest {
               "\n",
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
-              "sleep 0.2",
+              "sleep " + SHELL_SLEEP_MEDIUM,
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
               "ui.port=" + TEST_PORT,
               "ui.root=" + initialUiRoot,
               "EOF",
-              "sleep 0.3",
+              "sleep " + SHELL_SLEEP_LONG,
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
               "ui.port=" + TEST_PORT,
               "ui.root=" + updatedUiRoot,
               "EOF",
-              "sleep 1.0");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1262,14 +1293,14 @@ class LauncherControllerTest {
               "\n",
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
-              "sleep 0.1",
+              "sleep " + SHELL_SLEEP_SHORT,
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
               "ui.port=" + TEST_PORT,
               "ui.root=" + SHELL_UI_ROOT,
               "EOF",
-              "sleep 1.0");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1300,7 +1331,7 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "echo \"READY\"",
-              "sleep 0.2");
+              "sleep " + SHELL_SLEEP_MEDIUM);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1333,7 +1364,7 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
-              "sleep 0.3");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1369,7 +1400,7 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "printf '  Run dir:      " + resolvedRunDir + "\\n' >> \"" + daemonLogPath + "\"",
               "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
-              "sleep 1.0");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1413,7 +1444,7 @@ class LauncherControllerTest {
               "ui.port=9999",
               "EOF",
               "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
-              "sleep 0.3");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1454,14 +1485,14 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "printf 'Node initialization completed\\n' >> \"" + daemonLogPath + "\"",
-              "sleep 0.3",
+              "sleep " + SHELL_SLEEP_LONG,
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
               "ui.port=" + TEST_PORT,
               "ui.root=" + SHELL_UI_ROOT,
               "EOF",
-              "sleep 1.0");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1494,9 +1525,9 @@ class LauncherControllerTest {
               "\n",
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
-              "sleep 0.2",
+              "sleep " + SHELL_SLEEP_MEDIUM,
               "printf 'Node initialization completed\\n' >> \"" + wrapperLogPath + "\"",
-              "sleep 0.2");
+              "sleep " + SHELL_SLEEP_MEDIUM);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1528,7 +1559,7 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "echo \"Node initialization completed\"",
-              "sleep 0.3");
+              "sleep " + SHELL_SLEEP_LONG);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1562,7 +1593,7 @@ class LauncherControllerTest {
               "#!/usr/bin/env sh",
               "printf '  Run dir:      " + resolvedRunDir + "\\n' >> \"" + daemonLogPath + "\"",
               "echo \"BOOTING\"",
-              "sleep 0.2");
+              "sleep " + SHELL_SLEEP_MEDIUM);
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1600,7 +1631,7 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "while true; do",
               "  date +%s%N >> \"$HEARTBEAT\"",
-              "  sleep 1",
+              "  sleep " + SHELL_SLEEP_LOOP,
               "done");
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
@@ -1631,7 +1662,7 @@ class LauncherControllerTest {
         Path cwd,
         java.util.function.Supplier<Path> readinessFileResolver,
         java.util.function.Supplier<Path> daemonLogFileResolver) {
-      super(cwd, readinessFileResolver, daemonLogFileResolver);
+      super(cwd, readinessFileResolver, daemonLogFileResolver, TEST_TIMING);
     }
 
     @Override

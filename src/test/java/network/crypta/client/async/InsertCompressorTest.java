@@ -132,6 +132,16 @@ class InsertCompressorTest {
       lastOutput = output;
       lastContext = context;
     }
+
+    @Override
+    public boolean equals(Object other) {
+      return this == other;
+    }
+
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(this);
+    }
   }
 
   private static ClientContext makeContext(

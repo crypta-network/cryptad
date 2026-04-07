@@ -170,7 +170,7 @@ public final class USKInserter
   private String externalRequestIdentifierSnapshot;
 
   /** Active datehint insert phase; null when not currently inserting datehints. */
-  private transient DateHintPhase activeDateHintPhase;
+  private transient volatile DateHintPhase activeDateHintPhase;
 
   /** Monotonic identifier for datehint phases; helps ignore stale callbacks. */
   private transient long nextDateHintPhaseId = 1;
@@ -700,6 +700,13 @@ public final class USKInserter
 
   private synchronized long reserveDateHintPhaseId() {
     return nextDateHintPhaseId++;
+  }
+
+  @Serial
+  private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    activeDateHintPhase = null;
+    nextDateHintPhaseId = 1L;
   }
 
   private synchronized void activateDateHintPhase(DateHintPhase phase) {

@@ -1,6 +1,7 @@
 package network.crypta.io.xfer;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -91,9 +92,11 @@ class BulkTransmitterTest {
    * tests.
    */
   private static final class BlockingWriteBuffer extends ByteArrayRandomAccessBuffer {
+    @Serial private static final long serialVersionUID = 1L;
+
     private final long blockedOffset;
-    private final CountDownLatch writeStarted = new CountDownLatch(1);
-    private final CountDownLatch releaseWrite = new CountDownLatch(1);
+    private final transient CountDownLatch writeStarted = new CountDownLatch(1);
+    private final transient CountDownLatch releaseWrite = new CountDownLatch(1);
 
     BlockingWriteBuffer(byte[] initialData, long blockedOffset) {
       super(initialData);

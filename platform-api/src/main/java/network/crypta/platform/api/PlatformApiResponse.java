@@ -78,6 +78,11 @@ public record PlatformApiResponse(
     return json(statusCode, headers, errorBody);
   }
 
+  @Override
+  public Map<String, String> headers() {
+    return immutableHeaders(this.headers);
+  }
+
   /**
    * Returns the standard reason phrase for one HTTP-style status code.
    *

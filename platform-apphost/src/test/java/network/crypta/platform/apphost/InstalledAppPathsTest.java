@@ -78,7 +78,7 @@ class InstalledAppPathsTest {
   @Test
   void ensureMutableDirectories_whenManagedDirectoryIsFile_expectFailure() throws Exception {
     InstalledAppPaths paths = paths();
-    Files.createDirectories(paths.dataDir().getParent());
+    Files.createDirectories(parentOrThrow(paths.dataDir()));
     Files.writeString(paths.dataDir(), "not-a-directory");
 
     AppHostException exception =
@@ -93,7 +93,7 @@ class InstalledAppPathsTest {
     InstalledAppPaths paths = paths();
     Path targetDirectory = tempDir.resolve("symlink-target");
     Files.createDirectories(targetDirectory);
-    Files.createDirectories(paths.runDir().getParent());
+    Files.createDirectories(parentOrThrow(paths.runDir()));
     Files.createSymbolicLink(paths.runDir(), targetDirectory);
 
     AppHostException exception =
@@ -111,5 +111,11 @@ class InstalledAppPathsTest {
         tempDir.resolve("data").resolve(SAMPLE_APP_ID),
         tempDir.resolve("cache").resolve(SAMPLE_APP_ID),
         tempDir.resolve("run").resolve(SAMPLE_APP_ID));
+  }
+
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    assertTrue(parent != null, "Expected parent for path " + path);
+    return parent;
   }
 }

@@ -74,17 +74,16 @@ public final class LocalProcessAppHost implements AppHost {
   private static final int COFF_HEADER_SIZE = 24;
   private static final int IMAGE_FILE_EXECUTABLE_IMAGE = 0x0002;
   private static final int IMAGE_FILE_DLL = 0x2000;
-  private static final Duration STARTUP_EXIT_GRACE_PERIOD = Duration.ofSeconds(2);
-  private static final Duration STARTUP_PROCESS_CAPTURE_WINDOW = Duration.ofMillis(500);
-  private static final Duration STARTUP_POST_CAPTURE_HANDOFF_GRACE_PERIOD = Duration.ofMillis(200);
-  private static final Duration TRACKED_PROCESS_POST_EXIT_CAPTURE_GRACE_PERIOD =
-      Duration.ofMillis(200);
-  private static final Duration WINDOWS_BUNDLE_RECOVERY_WINDOW =
-      STARTUP_EXIT_GRACE_PERIOD.plus(TRACKED_PROCESS_POST_EXIT_CAPTURE_GRACE_PERIOD);
-  private static final Duration TRACKED_PROCESS_REFRESH_INTERVAL = Duration.ofMillis(100);
-  private static final long STARTUP_PROCESS_POLL_INTERVAL_NANOS =
-      TimeUnit.MICROSECONDS.toNanos(100);
-  private static final long STARTUP_HANDOFF_POLL_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(5);
+  static final TimingConfig DEFAULT_TIMING =
+      new TimingConfig(
+          Duration.ofSeconds(2),
+          Duration.ofMillis(500),
+          Duration.ofMillis(200),
+          Duration.ofMillis(200),
+          Duration.ofMillis(100),
+          Duration.ofNanos(TimeUnit.MICROSECONDS.toNanos(100)),
+          Duration.ofMillis(5),
+          Duration.ofMillis(100));
   private static final List<String> BASE_UNIX_PATH_ENTRIES =
       List.of(
           Path.of("/usr", "bin").toString(),
@@ -109,6 +108,7 @@ public final class LocalProcessAppHost implements AppHost {
   private final Duration stopTimeout;
   private final SecureRandom secureRandom;
   private final AppEnv appEnv;
+  private final TimingConfig timing;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
 
   /**
@@ -137,15 +137,25 @@ public final class LocalProcessAppHost implements AppHost {
    */
   public LocalProcessAppHost(
       AppHostLayout layout, Duration stopTimeout, SecureRandom secureRandom) {
-    this(layout, stopTimeout, secureRandom, new AppEnv());
+    this(layout, stopTimeout, secureRandom, new AppEnv(), DEFAULT_TIMING);
   }
 
   LocalProcessAppHost(
       AppHostLayout layout, Duration stopTimeout, SecureRandom secureRandom, AppEnv appEnv) {
+    this(layout, stopTimeout, secureRandom, appEnv, DEFAULT_TIMING);
+  }
+
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing) {
     this.layout = Objects.requireNonNull(layout, "layout");
     this.stopTimeout = Objects.requireNonNull(stopTimeout, "stopTimeout");
     this.secureRandom = Objects.requireNonNull(secureRandom, "secureRandom");
     this.appEnv = Objects.requireNonNull(appEnv, "appEnv");
+    this.timing = Objects.requireNonNull(timing, "timing");
     if (stopTimeout.isZero() || stopTimeout.isNegative()) {
       throw new IllegalArgumentException("stopTimeout must be positive");
     }
@@ -305,7 +315,7 @@ public final class LocalProcessAppHost implements AppHost {
     }
 
     String token = generateToken();
-    List<String> command = launchCommand(executable, appEnv);
+    List<String> command = launchCommand(executable);
     ProcessBuilder builder = new ProcessBuilder(command);
     builder.directory(paths.installedRoot().toFile());
     builder.redirectErrorStream(true);
@@ -428,10 +438,10 @@ public final class LocalProcessAppHost implements AppHost {
         resolveBundleEntry(
             installedRoot, Path.of(AppManifestParser.MANIFEST_FILE_NAME), "installed manifest");
     AppManifest manifest = AppManifestParser.parse(manifestFile);
-    if (!installedRoot.getFileName().toString().equals(manifest.appId())) {
+    String installedDirectoryName = fileNameOrThrow(installedRoot, "installed manifest root");
+    if (!installedDirectoryName.equals(manifest.appId())) {
       throw new AppManifestException(
-          "installed manifest app.id does not match directory name: "
-              + installedRoot.getFileName());
+          "installed manifest app.id does not match directory name: " + installedDirectoryName);
     }
     return manifest;
   }
@@ -619,8 +629,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean isTemporaryInstallDirectory(Path appRoot) {
-    Path fileName = appRoot.getFileName();
-    return fileName != null && fileName.toString().startsWith(TEMP_INSTALL_PREFIX);
+    return fileNameText(appRoot).startsWith(TEMP_INSTALL_PREFIX);
   }
 
   private static Path comparablePath(Path path) throws IOException {
@@ -674,9 +683,10 @@ public final class LocalProcessAppHost implements AppHost {
       throws AppHostException {
     ProcessHandle rootHandle = process.toHandle();
     List<ProcessHandle> observedHandles = new ArrayList<>();
-    long deadline = System.nanoTime() + STARTUP_EXIT_GRACE_PERIOD.toNanos();
-    long captureDeadline = System.nanoTime() + STARTUP_PROCESS_CAPTURE_WINDOW.toNanos();
-    long handoffDeadline = captureDeadline + STARTUP_POST_CAPTURE_HANDOFF_GRACE_PERIOD.toNanos();
+    long deadline = System.nanoTime() + timing.startupExitGracePeriod().toNanos();
+    long captureDeadline = System.nanoTime() + timing.startupProcessCaptureWindow().toNanos();
+    long handoffDeadline =
+        captureDeadline + timing.startupPostCaptureHandoffGracePeriod().toNanos();
     while (System.nanoTime() < deadline) {
       observedHandles.addAll(snapshotProcessTree(startupSeedHandles(rootHandle, observedHandles)));
       long now = System.nanoTime();
@@ -704,8 +714,8 @@ public final class LocalProcessAppHost implements AppHost {
     }
     long pollIntervalNanos =
         now >= captureDeadline
-            ? STARTUP_HANDOFF_POLL_INTERVAL_NANOS
-            : STARTUP_PROCESS_POLL_INTERVAL_NANOS;
+            ? timing.startupHandoffPollInterval().toNanos()
+            : timing.startupProcessPollInterval().toNanos();
     waitForProcess(process, Math.min(remainingNanos, pollIntervalNanos), appId);
   }
 
@@ -762,7 +772,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private void observeTrackedProcessTreeUntilExit(String appId, Process process) {
-    long startupTrackingDeadline = System.nanoTime() + STARTUP_EXIT_GRACE_PERIOD.toNanos();
+    long startupTrackingDeadline = System.nanoTime() + timing.startupExitGracePeriod().toNanos();
     try {
       while (true) {
         refreshObservedProcessTree(appId, process);
@@ -783,10 +793,10 @@ public final class LocalProcessAppHost implements AppHost {
 
   private void capturePostExitProcessTreeHandoff(String appId, Process process)
       throws InterruptedException {
-    long deadline = System.nanoTime() + TRACKED_PROCESS_POST_EXIT_CAPTURE_GRACE_PERIOD.toNanos();
+    long deadline = System.nanoTime() + timing.trackedProcessPostExitCaptureGracePeriod().toNanos();
     while (System.nanoTime() < deadline) {
       refreshObservedProcessTree(appId, process);
-      TimeUnit.NANOSECONDS.sleep(STARTUP_PROCESS_POLL_INTERVAL_NANOS);
+      TimeUnit.NANOSECONDS.sleep(timing.startupProcessPollInterval().toNanos());
     }
   }
 
@@ -796,11 +806,11 @@ public final class LocalProcessAppHost implements AppHost {
     if (rootHandle.isAlive()) {
       return;
     }
-    long deadline = System.nanoTime() + TRACKED_PROCESS_POST_EXIT_CAPTURE_GRACE_PERIOD.toNanos();
+    long deadline = System.nanoTime() + timing.trackedProcessPostExitCaptureGracePeriod().toNanos();
     while (System.nanoTime() < deadline) {
       observedHandles.addAll(snapshotProcessTree(startupSeedHandles(rootHandle, observedHandles)));
       try {
-        TimeUnit.NANOSECONDS.sleep(STARTUP_PROCESS_POLL_INTERVAL_NANOS);
+        TimeUnit.NANOSECONDS.sleep(timing.startupProcessPollInterval().toNanos());
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new AppHostException("interrupted while starting app: " + appId, e);
@@ -816,11 +826,11 @@ public final class LocalProcessAppHost implements AppHost {
     return seedHandles;
   }
 
-  private static long trackedProcessRefreshIntervalNanos(long startupTrackingDeadline) {
+  private long trackedProcessRefreshIntervalNanos(long startupTrackingDeadline) {
     if (System.nanoTime() < startupTrackingDeadline) {
-      return STARTUP_PROCESS_POLL_INTERVAL_NANOS;
+      return timing.startupProcessPollInterval().toNanos();
     }
-    return TRACKED_PROCESS_REFRESH_INTERVAL.toNanos();
+    return timing.trackedProcessRefreshInterval().toNanos();
   }
 
   private void refreshObservedProcessTree(String appId, Process process) {
@@ -885,6 +895,15 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   static List<String> launchCommand(Path executable, AppEnv appEnv) throws IOException {
+    return launchCommand(executable, appEnv, DEFAULT_TIMING);
+  }
+
+  private List<String> launchCommand(Path executable) throws IOException {
+    return launchCommand(executable, appEnv, timing);
+  }
+
+  private static List<String> launchCommand(Path executable, AppEnv appEnv, TimingConfig timing)
+      throws IOException {
     String executableText = executable.toString();
     if (appEnv.isWindows() && isWindowsBatchScript(executable)) {
       return List.of(
@@ -893,22 +912,19 @@ public final class LocalProcessAppHost implements AppHost {
     if (!appEnv.isWindows()) {
       PosixLauncher posixLauncher = classifyPosixLauncher(executable);
       if (posixLauncher != null) {
-        return posixLauncher.command(executable);
+        return posixLauncher.command(executable, timing);
       }
     }
     return List.of(executableText);
   }
 
-  private static List<String> posixShellLaunchCommand(Path executable, List<String> interpreter) {
+  private static List<String> posixShellLaunchCommand(
+      Path executable, List<String> interpreter, TimingConfig timing) {
     List<String> command = new ArrayList<>(interpreter);
     command.add("-c");
     command.add(
-        """
-        trap 'sleep %s' EXIT
-        set --
-        . "$0"
-        """
-            .formatted(posixShellExitTrapDelaySeconds()));
+        "trap 'sleep %s' EXIT%nset --%n. \"$0\"%n"
+            .formatted(posixShellExitTrapDelaySeconds(timing)));
     command.add(executable.toString());
     return List.copyOf(command);
   }
@@ -921,7 +937,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean isWindowsBatchScript(Path executable) {
-    String fileName = executable.getFileName().toString().toLowerCase(Locale.ROOT);
+    String fileName = fileNameLowercase(executable);
     return fileName.endsWith(".cmd") || fileName.endsWith(".bat");
   }
 
@@ -932,7 +948,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean hasWindowsComExecutableSuffix(Path executable) {
-    String fileName = executable.getFileName().toString().toLowerCase(Locale.ROOT);
+    String fileName = fileNameLowercase(executable);
     return fileName.endsWith(".com");
   }
 
@@ -980,7 +996,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean hasPosixShellScriptSuffix(Path executable) {
-    String fileName = executable.getFileName().toString().toLowerCase(Locale.ROOT);
+    String fileName = fileNameLowercase(executable);
     return fileName.endsWith(".sh");
   }
 
@@ -1085,6 +1101,23 @@ public final class LocalProcessAppHost implements AppHost {
     return fileName.toString().toLowerCase(Locale.ROOT);
   }
 
+  private static String fileNameLowercase(Path path) {
+    return fileNameText(path).toLowerCase(Locale.ROOT);
+  }
+
+  private static String fileNameText(Path path) {
+    Path fileName = path.getFileName();
+    return fileName == null ? "" : fileName.toString();
+  }
+
+  private static String fileNameOrThrow(Path path, String label) throws AppHostException {
+    String fileName = fileNameText(path);
+    if (fileName.isEmpty()) {
+      throw new AppHostException(label + " must not be a filesystem root: " + path);
+    }
+    return fileName;
+  }
+
   private static int firstWhitespaceOffset(String text) {
     for (int i = 0; i < text.length(); i++) {
       if (Character.isWhitespace(text.charAt(i))) {
@@ -1098,8 +1131,9 @@ public final class LocalProcessAppHost implements AppHost {
     return Path.of("/bin", "sh").toString();
   }
 
-  private static String posixShellExitTrapDelaySeconds() {
-    return String.format(Locale.ROOT, "%.3f", STARTUP_PROCESS_CAPTURE_WINDOW.toMillis() / 1000.0d);
+  private static String posixShellExitTrapDelaySeconds(TimingConfig timing) {
+    return String.format(
+        Locale.ROOT, "%.3f", timing.startupProcessCaptureWindow().toMillis() / 1000.0d);
   }
 
   private static String windowsCommandInterpreter() {
@@ -1337,7 +1371,9 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private Duration descendantReapGracePeriod() {
-    return stopTimeout.compareTo(Duration.ofMillis(100)) > 0 ? Duration.ofMillis(100) : stopTimeout;
+    return stopTimeout.compareTo(timing.descendantReapGracePeriodLimit()) > 0
+        ? timing.descendantReapGracePeriodLimit()
+        : stopTimeout;
   }
 
   private static boolean destroyDescendantsAndWaitForExit(
@@ -1464,7 +1500,12 @@ public final class LocalProcessAppHost implements AppHost {
     if (recoveredHandles.isEmpty() && appEnv.isWindows()) {
       recoveredHandles.addAll(
           recoverWindowsBundleProcesses(
-              paths, manifest, startedAt, trackedHandles, processCandidates));
+              paths,
+              manifest,
+              startedAt,
+              trackedHandles,
+              processCandidates,
+              timing.windowsBundleRecoveryWindow()));
     }
     return deduplicateHandles(recoveredHandles);
   }
@@ -1510,6 +1551,22 @@ public final class LocalProcessAppHost implements AppHost {
       Instant startedAt,
       List<ProcessHandle> trackedHandles,
       List<ProcessHandle> processCandidates) {
+    return recoverWindowsBundleProcesses(
+        paths,
+        manifest,
+        startedAt,
+        trackedHandles,
+        processCandidates,
+        DEFAULT_TIMING.windowsBundleRecoveryWindow());
+  }
+
+  private static List<ProcessHandle> recoverWindowsBundleProcesses(
+      InstalledAppPaths paths,
+      AppManifest manifest,
+      Instant startedAt,
+      List<ProcessHandle> trackedHandles,
+      List<ProcessHandle> processCandidates,
+      Duration windowsBundleRecoveryWindow) {
     Path installedRoot = paths.installedRoot().toAbsolutePath().normalize();
     Path executablePath = paths.executablePath(manifest).toAbsolutePath().normalize();
     List<Long> trackedPids =
@@ -1520,7 +1577,8 @@ public final class LocalProcessAppHost implements AppHost {
             .filter(processHandle -> !trackedPids.contains(processHandle.pid()))
             .filter(
                 processHandle ->
-                    startedWithinWindowsRecoveryWindow(processHandle, startedAt)
+                    startedWithinWindowsRecoveryWindow(
+                            processHandle, startedAt, windowsBundleRecoveryWindow)
                         && referencesInstalledBundle(processHandle, installedRoot, executablePath))
             .sorted(Comparator.comparingLong(ProcessHandle::pid))
             .toList());
@@ -1650,14 +1708,14 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean startedWithinWindowsRecoveryWindow(
-      ProcessHandle processHandle, Instant startedAt) {
+      ProcessHandle processHandle, Instant startedAt, Duration windowsBundleRecoveryWindow) {
     return processHandle
         .info()
         .startInstant()
         .map(
             candidateStartedAt ->
                 !candidateStartedAt.isBefore(startedAt.minusSeconds(1))
-                    && !candidateStartedAt.isAfter(startedAt.plus(WINDOWS_BUNDLE_RECOVERY_WINDOW)))
+                    && !candidateStartedAt.isAfter(startedAt.plus(windowsBundleRecoveryWindow)))
         .orElse(false);
   }
 
@@ -1775,10 +1833,37 @@ public final class LocalProcessAppHost implements AppHost {
       interpreter = List.copyOf(interpreter);
     }
 
-    private List<String> command(Path executable) {
+    private List<String> command(Path executable, TimingConfig timing) {
       return shellInterpreter
-          ? posixShellLaunchCommand(executable, interpreter)
+          ? posixShellLaunchCommand(executable, interpreter, timing)
           : directInterpreterLaunchCommand(executable, interpreter);
+    }
+  }
+
+  static record TimingConfig(
+      Duration startupExitGracePeriod,
+      Duration startupProcessCaptureWindow,
+      Duration startupPostCaptureHandoffGracePeriod,
+      Duration trackedProcessPostExitCaptureGracePeriod,
+      Duration trackedProcessRefreshInterval,
+      Duration startupProcessPollInterval,
+      Duration startupHandoffPollInterval,
+      Duration descendantReapGracePeriodLimit) {
+    TimingConfig {
+      Objects.requireNonNull(startupExitGracePeriod, "startupExitGracePeriod");
+      Objects.requireNonNull(startupProcessCaptureWindow, "startupProcessCaptureWindow");
+      Objects.requireNonNull(
+          startupPostCaptureHandoffGracePeriod, "startupPostCaptureHandoffGracePeriod");
+      Objects.requireNonNull(
+          trackedProcessPostExitCaptureGracePeriod, "trackedProcessPostExitCaptureGracePeriod");
+      Objects.requireNonNull(trackedProcessRefreshInterval, "trackedProcessRefreshInterval");
+      Objects.requireNonNull(startupProcessPollInterval, "startupProcessPollInterval");
+      Objects.requireNonNull(startupHandoffPollInterval, "startupHandoffPollInterval");
+      Objects.requireNonNull(descendantReapGracePeriodLimit, "descendantReapGracePeriodLimit");
+    }
+
+    private Duration windowsBundleRecoveryWindow() {
+      return startupExitGracePeriod.plus(trackedProcessPostExitCaptureGracePeriod);
     }
   }
 

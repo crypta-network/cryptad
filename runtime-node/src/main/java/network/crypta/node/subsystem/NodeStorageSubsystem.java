@@ -2179,17 +2179,19 @@ public final class NodeStorageSubsystem {
     if (node.services().securityLevels().getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.MAXIMUM)
       LOG.error("Changing password while physical threat level is at MAXIMUM???");
     SecureRandom secureRandom = node.bootstrap().secureRandom();
+    MasterKeys activeKeys;
+    synchronized (node) {
+      activeKeys = keys;
+    }
     if (masterKeysFile.exists()) {
-      MasterKeys activeKeys = keys;
       if (activeKeys == null) {
-        activeKeys = MasterKeys.read(masterKeysFile, secureRandom, oldPassword);
+        MasterKeys loadedKeys = MasterKeys.read(masterKeysFile, secureRandom, oldPassword);
         synchronized (node) {
           if (keys == null) {
-            keys = activeKeys;
-            databaseKey = activeKeys.createDatabaseKey();
-          } else {
-            activeKeys = keys;
+            keys = loadedKeys;
+            databaseKey = loadedKeys.createDatabaseKey();
           }
+          activeKeys = keys;
         }
       }
       activeKeys.changePassword(masterKeysFile, newPassword, secureRandom);

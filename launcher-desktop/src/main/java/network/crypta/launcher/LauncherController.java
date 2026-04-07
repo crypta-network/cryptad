@@ -99,15 +99,22 @@ public class LauncherController {
   private static final String MAC_OPEN_EXECUTABLE = "/usr/bin/open";
   private static final String LINUX_XDG_OPEN_EXECUTABLE = "/usr/bin/xdg-open";
   private static final String LINUX_XDG_OPEN_EXECUTABLE_FALLBACK = "/bin/xdg-open";
-  private static final long TAIL_BASE_DELAY_MS = 200L;
-  private static final long TAIL_MAX_DELAY_MS = 1500L;
-  private static final long TAIL_CANCEL_POLL_MS = 50L;
+  static final TimingConfig DEFAULT_TIMING =
+      new TimingConfig(
+          200L,
+          1500L,
+          50L,
+          100L,
+          java.time.Duration.ofSeconds(25),
+          java.time.Duration.ofSeconds(20),
+          java.time.Duration.ofSeconds(5),
+          java.time.Duration.ofSeconds(2));
   private static final int TAIL_READ_CHUNK = 64 * 1024;
-  private static final long READINESS_POLL_MS = 100L;
   private static final String NODE_INITIALIZATION_COMPLETED_MARKER =
       "Node initialization completed";
   private final Supplier<Path> readinessFileResolver;
   private final Supplier<Path> daemonLogFileResolver;
+  private final TimingConfig timing;
 
   /**
    * Creates a controller rooted at the current working directory.
@@ -128,18 +135,32 @@ public class LauncherController {
     this(
         cwd,
         LauncherUtils::resolveConfiguredLauncherReadinessFile,
-        LauncherUtils::resolveConfiguredLauncherDaemonLogFile);
+        LauncherUtils::resolveConfiguredLauncherDaemonLogFile,
+        DEFAULT_TIMING);
   }
 
   LauncherController(Path cwd, Supplier<Path> readinessFileResolver) {
-    this(cwd, readinessFileResolver, LauncherUtils::resolveConfiguredLauncherDaemonLogFile);
+    this(
+        cwd,
+        readinessFileResolver,
+        LauncherUtils::resolveConfiguredLauncherDaemonLogFile,
+        DEFAULT_TIMING);
   }
 
   LauncherController(
       Path cwd, Supplier<Path> readinessFileResolver, Supplier<Path> daemonLogFileResolver) {
+    this(cwd, readinessFileResolver, daemonLogFileResolver, DEFAULT_TIMING);
+  }
+
+  LauncherController(
+      Path cwd,
+      Supplier<Path> readinessFileResolver,
+      Supplier<Path> daemonLogFileResolver,
+      TimingConfig timing) {
     this.cwd = Objects.requireNonNull(cwd);
     this.readinessFileResolver = Objects.requireNonNull(readinessFileResolver);
     this.daemonLogFileResolver = Objects.requireNonNull(daemonLogFileResolver);
+    this.timing = Objects.requireNonNull(timing);
   }
 
   /**
@@ -353,7 +374,7 @@ public class LauncherController {
 
   private boolean sleepForReadinessPoll() {
     try {
-      TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
+      TimeUnit.MILLISECONDS.sleep(timing.readinessPollMs());
       return true;
     } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
@@ -506,30 +527,30 @@ public class LauncherController {
       emitLog(ts() + " Sending SIGINT to wrapper tree (root PID " + pids.getFirst() + ") ...");
     }
     sendSignalToPids(pids, "INT");
-    if (waitForPidsToExit(pids, 20)) {
+    if (waitForPidsToExit(pids, timing.unixInterruptTimeout())) {
       return;
     }
 
     emitLog(ts() + " Escalating: sending SIGTERM to remaining processes ...");
     List<Long> alive = alivePids(pids);
     sendSignalToPids(alive, "TERM");
-    if (waitForPidsToExit(pids, 5)) {
+    if (waitForPidsToExit(pids, timing.unixTerminateTimeout())) {
       return;
     }
 
     emitLog(ts() + " Escalating: sending SIGKILL to remaining processes ...");
     sendSignalToPids(alivePids(pids), "KILL");
-    waitForPidsToExit(pids, 2);
+    waitForPidsToExit(pids, timing.forceKillTimeout());
   }
 
   private void stopProcessTreeWindows(long rootPid, List<Long> pids) {
     if (!tryWindowsGracefulStopViaAnchor(pids)) {
       runTaskkill(rootPid, false);
-      if (waitForPidsToExit(pids, 20)) {
+      if (waitForPidsToExit(pids, timing.unixInterruptTimeout())) {
         return;
       }
       runTaskkill(rootPid, true);
-      waitForPidsToExit(pids, 5);
+      waitForPidsToExit(pids, timing.unixTerminateTimeout());
     }
   }
 
@@ -594,7 +615,7 @@ public class LauncherController {
     }
   }
 
-  private boolean waitForPidsToExit(List<Long> pids, long timeoutSeconds) {
+  private boolean waitForPidsToExit(List<Long> pids, java.time.Duration timeout) {
     List<CompletableFuture<ProcessHandle>> exitFutures =
         pids.stream()
             .map(ProcessHandle::of)
@@ -608,7 +629,7 @@ public class LauncherController {
     CompletableFuture<Void> allExited =
         CompletableFuture.allOf(exitFutures.toArray(CompletableFuture[]::new));
     try {
-      allExited.get(timeoutSeconds, TimeUnit.SECONDS);
+      allExited.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
       return true;
     } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
@@ -703,7 +724,7 @@ public class LauncherController {
       }
 
       try {
-        TimeUnit.MILLISECONDS.sleep(READINESS_POLL_MS);
+        TimeUnit.MILLISECONDS.sleep(timing.readinessPollMs());
       } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return;
@@ -1052,7 +1073,7 @@ public class LauncherController {
       }
       emitLog(
           ts() + " Requested graceful shutdown via anchor: " + anchorPath.getFileName() + " ...");
-      return waitForPidsToExit(pids, 25);
+      return waitForPidsToExit(pids, timing.windowsAnchorTimeout());
     } catch (Exception e) {
       emitLog(
           ts() + " WARN: Failed to delete anchor file at " + anchorPath + ": " + e.getMessage());
@@ -1126,7 +1147,7 @@ public class LauncherController {
       return;
     }
     try {
-      tailer.join(TAIL_MAX_DELAY_MS + TAIL_BASE_DELAY_MS);
+      tailer.join(timing.tailMaxDelayMs() + timing.tailBaseDelayMs());
     } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
@@ -1173,7 +1194,7 @@ public class LauncherController {
       if (worker.isInterrupted()) {
         return false;
       }
-      long chunk = Math.min(remaining, TAIL_CANCEL_POLL_MS);
+      long chunk = Math.min(remaining, timing.tailCancelPollMs());
       try {
         Thread.sleep(chunk);
       } catch (InterruptedException _) {
@@ -1187,8 +1208,8 @@ public class LauncherController {
 
   private long calcTailDelayMs(int idleCount) {
     int shifts = Math.min(idleCount, 3);
-    long delay = TAIL_BASE_DELAY_MS << shifts;
-    return Math.min(delay, TAIL_MAX_DELAY_MS);
+    long delay = timing.tailBaseDelayMs() << shifts;
+    return Math.min(delay, timing.tailMaxDelayMs());
   }
 
   private void resetTailOnError(TailState state) {
@@ -1470,6 +1491,29 @@ public class LauncherController {
       } catch (Exception e) {
         logDebug("Log listener failed", e);
       }
+    }
+  }
+
+  static record TimingConfig(
+      long tailBaseDelayMs,
+      long tailMaxDelayMs,
+      long tailCancelPollMs,
+      long readinessPollMs,
+      java.time.Duration windowsAnchorTimeout,
+      java.time.Duration unixInterruptTimeout,
+      java.time.Duration unixTerminateTimeout,
+      java.time.Duration forceKillTimeout) {
+    TimingConfig {
+      if (tailBaseDelayMs <= 0
+          || tailMaxDelayMs <= 0
+          || tailCancelPollMs <= 0
+          || readinessPollMs <= 0) {
+        throw new IllegalArgumentException("tail/readiness timing values must be positive");
+      }
+      Objects.requireNonNull(windowsAnchorTimeout, "windowsAnchorTimeout");
+      Objects.requireNonNull(unixInterruptTimeout, "unixInterruptTimeout");
+      Objects.requireNonNull(unixTerminateTimeout, "unixTerminateTimeout");
+      Objects.requireNonNull(forceKillTimeout, "forceKillTimeout");
     }
   }
 

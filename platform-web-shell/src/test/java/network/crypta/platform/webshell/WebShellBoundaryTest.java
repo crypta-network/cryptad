@@ -91,11 +91,11 @@ class WebShellBoundaryTest {
         ":platform-web-shell main Java tree must exist");
 
     for (Path sourceFile : findJavaSources(mainJava)) {
-      String fileName = sourceFile.getFileName().toString();
+      String fileName = fileNameOrThrow(sourceFile);
       if (fileName.equals("package-info.java") || fileName.equals("module-info.java")) {
         continue;
       }
-      productionPackages.add(sourceFile.getParent());
+      productionPackages.add(parentOrThrow(sourceFile));
     }
 
     for (Path packagePath : productionPackages) {
@@ -115,7 +115,7 @@ class WebShellBoundaryTest {
   }
 
   private static boolean isTrackedJavaSource(Path path) {
-    String fileName = path.getFileName().toString();
+    String fileName = fileNameOrThrow(path);
     return fileName.endsWith(".java") && !fileName.startsWith("._");
   }
 
@@ -129,6 +129,18 @@ class WebShellBoundaryTest {
           .filter(WebShellBoundaryTest::isForbiddenImport)
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
+  }
+
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    assertNotNull(parent, "Java source path must have a parent: " + path);
+    return parent;
+  }
+
+  private static String fileNameOrThrow(Path path) {
+    Path fileName = path.getFileName();
+    assertNotNull(fileName, "Java source path must have a file name: " + path);
+    return fileName.toString();
   }
 
   private static String extractImportTarget(String line) {

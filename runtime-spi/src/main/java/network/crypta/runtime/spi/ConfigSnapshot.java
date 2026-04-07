@@ -66,6 +66,11 @@ public record ConfigSnapshot(Map<ConfigSection, ConfigFieldSet> sections) {
     return sections.isEmpty();
   }
 
+  @Override
+  public Map<ConfigSection, ConfigFieldSet> sections() {
+    return immutableSections(this.sections);
+  }
+
   private static Map<ConfigSection, ConfigFieldSet> immutableSections(
       Map<ConfigSection, ConfigFieldSet> source) {
     Objects.requireNonNull(source, "sections");

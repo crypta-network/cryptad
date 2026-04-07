@@ -1,6 +1,8 @@
 package network.crypta.clients.http;
 
 import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
@@ -97,7 +99,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * callers can reuse one comparator for ascending and descending views without allocating extra
    * helpers.
    */
-  protected static class ComparatorByStatus implements Comparator<PeerNodeStatus> {
+  protected static class ComparatorByStatus implements Comparator<PeerNodeStatus>, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
     /** Column key requested by the client, may be {@code null} for default ordering. */
     protected final String sortBy;
 

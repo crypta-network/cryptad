@@ -1,5 +1,7 @@
 package network.crypta.runtime.admin;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1695,7 +1697,9 @@ final class LegacyConnectionsPagePort implements ConnectionsPagePort {
       return reversed ? ("?sortBy=" + type) : ("?sortBy=" + type + "&reversed");
     }
 
-    protected static class ComparatorByStatus implements Comparator<PeerNodeStatus> {
+    protected static class ComparatorByStatus implements Comparator<PeerNodeStatus>, Serializable {
+      @Serial private static final long serialVersionUID = 1L;
+
       protected final String sortBy;
       protected final boolean reversed;
 

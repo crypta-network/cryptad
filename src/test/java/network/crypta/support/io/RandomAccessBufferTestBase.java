@@ -6,6 +6,7 @@ import java.util.Random;
 import network.crypta.support.api.RandomAccessBuffer;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -104,19 +105,16 @@ public abstract class RandomAccessBufferTestBase {
     if (len == 0) {
       return;
     }
-    byte[] tmp = new byte[len];
-    raf.pread(start, tmp, 0, len);
-    for (int i = 0; i < len; i++) {
-      assertEquals(tmp[i], buf[start + i]);
-    }
+    byte[] expected = Arrays.copyOfRange(buf, start, end);
+    byte[] actual = new byte[len];
+    raf.pread(start, actual, 0, len);
+    assertArrayEquals(expected, actual);
     if (!readOnly) {
       raf.pwrite(start, buf, start, len);
     }
-    Arrays.fill(tmp, (byte) 0);
-    raf.pread(start, tmp, 0, len);
-    for (int i = 0; i < len; i++) {
-      assertEquals(tmp[i], buf[start + i]);
-    }
+    Arrays.fill(actual, (byte) 0);
+    raf.pread(start, actual, 0, len);
+    assertArrayEquals(expected, actual);
   }
 
   /**
@@ -217,18 +215,14 @@ public abstract class RandomAccessBufferTestBase {
     while (x < sz) {
       int maxRead = (int) Math.min(BUFFER_SIZE, sz - x);
       int toRead = maxRead == 1 ? 1 : r.nextInt(maxRead - 1) + 1;
-      byte[] buf = new byte[toRead];
-      for (int i = 0; i < buf.length; i++) {
-        buf[i] = f.getByte(i + x);
+      byte[] expected = new byte[toRead];
+      for (int i = 0; i < expected.length; i++) {
+        expected[i] = f.getByte(i + x);
       }
-      raf.pwrite(x, buf, 0, toRead);
-      for (int i = 0; i < buf.length; i++) {
-        buf[i] = (byte) ~buf[i];
-      }
-      raf.pread(x, buf, 0, toRead);
-      for (int i = 0; i < buf.length; i++) {
-        assertEquals(buf[i], f.getByte(i + x));
-      }
+      raf.pwrite(x, expected, 0, toRead);
+      byte[] actual = new byte[toRead];
+      raf.pread(x, actual, 0, toRead);
+      assertArrayEquals(expected, actual);
       x += toRead;
     }
     // Read
@@ -236,11 +230,13 @@ public abstract class RandomAccessBufferTestBase {
     while (x < sz) {
       int maxRead = (int) Math.min(BUFFER_SIZE, sz - x);
       int toRead = maxRead == 1 ? 1 : r.nextInt(maxRead - 1) + 1;
-      byte[] buf = new byte[toRead];
-      raf.pread(x, buf, 0, toRead);
-      for (int i = 0; i < buf.length; i++) {
-        assertEquals(buf[i], f.getByte(i + x));
+      byte[] actual = new byte[toRead];
+      raf.pread(x, actual, 0, toRead);
+      byte[] expected = new byte[toRead];
+      for (int i = 0; i < expected.length; i++) {
+        expected[i] = f.getByte(i + x);
       }
+      assertArrayEquals(expected, actual);
       x += toRead;
     }
     raf.close();

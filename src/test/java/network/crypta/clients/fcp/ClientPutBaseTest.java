@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -281,7 +282,9 @@ class ClientPutBaseTest {
   }
 
   private static final class TestClientPutBase extends ClientPutBase {
-    private final FCPMessage tagMessage = new StaticFcpMessage("PersistentTag");
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final transient FCPMessage tagMessage = new StaticFcpMessage("PersistentTag");
     private int freeDataCalls;
     private int startCompressingCalls;
     private int stopCompressingCalls;

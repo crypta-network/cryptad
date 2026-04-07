@@ -1,11 +1,12 @@
 package network.crypta.tools;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -158,28 +159,15 @@ class CleanupTranslationsTest {
     Files.writeString(file, content, StandardCharsets.UTF_8);
   }
 
-  private static ProcessResult runCleanupTranslations(Path workingDir)
-      throws IOException, InterruptedException {
-    String javaBin =
-        Path.of(System.getProperty("java.home")).resolve("bin").resolve("java").toString();
+  private static ProcessResult runCleanupTranslations(Path workingDir) throws IOException {
+    StringWriter stdoutBuffer = new StringWriter();
+    StringWriter stderrBuffer = new StringWriter();
+    PrintWriter stdout = new PrintWriter(stdoutBuffer, true);
+    PrintWriter stderr = new PrintWriter(stderrBuffer, true);
 
-    java.util.ArrayList<String> cmd = new java.util.ArrayList<>();
-    cmd.add(javaBin);
-    cmd.add("-cp");
-    cmd.add(System.getProperty("java.class.path"));
-    cmd.add("network.crypta.tools.CleanupTranslations");
+    int exitCode = CleanupTranslations.run(workingDir.toFile(), stdout, stderr);
 
-    Process process = new ProcessBuilder(cmd).directory(workingDir.toFile()).start();
-
-    boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-    if (!finished) {
-      process.destroyForcibly();
-      throw new IllegalStateException("CleanupTranslations process did not exit within timeout");
-    }
-
-    String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-    return new ProcessResult(process.exitValue(), stdout, stderr);
+    return new ProcessResult(exitCode, stdoutBuffer.toString(), stderrBuffer.toString());
   }
 
   private record ProcessResult(int exitCode, String stdout, String stderr) {}

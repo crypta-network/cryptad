@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serial;
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
@@ -418,8 +419,10 @@ class ClientRequestTest {
   private static final class OpaqueHandle implements PersistentRequestClientHandle {}
 
   private static final class TestClientRequest extends ClientRequest {
+    @Serial private static final long serialVersionUID = 1L;
+
     private final ClientRequester requester;
-    private ClientContext innerResumeContext;
+    private transient ClientContext innerResumeContext;
     private int freeDataCalls;
 
     private TestClientRequest(ConstructorInit init, ClientRequester requester) {

@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
@@ -117,7 +118,9 @@ class ClientRequestRestartAsyncTest {
   }
 
   private static final class TestClientRequest extends ClientRequest {
-    private ClientContext lastRestartContext;
+    @Serial private static final long serialVersionUID = 1L;
+
+    private transient ClientContext lastRestartContext;
     private boolean lastDisableFilterData;
     private int restartCalls;
 

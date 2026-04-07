@@ -142,7 +142,9 @@ class ClientPutDiskDirMessageTest {
     verify(handler).startClientPutDir(eq(message), bucketsCaptor.capture(), eq(true));
     HashMap<String, Object> buckets = bucketsCaptor.getValue();
 
-    String hiddenFileName = hiddenFile.getFileName().toString();
+    Path hiddenFileNamePath = hiddenFile.getFileName();
+    assertNotNull(hiddenFileNamePath);
+    String hiddenFileName = hiddenFileNamePath.toString();
     if (hiddenFile.toFile().isHidden()) {
       assertFalse(buckets.containsKey(hiddenFileName));
     } else {
@@ -150,6 +152,7 @@ class ClientPutDiskDirMessageTest {
     }
 
     ManifestElement rootElement = (ManifestElement) buckets.get("index.html");
+    assertNotNull(rootElement);
     assertEquals("index.html", rootElement.fullName);
     assertEquals(Files.size(file), rootElement.getSize());
     FileBucket bucket = (FileBucket) rootElement.getData();
@@ -161,6 +164,7 @@ class ClientPutDiskDirMessageTest {
     HashMap<String, Object> nested = (HashMap<String, Object>) buckets.get("assets");
     assertNotNull(nested);
     ManifestElement nestedElement = (ManifestElement) nested.get("style.css");
+    assertNotNull(nestedElement);
     assertEquals("assets/style.css", nestedElement.fullName);
     assertEquals(Files.size(nestedFile), nestedElement.getSize());
   }
