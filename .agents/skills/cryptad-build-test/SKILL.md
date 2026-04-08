@@ -21,9 +21,10 @@ Use this skill when you need to:
 - Current leaf projects are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
-  `:kernel-transport`, `:kernel-routing`, `:runtime-spi`,
-  `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
-  `:thirdparty-legacy`, and `:launcher-desktop`.
+  `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
+  `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`,
+  `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
+  `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -66,14 +67,21 @@ Use this skill when you need to:
 - When moving additional main classes/resources from root into any extracted leaf, update that
   leaf's `owned-output-patterns.txt` and validate with
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
-- Root boundary tests now freeze the current extracted layout. `RuntimeNodeKernelSplitPrepBoundaryTest`,
-  `KernelContentBoundaryTest`, `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, and
-  `HttpLegacyAdminBoundaryTest` are the focused regression checks for leaf ownership/import
-  boundaries, and the
-  runtime/kernel-content tests enforce `package-info.java` coverage for production packages in
-  those leaves.
+- Root and leaf boundary tests now freeze the current extracted layout.
+  `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
+  `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
+  `AppHostBoundaryTest`, `WebShellBoundaryTest`, and `HttpLegacyAdminBoundaryTest` are the
+  focused regression checks for leaf ownership/import boundaries. The runtime, kernel-content,
+  and platform boundary suites also enforce `package-info.java` coverage for production packages
+  in those leaves.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
+- `:platform-api` owns the transport-neutral Platform API v1. Its focused tests still live in the
+  root test tree and run through the root `:test` task.
+- `:platform-apphost` owns the transport-neutral out-of-process AppHost core plus its focused leaf
+  tests under `platform-apphost/src/test/java`.
+- `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
+  `platform-web-shell/src/test/java`.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine side of
   `network.crypta.node`, the retained node-coupled transport/message execution code in
@@ -86,8 +94,9 @@ Use this skill when you need to:
   those resources often resolve from the leaf JAR, so tests must treat them as classpath resources
   rather than assume a plain filesystem `Path`.
 - Most tests still live in the root project and compile against the leaf subprojects through the
-  root build, but `:platform-apphost` now keeps its focused AppHost tests under
-  `platform-apphost/src/test/java` and they run via `:platform-apphost:test`.
+  root build, but `:platform-apphost`, `:platform-web-shell`, and
+  `:adapter-http-legacy-admin` now keep focused leaf tests under their own `src/test/java`
+  trees.
 - File-system-based l10n tests still run from the root project and use
   `foundation-config/src/main/resources/network/crypta/l10n/` as the main resource path.
 
@@ -114,8 +123,18 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew test --tests *TestClassName`
 - Run one test method:
   - `./gradlew test --tests *TestClassName.methodName`
+- Run the focused AppHost leaf tests:
+  - `./gradlew :platform-apphost:test`
+- Run the focused Web Shell leaf tests:
+  - `./gradlew :platform-web-shell:test`
+- Run the focused legacy HTTP adapter leaf tests:
+  - `./gradlew :adapter-http-legacy-admin:test`
+- Run the focused Platform API root tests:
+  - `./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
 - For extracted-leaf or boundary work, run the focused boundary tests:
-  - `./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest`
+  - `./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest --tests *PlatformApiBoundaryTest`
+  - `./gradlew :platform-apphost:test --tests *AppHostBoundaryTest`
+  - `./gradlew :platform-web-shell:test --tests *WebShellBoundaryTest`
 
 ## Compile-only / quick checks
 - Compile only:
@@ -149,6 +168,12 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :kernel-routing:compileJava`
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
+- Compile the Platform API leaf when you touched `network.crypta.platform.api`:
+  - `./gradlew :platform-api:compileJava`
+- Compile the AppHost leaf when you touched `network.crypta.platform.apphost`:
+  - `./gradlew :platform-apphost:compileJava`
+- Compile the Web Shell leaf when you touched `network.crypta.platform.webshell`:
+  - `./gradlew :platform-web-shell:compileJava`
 - Compile the extracted runtime-node leaf when you touched daemon runtime, node, client, xfer, or
   remaining support code that now lives there:
   - `./gradlew :runtime-node:compileJava`

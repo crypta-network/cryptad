@@ -57,6 +57,10 @@ Use this skill when you need to:
     `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
     `PeerStatusCounts`, `RecentlyFailedReturn`, and `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
+  - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1)
+  - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
+    AppHost core)
+  - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
     `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
     `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
@@ -94,9 +98,12 @@ Use this skill when you need to:
   `:kernel-content` owns the compile-neutral phase-1 client/content slice,
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
-  `:runtime-node` owns the remaining runtime/node/client/support body, `:adapter-fcp` owns the
-  FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and resources,
-  and the root project keeps tests, packaging, tool entrypoints, and remaining composition glue.
+  `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
+  transport-neutral AppHost core, `:platform-web-shell` owns the browser-facing node-management
+  shell, `:runtime-node` owns the remaining runtime/node/client/support body, `:adapter-fcp`
+  owns the FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and
+  resources, and the root project keeps tests, packaging, tool entrypoints, and remaining
+  composition glue.
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, `:kernel-transport` owns the compile-neutral
   transport helper slice (`AllowedHosts`, `NetworkInterface`, `IOStatisticCollector`,
@@ -117,9 +124,10 @@ Use this skill when you need to:
   `:foundation-store-contracts` just as much as any future extraction.
 - Root boundary tests now freeze the extracted layout. In particular,
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
-  `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, and
-  `HttpLegacyAdminBoundaryTest` guard leaf ownership/import rules, and the runtime/kernel-content
-  tests require `package-info.java` in every production package under those leaves.
+  `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
+  `AppHostBoundaryTest`, `WebShellBoundaryTest`, and `HttpLegacyAdminBoundaryTest` guard leaf
+  ownership/import rules. The runtime/kernel-content/platform tests also require
+  `package-info.java` in every production package under those leaves.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
@@ -247,6 +255,18 @@ Use this skill when you need to:
   - `N2NTMToadlet` uses `DarknetConnectionsPort` and `DarknetMessagingPort` for selected-peer
     lookup, transfer confirmations, and compose/send actions.
 
+### Platform control/UI modules
+- `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
+  It exposes node/config/peer/connectivity/security snapshots plus the local AppHost control
+  plane and is currently mounted at `/api/v1/` by the legacy HTTP adapter.
+- `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
+  `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
+  installed-bundle layout plus mutable data/cache/run directories, and provides local
+  install/list/describe/start/stop/update/uninstall operations.
+- `:platform-web-shell` owns the first browser-facing Web Shell v1 under
+  `network.crypta.platform.webshell`. It provides the current node-management shell route
+  constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`.
+
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
 - Small ports include: `ExecutionPort`, `RandomnessPort`, `TransferAccessPort`, `LifecyclePort`,
@@ -343,6 +363,9 @@ Use this skill when you need to:
 - `:kernel-routing`: compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` helper/value types
 - `:runtime-spi`: `network.crypta.runtime.spi`
+- `:platform-api`: `network.crypta.platform.api`
+- `:platform-apphost`: `network.crypta.platform.apphost`
+- `:platform-web-shell`: `network.crypta.platform.webshell`
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled

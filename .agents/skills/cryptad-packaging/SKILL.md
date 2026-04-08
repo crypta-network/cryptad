@@ -22,9 +22,11 @@ Use this skill when working on:
   `runLauncher`, and jpackage tasks.
 - Current contributing leaf modules are `:foundation-support`, `:foundation-store`,
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
-  `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:runtime-spi`,
-  `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
-  `:thirdparty-legacy`, and `:launcher-desktop`.
+  `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
+  `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
+  `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`,
+  `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
+  `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
 - `:foundation-support` and `:foundation-store-contracts` contribute shared runtime classes via
   their leaf JARs like the other extracted modules.
@@ -36,6 +38,10 @@ Use this skill when working on:
   and re-exports `:foundation-support` and `:foundation-fs` where public APIs expose those types.
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
+- The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, and the
+  `:platform-apphost` JAR contributes the transport-neutral local AppHost core used by that API.
+- The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
+  JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
 - The `:runtime-node` JAR now carries a large extracted daemon runtime/node/client/support subset
   and participates in the root runtime classpath and packaged distribution like the other leaf
   artifacts.
@@ -43,7 +49,8 @@ Use this skill when working on:
 - The `:adapter-http-legacy-admin` JAR carries the current legacy HTTP adapter classes plus the
   matching `network/crypta/clients/http/**` resources. Static files and templates now ship from
   that leaf JAR on the runtime classpath, so packaged/runtime code must treat them as classpath
-  resources rather than plain files.
+  resources rather than plain files. This adapter also hosts the current `/api/v1/` bridge for
+  `:platform-api` and the `/app/node/` bridge for `:platform-web-shell`.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
 
