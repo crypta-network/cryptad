@@ -28,9 +28,12 @@ The harness:
 The harness launches Cryptad through the packaged `build/cryptad-dist/bin/cryptad` wrapper entry
 point so the smoke exercises the same runnable layout that CI ships. Both nodes also force
 localhost-only noderefs (`127.0.0.1`) so the peer exchange stays deterministic and avoids
-environment-specific local-address noise. For CHK inserts, the harness first computes the request
-URI with `GetCHKOnly=true`, starts the real insert, and then treats successful cross-node
-`ClientGet` on the opposite node as the live-wire smoke signal.
+environment-specific local-address noise. For the tiny CHK and SSK smoke payloads, the harness
+uses direct one-block inserts without metadata wrappers, waits for the source node to return
+`PutSuccessful`, and then treats successful cross-node `ClientGet` on the opposite node as the
+live-wire smoke signal. In the current two-node baseline, the Cryptad-origin CHK check keeps a
+local-only insert for determinism, while the reverse Hyphanet-origin CHK and SSK checks use
+ordinary inserts because those are the stable peer-fetchable paths in this setup.
 
 The peering baseline is intentionally darknet-only and deterministic. Opennet, browser automation,
 and HTML scraping are out of scope for this smoke.

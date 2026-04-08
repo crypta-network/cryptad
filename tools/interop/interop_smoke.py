@@ -584,14 +584,14 @@ def wait_for_peer_connection(
     raise RuntimeError("Darknet peers did not reach CONNECTED on both nodes within timeout")
 
 
-def request_put_uri(
+def put_and_wait_for_success(
     client: FcpClient,
     identifier: str,
     uri: str,
     payload: bytes,
-    content_type: str,
+    content_type: str | None,
     *,
-    get_chk_only: bool = False,
+    local_request_only: bool = False,
 ) -> str:
     fields = {
         "Identifier": identifier,
@@ -601,43 +601,33 @@ def request_put_uri(
         "Persistence": "connection",
         "Verbosity": "256",
         "DontCompress": "true",
-        "Metadata.ContentType": content_type,
+        "ExtraInsertsSingleBlock": "0",
+        "ExtraInsertsSplitfileHeaderBlock": "0",
     }
-    if get_chk_only:
-        fields["GetCHKOnly"] = "true"
+    if content_type is not None:
+        fields["Metadata.ContentType"] = content_type
+    if local_request_only:
+        fields["LocalRequestOnly"] = "true"
     client.send(
         "ClientPut",
         fields,
         payload=payload,
     )
 
+    generated_uri: str | None = None
     while True:
         message = client.read_message(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         name = message["name"]
-        if name in {"PutSuccessful", "URIGenerated", "PutFetchable"}:
-            return str(message["fields"]["URI"])  # type: ignore[index]
+        if name in {"URIGenerated", "PutFetchable", "PutSuccessful"}:
+            uri_value = message["fields"].get("URI")
+            if uri_value is not None:
+                generated_uri = str(uri_value)
+        if name == "PutSuccessful":
+            if generated_uri is None:
+                raise RuntimeError(f"{client.name} PutSuccessful did not include a URI: {message}")
+            return generated_uri
         if name in {"PutFailed", "ProtocolError"}:
             raise RuntimeError(f"{client.name} put failed: {message}")
-
-
-def start_insert(
-    client: FcpClient, identifier: str, uri: str, payload: bytes, content_type: str
-) -> None:
-    client.send(
-        "ClientPut",
-        {
-            "Identifier": identifier,
-            "URI": uri,
-            "UploadFrom": "direct",
-            "DataLength": str(len(payload)),
-            "Persistence": "connection",
-            "Verbosity": "256",
-            "DontCompress": "true",
-            "LocalRequestOnly": "true",
-            "Metadata.ContentType": content_type,
-        },
-        payload=payload,
-    )
 
 
 def fetch_direct(client: FcpClient, identifier: str, uri: str) -> bytes:
@@ -840,20 +830,13 @@ def main() -> int:
 
         log_progress("Running CHK insert/fetch: Cryptad -> Hyphanet...")
         chk_payload_from_cryptad = b"cryptad-to-hyphanet-chk\n"
-        chk_uri_from_cryptad = request_put_uri(
+        chk_uri_from_cryptad = put_and_wait_for_success(
             cryptad_client,
             "cryptad-put-chk",
             "CHK@",
             chk_payload_from_cryptad,
-            "text/plain",
-            get_chk_only=True,
-        )
-        start_insert(
-            cryptad_client,
-            "cryptad-put-chk",
-            "CHK@",
-            chk_payload_from_cryptad,
-            "text/plain",
+            None,
+            local_request_only=True,
         )
         fetched_from_hyphanet = fetch_direct_until_available(
             "127.0.0.1",
@@ -869,20 +852,13 @@ def main() -> int:
 
         log_progress("Running CHK insert/fetch: Hyphanet -> Cryptad...")
         chk_payload_from_hyphanet = b"hyphanet-to-cryptad-chk\n"
-        chk_uri_from_hyphanet = request_put_uri(
+        chk_uri_from_hyphanet = put_and_wait_for_success(
             hyphanet_client,
             "hyphanet-put-chk",
             "CHK@",
             chk_payload_from_hyphanet,
-            "text/plain",
-            get_chk_only=True,
-        )
-        start_insert(
-            hyphanet_client,
-            "hyphanet-put-chk",
-            "CHK@",
-            chk_payload_from_hyphanet,
-            "text/plain",
+            None,
+            local_request_only=False,
         )
         fetched_from_cryptad = fetch_direct_until_available(
             "127.0.0.1",
@@ -899,12 +875,13 @@ def main() -> int:
         log_progress("Running SSK keypair/insert/fetch: Hyphanet -> Cryptad...")
         ssk_insert_uri, ssk_request_uri = generate_ssk(hyphanet_client, "hyphanet-generate-ssk")
         ssk_payload = b"hyphanet-to-cryptad-ssk\n"
-        start_insert(
+        put_and_wait_for_success(
             hyphanet_client,
             "hyphanet-put-ssk",
             ssk_insert_uri,
             ssk_payload,
-            "text/plain",
+            None,
+            local_request_only=False,
         )
         fetched_ssk = fetch_direct_until_available(
             "127.0.0.1",
