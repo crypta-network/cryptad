@@ -62,7 +62,7 @@ class PlatformApiToadletTest {
   @Test
   void handleMethodPOST_whenAppInstallRequested_routesDecodedInstallRequest() throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
-    when(ctx.checkFormPassword(request, "/api/v1/apps/install")).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
     when(request.getParameterNames()).thenReturn(List.of("stagedDir"));
     when(request.getMultipleParam("stagedDir")).thenReturn(new String[] {"/tmp/staged"});
     when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
@@ -78,7 +78,7 @@ class PlatformApiToadletTest {
   @Test
   void handleMethodPOST_whenAppInstallUsesFormPart_routesInstallRequest() throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
-    when(ctx.checkFormPassword(request, "/api/v1/apps/install")).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
     when(request.getParameterNames()).thenReturn(List.of());
     when(request.isPartSet("stagedDir")).thenReturn(true);
     when(request.getPartAsStringFailsafe("stagedDir", 4096)).thenReturn("/tmp/staged");
@@ -229,14 +229,22 @@ class PlatformApiToadletTest {
   }
 
   @Test
-  void handleMethodPOST_whenFormPasswordMissing_expectNoRouting() throws Exception {
+  void handleMethodPOST_whenFormPasswordMissing_expectJson403WithoutRouting() throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
-    when(ctx.checkFormPassword(request, "/api/v1/apps/install")).thenReturn(false);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
 
     toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/apps/install"), request, ctx);
 
-    verify(ctx).checkFormPassword(request, "/api/v1/apps/install");
     verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, "/api/v1/apps/install");
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals("Forbidden", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
+        bodyWrite.bodyText());
   }
 
   @Test

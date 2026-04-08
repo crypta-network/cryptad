@@ -323,10 +323,9 @@ public final class PlatformApiToadlet extends Toadlet {
   /**
    * Enforces the legacy form-password requirement for mutating requests.
    *
-   * <p>POST continues to use the existing toadlet-context helper unchanged. DELETE requires the
-   * same body-carried form password, but authentication failures are reported as structured JSON
-   * {@code 403} responses instead of redirects so clients cannot mistake a followed GET for a
-   * successful uninstall.
+   * <p>App-management mutations keep the legacy body-carried form password requirement, but the
+   * bridge handles failures itself so callers always receive structured JSON {@code 403} responses
+   * instead of legacy redirects.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -341,10 +340,6 @@ public final class PlatformApiToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     if (!requiresFormPassword(method, uri)) {
       return true;
-    }
-    String redirectTarget = requestPath(uri);
-    if ("POST".equals(method)) {
-      return ctx.checkFormPassword(request, redirectTarget);
     }
     if (ctx.hasFormPassword(request)) {
       return true;
