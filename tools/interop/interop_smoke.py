@@ -91,11 +91,11 @@ def parse_wrapper_conf(conf_path: Path, dist_root: Path) -> tuple[str, list[str]
 
 
 def resolve_dist_path(dist_root: Path, entry: str) -> Path:
-    if entry.startswith("/"):
-        return dist_root / entry.lstrip("/")
     normalized = entry.replace("\\", "/")
     if normalized.endswith("/*"):
-        return dist_root / normalized[:-2]
+        normalized = normalized[:-2]
+    if normalized.startswith("/"):
+        return dist_root / normalized.lstrip("/")
     return dist_root / normalized
 
 
@@ -122,13 +122,26 @@ class FcpClient:
         self.port = port
         self.name = name
         self.transcript_path = transcript_path
-        self.sock = socket.create_connection((host, port), timeout=10)
-        self.file = self.sock.makefile("rwb", buffering=0)
-        self._log_text(f"CONNECT {host}:{port}\n")
-        self.send("ClientHello", {"Name": name, "ExpectedVersion": "2.0"})
-        hello = self.read_message(timeout=30)
-        if hello["name"] != "NodeHello":
-            raise RuntimeError(f"{name} expected NodeHello, got {hello['name']}")
+        sock = socket.create_connection((host, port), timeout=10)
+        try:
+            file = sock.makefile("rwb", buffering=0)
+        except Exception:
+            sock.close()
+            raise
+        self.sock = sock
+        self.file = file
+        try:
+            self._log_text(f"CONNECT {host}:{port}\n")
+            self.send("ClientHello", {"Name": name, "ExpectedVersion": "2.0"})
+            hello = self.read_message(timeout=30)
+            if hello["name"] != "NodeHello":
+                raise RuntimeError(f"{name} expected NodeHello, got {hello['name']}")
+        except Exception:
+            try:
+                file.close()
+            finally:
+                sock.close()
+            raise
 
     def close(self) -> None:
         try:
