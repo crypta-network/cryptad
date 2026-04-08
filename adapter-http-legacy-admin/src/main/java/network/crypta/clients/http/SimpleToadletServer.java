@@ -484,7 +484,11 @@ public final class SimpleToadletServer
 
     FProxyRegistrar.maybeCreateFProxyEtc(
         new FProxyRegistrarDependencies(
-            bootstrap.client(), runtimePorts, runtimeSupportRef.config(), bootstrap.fproxy()),
+            bootstrap.client(),
+            runtimePorts,
+            runtimeSupportRef.appHost(),
+            runtimeSupportRef.config(),
+            bootstrap.fproxy()),
         this);
   }
 

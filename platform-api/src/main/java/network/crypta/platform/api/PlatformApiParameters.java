@@ -43,6 +43,21 @@ public final class PlatformApiParameters {
   }
 
   /**
+   * Reads one required string query parameter.
+   *
+   * @param queryParameters decoded query parameter map
+   * @param name parameter name to read
+   * @return supplied value
+   */
+  public static String requireString(Map<String, List<String>> queryParameters, String name) {
+    String raw = readSingle(queryParameters, name);
+    if (raw == null || raw.isBlank()) {
+      throw invalidQuery("Missing required query parameter '" + name + "'.");
+    }
+    return raw;
+  }
+
+  /**
    * Reads one required enum query parameter using the enum's exact {@link Enum#name()} values.
    *
    * @param queryParameters decoded query parameter map

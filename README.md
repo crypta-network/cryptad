@@ -212,11 +212,12 @@ Cryptad now uses a partial multi-project Gradle build.
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
   first-time-wizard, symlinker, and welcome-page slices.
-- `:platform-api` owns the transport-neutral read-only Platform API v1 under
+- `:platform-api` owns the transport-neutral Platform API v1 under
   `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
-  as JSON-oriented responses, and is currently mounted at `/api/v1/` through a thin legacy HTTP
-  bridge in `:adapter-http-legacy-admin`. The initial read-only surface covers node info, peers,
-  config export, connectivity, and security-level snapshots; `GET /api/v1/config` defaults to the
+  and the minimal local AppHost control surface as JSON-oriented responses, and is currently
+  mounted at `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The
+  current surface covers node info, peers, config export, connectivity, security-level snapshots,
+  and local app install/start/stop/uninstall routes; `GET /api/v1/config` defaults to the
   effective `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
@@ -582,8 +583,8 @@ Root build also includes:
   `PeerStatusCounts`, and `SendableRequestItem*`.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
   and other infrastructure code.
-- `:platform-api`: transport-neutral read-only Platform API v1 built on top of `:runtime-spi`,
-  currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
+- `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
+  `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Future Web Shell, app UI, and update-channel work remain separate and later.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
@@ -704,7 +705,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
   `staticfiles/**` and `templates/**` resources. The migrated HTTP management and shell slices
   cross the boundary in three layers: `RuntimePorts` for JDK-only detached runtime state,
-  `:platform-api` for the read-only Platform API v1 router and JSON surface currently mounted at
+  `:platform-api` for the Platform API v1 router and JSON surface currently mounted at
   `/api/v1/`, `:platform-web-shell` for the first browser-facing node-management shell currently
   mounted at `/app/node/`,
   runtime-owned shell and password-prompt seams under `network.crypta.runtime.http` and
@@ -769,8 +770,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
   and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
-  `:platform-api` provides the transport-neutral read-only Platform API v1; `:platform-apphost`
-  provides the transport-neutral out-of-process AppHost v1 core for installed local apps;
+  `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
+  control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
+  v1 core for installed local apps;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

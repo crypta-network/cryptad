@@ -1,6 +1,10 @@
 package network.crypta.clients.http.bridge;
 
 import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -16,35 +20,48 @@ import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevelListener;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
+import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.InstalledAppPaths;
+import network.crypta.platform.apphost.RunningAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedConstruction;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,7 +80,7 @@ class CoreHttpShellRuntimeSupportTest {
     NodeClientCore core = mock(NodeClientCore.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     when(core.getRuntimePorts()).thenReturn(runtimePorts);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     RuntimePorts actualRuntimePorts = runtimeSupport.runtimePorts();
 
@@ -77,7 +94,7 @@ class CoreHttpShellRuntimeSupportTest {
     PersistentConfig config = mock(PersistentConfig.class);
     when(core.getNode()).thenReturn(node);
     when(node.getConfig()).thenReturn(config);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     PersistentConfig actualConfig = (PersistentConfig) runtimeSupport.config();
 
@@ -93,7 +110,7 @@ class CoreHttpShellRuntimeSupportTest {
     when(core.getNode()).thenReturn(node);
     when(node.network()).thenReturn(network);
     when(network.ticker()).thenReturn(ticker);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     Ticker actualTicker = runtimeSupport.ticker();
 
@@ -105,7 +122,7 @@ class CoreHttpShellRuntimeSupportTest {
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     when(core.getAlerts()).thenReturn(alerts);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     UserAlertManager actualAlerts = runtimeSupport.userAlerts();
 
@@ -116,7 +133,7 @@ class CoreHttpShellRuntimeSupportTest {
   void formPassword_whenCoreProvidesPassword_returnsSamePassword() {
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getFormPassword()).thenReturn("secret-token");
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     String formPassword = runtimeSupport.formPassword();
 
@@ -129,7 +146,7 @@ class CoreHttpShellRuntimeSupportTest {
     NodeClientCore core = mock(NodeClientCore.class);
     File uploadTarget = new File("allowed-upload.txt");
     when(core.allowUploadFrom(uploadTarget)).thenReturn(allowed);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     boolean uploadAllowed = runtimeSupport.allowUploadFrom(uploadTarget);
 
@@ -143,7 +160,7 @@ class CoreHttpShellRuntimeSupportTest {
     PersistentConfig config = mock(PersistentConfig.class);
     when(core.getNode()).thenReturn(node);
     when(node.getConfig()).thenReturn(config);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     runtimeSupport.storeConfig();
 
@@ -152,8 +169,7 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void canRedirectToWizard_whenUsingCoreRuntime_returnsTrue() {
-    CoreHttpShellRuntimeSupport runtimeSupport =
-        new CoreHttpShellRuntimeSupport(mock(NodeClientCore.class));
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(mock(NodeClientCore.class));
 
     boolean canRedirect = runtimeSupport.canRedirectToWizard();
 
@@ -162,8 +178,7 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void addNetworkThreatLevelListener_whenListenerIsNull_throwsNullPointerException() {
-    CoreHttpShellRuntimeSupport runtimeSupport =
-        new CoreHttpShellRuntimeSupport(mock(NodeClientCore.class));
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(mock(NodeClientCore.class));
 
     assertThrows(
         NullPointerException.class, () -> runtimeSupport.addNetworkThreatLevelListener(null));
@@ -171,11 +186,45 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void addPhysicalThreatLevelListener_whenListenerIsNull_throwsNullPointerException() {
-    CoreHttpShellRuntimeSupport runtimeSupport =
-        new CoreHttpShellRuntimeSupport(mock(NodeClientCore.class));
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(mock(NodeClientCore.class));
 
     assertThrows(
         NullPointerException.class, () -> runtimeSupport.addPhysicalThreatLevelListener(null));
+  }
+
+  @Test
+  void appHost_whenConstructedFromCore_usesCurrentNodeDirectories(@TempDir Path tempDir) {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path expectedDataDir = tempDir.resolve("node");
+    Path expectedCacheDir = tempDir.resolve("persistent-temp");
+    Path expectedRunDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(expectedDataDir.toFile());
+    when(runDir.dir()).thenReturn(expectedRunDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(expectedCacheDir.toFile());
+
+    CoreHttpShellRuntimeSupport runtimeSupport;
+    try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+        mockStatic(SemiOrderedShutdownHook.class)) {
+      shutdownHooks
+          .when(() -> assertNotSame(shutdownHook, SemiOrderedShutdownHook.get()))
+          .thenReturn(shutdownHook);
+      runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    }
+
+    LocalProcessAppHost appHost =
+        assertInstanceOf(LocalProcessAppHost.class, runtimeSupport.appHost());
+    AppHostLayout layout = readLayout(appHost);
+    assertEquals(expectedDataDir.toAbsolutePath(), layout.dataDir());
+    assertEquals(expectedCacheDir.toAbsolutePath(), layout.cacheDir());
+    assertEquals(expectedRunDir.toAbsolutePath(), layout.runDir());
+    verify(shutdownHook).addEarlyJob(any(Thread.class));
   }
 
   @ParameterizedTest
@@ -246,7 +295,7 @@ class CoreHttpShellRuntimeSupportTest {
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
     when(client.getFetchContext()).thenReturn(fetchContext);
-    CoreHttpShellRuntimeSupport runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
     try (MockedConstruction<BookmarkManager> bookmarkManagers =
             mockConstruction(
@@ -277,9 +326,26 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(fetchTrackers.constructed().getFirst(), fproxyArguments.get().get(2));
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
       assertSame(client, bootstrap.client());
+      assertSame(runtimeSupport.appHost(), bootstrap.appHost());
       assertSame(fproxies.constructed().getFirst(), bootstrap.fproxy());
       verify(core, never()).getEndpoints();
     }
+  }
+
+  @Test
+  void createAppHostShutdownJob_whenAppsRunning_stopsEachRunningApp() throws Exception {
+    AppHost appHost = mock(AppHost.class);
+    when(appHost.listRunning())
+        .thenReturn(List.of(runningAppSnapshot("alpha"), runningAppSnapshot("beta")));
+    when(appHost.stop("alpha")).thenReturn(true);
+    doThrow(new IOException("boom")).when(appHost).stop("beta");
+
+    Thread shutdownJob = CoreHttpShellRuntimeSupport.createAppHostShutdownJob(appHost);
+    shutdownJob.start();
+    shutdownJob.join();
+
+    verify(appHost).stop("alpha");
+    verify(appHost).stop("beta");
   }
 
   private static Stream<Arguments> networkThreatLevelMappings() {
@@ -346,7 +412,7 @@ class CoreHttpShellRuntimeSupportTest {
             })
         .when(securityLevels)
         .addNetworkThreatLevelListener(any());
-    return new NetworkListenerContext(new CoreHttpShellRuntimeSupport(core), listener);
+    return new NetworkListenerContext(runtimeSupport(core), listener);
   }
 
   private static PhysicalListenerContext newPhysicalListenerContext() {
@@ -366,7 +432,44 @@ class CoreHttpShellRuntimeSupportTest {
             })
         .when(securityLevels)
         .addPhysicalThreatLevelListener(any());
-    return new PhysicalListenerContext(new CoreHttpShellRuntimeSupport(core), listener);
+    return new PhysicalListenerContext(runtimeSupport(core), listener);
+  }
+
+  private static CoreHttpShellRuntimeSupport runtimeSupport(NodeClientCore core) {
+    return new CoreHttpShellRuntimeSupport(core, mock(AppHost.class));
+  }
+
+  private static AppHostLayout readLayout(LocalProcessAppHost appHost) {
+    try {
+      Field field = appHost.getClass().getDeclaredField("layout");
+      field.setAccessible(true);
+      return (AppHostLayout) field.get(appHost);
+    } catch (ReflectiveOperationException e) {
+      throw new LinkageError("Failed reading field 'layout'", e);
+    }
+  }
+
+  private static RunningAppSnapshot runningAppSnapshot(String appId) {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            appId,
+            "Demo App",
+            "1.0.0",
+            "bin/launch",
+            "/",
+            List.of("network.access"),
+            1024L,
+            512L);
+    InstalledAppPaths paths =
+        new InstalledAppPaths(
+            appId,
+            Path.of("build", "test-runtime", "apphost", "installed", appId).toAbsolutePath(),
+            Path.of("build", "test-runtime", "apphost", "data", appId).toAbsolutePath(),
+            Path.of("build", "test-runtime", "apphost", "cache", appId).toAbsolutePath(),
+            Path.of("build", "test-runtime", "apphost", "run", appId).toAbsolutePath());
+    return new RunningAppSnapshot(
+        manifest, paths, "token-" + appId, 4242L, Instant.parse("2024-01-02T03:04:05Z"));
   }
 
   private record NetworkListenerContext(

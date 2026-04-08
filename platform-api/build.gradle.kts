@@ -8,6 +8,7 @@ version = rootProject.version
 
 dependencies {
   api(project(":runtime-spi"))
+  api(project(":platform-apphost"))
 
   compileOnly(libs.jetbrainsAnnotations)
 }

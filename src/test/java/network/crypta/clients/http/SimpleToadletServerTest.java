@@ -22,6 +22,7 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
@@ -234,6 +235,7 @@ class SimpleToadletServerTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     NodeClientCore core = mock(NodeClientCore.class, Answers.RETURNS_DEEP_STUBS);
+    AppHost appHost = mock(AppHost.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
@@ -243,7 +245,7 @@ class SimpleToadletServerTest {
     when(core.getNode().network().ticker()).thenReturn(ticker);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     when(client.getFetchContext()).thenReturn(fetchContext);
-    server.setRuntimeSupport(new CoreHttpShellRuntimeSupport(core));
+    server.setRuntimeSupport(new CoreHttpShellRuntimeSupport(core, appHost));
 
     AtomicInteger registrarCalls = new AtomicInteger();
     AtomicReference<FProxyRegistrarDependencies> dependenciesRef = new AtomicReference<>();
@@ -285,6 +287,7 @@ class SimpleToadletServerTest {
     assertEquals(1, registrarCalls.get());
     assertSame(client, dependenciesRef.get().client());
     assertSame(runtimePorts, dependenciesRef.get().runtimePorts());
+    assertSame(appHost, dependenciesRef.get().appHost());
     assertSame(nodeConfig, dependenciesRef.get().config());
     assertInstanceOf(FProxyToadlet.class, dependenciesRef.get().fproxy());
   }

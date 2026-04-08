@@ -18,7 +18,7 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
  * @param shellDescription short description of the shell purpose
  * @param shellRoot canonical mount path for the shell page
  * @param assetRoot canonical mount path for shell-owned static assets
- * @param platformApiRoot read-only Platform API v1 root used by the browser-side fetches
+ * @param platformApiRoot Platform API v1 root used by the browser-side fetches
  * @param legacyRoot legacy HTTP root used for deep links back to existing pages
  * @param legacyLinks user-visible deep links back to the legacy admin pages
  */
@@ -37,7 +37,7 @@ public record WebShellBootstrap(
   public static final String DEFAULT_SHELL_DESCRIPTION =
       "Read-only node management powered by Platform API v1.";
 
-  /** Default read-only Platform API v1 root. */
+  /** Default Platform API v1 root used by the shell bootstrap payload. */
   public static final String DEFAULT_PLATFORM_API_ROOT = "/api/v1/";
 
   /** Default root for legacy deep links. */

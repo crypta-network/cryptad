@@ -5,10 +5,9 @@ import java.util.Map;
 /**
  * Minimal JSON writer used by the initial Platform API surface.
  *
- * <p>The writer supports the limited set of JSON value types required by the read-only Platform API
- * v1: strings, booleans, integers/longs, {@code null}, arrays, and nested objects. Callers are
- * expected to supply already-structured JDK values such as {@link Map}, {@link Iterable}, and
- * scalar types.
+ * <p>The writer supports the limited set of JSON value types required by Platform API v1: strings,
+ * booleans, integers/longs, {@code null}, arrays, and nested objects. Callers are expected to
+ * supply already-structured JDK values such as {@link Map}, {@link Iterable}, and scalar types.
  */
 public final class PlatformApiJsonWriter {
   /** Prevents instantiation of this static helper type. */
@@ -35,17 +34,22 @@ public final class PlatformApiJsonWriter {
    * @throws IllegalArgumentException if {@code value} has an unsupported type
    */
   private static void appendValue(Object value, StringBuilder json) {
-    if (value == null) {
-      json.append("null");
-      return;
-    }
-    if (value instanceof String stringValue) {
-      appendString(stringValue, json);
-      return;
-    }
-    if (value instanceof Boolean booleanValue) {
-      json.append(booleanValue);
-      return;
+    switch (value) {
+      case null -> {
+        json.append("null");
+        return;
+      }
+      case String stringValue -> {
+        appendString(stringValue, json);
+        return;
+      }
+      case Boolean booleanValue -> {
+        json.append(booleanValue);
+        return;
+      }
+      default -> {
+        // no ops
+      }
     }
     if (value instanceof Integer
         || value instanceof Long
@@ -54,25 +58,30 @@ public final class PlatformApiJsonWriter {
       json.append(value);
       return;
     }
-    if (value instanceof Float floatValue) {
-      appendFloatingPoint(floatValue, json);
-      return;
-    }
-    if (value instanceof Double doubleValue) {
-      appendFloatingPoint(doubleValue, json);
-      return;
-    }
-    if (value instanceof Enum<?> enumValue) {
-      appendString(enumValue.name(), json);
-      return;
-    }
-    if (value instanceof Map<?, ?> mapValue) {
-      appendObject(mapValue, json);
-      return;
-    }
-    if (value instanceof Iterable<?> iterableValue) {
-      appendArray(iterableValue, json);
-      return;
+    switch (value) {
+      case Float floatValue -> {
+        appendFloatingPoint(floatValue, json);
+        return;
+      }
+      case Double doubleValue -> {
+        appendFloatingPoint(doubleValue, json);
+        return;
+      }
+      case Enum<?> enumValue -> {
+        appendString(enumValue.name(), json);
+        return;
+      }
+      case Map<?, ?> mapValue -> {
+        appendObject(mapValue, json);
+        return;
+      }
+      case Iterable<?> iterableValue -> {
+        appendArray(iterableValue, json);
+        return;
+      }
+      default -> {
+        // no ops
+      }
     }
 
     throw new IllegalArgumentException(

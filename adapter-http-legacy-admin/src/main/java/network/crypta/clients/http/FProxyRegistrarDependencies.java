@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
@@ -21,11 +22,16 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * @param client shared interactive client used by registered HTTP toadlets
  * @param runtimePorts detached runtime ports exposed to the HTTP shell
+ * @param appHost shared AppHost instance exposed through the Platform API bridge
  * @param config node configuration used to list sub-config toadlets
  * @param fproxy prebuilt root FProxy toadlet handed to the registrar for root-path registration
  */
 record FProxyRegistrarDependencies(
-    HighLevelSimpleClient client, RuntimePorts runtimePorts, Config config, FProxyToadlet fproxy) {
+    HighLevelSimpleClient client,
+    RuntimePorts runtimePorts,
+    AppHost appHost,
+    Config config,
+    FProxyToadlet fproxy) {
   /**
    * Creates a validated dependency bundle for {@link FProxyRegistrar}.
    *
@@ -35,6 +41,7 @@ record FProxyRegistrarDependencies(
    *
    * @param client shared interactive client used by registered HTTP toadlets during registration
    * @param runtimePorts runtime-spi ports exposed to HTTP-layer toadlets and helper pages
+   * @param appHost shared AppHost instance exposed through the Platform API bridge
    * @param config node configuration used to list and filter sub-config toadlets
    * @param fproxy prebuilt root FProxy toadlet that is registered at the HTTP root path
    * @throws NullPointerException if any required collaborator is absent at construction time
@@ -42,6 +49,7 @@ record FProxyRegistrarDependencies(
   FProxyRegistrarDependencies {
     Objects.requireNonNull(client);
     Objects.requireNonNull(runtimePorts);
+    Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
     Objects.requireNonNull(fproxy);
   }
