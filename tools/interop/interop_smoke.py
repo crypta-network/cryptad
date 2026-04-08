@@ -390,15 +390,28 @@ def ensure_hyphanet_asset(cache_dir: Path) -> tuple[Path, Path]:
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     asset_path = cache_dir / asset_name
-    if not asset_path.exists():
-        urlretrieve(release_url, asset_path)
+    temp_asset_path = asset_path.with_name(asset_path.name + ".download")
 
-    actual_sha256 = sha256sum(asset_path)
-    if actual_sha256 != expected_sha256:
-        raise RuntimeError(
-            f"Hyphanet asset checksum mismatch for {asset_path}: "
-            f"expected {expected_sha256}, got {actual_sha256}"
-        )
+    def download_asset() -> None:
+        if temp_asset_path.exists():
+            temp_asset_path.unlink()
+        urlretrieve(release_url, temp_asset_path)
+        downloaded_sha256 = sha256sum(temp_asset_path)
+        if downloaded_sha256 != expected_sha256:
+            temp_asset_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Hyphanet asset checksum mismatch for downloaded {asset_path}: "
+                f"expected {expected_sha256}, got {downloaded_sha256}"
+            )
+        temp_asset_path.replace(asset_path)
+
+    if asset_path.exists():
+        actual_sha256 = sha256sum(asset_path)
+        if actual_sha256 != expected_sha256:
+            asset_path.unlink()
+            download_asset()
+    else:
+        download_asset()
 
     extract_root = cache_dir / "hyphanet-root"
     if extract_root.exists():
