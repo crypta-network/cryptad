@@ -520,11 +520,11 @@ public final class AppsApiHandler {
    * @return structured Platform API exception
    */
   private PlatformApiException startFailure(String appId, AppHostException failure) {
-    if (!installed(appId)) {
-      return appNotFound();
-    }
     if (appHost.status(appId).isPresent()) {
       return conflict("app is already running: " + appId);
+    }
+    if (!installed(appId)) {
+      return appNotFound();
     }
     return internalError(messageOrDefault(failure, "Failed to start app."));
   }
@@ -541,11 +541,11 @@ public final class AppsApiHandler {
    * @return structured Platform API exception
    */
   private PlatformApiException uninstallFailure(String appId, AppHostException failure) {
-    if (!installed(appId)) {
-      return appNotFound();
-    }
     if (appHost.status(appId).isPresent()) {
       return conflict("cannot uninstall a running app: " + appId);
+    }
+    if (!installed(appId)) {
+      return appNotFound();
     }
     return internalError(messageOrDefault(failure, "Failed to uninstall app."));
   }

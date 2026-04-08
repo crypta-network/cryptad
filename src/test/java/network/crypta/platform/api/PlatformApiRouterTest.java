@@ -626,6 +626,26 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppStartRaceFindsRunningAfterManifestBecomesUnreadable_expectConflictJson()
+      throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed))
+        .thenThrow(new IOException("corrupt manifest"));
+    when(appHost.status(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(null, runningSnapshot()));
+    when(appHost.start(APP_ID)).thenThrow(new AppHostException("app is already running: alpha"));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app is already running: alpha\"}}",
+        response.body());
+  }
+
+  @Test
   void route_whenAppStopRequested_expectStoppedSummaryJson() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
     when(appHost.stop(APP_ID)).thenReturn(true);
@@ -697,6 +717,29 @@ class PlatformApiRouterTest {
     assertEquals("Not Found", response.reasonPhrase());
     assertEquals(
         "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+  }
+
+  @Test
+  void route_whenAppUninstallRaceFindsRunningAfterManifestBecomesUnreadable_expectConflictJson()
+      throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed))
+        .thenThrow(new IOException("corrupt manifest"));
+    when(appHost.status(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(null, runningSnapshot()));
+    doThrow(new AppHostException("cannot uninstall a running app: alpha"))
+        .when(appHost)
+        .uninstall(APP_ID);
+
+    PlatformApiResponse response =
+        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"cannot uninstall a running app:"
+            + " alpha\"}}",
+        response.body());
   }
 
   @Test
