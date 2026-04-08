@@ -584,15 +584,15 @@ def wait_for_peer_connection(
     raise RuntimeError("Darknet peers did not reach CONNECTED on both nodes within timeout")
 
 
-def put_and_wait_for_success(
-    client: FcpClient,
+def build_client_put_fields(
     identifier: str,
     uri: str,
     payload: bytes,
     content_type: str | None,
     *,
     local_request_only: bool = False,
-) -> str:
+    get_chk_only: bool = False,
+) -> dict[str, str]:
     fields = {
         "Identifier": identifier,
         "URI": uri,
@@ -608,9 +608,30 @@ def put_and_wait_for_success(
         fields["Metadata.ContentType"] = content_type
     if local_request_only:
         fields["LocalRequestOnly"] = "true"
+    if get_chk_only:
+        fields["GetCHKOnly"] = "true"
+    return fields
+
+
+def request_put_uri(
+    client: FcpClient,
+    identifier: str,
+    uri: str,
+    payload: bytes,
+    content_type: str | None,
+    *,
+    local_request_only: bool = False,
+) -> str:
     client.send(
         "ClientPut",
-        fields,
+        build_client_put_fields(
+            identifier,
+            uri,
+            payload,
+            content_type,
+            local_request_only=local_request_only,
+            get_chk_only=True,
+        ),
         payload=payload,
     )
 
@@ -624,7 +645,58 @@ def put_and_wait_for_success(
                 generated_uri = str(uri_value)
         if name == "PutSuccessful":
             if generated_uri is None:
-                raise RuntimeError(f"{client.name} PutSuccessful did not include a URI: {message}")
+                raise RuntimeError(
+                    f"{client.name} GetCHKOnly put completed without a URI: {message}"
+                )
+            return generated_uri
+        if name in {"PutFailed", "ProtocolError"}:
+            raise RuntimeError(f"{client.name} GetCHKOnly put failed: {message}")
+
+
+def put_and_wait_for_success(
+    client: FcpClient,
+    identifier: str,
+    uri: str,
+    payload: bytes,
+    content_type: str | None,
+    *,
+    local_request_only: bool = False,
+    uri_fallback: str | None = None,
+) -> str:
+    client.send(
+        "ClientPut",
+        build_client_put_fields(
+            identifier,
+            uri,
+            payload,
+            content_type,
+            local_request_only=local_request_only,
+        ),
+        payload=payload,
+    )
+
+    generated_uri = uri_fallback
+    saw_generated_metadata = False
+    while True:
+        message = client.read_message(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        name = message["name"]
+        if name in {"URIGenerated", "PutFetchable", "PutSuccessful"}:
+            uri_value = message["fields"].get("URI")
+            if uri_value is not None:
+                generated_uri = str(uri_value)
+        if name == "GeneratedMetadata":
+            saw_generated_metadata = True
+        if name == "PutSuccessful":
+            if generated_uri is None:
+                if saw_generated_metadata:
+                    raise RuntimeError(
+                        f"{client.name} PutSuccessful completed without a URI after "
+                        f"GeneratedMetadata; use GetCHKOnly preflight when a metadata-wrapped "
+                        f"put needs a fetch URI: {message}"
+                    )
+                raise RuntimeError(
+                    f"{client.name} PutSuccessful did not include a URI: {message}"
+                )
             return generated_uri
         if name in {"PutFailed", "ProtocolError"}:
             raise RuntimeError(f"{client.name} put failed: {message}")

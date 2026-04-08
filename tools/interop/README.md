@@ -35,6 +35,11 @@ live-wire smoke signal. In the current two-node baseline, the Cryptad-origin CHK
 local-only insert for determinism, while the reverse Hyphanet-origin CHK and SSK checks use
 ordinary inserts because those are the stable peer-fetchable paths in this setup.
 
+For ad hoc metadata-wrapped insert probes, the harness also supports a `GetCHKOnly` preflight.
+That is useful because Hyphanet 1506 can complete a live metadata-path `ClientPut` without
+including the final `URI` in `PutFetchable` or `PutSuccessful`, even though the same request
+returns a deterministic CHK during `GetCHKOnly`.
+
 The peering baseline is intentionally darknet-only and deterministic. Opennet, browser automation,
 and HTML scraping are out of scope for this smoke.
 
