@@ -1,9 +1,21 @@
 package network.crypta.platform.api;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.InstalledAppPaths;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.RunningAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.runtime.spi.ConfigFieldSet;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConfigSection;
@@ -34,11 +46,14 @@ import network.crypta.runtime.spi.UnknownPeerException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -46,6 +61,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class PlatformApiRouterTest {
+  private static final Instant STARTED_AT = Instant.parse("2024-01-02T03:04:05Z");
+  private static final String APP_ID = "alpha";
+  private static final String INSTALL_ROUTE_APP_ID = "install";
+  private static final String APP_NAME = "Alpha App";
+  private static final String APP_VERSION = "2.1.0";
+  private static final String APP_UI_ENTRY = "ui/index.html";
+  private static final long APP_PID = 4242L;
 
   @Mock private RuntimePorts runtimePorts;
   @Mock private NodeInfoPort nodeInfoPort;
@@ -53,6 +75,9 @@ class PlatformApiRouterTest {
   @Mock private ConfigPort configPort;
   @Mock private ConnectivityPort connectivityPort;
   @Mock private SecurityLevelsPort securityLevelsPort;
+  @Mock private AppHost appHost;
+
+  @TempDir private Path tempDir;
 
   private PlatformApiRouter router;
 
@@ -63,7 +88,7 @@ class PlatformApiRouterTest {
     when(runtimePorts.config()).thenReturn(configPort);
     when(runtimePorts.connectivity()).thenReturn(connectivityPort);
     when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
-    router = new PlatformApiRouter(runtimePorts);
+    router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
   @Test
@@ -328,8 +353,530 @@ class PlatformApiRouterTest {
         "{\"CURRENT\":{\"enabled\":\"true\",\"node\":{\"name\":\"alpha\"}}}", response.body());
   }
 
+  @Test
+  void route_whenAppsListRequested_expectAppsEnvelopeAndMergedRunningState() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    RunningAppSnapshot running = runningSnapshot();
+    when(appHost.listInstalled()).thenReturn(List.of(installed));
+    when(appHost.listRunning()).thenReturn(List.of(running));
+
+    PlatformApiResponse response = router.route(request("GET", List.of("apps"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            Map.of("apps", List.of(summary(true, true, APP_PID, STARTED_AT)))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppsDescribeRequested_expectAppEnvelopeAndMergedRunningState() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    RunningAppSnapshot running = runningSnapshot();
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running));
+
+    PlatformApiResponse response = router.route(request("GET", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, true, APP_PID, STARTED_AT))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppIdMatchesInstallRoute_expectDescribeJson() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot(INSTALL_ROUTE_APP_ID);
+    when(appHost.describe(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(true))), response.body());
+  }
+
+  @Test
+  void route_whenAppIdMatchesInstallRouteAndDeleteRequested_expectUninstallJson() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot(INSTALL_ROUTE_APP_ID);
+    when(appHost.describe(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        router.route(request("DELETE", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(false))), response.body());
+  }
+
+  @Test
+  void route_whenInstallOptionsRequested_expectMethodNotAllowedWithAllowPost() {
+    PlatformApiResponse response =
+        router.route(request("OPTIONS", List.of("apps", "install"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals("Method Not Allowed", response.reasonPhrase());
+    assertEquals(Map.of("Allow", "POST"), response.headers());
+    assertEquals(
+        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
+            + " requests only.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenInstallHeadRequested_expectMethodNotAllowedWithAllowPost() {
+    PlatformApiResponse response =
+        router.route(request("HEAD", List.of("apps", "install"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals("Method Not Allowed", response.reasonPhrase());
+    assertEquals(Map.of("Allow", "POST"), response.headers());
+    assertEquals(
+        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
+            + " requests only.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppMissing_expectJson404() throws Exception {
+    when(appHost.describe("missing")).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("apps", "missing"), Map.of()));
+
+    assertEquals(404, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+  }
+
+  @Test
+  void route_whenAppStartRequested_expectRunningSummaryWithoutToken() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    InstalledAppSnapshot launched = installedSnapshot(APP_ID, "Alpha App 2", "2.2.0", "ui/v2.html");
+    RunningAppSnapshot running = runningSnapshot(launched);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.start(APP_ID)).thenReturn(running);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            Map.of(
+                "app",
+                summaryFor(
+                    APP_ID,
+                    "Alpha App 2",
+                    "2.2.0",
+                    "ui/v2.html",
+                    true,
+                    true,
+                    APP_PID,
+                    STARTED_AT))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppInstallRequested_expectCreatedJsonAndNoLaunchToken() throws Exception {
+    Path stagedDir = stageApp();
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.installFromDirectory(stagedDir)).thenReturn(installed);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(201, response.statusCode());
+    assertEquals("Created", response.reasonPhrase());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppInstallMissingStagedDir_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", "install"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_query_parameter\",\"message\":\"Missing required query"
+            + " parameter 'stagedDir'.\"}}",
+        response.body());
+    verifyNoInteractions(appHost);
+  }
+
+  @Test
+  void route_whenAppInstallStagedDirBlank_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(
+            request("POST", List.of("apps", "install"), Map.of("stagedDir", List.of("   "))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_query_parameter\",\"message\":\"Missing required query"
+            + " parameter 'stagedDir'.\"}}",
+        response.body());
+    verifyNoInteractions(appHost);
+  }
+
+  @Test
+  void route_whenAppInstallValidationFails_expectBadRequestJson() throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenAnswer(_ -> Optional.empty());
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(new AppHostException("staging directory must not contain symlinks: bad-link"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"staging directory must not"
+            + " contain symlinks: bad-link\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppInstallManagedLayoutFails_expectInternalErrorJson() throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenAnswer(_ -> Optional.empty());
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(
+            new AppHostException(
+                "installedAppsDir must not be a symlink, reparse point, or alias:"
+                    + " /srv/node/apps/installed"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(500, response.statusCode());
+    assertEquals("Internal Server Error", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"internal_error\",\"message\":\"Failed to install app.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppStartRepeated_expectConflictJson() {
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app is already running: alpha\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppAlreadyRunningAndManifestUnreadable_expectConflictJson() throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app is already running: alpha\"}}",
+        response.body());
+    verify(appHost).status(APP_ID);
+    verify(appHost, never()).describe(APP_ID);
+    verify(appHost, never()).start(APP_ID);
+  }
+
+  @Test
+  void route_whenAppStartRacesToRunning_expectConflictJson() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID)).thenAnswer(_ -> Optional.of(installed));
+    when(appHost.status(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(null, runningSnapshot()));
+    when(appHost.start(APP_ID)).thenThrow(new AppHostException("app is already running: alpha"));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app is already running: alpha\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppStopRequested_expectStoppedSummaryJson() throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+    when(appHost.stop(APP_ID)).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "stop"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
+        response.body());
+  }
+
+  @Test
+  void route_whenRunningAppManifestUnreadableDuringStop_expectStoppedSummaryJson()
+      throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+    when(appHost.stop(APP_ID)).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "stop"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals("OK", response.reasonPhrase());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppUninstallRequested_expectInstalledFalseSummaryJson() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, false, null, null))),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppManifestUnreadableDuringUninstall_expectCleanupSummaryJson() throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
+
+    PlatformApiResponse response =
+        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals("OK", response.reasonPhrase());
+    assertEquals(PlatformApiJsonWriter.write(Map.of("app", unknownSummary())), response.body());
+  }
+
+  @Test
+  void route_whenAppUninstallRacesToMissing_expectNotFoundJson() throws Exception {
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(appHost.describe(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(installed, null));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    doThrow(new AppHostException("app is not installed: alpha")).when(appHost).uninstall(APP_ID);
+
+    PlatformApiResponse response =
+        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(404, response.statusCode());
+    assertEquals("Not Found", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+  }
+
+  @Test
+  void route_whenAppInstallRepeated_expectConflictJson() throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app already installed: alpha\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenInstallRacesToDifferentAlreadyInstalledApp_expectConflictJson() throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(new AppHostException("app already installed: beta"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app already installed: beta\"}}",
+        response.body());
+  }
+
   private static PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
+  }
+
+  private InstalledAppSnapshot installedSnapshot() {
+    return installedSnapshot(APP_ID);
+  }
+
+  private InstalledAppSnapshot installedSnapshot(String appId) {
+    return installedSnapshot(appId, APP_NAME, APP_VERSION, APP_UI_ENTRY);
+  }
+
+  private InstalledAppSnapshot installedSnapshot(
+      String appId, String appName, String appVersion, String appUiEntry) {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            appId,
+            appName,
+            appVersion,
+            "bin/launch",
+            appUiEntry,
+            List.of("network.access", "file.read"),
+            4096L,
+            8192L);
+    InstalledAppPaths paths =
+        new InstalledAppPaths(
+            appId,
+            tempDir.resolve("installed").resolve(appId),
+            tempDir.resolve("data").resolve(appId),
+            tempDir.resolve("cache").resolve(appId),
+            tempDir.resolve("run").resolve(appId));
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+
+  private RunningAppSnapshot runningSnapshot() {
+    InstalledAppSnapshot installed = installedSnapshot();
+    return runningSnapshot(installed);
+  }
+
+  private RunningAppSnapshot runningSnapshot(InstalledAppSnapshot installed) {
+    return new RunningAppSnapshot(
+        installed.manifest(),
+        installed.paths(),
+        "token-" + installed.manifest().appId(),
+        APP_PID,
+        STARTED_AT);
+  }
+
+  private Path stageApp() throws Exception {
+    Path stagedDir = Files.createTempDirectory(tempDir, "staged-");
+    Files.writeString(
+        stagedDir.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch
+        app.ui.entry=%s
+        app.permissions=network.access,file.read
+        quota.data.bytes=4096
+        quota.cache.bytes=8192
+        """
+            .formatted(APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY));
+    return stagedDir;
+  }
+
+  private static Map<String, Object> summary(
+      boolean installed, boolean running, Long pid, Instant startedAt) {
+    return summaryFor(
+        APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, running, pid, startedAt);
+  }
+
+  private static Map<String, Object> installRouteSummary(boolean installed) {
+    return summaryFor(
+        INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, false, null, null);
+  }
+
+  private static Map<String, Object> summaryFor(
+      String appId,
+      String appName,
+      String appVersion,
+      String appUiEntry,
+      boolean installed,
+      boolean running,
+      Long pid,
+      Instant startedAt) {
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(10);
+    summary.put("appId", appId);
+    summary.put("name", appName);
+    summary.put("version", appVersion);
+    summary.put("uiEntry", appUiEntry);
+    summary.put("permissions", List.of("network.access", "file.read"));
+    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
+    quota.put("dataBytes", 4096L);
+    quota.put("cacheBytes", 8192L);
+    summary.put("quota", quota);
+    summary.put("installed", installed);
+    summary.put("running", running);
+    summary.put("pid", pid);
+    summary.put("startedAt", startedAt == null ? null : startedAt.toString());
+    return summary;
+  }
+
+  private static Map<String, Object> unknownSummary() {
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(10);
+    summary.put("appId", APP_ID);
+    summary.put("name", null);
+    summary.put("version", null);
+    summary.put("uiEntry", null);
+    summary.put("permissions", List.of());
+    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
+    quota.put("dataBytes", null);
+    quota.put("cacheBytes", null);
+    summary.put("quota", quota);
+    summary.put("installed", false);
+    summary.put("running", false);
+    summary.put("pid", null);
+    summary.put("startedAt", null);
+    return summary;
+  }
+
+  private static final class TwoStepOptionalAnswer<T>
+      implements org.mockito.stubbing.Answer<Optional<T>> {
+    private T current;
+    private final T next;
+
+    private TwoStepOptionalAnswer(T current, T next) {
+      this.current = current;
+      this.next = next;
+    }
+
+    @Override
+    public Optional<T> answer(org.mockito.invocation.InvocationOnMock invocation) {
+      T result = current;
+      current = next;
+      return Optional.ofNullable(result);
+    }
   }
 }

@@ -10,6 +10,7 @@ import network.crypta.config.IntCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -52,6 +53,7 @@ class FProxyRegistrarTest {
   private RuntimePorts runtimePorts;
 
   @Mock private HighLevelSimpleClient client;
+  @Mock private AppHost appHost;
   @Mock private FProxyToadlet fproxy;
   @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private WelcomePagePort welcomePagePort;
@@ -98,7 +100,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
 
     verify(server)
         .registerMenu("/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
@@ -206,7 +208,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()
@@ -226,7 +228,7 @@ class FProxyRegistrarTest {
         .thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT, WebShellPaths.SHELL_ROOT);
 
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
 
     ToadletRegistration webShellRegistration =
         capturedRegistrations().stream()

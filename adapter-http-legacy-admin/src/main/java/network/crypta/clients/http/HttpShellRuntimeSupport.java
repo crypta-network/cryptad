@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import network.crypta.config.Config;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
@@ -39,6 +40,16 @@ public interface HttpShellRuntimeSupport {
    * @return live configuration object used by HTTP shell callbacks and startup checks
    */
   Config config();
+
+  /**
+   * Returns the long-lived AppHost instance used by the platform control plane.
+   *
+   * <p>The returned host is shared across the current node lifecycle. Callers should treat it as a
+   * managed runtime service rather than constructing new AppHost instances per request.
+   *
+   * @return shared AppHost instance used by Platform API app-management routes
+   */
+  AppHost appHost();
 
   /**
    * Returns the ticker used for shell tasks that rely on the daemon scheduler.

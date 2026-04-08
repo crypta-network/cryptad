@@ -1,6 +1,7 @@
 package network.crypta.clients.http.bridge;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FProxyFetchTracker;
@@ -16,9 +17,16 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.RunningAppSnapshot;
+import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Adapts {@link NodeClientCore} to the narrow runtime surface used by {@link SimpleToadletServer}.
@@ -27,13 +35,16 @@ import network.crypta.support.Ticker;
  * instead of letting the server reach directly into the daemon core. Callers normally create one
  * instance during a server bootstrap and then treat it as an immutable delegate. The adapter is
  * intentionally HTTP-local rather than a reusable platform API: it still exposes alerts, config
- * storage, upload permission checks, and FProxy bootstrap work because those behaviors remain part
- * of the HTTP shell in the current architecture.
+ * storage, upload permission checks, AppHost access, and FProxy bootstrap work because those
+ * behaviors remain part of the HTTP shell in the current architecture.
  *
  * @param core daemon core that backs delegated shell services and FProxy bootstrap wiring
+ * @param appHost shared AppHost instance used by the platform control plane
  */
-public record CoreHttpShellRuntimeSupport(NodeClientCore core)
+public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
+  private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
+
   /**
    * Creates a core-backed HTTP runtime adapter.
    *
@@ -44,7 +55,19 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core)
    * @throws NullPointerException if {@code core} is {@code null}
    */
   public CoreHttpShellRuntimeSupport(NodeClientCore core) {
-    this.core = Objects.requireNonNull(core);
+    this(core, createManagedAppHost(Objects.requireNonNull(core, "core")));
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with an explicit AppHost.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost) {
+    this.core = Objects.requireNonNull(core, "core");
+    this.appHost = Objects.requireNonNull(appHost, "appHost");
   }
 
   @Override
@@ -55,6 +78,11 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core)
   @Override
   public Config config() {
     return core.getNode().getConfig();
+  }
+
+  @Override
+  public AppHost appHost() {
+    return appHost;
   }
 
   @Override
@@ -125,7 +153,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core)
             new RequestClientBuilder().realTime().build());
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
     return HttpShellFProxyBootstrap.create(
-        bookmarkManager, client, fproxyRuntimeSupport, fetchTracker);
+        bookmarkManager, client, appHost, fproxyRuntimeSupport, fetchTracker);
   }
 
   /**
@@ -156,5 +184,66 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core)
       case HIGH -> PhysicalThreatLevel.HIGH;
       case MAXIMUM -> PhysicalThreatLevel.MAXIMUM;
     };
+  }
+
+  /**
+   * Creates the shared AppHost instance and registers its shutdown cleanup.
+   *
+   * @param core daemon core that exposes the current node and temp-directory layout
+   * @return managed AppHost instance rooted in the current node layout
+   */
+  private static AppHost createManagedAppHost(NodeClientCore core) {
+    AppHost appHost = createAppHost(core);
+    SemiOrderedShutdownHook.get().addEarlyJob(createAppHostShutdownJob(appHost));
+    return appHost;
+  }
+
+  /**
+   * Creates the single AppHost instance shared by the current HTTP bridge.
+   *
+   * <p>The host is rooted in the live node/core directories that the current daemon instance has
+   * already selected. That keeps app installs, cache data, and run files attached to this node
+   * rather than a fresh global directory lookup that could ignore per-instance overrides.
+   *
+   * @param core daemon core that exposes the current node and temp-directory layout
+   * @return long-lived AppHost instance rooted in the current node layout
+   */
+  private static AppHost createAppHost(NodeClientCore core) {
+    return new LocalProcessAppHost(
+        new AppHostLayout(
+            core.getNode().nodeDir().dir().toPath(),
+            core.getPersistentTempDir().toPath(),
+            core.getNode().runDir().dir().toPath()));
+  }
+
+  /**
+   * Creates the shutdown job that stops any AppHost-managed child processes on node exit.
+   *
+   * <p>The shared AppHost is otherwise only reachable through the HTTP runtime support. Registering
+   * this early shutdown job keeps app processes from surviving node shutdown and leaving stale run
+   * state behind for the next boot.
+   *
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @return unstarted shutdown thread suitable for {@link SemiOrderedShutdownHook}
+   */
+  static Thread createAppHostShutdownJob(AppHost appHost) {
+    Objects.requireNonNull(appHost, "appHost");
+    return new Thread(() -> stopRunningAppsOnShutdown(appHost), "Shutdown AppHost");
+  }
+
+  private static void stopRunningAppsOnShutdown(AppHost appHost) {
+    for (RunningAppSnapshot runningApp : appHost.listRunning()) {
+      stopRunningAppOnShutdown(appHost, runningApp);
+    }
+  }
+
+  private static void stopRunningAppOnShutdown(AppHost appHost, RunningAppSnapshot runningApp) {
+    try {
+      appHost.stop(runningApp.appId());
+    } catch (IOException e) {
+      LOG.warn("Failed to stop app during shutdown: {}", runningApp.appId(), e);
+    } catch (RuntimeException e) {
+      LOG.warn("Unexpected app shutdown failure: {}", runningApp.appId(), e);
+    }
   }
 }

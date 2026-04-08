@@ -1,0 +1,574 @@
+package network.crypta.platform.api.apps;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.RunningAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
+
+/**
+ * App-management endpoint family for Platform API v1.
+ *
+ * <p>The handler keeps the transport-neutral AppHost surface small and explicit. It performs
+ * request-parameter validation, maps AppHost snapshots onto stable JSON-friendly summaries, and
+ * leaves the legacy HTTP bridge responsible only for authentication and byte-level response I/O.
+ *
+ * <p>Callers typically reach this type through {@code PlatformApiRouter} when servicing {@code
+ * /api/v1/apps/...} requests. The handler does not parse request bodies or manage authentication
+ * state. Instead, it accepts already-decoded path and query inputs, applies the minimal validation
+ * needed for the app-management contract, and delegates lifecycle work to the shared {@link
+ * AppHost}. That split keeps the Platform API surface transport-neutral while still exposing local
+ * AppHost control operations through stable HTTP-style semantics.
+ *
+ * <p>The returned maps are deliberately conservative operator-facing projections. They merge
+ * installation metadata with live process state, preserve deterministic field ordering for JSON
+ * serialization, and avoid leaking AppHost-internal details such as launch tokens or filesystem
+ * layout. Error mapping follows the Platform API v1 contract: malformed inputs become structured
+ * {@code 400} responses, missing apps become {@code 404}, lifecycle conflicts become {@code 409},
+ * and unexpected host-side failures remain {@code 500}.
+ *
+ * <ul>
+ *   <li>Inventory reads merge installed and running state into one summary shape.
+ *   <li>Mutation routes stay local and explicit: install, start, stop, and uninstall.
+ *   <li>Cleanup flows keep working even when installed manifests have become unreadable.
+ * </ul>
+ */
+public final class AppsApiHandler {
+  private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
+
+  /** Detached AppHost core used for app lifecycle and inventory operations. */
+  private final AppHost appHost;
+
+  /**
+   * Creates an app-management handler backed by the supplied AppHost.
+   *
+   * <p>The supplied host is expected to be a long-lived shared instance owned by bootstrap or
+   * composition code rather than a per-request object. This handler keeps only a reference to that
+   * dependency and performs no additional caching, so later AppHost reads always reflect the
+   * current host view of installed and running applications.
+   *
+   * @param appHost detached AppHost core used for app lifecycle operations
+   */
+  public AppsApiHandler(AppHost appHost) {
+    this.appHost = Objects.requireNonNull(appHost, "appHost");
+  }
+
+  /**
+   * Lists all installed apps with their merged running-state summary.
+   *
+   * <p>The returned list is suitable for the {@code {"apps":[...]}} Platform API envelope. Each
+   * entry starts from the AppHost-installed snapshot and then overlays live process information, if
+   * present, so callers do not need a second status request to determine whether an app is
+   * currently running.
+   *
+   * @return ordered list of app summaries suitable for JSON serialization
+   */
+  public List<Map<String, Object>> list() {
+    try {
+      Map<String, RunningAppSnapshot> runningByAppId = runningByAppId(appHost.listRunning());
+      return appHost.listInstalled().stream()
+          .map(
+              snapshot ->
+                  summarize(snapshot.manifest(), true, runningByAppId.get(snapshot.appId())))
+          .toList();
+    } catch (IOException _) {
+      throw internalError("Failed to list installed apps.");
+    }
+  }
+
+  /**
+   * Describes one installed app with its merged running-state summary.
+   *
+   * <p>The supplied identifier is normalized into the canonical AppHost form before lookup. A
+   * missing installation therefore reports the stable Platform API {@code app_not_found} error
+   * regardless of whether the original path segment differed only by case or formatting.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible app summary
+   */
+  public Map<String, Object> get(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    return summarize(installed.manifest(), true, appHost.status(normalizedAppId).orElse(null));
+  }
+
+  /**
+   * Installs one staged app bundle and returns the installed summary.
+   *
+   * <p>AppHost v1 installs only from a caller-supplied local staging directory. This method
+   * validates the {@code stagedDir} query parameter, parses the staged manifest early so conflicts
+   * can be reported before mutation, and returns a summary for the installed copy rather than the
+   * staging directory. Client-fixable bundle problems stay in the {@code 400} family, while
+   * concurrent reinstallation and already-installed cases are reported as {@code 409} conflicts.
+   *
+   * @param queryParameters decoded query parameters for the current request
+   * @return JSON-compatible app summary for the installed bundle
+   */
+  public Map<String, Object> install(Map<String, List<String>> queryParameters) {
+    Path stagedDir = parseStagedDirectory(queryParameters);
+    AppManifest manifest = parseManifest(stagedDir);
+    if (installed(manifest.appId())) {
+      throw conflict(APP_ALREADY_INSTALLED_PREFIX + manifest.appId());
+    }
+
+    try {
+      InstalledAppSnapshot installed = appHost.installFromDirectory(stagedDir);
+      return summarize(installed.manifest(), true, null);
+    } catch (AppHostException e) {
+      throw installFailure(manifest.appId(), e);
+    } catch (IOException _) {
+      throw internalError("Failed to install app.");
+    }
+  }
+
+  /**
+   * Starts one installed app and returns the running summary without exposing the launch token.
+   *
+   * <p>The method checks live status before it requires a readable installed manifest. That keeps
+   * repeated start requests idempotent from the caller's perspective even when a running app's
+   * installed manifest later becomes unreadable. On success, the summary is derived from the
+   * returned {@link RunningAppSnapshot}, so the response reflects the bundle that actually
+   * launched.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible app summary for the running app
+   */
+  public Map<String, Object> start(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    if (appHost.status(normalizedAppId).isPresent()) {
+      throw conflict("app is already running: " + normalizedAppId);
+    }
+    requireInstalled(normalizedAppId);
+
+    try {
+      RunningAppSnapshot running = appHost.start(normalizedAppId);
+      return summarize(running.manifest(), true, running);
+    } catch (AppHostException e) {
+      throw startFailure(normalizedAppId, e);
+    } catch (IOException _) {
+      throw internalError("Failed to start app.");
+    }
+  }
+
+  /**
+   * Stops one running app and returns the installed summary.
+   *
+   * <p>This path anchors on the live {@link RunningAppSnapshot} first, which allows callers to stop
+   * a damaged-but-running app even if its installed manifest can no longer be read safely. When no
+   * live process exists, the method still distinguishes "not running" from "not installed" so
+   * callers receive the stable conflict or not-found contract instead of a generic internal error.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible app summary after the app has stopped
+   */
+  public Map<String, Object> stop(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    RunningAppSnapshot running = appHost.status(normalizedAppId).orElse(null);
+    if (running == null) {
+      requireInstalled(normalizedAppId);
+      throw conflict("app is not running: " + normalizedAppId);
+    }
+
+    try {
+      if (!appHost.stop(normalizedAppId)) {
+        throw conflict("app is not running: " + normalizedAppId);
+      }
+      return summarize(running.manifest(), true, null);
+    } catch (IOException _) {
+      throw internalError("Failed to stop app.");
+    }
+  }
+
+  /**
+   * Uninstalls one stopped app and returns the final summary.
+   *
+   * <p>The response prefers the last readable installed snapshot, so callers get the normal summary
+   * shape after a successful uninstallation. If the installed manifest is already unreadable, the
+   * method still delegates to the AppHost uninstall path and falls back to a summary with
+   * manifest-derived fields set to {@code null}. That keeps cleanup flows available for corrupted
+   * installations without changing the top-level response envelope.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible app summary with {@code installed=false}
+   */
+  public Map<String, Object> uninstall(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    if (appHost.status(normalizedAppId).isPresent()) {
+      throw conflict("cannot uninstall a running app: " + normalizedAppId);
+    }
+    InstalledAppSnapshot installed = describeForUninstallSummary(normalizedAppId);
+
+    try {
+      appHost.uninstall(normalizedAppId);
+      return installed != null
+          ? summarize(installed.manifest(), false, null)
+          : summarizeUnknown(normalizedAppId);
+    } catch (AppHostException e) {
+      throw uninstallFailure(normalizedAppId, e);
+    } catch (IOException _) {
+      throw internalError("Failed to uninstall app.");
+    }
+  }
+
+  /**
+   * Requires that one app is installed and returns its installed snapshot.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return installed snapshot for the requested app
+   */
+  private InstalledAppSnapshot requireInstalled(String appId) {
+    try {
+      return appHost.describe(appId).orElseThrow(AppsApiHandler::appNotFound);
+    } catch (IOException _) {
+      throw internalError("Failed to read installed apps.");
+    }
+  }
+
+  /**
+   * Returns whether an app is already installed.
+   *
+   * @param appId stable application identifier
+   * @return {@code true} when the app is already installed
+   */
+  private boolean installed(String appId) {
+    try {
+      return appHost.describe(appId).isPresent();
+    } catch (IOException _) {
+      throw internalError("Failed to read installed apps.");
+    }
+  }
+
+  /**
+   * Attempts to read the installed snapshot for uninstallation response shaping.
+   *
+   * <p>Uninstall remains callable by app id even when the installed manifest is unreadable. This
+   * helper therefore treats read failures as "summary unavailable" rather than aborting the
+   * operation up front.
+   *
+   * @param appId stable application identifier
+   * @return installed snapshot when it can be read safely, otherwise {@code null}
+   */
+  private InstalledAppSnapshot describeForUninstallSummary(String appId) {
+    try {
+      return appHost.describe(appId).orElse(null);
+    } catch (IOException _) {
+      return null;
+    }
+  }
+
+  /**
+   * Converts the running-app list into a lookup keyed by app id.
+   *
+   * @param running running snapshots returned by the AppHost
+   * @return encounter-order-preserving running snapshot lookup
+   */
+  private static Map<String, RunningAppSnapshot> runningByAppId(List<RunningAppSnapshot> running) {
+    LinkedHashMap<String, RunningAppSnapshot> runningByAppId =
+        LinkedHashMap.newLinkedHashMap(running.size());
+    for (RunningAppSnapshot snapshot : running) {
+      runningByAppId.put(snapshot.appId(), snapshot);
+    }
+    return runningByAppId;
+  }
+
+  /**
+   * Extracts and validates the local staging directory from the request query.
+   *
+   * @param queryParameters decoded query parameters for the current request
+   * @return absolute staging directory path
+   */
+  private static Path parseStagedDirectory(Map<String, List<String>> queryParameters) {
+    String raw = PlatformApiParameters.requireString(queryParameters, "stagedDir");
+    try {
+      Path stagedDir = Path.of(raw).normalize();
+      if (!stagedDir.isAbsolute()) {
+        throw invalidQuery("Query parameter 'stagedDir' must be an absolute filesystem path.");
+      }
+      if (!Files.isDirectory(stagedDir, LinkOption.NOFOLLOW_LINKS)) {
+        throw invalidQuery("Query parameter 'stagedDir' must reference an existing directory.");
+      }
+      return stagedDir;
+    } catch (InvalidPathException _) {
+      throw invalidQuery("Query parameter 'stagedDir' must be a valid absolute filesystem path.");
+    }
+  }
+
+  /**
+   * Parses the staged app manifest so install requests can be rejected before mutation when the
+   * target app is already installed.
+   *
+   * @param stagedDir caller-supplied staged bundle directory
+   * @return parsed manifest for the staged bundle
+   */
+  private static AppManifest parseManifest(Path stagedDir) {
+    try {
+      return AppManifestParser.parse(stagedDir.resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    } catch (IOException _) {
+      throw invalidQuery("Query parameter 'stagedDir' must reference a valid staged app bundle.");
+    }
+  }
+
+  /**
+   * Builds one JSON-friendly app summary from the manifest and optional running snapshot.
+   *
+   * @param manifest normalized application manifest
+   * @param installed whether the app is still installed
+   * @param running running snapshot when the app is live, or {@code null}
+   * @return ordered JSON-compatible summary map
+   */
+  private static Map<String, Object> summarize(
+      AppManifest manifest, boolean installed, RunningAppSnapshot running) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    json.put("appId", manifest.appId());
+    json.put("name", manifest.appName());
+    json.put("version", manifest.appVersion());
+    json.put("uiEntry", manifest.uiEntry());
+    json.put("permissions", manifest.permissions());
+    json.put("quota", quota(manifest));
+    json.put("installed", installed);
+    json.put("running", running != null);
+    json.put("pid", running == null ? null : running.pid());
+    json.put("startedAt", running == null ? null : running.startedAt().toString());
+    return json;
+  }
+
+  /**
+   * Builds a fallback summary for operations that succeed after manifest reads already failed.
+   *
+   * <p>This keeps the response envelope stable for operator cleanup flows such as uninstalling a
+   * damaged app bundle whose manifest can no longer be parsed.
+   *
+   * @param appId normalized application identifier
+   * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
+   */
+  private static Map<String, Object> summarizeUnknown(String appId) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    json.put("appId", appId);
+    json.put("name", null);
+    json.put("version", null);
+    json.put("uiEntry", null);
+    json.put("permissions", List.of());
+    json.put("quota", unknownQuota());
+    json.put("installed", false);
+    json.put("running", false);
+    json.put("pid", null);
+    json.put("startedAt", null);
+    return json;
+  }
+
+  /**
+   * Builds the quota sub-object for one app manifest.
+   *
+   * @param manifest normalized application manifest
+   * @return ordered JSON-compatible quota map
+   */
+  private static Map<String, Object> quota(AppManifest manifest) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("dataBytes", manifest.dataQuotaBytes());
+    json.put("cacheBytes", manifest.cacheQuotaBytes());
+    return json;
+  }
+
+  private static Map<String, Object> unknownQuota() {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("dataBytes", null);
+    json.put("cacheBytes", null);
+    return json;
+  }
+
+  /**
+   * Creates the standard 400 error for malformed app-management requests.
+   *
+   * @param message validation failure message
+   * @return structured Platform API exception
+   */
+  private static PlatformApiException invalidQuery(String message) {
+    return new PlatformApiException(400, "invalid_query_parameter", message);
+  }
+
+  /**
+   * Creates the standard 400 error for staged bundles that fail AppHost validation.
+   *
+   * @param message validation failure message from the AppHost
+   * @return structured Platform API exception
+   */
+  private static PlatformApiException invalidBundle(String message) {
+    return new PlatformApiException(400, "invalid_app_bundle", message);
+  }
+
+  /**
+   * Creates the standard 404 error for missing app identifiers.
+   *
+   * @return structured Platform API exception
+   */
+  private static PlatformApiException appNotFound() {
+    return new PlatformApiException(404, "app_not_found", "App not found.");
+  }
+
+  /**
+   * Normalizes one path-supplied app identifier into the canonical AppHost form.
+   *
+   * @param appId raw application identifier extracted from the request path
+   * @return normalized lower-case app identifier
+   */
+  private static String normalizeAppId(String appId) {
+    try {
+      return AppManifest.normalizeAppId(appId);
+    } catch (IllegalArgumentException _) {
+      throw new PlatformApiException(
+          400, "invalid_app_id", "App identifier is not a valid AppHost id.");
+    }
+  }
+
+  /**
+   * Creates the standard 409 error for app state conflicts.
+   *
+   * @param message conflict message
+   * @return structured Platform API exception
+   */
+  private static PlatformApiException conflict(String message) {
+    return new PlatformApiException(409, "app_conflict", message);
+  }
+
+  /**
+   * Maps install-time AppHost contract failures onto stable client-facing status codes.
+   *
+   * <p>AppHost validation failures are caller-fixable 4xx responses. A concurrent reinstalling race
+   * is still reported as a conflict when the app became installed before the failed installation
+   * returned.
+   *
+   * @param appId manifest-derived application identifier for the staged bundle
+   * @param failure AppHost contract failure thrown during installation
+   * @return structured Platform API exception
+   */
+  private PlatformApiException installFailure(String appId, AppHostException failure) {
+    if (isAlreadyInstalledFailure(failure)) {
+      return conflict(messageOrDefault(failure, "App already installed."));
+    }
+    if (installed(appId)) {
+      return conflict(APP_ALREADY_INSTALLED_PREFIX + appId);
+    }
+    if (isInvalidAppBundleFailure(failure)) {
+      return invalidBundle(
+          messageOrDefault(failure, "Staged app bundle failed AppHost validation."));
+    }
+    return internalError("Failed to install app.");
+  }
+
+  /**
+   * Returns whether an install-time AppHost failure was caused by caller-supplied bundle input.
+   *
+   * <p>Install failures span both staged-bundle validation and host-managed layout validation. The
+   * API keeps only the former in the {@code 400 invalid_app_bundle} class; broken managed
+   * directories remain server-side {@code 500} errors so operators and automation do not treat them
+   * as caller-fixable input problems.
+   *
+   * @param failure AppHost contract failure thrown during installation
+   * @return {@code true} when the failure reflects staged-bundle or copied-bundle validation
+   */
+  private static boolean isInvalidAppBundleFailure(AppHostException failure) {
+    if (failure instanceof network.crypta.platform.apphost.manifest.AppManifestException) {
+      return true;
+    }
+    String message = failure.getMessage();
+    if (message == null || message.isBlank()) {
+      return false;
+    }
+    return message.startsWith("stagedAppDirectory ")
+        || message.startsWith("staging directory ")
+        || message.startsWith("copied manifest ")
+        || message.startsWith("copied app.exec ")
+        || message.startsWith("app.exec ");
+  }
+
+  /**
+   * Returns whether an install-time AppHost failure reported a concrete installation conflict.
+   *
+   * <p>This classifier trusts the AppHost failure that occurred during the actual installation
+   * attempt, which avoids reclassifying concurrent staged-directory swaps against a stale
+   * pre-validated app id from an earlier manifest parse.
+   *
+   * @param failure AppHost contract failure thrown during installation
+   * @return {@code true} when the failure explicitly reports an installed-app conflict
+   */
+  private static boolean isAlreadyInstalledFailure(AppHostException failure) {
+    String message = failure.getMessage();
+    return message != null && message.startsWith(APP_ALREADY_INSTALLED_PREFIX);
+  }
+
+  /**
+   * Maps start-time AppHost contract failures onto stable client-facing status codes.
+   *
+   * <p>Concurrent lifecycle races are reclassified from AppHost exceptions into the same 404/409
+   * API responses that precondition checks already use. Other start failures remain internal server
+   * errors.
+   *
+   * @param appId normalized application identifier for the current request
+   * @param failure AppHost contract failure thrown during start
+   * @return structured Platform API exception
+   */
+  private PlatformApiException startFailure(String appId, AppHostException failure) {
+    if (!installed(appId)) {
+      return appNotFound();
+    }
+    if (appHost.status(appId).isPresent()) {
+      return conflict("app is already running: " + appId);
+    }
+    return internalError(messageOrDefault(failure, "Failed to start app."));
+  }
+
+  /**
+   * Maps uninstall-time AppHost contract failures onto stable client-facing status codes.
+   *
+   * <p>Concurrent uninstall or restart races are reclassified into the existing 404/409 contract
+   * when the post-failure AppHost state is unambiguous. Other uninstall failures remain internal
+   * server errors.
+   *
+   * @param appId normalized application identifier for the current request
+   * @param failure AppHost contract failure thrown during uninstallation
+   * @return structured Platform API exception
+   */
+  private PlatformApiException uninstallFailure(String appId, AppHostException failure) {
+    if (!installed(appId)) {
+      return appNotFound();
+    }
+    if (appHost.status(appId).isPresent()) {
+      return conflict("cannot uninstall a running app: " + appId);
+    }
+    return internalError(messageOrDefault(failure, "Failed to uninstall app."));
+  }
+
+  /**
+   * Returns the failure message when present, otherwise a caller-supplied fallback.
+   *
+   * @param failure failure that may or may not include a human-readable message
+   * @param fallback fallback text for blank exception messages
+   * @return non-blank message suitable for the API error response
+   */
+  private static String messageOrDefault(Throwable failure, String fallback) {
+    String message = failure.getMessage();
+    return message == null || message.isBlank() ? fallback : message;
+  }
+
+  /**
+   * Creates the standard 500 error for unexpected AppHost failures.
+   *
+   * @param message operator-facing failure message
+   * @return structured Platform API exception
+   */
+  private static PlatformApiException internalError(String message) {
+    return new PlatformApiException(500, "internal_error", message);
+  }
+}

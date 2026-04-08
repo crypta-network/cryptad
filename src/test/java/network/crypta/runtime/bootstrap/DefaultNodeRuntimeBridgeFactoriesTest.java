@@ -15,6 +15,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.fcp.PersistentRequestEndpointServices;
 import network.crypta.runtime.http.HttpShellContainer;
@@ -89,6 +90,7 @@ class DefaultNodeRuntimeBridgeFactoriesTest {
     assertInstanceOf(network.crypta.clients.http.HttpShellRuntimeSupport.class, runtimeSupport);
     assertInstanceOf(CorePasswordFormPageRenderer.class, passwordFormPageRenderer);
     assertSame(fixture.core(), coreRuntimeSupport.core());
+    assertInstanceOf(AppHost.class, coreRuntimeSupport.appHost());
   }
 
   private static Object readField(Object target, String fieldName) {
@@ -105,8 +107,15 @@ class DefaultNodeRuntimeBridgeFactoriesTest {
     private Fixture() {
       this(mock(Node.class), mock(NodeClientCore.class), new File("run/IpToCountry.dat"));
 
+      ProgramDirectory nodeDir = mock(ProgramDirectory.class);
       ProgramDirectory runDir = mock(ProgramDirectory.class);
+      when(core.getNode()).thenReturn(node);
+      when(node.nodeDir()).thenReturn(nodeDir);
       when(node.runDir()).thenReturn(runDir);
+      when(nodeDir.dir()).thenReturn(new File("build/test-runtime/apphost/data/node"));
+      when(runDir.dir()).thenReturn(new File("build/test-runtime/apphost/run"));
+      when(core.getPersistentTempDir())
+          .thenReturn(new File("build/test-runtime/apphost/cache/persistent-temp"));
       when(runDir.file("IpToCountry.dat")).thenReturn(geoIpDb);
     }
 

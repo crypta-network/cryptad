@@ -48,6 +48,16 @@ public record PlatformApiResponse(
   }
 
   /**
+   * Builds a {@code 201 Created} JSON response for the supplied body value.
+   *
+   * @param value JSON-compatible body value to serialize
+   * @return {@code 201 Created} response carrying the serialized body
+   */
+  public static PlatformApiResponse created(Object value) {
+    return json(201, Map.of(), value);
+  }
+
+  /**
    * Builds a JSON error response using the standard Platform API error shape.
    *
    * @param statusCode transport-level status code to return
@@ -91,11 +101,13 @@ public record PlatformApiResponse(
    */
   static String reasonPhrase(int statusCode) {
     return switch (statusCode) {
+      case 201 -> "Created";
       case 200 -> "OK";
       case 400 -> "Bad Request";
       case 403 -> "Forbidden";
       case 404 -> "Not Found";
       case 405 -> "Method Not Allowed";
+      case 409 -> "Conflict";
       case 500 -> "Internal Server Error";
       default -> "Platform API";
     };

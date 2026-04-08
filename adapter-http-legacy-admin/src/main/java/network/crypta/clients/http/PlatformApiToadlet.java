@@ -6,12 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -21,7 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Thin legacy-HTTP bridge for the read-only Platform API v1.
+ * Thin legacy-HTTP bridge for Platform API v1.
  *
  * <p>This toadlet keeps all transport-neutral routing and JSON construction inside {@code
  * :platform-api}. Its responsibility is limited to enforcing the existing full-access expectation
@@ -41,6 +43,10 @@ public final class PlatformApiToadlet extends Toadlet {
   /** JSON media type advertised for every Platform API response emitted through the bridge. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
+  private static final String FORM_PASSWORD_PARAMETER = "formPassword";
+  private static final String STAGED_DIR_PARAMETER = "stagedDir";
+  private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = 4096;
+
   /**
    * Transport-neutral router that owns endpoint selection, validation, and JSON payload creation.
    */
@@ -57,11 +63,24 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
+   * Creates a platform API toadlet backed by runtime ports and AppHost.
+   *
+   * @param client high-level client helper retained by the toadlet base type
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through the app-management control surface
+   */
+  public PlatformApiToadlet(
+      HighLevelSimpleClient client, RuntimePorts runtimePorts, AppHost appHost) {
+    this(client, new PlatformApiRouter(runtimePorts, appHost));
+  }
+
+  /**
    * Creates a platform API toadlet backed by an already constructed router.
    *
    * <p>This constructor exists for tests and narrow composition sites that need to inject a router
    * with controlled behavior. Production wiring normally uses {@link
-   * #PlatformApiToadlet(HighLevelSimpleClient, RuntimePorts)} so the bridge owns router creation.
+   * #PlatformApiToadlet(HighLevelSimpleClient, RuntimePorts, AppHost)} so the bridge owns router
+   * creation.
    *
    * @param client high-level client helper retained by the toadlet base type
    * @param router transport-neutral router that handles request validation and response generation
@@ -78,11 +97,7 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
-   * Returns a JSON {@code 405} error for unsupported POST requests.
-   *
-   * <p>The Platform API v1 surface is read-only. POST still routes through the shared Platform API
-   * error handling path, so callers receive the same JSON error shape and {@code Allow: GET} header
-   * that they would see for other unsupported verbs.
+   * Routes POST requests through the Platform API router.
    *
    * @param uri request target as seen by the legacy HTTP shell
    * @param request decoded legacy HTTP request wrapper
@@ -118,7 +133,7 @@ public final class PlatformApiToadlet extends Toadlet {
    * Returns a JSON {@code 405} error for unsupported OPTIONS requests.
    *
    * <p>The bridge forwards OPTIONS through the router when the legacy shell dispatches it. That
-   * keeps the Platform API method advertisement consistent with the read-only v1 contract.
+   * keeps the Platform API method advertisement consistent with the mounted v1 contract.
    *
    * @param uri request target as seen by the legacy HTTP shell
    * @param request decoded legacy HTTP request wrapper
@@ -146,7 +161,7 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
-   * Returns a JSON {@code 405} error for unsupported DELETE requests.
+   * Routes DELETE requests through the Platform API router.
    *
    * @param uri request target as seen by the legacy HTTP shell
    * @param request decoded legacy HTTP request wrapper
@@ -192,6 +207,13 @@ public final class PlatformApiToadlet extends Toadlet {
     return MOUNT_PATH;
   }
 
+  /**
+   * Keeps the container from applying its POST-only password gate ahead of the bridge.
+   *
+   * <p>The bridge enforces the legacy form password explicitly after it has checked full-access
+   * permissions, which preserves the Platform API's JSON {@code 403} behavior for non-full-access
+   * callers and extends the same password requirement to DELETE.
+   */
   @Override
   public boolean allowPOSTWithoutPassword() {
     return true;
@@ -219,11 +241,11 @@ public final class PlatformApiToadlet extends Toadlet {
   /**
    * Routes a request through the Platform API and writes either a full or header-only reply.
    *
-   * <p>Legacy HTTP integration keeps full-access enforcement at the bridge boundary. Requests that
-   * pass the access check are converted into a transport-neutral {@link PlatformApiRequest} and
-   * delegated to the router. Unexpected runtime failures are converted into a structured {@code
-   * 500} response so callers keep the Platform API JSON contract even when the bridge logs the
-   * underlying error.
+   * <p>Legacy HTTP integration keeps full-access enforcement at the bridge boundary. Mutating
+   * requests then pass through the legacy form-password check before the bridge converts them into
+   * a transport-neutral {@link PlatformApiRequest} and delegates to the router. Unexpected runtime
+   * failures are converted into a structured {@code 500} response so callers keep the Platform API
+   * JSON contract even when the bridge logs the underlying error.
    *
    * @param method HTTP method name forwarded into the Platform API router
    * @param uri request target supplied by the legacy HTTP shell
@@ -243,6 +265,9 @@ public final class PlatformApiToadlet extends Toadlet {
       writeJsonReply(ctx, response, includeBody);
       return;
     }
+    if (!authorizeMutationRequest(method, uri, request, ctx)) {
+      return;
+    }
 
     try {
       response = router.route(toPlatformApiRequest(method, uri, request));
@@ -259,10 +284,84 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
+   * Returns whether the current request targets one of the mutating app-management routes.
+   *
+   * <p>The legacy shell only auto-checks form passwords for POST before dispatch. The Platform API
+   * bridge keeps full-access checks ahead of password checks and applies the same legacy password
+   * guard to DELETE so mutating app-management routes stay protected without changing their public
+   * route shape.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param uri request target supplied by the legacy HTTP shell
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresFormPassword(String method, URI uri) {
+    if (!"POST".equals(method) && !"DELETE".equals(method)) {
+      return false;
+    }
+
+    List<String> pathSegments;
+    try {
+      pathSegments = relativeApiPath(requestPath(uri));
+    } catch (URLEncodedFormatException _) {
+      return false;
+    }
+
+    if (pathSegments.isEmpty() || !"apps".equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if ("DELETE".equals(method)) {
+      return pathSegments.size() == 2;
+    }
+    if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
+      return true;
+    }
+    return pathSegments.size() == 3
+        && ("start".equals(pathSegments.get(2)) || "stop".equals(pathSegments.get(2)));
+  }
+
+  /**
+   * Enforces the legacy form-password requirement for mutating requests.
+   *
+   * <p>POST continues to use the existing toadlet-context helper unchanged. DELETE requires the
+   * same body-carried form password, but authentication failures are reported as structured JSON
+   * {@code 403} responses instead of redirects so clients cannot mistake a followed GET for a
+   * successful uninstall.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param uri request target supplied by the legacy HTTP shell
+   * @param request decoded legacy HTTP request wrapper
+   * @param ctx current toadlet context used for password validation and response writes
+   * @return {@code true} when the request is authorized to mutate state
+   * @throws ToadletContextClosedException if the client disconnects while an auth failure is sent
+   * @throws IOException if the legacy HTTP shell fails while writing the auth failure
+   */
+  private boolean authorizeMutationRequest(
+      String method, URI uri, HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!requiresFormPassword(method, uri)) {
+      return true;
+    }
+    String redirectTarget = requestPath(uri);
+    if ("POST".equals(method)) {
+      return ctx.checkFormPassword(request, redirectTarget);
+    }
+    if (ctx.hasFormPassword(request)) {
+      return true;
+    }
+    writeJsonReply(
+        ctx, PlatformApiResponse.error(403, "forbidden", "Valid form password is required."), true);
+    return false;
+  }
+
+  /**
    * Converts legacy HTTP request state into the transport-neutral Platform API request model.
    *
    * <p>Query parameters preserve encounter order and repeated values so the router can apply its
-   * own validation without depending on the legacy HTTP request type.
+   * own validation without depending on the legacy HTTP request type. The bridge excludes the
+   * legacy admin {@code formPassword} from that map and also lifts the small set of scalar form
+   * fields currently needed by Platform API v1 into the same map, because the transport-neutral
+   * request model intentionally does not define a separate body contract yet.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -275,9 +374,35 @@ public final class PlatformApiToadlet extends Toadlet {
     LinkedHashMap<String, List<String>> queryParameters =
         LinkedHashMap.newLinkedHashMap(request.getParameterNames().size());
     for (String parameterName : request.getParameterNames()) {
+      if (FORM_PASSWORD_PARAMETER.equals(parameterName)) {
+        continue;
+      }
       queryParameters.put(parameterName, List.of(request.getMultipleParam(parameterName)));
     }
+    copyStringPartIfPresent(request, queryParameters, STAGED_DIR_PARAMETER);
     return new PlatformApiRequest(method, relativeApiPath(requestPath(uri)), queryParameters);
+  }
+
+  /**
+   * Copies one scalar form part into the query-like parameter map when present.
+   *
+   * <p>This keeps the bridge compatible with legacy authenticated form submissions while preserving
+   * the transport-neutral request model expected by the Platform API router.
+   *
+   * @param request decoded legacy HTTP request wrapper
+   * @param queryParameters query-like parameter map being assembled for the router
+   * @param parameterName parameter or part name to copy
+   */
+  private static void copyStringPartIfPresent(
+      HTTPRequest request, Map<String, List<String>> queryParameters, String parameterName) {
+    if (queryParameters.containsKey(parameterName) || !request.isPartSet(parameterName)) {
+      return;
+    }
+    String value =
+        request.getPartAsStringFailsafe(parameterName, MAX_PLATFORM_API_FORM_FIELD_LENGTH);
+    if (!value.isEmpty()) {
+      queryParameters.put(parameterName, List.of(value));
+    }
   }
 
   /**
