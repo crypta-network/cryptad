@@ -25,10 +25,12 @@ The harness:
   - Hyphanet SSK keypair generation -> insert -> Cryptad fetch
 - writes diagnostics under `build/interop-smoke/`
 
-To keep the two-node darknet smoke deterministic, the harness precomputes CHK URIs with
-`GetCHKOnly=true`, starts the real insert on a live FCP connection, and then verifies that the
-opposite node can fetch the content over the live network path. The actual two-node insert request
-uses `LocalRequestOnly=true` so the smoke stays bounded to the local darknet pair.
+The harness launches Cryptad through the packaged `build/cryptad-dist/bin/cryptad` wrapper entry
+point so the smoke exercises the same runnable layout that CI ships. Both nodes also force
+localhost-only noderefs (`127.0.0.1`) so the peer exchange stays deterministic and avoids
+environment-specific local-address noise. For CHK inserts, the harness first computes the request
+URI with `GetCHKOnly=true`, starts the real insert, and then treats successful cross-node
+`ClientGet` on the opposite node as the live-wire smoke signal.
 
 The peering baseline is intentionally darknet-only and deterministic. Opennet, browser automation,
 and HTML scraping are out of scope for this smoke.

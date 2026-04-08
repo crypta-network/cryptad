@@ -282,6 +282,8 @@ node.updater.enabled=false
 node.updater.autoupdate=false
 node.updater.updateInstallers=false
 node.opennet.enabled=false
+node.ipAddressOverride=127.0.0.1
+node.allowBindToLocalhost=true
 node.bindTo=127.0.0.1
 node.listenPort={fnp_port}
 node.maxHTL=1
@@ -293,7 +295,7 @@ node.slashdotCacheSize=0
 node.outputBandwidthLimit=262144
 node.throttleLocalTraffic=false
 node.alwaysAllowLocalAddresses=true
-node.includeLocalAddressesInNoderefs=true
+node.includeLocalAddressesInNoderefs=false
 fcp.enabled=true
 fcp.port={fcp_port}
 fcp.bindTo=127.0.0.1
@@ -338,6 +340,8 @@ node.updater.enabled=false
 node.updater.autoupdate=false
 node.updater.updateInstallers=false
 node.opennet.enabled=false
+node.ipAddressOverride=127.0.0.1
+node.allowBindToLocalhost=true
 node.bindTo=127.0.0.1
 node.listenPort={fnp_port}
 node.maxHTL=1
@@ -349,7 +353,7 @@ node.slashdotCacheSize=0
 node.outputBandwidthLimit=262144
 node.throttleLocalTraffic=false
 node.alwaysAllowLocalAddresses=true
-node.includeLocalAddressesInNoderefs=true
+node.includeLocalAddressesInNoderefs=false
 fcp.enabled=true
 fcp.port={fcp_port}
 fcp.bindTo=127.0.0.1
@@ -409,35 +413,38 @@ def materialize_hyphanet_java_symlinks(extract_root: Path) -> None:
 
 def launch_cryptad(cryptad_dist_dir: Path, node_dir: Path) -> NodeRuntime:
     config_file = make_cryptad_config(node_dir, DEFAULT_CRYPTAD_FNP_PORT, DEFAULT_CRYPTAD_FCP_PORT)
-    wrapper_conf = cryptad_dist_dir / "conf" / "wrapper.conf"
-    main_class, wrapper_jvm_args, classpath_entries = parse_wrapper_conf(wrapper_conf, cryptad_dist_dir)
-    jvm_args = wrapper_jvm_args + [f"-Djava.library.path={cryptad_dist_dir / 'lib'}"]
-    command = ["java", *jvm_args, "-cp", os.pathsep.join(classpath_entries), main_class]
+    node_args = [
+        "--config-file",
+        str(config_file),
+        "--config-dir",
+        str(node_dir / "config"),
+        "--data-dir",
+        str(node_dir / "data"),
+        "--cache-dir",
+        str(node_dir / "cache"),
+        "--run-dir",
+        str(node_dir / "run"),
+        "--logs-dir",
+        str(node_dir / "logs"),
+    ]
+    command = [str(cryptad_dist_dir / "bin" / "cryptad")]
     command.extend(
-        [
-            "--config-file",
-            str(config_file),
-            "--config-dir",
-            str(node_dir / "config"),
-            "--data-dir",
-            str(node_dir / "data"),
-            "--cache-dir",
-            str(node_dir / "cache"),
-            "--run-dir",
-            str(node_dir / "run"),
-            "--logs-dir",
-            str(node_dir / "logs"),
-        ]
+        f"wrapper.app.parameter.{index}={value}" for index, value in enumerate(node_args, start=1)
     )
     stdout_path = node_dir / "stdout.log"
     stderr_path = node_dir / "stderr.log"
     stdout_handle = stdout_path.open("wb")
     stderr_handle = stderr_path.open("wb")
+    environment = os.environ.copy()
+    if os.geteuid() == 0:
+        # The packaged launcher refuses interactive root runs unless explicitly allowed.
+        environment["CRYPTAD_ALLOW_ROOT"] = "1"
     process = subprocess.Popen(
         command,
         cwd=node_dir,
         stdout=stdout_handle,
         stderr=stderr_handle,
+        env=environment,
         start_new_session=True,
     )
     process._stdout_handle = stdout_handle  # type: ignore[attr-defined]
@@ -654,14 +661,16 @@ def fetch_direct_until_available(
     last_error: str | None = None
     while time.time() < deadline:
         attempt += 1
-        client = FcpClient(host, port, f"{client_name}-{attempt}", transcript_path)
+        client: FcpClient | None = None
         try:
+            client = FcpClient(host, port, f"{client_name}-{attempt}", transcript_path)
             return fetch_direct(client, f"{identifier_prefix}-{attempt}", uri)
-        except RuntimeError as exc:
+        except (OSError, EOFError, RuntimeError) as exc:
             last_error = str(exc)
             time.sleep(2)
         finally:
-            client.close()
+            if client is not None:
+                client.close()
     raise RuntimeError(
         f"Timed out waiting for {uri} to become fetchable; last fetch error: {last_error}"
     )
@@ -739,10 +748,6 @@ def main() -> int:
         },
     }
 
-    asset_path, hyphanet_extract_root = ensure_hyphanet_asset(cache_dir)
-    summary["hyphanetAsset"] = str(asset_path)
-    summary["hyphanetAssetSha256"] = sha256sum(asset_path)
-
     cryptad_node_dir = out_dir / "nodes" / "cryptad"
     hyphanet_node_dir = out_dir / "nodes" / "hyphanet"
     transcripts_dir = out_dir / "transcripts"
@@ -751,6 +756,10 @@ def main() -> int:
     hyphanet_client: FcpClient | None = None
 
     try:
+        asset_path, hyphanet_extract_root = ensure_hyphanet_asset(cache_dir)
+        summary["hyphanetAsset"] = str(asset_path)
+        summary["hyphanetAssetSha256"] = sha256sum(asset_path)
+
         log_progress("Starting Cryptad node...")
         cryptad_runtime = launch_cryptad(cryptad_dist_dir, cryptad_node_dir)
         nodes.append(cryptad_runtime)
@@ -818,7 +827,7 @@ def main() -> int:
         chk_payload_from_cryptad = b"cryptad-to-hyphanet-chk\n"
         chk_uri_from_cryptad = request_put_uri(
             cryptad_client,
-            "cryptad-put-chk-uri",
+            "cryptad-put-chk",
             "CHK@",
             chk_payload_from_cryptad,
             "text/plain",
@@ -847,7 +856,7 @@ def main() -> int:
         chk_payload_from_hyphanet = b"hyphanet-to-cryptad-chk\n"
         chk_uri_from_hyphanet = request_put_uri(
             hyphanet_client,
-            "hyphanet-put-chk-uri",
+            "hyphanet-put-chk",
             "CHK@",
             chk_payload_from_hyphanet,
             "text/plain",
