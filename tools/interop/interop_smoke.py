@@ -394,8 +394,9 @@ def materialize_hyphanet_java_symlinks(extract_root: Path) -> None:
     if not java_dir.is_dir():
         return
 
+    version = re.escape(load_env_required("HYPHANET_VERSION"))
     build = re.escape(load_env_required("HYPHANET_BUILD"))
-    suffix_pattern = re.compile(rf"-0\.7\.5\+{build}\.jar$")
+    suffix_pattern = re.compile(rf"-{version}\+{build}\.jar$")
     for jar_path in java_dir.glob("*.jar"):
         match = suffix_pattern.search(jar_path.name)
         if match is None:
@@ -745,17 +746,19 @@ def main() -> int:
     cryptad_node_dir = out_dir / "nodes" / "cryptad"
     hyphanet_node_dir = out_dir / "nodes" / "hyphanet"
     transcripts_dir = out_dir / "transcripts"
-
-    log_progress("Starting Cryptad node...")
-    cryptad_runtime = launch_cryptad(cryptad_dist_dir, cryptad_node_dir)
-    log_progress("Starting Hyphanet node...")
-    hyphanet_runtime = launch_hyphanet(hyphanet_extract_root, hyphanet_node_dir)
-
-    nodes = [cryptad_runtime, hyphanet_runtime]
+    nodes: list[NodeRuntime] = []
     cryptad_client: FcpClient | None = None
     hyphanet_client: FcpClient | None = None
 
     try:
+        log_progress("Starting Cryptad node...")
+        cryptad_runtime = launch_cryptad(cryptad_dist_dir, cryptad_node_dir)
+        nodes.append(cryptad_runtime)
+
+        log_progress("Starting Hyphanet node...")
+        hyphanet_runtime = launch_hyphanet(hyphanet_extract_root, hyphanet_node_dir)
+        nodes.append(hyphanet_runtime)
+
         log_progress("Waiting for FCP listeners...")
         wait_for_fcp("127.0.0.1", DEFAULT_CRYPTAD_FCP_PORT, DEFAULT_REQUEST_TIMEOUT_SECONDS)
         wait_for_fcp("127.0.0.1", DEFAULT_HYPHANET_FCP_PORT, DEFAULT_REQUEST_TIMEOUT_SECONDS)
