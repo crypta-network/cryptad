@@ -217,12 +217,12 @@ Cryptad now uses a partial multi-project Gradle build.
   and the minimal local AppHost control surface as JSON-oriented responses, and is currently
   mounted at `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The
   current surface covers node info, peers, config export, connectivity, security-level snapshots,
-  and local app install/start/stop/uninstall routes; `GET /api/v1/config` defaults to the
+  and local app install/start/stop/update/uninstall routes; `GET /api/v1/config` defaults to the
   effective `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
   lifecycle, and per-start launch-token plumbing for local apps while staying separate from future
-  Web Shell, application-UI, and app update-channel work.
+  Web Shell, application-UI, and remote update-channel work.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -244,7 +244,7 @@ Cryptad now uses a partial multi-project Gradle build.
   remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
   refines it further. That shell now also hosts the temporary `/api/v1/` mount for
   `:platform-api` plus the first `/app/node/` Web Shell bridge for `:platform-web-shell`; future
-  AppHost UI and app-update work remain separate.
+  AppHost UI and remote update-channel work remain separate.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -309,8 +309,21 @@ ownership and import rules:
 ./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest
 ```
 
-Those tests also enforce the current extracted-leaf documentation convention that production
-packages in `:kernel-content` and `:runtime-node` keep a `package-info.java`.
+Those boundary suites also enforce the current extracted-leaf documentation convention that
+production packages in `:runtime-node`, `:kernel-content`, `:platform-api`,
+`:platform-apphost`, and `:platform-web-shell` keep a `package-info.java`.
+
+Focused platform test slices live in a mix of leaf and root tasks:
+
+```bash
+./gradlew :platform-apphost:test
+./gradlew :platform-web-shell:test
+./gradlew :adapter-http-legacy-admin:test
+./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest
+```
+
+Platform boundary checks also include `PlatformApiBoundaryTest` in the root test tree plus the
+leaf-owned `AppHostBoundaryTest` and `WebShellBoundaryTest`.
 
 ## Code Quality
 
@@ -586,7 +599,8 @@ Root build also includes:
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
-  Future Web Shell, app UI, and update-channel work remain separate and later.
+  Local staged app updates now flow through this core; future Web Shell, app UI, and remote
+  update-channel work remain separate and later.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -643,6 +657,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
 - JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
+- Local app lifecycle work is separate from CoreUpdater. The current platform can install, start,
+  stop, uninstall, and replace an installed app bundle from a caller-supplied local staged
+  directory through `:platform-apphost` and the Platform API v1. Remote catalogs, signed app
+  channels, and background app-update fetching remain future work.
 
 ## Architecture Overview
 

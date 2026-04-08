@@ -41,12 +41,14 @@ import network.crypta.platform.apphost.manifest.AppManifestParser;
  *
  * <ul>
  *   <li>Inventory reads merge installed and running state into one summary shape.
- *   <li>Mutation routes stay local and explicit: install, start, stop, and uninstall.
+ *   <li>Mutation routes stay local and explicit: install, start, update, stop, and uninstall.
  *   <li>Cleanup flows keep working even when installed manifests have become unreadable.
  * </ul>
  */
 public final class AppsApiHandler {
   private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
+  private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
+  private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
 
   /** Detached AppHost core used for app lifecycle and inventory operations. */
   private final AppHost appHost;
@@ -130,6 +132,45 @@ public final class AppsApiHandler {
       throw installFailure(manifest.appId(), e);
     } catch (IOException _) {
       throw internalError("Failed to install app.");
+    }
+  }
+
+  /**
+   * Replaces one installed app with a staged bundle and returns the updated summary.
+   *
+   * <p>The update flow is intentionally conservative. It accepts the same local staged-directory
+   * input as install, but it only proceeds when the target app is not currently running. The staged
+   * bundle must target the same app id as the installed bundle, and the host-owned mutable
+   * directories remain untouched.
+   *
+   * <p>Unlike read-heavy inventory routes, update does not require the current installed manifest
+   * to be readable before it delegates to the AppHost. That keeps staged replacement available as a
+   * repair path for damaged installations whose immutable bundle can still be replaced safely.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param queryParameters decoded query parameters for the current request
+   * @return JSON-compatible app summary for the updated bundle
+   */
+  public Map<String, Object> update(String appId, Map<String, List<String>> queryParameters) {
+    String normalizedAppId = normalizeAppId(appId);
+    Path stagedDir = parseStagedDirectory(queryParameters);
+    AppManifest manifest = parseManifest(stagedDir);
+    if (appHost.status(normalizedAppId).isPresent()) {
+      throw conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + normalizedAppId);
+    }
+
+    if (!normalizedAppId.equals(manifest.appId())) {
+      throw invalidBundle(
+          "staged app bundle app.id does not match target app: " + manifest.appId());
+    }
+
+    try {
+      InstalledAppSnapshot updated = appHost.updateFromDirectory(normalizedAppId, stagedDir);
+      return summarize(updated.manifest(), true, null);
+    } catch (AppHostException e) {
+      throw updateFailure(normalizedAppId, e);
+    } catch (IOException _) {
+      throw internalError("Failed to update app.");
     }
   }
 
@@ -468,6 +509,41 @@ public final class AppsApiHandler {
   }
 
   /**
+   * Maps update-time AppHost contract failures onto stable client-facing status codes.
+   *
+   * <p>Update uses the same conflict and not-found contract as the other lifecycle operations.
+   * Bundle validation failures stay in the {@code 400} family, while unexpected host-side errors
+   * remain internal server failures.
+   *
+   * @param appId normalized application identifier for the current request
+   * @param failure AppHost contract failure thrown during update
+   * @return structured Platform API exception
+   */
+  private PlatformApiException updateFailure(String appId, AppHostException failure) {
+    if (isRunningUpdateFailure(failure) || appHost.status(appId).isPresent()) {
+      return conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + appId);
+    }
+    if (isMissingAppFailure(failure)) {
+      return appNotFound();
+    }
+    if (isInvalidAppBundleFailure(failure)) {
+      return invalidBundle(
+          messageOrDefault(failure, "Staged app bundle failed AppHost validation."));
+    }
+    return internalError("Failed to update app.");
+  }
+
+  private static boolean isRunningUpdateFailure(AppHostException failure) {
+    String message = failure.getMessage();
+    return message != null && message.startsWith(CANNOT_UPDATE_RUNNING_APP_PREFIX);
+  }
+
+  private static boolean isMissingAppFailure(AppHostException failure) {
+    String message = failure.getMessage();
+    return message != null && message.startsWith(APP_NOT_INSTALLED_PREFIX);
+  }
+
+  /**
    * Returns whether an install-time AppHost failure was caused by caller-supplied bundle input.
    *
    * <p>Install failures span both staged-bundle validation and host-managed layout validation. The
@@ -490,7 +566,8 @@ public final class AppsApiHandler {
         || message.startsWith("staging directory ")
         || message.startsWith("copied manifest ")
         || message.startsWith("copied app.exec ")
-        || message.startsWith("app.exec ");
+        || message.startsWith("app.exec ")
+        || message.startsWith("staged app bundle ");
   }
 
   /**

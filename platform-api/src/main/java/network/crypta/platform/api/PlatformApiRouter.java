@@ -150,7 +150,7 @@ public final class PlatformApiRouter {
     return switch (segments.size()) {
       case 1 -> routeAppsCollection(request.method());
       case 2 -> routeAppsResource(segments.get(1), request);
-      case 3 -> routeAppsAction(segments.get(1), segments.get(2), request.method());
+      case 3 -> routeAppsAction(segments.get(1), segments.get(2), request);
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }
@@ -234,17 +234,22 @@ public final class PlatformApiRouter {
    * Routes app lifecycle actions beneath {@code /apps/{appId}/...}.
    *
    * @param appId normalized app identifier segment
-   * @param action lifecycle action segment
-   * @param method HTTP-style request method
+   * @param action lifecycle action segment such as {@code start}, {@code stop}, or {@code update}
+   * @param request full request metadata, including query parameters
    * @return JSON response for the selected app action
    */
-  private PlatformApiResponse routeAppsAction(String appId, String action, String method) {
+  private PlatformApiResponse routeAppsAction(
+      String appId, String action, PlatformApiRequest request) {
+    String method = request.method();
     if (!"POST".equals(method)) {
       return methodNotAllowed("POST", "Platform API v1 supports POST requests only.");
     }
     return switch (action) {
       case "start" -> PlatformApiResponse.ok(envelope("app", appsApiHandler.start(appId)));
       case "stop" -> PlatformApiResponse.ok(envelope("app", appsApiHandler.stop(appId)));
+      case "update" ->
+          PlatformApiResponse.ok(
+              envelope("app", appsApiHandler.update(appId, request.queryParameters())));
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }

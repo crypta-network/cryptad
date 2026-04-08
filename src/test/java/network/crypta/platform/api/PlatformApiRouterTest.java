@@ -503,6 +503,138 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenInstalledManifestUnreadableAndUpdateRequested_expectUpdatedSummaryJson()
+      throws Exception {
+    Path stagedDir = stageApp("9.9.9", APP_ID, APP_NAME);
+    InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            Map.of(
+                "app",
+                summaryFor(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY, true, false, null, null))),
+        response.body());
+    verify(appHost, never()).describe(APP_ID);
+  }
+
+  @Test
+  void route_whenAppUpdateTargetMissing_expectNotFoundJson() throws Exception {
+    Path stagedDir = stageApp("9.9.9", APP_ID, APP_NAME);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.updateFromDirectory(APP_ID, stagedDir))
+        .thenThrow(new AppHostException("app is not installed: alpha"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(404, response.statusCode());
+    assertEquals("Not Found", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    verify(appHost, never()).describe(APP_ID);
+    verify(appHost).updateFromDirectory(APP_ID, stagedDir);
+  }
+
+  @Test
+  void route_whenAppUpdateRequestedWhileRunning_expectConflictJson() throws Exception {
+    Path stagedDir = stageApp("9.9.9", APP_ID, APP_NAME);
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"cannot update a running app:"
+            + " alpha\"}}",
+        response.body());
+    verify(appHost, never()).describe(APP_ID);
+    verify(appHost, never()).updateFromDirectory(APP_ID, stagedDir);
+  }
+
+  @Test
+  void route_whenAppUpdateStagedBundleTargetsDifferentApp_expectBadRequestJson() throws Exception {
+    Path stagedDir = stageApp("9.9.9", "beta", "Beta App");
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"staged app bundle app.id"
+            + " does not match target app: beta\"}}",
+        response.body());
+    verify(appHost, never()).describe(APP_ID);
+    verify(appHost, never()).updateFromDirectory(APP_ID, stagedDir);
+  }
+
+  @Test
+  void route_whenInstalledManifestUnreadableAndUpdateBundleInvalid_expectBadRequestJson()
+      throws Exception {
+    Path stagedDir = stageApp("9.9.9", APP_ID, APP_NAME);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.updateFromDirectory(APP_ID, stagedDir))
+        .thenThrow(
+            new AppHostException(
+                "app.exec does not resolve to a file in copied bundle: bin/launch"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"app.exec does not resolve"
+            + " to a file in copied bundle: bin/launch\"}}",
+        response.body());
+    verify(appHost, never()).describe(APP_ID);
+    verify(appHost).updateFromDirectory(APP_ID, stagedDir);
+  }
+
+  @Test
+  void route_whenAppUpdateMissingStagedDir_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_query_parameter\",\"message\":\"Missing required query"
+            + " parameter 'stagedDir'.\"}}",
+        response.body());
+    verifyNoInteractions(appHost);
+  }
+
+  @Test
   void route_whenAppInstallMissingStagedDir_expectBadRequestJson() {
     PlatformApiResponse response =
         router.route(request("POST", List.of("apps", "install"), Map.of()));
@@ -832,6 +964,10 @@ class PlatformApiRouterTest {
   }
 
   private Path stageApp() throws Exception {
+    return stageApp(APP_VERSION, APP_ID, APP_NAME);
+  }
+
+  private Path stageApp(String appVersion, String appId, String appName) throws Exception {
     Path stagedDir = Files.createTempDirectory(tempDir, "staged-");
     Files.writeString(
         stagedDir.resolve("cryptad-app.properties"),
@@ -846,7 +982,7 @@ class PlatformApiRouterTest {
         quota.data.bytes=4096
         quota.cache.bytes=8192
         """
-            .formatted(APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY));
+            .formatted(appId, appName, appVersion, APP_UI_ENTRY));
     return stagedDir;
   }
 

@@ -38,6 +38,7 @@ import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.manifest.AppManifestException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -303,6 +304,226 @@ class LocalProcessAppHostTest {
     host.installFromDirectory(stagedApp);
 
     assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
+  }
+
+  @Test
+  void
+      updateFromDirectory_whenInstalledStoppedApp_expectManifestAndExecutableReplacedPreservingMutableDirs()
+          throws IOException {
+    AppHost host = host();
+    Path installedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-installed").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            """
+            #!/bin/sh
+            printf 'old\\n'
+            """,
+            Map.of("bundle-only.txt", "old-bundle\n"));
+    InstalledAppSnapshot installation = host.installFromDirectory(installedStage);
+    Path dataSentinel =
+        Files.writeString(
+            installation.paths().dataDir().resolve("preserve-data.txt"),
+            "keep-data",
+            StandardCharsets.UTF_8);
+    Path cacheSentinel =
+        Files.writeString(
+            installation.paths().cacheDir().resolve("preserve-cache.txt"),
+            "keep-cache",
+            StandardCharsets.UTF_8);
+    Path runSentinel =
+        Files.writeString(
+            installation.paths().runDir().resolve("preserve-run.txt"),
+            "keep-run",
+            StandardCharsets.UTF_8);
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "3.0.0",
+            """
+            #!/bin/sh
+            printf 'new\\n'
+            """,
+            Map.of("new-bundle.txt", "new-bundle\n"));
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+
+    assertEquals("3.0.0", updated.manifest().appVersion());
+    assertEquals(installation.paths(), updated.paths());
+    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertEquals("keep-cache", Files.readString(cacheSentinel, StandardCharsets.UTF_8));
+    assertEquals("keep-run", Files.readString(runSentinel, StandardCharsets.UTF_8));
+    assertFalse(Files.exists(updated.paths().installedRoot().resolve("bundle-only.txt")));
+    assertEquals(
+        "new-bundle\n",
+        Files.readString(
+            updated.paths().installedRoot().resolve("new-bundle.txt"), StandardCharsets.UTF_8));
+    assertEquals(
+        """
+        #!/bin/sh
+        printf 'new\\n'
+        """,
+        Files.readString(
+            updated.paths().executablePath(updated.manifest()), StandardCharsets.UTF_8));
+    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(List.of(updated), host.listInstalled());
+  }
+
+  @Test
+  void updateFromDirectory_whenInstalledManifestMissing_expectBundleRepaired() throws IOException {
+    AppHost host = host();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Files.delete(installation.paths().manifestFile());
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-repair").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "3.0.0",
+            """
+            #!/bin/sh
+            printf 'repaired\\n'
+            """,
+            Map.of("repair-bundle.txt", "repair-bundle\n"));
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+
+    assertEquals("3.0.0", updated.manifest().appVersion());
+    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(
+        "repair-bundle\n",
+        Files.readString(
+            updated.paths().installedRoot().resolve("repair-bundle.txt"), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void updateFromDirectory_whenStagedManifestTargetsDifferentApp_expectFailure()
+      throws IOException {
+    AppHost host = host();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Path mismatchedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update").resolve(DUPLICATE_APP_ID),
+            DUPLICATE_APP_ID,
+            "3.0.0",
+            scriptContent(new AppEnv()),
+            Map.of());
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class,
+            () -> host.updateFromDirectory(SAMPLE_APP_ID, mismatchedStage));
+
+    assertTrue(exception.getMessage().contains("does not match requested app.id"));
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
+  void updateFromDirectory_whenAppNotInstalled_expectFailure() throws IOException {
+    AppHost host = host();
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+
+    AppHostException exception =
+        assertThrows(
+            AppHostException.class, () -> host.updateFromDirectory(SAMPLE_APP_ID, stagedApp));
+
+    assertEquals("app is not installed: " + SAMPLE_APP_ID, exception.getMessage());
+  }
+
+  @Test
+  void updateFromDirectory_whenInstalledManifestUnreadable_expectReplacementRepairsBundle()
+      throws IOException {
+    AppHost host = host();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Files.delete(installation.paths().manifestFile());
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "3.0.0",
+            scriptContent(new AppEnv()),
+            Map.of("new-bundle.txt", "new-bundle\n"));
+
+    assertThrows(IOException.class, () -> host.describe(SAMPLE_APP_ID));
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+
+    assertEquals("3.0.0", updated.manifest().appVersion());
+    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(
+        "new-bundle\n",
+        Files.readString(
+            updated.paths().installedRoot().resolve("new-bundle.txt"), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void updateFromDirectory_whenBackupCleanupFails_expectSuccessfulReplacementAndReadableInstall()
+      throws IOException {
+    LocalProcessAppHost host =
+        host(
+            Duration.ofSeconds(1),
+            new AppEnv(),
+            _ -> {
+              throw new IOException("simulated backup cleanup failure");
+            });
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "3.0.0",
+            scriptContent(new AppEnv()),
+            Map.of("new-bundle.txt", "new-bundle\n"));
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+
+    assertEquals("3.0.0", updated.manifest().appVersion());
+    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    try (var entries = Files.list(updated.paths().installedRoot().getParent())) {
+      assertTrue(
+          entries.anyMatch(
+              path ->
+                  path.getFileName()
+                      .toString()
+                      .startsWith("app-install-backup-" + SAMPLE_APP_ID + "-")));
+    }
+    assertEquals(List.of(updated), host.listInstalled());
+  }
+
+  @Test
+  void updateFromDirectory_whenAppIsRunning_expectFailure() throws IOException {
+    AppHost host = host();
+    host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+    host.start(RUNNER_APP_ID);
+
+    try {
+      AppHostException exception =
+          assertThrows(
+              AppHostException.class,
+              () ->
+                  host.updateFromDirectory(
+                      RUNNER_APP_ID, tempDir.resolve(STAGE_DIR_NAME).resolve(RUNNER_APP_ID)));
+
+      assertEquals("cannot update a running app: " + RUNNER_APP_ID, exception.getMessage());
+      assertEquals(APP_VERSION, host.describe(RUNNER_APP_ID).orElseThrow().manifest().appVersion());
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void updateFromDirectory_whenStagedDirectoryInvalid_expectFailure() throws IOException {
+    AppHost host = host();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+
+    AppHostException exception =
+        assertThrows(
+            AppHostException.class,
+            () -> host.updateFromDirectory(SAMPLE_APP_ID, tempDir.resolve("missing-stage")));
+
+    assertTrue(exception.getMessage().contains("stagedAppDirectory must be an existing directory"));
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
   }
 
   @Test
@@ -1607,6 +1828,20 @@ class LocalProcessAppHostTest {
         TEST_TIMING);
   }
 
+  private LocalProcessAppHost host(
+      Duration stopTimeout,
+      AppEnv appEnv,
+      LocalProcessAppHost.ManagedTreeDeleter managedTreeDeleter) {
+    return new LocalProcessAppHost(
+        new AppHostLayout(
+            tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run")),
+        stopTimeout,
+        new java.security.SecureRandom(),
+        appEnv,
+        TEST_TIMING,
+        managedTreeDeleter);
+  }
+
   private Path stageInstalledApp(String appId) throws IOException {
     return stageInstalledApp(appId, scriptContent(new AppEnv()), Map.of());
   }
@@ -1623,6 +1858,16 @@ class LocalProcessAppHostTest {
 
   private Path stageInstalledAppAt(
       Path stagedDir, String appId, String scriptContent, Map<String, String> extraFiles)
+      throws IOException {
+    return stageInstalledAppAt(stagedDir, appId, APP_VERSION, scriptContent, extraFiles);
+  }
+
+  private Path stageInstalledAppAt(
+      Path stagedDir,
+      String appId,
+      String appVersion,
+      String scriptContent,
+      Map<String, String> extraFiles)
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Files.createDirectories(stagedDir);
@@ -1648,7 +1893,7 @@ class LocalProcessAppHostTest {
         quota.cache.bytes=1024
         """
             .formatted(
-                appId, displayName(appId), APP_VERSION, scriptName, STANDARD_PERMISSIONS_TEXT),
+                appId, displayName(appId), appVersion, scriptName, STANDARD_PERMISSIONS_TEXT),
         StandardCharsets.UTF_8);
     return stagedDir;
   }
@@ -2252,7 +2497,7 @@ class LocalProcessAppHostTest {
 
       @Override
       public boolean equals(Object other) {
-        return other instanceof ProcessHandle handle && pid == handle.pid();
+        return other instanceof ProcessHandle otherHandle && pid == otherHandle.pid();
       }
 
       @Override
