@@ -62,6 +62,7 @@ import org.jetbrains.annotations.NotNull;
 public final class LocalProcessAppHost implements AppHost {
   private static final Duration DEFAULT_STOP_TIMEOUT = Duration.ofSeconds(5);
   private static final String TEMP_INSTALL_PREFIX = "app-install-";
+  private static final String TEMP_UPDATE_BACKUP_PREFIX = TEMP_INSTALL_PREFIX + "backup-";
   private static final String LOCAL_DIRECTORY_NAME = "local";
   private static final String INSTALLED_APPS_DIR_LABEL = "installedAppsDir";
   private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
@@ -109,6 +110,7 @@ public final class LocalProcessAppHost implements AppHost {
   private final SecureRandom secureRandom;
   private final AppEnv appEnv;
   private final TimingConfig timing;
+  private final ManagedTreeDeleter managedTreeDeleter;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
 
   /**
@@ -151,11 +153,22 @@ public final class LocalProcessAppHost implements AppHost {
       SecureRandom secureRandom,
       AppEnv appEnv,
       TimingConfig timing) {
+    this(layout, stopTimeout, secureRandom, appEnv, timing, LocalProcessAppHost::deleteRecursively);
+  }
+
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
+      ManagedTreeDeleter managedTreeDeleter) {
     this.layout = Objects.requireNonNull(layout, "layout");
     this.stopTimeout = Objects.requireNonNull(stopTimeout, "stopTimeout");
     this.secureRandom = Objects.requireNonNull(secureRandom, "secureRandom");
     this.appEnv = Objects.requireNonNull(appEnv, "appEnv");
     this.timing = Objects.requireNonNull(timing, "timing");
+    this.managedTreeDeleter = Objects.requireNonNull(managedTreeDeleter, "managedTreeDeleter");
     if (stopTimeout.isZero() || stopTimeout.isNegative()) {
       throw new IllegalArgumentException("stopTimeout must be positive");
     }
@@ -196,6 +209,57 @@ public final class LocalProcessAppHost implements AppHost {
       return new InstalledAppSnapshot(manifest, paths);
     } catch (IOException | RuntimeException e) {
       deleteRecursively(temporaryInstallRoot);
+      throw e;
+    }
+  }
+
+  /**
+   * Replaces one installed app bundle from a local staging directory.
+   *
+   * <p>The update flow deliberately reuses the installation model: the caller provides a local
+   * staged directory, the host copies and validates that bundle under managed storage, and the
+   * staged manifest must target the same normalized app id as the existing installation. Only the
+   * immutable installed bundle root is replaced. The host-owned data, cache, and run directories
+   * remain in place and are preserved.
+   *
+   * <p>AppHost v1 keeps replacement conservative and explicit. The target app must already be
+   * installed and stopped before any filesystem mutation occurs.
+   *
+   * @param appId stable application identifier
+   * @param stagedAppDirectory staging directory containing {@code cryptad-app.properties}
+   * @return installed application snapshot describing the replaced bundle and preserved host paths
+   * @throws IOException if the app is missing or still running, the staged bundle is invalid or
+   *     targets a different app id, or the replacement cannot be completed safely
+   */
+  @Override
+  public synchronized InstalledAppSnapshot updateFromDirectory(
+      String appId, Path stagedAppDirectory) throws IOException {
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
+    Path installedAppsDir = validateInstalledAppsDirectory();
+    rejectOverlappingInstallTree(stagingRoot, installedAppsDir);
+    InstalledAppPaths paths = layout.pathsFor(normalizedAppId);
+    rejectOverlappingMutableAppDirectories(stagingRoot, paths);
+    if (liveRunningProcess(normalizedAppId) != null) {
+      throw new AppHostException("cannot update a running app: " + normalizedAppId);
+    }
+    if (!Files.isDirectory(paths.installedRoot(), LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException("app is not installed: " + normalizedAppId);
+    }
+    validateManagedMutableDirectories(paths);
+    paths.ensureMutableDirectories();
+
+    Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
+    Path backupInstallRoot =
+        temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+    try {
+      copyDirectoryTree(stagingRoot, temporaryInstallRoot);
+      AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
+      requireMatchingUpdateTarget(normalizedAppId, manifest);
+      replaceInstalledBundle(paths.installedRoot(), temporaryInstallRoot, backupInstallRoot);
+      return new InstalledAppSnapshot(manifest, paths);
+    } catch (IOException | RuntimeException e) {
+      deleteScratchTreeIfPresent(temporaryInstallRoot);
       throw e;
     }
   }
@@ -438,7 +502,7 @@ public final class LocalProcessAppHost implements AppHost {
         resolveBundleEntry(
             installedRoot, Path.of(AppManifestParser.MANIFEST_FILE_NAME), "installed manifest");
     AppManifest manifest = AppManifestParser.parse(manifestFile);
-    String installedDirectoryName = fileNameOrThrow(installedRoot, "installed manifest root");
+    String installedDirectoryName = installedDirectoryNameOrThrow(installedRoot);
     if (!installedDirectoryName.equals(manifest.appId())) {
       throw new AppManifestException(
           "installed manifest app.id does not match directory name: " + installedDirectoryName);
@@ -461,6 +525,14 @@ public final class LocalProcessAppHost implements AppHost {
     }
     validateLaunchableCopiedExecutable(copiedExecutable, manifest);
     return manifest;
+  }
+
+  private static void requireMatchingUpdateTarget(String requestedAppId, AppManifest manifest)
+      throws AppManifestException {
+    if (!requestedAppId.equals(manifest.appId())) {
+      throw new AppManifestException(
+          "staged manifest app.id does not match requested app.id: " + requestedAppId);
+    }
   }
 
   private void validateLaunchableCopiedExecutable(Path copiedExecutable, AppManifest manifest)
@@ -1110,10 +1182,10 @@ public final class LocalProcessAppHost implements AppHost {
     return fileName == null ? "" : fileName.toString();
   }
 
-  private static String fileNameOrThrow(Path path, String label) throws AppHostException {
+  private static String installedDirectoryNameOrThrow(Path path) throws AppHostException {
     String fileName = fileNameText(path);
     if (fileName.isEmpty()) {
-      throw new AppHostException(label + " must not be a filesystem root: " + path);
+      throw new AppHostException("installed manifest root must not be a filesystem root: " + path);
     }
     return fileName;
   }
@@ -1173,6 +1245,50 @@ public final class LocalProcessAppHost implements AppHost {
     String value = System.getenv(name);
     if (value != null && !value.isBlank()) {
       environment.put(name, value);
+    }
+  }
+
+  private Path temporaryManagedPath(Path parent, String prefix) throws IOException {
+    for (int attempt = 0; attempt < 8; attempt++) {
+      Path candidate = parent.resolve(prefix + generateToken());
+      if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+        return candidate;
+      }
+    }
+    throw new AppHostException("failed to allocate temporary managed path under: " + parent);
+  }
+
+  private void replaceInstalledBundle(Path installedRoot, Path replacementRoot, Path backupRoot)
+      throws IOException {
+    moveIntoPlace(installedRoot, backupRoot);
+    try {
+      moveIntoPlace(replacementRoot, installedRoot);
+    } catch (IOException updateFailure) {
+      restoreInstalledBundle(installedRoot, backupRoot, updateFailure);
+      throw updateFailure;
+    }
+    deleteBackupAfterSuccessfulReplacement(backupRoot);
+  }
+
+  private void deleteBackupAfterSuccessfulReplacement(Path backupRoot) {
+    try {
+      managedTreeDeleter.deleteRecursively(backupRoot);
+    } catch (IOException _) {
+      // The replacement is already committed; a skipped temp backup is safer than a false failure.
+    }
+  }
+
+  private static void restoreInstalledBundle(
+      Path installedRoot, Path backupRoot, IOException updateFailure) {
+    try {
+      deleteScratchTreeIfPresent(installedRoot);
+    } catch (IOException cleanupFailure) {
+      updateFailure.addSuppressed(cleanupFailure);
+    }
+    try {
+      moveIntoPlace(backupRoot, installedRoot);
+    } catch (IOException restoreFailure) {
+      updateFailure.addSuppressed(restoreFailure);
     }
   }
 
@@ -1236,6 +1352,13 @@ public final class LocalProcessAppHost implements AppHost {
           "staging directory must not contain links or reparse points: " + entry);
     }
     return actualRealPath;
+  }
+
+  private static void deleteScratchTreeIfPresent(Path root) throws IOException {
+    if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    deleteRecursively(root);
   }
 
   private static void deleteRecursively(Path root) throws IOException {
@@ -1840,7 +1963,12 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
-  static record TimingConfig(
+  @FunctionalInterface
+  interface ManagedTreeDeleter {
+    void deleteRecursively(Path root) throws IOException;
+  }
+
+  record TimingConfig(
       Duration startupExitGracePeriod,
       Duration startupProcessCaptureWindow,
       Duration startupPostCaptureHandoffGracePeriod,

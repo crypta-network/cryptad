@@ -43,6 +43,7 @@ public final class PlatformApiToadlet extends Toadlet {
   /** JSON media type advertised for every Platform API response emitted through the bridge. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
+  private static final String DELETE_METHOD = "DELETE";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final String STAGED_DIR_PARAMETER = "stagedDir";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = 4096;
@@ -171,7 +172,7 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public void handleMethodDELETE(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    writePlatformApiResponse("DELETE", uri, request, ctx);
+    writePlatformApiResponse(DELETE_METHOD, uri, request, ctx);
   }
 
   /**
@@ -296,7 +297,7 @@ public final class PlatformApiToadlet extends Toadlet {
    * @return {@code true} when the request must present the legacy form password
    */
   private static boolean requiresFormPassword(String method, URI uri) {
-    if (!"POST".equals(method) && !"DELETE".equals(method)) {
+    if (!"POST".equals(method) && !DELETE_METHOD.equals(method)) {
       return false;
     }
 
@@ -310,14 +311,16 @@ public final class PlatformApiToadlet extends Toadlet {
     if (pathSegments.isEmpty() || !"apps".equals(pathSegments.getFirst())) {
       return false;
     }
-    if ("DELETE".equals(method)) {
+    if (DELETE_METHOD.equals(method)) {
       return pathSegments.size() == 2;
     }
     if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
       return true;
     }
     return pathSegments.size() == 3
-        && ("start".equals(pathSegments.get(2)) || "stop".equals(pathSegments.get(2)));
+        && ("start".equals(pathSegments.get(2))
+            || "stop".equals(pathSegments.get(2))
+            || "update".equals(pathSegments.get(2)));
   }
 
   /**
@@ -354,9 +357,9 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>Query parameters preserve encounter order and repeated values so the router can apply its
    * own validation without depending on the legacy HTTP request type. The bridge excludes the
-   * legacy admin {@code formPassword} from that map and also lifts the small set of scalar form
-   * fields currently needed by Platform API v1 into the same map, because the transport-neutral
-   * request model intentionally does not define a separate body contract yet.
+   * legacy admin {@code formPassword} from that map. It also lifts the small set of scalar form
+   * fields currently needed by Platform API v1 into the same map. The transport-neutral request
+   * model intentionally does not define a separate body contract yet.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -374,29 +377,29 @@ public final class PlatformApiToadlet extends Toadlet {
       }
       queryParameters.put(parameterName, List.of(request.getMultipleParam(parameterName)));
     }
-    copyStringPartIfPresent(request, queryParameters, STAGED_DIR_PARAMETER);
+    copyStagedDirPartIfPresent(request, queryParameters);
     return new PlatformApiRequest(method, relativeApiPath(requestPath(uri)), queryParameters);
   }
 
   /**
-   * Copies one scalar form part into the query-like parameter map when present.
+   * Copies the staged-directory form part into the query-like parameter map when present.
    *
-   * <p>This keeps the bridge compatible with legacy authenticated form submissions while preserving
+   * <p>This keeps the bridge compatible with legacy-authenticated form submissions while preserving
    * the transport-neutral request model expected by the Platform API router.
    *
    * @param request decoded legacy HTTP request wrapper
    * @param queryParameters query-like parameter map being assembled for the router
-   * @param parameterName parameter or part name to copy
    */
-  private static void copyStringPartIfPresent(
-      HTTPRequest request, Map<String, List<String>> queryParameters, String parameterName) {
-    if (queryParameters.containsKey(parameterName) || !request.isPartSet(parameterName)) {
+  private static void copyStagedDirPartIfPresent(
+      HTTPRequest request, Map<String, List<String>> queryParameters) {
+    if (queryParameters.containsKey(STAGED_DIR_PARAMETER)
+        || !request.isPartSet(STAGED_DIR_PARAMETER)) {
       return;
     }
     String value =
-        request.getPartAsStringFailsafe(parameterName, MAX_PLATFORM_API_FORM_FIELD_LENGTH);
+        request.getPartAsStringFailsafe(STAGED_DIR_PARAMETER, MAX_PLATFORM_API_FORM_FIELD_LENGTH);
     if (!value.isEmpty()) {
-      queryParameters.put(parameterName, List.of(value));
+      queryParameters.put(STAGED_DIR_PARAMETER, List.of(value));
     }
   }
 

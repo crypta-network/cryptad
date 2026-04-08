@@ -93,6 +93,43 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenAppUpdateRequested_routesDecodedUpdateRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of("stagedDir"));
+    when(request.getMultipleParam("stagedDir")).thenReturn(new String[] {"/tmp/staged"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/apps/alpha/update"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("apps", "alpha", "update"),
+                Map.of("stagedDir", List.of("/tmp/staged"))));
+  }
+
+  @Test
+  void handleMethodPOST_whenAppUpdateUsesFormPart_routesUpdateRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.isPartSet("stagedDir")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("stagedDir", 4096)).thenReturn("/tmp/staged");
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/apps/alpha/update"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("apps", "alpha", "update"),
+                Map.of("stagedDir", List.of("/tmp/staged"))));
+  }
+
+  @Test
   void handleMethodPOST_whenNonAppsRoute_expectRouterJson405WithoutPasswordCheck()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);

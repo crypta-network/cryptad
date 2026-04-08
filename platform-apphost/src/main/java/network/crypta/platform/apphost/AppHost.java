@@ -38,6 +38,29 @@ public interface AppHost {
   InstalledAppSnapshot installFromDirectory(Path stagedAppDirectory) throws IOException;
 
   /**
+   * Replaces one installed app bundle from a local staging directory.
+   *
+   * <p>The supplied staging directory is validated using the same caller-owned input rules as
+   * installation, but the staged manifest must target the already-installed app being updated.
+   * Implementations replace only the immutable installed bundle contents. The host-owned data,
+   * cache, and run directories remain attached to the existing app id and are preserved across the
+   * update.
+   *
+   * <p>AppHost v1 keeps update semantics intentionally narrow and explicit: the target app must
+   * already be installed and must not be running. Implementations should therefore reject updates
+   * for missing or live apps rather than attempting implicit stop/start choreography.
+   *
+   * @param appId stable application identifier
+   * @param stagedAppDirectory staging directory containing {@code cryptad-app.properties} and the
+   *     files referenced by the manifest
+   * @return installed application snapshot describing the replaced bundle and preserved host paths
+   * @throws IOException if validation fails, the staged bundle targets a different app id, the app
+   *     is missing or still running, or the replacement cannot be completed safely
+   */
+  InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory)
+      throws IOException;
+
+  /**
    * Removes one installed app and its host-owned directories.
    *
    * <p>This operation removes both the immutable installed bundle and the mutable per-app data,

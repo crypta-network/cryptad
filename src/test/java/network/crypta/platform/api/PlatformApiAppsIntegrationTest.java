@@ -32,17 +32,17 @@ class PlatformApiAppsIntegrationTest {
 
   @TempDir private Path tempDir;
 
+  private AppHostLayout appHostLayout;
   private PlatformApiRouter router;
 
   @BeforeEach
   void setUp() {
     RuntimePorts runtimePorts = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
+    appHostLayout =
+        new AppHostLayout(
+            tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"));
     AppHost appHost =
-        new LocalProcessAppHost(
-            new AppHostLayout(
-                tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run")),
-            Duration.ofSeconds(2),
-            new SecureRandom());
+        new LocalProcessAppHost(appHostLayout, Duration.ofSeconds(2), new SecureRandom());
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
@@ -92,6 +92,71 @@ class PlatformApiAppsIntegrationTest {
   }
 
   @Test
+  void route_whenStoppedInstalledAppUpdated_expectStableJsonAndPreservedMutableLayout()
+      throws Exception {
+    Path stagedV1 = stageApp("staged-v1", "1.0.0");
+    Path stagedV2 = stageApp("staged-v2", "9.9.9");
+
+    PlatformApiResponse installResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedV1.toString()))));
+    assertEquals(201, installResponse.statusCode());
+
+    Files.writeString(tempDir.resolve("data/apps/data/" + APP_ID + "/sentinel.txt"), "data");
+    Files.writeString(tempDir.resolve("cache/apps/" + APP_ID + "/sentinel.txt"), "cache");
+    Files.writeString(tempDir.resolve("run/apps/" + APP_ID + "/sentinel.txt"), "run");
+
+    PlatformApiResponse updateResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedV2.toString()))));
+
+    assertEquals(200, updateResponse.statusCode());
+    assertTrue(updateResponse.body().contains("\"version\":\"9.9.9\""));
+    assertTrue(updateResponse.body().contains("\"installed\":true"));
+    assertTrue(updateResponse.body().contains("\"running\":false"));
+    assertEquals(
+        "data", Files.readString(tempDir.resolve("data/apps/data/" + APP_ID + "/sentinel.txt")));
+    assertEquals(
+        "cache", Files.readString(tempDir.resolve("cache/apps/" + APP_ID + "/sentinel.txt")));
+    assertEquals("run", Files.readString(tempDir.resolve("run/apps/" + APP_ID + "/sentinel.txt")));
+  }
+
+  @Test
+  void route_whenInstalledManifestMissingDuringUpdate_expectRepairResponse() throws Exception {
+    Path stagedV1 = stageApp("staged-v1", "1.0.0");
+    Path stagedV2 = stageApp("staged-v2", "9.9.9");
+
+    PlatformApiResponse installResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedV1.toString()))));
+    assertEquals(201, installResponse.statusCode());
+    Files.delete(appHostLayout.pathsFor(APP_ID).manifestFile());
+
+    PlatformApiResponse updateResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedV2.toString()))));
+    PlatformApiResponse getResponse =
+        router.route(request("GET", List.of("apps", APP_ID), Map.of()));
+
+    assertEquals(200, updateResponse.statusCode());
+    assertTrue(updateResponse.body().contains("\"version\":\"9.9.9\""));
+    assertEquals(200, getResponse.statusCode());
+    assertTrue(getResponse.body().contains("\"version\":\"9.9.9\""));
+  }
+
+  @Test
   void route_whenAppMissing_expect404() {
     PlatformApiResponse response =
         router.route(request("GET", List.of("apps", "missing"), Map.of()));
@@ -136,9 +201,13 @@ class PlatformApiAppsIntegrationTest {
   }
 
   private Path stageApp() throws Exception {
+    return stageApp("staged", APP_VERSION);
+  }
+
+  private Path stageApp(String stagedDirectoryName, String appVersion) throws Exception {
     AppEnv appEnv = new AppEnv();
     String scriptName = appEnv.isWindows() ? "launch.cmd" : "launch.sh";
-    Path stagedDir = Files.createDirectories(tempDir.resolve("staged").resolve(APP_ID));
+    Path stagedDir = Files.createDirectories(tempDir.resolve(stagedDirectoryName).resolve(APP_ID));
     Path binDir = Files.createDirectories(stagedDir.resolve("bin"));
     Path launcher = binDir.resolve(scriptName);
     Files.writeString(launcher, scriptContent(appEnv), StandardCharsets.UTF_8);
@@ -158,7 +227,7 @@ class PlatformApiAppsIntegrationTest {
         quota.data.bytes=4096
         quota.cache.bytes=1024
         """
-            .formatted(APP_ID, APP_NAME, APP_VERSION, scriptName, UI_ENTRY),
+            .formatted(APP_ID, APP_NAME, appVersion, scriptName, UI_ENTRY),
         StandardCharsets.UTF_8);
     return stagedDir;
   }
