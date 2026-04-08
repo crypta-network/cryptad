@@ -145,6 +145,20 @@ class FcpClient:
             self.file.write(payload)
         self._log_message("SEND", name, fields, payload)
 
+    def _read_exact(self, length: int) -> bytes:
+        remaining = length
+        chunks: list[bytes] = []
+        while remaining > 0:
+            chunk = self.file.read(remaining)
+            if not chunk:
+                raise EOFError(
+                    f"{self.name} connection closed while reading payload "
+                    f"({length - remaining}/{length} bytes received)"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
     def read_message(self, timeout: int) -> dict[str, object]:
         self.sock.settimeout(timeout)
         name_bytes = self.file.readline()
@@ -167,7 +181,7 @@ class FcpClient:
                     length = int(fields["DataLength"])
                 except KeyError as exc:
                     raise RuntimeError(f"{self.name} received Data marker without DataLength") from exc
-                payload = self.file.read(length)
+                payload = self._read_exact(length)
                 message = {"name": name, "fields": fields, "payload": payload}
                 self._log_message("RECV", name, fields, payload)
                 return message
