@@ -16,7 +16,7 @@ import network.crypta.support.HTMLNode;
  * <p>Instances of this alert are immutable after construction and are safe to publish to
  * user-facing UI components. The title, short text, and body text are localized via {@link
  * NodeL10n} using the {@code TimeSkewDetectedUserAlert.*} resource keys. Rendering helpers may use
- * {@link #getHTMLText()} to obtain a simple HTML representation suitable for inclusion in status or
+ * {@link #getHTMLText()} to get a simple HTML representation suitable for inclusion in status or
  * alerts panels.
  *
  * <ul>
@@ -105,8 +105,8 @@ public class TimeSkewDetectedUserAlert extends AbstractUserAlert {
    * Returns a minimal HTML representation of the alert body.
    *
    * <p>The returned {@link HTMLNode} wraps the same content provided by {@link #getText()} inside a
-   * simple {@code <div>} for embedding into HTML-capable UI components. No additional markup is
-   * added by this class.
+   * simple {@code <div>} for embedding into HTML-capable UI components. This class adds no
+   * additional markup.
    *
    * @return an HTML node containing the localized body text; ownership remains with the caller.
    */

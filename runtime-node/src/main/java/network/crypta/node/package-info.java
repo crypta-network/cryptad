@@ -8,7 +8,9 @@
  * insert and fetch execution, security-level handling, statistics export, and the node-local file
  * and key material helpers that still depend directly on a running daemon instance. The smaller
  * compile-neutral helper slice now lives in {@code :kernel-routing}, while this runtime-owned
- * portion keeps the cyclic request, peer, and transport engines.
+ * portion keeps the cyclic request, peer, and transport engines. Lightweight scheduling and
+ * shutdown contracts such as {@code FastRunnable}, {@code PrioRunnable}, and {@code
+ * SemiOrderedShutdownHook} now live in {@code :foundation-support}.
  *
  * <p>These runtime-owned classes are not a stable public extension surface. They still mix
  * transport, routing, and content-adjacent responsibilities that later work will separate into more

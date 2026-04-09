@@ -18,6 +18,7 @@ dependencies {
   implementation(project(":kernel-transport"))
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
+  implementation(project(":runtime-alerts"))
   implementation(project(":thirdparty-onion"))
   implementation(project(":thirdparty-legacy"))
 

@@ -3,6 +3,7 @@
 
 network/crypta/node/FSParseException*
 network/crypta/node/FastRunnable*
+network/crypta/node/PrioRunnable*
 network/crypta/node/SemiOrderedShutdownHook*
 network/crypta/io/WritableToDataOutputStream*
 network/crypta/io/AddressIdentifier*
@@ -27,6 +28,7 @@ network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*
 network/crypta/support/IllegalBase64Exception*
 network/crypta/support/IllegalValueException*
+network/crypta/support/JVMVersion*
 network/crypta/support/LRUCache*
 network/crypta/support/LRUMap*
 network/crypta/support/LightweightException*

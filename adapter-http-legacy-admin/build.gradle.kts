@@ -21,6 +21,7 @@ dependencies {
   implementation(project(":platform-api"))
   implementation(project(":platform-apphost"))
   implementation(project(":platform-web-shell"))
+  implementation(project(":runtime-alerts"))
   implementation(project(":runtime-node"))
   implementation(project(":thirdparty-onion"))
 

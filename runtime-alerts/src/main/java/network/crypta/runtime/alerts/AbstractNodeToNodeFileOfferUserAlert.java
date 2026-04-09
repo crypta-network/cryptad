@@ -11,10 +11,10 @@ package network.crypta.runtime.alerts;
  * the surrounding system that dispatches and renders alerts to end users.
  *
  * <p>The class itself does not add state or behavior; it only narrows the intent of {@link
- * AbstractUserAlert}. Thread-safety and mutability are entirely determined by subclasses. In most
- * usages, instances are created, delivered to an alert bus or UI, and then allowed to be
- * garbage-collected once acknowledged or expired. Because the class is abstract, it cannot be
- * instantiated directly; extend it and supply any message details required by your application.
+ * AbstractUserAlert}. Subclasses entirely determine thread-safety and mutability. In most usages,
+ * instances are created, delivered to an alert bus or UI, and then allowed to be garbage-collected
+ * once acknowledged or expired. Because the class is abstract, it cannot be instantiated directly;
+ * extend it and supply any message details required by your application.
  *
  * <ul>
  *   <li>Scope: file-offer alerts exchanged across nodes.

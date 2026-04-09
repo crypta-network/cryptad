@@ -22,7 +22,7 @@ import network.crypta.support.HTMLNode;
  * <ul>
  *   <li>Responsibilities: simple construction, localized dismiss label, and unregister-on-dismiss.
  *   <li>Thread-safety: inherits the base class contract; callers should synchronize for multi-field
- *       reads to obtain a consistent snapshot.
+ *       reads to get a consistent snapshot.
  * </ul>
  *
  * @see AbstractUserAlert
@@ -35,7 +35,7 @@ public class SimpleUserAlert extends AbstractUserAlert {
    *
    * <p>The alert is created in a valid state and uses the given title, full body, and short summary
    * for rendering. A minimal HTML fragment is synthesized as {@code <div>} containing the plain
-   * text. The dismiss button label is localized via {@link NodeL10n} and dismissals request
+   * text. The Dismiss button label is localized via {@link NodeL10n} and dismissal request
    * unregistering this alert. Note that {@link #isValid(boolean)} is overridden to do nothing; if
    * your producer needs to toggle visibility, unregister and replace the alert instead.
    *
@@ -45,14 +45,15 @@ public class SimpleUserAlert extends AbstractUserAlert {
    *     "Free space is below 5 GiB.", "Low free space", UserAlert.WARNING);
    * }</pre>
    *
-   * @param canDismiss whether user interfaces should present a dismiss control; when {@code false}
-   *     the alert is not user-dismissible and should be removed programmatically by its producer.
+   * @param canDismiss whether user interfaces should present a dismissing control; when {@code
+   *     false} the alert is not user-dismissible and should be removed programmatically by its
+   *     producer.
    * @param title localized, succinct title appropriate for list headers and banners; may be {@code
    *     null} if the consumer can infer or chooses to omit a title in its UI.
    * @param text full, plain-text body describing the condition or guidance for the user; may be
    *     {@code null} if a consumer relies solely on the short summary in constrained contexts.
    * @param shortText compact summary suitable for notifications and feeds; may be {@code null} when
-   *     not applicable or when the full text is sufficiently brief for all contexts.
+   *     not applicable or when the full text is brief enough for all contexts.
    * @param type severity class such as {@link UserAlert#CRITICAL_ERROR}, {@link UserAlert#ERROR},
    *     {@link UserAlert#WARNING}, or {@link UserAlert#MINOR}; controls ordering and emphasis.
    */
