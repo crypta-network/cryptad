@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
@@ -11,7 +10,6 @@ import network.crypta.clients.fcp.bridge.CoreFcpServerDependenciesFactory;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -44,7 +42,6 @@ class FCPServerTest {
   @Mock private TempBucketFactory tempBucketFactory;
   @Mock private PersistentTempBucketFactory persistentTempBucketFactory;
   @Mock private RandomSource randomSource;
-  @Mock private HighLevelSimpleClient highLevelSimpleClient;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
     FcpServerConfig config =
@@ -214,21 +211,6 @@ class FCPServerTest {
 
     assertNotNull(first);
     assertSame(first, second);
-  }
-
-  @Test
-  void messageRuntimeSupport_whenMakeClientInvoked_delegatesToCore() {
-    when(core.makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true))
-        .thenReturn(highLevelSimpleClient);
-    FCPServer server = newServer(false, false);
-
-    HighLevelSimpleClient actual =
-        server
-            .messageRuntimeSupport()
-            .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
-
-    assertSame(highLevelSimpleClient, actual);
-    verify(core).makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
   }
 
   @Test

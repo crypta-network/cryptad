@@ -1,9 +1,15 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URL;
+import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FcpDarknetPeerHandle;
 import network.crypta.clients.fcp.FcpPeerLookupResult;
+import network.crypta.clients.fcp.FcpPeerReferenceFetchException;
 import network.crypta.clients.fcp.FcpProbeError;
 import network.crypta.clients.fcp.FcpProbeListener;
 import network.crypta.clients.fcp.FcpProbeType;
@@ -12,17 +18,18 @@ import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
-import network.crypta.node.RequestStarter;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.feed.UserAlertFeedSubscriber;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +47,6 @@ import static org.mockito.Mockito.when;
 class CoreFcpMessageRuntimeSupportTest {
 
   @Mock private NodeClientCore core;
-  @Mock private HighLevelSimpleClient client;
   @Mock private Node node;
   @Mock private NodeNetworkSubsystem network;
   @Mock private DarknetPeerNode darknetPeerNode;
@@ -71,16 +78,92 @@ class CoreFcpMessageRuntimeSupportTest {
   }
 
   @Test
-  void makeClient_whenCalled_delegatesToCore() {
-    when(core.makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true))
-        .thenReturn(client);
+  void readPeerReferenceFromUrl_whenCalled_delegatesToPeerReferenceTextLoader() throws Exception {
+    URL url = URI.create("https://example.invalid/peer.txt").toURL();
+    StringBuilder reference = referenceText("identity=peer-url\n");
     CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
 
-    HighLevelSimpleClient actual =
-        support.makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        org.mockito.Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader.when(() -> PeerReferenceTextLoader.readFromUrl(url)).thenReturn(reference);
 
-    assertSame(client, actual);
-    verify(core).makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
+      StringBuilder actual = support.readPeerReferenceFromUrl(url);
+
+      assertSame(reference, actual);
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromUrl(url));
+    }
+  }
+
+  @Test
+  void readPeerReferenceFromCryptaUri_whenCalled_delegatesToCoreClientAndLoader() throws Exception {
+    FreenetURI uri = new FreenetURI("KSK@test");
+    StringBuilder reference = referenceText("identity=peer-uri\n");
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+
+    when(core.makeClient((short) 2, true, true)).thenReturn(client);
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        org.mockito.Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader
+          .when(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client))
+          .thenReturn(reference);
+
+      StringBuilder actual = support.readPeerReferenceFromCryptaUri(uri, (short) 2, true, true);
+
+      assertSame(reference, actual);
+      verify(core).makeClient((short) 2, true, true);
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client));
+    }
+  }
+
+  @Test
+  void readPeerReferenceFromCryptaUri_whenFetchFails_wrapsFetchFailure() throws Exception {
+    FreenetURI uri = new FreenetURI("KSK@test");
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    FetchException fetchException = new FetchException(FetchExceptionMode.INTERNAL_ERROR);
+
+    when(core.makeClient((short) 2, true, true)).thenReturn(client);
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        org.mockito.Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader
+          .when(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client))
+          .thenThrow(fetchException);
+
+      FcpPeerReferenceFetchException actual =
+          assertThrows(
+              FcpPeerReferenceFetchException.class,
+              () -> support.readPeerReferenceFromCryptaUri(uri, (short) 2, true, true));
+
+      assertSame(fetchException, actual.getCause());
+      verify(core).makeClient((short) 2, true, true);
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client));
+    }
+  }
+
+  @Test
+  void readPeerReferenceFromCryptaUri_whenReadFailsWithIo_propagatesIoException() throws Exception {
+    FreenetURI uri = new FreenetURI("KSK@test");
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    IOException ioException = new IOException("bucket read failed");
+
+    when(core.makeClient((short) 2, true, true)).thenReturn(client);
+    try (MockedStatic<PeerReferenceTextLoader> mockedLoader =
+        org.mockito.Mockito.mockStatic(PeerReferenceTextLoader.class)) {
+      mockedLoader
+          .when(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client))
+          .thenThrow(ioException);
+
+      IOException actual =
+          assertThrows(
+              IOException.class,
+              () -> support.readPeerReferenceFromCryptaUri(uri, (short) 2, true, true));
+
+      assertSame(ioException, actual);
+      verify(core).makeClient((short) 2, true, true);
+      mockedLoader.verify(() -> PeerReferenceTextLoader.readFromFreenetUri(uri, client));
+    }
   }
 
   @Test
@@ -274,5 +357,9 @@ class CoreFcpMessageRuntimeSupportTest {
       case REJECT_STATS -> Type.REJECT_STATS;
       case OVERALL_BULK_OUTPUT_CAPACITY_USAGE -> Type.OVERALL_BULK_OUTPUT_CAPACITY_USAGE;
     };
+  }
+
+  private static StringBuilder referenceText(String text) {
+    return new StringBuilder().append(text);
   }
 }

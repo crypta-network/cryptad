@@ -12,10 +12,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import network.crypta.client.FetchException;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
-import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.PeerAddFailureReason;
 import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
@@ -155,44 +152,6 @@ public final class AddPeer extends FCPMessage {
   }
 
   /**
-   * Delegates to the neutral peer-reference text loader for regular URLs.
-   *
-   * <p>The returned buffer and newline-joining behavior match the runtime-owned loader used by the
-   * HTTP and console adapters.
-   *
-   * @param url absolute URL pointing to a textual peer reference document; must not be {@code null}
-   * @return mutable buffer containing the full textual contents of the response, including trailing
-   *     newline characters if present
-   * @throws IOException if establishing the connection or reading the response body fails for any
-   *     reason, including network errors or unexpected end-of-stream conditions
-   */
-  public static StringBuilder getReferenceFromURL(URL url) throws IOException {
-    return PeerReferenceTextLoader.readFromUrl(url);
-  }
-
-  /**
-   * Delegates to the neutral peer-reference text loader for Freenet URIs.
-   *
-   * <p>The supplied client still performs the legacy 31,000-byte fetch, and the returned text keeps
-   * the same newline-joining behavior as the URL path.
-   *
-   * @param uri Freenet URI locating the remotely stored peer reference document; must not be {@code
-   *     null}
-   * @param client high-level client instance used to perform the fetch within the appropriate
-   *     request priority class and security context; must be configured for the target node
-   * @return mutable buffer containing the full textual contents of the fetched document, including
-   *     any trailing newline characters
-   * @throws IOException if reading the fetched data from the node fails due to I/O errors in the
-   *     underlying stream
-   * @throws FetchException if the URI cannot be fetched successfully, for example, due to routing
-   *     failures, timeouts, or protocol-level error responses
-   */
-  public static StringBuilder getReferenceFromFreenetURI(
-      FreenetURI uri, HighLevelSimpleClient client) throws IOException, FetchException {
-    return PeerReferenceTextLoader.readFromFreenetUri(uri, client);
-  }
-
-  /**
    * Executes the AddPeer request against the supplied node.
    *
    * <p>The method first enforces that the originating FCP connection has full-access permissions,
@@ -296,16 +255,15 @@ public final class AddPeer extends FCPMessage {
       throws IOException {
     try {
       FreenetURI refUri = new FreenetURI(urlString);
-      HighLevelSimpleClient client =
-          handler
-              .getServer()
-              .messageRuntimeSupport()
-              .makeClient(FcpPriorityClasses.IMMEDIATE_SPLITFILE, true, true);
-      return getReferenceFromFreenetURI(refUri, client);
-    } catch (MalformedURLException | FetchException _) {
+      return handler
+          .getServer()
+          .messageRuntimeSupport()
+          .readPeerReferenceFromCryptaUri(
+              refUri, FcpPriorityClasses.IMMEDIATE_SPLITFILE, true, true);
+    } catch (MalformedURLException | FcpPeerReferenceFetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urlString);
       URL url = createUrlFromString(urlString);
-      return getReferenceFromURL(url);
+      return handler.getServer().messageRuntimeSupport().readPeerReferenceFromUrl(url);
     }
   }
 

@@ -28,6 +28,9 @@ class AdapterFcpBoundaryTest {
       Path.of("src", "main", "java", "network", "crypta", "clients", "fcp", "bridge");
   private static final Path ADAPTER_FCP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp");
+  private static final Path ADD_PEER_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("AddPeer.java");
+  private static final Path FCP_MESSAGE_RUNTIME_SUPPORT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpMessageRuntimeSupport.java");
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -210,6 +213,29 @@ class AdapterFcpBoundaryTest {
         ":adapter-fcp main sources must not import PeerNode, DarknetPeerNode, or node.probe.*"
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingAddPeerSeam_expectNoRuntimeClientFetchOrLoaderLeak()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    String addPeerSource = Files.readString(repoRoot.resolve(ADD_PEER_SOURCE));
+    String messageRuntimeSupportSource =
+        Files.readString(repoRoot.resolve(FCP_MESSAGE_RUNTIME_SUPPORT_SOURCE));
+
+    assertFalse(
+        addPeerSource.contains("import network.crypta.client.HighLevelSimpleClient;"),
+        "AddPeer must not import HighLevelSimpleClient directly");
+    assertFalse(
+        addPeerSource.contains("import network.crypta.client.FetchException;"),
+        "AddPeer must not import FetchException directly");
+    assertFalse(
+        addPeerSource.contains(
+            "import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;"),
+        "AddPeer must not import PeerReferenceTextLoader directly");
+    assertFalse(
+        messageRuntimeSupportSource.contains(" makeClient("),
+        "FcpMessageRuntimeSupport must not expose raw makeClient(...) anymore");
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {
