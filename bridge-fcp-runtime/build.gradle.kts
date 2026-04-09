@@ -8,7 +8,7 @@ version = rootProject.version
 val mainSourceSet = sourceSets.named("main")
 
 dependencies {
-  implementation(project(":foundation-compat"))
+  implementation(project(":adapter-fcp"))
   implementation(project(":foundation-support"))
   implementation(project(":foundation-config"))
   implementation(project(":foundation-crypto-keys"))
@@ -17,6 +17,7 @@ dependencies {
   implementation(project(":kernel-transport"))
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
+  implementation(project(":runtime-alerts"))
   implementation(project(":runtime-node"))
 
   implementation(libs.slf4jApi)
@@ -26,6 +27,10 @@ dependencies {
 
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(libs.junitJupiterApi)
+  testImplementation(libs.mockitoCore)
+  testImplementation(libs.mockitoJunitJupiter)
+  testImplementation(libs.mockitoInline)
+  testCompileOnly(libs.jetbrainsAnnotations)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }

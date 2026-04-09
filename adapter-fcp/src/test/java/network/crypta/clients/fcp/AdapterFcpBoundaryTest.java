@@ -24,10 +24,25 @@ class AdapterFcpBoundaryTest {
   private static final String MODULE_NAME = "adapter-fcp";
   private static final Path ROOT_FCP_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "fcp");
+  private static final Path ROOT_FCP_BRIDGE_MAIN_JAVA =
+      Path.of("src", "main", "java", "network", "crypta", "clients", "fcp", "bridge");
   private static final Path ADAPTER_FCP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp");
+  private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
+      Path.of(
+          "bridge-fcp-runtime",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "clients",
+          "fcp",
+          "bridge");
   private static final Path OWNERSHIP_METADATA =
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
+  private static final Path BRIDGE_OWNERSHIP_METADATA =
+      Path.of("bridge-fcp-runtime", "gradle", "owned-output-patterns.txt");
   private static final Path DEFAULT_BRIDGE_FACTORIES =
       Path.of(
           "src",
@@ -64,6 +79,9 @@ class AdapterFcpBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(ROOT_FCP_MAIN_JAVA)),
         "Root project must not re-own network/crypta/clients/fcp main sources");
+    assertFalse(
+        Files.exists(repoRoot.resolve(ROOT_FCP_BRIDGE_MAIN_JAVA)),
+        "Root project must not re-own network/crypta/clients/fcp/bridge main sources");
   }
 
   @Test
@@ -72,10 +90,19 @@ class AdapterFcpBoundaryTest {
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
     String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
+    String bridgeMetadata = Files.readString(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":adapter-fcp\""));
+    assertTrue(settings.contains("\":bridge-fcp-runtime\""));
     assertTrue(build.contains("project(\":adapter-fcp\")"));
-    assertTrue(metadata.contains("network/crypta/clients/fcp/**"));
+    assertTrue(build.contains("project(\":bridge-fcp-runtime\")"));
+    assertTrue(metadata.contains("network/crypta/clients/fcp/*"));
+    assertFalse(
+        metadata.contains("network/crypta/clients/fcp/bridge/**"),
+        ":adapter-fcp must not claim network/crypta/clients/fcp/bridge/** in ownership metadata");
+    assertTrue(
+        bridgeMetadata.contains("network/crypta/clients/fcp/bridge/**"),
+        ":bridge-fcp-runtime must own network/crypta/clients/fcp/bridge/**");
   }
 
   @Test
@@ -93,15 +120,19 @@ class AdapterFcpBoundaryTest {
       }
 
       Set<String> imports = readFcpImports(sourceFile);
-      if (!imports.isEmpty() && !relativePath.startsWith(ADAPTER_FCP_MAIN_JAVA)) {
+      boolean allowedMainSource =
+          relativePath.startsWith(ADAPTER_FCP_MAIN_JAVA)
+              || relativePath.startsWith(BRIDGE_FCP_RUNTIME_MAIN_JAVA);
+      if (!imports.isEmpty() && !allowedMainSource) {
         violations.add(relativePath + " -> " + String.join(", ", imports));
       }
     }
 
     assertTrue(
         violations.isEmpty(),
-        "Only :adapter-fcp main sources may import network.crypta.clients.fcp.*, except the "
-            + "bootstrap binding site and the AddRef tool."
+        "Only :adapter-fcp and :bridge-fcp-runtime main sources may import "
+            + "network.crypta.clients.fcp.*, except the bootstrap binding site and the AddRef "
+            + "tool."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
     assertEquals(

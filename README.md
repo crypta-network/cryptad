@@ -241,7 +241,8 @@ Cryptad now uses a partial multi-project Gradle build.
   daemon-bound `network.crypta.runtime.*` implementation slices, and the remaining daemon-coupled
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   that has not moved into `:foundation-support`.
-- `:adapter-fcp` owns `network.crypta.clients.fcp`, including
+- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree.
+- `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree plus
   the matching `network/crypta/clients/http/**` main resources such as `staticfiles/**` and
@@ -277,7 +278,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.runtime.peers.reference`, and `network.crypta.runtime.persistence`.
 - Default production bridge selection now starts in
   `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`. Concrete adapter
-  implementations stay in `network.crypta.clients.fcp.bridge`,
+  implementations stay in `network.crypta.clients.fcp.bridge` under
+  `:bridge-fcp-runtime`,
   `network.crypta.clients.http.bridge`, and `network.crypta.clients.http.updater`, while
   higher-level runtime code depends on runtime-owned seam types such as
   `network.crypta.runtime.endpoints.fcp.FcpEndpointHandle`,
@@ -628,8 +630,9 @@ Root build also includes:
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
   support helpers.
-- `:adapter-fcp`: extracted `network.crypta.clients.fcp` adapter code, including
-  `network.crypta.clients.fcp.bridge`.
+- `:adapter-fcp`: extracted `network.crypta.clients.fcp` protocol leaf.
+- `:bridge-fcp-runtime`: extracted concrete `network.crypta.clients.fcp.bridge` runtime-binding
+  leaf.
 - `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
   HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
@@ -699,7 +702,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-web-shell`, `:runtime-node`,
-    `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
+    `:adapter-fcp`, `:bridge-fcp-runtime`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
@@ -745,7 +748,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   concerns. Runtime-owned FCP seam types now live under `network.crypta.runtime.fcp` and
   `network.crypta.runtime.endpoints.fcp`, while concrete persistent-request services, queue
   adapters, alert-feed adapters, and endpoint-handle wrappers now live under
-  `network.crypta.clients.fcp.bridge`.
+  `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
   `staticfiles/**` and `templates/**` resources. The migrated HTTP management and shell slices
   cross the boundary in three layers: `RuntimePorts` for JDK-only detached runtime state,
@@ -831,7 +834,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code, and the remaining daemon-coupled support helpers;
-  `:adapter-fcp` provides `network.crypta.clients.fcp`; and
+  `:adapter-fcp` provides `network.crypta.clients.fcp`;
+  `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`; and
   `:adapter-http-legacy-admin` provides the current legacy `network.crypta.clients.http` classes
   and resources.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,

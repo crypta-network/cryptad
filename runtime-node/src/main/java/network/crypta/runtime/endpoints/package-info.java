@@ -11,7 +11,7 @@
  *
  * <p>The intent is ownership clarification only. These types still depend on daemon-local services
  * such as {@code Node}, {@code NodeClientCore}, queue persistence, and HTTP bootstrap helpers, but
- * the FCP-specific concrete types now live behind the adapter-owned bridge package in {@code
+ * the FCP-specific concrete types now live behind the bridge leaf in {@code
  * network.crypta.clients.fcp.bridge}, while default production binding selection is rooted in
  * {@code network.crypta.runtime.bootstrap}. The runtime-endpoint types intentionally preserve the
  * current behavior and lifecycle semantics while depending only on the seam-owned FCP endpoint
