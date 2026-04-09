@@ -244,15 +244,18 @@ Cryptad now uses a partial multi-project Gradle build.
   remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
   refines it further. That shell now also hosts the temporary `/api/v1/` mount for
   `:platform-api` plus the first `/app/node/` Web Shell bridge for `:platform-web-shell`; future
-  AppHost UI and remote update-channel work remain separate.
+  AppHost UI and remote update-channel work remain separate. See
+  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
+  boundary.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
   resources.
 - The daemon runtime body now spans extracted leaves plus a thin root composition layer. The root
-  project still owns the daemon/application build, packaging/runtime tasks, all tests,
-  `network.crypta.tools`, and root-local composition code such as
-  `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
+  project still owns the daemon/application build, packaging/runtime tasks, most broad
+  functional/unit/integration tests, `network.crypta.tools`, and root-local composition code such
+  as `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`. The extracted leaves now
+  keep their own focused boundary suites alongside the code they protect.
 - Every extracted leaf keeps its aggregated-output ownership metadata in
   `<leaf>/gradle/owned-output-patterns.txt`. When you move main classes or resources between root
   and a leaf, or between leaves, update that metadata and validate it with
@@ -302,28 +305,39 @@ The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 ./gradlew test --tests *TestClassName.methodName
 ```
 
-For extraction and boundary work, run the focused root boundary tests that freeze current leaf
-ownership and import rules:
+For extraction and boundary work, run the focused leaf-local boundary suites that freeze current
+leaf ownership and import rules:
 
 ```bash
-./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest
-```
-
-Those boundary suites also enforce the current extracted-leaf documentation convention that
-production packages in `:runtime-node`, `:kernel-content`, `:platform-api`,
-`:platform-apphost`, and `:platform-web-shell` keep a `package-info.java`.
-
-Focused platform test slices live in a mix of leaf and root tasks:
-
-```bash
+./gradlew :platform-api:test
 ./gradlew :platform-apphost:test
 ./gradlew :platform-web-shell:test
+./gradlew :kernel-content:test
+./gradlew :kernel-transport:test
+./gradlew :kernel-routing:test
+./gradlew :runtime-node:test
+./gradlew :adapter-fcp:test
+./gradlew :adapter-http-legacy-admin:test
+```
+
+Those boundary suites also enforce the current extracted-leaf documentation convention that the
+production packages they own keep the required `package-info.java`.
+
+Run the remaining root-owned composition and router slice against the root project explicitly:
+
+```bash
+./gradlew :test --tests *DefaultNodeRuntimeBridgeFactoriesTest --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest
+```
+
+Additional root and mixed verification slices remain available:
+
+```bash
 ./gradlew :adapter-http-legacy-admin:test
 ./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest
 ```
 
-Platform boundary checks also include `PlatformApiBoundaryTest` in the root test tree plus the
-leaf-owned `AppHostBoundaryTest` and `WebShellBoundaryTest`.
+Platform boundary checks now live in `:platform-api`, `:platform-apphost`, and
+`:platform-web-shell`.
 
 ## Code Quality
 
@@ -615,7 +629,9 @@ Root build also includes:
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
   HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
   boundary-frozen for now. It currently hosts both the temporary `/api/v1/` bridge for
-  `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`.
+  `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`. See
+  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
+  boundary.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
   bandwidth-detection helpers now used by first-time setup flows.
@@ -666,8 +682,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 - Build/module layout:
   - Root project `:cryptad` remains the daemon/application build and still owns the strongly
-    coupled composition layer, all tests, packaging/runtime tasks, root-local bridge selection,
-    and `network.crypta.tools`.
+    coupled composition layer, most broad functional/unit/integration tests, packaging/runtime
+    tasks, root-local bridge selection, and `network.crypta.tools`. Focused extracted-leaf
+    boundary suites now live in the owning leaf modules.
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
@@ -735,7 +752,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `DefaultNodeRuntimeBridgeFactories`. The remaining legacy browse/FProxy tree inside
   `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines it
   further, and production code outside the adapter should keep depending on runtime seams rather
-  than taking new `network.crypta.clients.http.*` dependencies.
+  than taking new `network.crypta.clients.http.*` dependencies. See
+  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
+  boundary.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
   `RuntimePorts`, `ConfigPort`, `NodeInfoPort`, `PeerPort`, `ConnectionsPagePort`,
   `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `QueuePagePort`,

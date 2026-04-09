@@ -19,15 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class PlatformApiBoundaryTest {
+  private static final String MODULE_NAME = "platform-api";
   private static final Path ROOT_PLATFORM_API_PACKAGE =
       Path.of("src", "main", "java", "network", "crypta", "platform", "api");
-  private static final Path PLATFORM_API_MAIN_JAVA = Path.of("platform-api", "src", "main", "java");
+  private static final Path PLATFORM_API_MAIN_JAVA = Path.of(MODULE_NAME, "src", "main", "java");
   private static final Path PLATFORM_API_PACKAGE =
-      Path.of("platform-api", "src", "main", "java", "network", "crypta", "platform", "api");
+      PLATFORM_API_MAIN_JAVA.resolve(Path.of("network", "crypta", "platform", "api"));
   private static final Path PLATFORM_API_ROUTER =
       PLATFORM_API_PACKAGE.resolve("PlatformApiRouter.java");
   private static final Path PLATFORM_API_JSON_ENCODER =
       PLATFORM_API_PACKAGE.resolve("json").resolve("PlatformApiJsonEncoder.java");
+  private static final Path OWNERSHIP_METADATA =
+      Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Pattern FORBIDDEN_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+(network\\.crypta\\.(?:clients\\.(?:http|fcp)|node|client|runtime\\.(?:bootstrap|core|admin|endpoints))\\.[^;]+);$");
@@ -49,6 +52,18 @@ class PlatformApiBoundaryTest {
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(PLATFORM_API_JSON_ENCODER)),
         ":platform-api must provide the Platform API JSON encoder");
+  }
+
+  @Test
+  void buildWiring_whenCheckingLeafMetadata_expectOwnedOutputPatternDeclared() throws IOException {
+    Path repoRoot = repoRoot();
+    String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
+    String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
+
+    assertTrue(settings.contains("\":platform-api\""));
+    assertTrue(build.contains("project(\":platform-api\")"));
+    assertTrue(metadata.contains("network/crypta/platform/api/**"));
   }
 
   @Test
@@ -95,7 +110,7 @@ class PlatformApiBoundaryTest {
 
     for (Path packagePath : productionPackages) {
       if (!Files.isRegularFile(packagePath.resolve("package-info.java"))) {
-        missingPackageInfos.add(platformApiMain.relativize(packagePath).toString());
+        missingPackageInfos.add(repoRoot.relativize(packagePath).toString());
       }
     }
 
@@ -145,8 +160,12 @@ class PlatformApiBoundaryTest {
   }
 
   private static Path repoRoot() throws IOException {
-    Path repoRoot = Path.of("").toAbsolutePath().normalize();
-    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
-    return repoRoot.toRealPath();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 }

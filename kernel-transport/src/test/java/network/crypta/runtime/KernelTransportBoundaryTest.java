@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -130,24 +132,57 @@ class KernelTransportBoundaryTest {
         Files.isRegularFile(repoRoot.resolve(KERNEL_TRANSPORT_PARTIALLY_RECEIVED_BLOCK)),
         "kernel-transport must own network.crypta.io.xfer.PartiallyReceivedBlock in phase 1");
 
-    assertTrue(
-        !Files.exists(repoRoot.resolve(RUNTIME_NODE_ALLOWED_HOSTS)),
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_ALLOWED_HOSTS)),
         "runtime-node must not retain network.crypta.io.AllowedHosts after phase-1 extraction");
-    assertTrue(
-        !Files.exists(repoRoot.resolve(RUNTIME_NODE_NETWORK_INTERFACE)),
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_NETWORK_INTERFACE)),
         "runtime-node must not retain network.crypta.io.NetworkInterface after phase-1 extraction");
-    assertTrue(
-        !Files.exists(repoRoot.resolve(RUNTIME_NODE_IO_STATISTIC_COLLECTOR)),
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_IO_STATISTIC_COLLECTOR)),
         "runtime-node must not retain network.crypta.io.comm.IOStatisticCollector after phase-1"
             + " extraction");
-    assertTrue(
-        !Files.exists(repoRoot.resolve(RUNTIME_NODE_PACKET_THROTTLE)),
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_PACKET_THROTTLE)),
         "runtime-node must not retain network.crypta.io.xfer.PacketThrottle after phase-1"
             + " extraction");
-    assertTrue(
-        !Files.exists(repoRoot.resolve(RUNTIME_NODE_PARTIALLY_RECEIVED_BLOCK)),
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_PARTIALLY_RECEIVED_BLOCK)),
         "runtime-node must not retain network.crypta.io.xfer.PartiallyReceivedBlock after phase-1"
             + " extraction");
+  }
+
+  @Test
+  void kernelTransportMain_whenScanningProductionPackages_expectPackageInfoInEveryPackage()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelTransportMain = repoRoot.resolve(KERNEL_TRANSPORT_MAIN_JAVA);
+    Set<Path> productionPackages = new TreeSet<>(Comparator.comparing(Path::toString));
+    List<String> missingPackageInfos = new ArrayList<>();
+
+    assertTrue(
+        Files.isDirectory(kernelTransportMain), "kernel-transport main Java tree must exist");
+
+    for (Path sourceFile : findJavaSources(kernelTransportMain)) {
+      String fileName = fileNameOrThrow(sourceFile);
+      if (fileName.equals("package-info.java") || fileName.equals("module-info.java")) {
+        continue;
+      }
+      productionPackages.add(parentOrThrow(sourceFile));
+    }
+
+    for (Path packagePath : productionPackages) {
+      if (!Files.isRegularFile(packagePath.resolve("package-info.java"))) {
+        missingPackageInfos.add(repoRoot.relativize(packagePath).toString());
+      }
+    }
+
+    assertTrue(
+        missingPackageInfos.isEmpty(),
+        "Every :kernel-transport main package with production Java files must declare "
+            + "package-info.java."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), missingPackageInfos));
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {
@@ -160,7 +195,7 @@ class KernelTransportBoundaryTest {
   }
 
   private static boolean isTrackedJavaSource(Path path) {
-    String fileName = path.getFileName().toString();
+    String fileName = fileNameOrThrow(path);
     return fileName.endsWith(".java") && !fileName.startsWith("._");
   }
 
@@ -175,9 +210,25 @@ class KernelTransportBoundaryTest {
     }
   }
 
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    assertNotNull(parent, "Java source path must have a parent: " + path);
+    return parent;
+  }
+
+  private static String fileNameOrThrow(Path path) {
+    Path fileName = path.getFileName();
+    assertNotNull(fileName, "Java source path must have a file name: " + path);
+    return fileName.toString();
+  }
+
   private static Path repoRoot() throws IOException {
-    Path repoRoot = Path.of("").toAbsolutePath().normalize();
-    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
-    return repoRoot.toRealPath();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 }

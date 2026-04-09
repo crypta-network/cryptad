@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -100,24 +102,51 @@ class KernelRoutingBoundaryTest {
     Path repoRoot = repoRoot();
 
     for (String className : PHASE_ONE_MOVED_CLASSES) {
-      Path kernelRoutingSource =
-          repoRoot.resolve(
-              KERNEL_ROUTING_MAIN_JAVA.resolve(
-                  Path.of("network", "crypta", "node", className + ".java")));
-      Path runtimeNodeSource =
-          repoRoot.resolve(
-              RUNTIME_NODE_MAIN_JAVA.resolve(
-                  Path.of("network", "crypta", "node", className + ".java")));
+      Path path = Path.of("network", "crypta", "node", className + ".java");
+      Path kernelRoutingSource = repoRoot.resolve(KERNEL_ROUTING_MAIN_JAVA.resolve(path));
+      Path runtimeNodeSource = repoRoot.resolve(RUNTIME_NODE_MAIN_JAVA.resolve(path));
 
       assertTrue(
           Files.isRegularFile(kernelRoutingSource),
           "kernel-routing must own network.crypta.node." + className + " in phase 1");
-      assertTrue(
-          !Files.exists(runtimeNodeSource),
+      assertFalse(
+          Files.exists(runtimeNodeSource),
           "runtime-node must not retain network.crypta.node."
               + className
               + " after phase-1 extraction");
     }
+  }
+
+  @Test
+  void kernelRoutingMain_whenScanningProductionPackages_expectPackageInfoInEveryPackage()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelRoutingMain = repoRoot.resolve(KERNEL_ROUTING_MAIN_JAVA);
+    Set<Path> productionPackages = new TreeSet<>(Comparator.comparing(Path::toString));
+    List<String> missingPackageInfos = new ArrayList<>();
+
+    assertTrue(Files.isDirectory(kernelRoutingMain), "kernel-routing main Java tree must exist");
+
+    for (Path sourceFile : findJavaSources(kernelRoutingMain)) {
+      String fileName = fileNameOrThrow(sourceFile);
+      if (fileName.equals("package-info.java") || fileName.equals("module-info.java")) {
+        continue;
+      }
+      productionPackages.add(parentOrThrow(sourceFile));
+    }
+
+    for (Path packagePath : productionPackages) {
+      if (!Files.isRegularFile(packagePath.resolve("package-info.java"))) {
+        missingPackageInfos.add(repoRoot.relativize(packagePath).toString());
+      }
+    }
+
+    assertTrue(
+        missingPackageInfos.isEmpty(),
+        "Every :kernel-routing main package with production Java files must declare "
+            + "package-info.java."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), missingPackageInfos));
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {
@@ -130,7 +159,7 @@ class KernelRoutingBoundaryTest {
   }
 
   private static boolean isTrackedJavaSource(Path path) {
-    String fileName = path.getFileName().toString();
+    String fileName = fileNameOrThrow(path);
     return fileName.endsWith(".java") && !fileName.startsWith("._");
   }
 
@@ -145,9 +174,25 @@ class KernelRoutingBoundaryTest {
     }
   }
 
+  private static Path parentOrThrow(Path path) {
+    Path parent = path.getParent();
+    assertNotNull(parent, "Java source path must have a parent: " + path);
+    return parent;
+  }
+
+  private static String fileNameOrThrow(Path path) {
+    Path fileName = path.getFileName();
+    assertNotNull(fileName, "Java source path must have a file name: " + path);
+    return fileName.toString();
+  }
+
   private static Path repoRoot() throws IOException {
-    Path repoRoot = Path.of("").toAbsolutePath().normalize();
-    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
-    return repoRoot.toRealPath();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 }

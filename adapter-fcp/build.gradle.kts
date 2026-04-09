@@ -5,6 +5,8 @@ plugins {
 
 version = rootProject.version
 
+val mainSourceSet = sourceSets.named("main")
+
 dependencies {
   implementation(project(":foundation-support"))
   implementation(project(":foundation-config"))
@@ -20,4 +22,9 @@ dependencies {
   implementation(files(rootProject.file("libs/wrapper.jar")))
 
   compileOnly(libs.jetbrainsAnnotations)
+
+  testImplementation(mainSourceSet.map { it.output })
+  testImplementation(libs.junitJupiterApi)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
 }

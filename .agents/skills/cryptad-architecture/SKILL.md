@@ -91,8 +91,8 @@ Use this skill when you need to:
     `network.crypta.runtime.admin.queue` and `network.crypta.runtime.admin.queue.page`.
     Queue completion/download/insert bridges plus the remaining concrete FCP bridge
     implementations now live under `network.crypta.clients.fcp.bridge`.
-  - The root project keeps application composition, packaging/runtime tasks, tests, tools, and
-    root-local bridge selection in
+  - The root project keeps application composition, packaging/runtime tasks, most broad tests,
+    tools, and root-local bridge selection in
     `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
 - The daemon runtime body now spans extracted leaves plus a thin root composition layer:
   `:kernel-content` owns the compile-neutral phase-1 client/content slice,
@@ -122,12 +122,13 @@ Use this skill when you need to:
 - Update that metadata whenever a leaf starts owning additional main classes/resources that root
   used to compile/package. This applies to existing leaves such as `:foundation-support` and
   `:foundation-store-contracts` just as much as any future extraction.
-- Root boundary tests now freeze the extracted layout. In particular,
+- Focused leaf-local boundary tests now freeze the extracted layout. In particular,
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
-  `AppHostBoundaryTest`, `WebShellBoundaryTest`, and `HttpLegacyAdminBoundaryTest` guard leaf
-  ownership/import rules. The runtime/kernel-content/platform tests also require
-  `package-info.java` in every production package under those leaves.
+  `AdapterFcpBoundaryTest`, `AppHostBoundaryTest`, `WebShellBoundaryTest`, and
+  `HttpLegacyAdminBoundaryTest` guard leaf ownership/import rules. The runtime, kernel, platform,
+  and adapter-fcp boundary suites also require `package-info.java` in the production packages they
+  own.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
