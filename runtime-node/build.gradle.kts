@@ -36,30 +36,7 @@ dependencies {
 }
 
 dependencies {
-  implementation(project(":foundation-support"))
-  implementation(project(":foundation-store"))
-  implementation(project(":foundation-store-contracts"))
-  implementation(project(":foundation-crypto-keys"))
-  implementation(project(":interop-wire"))
-  implementation(project(":foundation-config"))
-  implementation(project(":foundation-fs"))
-  implementation(project(":foundation-compat"))
-  implementation(project(":kernel-content"))
-  implementation(project(":kernel-transport"))
-  implementation(project(":kernel-routing"))
-  implementation(project(":runtime-spi"))
-  implementation(project(":thirdparty-onion"))
-  implementation(project(":thirdparty-legacy"))
-  implementation(libs.slf4jApi)
-  implementation(libs.bcprov)
-  implementation(libs.bcpkix)
-  implementation(libs.jna)
-  implementation(libs.jnaPlatform)
-  implementation(libs.commonsCompress)
-  implementation(libs.commonsLang3)
-  implementation(libs.picocli)
-  implementation(files(rootProject.file("libs/wrapper.jar")))
-
-  compileOnly(libs.logbackClassic)
-  compileOnly(libs.jetbrainsAnnotations)
+  testImplementation(libs.junitJupiterApi)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
 }

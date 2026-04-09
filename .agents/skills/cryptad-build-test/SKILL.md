@@ -67,17 +67,17 @@ Use this skill when you need to:
 - When moving additional main classes/resources from root into any extracted leaf, update that
   leaf's `owned-output-patterns.txt` and validate with
   `./gradlew verifySelectiveLeafOwnershipMetadata buildJar`.
-- Root and leaf boundary tests now freeze the current extracted layout.
+- Focused leaf-local boundary tests now freeze the current extracted layout.
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
-  `AppHostBoundaryTest`, `WebShellBoundaryTest`, and `HttpLegacyAdminBoundaryTest` are the
-  focused regression checks for leaf ownership/import boundaries. The runtime, kernel-content,
-  and platform boundary suites also enforce `package-info.java` coverage for production packages
-  in those leaves.
+  `AdapterFcpBoundaryTest`, `AppHostBoundaryTest`, `WebShellBoundaryTest`, and
+  `HttpLegacyAdminBoundaryTest` are the focused regression checks for leaf ownership/import
+  boundaries. The runtime, kernel, platform, and adapter-fcp boundary suites also enforce
+  `package-info.java` coverage for the production packages they own.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
-- `:platform-api` owns the transport-neutral Platform API v1. Its focused tests still live in the
-  root test tree and run through the root `:test` task.
+- `:platform-api` owns the transport-neutral Platform API v1. Its focused leaf tests now live
+  under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core plus its focused leaf
   tests under `platform-apphost/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
@@ -94,9 +94,8 @@ Use this skill when you need to:
   those resources often resolve from the leaf JAR, so tests must treat them as classpath resources
   rather than assume a plain filesystem `Path`.
 - Most tests still live in the root project and compile against the leaf subprojects through the
-  root build, but `:platform-apphost`, `:platform-web-shell`, and
-  `:adapter-http-legacy-admin` now keep focused leaf tests under their own `src/test/java`
-  trees.
+  root build, but the extracted boundary suites now live with their owning leaves under each
+  module's `src/test/java` tree.
 - File-system-based l10n tests still run from the root project and use
   `foundation-config/src/main/resources/network/crypta/l10n/` as the main resource path.
 
@@ -123,18 +122,18 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew test --tests *TestClassName`
 - Run one test method:
   - `./gradlew test --tests *TestClassName.methodName`
-- Run the focused AppHost leaf tests:
+- Run the focused leaf-local boundary suites:
+  - `./gradlew :platform-api:test`
   - `./gradlew :platform-apphost:test`
-- Run the focused Web Shell leaf tests:
   - `./gradlew :platform-web-shell:test`
-- Run the focused legacy HTTP adapter leaf tests:
+  - `./gradlew :kernel-content:test`
+  - `./gradlew :kernel-transport:test`
+  - `./gradlew :kernel-routing:test`
+  - `./gradlew :runtime-node:test`
+  - `./gradlew :adapter-fcp:test`
   - `./gradlew :adapter-http-legacy-admin:test`
-- Run the focused Platform API root tests:
-  - `./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
-- For extracted-leaf or boundary work, run the focused boundary tests:
-  - `./gradlew test --tests *KernelTransportBoundaryTest --tests *KernelContentBoundaryTest --tests *KernelRoutingBoundaryTest --tests *RuntimeNodeKernelSplitPrepBoundaryTest --tests *HttpLegacyAdminBoundaryTest --tests *PlatformApiBoundaryTest`
-  - `./gradlew :platform-apphost:test --tests *AppHostBoundaryTest`
-  - `./gradlew :platform-web-shell:test --tests *WebShellBoundaryTest`
+- Run the remaining root-owned Platform API/bootstrap slice explicitly against the root project:
+  - `./gradlew :test --tests *DefaultNodeRuntimeBridgeFactoriesTest --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
 
 ## Compile-only / quick checks
 - Compile only:

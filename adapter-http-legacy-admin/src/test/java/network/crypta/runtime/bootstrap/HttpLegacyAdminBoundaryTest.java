@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -15,34 +16,22 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class HttpLegacyAdminBoundaryTest {
+  private static final String MODULE_NAME = "adapter-http-legacy-admin";
   private static final Path ROOT_HTTP_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ROOT_HTTP_MAIN_RESOURCES =
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
-      Path.of(
-          "adapter-http-legacy-admin",
-          "src",
-          "main",
-          "java",
-          "network",
-          "crypta",
-          "clients",
-          "http");
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
-      Path.of(
-          "adapter-http-legacy-admin",
-          "src",
-          "main",
-          "resources",
-          "network",
-          "crypta",
-          "clients",
-          "http");
+      Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
+  private static final Path OWNERSHIP_METADATA =
+      Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path DEFAULT_BRIDGE_FACTORIES =
       Path.of(
           "src",
@@ -82,6 +71,18 @@ class HttpLegacyAdminBoundaryTest {
   }
 
   @Test
+  void buildWiring_whenCheckingLeafMetadata_expectOwnedOutputPatternDeclared() throws IOException {
+    Path repoRoot = repoRoot();
+    String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
+    String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
+
+    assertTrue(settings.contains("\":adapter-http-legacy-admin\""));
+    assertTrue(build.contains("project(\":adapter-http-legacy-admin\")"));
+    assertTrue(metadata.contains("network/crypta/clients/http/**"));
+  }
+
+  @Test
   void mainSources_whenScanningLegacyHttpImports_expectOnlyBootstrapBindingSiteOutsideAdapter()
       throws IOException {
     Path repoRoot = repoRoot();
@@ -117,12 +118,16 @@ class HttpLegacyAdminBoundaryTest {
   private static List<Path> findMainJavaSources(Path repoRoot) throws IOException {
     try (Stream<Path> walk = Files.walk(repoRoot)) {
       return walk.filter(Files::isRegularFile)
-          .filter(path -> path.getFileName().toString().endsWith(".java"))
-          .filter(path -> !path.getFileName().toString().startsWith("._"))
+          .filter(HttpLegacyAdminBoundaryTest::isTrackedJavaSource)
           .filter(path -> isMainJavaSource(repoRoot.relativize(path)))
           .sorted(Comparator.comparing(path -> repoRoot.relativize(path).toString()))
           .toList();
     }
+  }
+
+  private static boolean isTrackedJavaSource(Path path) {
+    String fileName = fileNameOrThrow(path);
+    return fileName.endsWith(".java") && !fileName.startsWith("._");
   }
 
   private static boolean isMainJavaSource(Path relativePath) {
@@ -143,13 +148,23 @@ class HttpLegacyAdminBoundaryTest {
           .map(LEGACY_HTTP_IMPORT_PATTERN::matcher)
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
-          .collect(java.util.stream.Collectors.toUnmodifiableSet());
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
   }
 
+  private static String fileNameOrThrow(Path path) {
+    Path fileName = path.getFileName();
+    assertNotNull(fileName, "Java source path must have a file name: " + path);
+    return fileName.toString();
+  }
+
   private static Path repoRoot() throws IOException {
-    Path repoRoot = Path.of("").toAbsolutePath().normalize();
-    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
-    return repoRoot.toRealPath();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 }

@@ -6,9 +6,16 @@ plugins {
 
 version = rootProject.version
 
+val mainSourceSet = sourceSets.named("main")
+
 dependencies {
   api(project(":runtime-spi"))
   api(project(":platform-apphost"))
 
   compileOnly(libs.jetbrainsAnnotations)
+
+  testImplementation(mainSourceSet.map { it.output })
+  testImplementation(libs.junitJupiterApi)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
 }

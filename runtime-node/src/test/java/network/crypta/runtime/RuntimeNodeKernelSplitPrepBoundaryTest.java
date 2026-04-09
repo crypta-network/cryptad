@@ -143,8 +143,12 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   }
 
   private static Path repoRoot() throws IOException {
-    Path repoRoot = Path.of("").toAbsolutePath().normalize();
-    assertTrue(Files.isRegularFile(repoRoot.resolve("settings.gradle.kts")));
-    return repoRoot.toRealPath();
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 }
