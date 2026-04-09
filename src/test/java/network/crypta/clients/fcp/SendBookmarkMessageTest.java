@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -28,7 +27,7 @@ class SendBookmarkMessageTest {
   private static final String VALID_URI = "KSK@Bookmarks";
   private static final String BOOKMARK_NAME = "crypta-home";
 
-  @Mock private DarknetPeerNode darknetPeerNode;
+  @Mock private FcpDarknetPeerHandle darknetPeerNode;
 
   @Test
   void constructor_whenNameMissing_expectMessageInvalidException() {

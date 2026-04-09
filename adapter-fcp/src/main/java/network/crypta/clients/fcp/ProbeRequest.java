@@ -1,10 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.FSParseException;
-import network.crypta.node.probe.Error;
-import network.crypta.node.probe.Listener;
-import network.crypta.node.probe.Probe;
-import network.crypta.node.probe.Type;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -19,21 +15,20 @@ import network.crypta.support.SimpleFieldSet;
  * response messages that omit the {@code Identifier} field.
  *
  * <p>Execution requires full-access credentials. When authorized, {@link
- * #run(FCPConnectionHandler)} constructs a {@link Listener} that adapts probe callbacks into
- * concrete {@link FCPMessage} responses, gets a secure probe UID from the handler's server runtime,
- * and delegates to {@code node.network().startProbe(...)}. The method does not block for
- * completion; responses arrive asynchronously via the handler.
+ * #run(FCPConnectionHandler)} constructs a {@link FcpProbeListener} that adapts probe callbacks
+ * into concrete {@link FCPMessage} responses, gets a secure probe UID from the handler's server
+ * runtime, and delegates to the message-runtime seam. The method does not block for completion;
+ * responses arrive asynchronously via the handler.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> validate fields, enforce access, and bridge callbacks.
- *   <li><strong>Notable behaviors:</strong> defaults {@code HopsToLive} to {@link Probe#MAX_HTL}
- *       and rejects negative values.
+ *   <li><strong>Notable behaviors:</strong> defaults {@code HopsToLive} to {@link
+ *       FcpProbeDefaults#MAX_HTL} and rejects negative values.
  *   <li><strong>Thread-safety:</strong> immutable after construction; no internal synchronization.
  * </ul>
  *
- * @see Probe
- * @see Type
- * @see Listener
+ * @see FcpProbeType
+ * @see FcpProbeListener
  * @see FCPConnectionHandler
  */
 public final class ProbeRequest extends FCPMessage {
@@ -48,7 +43,7 @@ public final class ProbeRequest extends FCPMessage {
   public static final String NAME = "ProbeRequest";
 
   private final String requestIdentifier;
-  private final Type probeType;
+  private final FcpProbeType probeType;
   private final byte hopsToLive;
 
   /**
@@ -56,9 +51,9 @@ public final class ProbeRequest extends FCPMessage {
    *
    * <p>The constructor reads the optional {@code Identifier}, the mandatory {@code Type}, and an
    * optional {@code HopsToLive} value. When the hop budget is missing, it defaults to {@link
-   * Probe#MAX_HTL}; negative values are rejected. Any parsing or validation failure results in a
-   * {@link MessageInvalidException} with {@link ProtocolErrorMessage#INVALID_MESSAGE}, which the
-   * caller should translate into an FCP protocol error response.
+   * FcpProbeDefaults#MAX_HTL}; negative values are rejected. Any parsing or validation failure
+   * results in a {@link MessageInvalidException} with {@link ProtocolErrorMessage#INVALID_MESSAGE},
+   * which the caller should translate into an FCP protocol error response.
    *
    * <pre>{@code
    * SimpleFieldSet fields = ...;
@@ -75,10 +70,10 @@ public final class ProbeRequest extends FCPMessage {
     this.requestIdentifier = fs.get(IDENTIFIER);
 
     try {
-      this.probeType = Type.valueOf(fs.get(TYPE));
+      this.probeType = FcpProbeType.fromFieldValue(fs.get(TYPE));
 
       // If HTL is not specified default to MAX_HTL.
-      this.hopsToLive = fs.get(HTL) == null ? Probe.MAX_HTL : fs.getByte(HTL);
+      this.hopsToLive = fs.get(HTL) == null ? FcpProbeDefaults.MAX_HTL : fs.getByte(HTL);
 
       if (this.hopsToLive < 0) {
         throw new MessageInvalidException(
@@ -136,10 +131,10 @@ public final class ProbeRequest extends FCPMessage {
    *
    * <p>The handler must have full access; otherwise a {@link MessageInvalidException} with {@link
    * ProtocolErrorMessage#ACCESS_DENIED} is thrown and no probe is started. When authorized, this
-   * method builds a {@link Listener} that maps each callback to the corresponding {@link
-   * FCPResponse} message and then delegates to {@code node.network().startProbe(...)} using the
-   * stored hop budget and a fresh secure random UID from the server runtime. The call is
-   * non-blocking and returns immediately while responses are emitted asynchronously via {@link
+   * method builds a {@link FcpProbeListener} that maps each callback to the corresponding {@link
+   * FCPResponse} message and then delegates to the message-runtime seam using the stored hop budget
+   * and a fresh secure random UID from the server runtime. The call is non-blocking and returns
+   * immediately while responses are emitted asynchronously via {@link
    * FCPConnectionHandler#send(FCPMessage)}.
    *
    * @param handler connection handler used to authorize and send probe responses.
@@ -155,10 +150,10 @@ public final class ProbeRequest extends FCPMessage {
           false);
     }
 
-    Listener listener =
-        new Listener() {
+    FcpProbeListener listener =
+        new FcpProbeListener() {
           @Override
-          public void onError(Error error, Byte code, boolean local) {
+          public void onError(FcpProbeError error, Byte code, boolean local) {
             handler.send(new ProbeError(requestIdentifier, error, code, local));
           }
 

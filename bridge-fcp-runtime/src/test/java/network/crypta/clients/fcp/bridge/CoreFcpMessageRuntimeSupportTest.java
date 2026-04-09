@@ -2,10 +2,18 @@ package network.crypta.clients.fcp.bridge;
 
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.FCPConnectionHandler;
+import network.crypta.clients.fcp.FcpDarknetPeerHandle;
+import network.crypta.clients.fcp.FcpPeerLookupResult;
+import network.crypta.clients.fcp.FcpProbeError;
+import network.crypta.clients.fcp.FcpProbeListener;
+import network.crypta.clients.fcp.FcpProbeType;
+import network.crypta.keys.FreenetURI;
+import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
 import network.crypta.node.RequestStarter;
+import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
@@ -22,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +42,7 @@ class CoreFcpMessageRuntimeSupportTest {
   @Mock private HighLevelSimpleClient client;
   @Mock private Node node;
   @Mock private NodeNetworkSubsystem network;
+  @Mock private DarknetPeerNode darknetPeerNode;
   @Mock private PeerNode peerNode;
   @Mock private FCPConnectionHandler handler;
 
@@ -122,29 +132,147 @@ class CoreFcpMessageRuntimeSupportTest {
   }
 
   @Test
-  void findPeer_whenCalled_returnsPeerNode() {
+  void findPeer_whenPeerUnknown_returnsUnknownResult() {
+    when(core.getNode()).thenReturn(node);
+    when(node.network()).thenReturn(network);
+    when(network.getPeerNode("peer-1")).thenReturn(null);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+
+    FcpPeerLookupResult actual = support.findPeer("peer-1");
+
+    assertEquals(FcpPeerLookupResult.Kind.UNKNOWN, actual.kind());
+  }
+
+  @Test
+  void findPeer_whenPeerIsNotDarknet_returnsNonDarknetResult() {
     when(core.getNode()).thenReturn(node);
     when(node.network()).thenReturn(network);
     when(network.getPeerNode("peer-1")).thenReturn(peerNode);
     CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
 
-    PeerNode actual = support.findPeer("peer-1");
+    FcpPeerLookupResult actual = support.findPeer("peer-1");
 
-    assertSame(peerNode, actual);
+    assertEquals(FcpPeerLookupResult.Kind.NON_DARKNET, actual.kind());
   }
 
   @Test
-  void startProbe_whenCalled_delegatesToNetwork() {
+  void findPeer_whenPeerIsDarknet_returnsDarknetHandleResult() throws Exception {
+    when(core.getNode()).thenReturn(node);
+    when(node.network()).thenReturn(network);
+    when(network.getPeerNode("peer-1")).thenReturn(darknetPeerNode);
+    when(darknetPeerNode.sendTextFeed("hello")).thenReturn(17);
+    FreenetURI uri = new FreenetURI("KSK@test");
+    when(darknetPeerNode.sendDownloadFeed(uri, "description")).thenReturn(23);
+    when(darknetPeerNode.sendBookmarkFeed(uri, "bookmark", "description", true)).thenReturn(31);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+
+    FcpPeerLookupResult actual = support.findPeer("peer-1");
+    FcpDarknetPeerHandle handle = actual.requireDarknetPeerHandle();
+
+    assertEquals(FcpPeerLookupResult.Kind.DARKNET, actual.kind());
+    assertEquals(17, handle.sendTextFeed("hello"));
+    assertEquals(23, handle.sendDownloadFeed(uri, "description"));
+    assertEquals(31, handle.sendBookmarkFeed(uri, "bookmark", "description", true));
+    verify(darknetPeerNode).sendTextFeed("hello");
+    verify(darknetPeerNode).sendDownloadFeed(uri, "description");
+    verify(darknetPeerNode).sendBookmarkFeed(uri, "bookmark", "description", true);
+  }
+
+  @Test
+  void startProbe_whenCalled_mapsEveryProbeTypeToRuntimeType() {
     when(core.getNode()).thenReturn(node);
     when(node.network()).thenReturn(network);
     CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
-    Listener listener = org.mockito.Mockito.mock(Listener.class);
-    ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
+    FcpProbeListener listener = org.mockito.Mockito.mock(FcpProbeListener.class);
 
-    support.startProbe((byte) 5, 42L, Type.BUILD, listener);
+    for (FcpProbeType probeType : FcpProbeType.values()) {
+      ArgumentCaptor<Type> typeCaptor = ArgumentCaptor.forClass(Type.class);
+      ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
+
+      support.startProbe((byte) 5, 42L, probeType, listener);
+
+      verify(network)
+          .startProbe(eq((byte) 5), eq(42L), typeCaptor.capture(), listenerCaptor.capture());
+      assertEquals(expectedRuntimeType(probeType), typeCaptor.getValue());
+      assertNotNull(listenerCaptor.getValue());
+      clearInvocations(network);
+    }
+  }
+
+  @Test
+  void startProbe_whenRuntimeCallbacksArrive_forwardsThemToAdapterListener() {
+    when(core.getNode()).thenReturn(node);
+    when(node.network()).thenReturn(network);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    FcpProbeListener listener = org.mockito.Mockito.mock(FcpProbeListener.class);
+    ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
+    float[] linkLengths = new float[] {1.5f, 2.5f};
+    byte[] rejectStats = new byte[] {3, 4, 5};
+
+    support.startProbe((byte) 5, 42L, FcpProbeType.BUILD, listener);
 
     verify(network).startProbe(eq((byte) 5), eq(42L), eq(Type.BUILD), listenerCaptor.capture());
-    assertNotNull(listenerCaptor.getValue());
-    assertSame(listener, listenerCaptor.getValue());
+    Listener runtimeListener = listenerCaptor.getValue();
+    assertNotNull(runtimeListener);
+
+    runtimeListener.onError(Error.DISCONNECTED, (byte) 1, true);
+    runtimeListener.onError(Error.OVERLOAD, (byte) 2, false);
+    runtimeListener.onError(Error.TIMEOUT, (byte) 3, true);
+    runtimeListener.onError(Error.UNKNOWN, (byte) 4, false);
+    runtimeListener.onError(Error.UNRECOGNIZED_TYPE, (byte) 5, true);
+    runtimeListener.onError(Error.CANNOT_FORWARD, (byte) 6, false);
+    runtimeListener.onRefused();
+    runtimeListener.onOutputBandwidth(7.5f);
+    runtimeListener.onBuild(8);
+    runtimeListener.onIdentifier(9L, (byte) 10);
+    runtimeListener.onLinkLengths(linkLengths);
+    runtimeListener.onLocation(11.5f);
+    runtimeListener.onStoreSize(12.5f);
+    runtimeListener.onUptime(13.5f);
+    runtimeListener.onRejectStats(rejectStats);
+    runtimeListener.onOverallBulkOutputCapacity((byte) 14, 15.5f);
+
+    verify(listener).onError(FcpProbeError.DISCONNECTED, (byte) 1, true);
+    verify(listener).onError(FcpProbeError.OVERLOAD, (byte) 2, false);
+    verify(listener).onError(FcpProbeError.TIMEOUT, (byte) 3, true);
+    verify(listener).onError(FcpProbeError.UNKNOWN, (byte) 4, false);
+    verify(listener).onError(FcpProbeError.UNRECOGNIZED_TYPE, (byte) 5, true);
+    verify(listener).onError(FcpProbeError.CANNOT_FORWARD, (byte) 6, false);
+    verify(listener).onRefused();
+    verify(listener).onOutputBandwidth(7.5f);
+    verify(listener).onBuild(8);
+    verify(listener).onIdentifier(9L, (byte) 10);
+    verify(listener).onLinkLengths(linkLengths);
+    verify(listener).onLocation(11.5f);
+    verify(listener).onStoreSize(12.5f);
+    verify(listener).onUptime(13.5f);
+    verify(listener).onRejectStats(rejectStats);
+    verify(listener).onOverallBulkOutputCapacity((byte) 14, 15.5f);
+  }
+
+  @Test
+  void startProbe_whenListenerNull_throwsNullPointerException() {
+    when(core.getNode()).thenReturn(node);
+    when(node.network()).thenReturn(network);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+
+    assertThrows(
+        NullPointerException.class,
+        () -> support.startProbe((byte) 5, 42L, FcpProbeType.BUILD, null));
+  }
+
+  private static Type expectedRuntimeType(FcpProbeType probeType) {
+    return switch (probeType) {
+      case BANDWIDTH -> Type.BANDWIDTH;
+      case BUILD -> Type.BUILD;
+      case IDENTIFIER -> Type.IDENTIFIER;
+      case LINK_LENGTHS -> Type.LINK_LENGTHS;
+      case LOCATION -> Type.LOCATION;
+      case STORE_SIZE -> Type.STORE_SIZE;
+      case UPTIME_48H -> Type.UPTIME_48H;
+      case UPTIME_7D -> Type.UPTIME_7D;
+      case REJECT_STATS -> Type.REJECT_STATS;
+      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE -> Type.OVERALL_BULK_OUTPUT_CAPACITY_USAGE;
+    };
   }
 }

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -32,7 +31,7 @@ class SendURIMessageTest {
   private static final String NODE_IDENTIFIER = "peer-node";
   private static final String VALID_URI = "KSK@keyword";
 
-  @Mock private DarknetPeerNode peerNode;
+  @Mock private FcpDarknetPeerHandle peerNode;
 
   @Test
   void constructor_whenUriInvalid_expectMessageInvalidException() {

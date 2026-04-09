@@ -1,9 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.PeerNode;
-import network.crypta.node.probe.Listener;
-import network.crypta.node.probe.Type;
 
 /**
  * Narrow runtime support seam for residual message-level FCP operations.
@@ -20,7 +17,8 @@ import network.crypta.node.probe.Type;
  * runtime-spi}, and it is not intended to become a general daemon abstraction. Its job is narrower:
  * preserve existing node behavior while removing direct core dependencies from message-level
  * execution paths, so later refactors can adjust server bootstrap and configuration seams without
- * touching protocol handlers again.
+ * touching protocol handlers again. Peer lookup and probe execution use adapter-owned seam types,
+ * so the protocol package no longer imports concrete node peer or probe classes directly.
  *
  * <ul>
  *   <li>Exposes only the runtime actions still needed by residual message classes.
@@ -79,14 +77,15 @@ public interface FcpMessageRuntimeSupport {
    * Resolves a peer node by its FCP node identifier.
    *
    * <p>This lookup is used by message handlers that still need node-level peer routing decisions
-   * but should no longer navigate from the server into the core and network objects directly. A
-   * {@code null} result indicates that no matching peer is currently known and lets the caller keep
-   * its existing protocol behavior for unknown-node replies.
+   * but should no longer navigate from the server into the core and network objects directly. The
+   * returned value tells the caller whether the identifier is unknown, refers to a non-darknet
+   * peer, or yields a usable adapter-owned darknet peer handle.
    *
    * @param nodeIdentifier peer identifier supplied by the inbound message
-   * @return matching peer node, or {@code null} when the identifier is not currently known
+   * @return adapter-owned lookup result describing whether the peer is unknown, non-darknet, or a
+   *     darknet peer handle
    */
-  PeerNode findPeer(String nodeIdentifier);
+  FcpPeerLookupResult findPeer(String nodeIdentifier);
 
   /**
    * Starts a probe request using the live node network subsystem.
@@ -99,8 +98,8 @@ public interface FcpMessageRuntimeSupport {
    *
    * @param hopsToLive probe hop limit to submit to the node network
    * @param uid probe UID chosen by the caller for correlation and reply matching
-   * @param probeType probe type to execute against the live network
-   * @param listener callback listener that receives probe results and failures
+   * @param probeType adapter-owned probe type to execute against the live network
+   * @param listener adapter-owned callback listener that receives probe results and failures
    */
-  void startProbe(byte hopsToLive, long uid, Type probeType, Listener listener);
+  void startProbe(byte hopsToLive, long uid, FcpProbeType probeType, FcpProbeListener listener);
 }

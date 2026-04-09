@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.BucketTools;
 
@@ -14,15 +13,16 @@ import network.crypta.support.io.BucketTools;
  * <p>Instances parse a {@link SimpleFieldSet} payload received from a client connection and hold
  * the resolved {@link FreenetURI}, bookmark title, and the caller's intention about exposing an
  * active link to peers. After construction the object becomes immutable and can be safely handed to
- * the dispatch thread that interacts with {@link DarknetPeerNode} instances. Subclasses of {@link
- * SendPeerMessage} are short-lived, so this implementation avoids retaining unnecessary references
- * and directly reuses the bucket created by {@link #readFrom} in the base class. The class is not
- * thread-safe; each instance should be used by at most one handler thread.
+ * the dispatch thread that interacts with {@link FcpDarknetPeerHandle} instances. Subclasses of
+ * {@link SendPeerMessage} are short-lived, so this implementation avoids retaining unnecessary
+ * references and directly reuses the bucket created by {@link #readFrom} in the base class. The
+ * class is not thread-safe; each instance should be used by at most one handler thread.
  *
  * <p>Typical usage occurs when an FCP client requests that a bookmark be shared. The connection
  * handler creates this message with the parsed field set, invokes {@link #run} on the parent class,
- * and lets {@link #handleFeed(DarknetPeerNode)} stream the optional description to the peer. The
- * response status returned by the peer is forwarded to the client through {@link SentPeerMessage}.
+ * and lets {@link #handleFeed(FcpDarknetPeerHandle)} stream the optional description to the peer.
+ * The response status returned by the peer is forwarded to the client through {@link
+ * SentPeerMessage}.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> validate inputs, prepare serialization fields, and
@@ -49,11 +49,11 @@ public final class SendBookmarkMessage extends SendPeerMessage {
    * <p>The constructor validates that a bookmark name exists, parses the {@code URI} field using
    * {@link FreenetURI}, and records whether the caller advertises an active link. The instance does
    * not read any associated bucket data here, so callers may defer payload streaming until the
-   * message reaches {@link #handleFeed(DarknetPeerNode)}.
+   * message reaches {@link #handleFeed(FcpDarknetPeerHandle)}.
    *
    * @param fs parsed field set describing the bookmark request; must contain at least {@code Name}
    *     and {@code URI} entries in addition to the identifiers handled by {@link SendPeerMessage}.
-   * @throws MessageInvalidException if the bookmark name is absent or if the URI cannot be parsed
+   * @throws MessageInvalidException if the bookmark name is absent, or if the URI cannot be parsed
    *     by {@link FreenetURI}, in which case the constructor propagates a descriptive protocol
    *     error.
    */
@@ -117,23 +117,23 @@ public final class SendBookmarkMessage extends SendPeerMessage {
    * <p>If a payload bucket is present, the method reads it entirely, interprets it as UTF-8 text,
    * and delivers the description along with the metadata. When no payload is attached, the peer is
    * informed with a {@code null} description. The returned integer mirrors the peer status provided
-   * by {@link DarknetPeerNode#sendBookmarkFeed(FreenetURI, String, String, boolean)}.
+   * by {@link FcpDarknetPeerHandle#sendBookmarkFeed(FreenetURI, String, String, boolean)}.
    *
-   * @param pn validated darknet peer that should receive the bookmark information; never null when
-   *     invoked by {@link SendPeerMessage#run}.
+   * @param peerHandle validated darknet peer handle that should receive the bookmark information;
+   *     never null when invoked by {@link SendPeerMessage#run}
    * @return peer-reported status integer that will be relayed to the originating client once the
    *     send operation completes.
    * @throws MessageInvalidException if reading the payload fails with {@link IOException}, allowing
    *     the caller to surface a protocol error back to the client.
    */
   @Override
-  protected int handleFeed(DarknetPeerNode pn) throws MessageInvalidException {
+  protected int handleFeed(FcpDarknetPeerHandle peerHandle) throws MessageInvalidException {
     try {
       if (dataLength() > 0) {
         byte[] description = BucketTools.toByteArray(bucket);
-        return pn.sendBookmarkFeed(
+        return peerHandle.sendBookmarkFeed(
             uri, bookmarkName, new String(description, StandardCharsets.UTF_8), hasAnAnActiveLink);
-      } else return pn.sendBookmarkFeed(uri, bookmarkName, null, hasAnAnActiveLink);
+      } else return peerHandle.sendBookmarkFeed(uri, bookmarkName, null, hasAnAnActiveLink);
     } catch (IOException _) {
       throw new MessageInvalidException(ProtocolErrorMessage.INVALID_MESSAGE, "", null, false);
     }
