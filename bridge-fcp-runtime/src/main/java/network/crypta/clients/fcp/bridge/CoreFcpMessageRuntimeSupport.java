@@ -1,12 +1,15 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.IOException;
+import java.net.URL;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.FetchException;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpDarknetPeerHandle;
 import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
 import network.crypta.clients.fcp.FcpPeerLookupResult;
+import network.crypta.clients.fcp.FcpPeerReferenceFetchException;
 import network.crypta.clients.fcp.FcpProbeError;
 import network.crypta.clients.fcp.FcpProbeListener;
 import network.crypta.clients.fcp.FcpProbeType;
@@ -17,6 +20,7 @@ import network.crypta.node.PeerNode;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
+import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 
 /**
  * Core-backed implementation of {@link FcpMessageRuntimeSupport}.
@@ -33,7 +37,7 @@ import network.crypta.node.probe.Type;
  * delegation rather than becoming a second policy layer.
  *
  * <ul>
- *   <li>Preserves existing core-backed semantics for client creation and peer lookups.
+ *   <li>Preserves existing core-backed semantics for peer-reference loading and peer lookups.
  *   <li>Delegates feed watching and shutdown to the same node subsystems used before the refactor.
  *   <li>Maps adapter-owned peer and probe seam types back to the live node runtime types.
  * </ul>
@@ -57,23 +61,21 @@ record CoreFcpMessageRuntimeSupport(NodeClientCore core) implements FcpMessageRu
     this.core = Objects.requireNonNull(core);
   }
 
-  /**
-   * Creates a high-level client through the retained node core.
-   *
-   * <p>This implementation forwards directly to {@link NodeClientCore#makeClient(short, boolean,
-   * boolean)} so message handlers receive the same priority, store, and queue behavior they used
-   * before the adapter existed. The method adds no caching or wrapping; it simply returns the live
-   * client created by the underlying core for the current request path.
-   *
-   * @param priorityClass client priority class requested by the message handler
-   * @param forceDontIgnoreStore whether store-visibility behavior should be forced on the client
-   * @param forceMixedQueue whether mixed-queue behavior should be forced on the client
-   * @return live high-level client created by the retained node core
-   */
   @Override
-  public HighLevelSimpleClient makeClient(
-      short priorityClass, boolean forceDontIgnoreStore, boolean forceMixedQueue) {
-    return core.makeClient(priorityClass, forceDontIgnoreStore, forceMixedQueue);
+  public StringBuilder readPeerReferenceFromUrl(URL url) throws IOException {
+    return PeerReferenceTextLoader.readFromUrl(url);
+  }
+
+  @Override
+  public StringBuilder readPeerReferenceFromCryptaUri(
+      FreenetURI uri, short priorityClass, boolean forceDontIgnoreStore, boolean forceMixedQueue)
+      throws IOException, FcpPeerReferenceFetchException {
+    try {
+      return PeerReferenceTextLoader.readFromFreenetUri(
+          uri, core.makeClient(priorityClass, forceDontIgnoreStore, forceMixedQueue));
+    } catch (FetchException e) {
+      throw new FcpPeerReferenceFetchException("Failed to fetch peer reference from Crypta URI", e);
+    }
   }
 
   /**

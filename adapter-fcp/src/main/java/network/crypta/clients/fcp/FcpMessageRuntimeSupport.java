@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.HighLevelSimpleClient;
+import java.io.IOException;
+import java.net.URL;
+import network.crypta.keys.FreenetURI;
 
 /**
  * Narrow runtime support seam for residual message-level FCP operations.
@@ -17,8 +19,9 @@ import network.crypta.client.HighLevelSimpleClient;
  * runtime-spi}, and it is not intended to become a general daemon abstraction. Its job is narrower:
  * preserve existing node behavior while removing direct core dependencies from message-level
  * execution paths, so later refactors can adjust server bootstrap and configuration seams without
- * touching protocol handlers again. Peer lookup and probe execution use adapter-owned seam types,
- * so the protocol package no longer imports concrete node peer or probe classes directly.
+ * touching protocol handlers again. Peer lookup, probe execution, and AddPeer peer-reference
+ * loading now use adapter-owned seam types, so the protocol package no longer imports concrete node
+ * peer, probe, or client/fetch classes directly.
  *
  * <ul>
  *   <li>Exposes only the runtime actions still needed by residual message classes.
@@ -31,21 +34,39 @@ import network.crypta.client.HighLevelSimpleClient;
 public interface FcpMessageRuntimeSupport {
 
   /**
-   * Creates a client with the supplied message-level queue and store behavior.
+   * Reads peer-reference text from a regular URL.
    *
-   * <p>Implementations should preserve the same queue-selection and store-visibility behavior that
-   * message handlers historically received from the backing node core. Callers typically use this
-   * when a message needs a short-lived high-level client to fetch or inspect a noderef while still
-   * keeping client creation behind a package-local seam. The returned client is live and may hold
-   * node resources, so callers should avoid caching it beyond the handling flow that requested it.
+   * <p>This operation exists so {@link AddPeer} can keep URL parsing, fallback policy, and protocol
+   * error mapping in the adapter layer while delegating the concrete I/O to the runtime-backed
+   * bridge. Implementations should preserve the historical newline-joining behavior and character
+   * decoding used when reading noderef text from ordinary URLs.
    *
-   * @param priorityClass client priority class requested by the caller for this operation
-   * @param forceDontIgnoreStore whether the caller requires explicit store-visibility behavior
-   * @param forceMixedQueue whether the caller requires mixed-queue behavior for the created client
-   * @return live high-level client backed by the daemon runtime and configured for the request
+   * @param url absolute URL pointing to a textual peer reference document
+   * @return mutable buffer containing the fetched peer-reference text
+   * @throws IOException if opening or reading the URL fails
    */
-  HighLevelSimpleClient makeClient(
-      short priorityClass, boolean forceDontIgnoreStore, boolean forceMixedQueue);
+  StringBuilder readPeerReferenceFromUrl(URL url) throws IOException;
+
+  /**
+   * Reads peer-reference text from a Crypta/Freenet URI using message-specified request policy.
+   *
+   * <p>Implementations should create and use the same short-lived high-level client behavior that
+   * AddPeer historically received from the backing core for this fetch path. Fetch-level failures
+   * for an otherwise valid URI are reported through {@link FcpPeerReferenceFetchException} so the
+   * message layer can preserve its existing fallback-to-URL behavior, while I/O failures that occur
+   * after a successful fetch continue to surface as {@link IOException}.
+   *
+   * @param uri Crypta/Freenet URI locating the remotely stored peer reference
+   * @param priorityClass client priority class requested by the message handler
+   * @param forceDontIgnoreStore whether explicit store-visibility behavior should be forced
+   * @param forceMixedQueue whether mixed-queue behavior should be forced on the created client
+   * @return mutable buffer containing the fetched peer-reference text
+   * @throws IOException if the URI fetch succeeds but the returned data cannot be read fully
+   * @throws FcpPeerReferenceFetchException if the URI is valid but the fetch itself fails
+   */
+  StringBuilder readPeerReferenceFromCryptaUri(
+      FreenetURI uri, short priorityClass, boolean forceDontIgnoreStore, boolean forceMixedQueue)
+      throws IOException, FcpPeerReferenceFetchException;
 
   /**
    * Enables or disables feed watching for a connection handler.

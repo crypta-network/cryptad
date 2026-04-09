@@ -10,9 +10,9 @@
  * the hierarchy distinguishes download/insert commands, node stats, and connection control.
  * Persistent requests, bandwidth probes, and peer-management commands maintain explicit identifiers
  * so clients can survive reconnections without duplicating work. This package also owns the
- * adapter-side peer/probe seam used by residual message handlers, while the concrete bridge layer
- * that binds those abstractions back to live node peers and probe listeners lives in {@code
- * :bridge-fcp-runtime}.
+ * adapter-side peer, probe, and peer-reference loading seams used by residual message handlers,
+ * while the concrete bridge layer that binds those abstractions back to live node peers, probe
+ * listeners, and runtime-backed noderef loading lives in {@code :bridge-fcp-runtime}.
  *
  * <p>Messages are designed for streaming and back-pressure: {@link
  * network.crypta.clients.fcp.FCPConnectionInputHandler} parses frames incrementally, while {@link
