@@ -42,6 +42,7 @@ include(
   ":runtime-alerts",
   ":runtime-node",
   ":adapter-fcp",
+  ":bridge-fcp-runtime",
   ":adapter-http-legacy-admin",
   ":thirdparty-onion",
   ":thirdparty-legacy",

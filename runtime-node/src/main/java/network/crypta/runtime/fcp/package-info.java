@@ -6,10 +6,11 @@
  * surface that runtime-owned code uses to configure client-layer persistence, inspect the current
  * persistent-request snapshot, and ask the endpoint layer to create an FCP handle later in startup.
  *
- * <p>Concrete bridge implementations now live in {@code network.crypta.clients.fcp.bridge}, while
- * bootstrap-owned code in {@code network.crypta.runtime.bootstrap} selects the default production
- * bindings. Higher-level runtime code threads only these seam types through node construction and
- * keeps the endpoint-owned request root and server bootstrap details behind that boundary. That
- * split preserves the current startup order while making the composition-root choice explicit.
+ * <p>Concrete bridge implementations now live in {@code network.crypta.clients.fcp.bridge} under
+ * the dedicated {@code :bridge-fcp-runtime} leaf, while bootstrap-owned code in {@code
+ * network.crypta.runtime.bootstrap} selects the default production bindings. Higher-level runtime
+ * code threads only these seam types through node construction and keeps the endpoint-owned request
+ * root and server bootstrap details behind that boundary. That split preserves the current startup
+ * order while making the composition-root choice explicit.
  */
 package network.crypta.runtime.fcp;

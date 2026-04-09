@@ -1,17 +1,16 @@
 /**
  * Implements the Freenet Client Protocol (FCP) used by Crypta to communicate with external
- * applications over long-lived TCP connections. The package treats the node and every client as
- * separate processes and focuses on pushing as much work as possible to the client side while
- * shielding clients from block-level storage details. It surfaces rich, machine-readable status so
- * that clients do not invent competing metadata formats, yet still allows access to raw blocks when
- * an advanced integration explicitly opts in.
+ * applications over long-lived TCP connections. This module owns the protocol-side FCP leaf: the
+ * message classes, server entry points, and package-local protocol helpers that let clients and the
+ * daemon speak the same wire language without exposing storage internals.
  *
  * <p>The API centers around {@link network.crypta.clients.fcp.FCPServer}, which accepts incoming
  * sockets and hands them to {@link network.crypta.clients.fcp.FCPConnectionHandler}. Each request
  * or response is represented by a concrete {@link network.crypta.clients.fcp.FCPMessage} subtype;
  * the hierarchy distinguishes download/insert commands, node stats, and connection control.
  * Persistent requests, bandwidth probes, and peer-management commands maintain explicit identifiers
- * so clients can survive reconnects without duplicating work.
+ * so clients can survive reconnects without duplicating work. The concrete bridge layer that binds
+ * this protocol tree to runtime-owned seams now lives in {@code :bridge-fcp-runtime}.
  *
  * <p>Messages are designed for streaming and back-pressure: {@link
  * network.crypta.clients.fcp.FCPConnectionInputHandler} parses frames incrementally, while {@link
