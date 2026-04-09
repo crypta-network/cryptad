@@ -27,7 +27,8 @@ import network.crypta.support.HTMLNode;
  *   <li>External propagation: {@link #getFeedEvent()} for feed subscribers.
  * </ul>
  *
- * @see network.crypta.runtime.alerts.UserAlertManager
+ * <p>Registration, lifecycle management, and dispatch remain handled by runtime-node-owned alert
+ * manager code.
  */
 public interface UserAlert extends ClientAlert {
 

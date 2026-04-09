@@ -10,7 +10,7 @@ package network.crypta.runtime.alerts;
  * (for example, an identifier, a URI, or a byte size) and exposing a {@linkplain #getEventType()
  * type} that the UI can use to categorize the event. UIs and services may also use the {@link
  * Type#unregisterIndefinitely()} policy to decide whether dismissing one event should suppress
- * subsequent events of the same kind for the current user session.
+ * later events of the same kind for the current user session.
  *
  * <p>Concurrency considerations: individual {@code UserEvent} instances are intended to be
  * read‑mostly once created. Implementations should prefer immutable fields and avoid expensive work
@@ -20,8 +20,9 @@ package network.crypta.runtime.alerts;
  * <ul>
  *   <li><strong>Responsibilities:</strong> identify the event category, provide concise text via
  *       {@link UserAlert}, and expose a suppression policy through {@link Type}.
- *   <li><strong>Notable behaviors:</strong> some event types are marked as unregister‑indefinite,
- *       which allows UIs to silence further notifications of the same type after dismissal.
+ *   <li><strong>Notable behaviors:</strong> some event types are marked as
+ *       unregistering‑indefinite, which allows UIs to silence further notifications of the same
+ *       type after dismissal.
  * </ul>
  *
  * @see UserAlert
@@ -29,9 +30,9 @@ package network.crypta.runtime.alerts;
 public interface UserEvent extends UserAlert {
 
   /**
-   * Enumerates high‑level categories of user‑facing events emitted by the node and clients.
-   * Categories help UI components group, summarize, and optionally suppress related notifications
-   * without inspecting event payloads.
+   * Lists high‑level categories of user‑facing events emitted by the node and clients. Categories
+   * help UI components group, summarize, and optionally suppress related notifications without
+   * inspecting event payloads.
    */
   enum Type {
     /**
@@ -43,7 +44,7 @@ public interface UserEvent extends UserAlert {
 
     /**
      * Events indicating that a download (a client GET request) completed successfully. UIs
-     * typically display the target name and size, and may provide quick navigation to the content.
+     * typically display the target name and size and may provide quick navigation to the content.
      */
     GET_COMPLETED,
 
@@ -65,7 +66,7 @@ public interface UserEvent extends UserAlert {
      * Creates a type with the specified post‑dismissal suppression behavior.
      *
      * @param unregisterIndefinitely whether dismissing a single event of this type should prevent
-     *     subsequent events of the same type from being displayed for the remainder of the current
+     *     later events of the same type from being displayed for the remainder of the current
      *     session or until re‑enabled by the UI.
      */
     Type(boolean unregisterIndefinitely) {
@@ -81,7 +82,7 @@ public interface UserEvent extends UserAlert {
      * Indicates whether dismissing one event of this type should suppress further events of the
      * same type for the active session.
      *
-     * @return {@code true} when a single dismissal requests indefinite unregistration of subsequent
+     * @return {@code true} when a single dismissal requests indefinite unregistration of later
      *     events of this type; {@code false} when each event remains independent and should
      *     continue to be shown.
      */

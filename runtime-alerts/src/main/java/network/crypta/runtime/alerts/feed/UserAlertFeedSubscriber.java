@@ -3,10 +3,10 @@ package network.crypta.runtime.alerts.feed;
 /**
  * Runtime-owned sink for user-alert feed events.
  *
- * <p>{@link network.crypta.runtime.alerts.UserAlertManager} uses this interface to publish alerts
- * without knowing which endpoint or protocol is listening. Implementations are typically
- * lightweight adapters around a concrete delivery mechanism such as FCP, but the runtime itself
- * only depends on the act of sending an immutable {@link UserAlertFeedEvent}.
+ * <p>The runtime-node alert manager uses this interface to publish alerts without knowing which
+ * endpoint or protocol is listening. Implementations are typically lightweight adapters around a
+ * concrete delivery mechanism such as FCP, but the runtime itself only depends on the act of
+ * sending an immutable {@link UserAlertFeedEvent}.
  *
  * <p>Implementations should define clear equality and lifecycle semantics when callers use them as
  * watch or unwatch keys.

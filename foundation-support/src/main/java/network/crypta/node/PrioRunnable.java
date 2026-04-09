@@ -3,7 +3,7 @@ package network.crypta.node;
 /**
  * A {@link Runnable} that exposes a numeric priority.
  *
- * <p>Schedulers or queues that support priority-based execution can use this interface to obtain a
+ * <p>Schedulers or queues that support priority-based execution can use this interface to get a
  * task's priority and order execution accordingly. The meaning of the returned number (e.g.,
  * whether higher or lower values denote "higher" priority) is defined by the scheduler using it.
  * Implementations should avoid heavy computation inside {@link #getPriority()}.

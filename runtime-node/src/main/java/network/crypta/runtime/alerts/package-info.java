@@ -1,11 +1,13 @@
 /**
  * Transitional runtime/operator-facing alerts cluster.
  *
- * <p>This package groups the legacy user-alert types while they are being re-homed under a neutral
- * runtime package. The classes still collaborate with daemon-local state and remain responsible for
- * the same alert rendering, sorting, and subscription behavior as before.
+ * <p>This package now spans the extracted {@code :runtime-alerts} leaf and the remaining
+ * daemon-bound {@code :runtime-node} classes. Leaf-safe alert model and feed types live in {@code
+ * :runtime-alerts}; the manager, node-backed producers, and other daemon-coupled alert
+ * implementations remain adjacent to the runtime services that still own their state.
  *
- * <p>The ownership change is intentionally behavioral no-op only: existing daemon-local
- * integrations, alert lifecycles, and operator-facing semantics are preserved.
+ * <p>The ownership split is intentionally behavioral no-op only. Existing alert rendering, sorting,
+ * subscription, and operator-facing semantics stay unchanged while later boundary work continues to
+ * reduce direct daemon coupling.
  */
 package network.crypta.runtime.alerts;

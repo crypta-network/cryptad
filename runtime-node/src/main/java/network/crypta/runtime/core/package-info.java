@@ -1,11 +1,11 @@
 /**
  * Runtime core bridge between daemon-local node services and the runtime SPI.
  *
- * <p>This package groups the remaining runtime nucleus that still depends directly on {@code Node},
- * {@code NodeClientCore}, and the embedded SSL helper while presenting the detached {@code
- * runtime-spi} ports consumed by higher-level wiring. The move into this neutral package is an
- * ownership re-home only; it keeps the existing behavior, constructors, and lifecycle semantics
- * intact.
+ * <p>This package now spans the daemon-bound core bridge classes that remain in {@code
+ * :runtime-node} plus the extracted SSL helper owned by {@code :foundation-compat}. Together they
+ * still present the detached {@code runtime-spi} ports and runtime-core helpers consumed by
+ * higher-level wiring. The ownership split is a structural re-home only; it preserves behavior,
+ * constructors, and lifecycle semantics.
  *
  * <p>The package also owns runtime/bootstrap helpers such as {@link
  * network.crypta.runtime.core.NodeClientCoreSupport}, which stay adjacent to the core orchestration

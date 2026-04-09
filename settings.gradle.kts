@@ -39,6 +39,7 @@ include(
   ":platform-api",
   ":platform-apphost",
   ":platform-web-shell",
+  ":runtime-alerts",
   ":runtime-node",
   ":adapter-fcp",
   ":adapter-http-legacy-admin",

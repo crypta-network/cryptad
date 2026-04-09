@@ -26,9 +26,11 @@ import network.crypta.support.HTMLNode;
  *   <li>Use when updater compromise or defensive disablement must be surfaced immediately.
  * </ul>
  *
+ * <p>This alert type is typically instantiated by updater management code that remains in {@code
+ * :runtime-node}.
+ *
  * @see AbstractUserAlert
  * @see UserAlert
- * @see network.crypta.runtime.updater.NodeUpdateManager
  */
 public class RevocationKeyFoundUserAlert extends AbstractUserAlert {
   private static final String L10N_PARAM_MESSAGE = "message";
@@ -117,6 +119,6 @@ public class RevocationKeyFoundUserAlert extends AbstractUserAlert {
    */
   @Override
   public void isValid(boolean b) {
-    // We ignore it : it's ALWAYS valid !
+    // We ignore it: it's ALWAYS valid!
   }
 }

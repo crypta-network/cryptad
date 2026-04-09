@@ -1,0 +1,28 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :runtime-alerts owns them now.
+# Keep this list limited to the leaf-safe runtime alert/feed subset extracted from :runtime-node.
+
+network/crypta/runtime/alerts/feed/**
+network/crypta/runtime/alerts/AbstractNodeToNodeFileOfferUserAlert.class
+network/crypta/runtime/alerts/AbstractNodeToNodeFileOfferUserAlert$*.class
+network/crypta/runtime/alerts/AbstractUserAlert.class
+network/crypta/runtime/alerts/AbstractUserAlert$*.class
+network/crypta/runtime/alerts/AbstractUserEvent.class
+network/crypta/runtime/alerts/AbstractUserEvent$*.class
+network/crypta/runtime/alerts/JVMVersionAlert.class
+network/crypta/runtime/alerts/JVMVersionAlert$*.class
+network/crypta/runtime/alerts/NodeToNodeMessageUserAlert.class
+network/crypta/runtime/alerts/NodeToNodeMessageUserAlert$*.class
+network/crypta/runtime/alerts/NotEnoughNiceLevelsUserAlert.class
+network/crypta/runtime/alerts/NotEnoughNiceLevelsUserAlert$*.class
+network/crypta/runtime/alerts/RevocationKeyFoundUserAlert.class
+network/crypta/runtime/alerts/RevocationKeyFoundUserAlert$*.class
+network/crypta/runtime/alerts/SimpleUserAlert.class
+network/crypta/runtime/alerts/SimpleUserAlert$*.class
+network/crypta/runtime/alerts/StoringUserEvent.class
+network/crypta/runtime/alerts/StoringUserEvent$*.class
+network/crypta/runtime/alerts/TimeSkewDetectedUserAlert.class
+network/crypta/runtime/alerts/TimeSkewDetectedUserAlert$*.class
+network/crypta/runtime/alerts/UserAlert.class
+network/crypta/runtime/alerts/UserAlert$*.class
+network/crypta/runtime/alerts/UserEvent.class
+network/crypta/runtime/alerts/UserEvent$*.class

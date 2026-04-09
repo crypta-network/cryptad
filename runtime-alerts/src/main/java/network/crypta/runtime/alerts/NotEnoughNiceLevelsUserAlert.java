@@ -16,7 +16,7 @@ import network.crypta.support.io.NativeThread;
  * time on certain platforms or configurations.
  *
  * <p>Typical usage is internal to the node: the alert is constructed during initialization and
- * delivered to the user alert system. UI components render the title and text, and may also present
+ * delivered to the user alert system. UI components render the title and text and may also present
  * the HTML variant for rich views. The instance is immutable after construction and can be safely
  * accessed from the UI thread; it does not hold external resources.
  *
@@ -31,11 +31,11 @@ import network.crypta.support.io.NativeThread;
  */
 public class NotEnoughNiceLevelsUserAlert extends AbstractUserAlert {
   /**
-   * Creates the alert with a warning severity and a default dismiss option.
+   * Creates the alert with warning severity and a default dismiss option.
    *
    * <p>The constructed instance carries a localized title and message that explain the mismatch
    * between available and required native thread priority levels. Dismissal hides the alert from
-   * subsequent views until re-created by the node. Construction performs no I/O and allocates no
+   * later views until re-created by the node. Construction performs no I/O and allocates no
    * external resources.
    */
   public NotEnoughNiceLevelsUserAlert() {
@@ -66,9 +66,8 @@ public class NotEnoughNiceLevelsUserAlert extends AbstractUserAlert {
    * Returns the full, localized text of the alert with numeric details.
    *
    * <p>The message includes the number of available native priority levels detected at runtime and
-   * the number considered sufficient by the node. The string is intended for plain-text contexts
-   * and will have any special characters already localized and safely encoded by the rendering
-   * layer.
+   * the number considered enough by the node. The string is intended for plain-text contexts and
+   * will have any special characters already localized and safely encoded by the rendering layer.
    *
    * @return a non-null, localized explanatory message containing counts
    */

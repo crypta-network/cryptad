@@ -31,6 +31,7 @@ val internalLeafProjects =
     project(":platform-api"),
     project(":platform-apphost"),
     project(":platform-web-shell"),
+    project(":runtime-alerts"),
     project(":runtime-node"),
     project(":adapter-fcp"),
     project(":adapter-http-legacy-admin"),
@@ -97,6 +98,7 @@ dependencies {
   implementation(project(":platform-api"))
   implementation(project(":platform-apphost"))
   implementation(project(":platform-web-shell"))
+  implementation(project(":runtime-alerts"))
   implementation(project(":runtime-node"))
   implementation(project(":adapter-fcp"))
   implementation(project(":adapter-http-legacy-admin"))

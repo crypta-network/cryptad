@@ -50,7 +50,7 @@ public class JVMVersionAlert extends AbstractUserAlert {
    *
    * <p>The constructor wires common alert characteristics via the superclass: it marks the alert as
    * dismissible by end users, sets the {@link UserAlert#WARNING} priority, sets initial validity to
-   * {@code true}, and configures a localized dismiss button label ({@code UserAlert.hide}) that
+   * {@code true}, and configures a localized Dismiss button label ({@code UserAlert.hide}) that
    * requests unregistration upon dismissal. The human-readable title and body are resolved lazily
    * on each call through {@link network.crypta.l10n.NodeL10n} so they remain consistent with the
    * active language.

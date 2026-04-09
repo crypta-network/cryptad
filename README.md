@@ -175,7 +175,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.support.transport.ip`, and `network.crypta.support.http`, plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
   `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
-  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`.
+  `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
+  `network.crypta.support.IllegalValueException`, and `network.crypta.support.JVMVersion`.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the store-maintenance alert seam under
   `network.crypta.store.alerts`.
@@ -193,7 +194,8 @@ Cryptad now uses a partial multi-project Gradle build.
   where config types expose `SimpleFieldSet` or filesystem-facing value types.
 - `:foundation-fs` owns `network.crypta.fs`.
 - `:foundation-compat` owns `network.crypta.compat`, including compatibility helpers such as the
-  extracted bandwidth-detection support under `network.crypta.compat.bandwidth`.
+  extracted bandwidth-detection support under `network.crypta.compat.bandwidth`, plus the shared
+  `network.crypta.runtime.core.SSL` helper.
 - `:kernel-content` owns the compile-neutral phase-1 content slice across selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, and MIME helper `network.crypta.support.MediaType`
@@ -228,12 +230,15 @@ Cryptad now uses a partial multi-project Gradle build.
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
   from runtime, adapter, Platform API, and AppHost implementation code. That shell is mounted at
   `/app/node/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`.
+- `:runtime-alerts` owns the extracted leaf-safe alert/feed subset under
+  `network.crypta.runtime.alerts`, including the full `feed` package plus the reusable alert
+  model/base types that no longer need direct daemon state.
 - `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
   `network.crypta.client` async/request engine and high-level client APIs, large slices of
   `network.crypta.node` after the phase-1 routing/helper move, the retained node-coupled
   transport/message execution code in
-  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer`,
-  `network.crypta.runtime.*`, and the remaining daemon-coupled
+  `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer`, the remaining
+  daemon-bound `network.crypta.runtime.*` implementation slices, and the remaining daemon-coupled
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   that has not moved into `:foundation-support`.
 - `:adapter-fcp` owns `network.crypta.clients.fcp`, including
@@ -634,7 +639,11 @@ Root build also includes:
   boundary.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
-  bandwidth-detection helpers now used by first-time setup flows.
+  bandwidth-detection helpers now used by first-time setup flows, plus the shared
+  `network.crypta.runtime.core.SSL` helper.
+- `:runtime-alerts`: extracted leaf-safe alert/feed module owning the full
+  `network.crypta.runtime.alerts.feed` package plus reusable alert model/base classes that stay
+  free of direct `Node`/`NodeClientCore` coupling.
 
 ### Spotless + Dependency Verification
 
@@ -688,9 +697,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   - Leaf subprojects are `:foundation-support`, `:foundation-store`,
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
-    `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-    `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`, `:adapter-http-legacy-admin`,
-    `:thirdparty-onion`,
+    `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
+    `:platform-api`, `:platform-apphost`, `:platform-web-shell`, `:runtime-node`,
+    `:adapter-fcp`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
@@ -773,8 +782,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `LegacyPageChromePort`, `LegacyFirstTimeWizardPort`, and `LegacyWelcomePagePort`; endpoint glue
   such as `ClientEndpoints`, `NodeClientCoreInit`, and `NodeClientPersistence`; shell/password
   seams under `runtime.http`; and updater classes such as `NodeUpdateManager` and `CoreUpdater`.
-  The root project keeps the composition class `DefaultNodeRuntimeBridgeFactories`, which selects
-  the concrete FCP and HTTP bridge implementations from the extracted adapter leaves.
+  The extracted `:runtime-alerts` leaf now owns the reusable alert/feed model subset under
+  `network.crypta.runtime.alerts`, while `:runtime-node` keeps `UserAlertManager` and the
+  daemon-coupled alert producers. The root project keeps the composition class
+  `DefaultNodeRuntimeBridgeFactories`, which selects the concrete FCP and HTTP bridge
+  implementations from the extracted adapter leaves.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
   `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
   `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
@@ -786,7 +798,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   support-io, support-compress, support-math, transport-IP, and support-http classes plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
   `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
-  `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`.
+  `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
+  `network.crypta.support.IllegalValueException`, plus `network.crypta.support.JVMVersion`.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
   foundation leaf; daemon-coupled support code still remains in the root.
@@ -800,13 +813,15 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   helpers,
   `:foundation-fs` provides `network.crypta.fs`, and `:foundation-compat` provides
   `network.crypta.compat` plus compatibility helpers such as the extracted bandwidth-detection
-  support.
+  support and the shared `network.crypta.runtime.core.SSL` helper.
 - Runtime boundary leaves: `:kernel-content` provides the compile-neutral phase-1 content slice
   across selected `network.crypta.client*` classes plus `network.crypta.support.MediaType`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
   and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
+  `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
+  feed/model subset;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps;
