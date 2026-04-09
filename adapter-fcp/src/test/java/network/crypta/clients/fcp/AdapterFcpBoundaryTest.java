@@ -89,19 +89,20 @@ class AdapterFcpBoundaryTest {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
-    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
-    String bridgeMetadata = Files.readString(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
+    Set<String> metadataPatterns = readOwnershipPatterns(repoRoot.resolve(OWNERSHIP_METADATA));
+    Set<String> bridgeMetadataPatterns =
+        readOwnershipPatterns(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":adapter-fcp\""));
     assertTrue(settings.contains("\":bridge-fcp-runtime\""));
     assertTrue(build.contains("project(\":adapter-fcp\")"));
     assertTrue(build.contains("project(\":bridge-fcp-runtime\")"));
-    assertTrue(metadata.contains("network/crypta/clients/fcp/*"));
+    assertTrue(metadataPatterns.contains("network/crypta/clients/fcp/*"));
     assertFalse(
-        metadata.contains("network/crypta/clients/fcp/bridge/**"),
+        metadataPatterns.contains("network/crypta/clients/fcp/bridge/**"),
         ":adapter-fcp must not claim network/crypta/clients/fcp/bridge/** in ownership metadata");
     assertTrue(
-        bridgeMetadata.contains("network/crypta/clients/fcp/bridge/**"),
+        bridgeMetadataPatterns.contains("network/crypta/clients/fcp/bridge/**"),
         ":bridge-fcp-runtime must own network/crypta/clients/fcp/bridge/**");
   }
 
@@ -219,6 +220,16 @@ class AdapterFcpBoundaryTest {
           .map(FCP_IMPORT_PATTERN::matcher)
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static Set<String> readOwnershipPatterns(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .filter(line -> !line.isEmpty())
+          .filter(line -> !line.startsWith("#"))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
   }

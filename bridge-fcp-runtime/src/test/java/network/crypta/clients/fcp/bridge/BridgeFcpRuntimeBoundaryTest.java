@@ -50,18 +50,19 @@ class BridgeFcpRuntimeBoundaryTest {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
-    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
-    String adapterMetadata = Files.readString(repoRoot.resolve(ADAPTER_OWNERSHIP_METADATA));
+    Set<String> metadataPatterns = readOwnershipPatterns(repoRoot.resolve(OWNERSHIP_METADATA));
+    Set<String> adapterMetadataPatterns =
+        readOwnershipPatterns(repoRoot.resolve(ADAPTER_OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":bridge-fcp-runtime\""));
     assertTrue(build.contains("project(\":bridge-fcp-runtime\")"));
-    assertTrue(metadata.contains("network/crypta/clients/fcp/bridge/**"));
+    assertTrue(metadataPatterns.contains("network/crypta/clients/fcp/bridge/**"));
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(OWNERSHIP_METADATA)),
         ":bridge-fcp-runtime must declare owned-output-patterns.txt");
-    assertTrue(adapterMetadata.contains("network/crypta/clients/fcp/*"));
+    assertTrue(adapterMetadataPatterns.contains("network/crypta/clients/fcp/*"));
     assertFalse(
-        adapterMetadata.contains("network/crypta/clients/fcp/bridge/**"),
+        adapterMetadataPatterns.contains("network/crypta/clients/fcp/bridge/**"),
         ":adapter-fcp must not claim network/crypta/clients/fcp/bridge/**");
   }
 
@@ -109,6 +110,16 @@ class BridgeFcpRuntimeBoundaryTest {
   private static boolean isTrackedJavaSource(Path path) {
     String fileName = fileNameOrThrow(path);
     return fileName.endsWith(".java") && !fileName.startsWith("._");
+  }
+
+  private static Set<String> readOwnershipPatterns(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .filter(line -> !line.isEmpty())
+          .filter(line -> !line.startsWith("#"))
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
   }
 
   private static Path parentOrThrow(Path path) {
