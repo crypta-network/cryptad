@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -11,8 +9,9 @@ import network.crypta.support.SimpleFieldSet;
  * reply, queue update, or diagnostic snapshot to a known peer without exposing the common routing
  * boilerplate in each concrete message. Subclasses parse their payload up front, then invoke {@link
  * #run(FCPConnectionHandler)} to resolve the peer, enforce darknet-only constraints, and finally
- * call {@link #handleFeed(DarknetPeerNode)} to transmit data. Instances are stateful because they
- * cache identifiers and the optional data length reported to peers during capability negotiation.
+ * call {@link #handleFeed(FcpDarknetPeerHandle)} to transmit data. Instances are stateful because
+ * they cache identifiers and the optional data length reported to peers during capability
+ * negotiation.
  *
  * <p>Implementations are expected to be short-lived and not thread-safe; callers should create a
  * fresh instance per inbound FCP command. The base class never mutates shared node structures
@@ -112,13 +111,13 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
 
   /**
    * Resolves the peer node, enforces darknet-only access, and delegates the actual payload
-   * transmission to {@link #handleFeed(DarknetPeerNode)}.
+   * transmission to {@link #handleFeed(FcpDarknetPeerHandle)}.
    *
    * <p>The handler is expected to represent the active connection issuing this request, and the
-   * provided node is the authoritative routing context. When the peer is unknown, a descriptive
-   * error message is sent automatically; when the peer is not part of the darknet, the method
-   * throws {@link MessageInvalidException}. Subclasses should avoid heavy computation inside {@code
-   * handleFeed} because it runs on whatever thread the handler uses for message dispatch.
+   * resolved peer result is the authoritative routing context. When the peer is unknown, a
+   * descriptive error message is sent automatically; when the peer is not part of the darknet, the
+   * method throws {@link MessageInvalidException}. Subclasses should avoid heavy computation inside
+   * {@code handleFeed} because it runs on whatever thread the handler uses for message dispatch.
    *
    * @param handler connection handler responsible for sending replies back to the client; must not
    *     be {@code null} and should already be authenticated.
@@ -127,19 +126,23 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    */
   @Override
   public void run(FCPConnectionHandler handler) throws MessageInvalidException {
-    PeerNode pn = handler.getServer().messageRuntimeSupport().findPeer(nodeIdentifier);
-    if (pn == null) {
-      FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
-      handler.send(msg);
-    } else if (!(pn instanceof DarknetPeerNode darknetPeerNode)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DARKNET_ONLY,
-          getName() + " only available for darknet peers",
-          identifier,
-          false);
-    } else {
-      int nodeStatus = handleFeed(darknetPeerNode);
-      handler.send(new SentPeerMessage(identifier, nodeStatus));
+    FcpPeerLookupResult lookupResult =
+        handler.getServer().messageRuntimeSupport().findPeer(nodeIdentifier);
+    switch (lookupResult.kind()) {
+      case UNKNOWN -> {
+        FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
+        handler.send(msg);
+      }
+      case NON_DARKNET ->
+          throw new MessageInvalidException(
+              ProtocolErrorMessage.DARKNET_ONLY,
+              getName() + " only available for darknet peers",
+              identifier,
+              false);
+      case DARKNET -> {
+        int nodeStatus = handleFeed(lookupResult.requireDarknetPeerHandle());
+        handler.send(new SentPeerMessage(identifier, nodeStatus));
+      }
     }
   }
 
@@ -151,12 +154,12 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    * should document the meaning of their status codes and ensure that any thrown exception provides
    * actionable details.
    *
-   * @param pn darknet peer reference already registered on the node and guaranteed non-null.
+   * @param peerHandle adapter-owned darknet peer handle already validated and guaranteed non-null
    * @return integer status communicated to the client; the subclass defines semantic range.
    * @throws MessageInvalidException if the payload cannot be accepted or violates protocol
    *     invariants enforced by the subclass.
    */
-  protected abstract int handleFeed(DarknetPeerNode pn) throws MessageInvalidException;
+  protected abstract int handleFeed(FcpDarknetPeerHandle peerHandle) throws MessageInvalidException;
 
   @Override
   String getIdentifier() {

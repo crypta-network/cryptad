@@ -4,9 +4,17 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpDarknetPeerHandle;
 import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
+import network.crypta.clients.fcp.FcpPeerLookupResult;
+import network.crypta.clients.fcp.FcpProbeError;
+import network.crypta.clients.fcp.FcpProbeListener;
+import network.crypta.clients.fcp.FcpProbeType;
+import network.crypta.keys.FreenetURI;
+import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
+import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Type;
 
@@ -27,7 +35,7 @@ import network.crypta.node.probe.Type;
  * <ul>
  *   <li>Preserves existing core-backed semantics for client creation and peer lookups.
  *   <li>Delegates feed watching and shutdown to the same node subsystems used before the refactor.
- *   <li>Starts probes through the live network path without changing UID or callback handling.
+ *   <li>Maps adapter-owned peer and probe seam types back to the live node runtime types.
  * </ul>
  *
  * @param core live daemon core backing the FCP message paths
@@ -107,31 +115,154 @@ record CoreFcpMessageRuntimeSupport(NodeClientCore core) implements FcpMessageRu
    * Resolves a peer from the node network reachable through the retained core.
    *
    * <p>No caching or translation is added here. Callers observe the current peer table at the time
-   * of the lookup and receive {@code null} when the identifier is unknown, allowing message code to
-   * preserve its existing unknown-peer and darknet-only protocol behavior.
+   * of the lookup and receive an adapter-owned result describing whether the peer is unknown,
+   * non-darknet, or a valid darknet target. That keeps message-layer branching behavior unchanged
+   * while preventing runtime peer types from leaking back into {@code :adapter-fcp}.
    *
    * @param nodeIdentifier peer identifier supplied by the message handler
-   * @return matching peer node, or {@code null} when no current peer matches the identifier
+   * @return adapter-owned lookup result describing the current peer state
    */
   @Override
-  public PeerNode findPeer(String nodeIdentifier) {
-    return core.getNode().network().getPeerNode(nodeIdentifier);
+  public FcpPeerLookupResult findPeer(String nodeIdentifier) {
+    PeerNode peerNode = core.getNode().network().getPeerNode(nodeIdentifier);
+    if (peerNode == null) {
+      return FcpPeerLookupResult.unknown();
+    }
+    if (peerNode instanceof DarknetPeerNode darknetPeerNode) {
+      return FcpPeerLookupResult.darknet(new CoreFcpDarknetPeerHandle(darknetPeerNode));
+    }
+    return FcpPeerLookupResult.nonDarknet();
   }
 
   /**
    * Starts a probe through the node network associated with the retained core.
    *
-   * <p>The adapter does not alter probe parameters, generate IDs, or wrap callbacks. It simply
-   * passes the validated hop limit, UID, probe type, and listener to the same runtime path that
-   * message handlers previously called directly, preserving asynchronous probe execution semantics.
+   * <p>The adapter does not alter probe parameters or generate IDs. It maps the adapter-owned probe
+   * type and listener back to the runtime probe equivalents, then delegates to the same network
+   * path that message handlers previously called directly. That preserves asynchronous probe
+   * execution semantics while keeping the runtime probe package out of {@code :adapter-fcp}.
    *
    * @param hopsToLive probe hop limit to submit to the network
    * @param uid probe UID selected by the caller for correlation
-   * @param probeType probe type to execute
-   * @param listener callback listener that receives probe results and failures
+   * @param probeType adapter-owned probe type to execute
+   * @param listener adapter-owned callback listener that receives probe results and failures
    */
   @Override
-  public void startProbe(byte hopsToLive, long uid, Type probeType, Listener listener) {
-    core.getNode().network().startProbe(hopsToLive, uid, probeType, listener);
+  public void startProbe(
+      byte hopsToLive, long uid, FcpProbeType probeType, FcpProbeListener listener) {
+    core.getNode()
+        .network()
+        .startProbe(hopsToLive, uid, toRuntimeProbeType(probeType), toRuntimeListener(listener));
+  }
+
+  private static Type toRuntimeProbeType(FcpProbeType probeType) {
+    return switch (probeType) {
+      case BANDWIDTH -> Type.BANDWIDTH;
+      case BUILD -> Type.BUILD;
+      case IDENTIFIER -> Type.IDENTIFIER;
+      case LINK_LENGTHS -> Type.LINK_LENGTHS;
+      case LOCATION -> Type.LOCATION;
+      case STORE_SIZE -> Type.STORE_SIZE;
+      case UPTIME_48H -> Type.UPTIME_48H;
+      case UPTIME_7D -> Type.UPTIME_7D;
+      case REJECT_STATS -> Type.REJECT_STATS;
+      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE -> Type.OVERALL_BULK_OUTPUT_CAPACITY_USAGE;
+    };
+  }
+
+  private static FcpProbeError toAdapterProbeError(Error error) {
+    return switch (error) {
+      case DISCONNECTED -> FcpProbeError.DISCONNECTED;
+      case OVERLOAD -> FcpProbeError.OVERLOAD;
+      case TIMEOUT -> FcpProbeError.TIMEOUT;
+      case UNKNOWN -> FcpProbeError.UNKNOWN;
+      case UNRECOGNIZED_TYPE -> FcpProbeError.UNRECOGNIZED_TYPE;
+      case CANNOT_FORWARD -> FcpProbeError.CANNOT_FORWARD;
+    };
+  }
+
+  private static Listener toRuntimeListener(FcpProbeListener listener) {
+    Objects.requireNonNull(listener);
+    return new Listener() {
+      @Override
+      public void onError(Error error, Byte code, boolean local) {
+        listener.onError(toAdapterProbeError(error), code, local);
+      }
+
+      @Override
+      public void onRefused() {
+        listener.onRefused();
+      }
+
+      @Override
+      public void onOutputBandwidth(float outputBandwidth) {
+        listener.onOutputBandwidth(outputBandwidth);
+      }
+
+      @Override
+      public void onBuild(int build) {
+        listener.onBuild(build);
+      }
+
+      @Override
+      public void onIdentifier(long probeIdentifier, byte percentageUptime) {
+        listener.onIdentifier(probeIdentifier, percentageUptime);
+      }
+
+      @Override
+      public void onLinkLengths(float[] linkLengths) {
+        listener.onLinkLengths(linkLengths);
+      }
+
+      @Override
+      public void onLocation(float location) {
+        listener.onLocation(location);
+      }
+
+      @Override
+      public void onStoreSize(float storeSize) {
+        listener.onStoreSize(storeSize);
+      }
+
+      @Override
+      public void onUptime(float uptimePercent) {
+        listener.onUptime(uptimePercent);
+      }
+
+      @Override
+      public void onRejectStats(byte[] stats) {
+        listener.onRejectStats(stats);
+      }
+
+      @Override
+      public void onOverallBulkOutputCapacity(
+          byte bandwidthClassForCapacityUsage, float capacityUsage) {
+        listener.onOverallBulkOutputCapacity(bandwidthClassForCapacityUsage, capacityUsage);
+      }
+    };
+  }
+
+  private record CoreFcpDarknetPeerHandle(DarknetPeerNode peerNode)
+      implements FcpDarknetPeerHandle {
+
+    private CoreFcpDarknetPeerHandle {
+      Objects.requireNonNull(peerNode);
+    }
+
+    @Override
+    public int sendTextFeed(String text) {
+      return peerNode.sendTextFeed(text);
+    }
+
+    @Override
+    public int sendDownloadFeed(FreenetURI uri, String description) {
+      return peerNode.sendDownloadFeed(uri, description);
+    }
+
+    @Override
+    public int sendBookmarkFeed(
+        FreenetURI uri, String bookmarkName, String description, boolean hasAnActiveLink) {
+      return peerNode.sendBookmarkFeed(uri, bookmarkName, description, hasAnActiveLink);
+    }
   }
 }

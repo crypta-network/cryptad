@@ -14,7 +14,8 @@
  * production binding and then hands only seam types upstream. This package keeps the concrete
  * runtime-binding behavior behind that boundary, so the current FCP startup sequence,
  * persistent-request recovery path, queue semantics, and alert delivery behavior remain unchanged
- * while ownership is made explicit for later extraction work.
+ * while ownership is made explicit for later extraction work. It also owns the concrete mapping
+ * between adapter-owned FCP peer/probe seam types and the live node peer/probe runtime classes.
  *
  * <ul>
  *   <li>Owns the concrete persistent-request bundle and recovery adapters for FCP-backed state.

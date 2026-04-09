@@ -3,10 +3,7 @@ package network.crypta.clients.fcp;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.FSParseException;
-import network.crypta.node.probe.Error;
-import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
-import network.crypta.node.probe.Type;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
@@ -59,7 +56,7 @@ class ProbeRequestTest {
 
   @Test
   void constructor_whenHtlNegative_expectMessageInvalidException() {
-    SimpleFieldSet fieldSet = fieldSet("probe-1", Type.BUILD, (byte) -1);
+    SimpleFieldSet fieldSet = fieldSet("probe-1", FcpProbeType.BUILD, (byte) -1);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> new ProbeRequest(fieldSet));
@@ -70,7 +67,7 @@ class ProbeRequestTest {
 
   @Test
   void constructor_whenHtlNotNumber_expectMessageInvalidException() {
-    SimpleFieldSet fieldSet = fieldSet("probe-1", Type.BUILD.name(), "not-a-number");
+    SimpleFieldSet fieldSet = fieldSet("probe-1", FcpProbeType.BUILD.name(), "not-a-number");
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> new ProbeRequest(fieldSet));
@@ -82,7 +79,7 @@ class ProbeRequestTest {
 
   @Test
   void getFieldSet_whenCalled_returnsIndependentEmptyFieldSet() throws MessageInvalidException {
-    SimpleFieldSet input = fieldSet("probe-1", Type.BUILD, (byte) 5);
+    SimpleFieldSet input = fieldSet("probe-1", FcpProbeType.BUILD, (byte) 5);
     ProbeRequest request = new ProbeRequest(input);
 
     SimpleFieldSet result = request.getFieldSet();
@@ -94,7 +91,7 @@ class ProbeRequestTest {
 
   @Test
   void getName_whenCalled_returnsProbeRequestConstant() throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 5));
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BUILD, (byte) 5));
 
     assertEquals(ProbeRequest.NAME, request.getName());
   }
@@ -102,7 +99,7 @@ class ProbeRequestTest {
   @Test
   void run_whenHandlerWithoutFullAccess_expectAccessDeniedException()
       throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 5));
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BUILD, (byte) 5));
     when(handler.hasFullAccess()).thenReturn(false);
 
     MessageInvalidException exception =
@@ -112,52 +109,56 @@ class ProbeRequestTest {
     assertEquals("probe-1", exception.ident);
     assertEquals("Probe requires full access.", exception.getMessage());
     verify(messageRuntimeSupport, never())
-        .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
+        .startProbe(anyByte(), anyLong(), any(FcpProbeType.class), any(FcpProbeListener.class));
   }
 
   @Test
   void run_whenHtlMissing_usesProbeMaxHtl() throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, null));
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BUILD, null));
     when(handler.hasFullAccess()).thenReturn(true);
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
+    ArgumentCaptor<FcpProbeListener> listenerCaptor =
+        ArgumentCaptor.forClass(FcpProbeListener.class);
 
     request.run(handler);
 
     verify(messageRuntimeSupport)
-        .startProbe(eq(Probe.MAX_HTL), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
+        .startProbe(
+            eq(Probe.MAX_HTL), eq(REQUEST_UID), eq(FcpProbeType.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
 
   @Test
   void run_whenHtlProvided_usesProvidedValue() throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 12));
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BUILD, (byte) 12));
     when(handler.hasFullAccess()).thenReturn(true);
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
+    ArgumentCaptor<FcpProbeListener> listenerCaptor =
+        ArgumentCaptor.forClass(FcpProbeListener.class);
 
     request.run(handler);
 
     verify(messageRuntimeSupport)
-        .startProbe(eq((byte) 12), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
+        .startProbe(
+            eq((byte) 12), eq(REQUEST_UID), eq(FcpProbeType.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
 
   @Test
   void run_whenProbeErrors_sendsProbeError() throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BANDWIDTH, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BANDWIDTH, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
     Byte code = (byte) 7;
 
-    listener.onError(Error.TIMEOUT, code, true);
+    listener.onError(FcpProbeError.TIMEOUT, code, true);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());
@@ -165,15 +166,15 @@ class ProbeRequestTest {
     assertInstanceOf(ProbeError.class, sent);
     SimpleFieldSet fields = sent.getFieldSet();
     assertEquals("probe-1", fields.get(FCPMessage.IDENTIFIER));
-    assertEquals(Error.TIMEOUT.name(), fields.get(FCPMessage.TYPE));
+    assertEquals(FcpProbeError.TIMEOUT.name(), fields.get(FCPMessage.TYPE));
     assertEquals(code.byteValue(), fields.getByte(FCPMessage.CODE));
     assertTrue(fields.getBoolean(FCPMessage.LOCAL));
   }
 
   @Test
   void run_whenProbeRefused_sendsProbeRefused() throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet(null, Type.BANDWIDTH, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet(null, FcpProbeType.BANDWIDTH, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onRefused();
 
@@ -187,8 +188,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeOutputsBandwidth_sendsProbeBandwidth()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BANDWIDTH, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BANDWIDTH, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onOutputBandwidth(12.5f);
 
@@ -204,8 +205,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeBuildReported_sendsProbeBuild()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.BUILD, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onBuild(123456);
 
@@ -221,8 +222,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeIdentifierReported_sendsProbeIdentifier()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.IDENTIFIER, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.IDENTIFIER, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onIdentifier(99L, (byte) 42);
 
@@ -238,8 +239,9 @@ class ProbeRequestTest {
 
   @Test
   void run_whenProbeLinkLengthsReported_sendsProbeLinkLengths() throws MessageInvalidException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.LINK_LENGTHS, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request =
+        new ProbeRequest(fieldSet("probe-1", FcpProbeType.LINK_LENGTHS, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
     float[] lengths = new float[] {1.25f, 2.5f, 3.75f};
 
     listener.onLinkLengths(lengths);
@@ -262,8 +264,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeLocationReported_sendsProbeLocation()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.LOCATION, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.LOCATION, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onLocation(0.75f);
 
@@ -279,8 +281,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeStoreSizeReported_sendsProbeStoreSize()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.STORE_SIZE, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.STORE_SIZE, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onStoreSize(512.5f);
 
@@ -296,8 +298,8 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeUptimeReported_sendsProbeUptime()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.UPTIME_7D, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", FcpProbeType.UPTIME_7D, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onUptime(99.5f);
 
@@ -313,8 +315,9 @@ class ProbeRequestTest {
   @Test
   void run_whenProbeRejectStatsReported_sendsProbeRejectStats()
       throws MessageInvalidException, FSParseException {
-    ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.REJECT_STATS, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+    ProbeRequest request =
+        new ProbeRequest(fieldSet("probe-1", FcpProbeType.REJECT_STATS, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
     byte[] stats = new byte[] {1, 2, 3, 4};
 
     listener.onRejectStats(stats);
@@ -335,8 +338,9 @@ class ProbeRequestTest {
   void run_whenProbeOverallBulkCapacityReported_sendsProbeOverallBulkOutputCapacityUsage()
       throws MessageInvalidException, FSParseException {
     ProbeRequest request =
-        new ProbeRequest(fieldSet("probe-1", Type.OVERALL_BULK_OUTPUT_CAPACITY_USAGE, (byte) 5));
-    Listener listener = runAndCaptureListener(request);
+        new ProbeRequest(
+            fieldSet("probe-1", FcpProbeType.OVERALL_BULK_OUTPUT_CAPACITY_USAGE, (byte) 5));
+    FcpProbeListener listener = runAndCaptureListener(request);
 
     listener.onOverallBulkOutputCapacity((byte) 3, 0.67f);
 
@@ -350,21 +354,22 @@ class ProbeRequestTest {
     assertEquals(0.67d, fields.getDouble(FCPMessage.OVERALL_BULK_OUTPUT_CAPACITY_USAGE), 0.0001d);
   }
 
-  private Listener runAndCaptureListener(ProbeRequest request) throws MessageInvalidException {
+  private FcpProbeListener runAndCaptureListener(ProbeRequest request)
+      throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
     when(server.runtime()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     stubProbeUid(randomnessPort);
-    AtomicReference<Listener> listenerRef = new AtomicReference<>();
+    AtomicReference<FcpProbeListener> listenerRef = new AtomicReference<>();
     doAnswer(
             invocation -> {
               listenerRef.set(invocation.getArgument(3));
               return null;
             })
         .when(messageRuntimeSupport)
-        .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
+        .startProbe(anyByte(), anyLong(), any(FcpProbeType.class), any(FcpProbeListener.class));
 
     request.run(handler);
 
@@ -383,7 +388,7 @@ class ProbeRequestTest {
         .fillSecureRandom(any(byte[].class));
   }
 
-  private static SimpleFieldSet fieldSet(String identifier, Type type, Byte htl) {
+  private static SimpleFieldSet fieldSet(String identifier, FcpProbeType type, Byte htl) {
     return fieldSet(
         identifier, type == null ? null : type.name(), htl == null ? null : Byte.toString(htl));
   }

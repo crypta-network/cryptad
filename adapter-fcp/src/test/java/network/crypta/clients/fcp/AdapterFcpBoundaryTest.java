@@ -57,6 +57,10 @@ class AdapterFcpBoundaryTest {
       Path.of("src", "main", "java", "network", "crypta", "tools", "AddRef.java");
   private static final Pattern FCP_IMPORT_PATTERN =
       Pattern.compile("^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.fcp\\.[^;]+);$");
+  private static final Pattern FORBIDDEN_RUNTIME_NODE_IMPORT_PATTERN =
+      Pattern.compile(
+          "^import\\s+(network\\.crypta\\.node\\.(?:PeerNode|DarknetPeerNode)|"
+              + "network\\.crypta\\.node\\.probe\\.[^;]+);$");
   private static final Set<String> EXPECTED_DEFAULT_BRIDGE_FACTORIES_IMPORTS =
       Set.of(
           "network.crypta.clients.fcp.bridge.FcpPersistentRequestServices",
@@ -176,6 +180,36 @@ class AdapterFcpBoundaryTest {
         "Every :adapter-fcp main package with production Java files must declare package-info.java."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), missingPackageInfos));
+  }
+
+  @Test
+  void adapterFcpMain_whenScanningForbiddenRuntimeImports_expectNoPeerOrProbeLeaks()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+    Path adapterFcpMain = repoRoot.resolve(ADAPTER_FCP_MAIN_JAVA);
+
+    for (Path sourceFile : findJavaSources(adapterFcpMain)) {
+      try (Stream<String> lines = Files.lines(sourceFile)) {
+        List<String> forbiddenImports =
+            lines
+                .map(String::trim)
+                .map(FORBIDDEN_RUNTIME_NODE_IMPORT_PATTERN::matcher)
+                .filter(Matcher::matches)
+                .map(matcher -> matcher.group(1))
+                .toList();
+        if (!forbiddenImports.isEmpty()) {
+          violations.add(
+              repoRoot.relativize(sourceFile) + " -> " + String.join(", ", forbiddenImports));
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        ":adapter-fcp main sources must not import PeerNode, DarknetPeerNode, or node.probe.*"
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.BucketTools;
 
@@ -19,10 +18,10 @@ import network.crypta.support.io.BucketTools;
  * semantics so peers can authenticate and queue downloads consistently.
  *
  * <p>Senders should create a new instance per outgoing transaction, enqueue it on the peer
- * scheduler, and rely on {@link #handleFeed(DarknetPeerNode)} to forward optional descriptive text
- * while honoring UTF-8 encoding. The type performs no retries or throttling; upstream code must
- * handle pacing, persistence, and error logging. Instances are thread-safe because they expose only
- * effectively final state once construction completes.
+ * scheduler, and rely on {@link #handleFeed(FcpDarknetPeerHandle)} to forward optional descriptive
+ * text while honoring UTF-8 encoding. The type performs no retries or throttling; upstream code
+ * must handle pacing, persistence, and error logging. Instances are thread-safe because they expose
+ * only effectively final state once construction completes.
  *
  * <ul>
  *   <li>Parses and validates URIs supplied via {@code SimpleFieldSet} structures.
@@ -31,7 +30,7 @@ import network.crypta.support.io.BucketTools;
  * </ul>
  *
  * @see SendPeerMessage
- * @see DarknetPeerNode#sendDownloadFeed(FreenetURI, String)
+ * @see FcpDarknetPeerHandle#sendDownloadFeed(FreenetURI, String)
  */
 public final class SendURIMessage extends SendPeerMessage {
 
@@ -50,9 +49,9 @@ public final class SendURIMessage extends SendPeerMessage {
    * network boundary. Callers should already have verified the surrounding message type, but they
    * do not need to sanitize whitespace because {@link FreenetURI#FreenetURI(String)} handles
    * canonical parsing. The underlying bucket remains untouched until {@link
-   * #handleFeed(DarknetPeerNode)} is invoked, so large payloads stay in-place.
+   * #handleFeed(FcpDarknetPeerHandle)} is invoked, so large payloads stay in-place.
    *
-   * @param fs field set containing at least one {@code URI} entry with canonical string form.
+   * @param fs field set containing at least one {@code URI} entry with a canonical string form.
    * @throws MessageInvalidException if the {@code URI} entry is missing or fails to parse cleanly.
    */
   public SendURIMessage(SimpleFieldSet fs) throws MessageInvalidException {
@@ -70,8 +69,8 @@ public final class SendURIMessage extends SendPeerMessage {
    *
    * <p>The field set mirrors {@link SendPeerMessage}'s base values and injects the stored URI in
    * canonical text form so receiving peers can rehydrate it without ambiguity. No transient fields
-   * are included, therefore the result is deterministic for identical inputs and safe to reuse as a
-   * cached snapshot while preparing multiple sends.
+   * are included. Therefore, the result is deterministic for identical inputs and safe to reuse as
+   * a cached snapshot while preparing multiple sends.
    *
    * @return mutable {@link SimpleFieldSet} populated with basic headers plus the {@code URI} entry.
    */
@@ -85,8 +84,8 @@ public final class SendURIMessage extends SendPeerMessage {
   /**
    * Exposes the protocol-level message identifier string shared across SendURI transmissions.
    *
-   * <p>The constant name is used by dispatch tables and logging so the value must remain stable and
-   * uppercase. Callers can rely on it for switch statements or to allocate queues dedicated to
+   * <p>The constant name is used by dispatch tables and logging, so the value must remain stable
+   * and uppercase. Callers can rely on it for switch statements or to allocate queues dedicated to
    * specific FCP verbs without re-validating the payload contents.
    *
    * @return literal {@link #NAME} constant describing the SendURI protocol verb.
@@ -109,18 +108,19 @@ public final class SendURIMessage extends SendPeerMessage {
    * <p>This method is not idempotent with respect to peer state; callers should invoke it exactly
    * once per outbound transaction and rely on higher layers for retries or deduplication.
    *
-   * @param pn darknet peer that ultimately receives the URI and optional description, never null.
-   * @return opaque code from {@link DarknetPeerNode#sendDownloadFeed(FreenetURI, String)} conveying
-   *     scheduling outcomes.
+   * @param peerHandle darknet peer handle that ultimately receives the URI and optional
+   *     description, never null
+   * @return opaque code from {@link FcpDarknetPeerHandle#sendDownloadFeed(FreenetURI, String)}
+   *     conveying scheduling outcomes.
    * @throws MessageInvalidException if payload bytes cannot be decoded or the peer rejects input.
    */
   @Override
-  protected int handleFeed(DarknetPeerNode pn) throws MessageInvalidException {
+  protected int handleFeed(FcpDarknetPeerHandle peerHandle) throws MessageInvalidException {
     try {
       if (dataLength() > 0) {
         byte[] description = BucketTools.toByteArray(bucket);
-        return pn.sendDownloadFeed(uri, new String(description, StandardCharsets.UTF_8));
-      } else return pn.sendDownloadFeed(uri, null);
+        return peerHandle.sendDownloadFeed(uri, new String(description, StandardCharsets.UTF_8));
+      } else return peerHandle.sendDownloadFeed(uri, null);
     } catch (IOException _) {
       throw new MessageInvalidException(ProtocolErrorMessage.INVALID_MESSAGE, "", null, false);
     }

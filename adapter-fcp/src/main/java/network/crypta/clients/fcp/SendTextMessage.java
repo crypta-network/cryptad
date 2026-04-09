@@ -2,36 +2,36 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.BucketTools;
 
 /**
- * Handles text-only FCP peer messages flowing from a remote client into a {@link DarknetPeerNode}.
+ * Handles text-only FCP peer messages flowing from a remote client into a {@link
+ * FcpDarknetPeerHandle}.
  *
  * <p>Instances wrap the parsed {@link SimpleFieldSet} supplied by the FCP dispatcher and translate
  * the attached data bucket into a UTF-8 string before handing it to {@link
- * DarknetPeerNode#sendTextFeed(String)}. The class is stateless and short-lived; each instance
+ * FcpDarknetPeerHandle#sendTextFeed(String)}. The class is stateless and short-lived; each instance
  * processes a single inbound payload and is expected to be discarded afterward. Although the
  * transport can theoretically carry arbitrary binary blobs, this implementation enforces a text
  * contract and therefore validates that some payload bytes were provided before forwarding the
  * request.
  *
  * <p>Because the surrounding infrastructure can submit feeds from multiple threads, callers should
- * ensure they provide thread-safe {@link DarknetPeerNode} implementations. The message itself does
- * not maintain mutable state and can therefore be reused only if the caller guarantees sequential
- * access.
+ * ensure they provide thread-safe {@link FcpDarknetPeerHandle} implementations. The message itself
+ * does not maintain a mutable state and can therefore be reused only if the caller guarantees
+ * sequential access.
  *
  * <ul>
  *   <li>Responsibility: convert bucket data to text and delegate to the peer.
  *   <li>Error handling: raises {@link MessageInvalidException} when the payload is missing or when
  *       the bucket cannot be read.
- *   <li>Lifecycle: constructed, handled once via {@link #handleFeed(DarknetPeerNode)}, then
+ *   <li>Lifecycle: constructed, handled once via {@link #handleFeed(FcpDarknetPeerHandle)}, then
  *       eligible for garbage collection.
  * </ul>
  *
  * @see SendPeerMessage
- * @see DarknetPeerNode#sendTextFeed(String)
+ * @see FcpDarknetPeerHandle#sendTextFeed(String)
  */
 public final class SendTextMessage extends SendPeerMessage {
 
@@ -72,23 +72,23 @@ public final class SendTextMessage extends SendPeerMessage {
    * <p>The method expects that {@link #dataLength()} is strictly positive; otherwise it fails fast
    * with a {@link MessageInvalidException} to ensure empty writes are never persisted. The payload
    * is loaded fully into memory via {@link BucketTools#toByteArray} before invoking {@link
-   * DarknetPeerNode#sendTextFeed(String)}, so upstream callers should avoid attaching unbounded
-   * data streams. Any {@link IOException} raised while reading the bucket is translated into {@link
-   * ProtocolErrorMessage#INVALID_MESSAGE} to keep protocol semantics consistent.
+   * FcpDarknetPeerHandle#sendTextFeed(String)}, so upstream callers should avoid attaching
+   * unbounded data streams. Any {@link IOException} raised while reading the bucket is translated
+   * into {@link ProtocolErrorMessage#INVALID_MESSAGE} to keep protocol semantics consistent.
    *
-   * @param pn peer connection that ultimately transmits the text; must support concurrent feed
-   *     delivery if used by multiple SendTextMessage instances.
-   * @return the status code returned from {@link DarknetPeerNode#sendTextFeed(String)}, preserving
-   *     the peer's decision about success, retries, or throttling.
+   * @param peerHandle peer connection that ultimately transmits the text; must support concurrent
+   *     feed delivery if used by multiple SendTextMessage instances
+   * @return the status code returned from {@link FcpDarknetPeerHandle#sendTextFeed(String)},
+   *     preserving the peer's decision about success, retries, or throttling.
    * @throws MessageInvalidException if the payload is empty, unreadable, or otherwise violates the
    *     SendText contract defined by the protocol.
    */
   @Override
-  protected int handleFeed(DarknetPeerNode pn) throws MessageInvalidException {
+  protected int handleFeed(FcpDarknetPeerHandle peerHandle) throws MessageInvalidException {
     try {
       if (dataLength() > 0) {
         byte[] text = BucketTools.toByteArray(bucket);
-        return pn.sendTextFeed(new String(text, StandardCharsets.UTF_8));
+        return peerHandle.sendTextFeed(new String(text, StandardCharsets.UTF_8));
       } else {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD, "Invalid data length", null, false);

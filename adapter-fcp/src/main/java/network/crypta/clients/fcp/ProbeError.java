@@ -1,8 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.probe.Error;
-import network.crypta.node.probe.Listener;
-
 /**
  * Immutable response envelope emitted whenever a running probe fails.
  *
@@ -25,7 +22,7 @@ import network.crypta.node.probe.Listener;
  *   <li><strong>Notable behavior:</strong> stores the error type, optional vendor-specific code,
  *       and locality flag so clients know whether to retry or escalate.
  *   <li><strong>Concurrency:</strong> instances are confined to a single thread; no synchronization
- *       is performed and no mutable state escapes after serialization.
+ *       is performed, and no mutable state escapes after serialization.
  * </ul>
  */
 public class ProbeError extends FCPResponse {
@@ -40,24 +37,26 @@ public class ProbeError extends FCPResponse {
    *
    * <pre>{@code
    * // Example: emit a remote timeout back to the client
-   * var response = new ProbeError(id, Error.TIMEOUT, null, false);
+   * var response = new ProbeError(id, FcpProbeError.TIMEOUT, null, false);
    * handler.send(response);
    * }</pre>
    *
    * @param fcpIdentifier identifier correlating this response to the originating probe request;
    *     {@code null} skips the {@code Identifier} key entirely for one-shot notifications.
-   * @param error type-safe categorization of the failure, aligned with {@link Listener#onError} and
-   *     serialized via {@link Error#name()}.
+   * @param error type-safe categorization of the failure, aligned with {@link
+   *     FcpProbeListener#onError(FcpProbeError, Byte, boolean)} and serialized via {@link
+   *     FcpProbeError#fieldValue()}.
    * @param code optional vendor or remote numeric code preserved only when non-{@code null}; use
-   *     when reporting {@link Error#UNKNOWN} or {@link Error#UNRECOGNIZED_TYPE} variants.
+   *     when reporting {@link FcpProbeError#UNKNOWN} or {@link FcpProbeError#UNRECOGNIZED_TYPE}
+   *     variants.
    * @param local {@code true} when the node itself originated the failure and {@code false} when it
    *     merely relayed a remote peer's verdict.
-   * @see Listener#onError(Error, Byte, boolean)
-   * @see Error
+   * @see FcpProbeListener#onError(FcpProbeError, Byte, boolean)
+   * @see FcpProbeError
    */
-  public ProbeError(String fcpIdentifier, Error error, Byte code, boolean local) {
+  public ProbeError(String fcpIdentifier, FcpProbeError error, Byte code, boolean local) {
     super(fcpIdentifier);
-    fs.putOverwrite(TYPE, error.name());
+    fs.putOverwrite(TYPE, error.fieldValue());
     if (code != null) fs.put(CODE, code);
     fs.put(LOCAL, local);
   }

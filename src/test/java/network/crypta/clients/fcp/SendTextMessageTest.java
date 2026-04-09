@@ -2,8 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -28,11 +26,10 @@ class SendTextMessageTest {
   private static final String IDENTIFIER = "test-identifier";
   private static final String NODE_IDENTIFIER = "peer-node-1";
 
-  @Mock private DarknetPeerNode darknetPeerNode;
+  @Mock private FcpDarknetPeerHandle darknetPeerNode;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
   @Mock private FcpMessageRuntimeSupport messageRuntimeSupport;
-  @Mock private PeerNode peerNode;
 
   @Test
   void getName_whenCalled_returnsSendText() throws MessageInvalidException {
@@ -88,7 +85,7 @@ class SendTextMessageTest {
     SendTextMessage message = new SendTextMessage(baseFieldSet());
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
-    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(null);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(FcpPeerLookupResult.unknown());
     ArgumentCaptor<FCPMessage> sentCaptor = ArgumentCaptor.forClass(FCPMessage.class);
 
     message.run(handler);
@@ -105,7 +102,8 @@ class SendTextMessageTest {
     SendTextMessage message = new SendTextMessage(baseFieldSet());
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
-    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(peerNode);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER))
+        .thenReturn(FcpPeerLookupResult.nonDarknet());
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> message.run(handler));
@@ -124,7 +122,8 @@ class SendTextMessageTest {
     message.bucket = new ArrayBucket(payload);
     when(handler.getServer()).thenReturn(server);
     when(server.messageRuntimeSupport()).thenReturn(messageRuntimeSupport);
-    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(messageRuntimeSupport.findPeer(NODE_IDENTIFIER))
+        .thenReturn(FcpPeerLookupResult.darknet(darknetPeerNode));
     when(darknetPeerNode.sendTextFeed(text)).thenReturn(123);
     ArgumentCaptor<FCPMessage> sentCaptor = ArgumentCaptor.forClass(FCPMessage.class);
 
