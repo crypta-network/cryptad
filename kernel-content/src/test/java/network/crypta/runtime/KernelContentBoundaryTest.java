@@ -23,9 +23,23 @@ class KernelContentBoundaryTest {
       Path.of("kernel-content", "src", "main", "java");
   private static final Path KERNEL_CONTENT_ALERTS_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "async", "alerts"));
+  private static final Path KERNEL_CONTENT_PERSISTENCE_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(
+          Path.of("network", "crypta", "client", "async", "persistence"));
   private static final Path RUNTIME_NODE_ALERTS_PACKAGE =
       Path.of(
           "runtime-node", "src", "main", "java", "network", "crypta", "client", "async", "alerts");
+  private static final Path RUNTIME_NODE_PERSISTENCE_PACKAGE =
+      Path.of(
+          "runtime-node",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "client",
+          "async",
+          "persistence");
   private static final Path KERNEL_CONTENT_MEDIA_TYPE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "MediaType.java"));
   private static final Path RUNTIME_NODE_MEDIA_TYPE =
@@ -36,6 +50,9 @@ class KernelContentBoundaryTest {
           "^import(?:\\s+static)?\\s+"
               + "(network\\.crypta\\.(?:node|runtime|io)\\.[^;]+"
               + "|network\\.crypta\\.clients\\.(?:fcp|http)\\.[^;]+);$");
+  private static final Pattern CLIENT_CONTEXT_IMPORT_PATTERN =
+      Pattern.compile(
+          "^import(?:\\s+static)?\\s+(network\\.crypta\\.client\\.async\\.ClientContext);$");
 
   @Test
   void kernelContentMain_whenScanningImports_expectNoRuntimeOrAdapterImports() throws IOException {
@@ -79,6 +96,30 @@ class KernelContentBoundaryTest {
   }
 
   @Test
+  void kernelContentPhaseTwo_whenCheckingWholePackageMoves_expectPersistenceOwnedByKernelContent()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelContentPersistence = repoRoot.resolve(KERNEL_CONTENT_PERSISTENCE_PACKAGE);
+    Path runtimeNodePersistence = repoRoot.resolve(RUNTIME_NODE_PERSISTENCE_PACKAGE);
+
+    assertTrue(
+        Files.isDirectory(kernelContentPersistence),
+        "kernel-content must own network.crypta.client.async.persistence");
+    assertTrue(
+        Files.isRegularFile(kernelContentPersistence.resolve("package-info.java")),
+        "kernel-content async.persistence package must keep package-info.java");
+    assertTrue(
+        Files.isRegularFile(
+            kernelContentPersistence.resolve("PersistentRequestRuntimeContext.java")),
+        "kernel-content async.persistence package must declare the runtime-context seam");
+    assertTrue(
+        !Files.isDirectory(runtimeNodePersistence)
+            || findJavaSources(runtimeNodePersistence).isEmpty(),
+        "runtime-node must not retain any network.crypta.client.async.persistence Java sources"
+            + " after extraction");
+  }
+
+  @Test
   void kernelContentPhaseOne_whenCheckingSupportOwnership_expectMediaTypeOwnedByKernelContent()
       throws IOException {
     Path repoRoot = repoRoot();
@@ -89,6 +130,31 @@ class KernelContentBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(RUNTIME_NODE_MEDIA_TYPE)),
         "runtime-node must not retain network.crypta.support.MediaType after extraction");
+  }
+
+  @Test
+  void kernelContentPhaseTwo_whenScanningPersistenceImports_expectNoClientContextImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelContentPersistence = repoRoot.resolve(KERNEL_CONTENT_PERSISTENCE_PACKAGE);
+    List<String> violations = new ArrayList<>();
+
+    assertTrue(
+        Files.isDirectory(kernelContentPersistence),
+        "kernel-content persistence package must exist before import scanning");
+
+    for (Path sourceFile : findJavaSources(kernelContentPersistence)) {
+      Set<String> imports = readMatchingImports(sourceFile, CLIENT_CONTEXT_IMPORT_PATTERN);
+      if (!imports.isEmpty()) {
+        violations.add(repoRoot.relativize(sourceFile) + " -> " + String.join(", ", imports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "kernel-content persistence contracts must stay free of ClientContext imports."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   @Test
@@ -138,10 +204,14 @@ class KernelContentBoundaryTest {
   }
 
   private static Set<String> readForbiddenImports(Path file) throws IOException {
+    return readMatchingImports(file, FORBIDDEN_IMPORT_PATTERN);
+  }
+
+  private static Set<String> readMatchingImports(Path file, Pattern pattern) throws IOException {
     try (Stream<String> lines = Files.lines(file)) {
       return lines
           .map(String::trim)
-          .map(FORBIDDEN_IMPORT_PATTERN::matcher)
+          .map(pattern::matcher)
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));

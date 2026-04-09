@@ -2,6 +2,7 @@
 # them now.
 
 network/crypta/client/async/alerts/**
+network/crypta/client/async/persistence/**
 network/crypta/client/ArchiveContext.class
 network/crypta/client/ArchiveContext$*.class
 network/crypta/client/ArchiveFailureException.class

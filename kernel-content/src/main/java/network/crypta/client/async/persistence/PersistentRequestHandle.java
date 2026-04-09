@@ -2,7 +2,6 @@ package network.crypta.client.async.persistence;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.support.io.ResumeFailedException;
 
@@ -18,9 +17,10 @@ import network.crypta.support.io.ResumeFailedException;
  *
  * <p>A typical lifecycle is: list handles from {@link PersistentRequestCatalog}, write their
  * identifiers and recovery data during a checkpoint, deserialize or rebuild them during startup,
- * invoke {@link #onResume(ClientContext)}, and then call {@link #start(ClientContext)} when the
- * restored request should continue running. Implementations should remain robust when these hooks
- * are invoked after partial failures or repeated startup attempts.
+ * invoke {@link #onResume(PersistentRequestRuntimeContext)}, and then call {@link
+ * #start(PersistentRequestRuntimeContext)} when the restored request should continue running.
+ * Implementations should remain robust when these hooks are invoked after partial failures or
+ * repeated startup attempts.
  */
 public interface PersistentRequestHandle {
 
@@ -44,11 +44,11 @@ public interface PersistentRequestHandle {
    * resumes. It may be invoked after either Java deserialization or compact recovery-data
    * reconstruction.
    *
-   * @param context client runtime context that provides schedulers, registries, and storage
-   *     services needed during resume
+   * @param context client-owned runtime context seam that supplies whatever runtime services the
+   *     implementation needs during resume
    * @throws ResumeFailedException if the request cannot be safely reattached to the running node
    */
-  void onResume(ClientContext context) throws ResumeFailedException;
+  void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException;
 
   /**
    * Starts the request after successful recovery.
@@ -57,10 +57,10 @@ public interface PersistentRequestHandle {
    * appropriate queues, and updating any status caches. This method may be called again after a
    * restart request but should avoid duplicating work when already running.
    *
-   * @param context client runtime context used to schedule the request and attach any new work to
-   *     the node
+   * @param context client-owned runtime context seam used to schedule the request and attach any
+   *     new work to the node
    */
-  void start(ClientContext context);
+  void start(PersistentRequestRuntimeContext context);
 
   /**
    * Cancels the request after a failed resuming or restart.
@@ -69,9 +69,10 @@ public interface PersistentRequestHandle {
    * reconstructed request should not remain registered. Implementations should release runtime
    * resources and propagate cancellation to any underlying requester when one exists.
    *
-   * @param context client runtime context used to propagate cancellation and release resources
+   * @param context client-owned runtime context seam used to propagate cancellation and release
+   *     resources
    */
-  void cancel(ClientContext context);
+  void cancel(PersistentRequestRuntimeContext context);
 
   /**
    * Gives the request one final chance to flush state before persistence during shutdown.
@@ -80,9 +81,9 @@ public interface PersistentRequestHandle {
    * transient state into fields that are persisted normally, or to ask nested requesters to flush
    * state that improves restart quality.
    *
-   * @param context client runtime context available during the node shutdown save path
+   * @param context client-owned runtime context seam available during the node shutdown save path
    */
-  void onShutdown(ClientContext context);
+  void onShutdown(PersistentRequestRuntimeContext context);
 
   /**
    * Writes compact recovery data that can rebuild the request when Java serialization fails.
