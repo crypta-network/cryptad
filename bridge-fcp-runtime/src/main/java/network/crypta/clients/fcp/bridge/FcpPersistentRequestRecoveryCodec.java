@@ -6,6 +6,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.RequestIdentifier;
 import network.crypta.crypt.ChecksumChecker;
@@ -16,8 +17,9 @@ import network.crypta.support.io.StorageFormatException;
  * Bridge adapter that restarts FCP persistent requests through the client-owned seam.
  *
  * <p>This codec bridges the client-owned recovery contract back to the existing FCP restart path.
- * It converts the client-owned durable identifier into the legacy FCP identifier type and then
- * delegates reconstruction to {@link ClientRequest#restartFrom(DataInputStream, RequestIdentifier,
+ * It converts the client-owned durable identifier into the legacy FCP identifier type, narrows the
+ * runtime-context seam back to {@link ClientContext} at the bridge boundary, and then delegates
+ * reconstruction to {@link ClientRequest#restartFrom(DataInputStream, RequestIdentifier,
  * ClientContext, ChecksumChecker)}. The adapter stays stateless, so startup wiring can reuse a
  * single instance without coordinating additional caches or configuration.
  */
@@ -38,11 +40,21 @@ public final class FcpPersistentRequestRecoveryCodec implements PersistentReques
   public PersistentRequestHandle restartFrom(
       DataInputStream dis,
       PersistentRequestIdentifier identifier,
-      ClientContext context,
+      PersistentRequestRuntimeContext context,
       ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
     RequestIdentifier requestIdentifier =
         RequestIdentifier.fromPersistentRequestIdentifier(identifier);
-    return ClientRequest.restartFrom(dis, requestIdentifier, context, checker);
+    return ClientRequest.restartFrom(
+        dis, requestIdentifier, requireClientContext(context), checker);
+  }
+
+  private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+    if (context instanceof ClientContext clientContext) {
+      return clientContext;
+    }
+    String contextType = context == null ? "null" : context.getClass().getName();
+    throw new IllegalArgumentException(
+        "FCP persistent request recovery requires ClientContext but got " + contextType);
   }
 }

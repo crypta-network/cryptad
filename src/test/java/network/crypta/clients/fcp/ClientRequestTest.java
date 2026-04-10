@@ -12,6 +12,7 @@ import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.node.RequestClient;
 import network.crypta.support.io.ResumeFailedException;
@@ -159,8 +160,10 @@ class ClientRequestTest {
 
   @Test
   void cancel_whenRequesterPresent_expectRequesterCancelledAndDataFreed() {
+    // Arrange
     ClientRequester requester = mock(ClientRequester.class);
     ClientContext context = mock(ClientContext.class);
+    PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
         TestClientRequest.forever(
@@ -173,16 +176,20 @@ class ClientRequestTest {
             root.registerForeverClient("cancel-client", null),
             requester);
 
-    request.cancel(context);
+    // Act
+    request.cancel(runtimeContext);
 
+    // Assert
     verify(requester).cancel(context);
     assertEquals(1, request.freeDataCalls());
   }
 
   @Test
   void onShutdown_whenRequesterPresent_expectDelegatesToRequester() {
+    // Arrange
     ClientRequester requester = mock(ClientRequester.class);
     ClientContext context = mock(ClientContext.class);
+    PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
         TestClientRequest.forever(
@@ -195,9 +202,35 @@ class ClientRequestTest {
             root.registerForeverClient("shutdown-client", null),
             requester);
 
-    request.onShutdown(context);
+    // Act
+    request.onShutdown(runtimeContext);
 
+    // Assert
     verify(requester).onShutdown(context);
+  }
+
+  @Test
+  void start_whenRuntimeContextUsesClientContext_expectDelegatesToTypedOverload() {
+    // Arrange
+    ClientContext context = mock(ClientContext.class);
+    PersistentRequestRuntimeContext runtimeContext = context;
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    TestClientRequest request =
+        TestClientRequest.forever(
+            "start-id",
+            0,
+            (short) 1,
+            null,
+            false,
+            false,
+            root.registerForeverClient("start-client", null),
+            null);
+
+    // Act
+    request.start(runtimeContext);
+
+    // Assert
+    assertSame(context, request.startContext());
   }
 
   @Test
@@ -341,6 +374,7 @@ class ClientRequestTest {
   @Test
   void onResume_whenRequesterPresent_expectInnerResumeRequesterAndCoordinator()
       throws ResumeFailedException {
+    // Arrange
     ClientRequester requester = mock(ClientRequester.class);
     PersistentRequestRoot originalRoot = new PersistentRequestRoot();
     TestClientRequest request =
@@ -361,9 +395,12 @@ class ClientRequestTest {
     when(coordinator.resumePersistentRequest(request, false, "resume-client"))
         .thenReturn(resumedClient);
     ClientContext context = newContextWithCoordinator(coordinator);
+    PersistentRequestRuntimeContext runtimeContext = context;
 
-    request.onResume(context);
+    // Act
+    request.onResume(runtimeContext);
 
+    // Assert
     InOrder inOrder = inOrder(coordinator, requester);
     inOrder.verify(coordinator).getOrCreateClientHandle(false, "resume-client");
     inOrder.verify(requester).onResume(context);
@@ -371,6 +408,33 @@ class ClientRequestTest {
     assertSame(context, request.innerResumeContext());
     assertSame(resumedClient, request.getClient());
     assertSame(resumedClient.lowLevelClient(false), request.getRequestClient());
+  }
+
+  @Test
+  void onResume_whenRuntimeContextIsNotClientContext_expectIllegalArgumentException() {
+    // Arrange
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    TestClientRequest request =
+        TestClientRequest.forever(
+            "resume-invalid-context",
+            0,
+            (short) 1,
+            null,
+            false,
+            false,
+            root.registerForeverClient("resume-invalid-client", null),
+            null);
+    PersistentRequestRuntimeContext runtimeContext = new OpaqueRuntimeContext();
+
+    // Act
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> request.onResume(runtimeContext));
+
+    // Assert
+    assertEquals(
+        "FCP persistent request resume requires ClientContext but got "
+            + runtimeContext.getClass().getName(),
+        ex.getMessage());
   }
 
   private static byte[] serializeClientDetail(TestClientRequest request) throws IOException {
@@ -418,11 +482,14 @@ class ClientRequestTest {
 
   private static final class OpaqueHandle implements PersistentRequestClientHandle {}
 
+  private static final class OpaqueRuntimeContext implements PersistentRequestRuntimeContext {}
+
   private static final class TestClientRequest extends ClientRequest {
     @Serial private static final long serialVersionUID = 1L;
 
     private final ClientRequester requester;
     private transient ClientContext innerResumeContext;
+    private transient ClientContext startContext;
     private int freeDataCalls;
 
     private TestClientRequest(ConstructorInit init, ClientRequester requester) {
@@ -479,6 +546,10 @@ class ClientRequestTest {
 
     ClientContext innerResumeContext() {
       return innerResumeContext;
+    }
+
+    ClientContext startContext() {
+      return startContext;
     }
 
     String diagnosticIdentifierValue() {
@@ -564,7 +635,7 @@ class ClientRequestTest {
 
     @Override
     public void start(ClientContext context) {
-      // Start behavior is outside this test's scope.
+      startContext = context;
     }
 
     @Override

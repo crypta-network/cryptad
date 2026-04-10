@@ -198,8 +198,9 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.runtime.core.SSL` helper.
 - `:kernel-content` owns the compile-neutral phase-1 content slice across selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
-  `network.crypta.client.async.alerts`, and MIME helper `network.crypta.support.MediaType`
-  classes that stay free of `:runtime-node`, adapter, and root-composition dependencies.
+  `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, and MIME helper
+  `network.crypta.support.MediaType` classes that stay free of `:runtime-node`, adapter, and
+  root-composition dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   address matching, allowlist parsing, listener abstraction, I/O statistics collection, transfer
@@ -606,7 +607,8 @@ Root build also includes:
 - `:thirdparty-legacy`: Bitpedia, SevenZip, and Spaceroots vendored code.
 - `:kernel-content`: compile-neutral phase-1 content leaf spanning selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
-  `network.crypta.client.async.alerts`, and `network.crypta.support.MediaType`.
+  `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, and
+  `network.crypta.support.MediaType`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allowlist parsing, listener abstraction, statistics collection, throttling, and partially
@@ -731,13 +733,12 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP
   (`network.crypta.clients.http`). `:kernel-content` now owns the compile-neutral phase-1 content
   slice: selected client value/archive/helper classes, immutable client event values, a
-  conservative subset of filter helper/parser types, the full `network.crypta.client.async.alerts`
-  seam, and the MIME helper `network.crypta.support.MediaType`. `:runtime-node` still owns the
-  cyclic async scheduler/request engine, high-level client APIs, and the remaining filter/archive
-  surfaces that still depend on runtime-owned request and node types. The async client layer also
-  retains client-local seams under
-  `network.crypta.client.async.persistence` so runtime bridges can recover durable requests
-  without owning those contracts.
+  conservative subset of filter helper/parser types, the full
+  `network.crypta.client.async.alerts` seam, the client-local persistence seams under
+  `network.crypta.client.async.persistence`, and the MIME helper
+  `network.crypta.support.MediaType`. `:runtime-node` still owns the cyclic async
+  scheduler/request engine, high-level client APIs, and the remaining filter/archive surfaces that
+  still depend on runtime-owned request and node types.
   `network.crypta.clients.fcp` now lives in `:adapter-fcp`. It consumes execution, randomness,
   transfer policy, lifecycle, config access, and detached peer mutations through `RuntimePorts`
   and FCP-local adapters instead of reaching directly into daemon internals for those concerns.
@@ -818,7 +819,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.compat` plus compatibility helpers such as the extracted bandwidth-detection
   support and the shared `network.crypta.runtime.core.SSL` helper.
 - Runtime boundary leaves: `:kernel-content` provides the compile-neutral phase-1 content slice
-  across selected `network.crypta.client*` classes plus `network.crypta.support.MediaType`;
+  across selected `network.crypta.client*` classes, the
+  `network.crypta.client.async.persistence` seam, plus `network.crypta.support.MediaType`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,

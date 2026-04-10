@@ -170,7 +170,6 @@ network/crypta/client/filter/WebPFilter$*.class
 network/crypta/client/async/package-info*
 network/crypta/client/async/*.class
 network/crypta/client/async/*$*.class
-network/crypta/client/async/persistence/**
 network/crypta/runtime/admin/**
 network/crypta/runtime/alerts/package-info*
 network/crypta/runtime/alerts/BookmarkFeedUserAlert*

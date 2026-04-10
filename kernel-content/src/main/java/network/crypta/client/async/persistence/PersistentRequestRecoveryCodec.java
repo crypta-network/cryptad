@@ -2,7 +2,6 @@ package network.crypta.client.async.persistence;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
@@ -32,7 +31,7 @@ public interface PersistentRequestRecoveryCodec {
    *
    * @param dis input positioned at the start of the request-specific compact recovery payload
    * @param identifier durable request identifier describing the request to recover
-   * @param context live client runtime context that will own the restarted request
+   * @param context client-owned runtime context seam that will own the restarted request
    * @param checker checksum helper available for request-specific restart logic when needed
    * @return recovered request, or {@code null} when this codec cannot restart the request type
    * @throws StorageFormatException if the compact recovery payload is malformed or inconsistent
@@ -42,7 +41,7 @@ public interface PersistentRequestRecoveryCodec {
   PersistentRequestHandle restartFrom(
       DataInputStream dis,
       PersistentRequestIdentifier identifier,
-      ClientContext context,
+      PersistentRequestRuntimeContext context,
       ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException;
 }

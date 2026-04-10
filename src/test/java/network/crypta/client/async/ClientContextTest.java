@@ -12,6 +12,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.async.alerts.ClientAlert;
 import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.Config;
@@ -203,6 +204,11 @@ class ClientContextTest {
     ClientAlert alert = mock(ClientAlert.class);
     ctx.postUserAlert(alert);
     verify(alerts, times(1)).post(alert);
+  }
+
+  @Test
+  void constructor_whenContextCreated_expectImplementsPersistentRequestRuntimeContext() {
+    assertInstanceOf(PersistentRequestRuntimeContext.class, ctx);
   }
 
   @Test

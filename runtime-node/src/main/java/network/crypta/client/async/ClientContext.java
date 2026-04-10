@@ -9,6 +9,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.async.alerts.ClientAlert;
 import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.Config;
@@ -64,7 +65,7 @@ import network.crypta.support.io.TempBucketFactory;
  * @see ClientRequestScheduler
  * @see RequestScheduler
  */
-public class ClientContext implements CryptoResumeContext {
+public class ClientContext implements CryptoResumeContext, PersistentRequestRuntimeContext {
 
   private ClientRequestScheduler sskFetchSchedulerBulk;
   private ClientRequestScheduler chkFetchSchedulerBulk;
