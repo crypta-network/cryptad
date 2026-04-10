@@ -662,9 +662,13 @@ public class ArchiveManager {
       TarArchiveInputStream tarIS, byte[] buf, FreenetURI key) {
     try {
       discardCurrentTarEntry(tarIS, buf);
-      while (safeNextTarEntry(tarIS) != null) {
-        discardCurrentTarEntry(tarIS, buf);
-      }
+      ArchiveEntry nextEntry;
+      do {
+        nextEntry = safeNextTarEntry(tarIS);
+        if (nextEntry != null) {
+          discardCurrentTarEntry(tarIS, buf);
+        }
+      } while (nextEntry != null);
     } catch (ArchiveFailureException | IOException e) {
       LOG.warn(
           "Ignoring TAR drain failure after successful extraction from archive {}: {}",
@@ -674,8 +678,9 @@ public class ArchiveManager {
   }
 
   private void discardCurrentTarEntry(InputStream in, byte[] buf) throws IOException {
-    while (in.read(buf) > 0) {
-      // Discard unread entry data so the underlying compressed stream can reach EOF cleanly.
+    int readBytes = in.read(buf);
+    while (readBytes > 0) {
+      readBytes = in.read(buf);
     }
   }
 

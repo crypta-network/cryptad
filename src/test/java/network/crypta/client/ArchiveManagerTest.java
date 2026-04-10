@@ -22,6 +22,7 @@ import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -444,8 +445,7 @@ class ArchiveManagerTest {
 
     byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
     TrackingReadOnlyArrayBucket data =
-        new TrackingReadOnlyArrayBucket(
-            createTarWithWantedAndTailEntries("wanted.txt", wanted, 10_000, 1));
+        new TrackingReadOnlyArrayBucket(createTarWithWantedAndTailEntries(wanted));
     try (data) {
       // Act
       mgr.extractToCache(
@@ -852,26 +852,24 @@ class ArchiveManagerTest {
     return baos.toByteArray();
   }
 
-  private static byte[] createTarWithWantedAndTailEntries(
-      String wantedName, byte[] wantedData, int tailEntryCount, int tailEntrySize)
-      throws IOException {
+  private static byte[] createTarWithWantedAndTailEntries(byte[] wantedData) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     try (TarArchiveOutputStream tos = new TarArchiveOutputStream(baos)) {
       tos.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
 
-      TarArchiveEntry wantedEntry = new TarArchiveEntry(wantedName);
+      TarArchiveEntry wantedEntry = new TarArchiveEntry("wanted.txt");
       wantedEntry.setModTime(0);
       wantedEntry.setSize(wantedData.length);
       tos.putArchiveEntry(wantedEntry);
       tos.write(wantedData);
       tos.closeArchiveEntry();
 
-      for (int i = 0; i < tailEntryCount; i++) {
+      for (int i = 0; i < 10_000; i++) {
         TarArchiveEntry tailEntry = new TarArchiveEntry("tail-" + i + ".bin");
         tailEntry.setModTime(0);
-        tailEntry.setSize(tailEntrySize);
+        tailEntry.setSize(1);
         tos.putArchiveEntry(tailEntry);
-        tos.write(new byte[tailEntrySize]);
+        tos.write(new byte[1]);
         tos.closeArchiveEntry();
       }
     }
@@ -949,7 +947,7 @@ class ArchiveManagerTest {
     }
 
     @Override
-    public int read(byte[] b, int off, int len) throws IOException {
+    public int read(byte @NonNull [] b, int off, int len) throws IOException {
       int read = super.read(b, off, len);
       if (read == -1) {
         fullyRead = true;
