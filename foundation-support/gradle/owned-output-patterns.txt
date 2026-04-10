@@ -9,6 +9,8 @@ network/crypta/io/WritableToDataOutputStream*
 network/crypta/io/AddressIdentifier*
 network/crypta/support/api/Bucket*
 network/crypta/support/api/BucketFactory*
+network/crypta/support/api/HTTPRequest*
+network/crypta/support/api/HTTPUploadedFile*
 network/crypta/support/api/LockableRandomAccessBuffer*
 network/crypta/support/api/LockableRandomAccessBufferFactory*
 network/crypta/support/api/RandomAccessBucket*
@@ -35,9 +37,11 @@ network/crypta/support/LightweightException*
 network/crypta/support/PromiscuousItemException*
 network/crypta/support/PriorityAwareExecutor*
 network/crypta/support/Loader*
+network/crypta/support/MultiValueTable*
 network/crypta/support/SerializationLimits*
 network/crypta/support/SentTimeCache*
 network/crypta/support/SimpleReadOnlyArrayBucket*
+network/crypta/support/SizeUtil*
 network/crypta/support/ShortBuffer*
 network/crypta/support/SparseBitmap*
 network/crypta/support/StringValidityChecker*
@@ -58,6 +62,7 @@ network/crypta/support/http/StaticResourcePaths*
 network/crypta/support/io/AtomicFileMoves*
 network/crypta/support/io/ArrayBucket*
 network/crypta/support/io/ArrayBucketFactory*
+network/crypta/support/io/BaseFileBucket*
 network/crypta/support/io/BitInputStream*
 network/crypta/support/io/ByteArrayRandomAccessBuffer*
 network/crypta/support/io/ByteArrayRandomAccessBufferFactory*
@@ -67,6 +72,11 @@ network/crypta/support/io/DelayedFree.class
 network/crypta/support/io/DelayedFree$*.class
 network/crypta/support/io/DiskSpaceCheckingOutputStream*
 network/crypta/support/io/DiskSpaceChecker*
+network/crypta/support/io/FileBucket*
+network/crypta/support/io/FileDoesNotExistException*
+network/crypta/support/io/FileExistsException*
+network/crypta/support/io/FileRandomAccessBuffer*
+network/crypta/support/io/FileRandomAccessBufferFactory*
 network/crypta/support/io/HeaderStreams*
 network/crypta/support/io/IOUtils*
 network/crypta/support/io/InetAddressComparator*
@@ -85,9 +95,12 @@ network/crypta/support/io/NullInputStream*
 network/crypta/support/io/NullOutputStream*
 network/crypta/support/io/NullRandomAccessBuffer*
 network/crypta/support/io/NullWriter*
+network/crypta/support/io/PersistentTempFileBucket*
 network/crypta/support/io/PersistentFileTracker*
 network/crypta/support/io/PersistentFilenameGenerator*
 network/crypta/support/io/NativeThread*
+network/crypta/support/io/PooledFileRandomAccessBuffer*
+network/crypta/support/io/PooledFileRandomAccessBufferFactory*
 network/crypta/support/io/RAFInputStream*
 network/crypta/support/io/RandomAccessFileOutputStream*
 network/crypta/support/io/ReadOnlyFileSliceBucket*
@@ -96,6 +109,7 @@ network/crypta/support/io/ResumeFailedException*
 network/crypta/support/io/SkipShieldingInputStream*
 network/crypta/support/io/StorageFormatException*
 network/crypta/support/io/SwitchableProxyRandomAccessBuffer*
+network/crypta/support/io/TempFileBucket*
 network/crypta/support/io/TooLongException*
 network/crypta/support/transport/ip/HostnameSyntaxException*
 network/crypta/support/transport/ip/HostnameUtil*

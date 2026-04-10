@@ -176,7 +176,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
   `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
   `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
-  `network.crypta.support.IllegalValueException`, and `network.crypta.support.JVMVersion`.
+  `network.crypta.support.IllegalValueException`, `network.crypta.support.JVMVersion`, the generic
+  `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` support surface, and the
+  cycle-safe file-backed support I/O slice (`BaseFileBucket`, `FileBucket`,
+  `FileRandomAccessBuffer`, `PersistentTempFileBucket`, `PooledFileRandomAccessBuffer`,
+  `TempFileBucket`, and their related exceptions/factories).
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the store-maintenance alert seam under
   `network.crypta.store.alerts`.
@@ -242,7 +246,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer`, the remaining
   daemon-bound `network.crypta.runtime.*` implementation slices, and the remaining daemon-coupled
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
-  that has not moved into `:foundation-support`.
+  after the generic HTTP, multimap, size-formatting, and file-backed bucket slice moved into
+  `:foundation-support`.
 - `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
   `network.crypta.clients.fcp.bridge`.
@@ -591,7 +596,9 @@ Root build also includes:
   `network.crypta.support.http`, `network.crypta.io.AddressIdentifier`,
   `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
   `network.crypta.node.FastRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
-  `network.crypta.support.IllegalValueException`.
+  `network.crypta.support.IllegalValueException`, including the generic `HTTPRequest` /
+  `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface and the cycle-safe file-backed
+  support I/O slice.
 - `:foundation-store-contracts`: neutral store contracts plus the store-maintenance alert seam
   shared by store code and root runtime/UI adapters.
 - `:foundation-crypto-keys`: extracted `network.crypta.crypt`, `network.crypta.keys`, and the
@@ -632,7 +639,8 @@ Root build also includes:
   `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
-  support helpers.
+  support helpers after the generic HTTP, multimap, size-formatting, and file-backed bucket slice
+  moved into `:foundation-support`.
 - `:adapter-fcp`: extracted `network.crypta.clients.fcp` protocol leaf.
 - `:bridge-fcp-runtime`: extracted concrete `network.crypta.clients.fcp.bridge` runtime-binding
   leaf.

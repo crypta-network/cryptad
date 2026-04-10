@@ -10,6 +10,7 @@ import java.io.RandomAccessFile;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.ResumeContext;
@@ -244,8 +245,8 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
   /**
    * Closes the buffer and deletes the backing file.
    *
-   * <p>If {@link #setSecureDelete(boolean) secure delete} is enabled, deletion is performed via
-   * {@link FileUtil#secureDelete(File)}. Otherwise, a best-effort {@link
+   * <p>If {@link #setSecureDelete(boolean) secure delete} is enabled, deletion overwrites the file
+   * with pseudorandom data before removal. Otherwise, a best-effort {@link
    * java.nio.file.Files#delete(java.nio.file.Path)} is attempted. Failures are logged and not
    * thrown to the caller.
    */
@@ -254,7 +255,7 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
     close();
     if (secureDelete) {
       try {
-        FileUtil.secureDelete(file);
+        secureDelete(file);
       } catch (IOException e) {
         LOG.error("Unable to delete {} : {}", file, e, e);
       }
@@ -264,6 +265,36 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
       } catch (IOException e) {
         LOG.warn("Unable to delete temporary file {}", file, e);
       }
+    }
+  }
+
+  private static void secureDelete(File file) throws IOException {
+    if (!file.exists()) return;
+    long size = file.length();
+    if (size > 0) {
+      try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+        writeRandomBytes(raf, size);
+        raf.getFD().sync();
+      }
+    }
+    try {
+      Files.delete(file.toPath());
+    } catch (IOException e) {
+      if (Files.exists(file.toPath())) {
+        throw new IOException("Unable to delete file " + file, e);
+      }
+    }
+  }
+
+  private static void writeRandomBytes(RandomAccessFile raf, long size) throws IOException {
+    byte[] buffer = new byte[32 * 1024];
+    raf.seek(0);
+    long remaining = size;
+    while (remaining > 0) {
+      ThreadLocalRandom.current().nextBytes(buffer);
+      int bytesToWrite = (int) Math.min(remaining, buffer.length);
+      raf.write(buffer, 0, bytesToWrite);
+      remaining -= bytesToWrite;
     }
   }
 

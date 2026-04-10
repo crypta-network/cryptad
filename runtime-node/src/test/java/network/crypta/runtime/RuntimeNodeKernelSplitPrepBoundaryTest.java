@@ -29,6 +29,12 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
   private static final Path RUNTIME_NODE_FILTER_PACKAGE =
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
+  private static final Path RUNTIME_NODE_SUPPORT_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "support"));
+  private static final Path RUNTIME_NODE_SUPPORT_API_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "api"));
+  private static final Path RUNTIME_NODE_SUPPORT_IO_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "io"));
   private static final List<String> MOVED_CLIENT_FAILURE_TYPES =
       List.of(
           "FailureCodeTracker.java",
@@ -37,6 +43,22 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
           "MetadataUnresolvedException.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
       List.of("DataFilterException.java", "UnsafeContentTypeException.java");
+  private static final List<String> MOVED_SUPPORT_TYPES =
+      List.of("MultiValueTable.java", "SizeUtil.java");
+  private static final List<String> MOVED_SUPPORT_API_TYPES =
+      List.of("HTTPRequest.java", "HTTPUploadedFile.java");
+  private static final List<String> MOVED_SUPPORT_IO_TYPES =
+      List.of(
+          "BaseFileBucket.java",
+          "FileBucket.java",
+          "FileDoesNotExistException.java",
+          "FileExistsException.java",
+          "FileRandomAccessBuffer.java",
+          "FileRandomAccessBufferFactory.java",
+          "PersistentTempFileBucket.java",
+          "PooledFileRandomAccessBuffer.java",
+          "PooledFileRandomAccessBufferFactory.java",
+          "TempFileBucket.java");
   private static final Pattern ADAPTER_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.(?:fcp|http)\\.[^;]+);$");
@@ -95,6 +117,18 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
         repoRoot.resolve(RUNTIME_NODE_CLIENT_PACKAGE), MOVED_CLIENT_FAILURE_TYPES);
     assertMovedLeafTypesAbsent(
         repoRoot.resolve(RUNTIME_NODE_FILTER_PACKAGE), MOVED_FILTER_FAILURE_TYPES);
+  }
+
+  @Test
+  void runtimeNodePhaseTwo_whenCheckingSupportOwnership_expectMovedLeafTypesAbsent()
+      throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertMovedLeafTypesAbsent(repoRoot.resolve(RUNTIME_NODE_SUPPORT_PACKAGE), MOVED_SUPPORT_TYPES);
+    assertMovedLeafTypesAbsent(
+        repoRoot.resolve(RUNTIME_NODE_SUPPORT_API_PACKAGE), MOVED_SUPPORT_API_TYPES);
+    assertMovedLeafTypesAbsent(
+        repoRoot.resolve(RUNTIME_NODE_SUPPORT_IO_PACKAGE), MOVED_SUPPORT_IO_TYPES);
   }
 
   @Test
