@@ -10,9 +10,9 @@ import java.io.RandomAccessFile;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.security.SecureRandom;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.concurrent.ThreadLocalRandom;
 import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.ResumeContext;
@@ -46,6 +46,7 @@ import org.slf4j.LoggerFactory;
 public final class PooledFileRandomAccessBuffer
     implements LockableRandomAccessBuffer, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PooledFileRandomAccessBuffer.class);
+  private static final SecureRandom SECURE_DELETE_RANDOM = new SecureRandom();
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -587,7 +588,7 @@ public final class PooledFileRandomAccessBuffer
     raf.seek(0);
     long remaining = size;
     while (remaining > 0) {
-      ThreadLocalRandom.current().nextBytes(buffer);
+      SECURE_DELETE_RANDOM.nextBytes(buffer);
       int bytesToWrite = (int) Math.min(remaining, buffer.length);
       raf.write(buffer, 0, bytesToWrite);
       remaining -= bytesToWrite;

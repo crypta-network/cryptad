@@ -10,7 +10,7 @@ import java.io.RandomAccessFile;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
-import java.util.concurrent.ThreadLocalRandom;
+import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.ResumeContext;
@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(FileRandomAccessBuffer.class);
+  private static final SecureRandom SECURE_DELETE_RANDOM = new SecureRandom();
 
   @Serial private static final long serialVersionUID = 1L;
   transient AtomicReference<RandomAccessFile> raf = new AtomicReference<>();
@@ -291,7 +292,7 @@ public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer,
     raf.seek(0);
     long remaining = size;
     while (remaining > 0) {
-      ThreadLocalRandom.current().nextBytes(buffer);
+      SECURE_DELETE_RANDOM.nextBytes(buffer);
       int bytesToWrite = (int) Math.min(remaining, buffer.length);
       raf.write(buffer, 0, bytesToWrite);
       remaining -= bytesToWrite;
