@@ -206,8 +206,10 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
   `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
   `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
-  client failure/filter exception subset, and MIME helper `network.crypta.support.MediaType`
-  classes that stay free of `:runtime-node`, adapter, and root-composition dependencies.
+  client failure/filter exception subset, the MIME helper `network.crypta.support.MediaType`, and
+  the small manifest/model helper subset under `network.crypta.support.*` (`ManifestElement` and
+  `ContainerSizeEstimator`) that stay free of `:runtime-node`, adapter, and root-composition
+  dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   address matching, allowlist parsing, listener abstraction, I/O statistics collection, transfer
@@ -250,7 +252,7 @@ Cryptad now uses a partial multi-project Gradle build.
   daemon-bound `network.crypta.runtime.*` implementation slices, and the remaining daemon-coupled
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   after the generic HTTP, multimap, size-formatting, and file-backed bucket slice moved into
-  `:foundation-support`.
+  `:foundation-support` and the manifest/model helper subset moved into `:kernel-content`.
 - `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
   `network.crypta.clients.fcp.bridge`.
@@ -621,7 +623,8 @@ Root build also includes:
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the
   leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe
-  client failure/filter exception subset, and `network.crypta.support.MediaType`.
+  client failure/filter exception subset, `network.crypta.support.MediaType`, and the small
+  manifest/model helper subset under `network.crypta.support.*`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allowlist parsing, listener abstraction, statistics collection, throttling, and partially
@@ -645,7 +648,8 @@ Root build also includes:
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
   support helpers after the generic HTTP, multimap, size-formatting, and file-backed bucket slice
-  moved into `:foundation-support`.
+  moved into `:foundation-support` and the manifest/model helper subset moved into
+  `:kernel-content`.
 - `:adapter-fcp`: extracted `network.crypta.clients.fcp` protocol leaf.
 - `:bridge-fcp-runtime`: extracted concrete `network.crypta.clients.fcp.bridge` runtime-binding
   leaf.
@@ -752,7 +756,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.client.async.alerts` seam, the client-local persistence seams under
   `network.crypta.client.async.persistence`, the leaf-safe
   `network.crypta.client.async` utility/value subset, and the MIME helper
-  `network.crypta.support.MediaType`. `:runtime-node` still owns the cyclic async
+  `network.crypta.support.MediaType`, plus the small manifest/model helper subset under
+  `network.crypta.support.*` (`ManifestElement` and `ContainerSizeEstimator`). `:runtime-node`
+  still owns the cyclic async
   scheduler/request engine, high-level client APIs, and the remaining filter/archive surfaces that
   still depend on runtime-owned request and node types.
   `network.crypta.clients.fcp` now lives in `:adapter-fcp`. It consumes execution, randomness,
@@ -838,7 +844,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   across selected `network.crypta.client*` classes, the leaf-safe client failure/filter
   exception subset, the `network.crypta.client.async.persistence` seam, the leaf-safe
   `network.crypta.client.async` utility/value subset, plus
-  `network.crypta.support.MediaType`;
+  `network.crypta.support.MediaType` and the small manifest/model helper subset under
+  `network.crypta.support.*`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
@@ -853,7 +860,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   provides the extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
-  transport/message execution code, and the remaining daemon-coupled support helpers;
+  transport/message execution code, and the remaining daemon-coupled support helpers outside the
+  small `:kernel-content` manifest/model helper subset;
   `:adapter-fcp` provides `network.crypta.clients.fcp`;
   `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`; and
   `:adapter-http-legacy-admin` provides the current legacy `network.crypta.clients.http` classes

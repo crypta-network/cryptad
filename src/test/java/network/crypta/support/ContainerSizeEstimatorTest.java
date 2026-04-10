@@ -1,6 +1,7 @@
 package network.crypta.support;
 
 import java.util.HashMap;
+import java.util.Map;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -117,6 +118,34 @@ class ContainerSizeEstimatorTest {
   }
 
   @Test
+  @DisplayName("getSubTreeSize accepts non-HashMap subdirectory maps with string keys")
+  void getSubTreeSize_whenSubdirIsGenericMap_expectRecursionCounts() {
+    Map<String, Object> child = Map.of("x", file("x", 0));
+
+    HashMap<String, Object> meta = new HashMap<>();
+    meta.put("dir", child);
+
+    ContainerSizeEstimator.ContainerSize res =
+        ContainerSizeEstimator.getSubTreeSize(meta, 100, 1_000_000L, 1);
+
+    assertEquals(1024L, res.getSizeSubTrees(), "subtrees size");
+    assertEquals(770L, res.getSizeSubTreesNoLimit(), "subtrees no-limit size");
+  }
+
+  @Test
+  @DisplayName("getSubTreeSize rejects non-HashMap subdirectory maps with non-string keys")
+  void getSubTreeSize_whenGenericSubdirMapHasNonStringKey_expectClassCastException() {
+    Map<Object, Object> child = Map.of(1, file("x", 0));
+
+    HashMap<String, Object> meta = new HashMap<>();
+    meta.put("dir", child);
+
+    assertThrows(
+        ClassCastException.class,
+        () -> ContainerSizeEstimator.getSubTreeSize(meta, 100, 1_000_000L, 1));
+  }
+
+  @Test
   @DisplayName("getSubTreeSize with maxDeep=0 excludes subdirectories")
   void getSubTreeSize_whenMaxDeepZero_excludesSubdirs() {
     HashMap<String, Object> child = new HashMap<>();
@@ -142,7 +171,7 @@ class ContainerSizeEstimatorTest {
   @DisplayName("getSubTreeSize breaks file loop when max container size exceeded")
   void getSubTreeSize_whenMaxContainerExceeded_breaksFilesLoop() {
     HashMap<String, Object> meta = new HashMap<>();
-    // Four identical small files so order does not matter; each adds 512 to files size.
+    // Four identical small files, so order does not matter; each adds 512 to files' size.
     meta.put("a", file("a", 0));
     meta.put("b", file("b", 0));
     meta.put("c", file("c", 0));

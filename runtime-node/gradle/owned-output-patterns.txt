@@ -876,8 +876,6 @@ network/crypta/support/BloomFilter.class
 network/crypta/support/BloomFilter$*.class
 network/crypta/support/BooleanLastTrueTracker.class
 network/crypta/support/BooleanLastTrueTracker$*.class
-network/crypta/support/ContainerSizeEstimator.class
-network/crypta/support/ContainerSizeEstimator$*.class
 network/crypta/support/CountingBloomFilter.class
 network/crypta/support/CountingBloomFilter$*.class
 network/crypta/support/DummyJobRunner.class
@@ -960,9 +958,6 @@ network/crypta/support/UptimeContainer.class
 network/crypta/support/UptimeContainer$*.class
 network/crypta/support/WeakHashSet.class
 network/crypta/support/WeakHashSet$*.class
-network/crypta/support/api/ManifestElement.class
-network/crypta/support/api/ManifestElement$*.class
-network/crypta/support/api/package-info*
 network/crypta/support/compress/CompressJob.class
 network/crypta/support/compress/CompressJob$*.class
 network/crypta/support/compress/RealCompressor.class

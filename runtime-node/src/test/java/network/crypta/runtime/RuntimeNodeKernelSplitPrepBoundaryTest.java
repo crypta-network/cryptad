@@ -57,9 +57,9 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
           "PersistenceDisabledException.java",
           "TooManyFilesInsertException.java");
   private static final List<String> MOVED_SUPPORT_TYPES =
-      List.of("MultiValueTable.java", "SizeUtil.java");
+      List.of("ContainerSizeEstimator.java", "MultiValueTable.java", "SizeUtil.java");
   private static final List<String> MOVED_SUPPORT_API_TYPES =
-      List.of("HTTPRequest.java", "HTTPUploadedFile.java");
+      List.of("HTTPRequest.java", "HTTPUploadedFile.java", "ManifestElement.java");
   private static final List<String> MOVED_SUPPORT_IO_TYPES =
       List.of(
           "BaseFileBucket.java",

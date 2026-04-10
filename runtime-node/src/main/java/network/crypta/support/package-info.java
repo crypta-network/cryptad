@@ -19,8 +19,7 @@
  *   <li>Encoding and text utilities: {@link network.crypta.support.Base64}, {@link
  *       network.crypta.support.HTMLEncoder}, {@link network.crypta.support.HTMLDecoder}, {@link
  *       network.crypta.support.URLEncoder}, {@link network.crypta.support.URIPreEncoder}.
- *   <li>Containers and measurement helpers: {@link network.crypta.support.ContainerSizeEstimator},
- *       {@link network.crypta.support.SizeUtil}.
+ *   <li>Containers and measurement helpers: {@link network.crypta.support.SizeUtil}.
  *   <li>Streams and wrappers: {@link network.crypta.support.ByteBufferInputStream} and related
  *       small utilities.
  * </ul>
