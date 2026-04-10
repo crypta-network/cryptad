@@ -6,8 +6,8 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.support.SimpleFieldSet;
@@ -94,29 +94,18 @@ public final class FailureCodeTracker implements Serializable {
   public FailureCodeTracker(boolean isInsert, SimpleFieldSet fs) {
     this.insert = isInsert;
     map = new HashMap<>();
-    Iterator<String> i = fs.directSubsetNameIterator();
-    while (i.hasNext()) {
-      String name = i.next();
-      SimpleFieldSet f = fs.subset(name);
+    for (String name : fs.namesOfDirectSubsets()) {
+      SimpleFieldSet f =
+          Objects.requireNonNull(fs.subset(name), "Missing failure-code subset: " + name);
       // We ignore the Description if there is one; we just want the count
       int num = Integer.parseInt(name);
-      int count = Integer.parseInt(f.get("Count"));
+      String countValue =
+          Objects.requireNonNull(f.get("Count"), "Missing Count for failure code: " + name);
+      int count = Integer.parseInt(countValue);
       if (count < 0) throw new IllegalArgumentException("Count < 0");
       map.put(num, count);
       total += count;
     }
-  }
-
-  /**
-   * Framework/serialization constructor.
-   *
-   * <p>Exists solely for deserialization frameworks that require a no‑arg constructor. The tracker
-   * is created in fetch mode by default; real instances should be created via the public
-   * constructors that explicitly specify the mode.
-   */
-  FailureCodeTracker() {
-    // For serialization.
-    this.insert = false;
   }
 
   /** Map of failure code to the number of times that code has been observed. */

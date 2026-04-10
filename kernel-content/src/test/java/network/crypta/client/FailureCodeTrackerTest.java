@@ -181,6 +181,27 @@ class FailureCodeTrackerTest {
   }
 
   @Test
+  void fieldSetConstructor_whenFieldSetHasNoSubsets_createsEmptyTracker() {
+    FailureCodeTracker tracker = new FailureCodeTracker(false, new SimpleFieldSet(true));
+
+    assertTrue(tracker.isEmpty());
+    assertEquals(0, tracker.totalCount());
+  }
+
+  @Test
+  void fieldSetConstructor_whenSubsetMissingCount_throwsNullPointerException() {
+    SimpleFieldSet root = new SimpleFieldSet(true);
+    SimpleFieldSet subset = new SimpleFieldSet(true);
+    subset.putOverwrite("Description", "missing count");
+    root.put("12", subset);
+
+    NullPointerException thrown =
+        assertThrows(NullPointerException.class, () -> new FailureCodeTracker(false, root));
+
+    assertTrue(thrown.getMessage().contains("Missing Count"), thrown.getMessage());
+  }
+
+  @Test
   void getFirstCodeFetch_and_Insert_returnsModeOrThrows() {
     // Single code => deterministic
     fetchTracker.inc(FetchExceptionMode.DATA_NOT_FOUND);
@@ -200,13 +221,13 @@ class FailureCodeTrackerTest {
     fetchTracker.inc(FetchExceptionMode.ROUTE_NOT_FOUND);
     assertFalse(fetchTracker.isFatal(false));
 
-    // Add a fatal, then reduce its count to zero to ensure it's ignored
+    // Add a fatal error, then reduce its count to zero to ensure it's ignored
     int fatalCode = FetchExceptionMode.TOO_BIG.code;
     fetchTracker.inc(fatalCode, 1); // first insert stores 1, total += 1
     fetchTracker.inc(fatalCode, -1); // now map value becomes 0
     assertFalse(fetchTracker.isFatal(false));
 
-    // Add a fatal with a positive count
+    // Add a fatal error with a positive count
     fetchTracker.inc(FetchExceptionMode.TOO_BIG);
     assertTrue(fetchTracker.isFatal(false));
   }

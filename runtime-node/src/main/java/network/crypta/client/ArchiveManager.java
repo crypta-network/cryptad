@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.io.Serial;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,10 +44,10 @@ import org.slf4j.LoggerFactory;
  * re-processing the full container.
  *
  * <p>Core responsibilities include streaming decompression, validating entry names to prevent path
- * traversal, enforcing per-entry size limits, and recording either the extracted data or a readable
- * error item. Extraction writes into temporary buckets supplied by a {@link BucketFactory}; small
- * outputs may stay in RAM depending on configured thresholds and migrate to disk as they grow or as
- * memory pressure increases.
+ * traversal, enforcing per-entry and whole-archive expansion limits, and recording either the
+ * extracted data or a readable error item. Extraction writes into temporary buckets supplied by a
+ * {@link BucketFactory}; small outputs may stay in RAM depending on configured thresholds and
+ * migrate to disk as they grow or as memory pressure increases.
  *
  * <p>Thread-safety: instances synchronize on themselves when mutating cache structures. When used
  * together with {@code ArchiveStoreContext}, always lock {@code ArchiveStoreContext} before {@code
@@ -54,6 +55,7 @@ import org.slf4j.LoggerFactory;
  */
 public class ArchiveManager {
   private static final Logger LOG = LoggerFactory.getLogger(ArchiveManager.class);
+  private static final int MAX_ARCHIVE_ENTRIES = 10_000;
 
   /**
    * Conventional name for generated metadata placed alongside extracted members.
@@ -65,6 +67,9 @@ public class ArchiveManager {
 
   private static final String ERR_FILE_TOO_BIG = "File too big: ";
   private static final String ERR_LIMIT_SUFFIX = " greater than current archived file size limit ";
+  private static final String ERR_ARCHIVE_ENTRY_COUNT_PREFIX = "Archive has too many entries: ";
+  private static final String ERR_ARCHIVE_EXPANDED_SIZE_PREFIX =
+      "Expanded archive exceeds configured limit: ";
 
   /**
    * Supported archive formats.
@@ -164,7 +169,7 @@ public class ArchiveManager {
     /**
      * Returns the primary MIME type associated with this archive type.
      *
-     * @return non-null MIME string suitable for labelling responses
+     * @return non-null MIME string suitable for labeling responses
      */
     public String defaultMimeType() {
       int commaIndex = mimeTypes.indexOf(',');
@@ -533,22 +538,16 @@ public class ArchiveManager {
     try (TarArchiveInputStream tarIS = new TarArchiveInputStream(data)) {
       byte[] buf = new byte[32768];
       HashSet<String> names = new HashSet<>();
-      boolean gotMetadata = false;
-      for (ArchiveEntry entry = safeNextTarEntry(tarIS);
-          entry != null;
-          entry = safeNextTarEntry(tarIS)) {
-        if (!entry.isDirectory()) {
-          String name = stripLeadingSlashes(entry.getName());
-          if (isUnsafeEntryName(name)) {
-            LOG.error("TAR: unsafe archive entry {} in archive {}", name, key);
-          } else if (names.contains(name)) {
-            LOG.error("TAR: duplicate archive entry {} in archive {}", name, key);
-          } else {
-            long size = entry.getSize();
-            gotMetadata |= processArchiveEntry(name, size, tarIS, state, names, buf);
-          }
-        }
+      ArchiveExpansionTracker expansionTracker =
+          new ArchiveExpansionTracker(input.archiveContext.maxArchiveSize);
+      ArchiveScanResult scanResult =
+          scanTarEntries(state, tarIS, names, buf, expansionTracker, key);
+      if (scanResult.abortedAfterSuccess()) {
+        drainTarStreamAfterSuccessfulAbort(tarIS, buf, key);
+        if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
+        return;
       }
+      boolean gotMetadata = scanResult.gotMetadata();
 
       // If no metadata, generate some
       if (!gotMetadata) {
@@ -576,10 +575,14 @@ public class ArchiveManager {
     try (ZipArchiveInputStream zis = new ZipArchiveInputStream(data)) {
       byte[] buf = new byte[32768];
       HashSet<String> names = new HashSet<>();
-      boolean gotMetadata = false;
-      for (ArchiveEntry entry = zis.getNextEntry(); entry != null; entry = zis.getNextEntry()) {
-        gotMetadata |= handleZipEntry(entry, state, zis, names, buf);
+      ArchiveExpansionTracker expansionTracker =
+          new ArchiveExpansionTracker(state.input.archiveContext.maxArchiveSize);
+      ArchiveScanResult scanResult = scanZipEntries(state, zis, names, buf, expansionTracker);
+      if (scanResult.abortedAfterSuccess()) {
+        if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
+        return;
       }
+      boolean gotMetadata = scanResult.gotMetadata();
 
       // If no metadata, generate some
       if (!gotMetadata) {
@@ -595,13 +598,100 @@ public class ArchiveManager {
     }
   }
 
+  private boolean handleTarEntry(
+      ArchiveEntry entry,
+      ArchiveExtractionState state,
+      TarArchiveInputStream tarIS,
+      Set<String> names,
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker,
+      boolean failOnArchiveScanLimit)
+      throws IOException, ArchiveFailureException, ArchiveScanLimitReachedException {
+    FreenetURI key = state.input.key;
+    if (entry.isDirectory()) {
+      return false;
+    }
+    expansionTracker.onEntry(failOnArchiveScanLimit);
+    String name = stripLeadingSlashes(entry.getName());
+    if (isUnsafeEntryName(name)) {
+      LOG.error("TAR: unsafe archive entry {} in archive {}", name, key);
+      discardRemainingEntryData(tarIS, buf, expansionTracker, true, failOnArchiveScanLimit);
+      return false;
+    }
+    if (names.contains(name)) {
+      LOG.error("TAR: duplicate archive entry {} in archive {}", name, key);
+      discardRemainingEntryData(tarIS, buf, expansionTracker, true, failOnArchiveScanLimit);
+      return false;
+    }
+    long size = entry.getSize();
+    return processArchiveEntry(name, size, tarIS, state, names, buf, expansionTracker);
+  }
+
+  private ArchiveScanResult scanTarEntries(
+      ArchiveExtractionState state,
+      TarArchiveInputStream tarIS,
+      Set<String> names,
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker,
+      FreenetURI key)
+      throws IOException, ArchiveFailureException {
+    boolean gotMetadata = false;
+    for (ArchiveEntry entry = safeNextTarEntry(tarIS);
+        entry != null;
+        entry = safeNextTarEntry(tarIS)) {
+      try {
+        gotMetadata |=
+            handleTarEntry(
+                entry,
+                state,
+                tarIS,
+                names,
+                buf,
+                expansionTracker,
+                shouldFailOnArchiveScanLimit(state.gotElement));
+      } catch (ArchiveScanLimitReachedException e) {
+        LOG.warn(
+            "Stopping TAR scan after requested element in archive {}: {}", key, e.getMessage());
+        return new ArchiveScanResult(gotMetadata, true);
+      }
+    }
+    return new ArchiveScanResult(gotMetadata, false);
+  }
+
+  private void drainTarStreamAfterSuccessfulAbort(
+      TarArchiveInputStream tarIS, byte[] buf, FreenetURI key) {
+    try {
+      discardCurrentTarEntry(tarIS, buf);
+      ArchiveEntry nextEntry;
+      do {
+        nextEntry = safeNextTarEntry(tarIS);
+        if (nextEntry != null) {
+          discardCurrentTarEntry(tarIS, buf);
+        }
+      } while (nextEntry != null);
+    } catch (ArchiveFailureException | IOException e) {
+      LOG.warn(
+          "Ignoring TAR drain failure after successful extraction from archive {}: {}",
+          key,
+          e.getMessage());
+    }
+  }
+
+  private void discardCurrentTarEntry(InputStream in, byte[] buf) throws IOException {
+    int readBytes = in.read(buf);
+    while (readBytes > 0) {
+      readBytes = in.read(buf);
+    }
+  }
+
   private boolean handleZipEntry(
       ArchiveEntry entry,
       ArchiveExtractionState state,
       InputStream zis,
       Set<String> names,
-      byte[] buf)
-      throws IOException {
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker)
+      throws IOException, ArchiveFailureException, ArchiveScanLimitReachedException {
     ArchiveExtractionInput input = state.input;
     FreenetURI key = input.key;
     if (entry.isDirectory()) {
@@ -610,14 +700,43 @@ public class ArchiveManager {
     String name = stripLeadingSlashes(entry.getName());
     if (isUnsafeEntryName(name)) {
       LOG.error("ZIP: unsafe archive entry {} in archive {}", name, key);
+      discardRemainingEntryData(
+          zis, buf, expansionTracker, true, shouldFailOnArchiveScanLimit(state.gotElement));
       return false;
     } else if (names.contains(name)) {
       LOG.error("ZIP: duplicate archive entry {} in archive {}", name, key);
+      discardRemainingEntryData(
+          zis, buf, expansionTracker, true, shouldFailOnArchiveScanLimit(state.gotElement));
       return false;
     } else {
       long size = getSize(entry);
-      return processArchiveEntry(name, size, zis, state, names, buf);
+      return processArchiveEntry(name, size, zis, state, names, buf, expansionTracker);
     }
+  }
+
+  private ArchiveScanResult scanZipEntries(
+      ArchiveExtractionState state,
+      ZipArchiveInputStream zis,
+      Set<String> names,
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker)
+      throws IOException, ArchiveFailureException {
+    boolean gotMetadata = false;
+    for (ArchiveEntry entry = zis.getNextEntry(); entry != null; entry = zis.getNextEntry()) {
+      try {
+        if (!entry.isDirectory()) {
+          expansionTracker.onEntry(shouldFailOnArchiveScanLimit(state.gotElement));
+        }
+        gotMetadata |= handleZipEntry(entry, state, zis, names, buf, expansionTracker);
+      } catch (ArchiveScanLimitReachedException e) {
+        LOG.warn(
+            "Stopping ZIP scan after requested element in archive {}: {}",
+            state.input.key,
+            e.getMessage());
+        return new ArchiveScanResult(gotMetadata, true);
+      }
+    }
+    return new ArchiveScanResult(gotMetadata, false);
   }
 
   private long getSize(ArchiveEntry entry) {
@@ -641,56 +760,149 @@ public class ArchiveManager {
       InputStream in,
       ArchiveExtractionState state,
       Set<String> names,
-      byte[] buf)
-      throws IOException {
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker)
+      throws IOException, ArchiveFailureException, ArchiveScanLimitReachedException {
     ArchiveElementRequest elementRequest = state.elementRequest;
     String element = elementRequest.element;
     ArchiveExtractCallback callback = elementRequest.callback;
     MutableBoolean gotElement = state.gotElement;
     ClientContext context = elementRequest.clientContext;
     boolean isMetadata = METADATA_NAME.equals(name);
+    boolean requestedElement = name.equals(element);
+    boolean failOnArchiveScanLimit = shouldFailOnArchiveScanLimit(gotElement);
+    boolean accountExpandedBytes = !requestedElement;
     if (size > maxArchivedFileSize && !name.equals(element)) {
       addErrorElement(
           state, name, ERR_FILE_TOO_BIG + size + ERR_LIMIT_SUFFIX + maxArchivedFileSize);
+      discardRemainingEntryData(in, buf, expansionTracker, true, failOnArchiveScanLimit);
       return isMetadata;
     }
 
     long realLen = 0;
     Bucket output = tempBucketFactory.makeBucket(size);
-    boolean shouldFree = false;
-    try (OutputStream out = output.getOutputStream()) {
-      int readBytes;
-      while ((readBytes = in.read(buf)) > 0) {
-        out.write(buf, 0, readBytes);
-        realLen += readBytes;
-        if (realLen > maxArchivedFileSize) {
-          addErrorElement(
-              state,
-              name,
-              ERR_FILE_TOO_BIG + maxArchivedFileSize + ERR_LIMIT_SUFFIX + maxArchivedFileSize);
-          shouldFree = true;
-          break;
+    boolean keepOutput = false;
+    try {
+      boolean shouldFree = false;
+      try (OutputStream out = output.getOutputStream()) {
+        int readBytes;
+        while ((readBytes = in.read(buf)) > 0) {
+          if (accountExpandedBytes) {
+            expansionTracker.onExpandedBytes(readBytes, failOnArchiveScanLimit);
+          }
+          out.write(buf, 0, readBytes);
+          realLen += readBytes;
+          if (realLen > maxArchivedFileSize) {
+            addErrorElement(
+                state,
+                name,
+                ERR_FILE_TOO_BIG + maxArchivedFileSize + ERR_LIMIT_SUFFIX + maxArchivedFileSize);
+            shouldFree = true;
+            break;
+          }
         }
       }
-    }
-    if (shouldFree) {
-      output.free();
+      if (shouldFree) {
+        discardRemainingEntryData(
+            in, buf, expansionTracker, accountExpandedBytes, failOnArchiveScanLimit);
+        return isMetadata;
+      }
+      long finalSize = (size > 0) ? size : realLen;
+      if (finalSize <= maxArchivedFileSize) {
+        keepOutput = true;
+        addStoreElement(state, name, output);
+        names.add(name);
+        trimStoredData();
+      } else {
+        // We are here because they asked for this file.
+        keepOutput = true;
+        callback.gotBucket(output, context);
+        gotElement.setTrue();
+        addErrorElement(
+            state, name, ERR_FILE_TOO_BIG + finalSize + ERR_LIMIT_SUFFIX + maxArchivedFileSize);
+      }
       return isMetadata;
+    } finally {
+      if (!keepOutput) {
+        output.free();
+      }
     }
-    long finalSize = (size > 0) ? size : realLen;
-    if (finalSize <= maxArchivedFileSize) {
-      addStoreElement(state, name, output);
-      names.add(name);
-      trimStoredData();
-    } else {
-      // We are here because they asked for this file.
-      callback.gotBucket(output, context);
-      gotElement.setTrue();
-      addErrorElement(
-          state, name, ERR_FILE_TOO_BIG + finalSize + ERR_LIMIT_SUFFIX + maxArchivedFileSize);
-    }
-    return isMetadata;
   }
+
+  private void discardRemainingEntryData(
+      InputStream in,
+      byte[] buf,
+      ArchiveExpansionTracker expansionTracker,
+      boolean accountExpandedBytes,
+      boolean failOnArchiveScanLimit)
+      throws IOException, ArchiveFailureException, ArchiveScanLimitReachedException {
+    int readBytes;
+    while ((readBytes = in.read(buf)) > 0) {
+      if (accountExpandedBytes) {
+        expansionTracker.onExpandedBytes(readBytes, failOnArchiveScanLimit);
+      }
+    }
+  }
+
+  private static final class ArchiveExpansionTracker {
+    private final long maxExpandedBytes;
+    private int entryCount;
+    private long expandedBytes;
+
+    private ArchiveExpansionTracker(long maxExpandedBytes) {
+      this.maxExpandedBytes = maxExpandedBytes;
+    }
+
+    private void onEntry(boolean failOnArchiveScanLimit)
+        throws ArchiveFailureException, ArchiveScanLimitReachedException {
+      entryCount++;
+      if (entryCount > MAX_ARCHIVE_ENTRIES) {
+        throwLimitExceeded(
+            ERR_ARCHIVE_ENTRY_COUNT_PREFIX + entryCount + " > " + MAX_ARCHIVE_ENTRIES,
+            failOnArchiveScanLimit);
+      }
+    }
+
+    private void onExpandedBytes(long count, boolean failOnArchiveScanLimit)
+        throws ArchiveFailureException, ArchiveScanLimitReachedException {
+      if (count <= 0) {
+        return;
+      }
+      if (expandedBytes > Long.MAX_VALUE - count) {
+        throwLimitExceeded(
+            ERR_ARCHIVE_EXPANDED_SIZE_PREFIX + "overflow while accounting extracted bytes",
+            failOnArchiveScanLimit);
+      }
+      expandedBytes += count;
+      if (expandedBytes > maxExpandedBytes) {
+        throwLimitExceeded(
+            ERR_ARCHIVE_EXPANDED_SIZE_PREFIX + expandedBytes + " > " + maxExpandedBytes,
+            failOnArchiveScanLimit);
+      }
+    }
+
+    private void throwLimitExceeded(String message, boolean failOnArchiveScanLimit)
+        throws ArchiveFailureException, ArchiveScanLimitReachedException {
+      if (failOnArchiveScanLimit) {
+        throw new ArchiveFailureException(message);
+      }
+      throw new ArchiveScanLimitReachedException(message);
+    }
+  }
+
+  private static boolean shouldFailOnArchiveScanLimit(MutableBoolean gotElement) {
+    return gotElement == null || !gotElement.booleanValue();
+  }
+
+  private static final class ArchiveScanLimitReachedException extends Exception {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private ArchiveScanLimitReachedException(String message) {
+      super(message);
+    }
+  }
+
+  private record ArchiveScanResult(boolean gotMetadata, boolean abortedAfterSuccess) {}
 
   private String stripLeadingSlashes(String name) {
     while (name.length() > 1 && name.charAt(0) == '/') name = name.substring(1);
@@ -746,7 +958,7 @@ public class ArchiveManager {
 
   private int resolve(MetadataUnresolvedException e, int x, ArchiveExtractionState state)
       throws IOException {
-    for (Metadata m : e.mustResolve) {
+    for (MetadataResolutionTarget m : e.mustResolve) {
       try {
         addStoreElement(state, ".metadata-" + x++, m.toBucket(tempBucketFactory));
       } catch (MetadataUnresolvedException _) {

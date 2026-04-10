@@ -21,11 +21,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KernelContentBoundaryTest {
   private static final Path KERNEL_CONTENT_MAIN_JAVA =
       Path.of("kernel-content", "src", "main", "java");
+  private static final Path KERNEL_CONTENT_CLIENT_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
+  private static final Path KERNEL_CONTENT_FILTER_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
   private static final Path KERNEL_CONTENT_ALERTS_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "async", "alerts"));
   private static final Path KERNEL_CONTENT_PERSISTENCE_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(
           Path.of("network", "crypta", "client", "async", "persistence"));
+  private static final Path RUNTIME_NODE_CLIENT_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client");
+  private static final Path RUNTIME_NODE_FILTER_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client", "filter");
   private static final Path RUNTIME_NODE_ALERTS_PACKAGE =
       Path.of(
           "runtime-node", "src", "main", "java", "network", "crypta", "client", "async", "alerts");
@@ -45,6 +53,15 @@ class KernelContentBoundaryTest {
   private static final Path RUNTIME_NODE_MEDIA_TYPE =
       Path.of(
           "runtime-node", "src", "main", "java", "network", "crypta", "support", "MediaType.java");
+  private static final List<String> MOVED_CLIENT_FAILURE_TYPES =
+      List.of(
+          "FailureCodeTracker.java",
+          "FetchException.java",
+          "InsertException.java",
+          "MetadataResolutionTarget.java",
+          "MetadataUnresolvedException.java");
+  private static final List<String> MOVED_FILTER_FAILURE_TYPES =
+      List.of("DataFilterException.java", "UnsafeContentTypeException.java");
   private static final Pattern FORBIDDEN_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+"
@@ -133,6 +150,24 @@ class KernelContentBoundaryTest {
   }
 
   @Test
+  void
+      kernelContentPhaseTwo_whenCheckingClientFailureOwnership_expectLeafSafeFailuresOwnedByKernelContent()
+          throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_CLIENT_PACKAGE,
+        RUNTIME_NODE_CLIENT_PACKAGE,
+        MOVED_CLIENT_FAILURE_TYPES);
+    assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_FILTER_PACKAGE,
+        RUNTIME_NODE_FILTER_PACKAGE,
+        MOVED_FILTER_FAILURE_TYPES);
+  }
+
+  @Test
   void kernelContentPhaseTwo_whenScanningPersistenceImports_expectNoClientContextImports()
       throws IOException {
     Path repoRoot = repoRoot();
@@ -187,6 +222,18 @@ class KernelContentBoundaryTest {
             + "package-info.java."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), missingPackageInfos));
+  }
+
+  private static void assertOwnedByKernelContent(
+      Path repoRoot, Path ownerPackage, Path formerOwnerPackage, List<String> fileNames) {
+    for (String fileName : fileNames) {
+      assertTrue(
+          Files.isRegularFile(repoRoot.resolve(ownerPackage.resolve(fileName))),
+          "kernel-content must own " + ownerPackage.resolve(fileName));
+      assertFalse(
+          Files.exists(repoRoot.resolve(formerOwnerPackage.resolve(fileName))),
+          "runtime-node must not retain " + formerOwnerPackage.resolve(fileName));
+    }
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {

@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.async.SplitFileSegmentKeys
  * @see network.crypta.keys.ClientCHK
  */
-public final class Metadata implements Serializable {
+public final class Metadata implements MetadataResolutionTarget, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(Metadata.class);
 
   @Serial private static final long serialVersionUID = 1L;
@@ -2115,7 +2115,9 @@ public final class Metadata implements Serializable {
       }
       return new ManifestEntryData(data);
     } catch (MetadataUnresolvedException e) {
-      for (Metadata m : e.mustResolve) unresolvedMetadata.addFirst(m);
+      for (MetadataResolutionTarget unresolved : e.mustResolve) {
+        unresolvedMetadata.addFirst((Metadata) unresolved);
+      }
       return new ManifestEntryData(new byte[0]);
     }
   }
@@ -2245,6 +2247,7 @@ public final class Metadata implements Serializable {
    *
    * @param name resolved name string to record; may be {@code null} to clear.
    */
+  @Override
   public void resolve(String name) {
     this.resolvedName = name;
   }
@@ -2257,6 +2260,7 @@ public final class Metadata implements Serializable {
    * @throws MetadataUnresolvedException if unresolved, child metadata prevents serialization.
    * @throws IOException if an I/O error occurs while writing to the allocated bucket.
    */
+  @Override
   public RandomAccessBucket toBucket(BucketFactory bf)
       throws MetadataUnresolvedException, IOException {
     RandomAccessBucket b = bf.makeBucket(-1);
@@ -2276,6 +2280,7 @@ public final class Metadata implements Serializable {
    *
    * @return {@code true} when a resolved identifier is present; {@code false} otherwise.
    */
+  @Override
   public boolean isResolved() {
     return (resolvedURI != null) || (resolvedName != null);
   }

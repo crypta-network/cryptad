@@ -67,8 +67,8 @@ public abstract class UnsafeContentTypeException extends IOException {
 
   /**
    * Returns a short, HTML-encoded title suitable for embedding in an HTML context (for example, a
-   * dialog or page header). Implementations must escape special characters so the returned value is
-   * safe to include in HTML without additional encoding.
+   * dialog or page header). Implementations must escape special characters, so the returned value
+   * is safe to include in HTML without additional encoding.
    *
    * @return an HTML-encoded title safe for direct inclusion in markup
    */

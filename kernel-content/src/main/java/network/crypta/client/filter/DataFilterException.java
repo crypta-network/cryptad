@@ -9,13 +9,12 @@ import network.crypta.client.FetchException;
  * and HTML-encoded forms) and an explanatory message intended for presentation in error pages or
  * logs.
  *
- * <p>This type is raised by filters that parse and vet user-visible content (for example media
- * containers or markup) when a structural rule is violated, a known-dangerous construct is found,
- * or the stream cannot be sanitized to a level acceptable for safe distribution. Callers typically
- * catch {@link DataFilterException} near request boundaries and translate it into a {@link
- * FetchException} using {@link #recreateFetchException(FetchException, String)} or {@link
- * #createFetchException(String, long)} so that higher layers can render a clear error to the
- * client.
+ * <p>This type is raised by filters that parse and vet user-visible content, such as media
+ * containers or markup. It is used when a structural rule is violated, a known-dangerous construct
+ * is found, or the stream cannot be sanitized to a level acceptable for safe distribution. Callers
+ * typically catch {@link DataFilterException} near request boundaries. They then translate it into
+ * a {@link FetchException} using {@link #recreateFetchException(FetchException, String)} or {@link
+ * #createFetchException(String, long)} so higher layers can render a clear error to the client.
  *
  * <p>Objects of this class are immutable and thread-safe after construction; the title and
  * explanatory text never change. Equality is not overridden; the instance primarily acts as a
@@ -40,7 +39,7 @@ public class DataFilterException extends UnsafeContentTypeException {
   final String rawTitle;
 
   /**
-   * HTML-encoded title which is safe to insert into an HTML page without additional escaping. The
+   * HTML-encoded title that is safe to insert into an HTML page without additional escaping. The
    * encoded form mirrors {@link #rawTitle} but is pre-escaped for convenience in UI layers that
    * render error pages.
    */
@@ -80,7 +79,7 @@ public class DataFilterException extends UnsafeContentTypeException {
   }
 
   /**
-   * Returns a title that is already safely encoded for HTML contexts.
+   * Returns a title already safely encoded for HTML contexts.
    *
    * <p>Callers rendering an error page may include this value directly in markup without applying
    * additional escaping. For non-HTML contexts prefer {@link #getRawTitle()}.
@@ -145,12 +144,12 @@ public class DataFilterException extends UnsafeContentTypeException {
    * type and expected size.
    *
    * <p>Use this at API boundaries when a filter rejects input, and you need to propagate a
-   * standardized fetch-layer error. The returned instance identifies this exception as the cause so
-   * higher layers can present consistent messages.
+   * standardized fetch-layer error. The returned instance identifies this exception as the cause,
+   * so higher layers can present consistent messages.
    *
    * @param mime the associated MIME type for the rejected data; may be {@code null} when not
    *     available or when type detection failed
-   * @param expectedSize the anticipated size in bytes of the content at the time of failure; use a
+   * @param expectedSize the upcoming size in bytes of the content at the time of failure; use a
    *     negative value only when no estimate is available
    * @return a {@link FetchException} wrapping this instance with the provided metadata so callers
    *     can display a uniform error to clients

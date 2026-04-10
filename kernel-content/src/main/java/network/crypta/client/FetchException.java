@@ -642,6 +642,7 @@ public final class FetchException extends Exception {
    * <p>State is initialized to neutral values and should be populated by the deserialization
    * mechanism. Application code should not call this constructor directly.
    */
+  @SuppressWarnings("unused")
   FetchException() {
     // For serialization.
     mode = null;
@@ -763,7 +764,7 @@ public final class FetchException extends Exception {
     /** Tried to access an archive file but not in an archive */
     NOT_IN_ARCHIVE(10),
     /**
-     * Too many meta strings. E.g. requesting CHK@blah,blah,blah as CHK@blah,blah,blah/filename.ext
+     * Too many meta-strings. E.g., requesting CHK@blah,blah,blah as CHK@blah,blah,blah/filename.ext
      */
     TOO_MANY_PATH_COMPONENTS(11),
     /** Failed to read from or write to a bucket; a kind of internal error */

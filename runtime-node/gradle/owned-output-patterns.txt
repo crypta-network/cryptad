@@ -29,14 +29,10 @@ network/crypta/client/ErrorArchiveStoreItem.class
 network/crypta/client/ErrorArchiveStoreItem$*.class
 network/crypta/client/FECCodec.class
 network/crypta/client/FECCodec$*.class
-network/crypta/client/FailureCodeTracker.class
-network/crypta/client/FailureCodeTracker$*.class
 network/crypta/client/FetchContext.class
 network/crypta/client/FetchContext$*.class
 network/crypta/client/FetchContextOptions.class
 network/crypta/client/FetchContextOptions$*.class
-network/crypta/client/FetchException.class
-network/crypta/client/FetchException$*.class
 network/crypta/client/FetchWaiter.class
 network/crypta/client/FetchWaiter$*.class
 network/crypta/client/HighLevelSimpleClient.class
@@ -47,8 +43,6 @@ network/crypta/client/InsertContext.class
 network/crypta/client/InsertContext$*.class
 network/crypta/client/InsertContextOptions.class
 network/crypta/client/InsertContextOptions$*.class
-network/crypta/client/InsertException.class
-network/crypta/client/InsertException$*.class
 network/crypta/client/InsertUriChecks.class
 network/crypta/client/InsertUriChecks$*.class
 network/crypta/client/Metadata.class
@@ -57,8 +51,6 @@ network/crypta/client/MetadataRedirectTarget.class
 network/crypta/client/MetadataRedirectTarget$*.class
 network/crypta/client/MetadataTopLayerInfo.class
 network/crypta/client/MetadataTopLayerInfo$*.class
-network/crypta/client/MetadataUnresolvedException.class
-network/crypta/client/MetadataUnresolvedException$*.class
 network/crypta/client/NullClientCallback.class
 network/crypta/client/NullClientCallback$*.class
 network/crypta/client/OnionFECCodec.class
@@ -105,8 +97,6 @@ network/crypta/client/filter/ContentFilterCallbacks.class
 network/crypta/client/filter/ContentFilterCallbacks$*.class
 network/crypta/client/filter/ContentFilterRequest.class
 network/crypta/client/filter/ContentFilterRequest$*.class
-network/crypta/client/filter/DataFilterException.class
-network/crypta/client/filter/DataFilterException$*.class
 network/crypta/client/filter/ElementInfo.class
 network/crypta/client/filter/ElementInfo$*.class
 network/crypta/client/filter/FilterCallback.class
@@ -155,8 +145,6 @@ network/crypta/client/filter/UnknownCharsetException.class
 network/crypta/client/filter/UnknownCharsetException$*.class
 network/crypta/client/filter/UnknownContentTypeException.class
 network/crypta/client/filter/UnknownContentTypeException$*.class
-network/crypta/client/filter/UnsafeContentTypeException.class
-network/crypta/client/filter/UnsafeContentTypeException$*.class
 network/crypta/client/filter/UnsupportedCharsetInFilterException.class
 network/crypta/client/filter/UnsupportedCharsetInFilterException$*.class
 network/crypta/client/filter/VP8PacketFilter.class

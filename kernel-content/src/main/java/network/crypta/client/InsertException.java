@@ -4,7 +4,6 @@ import java.io.Serial;
 import java.util.HashMap;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.LowLevelPutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +46,7 @@ public class InsertException extends Exception {
 
   /**
    * Collect errors when there are multiple failures. The error mode will be FATAL_ERRORS_IN_BLOCKS
-   * or TOO_MANY_RETRIES_IN_BLOCKS i.e. a splitfile failed.
+   * or TOO_MANY_RETRIES_IN_BLOCKS i.e., a splitfile failed.
    */
   private final FailureCodeTracker errorCodes;
 
@@ -266,16 +265,17 @@ public class InsertException extends Exception {
    * @return an {@code InsertException} mapping the low-level code to an insert mode; returns an
    *     {@link InsertExceptionMode#INTERNAL_ERROR} with details for unknown codes.
    */
-  public static InsertException constructFrom(LowLevelPutException e) {
+  public static InsertException constructFrom(network.crypta.node.LowLevelPutException e) {
     return switch (e.code) {
-      case LowLevelPutException.COLLISION -> new InsertException(InsertExceptionMode.COLLISION);
-      case LowLevelPutException.INTERNAL_ERROR ->
+      case network.crypta.node.LowLevelPutException.COLLISION ->
+          new InsertException(InsertExceptionMode.COLLISION);
+      case network.crypta.node.LowLevelPutException.INTERNAL_ERROR ->
           new InsertException(InsertExceptionMode.INTERNAL_ERROR);
-      case LowLevelPutException.REJECTED_OVERLOAD ->
+      case network.crypta.node.LowLevelPutException.REJECTED_OVERLOAD ->
           new InsertException(InsertExceptionMode.REJECTED_OVERLOAD);
-      case LowLevelPutException.ROUTE_NOT_FOUND ->
+      case network.crypta.node.LowLevelPutException.ROUTE_NOT_FOUND ->
           new InsertException(InsertExceptionMode.ROUTE_NOT_FOUND);
-      case LowLevelPutException.ROUTE_REALLY_NOT_FOUND ->
+      case network.crypta.node.LowLevelPutException.ROUTE_REALLY_NOT_FOUND ->
           new InsertException(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
       default -> {
         LOG.error("Unknown LowLevelPutException code {}", e.code, e);
@@ -288,8 +288,8 @@ public class InsertException extends Exception {
   private static final HashMap<Integer, InsertExceptionMode> modes = new HashMap<>();
 
   /**
-   * Enumerates high-level insert failure modes. The values are stable across versions and are used
-   * for localization keys and error aggregation.
+   * Lists high-level insert failure modes. The values are stable across versions and are used for
+   * localization keys and error aggregation.
    */
   public enum InsertExceptionMode {
 
@@ -299,7 +299,7 @@ public class InsertException extends Exception {
     BUCKET_ERROR(2),
     /** Internal error of some sort */
     INTERNAL_ERROR(3),
-    /** Downstream node was overloaded */
+    /** The downstream node was overloaded */
     REJECTED_OVERLOAD(4),
     /** Couldn't find enough nodes to send the data to */
     ROUTE_NOT_FOUND(5),
@@ -311,15 +311,15 @@ public class InsertException extends Exception {
     ROUTE_REALLY_NOT_FOUND(8),
     /** Collided with pre-existing content */
     COLLISION(9),
-    /** Cancelled by user */
+    /** Canceled by the user */
     CANCELLED(10),
-    /** Meta string used in the key (most probably '/') */
+    /** Meta-string used in the key (most probably '/') */
     META_STRINGS_NOT_SUPPORTED(11),
     /** Invalid binary blob data supplied so cannot insert it */
     BINARY_BLOB_FORMAT_ERROR(12),
     /** Too many files in a directory in a site insert */
     TOO_MANY_FILES(13),
-    /** File being uploaded is bigger than maximum supported size */
+    /** File being uploaded is bigger than the maximum supported size */
     TOO_BIG(14);
 
     /**
