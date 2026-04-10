@@ -16,14 +16,14 @@ import java.io.Serial;
  * <p>The exception is checked to encourage explicit handling by callers coordinating user flows or
  * background jobs. Instances are immutable once created, and the type carries no mutable state.
  * Because it denotes a precondition failure, retries without changing the input normally fail in
- * the same way. Callers should therefore adjust input size or layout before retrying. This type is
- * safe to construct and use from any thread; it has no thread-affinity and performs no I/O.
+ * the same way. Callers should therefore adjust the input size or layout before retrying. This type
+ * is safe to construct and use from any thread; it has no thread-affinity and performs no I/O.
  *
  * <ul>
  *   <li>Responsibility: report excessive file counts detected during insert preparation.
  *   <li>Typical use: thrown from async insert setup; caught by higher-level orchestration to
  *       present guidance or to partition work.
- *   <li>Recovery: reduce file count or split into subdirectories; then re-attempt the insert.
+ *   <li>Recovery: reduce the file count or split into subdirectories; then re-attempt the insert.
  * </ul>
  *
  * @see java.lang.Exception

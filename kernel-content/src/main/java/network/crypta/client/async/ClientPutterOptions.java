@@ -4,14 +4,13 @@ import java.util.Arrays;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Immutable bundle of optional settings for constructing a {@link ClientPutter}.
+ * Immutable bundle of optional settings for constructing a client putter.
  *
  * <p>This value object carries opt-in configuration that is read by client putter creation logic
  * but does not itself perform validation or normalization. Callers typically construct an instance
- * with the desired values and pass it to the relevant {@link ClientPutter} entry point, or they
- * start from {@link #defaults()} and replace individual components. Each component is stored
- * exactly as provided, which preserves legacy constructor behavior and keeps this type free of side
- * effects.
+ * with the desired values and pass it to the relevant client putter entry point, or they start from
+ * {@link #defaults()} and replace individual components. Each component is stored exactly as
+ * provided, which preserves legacy constructor behavior and keeps this type free of side effects.
  *
  * <p>The instance is effectively immutable in terms of its component references, but callers should
  * treat the {@code overrideSplitfileCrypto} array as shared mutable state: its contents are not

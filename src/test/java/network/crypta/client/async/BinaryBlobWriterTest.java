@@ -139,7 +139,7 @@ class BinaryBlobWriterTest {
     ClientKeyBlock ckb = mockBlock(keyType, keyBytes, headers, data, pubkey);
 
     // Act
-    writer.addKey(ckb, /*context*/ null);
+    writer.addKey(ckb);
     writer.finalizeBucket();
 
     // Assert
@@ -163,8 +163,8 @@ class BinaryBlobWriterTest {
     ClientKeyBlock ckb = mockBlock(keyType, keyBytes, headers, data, null);
 
     // Act
-    writer.addKey(ckb, null);
-    writer.addKey(ckb, null); // duplicate; should be ignored
+    writer.addKey(ckb);
+    writer.addKey(ckb); // duplicate; should be ignored
     writer.finalizeBucket();
 
     // Assert – parse and ensure there is exactly 1 block then an END
@@ -207,7 +207,7 @@ class BinaryBlobWriterTest {
     // Write minimal content so finalize writes END marker without issues
     ClientKeyBlock ckb =
         mockBlock((short) 0x0101, new byte[] {0x01}, new byte[0], new byte[0], null);
-    writer.addKey(ckb, null);
+    writer.addKey(ckb);
     writer.finalizeBucket();
     assertThrows(BinaryBlobWriter.BinaryBlobAlreadyClosedException.class, writer::finalizeBucket);
   }
@@ -218,7 +218,7 @@ class BinaryBlobWriterTest {
     BinaryBlobWriter writer = new BinaryBlobWriter(out);
     ClientKeyBlock first =
         mockBlock((short) 0x0101, new byte[] {0x01}, new byte[0], new byte[0], null);
-    writer.addKey(first, null);
+    writer.addKey(first);
     writer.finalizeBucket();
     // Use a different key so dedupe does not short-circuit before checking finalized state
     // Create a block that exposes only a different key; do not stub getBlock(),
@@ -227,8 +227,7 @@ class BinaryBlobWriterTest {
     ClientKeyBlock differentKey = mock(ClientKeyBlock.class);
     when(differentKey.getKey()).thenReturn(newKey);
     assertThrows(
-        BinaryBlobWriter.BinaryBlobAlreadyClosedException.class,
-        () -> writer.addKey(differentKey, null));
+        BinaryBlobWriter.BinaryBlobAlreadyClosedException.class, () -> writer.addKey(differentKey));
   }
 
   @Test
@@ -255,8 +254,8 @@ class BinaryBlobWriterTest {
             new byte[] {0x22},
             new byte[] {0x32});
 
-    writer.addKey(b1, null);
-    writer.addKey(b2, null);
+    writer.addKey(b1);
+    writer.addKey(b2);
 
     // Snapshot before finalize
     ArrayBucket snapshot = new ArrayBucket();

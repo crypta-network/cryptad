@@ -1,6 +1,5 @@
 package network.crypta.client.async;
 
-import com.onionnetworks.util.FileUtil;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
@@ -201,7 +200,7 @@ public final class BinaryBlob {
         }
         default -> {
           if (tolerant) {
-            FileUtil.skipFully(dis, blobLength);
+            dis.skipNBytes(blobLength);
           } else {
             throw new BinaryBlobFormatException("Unknown blob type: " + blobType);
           }

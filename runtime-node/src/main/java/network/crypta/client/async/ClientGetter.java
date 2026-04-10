@@ -1130,7 +1130,7 @@ public class ClientGetter extends BaseClientGetter
           this,
           new Exception(DEBUG_EXCEPTION_MESSAGE));
     try {
-      binaryBlobWriter.addKey(block, context);
+      binaryBlobWriter.addKey(block);
     } catch (IOException e) {
       LOG.error("Binary blob write failed while adding key: {}", e, e);
       onFailure(

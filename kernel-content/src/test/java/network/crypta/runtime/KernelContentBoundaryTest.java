@@ -25,6 +25,8 @@ class KernelContentBoundaryTest {
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
   private static final Path KERNEL_CONTENT_FILTER_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
+  private static final Path KERNEL_CONTENT_ASYNC_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "async"));
   private static final Path KERNEL_CONTENT_ALERTS_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "async", "alerts"));
   private static final Path KERNEL_CONTENT_PERSISTENCE_PACKAGE =
@@ -37,6 +39,8 @@ class KernelContentBoundaryTest {
   private static final Path RUNTIME_NODE_ALERTS_PACKAGE =
       Path.of(
           "runtime-node", "src", "main", "java", "network", "crypta", "client", "async", "alerts");
+  private static final Path RUNTIME_NODE_ASYNC_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client", "async");
   private static final Path RUNTIME_NODE_PERSISTENCE_PACKAGE =
       Path.of(
           "runtime-node",
@@ -62,6 +66,17 @@ class KernelContentBoundaryTest {
           "MetadataUnresolvedException.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
       List.of("DataFilterException.java", "UnsafeContentTypeException.java");
+  private static final List<String> MOVED_ASYNC_UTILITY_TYPES =
+      List.of(
+          "BinaryBlob.java",
+          "BinaryBlobFormatException.java",
+          "BinaryBlobWriter.java",
+          "BlockSet.java",
+          "CacheFetchResult.java",
+          "ClientGetterOptions.java",
+          "ClientPutterOptions.java",
+          "PersistenceDisabledException.java",
+          "TooManyFilesInsertException.java");
   private static final Pattern FORBIDDEN_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+"
@@ -151,9 +166,10 @@ class KernelContentBoundaryTest {
 
   @Test
   void
-      kernelContentPhaseTwo_whenCheckingClientFailureOwnership_expectLeafSafeFailuresOwnedByKernelContent()
+      kernelContentPhaseTwo_whenCheckingMovedLeafOwnership_expectLeafSafeTypesOwnedByKernelContent()
           throws IOException {
     Path repoRoot = repoRoot();
+    Path kernelContentAsync = repoRoot.resolve(KERNEL_CONTENT_ASYNC_PACKAGE);
 
     assertOwnedByKernelContent(
         repoRoot,
@@ -165,6 +181,17 @@ class KernelContentBoundaryTest {
         KERNEL_CONTENT_FILTER_PACKAGE,
         RUNTIME_NODE_FILTER_PACKAGE,
         MOVED_FILTER_FAILURE_TYPES);
+    assertTrue(
+        Files.isDirectory(kernelContentAsync),
+        "kernel-content must own leaf-safe sources under network.crypta.client.async");
+    assertTrue(
+        Files.isRegularFile(kernelContentAsync.resolve("package-info.java")),
+        "kernel-content async package must keep package-info.java");
+    assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_ASYNC_PACKAGE,
+        RUNTIME_NODE_ASYNC_PACKAGE,
+        MOVED_ASYNC_UTILITY_TYPES);
   }
 
   @Test
