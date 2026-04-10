@@ -29,6 +29,8 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
   private static final Path RUNTIME_NODE_FILTER_PACKAGE =
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
+  private static final Path RUNTIME_NODE_ASYNC_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "async"));
   private static final Path RUNTIME_NODE_SUPPORT_PACKAGE =
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "support"));
   private static final Path RUNTIME_NODE_SUPPORT_API_PACKAGE =
@@ -43,6 +45,17 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
           "MetadataUnresolvedException.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
       List.of("DataFilterException.java", "UnsafeContentTypeException.java");
+  private static final List<String> MOVED_ASYNC_UTILITY_TYPES =
+      List.of(
+          "BinaryBlob.java",
+          "BinaryBlobFormatException.java",
+          "BinaryBlobWriter.java",
+          "BlockSet.java",
+          "CacheFetchResult.java",
+          "ClientGetterOptions.java",
+          "ClientPutterOptions.java",
+          "PersistenceDisabledException.java",
+          "TooManyFilesInsertException.java");
   private static final List<String> MOVED_SUPPORT_TYPES =
       List.of("MultiValueTable.java", "SizeUtil.java");
   private static final List<String> MOVED_SUPPORT_API_TYPES =
@@ -109,12 +122,14 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   }
 
   @Test
-  void runtimeNodePhaseTwo_whenCheckingClientFailureOwnership_expectMovedLeafTypesAbsent()
+  void runtimeNodePhaseTwo_whenCheckingMovedLeafOwnership_expectMovedLeafTypesAbsent()
       throws IOException {
     Path repoRoot = repoRoot();
 
     assertMovedLeafTypesAbsent(
         repoRoot.resolve(RUNTIME_NODE_CLIENT_PACKAGE), MOVED_CLIENT_FAILURE_TYPES);
+    assertMovedLeafTypesAbsent(
+        repoRoot.resolve(RUNTIME_NODE_ASYNC_PACKAGE), MOVED_ASYNC_UTILITY_TYPES);
     assertMovedLeafTypesAbsent(
         repoRoot.resolve(RUNTIME_NODE_FILTER_PACKAGE), MOVED_FILTER_FAILURE_TYPES);
   }

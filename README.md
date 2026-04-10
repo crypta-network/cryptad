@@ -203,6 +203,9 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:kernel-content` owns the compile-neutral phase-1 content slice across selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the leaf-safe
+  `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
+  `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
+  `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
   client failure/filter exception subset, and MIME helper `network.crypta.support.MediaType`
   classes that stay free of `:runtime-node`, adapter, and root-composition dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
@@ -277,9 +280,10 @@ Cryptad now uses a partial multi-project Gradle build.
 - Higher-level infrastructure now crosses a narrower boundary through
   `network.crypta.runtime.spi.RuntimePorts`, the minimal wire-side `MessageSource` seam used by
   leaf-owned messages, the new phase-1 `:kernel-content` content slice, the phase-1
-  `:kernel-transport` helper slice, the phase-1 `:kernel-routing` helper slice, client-owned seams such as
-  `network.crypta.client.async.alerts` and `network.crypta.client.async.persistence`, and
-  runtime-owned seams such as
+  `:kernel-transport` helper slice, the phase-1 `:kernel-routing` helper slice, client-owned seams
+  such as `network.crypta.client.async.alerts`,
+  `network.crypta.client.async.persistence`, and the leaf-safe
+  `network.crypta.client.async` utility/value subset, and runtime-owned seams such as
   `network.crypta.runtime.alerts.feed`, `network.crypta.runtime.fcp`,
   `network.crypta.runtime.http`, `network.crypta.runtime.http.security`,
   `network.crypta.runtime.peers.reference`, and `network.crypta.runtime.persistence`.
@@ -616,7 +620,8 @@ Root build also includes:
 - `:kernel-content`: compile-neutral phase-1 content leaf spanning selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the
-  leaf-safe client failure/filter exception subset, and `network.crypta.support.MediaType`.
+  leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe
+  client failure/filter exception subset, and `network.crypta.support.MediaType`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allowlist parsing, listener abstraction, statistics collection, throttling, and partially
@@ -745,7 +750,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   conservative subset of filter helper/parser types, the client-facing
   fetch/insert/content-safety failure subset, the full
   `network.crypta.client.async.alerts` seam, the client-local persistence seams under
-  `network.crypta.client.async.persistence`, and the MIME helper
+  `network.crypta.client.async.persistence`, the leaf-safe
+  `network.crypta.client.async` utility/value subset, and the MIME helper
   `network.crypta.support.MediaType`. `:runtime-node` still owns the cyclic async
   scheduler/request engine, high-level client APIs, and the remaining filter/archive surfaces that
   still depend on runtime-owned request and node types.
@@ -830,7 +836,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   support and the shared `network.crypta.runtime.core.SSL` helper.
 - Runtime boundary leaves: `:kernel-content` provides the compile-neutral phase-1 content slice
   across selected `network.crypta.client*` classes, the leaf-safe client failure/filter
-  exception subset, the `network.crypta.client.async.persistence` seam, plus
+  exception subset, the `network.crypta.client.async.persistence` seam, the leaf-safe
+  `network.crypta.client.async` utility/value subset, plus
   `network.crypta.support.MediaType`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1

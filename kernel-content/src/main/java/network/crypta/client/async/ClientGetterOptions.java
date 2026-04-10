@@ -3,7 +3,7 @@ package network.crypta.client.async;
 import network.crypta.support.api.Bucket;
 
 /**
- * Optional settings for constructing a {@link ClientGetter}.
+ * Optional settings for constructing a client getter.
  *
  * <p>This record bundles optional bucket destinations, binary blob recording behavior, initial
  * metadata, and MIME extension constraints. All fields are optional and are stored without

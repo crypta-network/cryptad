@@ -129,17 +129,12 @@ public final class BinaryBlobWriter {
    *
    * @param block the block to serialize into the blob; its {@code Key} identifies deduplication and
    *     must be consistent with its internal metadata; must not be {@code null}.
-   * @param context optional client context related to the caller; may be {@code null} and is used
-   *     only for diagnostic logging, not for serialization semantics.
    * @throws IOException if writing to the underlying stream fails at any point during emission.
    * @throws BinaryBlobAlreadyClosedException if the writer has been finalized or closed and can no
    *     longer accept additional blocks.
    */
-  public synchronized void addKey(ClientKeyBlock block, ClientContext context)
+  public synchronized void addKey(ClientKeyBlock block)
       throws IOException, BinaryBlobAlreadyClosedException {
-    if (LOG.isTraceEnabled()) {
-      LOG.trace("addKey invoked; context present? {}", context != null);
-    }
     Key key = block.getKey();
     if (binaryBlobKeysAddedAlready.contains(key)) return;
     BinaryBlob.writeKey(getOutputStream(), block.getBlock(), key);
@@ -275,8 +270,8 @@ public final class BinaryBlobWriter {
   /**
    * Signals that an operation was attempted on a writer that has already been closed/finalized.
    *
-   * <p>Methods such as {@link #addKey(ClientKeyBlock, ClientContext)} and snapshot helpers throw
-   * this exception when further writes or snapshots are invalid due to a completed life-cycle.
+   * <p>Methods such as {@link #addKey(ClientKeyBlock)} and snapshot helpers throw this exception
+   * when further writes or snapshots are invalid due to a completed life-cycle.
    */
   public static class BinaryBlobAlreadyClosedException extends Exception {
 
