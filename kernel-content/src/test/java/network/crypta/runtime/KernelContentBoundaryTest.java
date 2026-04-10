@@ -32,6 +32,10 @@ class KernelContentBoundaryTest {
   private static final Path KERNEL_CONTENT_PERSISTENCE_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(
           Path.of("network", "crypta", "client", "async", "persistence"));
+  private static final Path KERNEL_CONTENT_SUPPORT_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "support"));
+  private static final Path KERNEL_CONTENT_SUPPORT_API_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "api"));
   private static final Path RUNTIME_NODE_CLIENT_PACKAGE =
       Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client");
   private static final Path RUNTIME_NODE_FILTER_PACKAGE =
@@ -52,11 +56,14 @@ class KernelContentBoundaryTest {
           "client",
           "async",
           "persistence");
+  private static final Path RUNTIME_NODE_SUPPORT_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "support");
+  private static final Path RUNTIME_NODE_SUPPORT_API_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "support", "api");
   private static final Path KERNEL_CONTENT_MEDIA_TYPE =
-      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "MediaType.java"));
+      KERNEL_CONTENT_SUPPORT_PACKAGE.resolve("MediaType.java");
   private static final Path RUNTIME_NODE_MEDIA_TYPE =
-      Path.of(
-          "runtime-node", "src", "main", "java", "network", "crypta", "support", "MediaType.java");
+      RUNTIME_NODE_SUPPORT_PACKAGE.resolve("MediaType.java");
   private static final List<String> MOVED_CLIENT_FAILURE_TYPES =
       List.of(
           "FailureCodeTracker.java",
@@ -77,6 +84,10 @@ class KernelContentBoundaryTest {
           "ClientPutterOptions.java",
           "PersistenceDisabledException.java",
           "TooManyFilesInsertException.java");
+  private static final List<String> MOVED_SUPPORT_MANIFEST_MODEL_TYPES =
+      List.of("ContainerSizeEstimator.java");
+  private static final List<String> MOVED_SUPPORT_API_MANIFEST_MODEL_TYPES =
+      List.of("ManifestElement.java");
   private static final Pattern FORBIDDEN_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+"
@@ -162,6 +173,28 @@ class KernelContentBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(RUNTIME_NODE_MEDIA_TYPE)),
         "runtime-node must not retain network.crypta.support.MediaType after extraction");
+  }
+
+  @Test
+  void
+      kernelContentPhaseTwo_whenCheckingSupportManifestModelOwnership_expectTypesOwnedByKernelContent()
+          throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelContentSupportApi = repoRoot.resolve(KERNEL_CONTENT_SUPPORT_API_PACKAGE);
+
+    assertTrue(
+        Files.isRegularFile(kernelContentSupportApi.resolve("package-info.java")),
+        "kernel-content support.api package must keep package-info.java");
+    assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_SUPPORT_PACKAGE,
+        RUNTIME_NODE_SUPPORT_PACKAGE,
+        MOVED_SUPPORT_MANIFEST_MODEL_TYPES);
+    assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_SUPPORT_API_PACKAGE,
+        RUNTIME_NODE_SUPPORT_API_PACKAGE,
+        MOVED_SUPPORT_API_MANIFEST_MODEL_TYPES);
   }
 
   @Test

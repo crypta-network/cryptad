@@ -111,5 +111,10 @@ network/crypta/client/async/PersistenceDisabledException.class
 network/crypta/client/async/PersistenceDisabledException$*.class
 network/crypta/client/async/TooManyFilesInsertException.class
 network/crypta/client/async/TooManyFilesInsertException$*.class
+network/crypta/support/ContainerSizeEstimator.class
+network/crypta/support/ContainerSizeEstimator$*.class
 network/crypta/support/MediaType.class
 network/crypta/support/MediaType$*.class
+network/crypta/support/api/ManifestElement.class
+network/crypta/support/api/ManifestElement$*.class
+network/crypta/support/api/package-info*

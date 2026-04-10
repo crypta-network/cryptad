@@ -1,7 +1,7 @@
 package network.crypta.support;
 
+import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.Metadata;
 import network.crypta.support.api.ManifestElement;
 
 /**
@@ -125,9 +125,9 @@ public final class ContainerSizeEstimator {
    * </ul>
    *
    * <p>Files with size greater than {@code maxItemSize} are treated as redirects in the limited
-   * view. The unlimited view assumes all files fit. Subtrees include their own directory header.
-   * For non-{@code HashMap} directories, the method normalizes via {@link
-   * Metadata#forceMap(Object)}.
+   * view. The unlimited view assumes all files fit. Subtrees include their own directory header. If
+   * a nested directory is not already a {@code HashMap}, it is copied into a mutable string-keyed
+   * map and non-{@code String} keys are rejected with {@link ClassCastException}.
    *
    * <p>Iteration stops early on an axis when the rolling limited size would exceed {@code
    * maxContainerSize}.
@@ -201,17 +201,43 @@ public final class ContainerSizeEstimator {
 
   private static boolean processSubDirectory(
       Object value, ContainerSize result, long maxItemSize, long maxContainerSize, int maxDeep) {
-    if (!(value instanceof Map)) {
+    if (!(value instanceof Map<?, ?>)) {
       return false;
     }
     result.sizeSubTrees += TAR_BLOCK_SIZE;
-    Map<String, Object> hm = Metadata.forceMap(value);
+    Map<String, Object> hm = forceManifestMap(value);
     ContainerSize tempResult = new ContainerSize();
     getSubTreeSize(
         hm, tempResult, maxItemSize, (maxContainerSize - result.sizeSubTrees), maxDeep - 1);
     result.sizeSubTrees += tempResult.getSizeTotal();
     result.sizeSubTreesNoLimit += tempResult.getSizeTotalNoLimit();
     return result.sizeSubTrees > maxContainerSize;
+  }
+
+  private static Map<String, Object> forceManifestMap(Object value) {
+    if (value instanceof HashMap<?, ?> raw) {
+      return uncheckedCast(raw);
+    }
+    if (value instanceof Map<?, ?> map) {
+      HashMap<String, Object> typed = new HashMap<>();
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        Object key = entry.getKey();
+        if (!(key instanceof String string)) {
+          throw new ClassCastException(
+              "Expected String keys in map, got "
+                  + (key == null ? "null" : key.getClass().getName()));
+        }
+        typed.put(string, entry.getValue());
+      }
+      return typed;
+    }
+    throw new ClassCastException(
+        "Expected Map, got " + (value == null ? "null" : value.getClass().getName()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> uncheckedCast(Map<?, ?> raw) {
+    return (Map<String, Object>) raw;
   }
 
   /**
