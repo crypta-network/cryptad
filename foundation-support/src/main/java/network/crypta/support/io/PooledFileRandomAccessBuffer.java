@@ -328,7 +328,7 @@ public final class PooledFileRandomAccessBuffer
    * @param bufOffset offset within {@code buf}
    * @param length number of bytes to read
    * @throws IllegalArgumentException if {@code fileOffset < 0}
-   * @throws IOException if an I/O error occurs or EOF is reached before all bytes are read
+   * @throws IOException if an I/O error occurs, or EOF is reached before all bytes are read
    */
   @Override
   public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
