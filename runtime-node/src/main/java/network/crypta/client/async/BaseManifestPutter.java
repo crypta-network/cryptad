@@ -22,6 +22,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.Metadata.SimpleManifestComposer;
 import network.crypta.client.Metadata;
+import network.crypta.client.MetadataResolutionTarget;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -1066,7 +1067,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** True when the overall operation has finished (successfully or due to cancellation). */
   private boolean finished;
 
-  /** Insert context providing policy, compatibility mode, and storage factories. */
+  /** Insert-context providing policy, compatibility mode, and storage factories. */
   private final InsertContext ctx;
 
   final transient ClientPutCallback cb;
@@ -1477,8 +1478,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    */
   private void resolve(MetadataUnresolvedException e, ClientContext context)
       throws InsertException, IOException {
-    Metadata[] metas = e.mustResolve;
-    for (Metadata m : metas) {
+    MetadataResolutionTarget[] metas = e.mustResolve;
+    for (MetadataResolutionTarget m : metas) {
       if (LOG.isDebugEnabled()) LOG.debug("Resolving {}", m);
       if (m.isResolved()) {
         LOG.error("Already resolved: {} in resolve() - race condition???", m);
@@ -1486,7 +1487,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
       try {
         MetaPutHandler ph =
-            new MetaPutHandler(this, null, m, context.getBucketFactory(persistent()));
+            new MetaPutHandler(this, null, (Metadata) m, context.getBucketFactory(persistent()));
         ph.start(context);
       } catch (MetadataUnresolvedException e1) {
         resolve(e1, context);

@@ -19,6 +19,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.Metadata.SimpleManifestComposer;
 import network.crypta.client.Metadata;
+import network.crypta.client.MetadataResolutionTarget;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.BaseManifestPutter.PutHandler;
 import network.crypta.keys.FreenetURI;
@@ -71,7 +72,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   /** Items to include in the container archive; populated during metadata resolution. */
   private transient ArrayList<ContainerElement> containerItems;
 
-  /** Owning client putter that created and coordinates this inserter. */
+  /** The owning client putter that created and coordinates this inserter. */
   private final BaseClientPutter parent;
 
   /** Callback used to report failures, resumes, and state transitions. */
@@ -80,7 +81,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   /** Indicates that {@link #cancel(ClientContext)} has been invoked. */
   private boolean cancelled;
 
-  /** True once a terminal state has been reached and callbacks have been issued. */
+  /** True, once a terminal state has been reached and callbacks have been issued. */
   private boolean finished;
 
   /** Whether backing buckets should be persistent across restarts. */
@@ -202,7 +203,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
    * archive type, and then constructs a {@link SingleFileInserter}. The downstream inserter is
    * returned via {@link PutCompletionCallback#onTransition} and scheduled immediately.
    *
-   * @param context insertion context used to obtain buckets and configuration
+   * @param context insertion context used to get buckets and configuration
    * @throws InsertException when preparation fails (e.g., bucket errors or metadata resolution)
    */
   @Override
@@ -233,7 +234,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
       // Now we have to insert the Archive we have generated.
 
-      // Can we just insert it, and not bother with a redirect to it?
+      // Can we just insert it and not bother with a redirect to it?
       // Thereby exploiting implicit manifest support, which will pick up on .metadata??
       // We ought to be able to !!
       block = new InsertBlock(outputBucket, new ClientMetadata(mimeType), targetURI);
@@ -317,8 +318,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
   private int resolve(MetadataUnresolvedException e, int x, ClientContext context)
       throws IOException {
-    Metadata[] metas = e.mustResolve;
-    for (Metadata m : metas) {
+    MetadataResolutionTarget[] metas = e.mustResolve;
+    for (MetadataResolutionTarget m : metas) {
       try {
         Bucket bucket = m.toBucket(context.getBucketFactory(persistent));
         String nameInArchive = ".metadata-" + x++;
@@ -340,7 +341,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
     cb.onFailure(e, this, context);
   }
 
-  // A persistent hashCode is helpful in debugging, and also means we can put
+  // A persistent hashCode is helpful in debugging and also means we can put
   // these objects into sets etc. when we need to.
 
   /** Stable hash code captured at construction time to aid persistence and debugging. */
@@ -348,7 +349,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
   /**
    * Returns the stable hash code captured at construction. The value does not change during the
-   * lifetime of the instance so it can be used in sets or as a persistent identifier.
+   * lifetime of the instance, so it can be used in sets or as a persistent identifier.
    */
   @Override
   public int hashCode() {
@@ -525,7 +526,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
    * Custom Java deserialization hook. Reads the default serial form and restores transient runtime
    * fields to a safe initial state for later resume.
    *
-   * @param in stream from which the object state is read; must be open and readable
+   * @param in the stream from which the object state is read; must be open and readable
    * @throws IOException if an I/O error occurs while reading the serial form
    * @throws ClassNotFoundException if a class required to restore the state cannot be found
    */

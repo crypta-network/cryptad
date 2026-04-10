@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,6 +25,18 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   private static final Path ROOT_TOOLS_PACKAGE =
       Path.of("src", "main", "java", "network", "crypta", "tools");
   private static final Path RUNTIME_NODE_MAIN_JAVA = Path.of("runtime-node", "src", "main", "java");
+  private static final Path RUNTIME_NODE_CLIENT_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
+  private static final Path RUNTIME_NODE_FILTER_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
+  private static final List<String> MOVED_CLIENT_FAILURE_TYPES =
+      List.of(
+          "FailureCodeTracker.java",
+          "FetchException.java",
+          "InsertException.java",
+          "MetadataUnresolvedException.java");
+  private static final List<String> MOVED_FILTER_FAILURE_TYPES =
+      List.of("DataFilterException.java", "UnsafeContentTypeException.java");
   private static final Pattern ADAPTER_IMPORT_PATTERN =
       Pattern.compile(
           "^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.(?:fcp|http)\\.[^;]+);$");
@@ -74,6 +87,17 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   }
 
   @Test
+  void runtimeNodePhaseTwo_whenCheckingClientFailureOwnership_expectMovedLeafTypesAbsent()
+      throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertMovedLeafTypesAbsent(
+        repoRoot.resolve(RUNTIME_NODE_CLIENT_PACKAGE), MOVED_CLIENT_FAILURE_TYPES);
+    assertMovedLeafTypesAbsent(
+        repoRoot.resolve(RUNTIME_NODE_FILTER_PACKAGE), MOVED_FILTER_FAILURE_TYPES);
+  }
+
+  @Test
   void runtimeNodeMain_whenScanningProductionPackages_expectPackageInfoInEveryPackage()
       throws IOException {
     Path repoRoot = repoRoot();
@@ -103,6 +127,14 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
         "Every runtime-node main package with production Java files must declare package-info.java."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), missingPackageInfos));
+  }
+
+  private static void assertMovedLeafTypesAbsent(Path packagePath, List<String> fileNames) {
+    for (String fileName : fileNames) {
+      assertFalse(
+          Files.exists(packagePath.resolve(fileName)),
+          "runtime-node must not retain moved leaf type " + packagePath.resolve(fileName));
+    }
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {

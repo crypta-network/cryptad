@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -14,7 +15,9 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
+import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -250,6 +253,375 @@ class ArchiveManagerTest {
   }
 
   @Test
+  void extractToCache_zip_whenArchiveHasTooManyEntries_throwsArchiveFailureException()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 16 << 20, 1 << 20, 16_384, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-too-many-entries");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(16 << 20, 8);
+
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    for (int i = 0; i <= 10_000; i++) {
+      entries.put("entry-" + i + ".txt", new byte[] {'x'});
+    }
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      // Act
+      ArchiveFailureException thrown =
+          assertThrows(
+              ArchiveFailureException.class,
+              () ->
+                  mgr.extractToCache(
+                      extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+                      elementRequest("__unused__")));
+
+      // Assert
+      assertTrue(thrown.getMessage().contains("too many entries"), thrown.getMessage());
+    }
+  }
+
+  @Test
+  void extractToCache_tarGzip_whenExpandedArchiveExceedsContextLimit_throwsArchiveFailureException()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 4 << 20, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-gzip-expanded-too-big");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("a.bin", new byte[384 << 10]);
+    entries.put("b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
+      // Act
+      ArchiveFailureException thrown =
+          assertThrows(
+              ArchiveFailureException.class,
+              () ->
+                  mgr.extractToCache(
+                      extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+                      elementRequest("__unused__")));
+
+      // Assert
+      assertTrue(
+          thrown.getMessage().contains("Expanded archive exceeds configured limit"),
+          thrown.getMessage());
+    }
+  }
+
+  @Test
+  void
+      extractToCache_zip_whenSkippedOversizedEntriesExpandPastContextLimit_throwsArchiveFailureException()
+          throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-skipped-expanded-too-big");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("a.bin", new byte[384 << 10]);
+    entries.put("b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      // Act
+      ArchiveFailureException thrown =
+          assertThrows(
+              ArchiveFailureException.class,
+              () ->
+                  mgr.extractToCache(
+                      extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+                      elementRequest("__unused__")));
+
+      // Assert
+      assertTrue(
+          thrown.getMessage().contains("Expanded archive exceeds configured limit"),
+          thrown.getMessage());
+    }
+  }
+
+  @Test
+  void
+      extractToCache_tarGzip_whenSkippedOversizedEntriesExpandPastContextLimit_throwsArchiveFailureException()
+          throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-gzip-skipped-expanded-too-big");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("a.bin", new byte[384 << 10]);
+    entries.put("b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
+      // Act
+      ArchiveFailureException thrown =
+          assertThrows(
+              ArchiveFailureException.class,
+              () ->
+                  mgr.extractToCache(
+                      extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+                      elementRequest("__unused__")));
+
+      // Assert
+      assertTrue(
+          thrown.getMessage().contains("Expanded archive exceeds configured limit"),
+          thrown.getMessage());
+    }
+  }
+
+  @Test
+  void extractToCache_zip_whenRequestedEntryFoundBeforeLaterOversizedEntries_returnsSuccess()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-requested-before-skipped-tail");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.txt", wanted);
+    entries.put("big-a.bin", new byte[384 << 10]);
+    entries.put("big-b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      // Act
+      mgr.extractToCache(
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest("wanted.txt"));
+
+      // Assert
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_tarGzip_whenRequestedEntryFoundBeforeLaterOversizedEntries_returnsSuccess()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-requested-before-skipped-tail");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.txt", wanted);
+    entries.put("big-a.bin", new byte[384 << 10]);
+    entries.put("big-b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
+      // Act
+      mgr.extractToCache(
+          extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+          elementRequest("wanted.txt"));
+
+      // Assert
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_zip_whenRequestedEntryExceedsArchiveContextLimit_returnsSuccess()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 512 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-requested-exceeds-archive-context-limit");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(256 << 10, 8);
+
+    byte[] wanted = new byte[384 << 10];
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.bin", wanted);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      // Act
+      mgr.extractToCache(
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest("wanted.bin"));
+
+      // Assert
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_tarGzip_whenRequestedEntryExceedsArchiveContextLimit_returnsSuccess()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 512 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-requested-exceeds-archive-context-limit");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, false);
+    ArchiveContext actx = new ArchiveContext(256 << 10, 8);
+
+    byte[] wanted = new byte[384 << 10];
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.bin", wanted);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
+      // Act
+      mgr.extractToCache(
+          extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+          elementRequest("wanted.bin"));
+
+      // Assert
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_zip_whenCallbackThrows_cacheEntryRemainsReadable() throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 1 << 20, 1 << 20, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-callback-throws-cache-retained");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(1 << 20, 8);
+
+    byte[] wanted = "cache me".getBytes(StandardCharsets.UTF_8);
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.txt", wanted);
+
+    RuntimeException thrownByCallback = new RuntimeException("boom");
+    org.mockito.Mockito.doThrow(thrownByCallback)
+        .when(callback)
+        .gotBucket(any(Bucket.class), org.mockito.Mockito.eq(clientContext));
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      ArchiveExtractionInput input = extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx);
+      ArchiveElementRequest request = elementRequest("wanted.txt");
+
+      // Act + Assert
+      RuntimeException thrown =
+          assertThrows(RuntimeException.class, () -> mgr.extractToCache(input, request));
+      assertEquals(thrownByCallback, thrown);
+
+      Bucket cached = mgr.getCached(key, "wanted.txt");
+      assertNotNull(cached);
+      try {
+        assertArrayEquals(wanted, BucketTools.toByteArray(cached));
+      } finally {
+        cached.free();
+      }
+    }
+  }
+
+  @Test
+  void extractToCache_zip_whenArchiveChangedAndTailHitsScanLimit_throwsRestartAfterCallback()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "zip-restart-after-tail-limit");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.txt", wanted);
+    entries.put("big-a.bin", new byte[384 << 10]);
+    entries.put("big-b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      ctx.setLastSize(1L);
+      ctx.setLastHash(new byte[] {1, 2, 3});
+
+      // Act + Assert
+      assertThrows(
+          ArchiveRestartException.class,
+          () ->
+              mgr.extractToCache(
+                  extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+                  elementRequest("wanted.txt")));
+
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_tarGzip_whenArchiveChangedAndTailHitsScanLimit_throwsRestartAfterCallback()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 256 << 10, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-restart-after-tail-limit");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, false);
+    ArchiveContext actx = new ArchiveContext(512 << 10, 8);
+
+    byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("wanted.txt", wanted);
+    entries.put("big-a.bin", new byte[384 << 10]);
+    entries.put("big-b.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
+      ctx.setLastSize(1L);
+      ctx.setLastHash(new byte[] {1, 2, 3});
+
+      // Act + Assert
+      assertThrows(
+          ArchiveRestartException.class,
+          () ->
+              mgr.extractToCache(
+                  extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+                  elementRequest("wanted.txt")));
+
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+    }
+  }
+
+  @Test
+  void extractToCache_zip_whenExpandedLimitTripsMidEntry_freesTempBucket() throws Exception {
+    // Arrange
+    TrackingBucketFactory trackingFactory = new TrackingBucketFactory();
+    ArchiveManager mgr = new ArchiveManager(2, 4 << 20, 4 << 20, 16, trackingFactory);
+    FreenetURI key = new FreenetURI("KSK", "zip-mid-entry-limit-frees-bucket");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.ZIP, null, false);
+    ArchiveContext actx = new ArchiveContext(256 << 10, 8);
+
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("big.bin", new byte[384 << 10]);
+
+    try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
+      // Act
+      assertThrows(
+          ArchiveFailureException.class,
+          () ->
+              mgr.extractToCache(
+                  extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+                  elementRequest("__unused__")));
+
+      // Assert
+      assertEquals(1, trackingFactory.freedBuckets());
+    }
+  }
+
+  @Test
   void extractToCache_tar_gzip_outerCompression_supported_andNamesStripped() throws Exception {
     // Arrange
     ArchiveManager mgr = new ArchiveManager(2, 1 << 20, 1 << 20, 16, bf);
@@ -258,7 +630,7 @@ class ArchiveManagerTest {
     ArchiveContext actx = new ArchiveContext(1 << 20, 8);
 
     Map<String, byte[]> entries = new LinkedHashMap<>();
-    // Leading slash should be stripped by the handler
+    // The handler should strip leading slash
     entries.put("/dir/a.txt", "xyz".getBytes(StandardCharsets.UTF_8));
     try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
       // Act
@@ -448,5 +820,36 @@ class ArchiveManagerTest {
       gos.write(in);
     }
     return baos.toByteArray();
+  }
+
+  private static final class TrackingBucketFactory implements BucketFactory {
+    private final AtomicInteger freedBuckets = new AtomicInteger();
+
+    @Override
+    public RandomAccessBucket makeBucket(long size) {
+      return new TrackingArrayBucket(freedBuckets);
+    }
+
+    private int freedBuckets() {
+      return freedBuckets.get();
+    }
+  }
+
+  private static final class TrackingArrayBucket extends ArrayBucket {
+    private final AtomicInteger freedBuckets;
+    private boolean freed;
+
+    private TrackingArrayBucket(AtomicInteger freedBuckets) {
+      this.freedBuckets = freedBuckets;
+    }
+
+    @Override
+    public void free() {
+      if (!freed) {
+        freed = true;
+        freedBuckets.incrementAndGet();
+      }
+      super.free();
+    }
   }
 }

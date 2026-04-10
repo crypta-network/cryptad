@@ -20,30 +20,33 @@ import java.io.Serial;
  * <ul>
  *   <li>Represents a recoverable, dependency-related failure during metadata handling.
  *   <li>Encourages callers to resolve listed prerequisites and retry the operation.
- *   <li>Does not include byte offsets or counts; include such context in the message if useful.
+ *   <li>Stores leaf-safe resolution targets instead of depending on the runtime-owned metadata
+ *       implementation.
  * </ul>
  *
- * @see Metadata
+ * @see MetadataResolutionTarget
  * @see MetadataParseException
  */
 public class MetadataUnresolvedException extends Exception {
   @Serial private static final long serialVersionUID = -1;
 
   /**
-   * Array of metadata prerequisites that require resolution before continuing.
+   * Array of metadata resolution targets that require resolution before continuing.
    *
    * <p>The array reference is final; callers should treat its contents as read-only for the
    * duration of error handling. Implementations may pass an empty or {@code null} array when no
    * specific items are known, in which case the message provides the best available context.
    */
-  public final Metadata[] mustResolve;
+  public final MetadataResolutionTarget[] mustResolve;
 
   /**
-   * Creates a new exception describing which metadata items must be resolved.
+   * Creates a new exception describing which metadata fragments must be resolved.
    *
    * <p>Construct this exception when resolution cannot proceed because one or more prerequisites
    * are missing or unavailable. The {@code mustResolve} array identifies items that, once retrieved
-   * or computed, should allow the caller to retry. The message should remain concise and suitable
+   * or computed, should allow the caller to retry. Runtime callers usually populate it with
+   * metadata instances that implement {@link MetadataResolutionTarget}, while higher layers stay
+   * insulated from the concrete runtime-owned type. The message should remain concise and suitable
    * for logs or user-facing diagnostics.
    *
    * <pre>{@code
@@ -53,12 +56,12 @@ public class MetadataUnresolvedException extends Exception {
    * }
    * }</pre>
    *
-   * @param mustResolve array of metadata dependencies that require resolution; may be {@code null}
-   *     or empty when specific items are unknown, and should be treated as read-only by callers.
+   * @param mustResolve array of unresolved metadata fragments; may be {@code null} or empty when
+   *     specific items are unknown, and should be treated as read-only by callers
    * @param message human-readable description summarizing why resolution failed or was deferred;
    *     must be non-null and concise enough for logs and error propagation.
    */
-  public MetadataUnresolvedException(Metadata[] mustResolve, String message) {
+  public MetadataUnresolvedException(MetadataResolutionTarget[] mustResolve, String message) {
     super(message);
     this.mustResolve = mustResolve;
   }
