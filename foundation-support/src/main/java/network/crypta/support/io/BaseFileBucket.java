@@ -259,9 +259,20 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    */
   protected File getTempfile() throws IOException {
     File file = getFile();
-    File f = FileUtil.createTempFile(file.getName(), ".freenet-tmp", file.getParentFile());
+    File f = createTempFile(file.getName(), ".freenet-tmp", file.getParentFile());
     if (deleteOnExit()) f.deleteOnExit();
     return f;
+  }
+
+  private static File createTempFile(String prefix, String suffix, File directory)
+      throws IOException {
+    if (directory == null) {
+      directory = new File(".");
+    }
+    if (prefix.length() < 3) {
+      prefix += "-TMP";
+    }
+    return File.createTempFile(prefix, suffix, directory);
   }
 
   /**
@@ -349,7 +360,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
     private void finalizeRenameIfRequired(File file, boolean renaming) throws IOException {
       // getOutputStream() creates the file as a marker, so DON'T check for its existence,
       // even if createFileOnly() is true.
-      if (renaming && !FileUtil.moveTo(tempfile, file)) {
+      if (renaming && !AtomicFileMoves.moveTo(tempfile, file)) {
         deleteTempFileQuietly();
         if (LOG.isDebugEnabled()) LOG.debug("Rename failed after delete for {}", this);
         throw new IOException("Cannot rename file");

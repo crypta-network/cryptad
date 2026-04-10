@@ -10,6 +10,7 @@ import java.io.RandomAccessFile;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.security.SecureRandom;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import network.crypta.support.WrapperKeepalive;
@@ -45,6 +46,7 @@ import org.slf4j.LoggerFactory;
 public final class PooledFileRandomAccessBuffer
     implements LockableRandomAccessBuffer, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PooledFileRandomAccessBuffer.class);
+  private static final SecureRandom SECURE_DELETE_RANDOM = new SecureRandom();
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -326,7 +328,7 @@ public final class PooledFileRandomAccessBuffer
    * @param bufOffset offset within {@code buf}
    * @param length number of bytes to read
    * @throws IllegalArgumentException if {@code fileOffset < 0}
-   * @throws IOException if an I/O error occurs or EOF is reached before all bytes are read
+   * @throws IOException if an I/O error occurs, or EOF is reached before all bytes are read
    */
   @Override
   public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -540,7 +542,8 @@ public final class PooledFileRandomAccessBuffer
    * Free this buffer. Always calls {@link #close()} and optionally deletes the backing file.
    *
    * <p>When {@code deleteOnFree} is {@code true}, performs the best‑effort delete. If {@link
-   * #setSecureDelete(boolean)} was enabled, a multi‑pass secure delete is attempted first.
+   * #setSecureDelete(boolean)} was enabled, the file is overwritten with pseudorandom data before
+   * removal.
    */
   @Override
   public void free() {
@@ -548,7 +551,7 @@ public final class PooledFileRandomAccessBuffer
     if (!deleteOnFree) return;
     if (secureDelete) {
       try {
-        FileUtil.secureDelete(file);
+        secureDelete(file);
       } catch (IOException e) {
         LOG.error("Unable to delete {} : {}", file, e, e);
         LOG.warn("Unable to delete temporary file {}", file);
@@ -559,6 +562,36 @@ public final class PooledFileRandomAccessBuffer
       } catch (IOException e) {
         LOG.error("Unable to delete {} : {}", file, e, e);
       }
+    }
+  }
+
+  private static void secureDelete(File file) throws IOException {
+    if (!file.exists()) return;
+    long size = file.length();
+    if (size > 0) {
+      try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+        writeRandomBytes(raf, size);
+        raf.getFD().sync();
+      }
+    }
+    try {
+      Files.delete(file.toPath());
+    } catch (IOException e) {
+      if (Files.exists(file.toPath())) {
+        throw new IOException("Unable to delete file " + file, e);
+      }
+    }
+  }
+
+  private static void writeRandomBytes(RandomAccessFile raf, long size) throws IOException {
+    byte[] buffer = new byte[32 * 1024];
+    raf.seek(0);
+    long remaining = size;
+    while (remaining > 0) {
+      SECURE_DELETE_RANDOM.nextBytes(buffer);
+      int bytesToWrite = (int) Math.min(remaining, buffer.length);
+      raf.write(buffer, 0, bytesToWrite);
+      remaining -= bytesToWrite;
     }
   }
 
