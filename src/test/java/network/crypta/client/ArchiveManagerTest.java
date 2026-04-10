@@ -434,6 +434,36 @@ class ArchiveManagerTest {
   }
 
   @Test
+  void extractToCache_tar_whenRequestedEntryFoundBeforeEntryLimit_drainsStreamBeforeReturn()
+      throws Exception {
+    // Arrange
+    ArchiveManager mgr = new ArchiveManager(2, 32 << 20, 4 << 20, 16, bf);
+    FreenetURI key = new FreenetURI("KSK", "tar-requested-before-entry-limit");
+    ArchiveStoreContext ctx = mgr.makeContext(key, ARCHIVE_TYPE.TAR, null, false);
+    ArchiveContext actx = new ArchiveContext(20 << 20, 8);
+
+    byte[] wanted = "wanted".getBytes(StandardCharsets.UTF_8);
+    TrackingReadOnlyArrayBucket data =
+        new TrackingReadOnlyArrayBucket(
+            createTarWithWantedAndTailEntries("wanted.txt", wanted, 10_000, 1));
+    try (data) {
+      // Act
+      mgr.extractToCache(
+          extractionInput(key, ARCHIVE_TYPE.TAR, null, data, actx, ctx),
+          elementRequest("wanted.txt"));
+
+      // Assert
+      ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
+      verify(callback, times(1))
+          .gotBucket(bucketCaptor.capture(), org.mockito.Mockito.eq(clientContext));
+      verify(callback, never()).notInArchive(any());
+      assertArrayEquals(wanted, BucketTools.toByteArray(bucketCaptor.getValue()));
+      assertTrue(data.wasFullyRead());
+      assertFalse(data.wasClosedBeforeEof());
+    }
+  }
+
+  @Test
   void extractToCache_zip_whenRequestedEntryExceedsArchiveContextLimit_returnsSuccess()
       throws Exception {
     // Arrange
@@ -822,6 +852,32 @@ class ArchiveManagerTest {
     return baos.toByteArray();
   }
 
+  private static byte[] createTarWithWantedAndTailEntries(
+      String wantedName, byte[] wantedData, int tailEntryCount, int tailEntrySize)
+      throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (TarArchiveOutputStream tos = new TarArchiveOutputStream(baos)) {
+      tos.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
+
+      TarArchiveEntry wantedEntry = new TarArchiveEntry(wantedName);
+      wantedEntry.setModTime(0);
+      wantedEntry.setSize(wantedData.length);
+      tos.putArchiveEntry(wantedEntry);
+      tos.write(wantedData);
+      tos.closeArchiveEntry();
+
+      for (int i = 0; i < tailEntryCount; i++) {
+        TarArchiveEntry tailEntry = new TarArchiveEntry("tail-" + i + ".bin");
+        tailEntry.setModTime(0);
+        tailEntry.setSize(tailEntrySize);
+        tos.putArchiveEntry(tailEntry);
+        tos.write(new byte[tailEntrySize]);
+        tos.closeArchiveEntry();
+      }
+    }
+    return baos.toByteArray();
+  }
+
   private static final class TrackingBucketFactory implements BucketFactory {
     private final AtomicInteger freedBuckets = new AtomicInteger();
 
@@ -850,6 +906,63 @@ class ArchiveManagerTest {
         freedBuckets.incrementAndGet();
       }
       super.free();
+    }
+  }
+
+  private static final class TrackingReadOnlyArrayBucket extends SimpleReadOnlyArrayBucket {
+    private TrackingInputStream lastStream;
+
+    private TrackingReadOnlyArrayBucket(byte[] buf) {
+      super(buf);
+    }
+
+    @Override
+    public java.io.InputStream getInputStream() throws IOException {
+      lastStream = new TrackingInputStream(super.getInputStream());
+      return lastStream;
+    }
+
+    private boolean wasFullyRead() {
+      return lastStream != null && lastStream.fullyRead;
+    }
+
+    private boolean wasClosedBeforeEof() {
+      return lastStream != null && lastStream.closedBeforeEof;
+    }
+  }
+
+  private static final class TrackingInputStream extends java.io.FilterInputStream {
+    private boolean fullyRead;
+    private boolean closedBeforeEof;
+
+    private TrackingInputStream(java.io.InputStream in) {
+      super(in);
+    }
+
+    @Override
+    public int read() throws IOException {
+      int value = super.read();
+      if (value == -1) {
+        fullyRead = true;
+      }
+      return value;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      int read = super.read(b, off, len);
+      if (read == -1) {
+        fullyRead = true;
+      }
+      return read;
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (!fullyRead) {
+        closedBeforeEof = true;
+      }
+      super.close();
     }
   }
 }

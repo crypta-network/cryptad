@@ -543,6 +543,7 @@ public class ArchiveManager {
       ArchiveScanResult scanResult =
           scanTarEntries(state, tarIS, names, buf, expansionTracker, key);
       if (scanResult.abortedAfterSuccess()) {
+        drainTarStreamAfterSuccessfulAbort(tarIS, buf, key);
         if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
         return;
       }
@@ -655,6 +656,27 @@ public class ArchiveManager {
       }
     }
     return new ArchiveScanResult(gotMetadata, false);
+  }
+
+  private void drainTarStreamAfterSuccessfulAbort(
+      TarArchiveInputStream tarIS, byte[] buf, FreenetURI key) {
+    try {
+      discardCurrentTarEntry(tarIS, buf);
+      while (safeNextTarEntry(tarIS) != null) {
+        discardCurrentTarEntry(tarIS, buf);
+      }
+    } catch (ArchiveFailureException | IOException e) {
+      LOG.warn(
+          "Ignoring TAR drain failure after successful extraction from archive {}: {}",
+          key,
+          e.getMessage());
+    }
+  }
+
+  private void discardCurrentTarEntry(InputStream in, byte[] buf) throws IOException {
+    while (in.read(buf) > 0) {
+      // Discard unread entry data so the underlying compressed stream can reach EOF cleanly.
+    }
   }
 
   private boolean handleZipEntry(
