@@ -1,4 +1,6 @@
 # Aggregated main outputs that must be pruned on non-clean builds because
-# :bridge-http-runtime owns them now.
+# :bridge-http-runtime owns the HTTP bridge packages and the legacy HTTP
+# GeoIP helper package.
 
 network/crypta/clients/http/bridge/**
+network/crypta/clients/http/geoip/**

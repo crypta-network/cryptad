@@ -37,13 +37,18 @@ import org.slf4j.LoggerFactory;
  * without external synchronization.
  */
 public class IPConverter {
+  /** Logger used for recoverable GeoIP parsing and lookup problems. */
   private static final Logger LOG = LoggerFactory.getLogger(IPConverter.class);
 
   // Regex indicating ipranges start
+  /** Marker line that separates file headers from the encoded range payload. */
   private static final String START = "##start##";
+
+  /** Maximum number of recent lookup results retained in the small hot cache. */
   private static final int MAX_ENTRIES = 100;
 
   // Local cache
+  /** Recent lookup results keyed by the raw 32-bit IPv4 value. */
   private final HashMap<Integer, Country> cache =
       new LinkedHashMap<>() {
         @Override
@@ -53,11 +58,18 @@ public class IPConverter {
       };
 
   // Cached DB file content
+  /** Soft reference to the decoded range table, or {@code null} before the first load. */
   private SoftReference<Cache> fullCache;
+
   // Reference to the singleton object
+  /** Historical singleton instance reused across callers for one selected database file. */
   private static IPConverter instance;
+
   // File containing IP ranges
+  /** GeoIP database file read on demand for range-table loading. */
   private final File dbFile;
+
+  /** Whether a previous load proved the current database file corrupt. */
   private boolean dbFileCorrupt;
 
   /**
@@ -589,9 +601,18 @@ public class IPConverter {
     ZZ("NA"),
     /** GeoIP code {@code EU} ({@code European Union}). */
     EU("European Union");
+
+    /** UI-facing label associated with this country or region code. */
     private final String name;
+
+    /** Memoized flag-file availability keyed by enum constant. */
     private static final ConcurrentHashMap<Country, Boolean> FLAG_CACHE = new ConcurrentHashMap<>();
 
+    /**
+     * Creates one enum entry with its display label.
+     *
+     * @param name user-facing label rendered when this country or region is shown in the HTTP UI.
+     */
     Country(String name) {
       this.name = name;
     }
@@ -639,7 +660,14 @@ public class IPConverter {
       return getFlagIconPath() != null;
     }
 
-    /** Does not check whether it exists. Relative to the top of static files. */
+    /**
+     * Returns the relative static-resource path that would hold this entry's flag icon.
+     *
+     * <p>This helper does not touch the filesystem. It only computes the conventional path used by
+     * the legacy HTTP static-files tree.
+     *
+     * @return relative static-resource path for this entry's flag icon.
+     */
     private String flagIconPath() {
       return "icon/flags/" + toString().toLowerCase(Locale.ROOT) + ".png";
     }
@@ -659,6 +687,7 @@ public class IPConverter {
     }
   }
 
+  /** Immutable lookup table from encoded two-character codes to enum values. */
   private static final Map<Short, Country> COUNTRIES_BY_CODE;
 
   static {
@@ -673,6 +702,7 @@ public class IPConverter {
   }
 
   // Base85 Decoding table
+  /** Alphabet used by the legacy-encoded GeoIP range file format. */
   private static final char[] base85 = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
     'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
@@ -680,8 +710,13 @@ public class IPConverter {
     'v', 'w', 'x', 'y', 'z', '.', ',', ';', '\'', '"', '`', '<', '>', '{', '}', '[', ']', '=', '+',
     '-', '~', '*', '@', '#', '%', '$', '&', '!', '?'
   };
+
+  /** Radix implied by {@link #base85}. */
   private static final int BASE = base85.length;
+
   // XXX this is actually base86, not base85!
+
+  /** Reverse lookup table for decoding printable ASCII characters in the range payload. */
   private static final byte[] base85inv = new byte[128 - 32];
 
   static {
@@ -722,6 +757,15 @@ public class IPConverter {
     return instance;
   }
 
+  /**
+   * Encodes one textual country code, falling back to {@code -1} when unsupported.
+   *
+   * <p>This helper is used while reading the database file. Unknown codes are logged and stored as
+   * an explicit "unknown" marker, so the rest of the file remains usable.
+   *
+   * @param code two-character country or region code read from the database file.
+   * @return encoded short value for known codes, or {@code -1} when the code is unsupported.
+   */
   private static short countryCodeOrUnknown(String code) {
     try {
       short encoded = encodeCountryCode(code);
@@ -736,6 +780,14 @@ public class IPConverter {
     return (short) -1;
   }
 
+  /**
+   * Packs a two-character country code into one {@code short}.
+   *
+   * @param code two-character country or region code to encode.
+   * @return short value containing both characters in network-byte-order form.
+   * @throws IllegalArgumentException if {@code code} is {@code null} or not exactly two characters
+   *     long.
+   */
   private static short encodeCountryCode(String code) {
     if (code == null || code.length() != 2) {
       throw new IllegalArgumentException("Invalid country code: " + code);
@@ -902,6 +954,15 @@ public class IPConverter {
     return locateIP(longip);
   }
 
+  /**
+   * Resolves one IPv4 address already converted into its unsigned 32-bit numeric form.
+   *
+   * <p>The method checks the small hot cache first, then performs a binary search over the decoded
+   * range table. Successful resolutions are memoized in the hot cache to speed up repeated lookups.
+   *
+   * @param longip IPv4 address represented as an unsigned 32-bit value in a {@code long}.
+   * @return matching country or region, or {@code null} when the address is unknown.
+   */
   private Country locateIP(long longip) {
     // Check cache first
     Country cached = cache.get((int) longip);

@@ -27,6 +27,9 @@ import java.io.Serial;
  * </ul>
  */
 public class IPConverterParseException extends Exception {
+  /** Serialization identifier preserved for compatibility with prior builds of this exception. */
+  @Serial private static final long serialVersionUID = 8465371657927636643L;
+
   /**
    * Creates a new exception without a detail message or a cause.
    *
@@ -42,6 +45,4 @@ public class IPConverterParseException extends Exception {
   public IPConverterParseException() {
     super();
   }
-
-  @Serial private static final long serialVersionUID = 8465371657927636643L;
 }

@@ -1,5 +1,6 @@
 # Aggregated main outputs that must be pruned on non-clean builds because
-# :adapter-http-legacy-admin owns the remaining legacy HTTP tree now.
+# :adapter-http-legacy-admin owns the remaining legacy HTTP tree except the
+# bridge-owned bridge and GeoIP packages.
 
 network/crypta/clients/http/*.class
 network/crypta/clients/http/package-info.class
@@ -8,7 +9,6 @@ network/crypta/clients/http/annotation/**
 network/crypta/clients/http/bookmark/**
 network/crypta/clients/http/complexhtmlnodes/**
 network/crypta/clients/http/filter/**
-network/crypta/clients/http/geoip/**
 network/crypta/clients/http/staticfiles/**
 network/crypta/clients/http/templates/**
 network/crypta/clients/http/updateableelements/**

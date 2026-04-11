@@ -20,6 +20,8 @@ class BridgeHttpRuntimeBoundaryTest {
   private static final String MODULE_NAME = "bridge-http-runtime";
   private static final Path ROOT_BRIDGE_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "http", "bridge");
+  private static final Path ROOT_GEOIP_MAIN_JAVA =
+      Path.of("src", "main", "java", "network", "crypta", "clients", "http", "geoip");
   private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
       Path.of(
           "adapter-http-legacy-admin",
@@ -31,8 +33,21 @@ class BridgeHttpRuntimeBoundaryTest {
           "clients",
           "http",
           "bridge");
+  private static final Path ADAPTER_GEOIP_MAIN_JAVA =
+      Path.of(
+          "adapter-http-legacy-admin",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "clients",
+          "http",
+          "geoip");
   private static final Path BRIDGE_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "bridge");
+  private static final Path BRIDGE_GEOIP_MAIN_JAVA =
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "geoip");
   private static final Path OWNERSHIP_METADATA =
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path ADAPTER_OWNERSHIP_METADATA =
@@ -49,8 +64,17 @@ class BridgeHttpRuntimeBoundaryTest {
         Files.exists(repoRoot.resolve(ROOT_BRIDGE_MAIN_JAVA)),
         "Root project must not own network/crypta/clients/http/bridge main sources");
     assertFalse(
+        Files.exists(repoRoot.resolve(ROOT_GEOIP_MAIN_JAVA)),
+        "Root project must not own network/crypta/clients/http/geoip main sources");
+    assertFalse(
         hasJavaSources(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
         ":adapter-http-legacy-admin must not own network/crypta/clients/http/bridge main sources");
+    assertFalse(
+        hasJavaSources(repoRoot.resolve(ADAPTER_GEOIP_MAIN_JAVA)),
+        ":adapter-http-legacy-admin must not own network/crypta/clients/http/geoip main sources");
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(BRIDGE_GEOIP_MAIN_JAVA)),
+        ":bridge-http-runtime must own network/crypta/clients/http/geoip main sources");
   }
 
   @Test
@@ -69,9 +93,13 @@ class BridgeHttpRuntimeBoundaryTest {
         Files.isRegularFile(repoRoot.resolve(OWNERSHIP_METADATA)),
         ":bridge-http-runtime must declare owned-output-patterns.txt");
     assertTrue(bridgeMetadataPatterns.contains("network/crypta/clients/http/bridge/**"));
+    assertTrue(bridgeMetadataPatterns.contains("network/crypta/clients/http/geoip/**"));
     assertFalse(
         adapterMetadataPatterns.contains("network/crypta/clients/http/bridge/**"),
         ":adapter-http-legacy-admin must not claim network/crypta/clients/http/bridge/**");
+    assertFalse(
+        adapterMetadataPatterns.contains("network/crypta/clients/http/geoip/**"),
+        ":adapter-http-legacy-admin must not claim network/crypta/clients/http/geoip/**");
   }
 
   @Test
@@ -79,6 +107,10 @@ class BridgeHttpRuntimeBoundaryTest {
       throws IOException {
     Path repoRoot = repoRoot();
     Path bridgeMain = repoRoot.resolve(Path.of(MODULE_NAME, "src", "main", "java"));
+    Path bridgePackage =
+        bridgeMain.resolve(Path.of("network", "crypta", "clients", "http", "bridge"));
+    Path geoipPackage =
+        bridgeMain.resolve(Path.of("network", "crypta", "clients", "http", "geoip"));
     Set<Path> productionPackages = new TreeSet<>(Comparator.comparing(Path::toString));
     List<String> missingPackageInfos = new ArrayList<>();
 
@@ -91,6 +123,15 @@ class BridgeHttpRuntimeBoundaryTest {
       }
       productionPackages.add(parentOrThrow(sourceFile));
     }
+
+    assertTrue(
+        productionPackages.contains(bridgePackage),
+        ":bridge-http-runtime must keep network/crypta/clients/http/bridge in its production "
+            + "package set");
+    assertTrue(
+        productionPackages.contains(geoipPackage),
+        ":bridge-http-runtime must keep network/crypta/clients/http/geoip in its production "
+            + "package set");
 
     for (Path packagePath : productionPackages) {
       if (!Files.isRegularFile(packagePath.resolve("package-info.java"))) {

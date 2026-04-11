@@ -33,6 +33,8 @@ class HttpLegacyAdminBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "bridge");
+  private static final Path ADAPTER_GEOIP_MAIN_JAVA =
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "geoip");
   private static final Path BRIDGE_HTTP_MAIN_JAVA =
       Path.of(
           BRIDGE_MODULE_NAME,
@@ -44,6 +46,17 @@ class HttpLegacyAdminBoundaryTest {
           "clients",
           "http",
           "bridge");
+  private static final Path BRIDGE_GEOIP_MAIN_JAVA =
+      Path.of(
+          BRIDGE_MODULE_NAME,
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "clients",
+          "http",
+          "geoip");
   private static final Path OWNERSHIP_METADATA =
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path BRIDGE_OWNERSHIP_METADATA =
@@ -87,9 +100,15 @@ class HttpLegacyAdminBoundaryTest {
     assertFalse(
         hasJavaSources(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
         "adapter-http-legacy-admin must not own network/crypta/clients/http/bridge main sources");
+    assertFalse(
+        hasJavaSources(repoRoot.resolve(ADAPTER_GEOIP_MAIN_JAVA)),
+        "adapter-http-legacy-admin must not own network/crypta/clients/http/geoip main sources");
     assertTrue(
         Files.isDirectory(repoRoot.resolve(BRIDGE_HTTP_MAIN_JAVA)),
         ":bridge-http-runtime must own network/crypta/clients/http/bridge main sources");
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(BRIDGE_GEOIP_MAIN_JAVA)),
+        ":bridge-http-runtime must own network/crypta/clients/http/geoip main sources");
   }
 
   @Test
@@ -108,9 +127,13 @@ class HttpLegacyAdminBoundaryTest {
         Files.isRegularFile(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA)),
         ":bridge-http-runtime must declare owned-output-patterns.txt");
     assertTrue(bridgeMetadata.contains("network/crypta/clients/http/bridge/**"));
+    assertTrue(bridgeMetadata.contains("network/crypta/clients/http/geoip/**"));
     assertFalse(
         adapterMetadata.contains("network/crypta/clients/http/bridge/**"),
         ":adapter-http-legacy-admin must not claim network/crypta/clients/http/bridge/**");
+    assertFalse(
+        adapterMetadata.contains("network/crypta/clients/http/geoip/**"),
+        ":adapter-http-legacy-admin must not claim network/crypta/clients/http/geoip/**");
   }
 
   @Test
@@ -130,7 +153,8 @@ class HttpLegacyAdminBoundaryTest {
       Set<String> imports = readLegacyHttpImports(sourceFile);
       if (!imports.isEmpty()
           && !relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)
-          && !relativePath.startsWith(BRIDGE_HTTP_MAIN_JAVA)) {
+          && !relativePath.startsWith(BRIDGE_HTTP_MAIN_JAVA)
+          && !relativePath.startsWith(BRIDGE_GEOIP_MAIN_JAVA)) {
         violations.add(relativePath + " -> " + String.join(", ", imports));
       }
     }
@@ -191,9 +215,7 @@ class HttpLegacyAdminBoundaryTest {
     }
     try (Stream<Path> walk = Files.walk(root)) {
       return walk.filter(Files::isRegularFile)
-          .filter(HttpLegacyAdminBoundaryTest::isTrackedJavaSource)
-          .findFirst()
-          .isPresent();
+          .anyMatch(HttpLegacyAdminBoundaryTest::isTrackedJavaSource);
     }
   }
 
