@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class HttpLegacyAdminBoundaryTest {
   private static final String MODULE_NAME = "adapter-http-legacy-admin";
+  private static final String BRIDGE_MODULE_NAME = "bridge-http-runtime";
   private static final Path ROOT_HTTP_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ROOT_HTTP_MAIN_RESOURCES =
@@ -30,8 +31,23 @@ class HttpLegacyAdminBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
       Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "bridge");
+  private static final Path BRIDGE_HTTP_MAIN_JAVA =
+      Path.of(
+          BRIDGE_MODULE_NAME,
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "clients",
+          "http",
+          "bridge");
   private static final Path OWNERSHIP_METADATA =
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
+  private static final Path BRIDGE_OWNERSHIP_METADATA =
+      Path.of(BRIDGE_MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path DEFAULT_BRIDGE_FACTORIES =
       Path.of(
           "src",
@@ -68,18 +84,33 @@ class HttpLegacyAdminBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(ROOT_HTTP_MAIN_RESOURCES)),
         "Root project must not re-own network/crypta/clients/http main resources");
+    assertFalse(
+        hasJavaSources(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
+        "adapter-http-legacy-admin must not own network/crypta/clients/http/bridge main sources");
+    assertTrue(
+        Files.isDirectory(repoRoot.resolve(BRIDGE_HTTP_MAIN_JAVA)),
+        ":bridge-http-runtime must own network/crypta/clients/http/bridge main sources");
   }
 
   @Test
-  void buildWiring_whenCheckingLeafMetadata_expectOwnedOutputPatternDeclared() throws IOException {
+  void buildWiring_whenCheckingLeafMetadata_expectBridgeSplitDeclaredAndOwned() throws IOException {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
-    String metadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
+    String bridgeMetadata = Files.readString(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
+    String adapterMetadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
 
+    assertTrue(settings.contains("\":bridge-http-runtime\""));
+    assertTrue(build.contains("project(\":bridge-http-runtime\")"));
     assertTrue(settings.contains("\":adapter-http-legacy-admin\""));
     assertTrue(build.contains("project(\":adapter-http-legacy-admin\")"));
-    assertTrue(metadata.contains("network/crypta/clients/http/**"));
+    assertTrue(
+        Files.isRegularFile(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA)),
+        ":bridge-http-runtime must declare owned-output-patterns.txt");
+    assertTrue(bridgeMetadata.contains("network/crypta/clients/http/bridge/**"));
+    assertFalse(
+        adapterMetadata.contains("network/crypta/clients/http/bridge/**"),
+        ":adapter-http-legacy-admin must not claim network/crypta/clients/http/bridge/**");
   }
 
   @Test
@@ -97,15 +128,17 @@ class HttpLegacyAdminBoundaryTest {
       }
 
       Set<String> imports = readLegacyHttpImports(sourceFile);
-      if (!imports.isEmpty() && !relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)) {
+      if (!imports.isEmpty()
+          && !relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)
+          && !relativePath.startsWith(BRIDGE_HTTP_MAIN_JAVA)) {
         violations.add(relativePath + " -> " + String.join(", ", imports));
       }
     }
 
     assertTrue(
         violations.isEmpty(),
-        "Only adapter-http-legacy-admin main sources may import network.crypta.clients.http.*, "
-            + "except the bootstrap binding site."
+        "Only adapter-http-legacy-admin, bridge-http-runtime, and the bootstrap binding site may "
+            + "import network.crypta.clients.http.*."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
     assertEquals(
@@ -149,6 +182,18 @@ class HttpLegacyAdminBoundaryTest {
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static boolean hasJavaSources(Path root) throws IOException {
+    if (!Files.exists(root)) {
+      return false;
+    }
+    try (Stream<Path> walk = Files.walk(root)) {
+      return walk.filter(Files::isRegularFile)
+          .filter(HttpLegacyAdminBoundaryTest::isTrackedJavaSource)
+          .findFirst()
+          .isPresent();
     }
   }
 

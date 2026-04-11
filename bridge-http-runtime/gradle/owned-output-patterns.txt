@@ -1,0 +1,4 @@
+# Aggregated main outputs that must be pruned on non-clean builds because
+# :bridge-http-runtime owns them now.
+
+network/crypta/clients/http/bridge/**

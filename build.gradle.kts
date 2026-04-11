@@ -35,6 +35,7 @@ val internalLeafProjects =
     project(":runtime-node"),
     project(":adapter-fcp"),
     project(":bridge-fcp-runtime"),
+    project(":bridge-http-runtime"),
     project(":adapter-http-legacy-admin"),
     project(":thirdparty-onion"),
     project(":thirdparty-legacy"),
@@ -103,6 +104,7 @@ dependencies {
   implementation(project(":runtime-node"))
   implementation(project(":adapter-fcp"))
   implementation(project(":bridge-fcp-runtime"))
+  implementation(project(":bridge-http-runtime"))
   implementation(project(":adapter-http-legacy-admin"))
   implementation(project(":thirdparty-onion"))
   implementation(project(":thirdparty-legacy"))
