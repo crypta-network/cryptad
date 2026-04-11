@@ -1535,11 +1535,42 @@ public final class LocalProcessAppHost implements AppHost {
   private void completeStop(
       String normalizedAppId, String appId, RunningProcess trackedRunningProcess)
       throws IOException {
-    if (refreshTrackedRunningProcess(normalizedAppId, trackedRunningProcess) != null) {
+    if (awaitTrackedProcessExit(normalizedAppId, appId, trackedRunningProcess) != null) {
       throw new AppHostException("timed out stopping app: " + appId);
     }
     trackedRunningProcess.exitCleanup().join();
     runningApps.remove(normalizedAppId, trackedRunningProcess);
+  }
+
+  private RunningProcess awaitTrackedProcessExit(
+      String normalizedAppId, String appId, RunningProcess runningProcess) throws IOException {
+    long deadline = System.nanoTime() + stopTimeout.toNanos();
+    RunningProcess current = runningProcess;
+    while (current != null) {
+      current = refreshTrackedRunningProcess(normalizedAppId, current);
+      if (current == null || System.nanoTime() >= deadline) {
+        return current;
+      }
+      try {
+        TimeUnit.NANOSECONDS.sleep(finalStopRefreshIntervalNanos(deadline));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        boolean preserved = preserveRunningState(normalizedAppId, current);
+        if (!preserved) {
+          return null;
+        }
+        throw new AppHostException("interrupted while stopping app: " + appId, e);
+      }
+    }
+    return null;
+  }
+
+  private long finalStopRefreshIntervalNanos(long deadline) {
+    long remainingNanos = deadline - System.nanoTime();
+    if (remainingNanos <= 0) {
+      return 0;
+    }
+    return Math.min(remainingNanos, timing.trackedProcessRefreshInterval().toNanos());
   }
 
   private boolean preserveRunningState(String appId, RunningProcess runningProcess) {
