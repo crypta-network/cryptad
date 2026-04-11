@@ -46,20 +46,6 @@
   </Match>
 
   <!--
-    These comparators are request-scoped UI helpers. They carry transient sort parameters for
-    rendering and are never persisted or sent over the wire, so forcing Serializable adds no value.
-  -->
-  <Match>
-    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
-    <Class name="network.crypta.clients.http.DarknetConnectionsToadlet$DarknetComparator"/>
-  </Match>
-
-  <Match>
-    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
-    <Class name="network.crypta.clients.http.OpennetConnectionsToadlet$OpennetComparator"/>
-  </Match>
-
-  <!--
     InvokeEvent intentionally stores a transient runnable callback as runtime dispatch state.
     Callback instances are not expected to survive serialization/deserialization boundaries.
   -->

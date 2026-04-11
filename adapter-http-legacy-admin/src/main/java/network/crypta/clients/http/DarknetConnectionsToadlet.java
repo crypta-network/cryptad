@@ -2,16 +2,11 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNodeStatus;
-import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
@@ -135,87 +130,12 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Comparator that extends the base status ordering with darknet-specific columns.
-   *
-   * <p>The comparator first honors the configured sort key and reversal flag inherited from {@link
-   * ComparatorByStatus}. When the caller requests name, private note, trust, or visibility
-   * ordering, this comparator extracts the corresponding values from {@link DarknetPeerNodeStatus}
-   * instances, falling back to the parent comparison rules for other columns. Ties on visibility
-   * resolve by comparing both local and remote visibility preferences to provide deterministic
-   * ordering. Instances are short-lived and created per request to avoid storing mutable sorting
-   * preferences globally.
-   */
-  protected static class DarknetComparator extends ComparatorByStatus {
-
-    DarknetComparator(String sortBy, boolean reversed) {
-      super(sortBy, reversed);
-    }
-
-    @Override
-    protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      return switch (this.sortBy) {
-        case "name" ->
-            ((DarknetPeerNodeStatus) firstNode)
-                .getName()
-                .compareToIgnoreCase(((DarknetPeerNodeStatus) secondNode).getName());
-        case "privnote" ->
-            ((DarknetPeerNodeStatus) firstNode)
-                .getPrivateDarknetCommentNote()
-                .compareToIgnoreCase(
-                    ((DarknetPeerNodeStatus) secondNode).getPrivateDarknetCommentNote());
-        case "trust" ->
-            ((DarknetPeerNodeStatus) firstNode)
-                .getTrustLevel()
-                .compareTo(((DarknetPeerNodeStatus) secondNode).getTrustLevel());
-        case "visibility" -> {
-          int ret =
-              ((DarknetPeerNodeStatus) firstNode)
-                  .getOurVisibility()
-                  .compareTo(((DarknetPeerNodeStatus) secondNode).getOurVisibility());
-          if (ret != 0) yield ret;
-          yield ((DarknetPeerNodeStatus) firstNode)
-              .getTheirVisibility()
-              .compareTo(((DarknetPeerNodeStatus) secondNode).getTheirVisibility());
-        }
-        default -> super.customCompare(firstNode, secondNode);
-      };
-    }
-
-    /** Default comparison, after taking into account status. */
-    @Override
-    protected int lastResortCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      return ((DarknetPeerNodeStatus) firstNode)
-          .getName()
-          .compareToIgnoreCase(((DarknetPeerNodeStatus) secondNode).getName());
-    }
-  }
-
-  /**
-   * Build a comparator that orders darknet peers according to the chosen column.
-   *
-   * <p>The comparator encapsulates the caller's sorting preference instead of mutating shared
-   * state, ensuring concurrent page renders cannot influence each other's ordering. Supported sort
-   * keys include the generic status columns provided by the parent and darknet-specific fields such
-   * as private notes, trust, and visibility. The {@code reversed} flag flips the natural ordering
-   * so both ascending and descending views are available without recomputing the source data.
-   *
-   * @param sortBy column identifier accepted by {@link DarknetComparator}, including name,
-   *     privnote, trust, visibility, or the inherited defaults.
-   * @param reversed whether to invert the comparator to produce descending order results.
-   * @return a stateless comparator instance tuned to the requested ordering.
-   */
-  @Override
-  protected Comparator<PeerNodeStatus> comparator(String sortBy, boolean reversed) {
-    return new DarknetComparator(sortBy, reversed);
-  }
-
-  /**
    * Select the local node's public darknet reference view for distribution.
    *
    * <p>The shared base class uses this selector to export a detached noderef snapshot through the
    * runtime SPI before rendering the noderef box or serving `myref.*` downloads.
    *
-   * @return public darknet noderef view used by the connections page.
+   * @return public darknet noderef view used by the Connections page.
    */
   @Override
   protected NodeReferenceView noderefView() {
@@ -228,10 +148,10 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * <p>The box is useful for power users distributing their own references but can overwhelm new
    * users. By tying visibility to the advanced mode flag, the method keeps the standard workflow
    * simple while still giving experienced operators quick access to their public noderef without
-   * navigating away from the friends page.
+   * navigating away from the Friends page.
    *
    * @param advancedModeEnabled whether the user interface is currently in advanced mode.
-   * @return {@code true} when the noderef box should be rendered alongside the friends table.
+   * @return {@code true} when the noderef box should be rendered alongside the Friends table.
    */
   @Override
   protected boolean shouldDrawNoderefBox(boolean advancedModeEnabled) {
@@ -243,10 +163,10 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * Indicate that the bulk peer actions form must always be visible.
    *
    * <p>Even in simplified mode, operators benefit from quick access to note updates and removals,
-   * so the actions box is never hidden. The contained controls gate advanced operations internally
+   * so the Actions box is never hidden. The contained controls gate advanced operations internally
    * rather than being removed from the DOM.
    *
-   * @return {@code true}, signaling callers to render the actions box unconditionally.
+   * @return {@code true}, signaling callers to render the Actions box unconditionally.
    */
   @Override
   protected boolean showPeerActionsBox() {
@@ -254,7 +174,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Append the select box and buttons that drive bulk peer operations for the friends list.
+   * Append the select box and buttons that drive bulk peer operations for the Friends list.
    *
    * <p>The method constructs a form section containing send-message, note-update, trust,
    * visibility, and removal actions. When advanced mode is active, additional toggles expose
@@ -320,10 +240,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     HTMLNode changeTrustLevelSelect =
         peerForm.addChild(
             ELEMENT_SELECT, new String[] {"id", "name"}, new String[] {CHANGE_TRUST, CHANGE_TRUST});
-    for (FRIEND_TRUST trust : FRIEND_TRUST.valuesBackwards()) {
-      changeTrustLevelSelect.addChild(
-          ELEMENT_OPTION, ATTR_VALUE, trust.name(), l10n("peerTrust." + trust.name()));
-    }
+    DarknetPeerFormOptions.addTrustOptions(changeTrustLevelSelect);
     peerForm.addChild("br");
     peerForm.addChild(
         ELEMENT_INPUT,
@@ -334,10 +251,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
             ELEMENT_SELECT,
             new String[] {"id", "name"},
             new String[] {CHANGE_VISIBILITY, CHANGE_VISIBILITY});
-    for (FRIEND_VISIBILITY trust : FRIEND_VISIBILITY.values()) {
-      changeVisibilitySelect.addChild(
-          ELEMENT_OPTION, ATTR_VALUE, trust.name(), l10n("peerVisibility." + trust.name()));
-    }
+    DarknetPeerFormOptions.addVisibilityOptions(changeVisibilitySelect);
   }
 
   /**
@@ -346,7 +260,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * <p>Returning {@code true} allows the base class to accept reference submissions alongside the
    * other actions handled here, enabling a single endpoint to cover both add-friend and bulk
    * maintenance flows. This keeps user bookmarks stable and ensures any CSRF protections or
-   * authentication checks configured on the friends endpoint automatically apply to noderef
+   * authentication checks configured on the Friends endpoint automatically apply to noderef
    * submissions as well.
    *
    * @return {@code true}, enabling noderef POST handling by the superclass.
@@ -361,7 +275,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    *
    * <p>Using a single canonical location ensures browsers follow a standard post-redirect-get
    * cycle, preventing form resubmission warnings and keeping the navigation consistent with the
-   * friends table URL. It also centralizes cache headers and content negotiation on one endpoint,
+   * Friends table URL. It also centralizes cache headers and content negotiation on one endpoint,
    * simplifying upstream proxy configuration and logging.
    *
    * @return canonical friends path used for redirect responses.
@@ -482,20 +396,17 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private void handleChangeVisibility(HTTPRequest request) {
-    FRIEND_VISIBILITY visibility =
-        FRIEND_VISIBILITY.valueOf(request.getPartAsStringFailsafe(CHANGE_VISIBILITY, 10));
+    PeerVisibility visibility =
+        PeerVisibility.valueOf(request.getPartAsStringFailsafe(CHANGE_VISIBILITY, 10));
     applyUpdateToSelectedPeers(
         request,
-        new DarknetPeerSettingsUpdate(
-            null, null, null, null, null, null, null, toPeerVisibility(visibility)));
+        new DarknetPeerSettingsUpdate(null, null, null, null, null, null, null, visibility));
   }
 
   private void handleChangeTrust(HTTPRequest request) {
-    FRIEND_TRUST trust = FRIEND_TRUST.valueOf(request.getPartAsStringFailsafe(CHANGE_TRUST, 10));
+    PeerTrust trust = PeerTrust.valueOf(request.getPartAsStringFailsafe(CHANGE_TRUST, 10));
     applyUpdateToSelectedPeers(
-        request,
-        new DarknetPeerSettingsUpdate(
-            null, null, null, null, null, null, toPeerTrust(trust), null));
+        request, new DarknetPeerSettingsUpdate(null, null, null, null, null, null, trust, null));
   }
 
   private boolean handleDoAction(String action, HTTPRequest request, ToadletContext ctx)
@@ -664,7 +575,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    * Identify the scope of this toadlet as darknet-only rather than opennet.
    *
    * <p>The return value informs the parent class which set of peers to query and which UI labels to
-   * present. Returning {@code false} ensures opennet-specific options never appear on the friends
+   * present. Returning {@code false} ensures opennet-specific options never appear on the Friends
    * page.
    *
    * @return {@code false} because opennet peers are not handled here.
@@ -690,7 +601,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   /**
-   * Render the friends page or serve a peer noderef download when requested.
+   * Render the Friends page or serve a peer noderef download when requested.
    *
    * <p>The method first checks whether the URI targets a specific friend reference ending in {@code
    * .fref}; if so, it streams the sanitized reference as an attachment. Otherwise, it defers to the
@@ -784,13 +695,5 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       target.tput(entry.getKey(), toSimpleFieldSet(entry.getValue()));
     }
     return target;
-  }
-
-  private static PeerTrust toPeerTrust(FRIEND_TRUST trust) {
-    return PeerTrust.valueOf(trust.name());
-  }
-
-  private static PeerVisibility toPeerVisibility(FRIEND_VISIBILITY visibility) {
-    return PeerVisibility.valueOf(visibility.name());
   }
 }

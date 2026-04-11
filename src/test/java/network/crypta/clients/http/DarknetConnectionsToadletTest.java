@@ -4,14 +4,12 @@ import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.DarknetPeerNodeStatus;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -25,8 +23,6 @@ import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.runtime.spi.NodeReferenceView;
-import network.crypta.runtime.spi.PeerAddFailureReason;
-import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.PeerSnapshot;
@@ -70,8 +66,6 @@ class DarknetConnectionsToadletTest {
   private static final String TEST_FORM_PASSWORD = "test-form-password";
   private static final String VALID_PEER_REFERENCE =
       "identity=peer-identity\nlastGoodVersion=1\nEnd\n";
-  private static final String VALID_OPENNET_REFERENCE =
-      "opennet=true\nidentity=peer-identity\nlastGoodVersion=1\nEnd\n";
   private static final String OWN_NODE_NAME = "Alice";
   private static final String OWN_NODE_IDENTITY = "peer-identity";
   private static final String OWN_NODE_LAST_GOOD_VERSION = "1";
@@ -173,38 +167,19 @@ class DarknetConnectionsToadletTest {
   }
 
   @Test
-  void comparator_nameSort_respectsCaseInsensitiveAndReversed() {
-    DarknetConnectionsToadlet.DarknetComparator comparator =
-        (DarknetConnectionsToadlet.DarknetComparator) toadlet.comparator("name", false);
-    DarknetPeerNodeStatus alice = mock(DarknetPeerNodeStatus.class);
-    DarknetPeerNodeStatus bob = mock(DarknetPeerNodeStatus.class);
-    when(alice.getName()).thenReturn("alice");
-    when(bob.getName()).thenReturn("Bob");
+  void drawAddPeerBox_whenRenderedInDarknet_ordersTrustAndVisibilityOptionsAndSetsDefaults() {
+    HTMLNode contentNode = new HTMLNode("div");
+    stubFormChild(ctx);
 
-    int result = comparator.compare(alice, bob);
-    assertTrue(result < 0, "alice should sort before Bob ignoring case");
+    ConnectionsToadlet.drawAddPeerBox(contentNode, ctx, false, "/friends/");
 
-    DarknetConnectionsToadlet.DarknetComparator reversed =
-        (DarknetConnectionsToadlet.DarknetComparator) toadlet.comparator("name", true);
-    int reversedResult = reversed.compare(alice, bob);
-    assertTrue(reversedResult > 0, "reversed comparator should invert ordering");
-  }
+    List<HTMLNode> trustInputs = findInputsByName(contentNode, "trust");
+    assertEquals(List.of("HIGH", "NORMAL", "LOW"), valuesOf(trustInputs));
+    assertEquals("checked", trustInputs.get(1).getAttribute("checked"));
 
-  @Test
-  void comparator_visibility_whenOurVisibilityEqual_usesTheirVisibilityAsTieBreaker() {
-    DarknetConnectionsToadlet.DarknetComparator comparator =
-        (DarknetConnectionsToadlet.DarknetComparator) toadlet.comparator("visibility", false);
-
-    DarknetPeerNodeStatus first = mock(DarknetPeerNodeStatus.class);
-    DarknetPeerNodeStatus second = mock(DarknetPeerNodeStatus.class);
-    when(first.getOurVisibility()).thenReturn(FRIEND_VISIBILITY.YES);
-    when(second.getOurVisibility()).thenReturn(FRIEND_VISIBILITY.YES);
-    when(first.getTheirVisibility()).thenReturn(FRIEND_VISIBILITY.NAME_ONLY);
-    when(second.getTheirVisibility()).thenReturn(FRIEND_VISIBILITY.NO);
-
-    int result = comparator.customCompare(first, second);
-
-    assertTrue(result < 0, "NAME_ONLY should sort before NO when our visibility matches");
+    List<HTMLNode> visibilityInputs = findInputsByName(contentNode, "visibility");
+    assertEquals(List.of("YES", "NAME_ONLY", "NO"), valuesOf(visibilityInputs));
+    assertEquals("checked", visibilityInputs.getFirst().getAttribute("checked"));
   }
 
   @Test
@@ -257,7 +232,7 @@ class DarknetConnectionsToadletTest {
     when(request.isPartSet("changeTrust")).thenReturn(true);
     when(request.isPartSet("doChangeTrust")).thenReturn(true);
     when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
-    when(request.getPartAsStringFailsafe("changeTrust", 10)).thenReturn(FRIEND_TRUST.HIGH.name());
+    when(request.getPartAsStringFailsafe("changeTrust", 10)).thenReturn(PeerTrust.HIGH.name());
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
@@ -280,7 +255,7 @@ class DarknetConnectionsToadletTest {
     when(request.isPartSet("doChangeVisibility")).thenReturn(true);
     when(request.isPartSet("node_" + selectionToken)).thenReturn(true);
     when(request.getPartAsStringFailsafe("changeVisibility", 10))
-        .thenReturn(FRIEND_VISIBILITY.NAME_ONLY.name());
+        .thenReturn(PeerVisibility.NAME_ONLY.name());
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
@@ -394,62 +369,6 @@ class DarknetConnectionsToadletTest {
   }
 
   @Test
-  void addNewNode_whenPeerPortAcceptsDarknetRef_addsPeerAndWritesPrivateNote() throws Exception {
-    when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("peer-added"));
-
-    ConnectionsToadlet.PeerAdditionReturnCodes result =
-        invokeAddNewNode("private-note", FRIEND_TRUST.HIGH, FRIEND_VISIBILITY.NAME_ONLY);
-
-    assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.OK, result);
-
-    ArgumentCaptor<PeerFieldSet> fieldSetCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
-    ArgumentCaptor<PeerTrust> trustCaptor = ArgumentCaptor.forClass(PeerTrust.class);
-    ArgumentCaptor<PeerVisibility> visibilityCaptor = ArgumentCaptor.forClass(PeerVisibility.class);
-    verify(peerPort)
-        .add(fieldSetCaptor.capture(), trustCaptor.capture(), visibilityCaptor.capture());
-    verify(peerPort).writePrivateDarknetComment("peer-added", "private-note");
-
-    assertEquals("peer-identity", fieldSetCaptor.getValue().directValues().get("identity"));
-    assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
-    assertEquals(PeerTrust.HIGH, trustCaptor.getValue());
-    assertEquals(PeerVisibility.NAME_ONLY, visibilityCaptor.getValue());
-  }
-
-  @Test
-  void addNewNode_whenPeerPortRejects_mapsLegacyFailureReasons() throws Exception {
-    assertAddRejectedMaps(
-        PeerAddFailureReason.REF_PARSE_ERROR,
-        ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE);
-    assertAddRejectedMaps(
-        PeerAddFailureReason.REF_SIGNATURE_INVALID,
-        ConnectionsToadlet.PeerAdditionReturnCodes.INVALID_SIGNATURE);
-    assertAddRejectedMaps(
-        PeerAddFailureReason.CANNOT_PEER_WITH_SELF,
-        ConnectionsToadlet.PeerAdditionReturnCodes.TRY_TO_ADD_SELF);
-    assertAddRejectedMaps(
-        PeerAddFailureReason.DUPLICATE_PEER_REF,
-        ConnectionsToadlet.PeerAdditionReturnCodes.ALREADY_IN_REFERENCE);
-    assertAddRejectedMaps(
-        PeerAddFailureReason.OPENNET_DISABLED,
-        ConnectionsToadlet.PeerAdditionReturnCodes.INTERNAL_ERROR);
-  }
-
-  @Test
-  void addNewNode_whenOpennetReferenceSubmittedOnDarknetPage_rejectsWithoutCallingPeerPort()
-      throws Exception {
-    ConnectionsToadlet.PeerAdditionReturnCodes result =
-        invokeAddNewNode(
-            VALID_OPENNET_REFERENCE,
-            "private-note",
-            FRIEND_TRUST.HIGH,
-            FRIEND_VISIBILITY.NAME_ONLY);
-
-    assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE, result);
-    verify(peerPort, Mockito.never()).add(any(), any(), any());
-    verify(peerPort, Mockito.never()).writePrivateDarknetComment(anyString(), anyString());
-  }
-
-  @Test
   void handleMethodPOST_whenUsingPeersOfferFiles_appliesDismissedOverrideAndAddsPeer()
       throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -459,8 +378,8 @@ class DarknetConnectionsToadletTest {
     when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE)).thenReturn("");
     when(request.getPartAsStringFailsafe("peerPrivateNote", 250)).thenReturn("");
     when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("true");
-    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn(FRIEND_TRUST.NORMAL.name());
-    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn(FRIEND_VISIBILITY.NO.name());
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn(PeerTrust.NORMAL.name());
+    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn(PeerVisibility.NO.name());
     when(connectionsSupportPort.readPeerOfferReferencesText())
         .thenReturn("identity=offer-peer\nlastGoodVersion=1\nEnd\n");
     when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("offer-peer"));
@@ -475,6 +394,35 @@ class DarknetConnectionsToadletTest {
     ArgumentCaptor<PeerFieldSet> fieldSetCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
     verify(peerPort).add(fieldSetCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.NO));
     assertEquals("offer-peer", fieldSetCaptor.getValue().directValues().get("identity"));
+    assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
+  }
+
+  @Test
+  void handleMethodPOST_whenAddPeerFormContainsDarknetReference_addsPeerAndWritesPrivateNote()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("add")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("url", 200)).thenReturn("");
+    when(request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE))
+        .thenReturn(VALID_PEER_REFERENCE);
+    when(request.getPartAsStringFailsafe("peerPrivateNote", 250)).thenReturn("private-note");
+    when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("false");
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn(PeerTrust.HIGH.name());
+    when(request.getPartAsStringFailsafe("visibility", 10))
+        .thenReturn(PeerVisibility.NAME_ONLY.name());
+    when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("peer-added"));
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/friends/"), request, ctx);
+
+    ArgumentCaptor<PeerFieldSet> fieldSetCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
+    verify(peerPort)
+        .add(fieldSetCaptor.capture(), eq(PeerTrust.HIGH), eq(PeerVisibility.NAME_ONLY));
+    verify(peerPort).writePrivateDarknetComment("peer-added", "private-note");
+    assertEquals("peer-identity", fieldSetCaptor.getValue().directValues().get("identity"));
     assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
   }
 
@@ -565,34 +513,6 @@ class DarknetConnectionsToadletTest {
             "tryHandlePeerNoderef", URI.class, HTTPRequest.class, ToadletContext.class);
     method.setAccessible(true);
     return (boolean) method.invoke(toadlet, uri, request, ctx);
-  }
-
-  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNode(
-      String nodeReference, String privateComment, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility)
-      throws Exception {
-    Method method =
-        ConnectionsToadlet.class.getDeclaredMethod(
-            "addNewNode", String.class, String.class, FRIEND_TRUST.class, FRIEND_VISIBILITY.class);
-    method.setAccessible(true);
-    return (ConnectionsToadlet.PeerAdditionReturnCodes)
-        method.invoke(toadlet, nodeReference, privateComment, trust, visibility);
-  }
-
-  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNode(
-      String privateComment, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility) throws Exception {
-    return invokeAddNewNode(VALID_PEER_REFERENCE, privateComment, trust, visibility);
-  }
-
-  private void assertAddRejectedMaps(
-      PeerAddFailureReason reason, ConnectionsToadlet.PeerAdditionReturnCodes expected)
-      throws Exception {
-    Mockito.reset(peerPort);
-    when(peerPort.add(any(), any(), any())).thenThrow(new PeerAddRejectedException(reason, "bad"));
-
-    ConnectionsToadlet.PeerAdditionReturnCodes result =
-        invokeAddNewNode("", FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
-
-    assertEquals(expected, result);
   }
 
   private void assertRedirectIssued() throws Exception {
@@ -704,5 +624,28 @@ class DarknetConnectionsToadletTest {
     SimpleFieldSet fieldSet = new SimpleFieldSet(true);
     fieldSet.putSingle("key", "value");
     return fieldSet;
+  }
+
+  private static List<HTMLNode> findInputsByName(HTMLNode root, String name) {
+    List<HTMLNode> inputs = new ArrayList<>();
+    collectInputsByName(root, name, inputs);
+    return inputs;
+  }
+
+  private static void collectInputsByName(HTMLNode node, String name, List<HTMLNode> inputs) {
+    if ("input".equals(node.getName()) && name.equals(node.getAttribute("name"))) {
+      inputs.add(node);
+    }
+    for (HTMLNode child : node.getChildren()) {
+      collectInputsByName(child, name, inputs);
+    }
+  }
+
+  private static List<String> valuesOf(List<HTMLNode> inputs) {
+    List<String> values = new ArrayList<>(inputs.size());
+    for (HTMLNode input : inputs) {
+      values.add(input.getAttribute("value"));
+    }
+    return values;
   }
 }

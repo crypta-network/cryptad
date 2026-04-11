@@ -29,6 +29,11 @@ class HttpLegacyAdminBoundaryTest {
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Set<Path> CONNECTIONS_TOADLETS =
+      Set.of(
+          ADAPTER_HTTP_MAIN_JAVA.resolve("ConnectionsToadlet.java"),
+          ADAPTER_HTTP_MAIN_JAVA.resolve("DarknetConnectionsToadlet.java"),
+          ADAPTER_HTTP_MAIN_JAVA.resolve("OpennetConnectionsToadlet.java"));
   private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
       Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
@@ -73,6 +78,16 @@ class HttpLegacyAdminBoundaryTest {
           "DefaultNodeRuntimeBridgeFactories.java");
   private static final Pattern LEGACY_HTTP_IMPORT_PATTERN =
       Pattern.compile("^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.http\\.[^;]+);$");
+  private static final Set<String> FORBIDDEN_ADAPTER_HTTP_IMPORTS =
+      Set.of(
+          "import network.crypta.node.PeerNodeStatus;",
+          "import network.crypta.node.DarknetPeerNodeStatus;",
+          "import network.crypta.node.OpennetPeerNodeStatus;",
+          "import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;",
+          "import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;",
+          "import network.crypta.node.Version;",
+          "import network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode;",
+          "import network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode;");
   private static final Set<String> EXPECTED_DEFAULT_BRIDGE_FACTORIES_HTTP_IMPORTS =
       Set.of(
           "network.crypta.clients.http.bridge.CoreHttpShellRuntimeSupport",
@@ -172,6 +187,34 @@ class HttpLegacyAdminBoundaryTest {
             + "site");
   }
 
+  @Test
+  void mainSources_whenScanningAdapterHttpImports_expectRemovedPeerStatusAndAddPeerImportsAbsent()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : findMainJavaSources(repoRoot)) {
+      Path relativePath = repoRoot.relativize(sourceFile);
+      if (!CONNECTIONS_TOADLETS.contains(relativePath)) {
+        continue;
+      }
+
+      Set<String> imports = readImports(sourceFile);
+      for (String forbiddenImport : FORBIDDEN_ADAPTER_HTTP_IMPORTS) {
+        if (imports.contains(forbiddenImport)) {
+          violations.add(relativePath + " -> " + forbiddenImport);
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "adapter-http-legacy-admin main sources must not import the peer-status, darknet enum, or "
+            + "runtime add-peer helper types removed in PR-158."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
   private static List<Path> findMainJavaSources(Path repoRoot) throws IOException {
     try (Stream<Path> walk = Files.walk(repoRoot)) {
       return walk.filter(Files::isRegularFile)
@@ -205,6 +248,15 @@ class HttpLegacyAdminBoundaryTest {
           .map(LEGACY_HTTP_IMPORT_PATTERN::matcher)
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static Set<String> readImports(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .filter(line -> line.startsWith("import "))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
   }

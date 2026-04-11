@@ -1,13 +1,9 @@
 package network.crypta.clients.http;
 
 import java.io.IOException;
-import java.io.Serial;
-import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,12 +14,6 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.ConfigException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.node.PeerNodeStatus;
-import network.crypta.node.Version;
-import network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode;
-import network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode;
 import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
@@ -54,16 +44,16 @@ import org.slf4j.LoggerFactory;
 /**
  * Base HTTP toadlet used by both darknet and opennet connection pages.
  *
- * <p>This class renders peer connection state, accepts noderef submissions, and provides helpers
- * for subclasses that tailor per-network presentation. It centralizes sorting, pagination,
- * validation, and noderef ingestion so downstream pages can focus on the specifics of each
- * topology. Instances are long-lived and reused across requests; state comes from the injected
+ * <p>This class accepts noderef submissions, wraps detached page snapshots in the legacy HTTP
+ * response shell, and provides helpers for subclasses that tailor per-network presentation. It
+ * centralizes validation and noderef ingestion so downstream pages can focus on the specifics of
+ * each topology. Instances are long-lived and reused across requests; state comes from the injected
  * runtime ports rather than per-request mutability.
  *
  * <p>Responsibilities include:
  *
  * <ul>
- *   <li>Rendering peer summaries, trust/visibility columns, and message-type breakdowns.
+ *   <li>Embedding detached peer-table snapshots into the legacy HTTP response shell.
  *   <li>Parsing noderefs from form uploads, pasted text, or URLs, then delegating to the runtime
  *       SPI for peer creation.
  *   <li>Handling redirects and guidance when no peers exist or when access checks fail.
@@ -87,168 +77,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private static final String DISPLAY_MESSAGE_TYPES = "displaymessagetypes.html";
   private static final String ELEMENT_INPUT = "input";
   private static final String TRUST = "trust";
+  private static final String VISIBILITY = "visibility";
   private static final String REF_FILE = "reffile";
   private static final String PEER_PRIVATE_NOTE = "peerPrivateNote";
   private static final String REPORT_OF_NODE_ADDITION = "reportOfNodeAddition";
-
-  /**
-   * Comparator that orders {@link PeerNodeStatus} instances for table rendering.
-   *
-   * <p>Sorting honors a user-selected column when present and otherwise falls back to status code
-   * and peer hash for deterministic ordering. The {@code reversed} flag inverts the final result so
-   * callers can reuse one comparator for ascending and descending views without allocating extra
-   * helpers.
-   */
-  protected static class ComparatorByStatus implements Comparator<PeerNodeStatus>, Serializable {
-    @Serial private static final long serialVersionUID = 1L;
-
-    /** Column key requested by the client, may be {@code null} for default ordering. */
-    protected final String sortBy;
-
-    /** Whether the comparator should invert its result for the descending presentation. */
-    protected final boolean reversed;
-
-    /**
-     * Creates a comparator configured for a column and direction.
-     *
-     * @param sortBy column key requested by the HTTP client; may be {@code null} to use defaults.
-     * @param reversed whether the ordering should be inverted for descending presentation.
-     */
-    ComparatorByStatus(String sortBy, boolean reversed) {
-      this.sortBy = sortBy;
-      this.reversed = reversed;
-    }
-
-    /**
-     * Orders two peer rows using configured sort behavior.
-     *
-     * @param firstNode the first peer candidate; never mutated by this comparator.
-     * @param secondNode the second peer candidate; never mutated by this comparator.
-     * @return negative when the first precedes the second, positive when after, or zero when ties.
-     */
-    @Override
-    public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      int result = compareWithSort(firstNode, secondNode);
-      if (result == 0) {
-        result = compareByStatus(firstNode, secondNode);
-      }
-      return reversed ? -Integer.signum(result) : Integer.signum(result);
-    }
-
-    private int compareByStatus(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      int statusDifference =
-          Integer.compare(firstNode.getStatusValue(), secondNode.getStatusValue());
-      if (statusDifference != 0) {
-        return statusDifference;
-      }
-      return lastResortCompare(firstNode, secondNode);
-    }
-
-    private int compareWithSort(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      if (sortBy == null) {
-        return 0;
-      }
-      return customCompare(firstNode, secondNode);
-    }
-
-    // xor: check why we do not just return the result of (long1-long2)
-    // j16sdiz: (Long.MAX_VALUE - (-1)) would overflow and become negative
-    private int compareLongs(long long1, long long2) {
-      int diff = Long.compare(long1, long2);
-      if (diff == 0) return 0;
-      else return (diff > 0 ? 1 : -1);
-    }
-
-    private int compareInts(int int1, int int2) {
-      int diff = Integer.compare(int1, int2);
-      if (diff == 0) return 0;
-      else return (diff > 0 ? 1 : -1);
-    }
-
-    /**
-     * Applies column-specific ordering chosen by the requester.
-     *
-     * <p>Each branch matches a sortable column and compares the corresponding values using
-     * type-appropriate ordering. When the column key is unrecognised the method returns {@code 0}
-     * so callers can rely on default or tie-breaker ordering.
-     *
-     * @param firstNode first peer candidate considered in the comparison.
-     * @param secondNode second peer candidate considered in the comparison.
-     * @return a negative number when the first node should precede the second, positive when it
-     *     should follow, or zero when the column is not supported.
-     */
-    protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      return switch (sortBy) {
-        case "address" ->
-            firstNode.getPeerAddress().compareToIgnoreCase(secondNode.getPeerAddress());
-        case "location" -> compareLocations(firstNode, secondNode);
-        case "version" ->
-            Version.compareBuildNumbers(
-                Version.parseNodeNameFromVersionStr(firstNode.getVersion()),
-                Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
-                Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
-                Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
-        case "backoffRT" ->
-            Double.compare(
-                firstNode.getBackedOffPercent(true), secondNode.getBackedOffPercent(true));
-        case "backoffBulk" ->
-            Double.compare(
-                firstNode.getBackedOffPercent(false), secondNode.getBackedOffPercent(false));
-        case "overload_p" -> Double.compare(firstNode.getPReject(), secondNode.getPReject());
-        case "idle" ->
-            compareLongs(
-                firstNode.getTimeLastConnectionCompleted(),
-                secondNode.getTimeLastConnectionCompleted());
-        case "time_routable" ->
-            Double.compare(
-                firstNode.getPercentTimeRoutableConnection(),
-                secondNode.getPercentTimeRoutableConnection());
-        case "total_traffic" -> {
-          long total1 = firstNode.getTotalInputBytes() + firstNode.getTotalOutputBytes();
-          long total2 = secondNode.getTotalInputBytes() + secondNode.getTotalOutputBytes();
-          yield compareLongs(total1, total2);
-        }
-        case "total_traffic_since_startup" -> {
-          long total1 =
-              firstNode.getTotalInputSinceStartup() + firstNode.getTotalOutputSinceStartup();
-          long total2 =
-              secondNode.getTotalInputSinceStartup() + secondNode.getTotalOutputSinceStartup();
-          yield compareLongs(total1, total2);
-        }
-        case "selection_percentage" ->
-            Double.compare(firstNode.getSelectionRate(), secondNode.getSelectionRate());
-        case "time_delta" -> compareLongs(firstNode.getClockDelta(), secondNode.getClockDelta());
-        case "uptime" ->
-            compareInts(
-                firstNode.getReportedUptimePercentage(), secondNode.getReportedUptimePercentage());
-        default -> 0;
-      };
-    }
-
-    private int compareLocations(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      double diff =
-          firstNode.getLocation()
-              - secondNode
-                  .getLocation(); // Can occasionally be the same, and we must have a consistent
-      // sort order
-      if (Double.MIN_VALUE * 2 > Math.abs(diff)) return 0;
-      return diff > 0 ? 1 : -1;
-    }
-
-    /**
-     * Provides deterministic ordering after higher-priority comparisons tie.
-     *
-     * <p>This implementation compares the peer locations to ensure stable presentation across
-     * renders. Subclasses can override by altering location calculation in {@link PeerNodeStatus}.
-     *
-     * @param firstNode first peer candidate to order.
-     * @param secondNode second peer candidate to order.
-     * @return negative when the first node is earlier, positive when later, zero when equal.
-     */
-    protected int lastResortCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      return compareLocations(firstNode, secondNode);
-    }
-  }
 
   /** Page-oriented runtime port used for detached GET-only connections page rendering. */
   private final ConnectionsPagePort connectionsPage;
@@ -312,10 +144,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * Renders the Connections page and optional message-type breakdowns.
    *
    * <p>The handler validates access, resolves download endpoints for the current node reference,
-   * builds sorted peer tables, and writes the resulting HTML response. When no peers exist, it
-   * still renders guidance and, depending on mode, may redirect to friend-adding flows. Download
-   * requests for {@code myref.fref} or {@code myref.txt} are served directly with appropriate
-   * headers.
+   * delegates peer-table sorting and rendering to the detached runtime page port, and writes the
+   * resulting HTML response. When no peers exist, it still renders guidance and, depending on mode,
+   * may redirect to friend-adding flows. Download requests for {@code myref.fref} or {@code
+   * myref.txt} are served directly with appropriate headers.
    *
    * @param uri request target URI, used to detect message-type view and download paths.
    * @param request HTTP request wrapper supplying parameters such as {@code sortBy} and {@code
@@ -402,8 +234,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       String urltext,
       String reftext,
       String privateComment,
-      FRIEND_TRUST trust,
-      FRIEND_VISIBILITY visibility) {}
+      PeerTrust trust,
+      PeerVisibility visibility) {}
 
   /**
    * Indicates whether noderef POST submissions are accepted for this toadlet.
@@ -493,8 +325,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       configPort.applyOverrides(Map.of("node.peersOffersDismissed", "true"));
     }
 
-    FRIEND_TRUST trust = parseTrust(request);
-    FRIEND_VISIBILITY visibility = parseVisibility(request);
+    PeerTrust trust = parseTrust(request);
+    PeerVisibility visibility = parseVisibility(request);
 
     return new AddPeerRequestData(urltext, reftext, privateComment, trust, visibility);
   }
@@ -503,20 +335,20 @@ public abstract class ConnectionsToadlet extends Toadlet {
     return connectionsSupportPort.readPeerOfferReferencesText();
   }
 
-  private FRIEND_TRUST parseTrust(HTTPRequest request) {
+  private PeerTrust parseTrust(HTTPRequest request) {
     String trustS = request.getPartAsStringFailsafe(TRUST, 10);
     if (trustS == null || trustS.isEmpty()) {
       return null;
     }
-    return FRIEND_TRUST.valueOf(trustS);
+    return PeerTrust.valueOf(trustS);
   }
 
-  private FRIEND_VISIBILITY parseVisibility(HTTPRequest request) {
-    String visibilityS = request.getPartAsStringFailsafe("visibility", 10);
+  private PeerVisibility parseVisibility(HTTPRequest request) {
+    String visibilityS = request.getPartAsStringFailsafe(VISIBILITY, 10);
     if (visibilityS == null || visibilityS.isEmpty()) {
       return null;
     }
-    return FRIEND_VISIBILITY.valueOf(visibilityS);
+    return PeerVisibility.valueOf(visibilityS);
   }
 
   private boolean validateTrustAndVisibility(ToadletContext ctx, AddPeerRequestData data)
@@ -689,10 +521,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private PeerAdditionReturnCodes addNewNode(
-      String nodeReference,
-      String privateComment,
-      FRIEND_TRUST trust,
-      FRIEND_VISIBILITY visibility) {
+      String nodeReference, String privateComment, PeerTrust trust, PeerVisibility visibility) {
     SimpleFieldSet fs;
 
     try {
@@ -719,8 +548,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
 
     try {
+      PeerTrust effectiveTrust = trust == null ? PeerTrust.NORMAL : trust;
+      PeerVisibility effectiveVisibility = visibility == null ? PeerVisibility.YES : visibility;
       PeerSnapshot addedPeer =
-          peerPort.add(toPeerFieldSet(fs), toPeerTrust(trust), toPeerVisibility(visibility));
+          peerPort.add(toPeerFieldSet(fs), effectiveTrust, effectiveVisibility);
       maybeWritePrivateDarknetComment(addedPeer, privateComment);
       return PeerAdditionReturnCodes.OK;
     } catch (PeerAddRejectedException e) {
@@ -945,8 +776,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         new String[] {REF_FILE, "file", REF_FILE});
     peerAdditionForm.addChild("br");
     if (!isOpennet) {
-      peerAdditionForm.addChild(new PeerTrustInputForAddPeerBoxNode());
-      peerAdditionForm.addChild(new PeerVisibilityInputForAddPeerBoxNode());
+      DarknetPeerFormOptions.addAddPeerInputs(peerAdditionForm);
     }
 
     if (!isOpennet) {
@@ -961,17 +791,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
         ELEMENT_INPUT,
         new String[] {"type", "name", "value"},
         new String[] {"submit", "add", l10n("add")});
-  }
-
-  /**
-   * Creates a comparator for peer listings using the requested column and direction.
-   *
-   * @param sortBy column key requested via HTTP parameter; may be {@code null} for default order.
-   * @param reversed whether the comparator should invert the natural ordering to sort descending.
-   * @return comparator suitable for {@link Arrays#sort(Object[])} on peer status arrays.
-   */
-  protected Comparator<PeerNodeStatus> comparator(String sortBy, boolean reversed) {
-    return new ComparatorByStatus(sortBy, reversed);
   }
 
   /**
@@ -1014,28 +833,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
 
   private boolean matchesExpectedPeerType(SimpleFieldSet fieldSet) {
     return fieldSet.getBoolean(OPENNET, false) == isOpennet();
-  }
-
-  private static PeerTrust toPeerTrust(FRIEND_TRUST trust) {
-    if (trust == null) {
-      return PeerTrust.NORMAL;
-    }
-    return switch (trust) {
-      case LOW -> PeerTrust.LOW;
-      case NORMAL -> PeerTrust.NORMAL;
-      case HIGH -> PeerTrust.HIGH;
-    };
-  }
-
-  private static PeerVisibility toPeerVisibility(FRIEND_VISIBILITY visibility) {
-    if (visibility == null) {
-      return PeerVisibility.YES;
-    }
-    return switch (visibility) {
-      case YES -> PeerVisibility.YES;
-      case NAME_ONLY -> PeerVisibility.NAME_ONLY;
-      case NO -> PeerVisibility.NO;
-    };
   }
 
   private static PeerAdditionReturnCodes mapPeerAddFailure(PeerAddFailureReason reason) {
