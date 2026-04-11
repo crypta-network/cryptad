@@ -341,13 +341,14 @@ public abstract class ClientPutBase extends ClientRequest
    */
   @Override
   public void onSuccess(BaseClientPutter state) {
+    FreenetURI resolvedGeneratedUri = generatedUriOrFallback(state);
     synchronized (this) {
       // Including these helps with certain bugs...
       started = true; // Keep the started flag set for resume compatibility.
       succeeded = true;
       finished = true;
       completionTime = System.currentTimeMillis();
-      if (generatedURI == null)
+      if (resolvedGeneratedUri == null)
         LOG.error("No generated URI in onSuccess() for {} from {}", this, state);
     }
     if (persistence == Persistence.CONNECTION) {
@@ -356,6 +357,24 @@ public abstract class ClientPutBase extends ClientRequest
     finish();
     trySendFinalMessage(null, null);
     if (client != null) client.notifySuccess(this);
+  }
+
+  private FreenetURI generatedUriOrFallback(BaseClientPutter state) {
+    synchronized (this) {
+      if (generatedURI != null) {
+        return generatedURI;
+      }
+    }
+    FreenetURI fallbackUri = state != null ? state.getURI() : null;
+    if (fallbackUri == null) {
+      return null;
+    }
+    synchronized (this) {
+      if (generatedURI == null) {
+        generatedURI = fallbackUri;
+      }
+      return generatedURI;
+    }
   }
 
   /**
