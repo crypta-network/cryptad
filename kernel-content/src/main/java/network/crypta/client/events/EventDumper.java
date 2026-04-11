@@ -2,7 +2,6 @@ package network.crypta.client.events;
 
 import java.io.IOException;
 import java.io.Writer;
-import network.crypta.client.async.ClientContext;
 
 /**
  * A {@link ClientEventListener} that writes a one-line textual description of each received event
@@ -77,7 +76,7 @@ public class EventDumper implements ClientEventListener {
    *     implementation
    */
   @Override
-  public void receive(ClientEvent ce, ClientContext context) {
+  public void receive(ClientEvent ce, ClientEventDispatchContext context) {
     try {
       w.write(ce.getDescription() + "\n");
     } catch (IOException _) {

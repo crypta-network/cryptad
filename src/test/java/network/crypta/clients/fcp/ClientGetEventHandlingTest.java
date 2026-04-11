@@ -3,11 +3,10 @@ package network.crypta.clients.fcp;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
+import network.crypta.client.events.ClientEventPersistentTask;
 import network.crypta.client.events.EnterFiniteCooldownEvent;
 import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedHashesEvent;
@@ -73,7 +72,7 @@ class ClientGetEventHandlingTest {
     SplitfileProgressEvent event = newProgressEvent();
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -93,7 +92,7 @@ class ClientGetEventHandlingTest {
     SplitfileProgressEvent event = newProgressEvent();
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     assertInstanceOf(SimpleProgressMessage.class, request.state().getProgressPending());
@@ -113,7 +112,7 @@ class ClientGetEventHandlingTest {
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
 
     // Act
-    handler.receive(new SendingToNetworkEvent(), Mockito.mock(ClientContext.class));
+    handler.receive(new SendingToNetworkEvent(), Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -138,7 +137,7 @@ class ClientGetEventHandlingTest {
     request.state().trySetExpectedHashes(new ExpectedHashes(event, IDENTIFIER, false));
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     verify(request, never()).queueProgressMessageInner(any(FCPMessage.class), anyInt());
@@ -158,7 +157,7 @@ class ClientGetEventHandlingTest {
     ExpectedHashesEvent event = new ExpectedHashesEvent(new HashResult[] {newSha256Hash()});
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -186,7 +185,7 @@ class ClientGetEventHandlingTest {
     ExpectedMIMEEvent event = new ExpectedMIMEEvent(EXPECTED_MIME);
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -215,7 +214,7 @@ class ClientGetEventHandlingTest {
     ExpectedFileSizeEvent event = new ExpectedFileSizeEvent(42L);
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -240,7 +239,7 @@ class ClientGetEventHandlingTest {
     EnterFiniteCooldownEvent event = new EnterFiniteCooldownEvent(1_000L);
 
     // Act
-    handler.receive(event, Mockito.mock(ClientContext.class));
+    handler.receive(event, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
@@ -255,10 +254,11 @@ class ClientGetEventHandlingTest {
       throws PersistenceDisabledException {
     // Arrange
     ClientGet request = newRequestWith(IDENTIFIER, 0, false, ClientRequest.Persistence.FOREVER);
-    PersistentJobRunner jobRunner = Mockito.mock(PersistentJobRunner.class);
-    when(jobRunner.hasLoaded()).thenReturn(true);
-    doNothing().when(jobRunner).queue(any(PersistentJob.class), anyInt());
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientEventDispatchContext context = Mockito.mock(ClientEventDispatchContext.class);
+    when(context.hasLoadedPersistentState()).thenReturn(true);
+    doNothing()
+        .when(context)
+        .queuePersistentEventTask(any(ClientEventPersistentTask.class), anyInt());
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
@@ -272,10 +272,12 @@ class ClientGetEventHandlingTest {
     handler.receive(event, context);
 
     // Assert
-    ArgumentCaptor<PersistentJob> jobCaptor = ArgumentCaptor.forClass(PersistentJob.class);
-    verify(jobRunner)
-        .queue(jobCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
-    jobCaptor.getValue().run(Mockito.mock(ClientContext.class));
+    ArgumentCaptor<ClientEventPersistentTask> taskCaptor =
+        ArgumentCaptor.forClass(ClientEventPersistentTask.class);
+    verify(context)
+        .queuePersistentEventTask(
+            taskCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
+    assertDoesNotThrow(() -> taskCaptor.getValue().run());
     assertArrayEquals(
         new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
         request.state().getCompatibilityMode());
@@ -287,8 +289,7 @@ class ClientGetEventHandlingTest {
       throws PersistenceDisabledException {
     // Arrange
     ClientGet request = newRequestWith(IDENTIFIER, 0, false, ClientRequest.Persistence.CONNECTION);
-    PersistentJobRunner jobRunner = Mockito.mock(PersistentJobRunner.class);
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientEventDispatchContext context = Mockito.mock(ClientEventDispatchContext.class);
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
@@ -306,19 +307,19 @@ class ClientGetEventHandlingTest {
         new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
         request.state().getCompatibilityMode());
     assertArrayEquals(new byte[] {4, 5, 6}, request.state().getOverriddenSplitfileCryptoKey());
-    verify(jobRunner, never()).queue(any(PersistentJob.class), anyInt());
+    verify(context, never())
+        .queuePersistentEventTask(any(ClientEventPersistentTask.class), anyInt());
   }
 
   @Test
   void receive_whenCompatibilityModeQueueThrows_expectNoThrow() throws Exception {
     // Arrange
     ClientGet request = newRequestWith(IDENTIFIER, 0, false, ClientRequest.Persistence.FOREVER);
-    PersistentJobRunner jobRunner = Mockito.mock(PersistentJobRunner.class);
-    when(jobRunner.hasLoaded()).thenReturn(true);
+    ClientEventDispatchContext context = Mockito.mock(ClientEventDispatchContext.class);
+    when(context.hasLoadedPersistentState()).thenReturn(true);
     doThrow(new PersistenceDisabledException())
-        .when(jobRunner)
-        .queue(any(PersistentJob.class), anyInt());
-    ClientContext context = newContextWithJobRunner(jobRunner);
+        .when(context)
+        .queuePersistentEventTask(any(ClientEventPersistentTask.class), anyInt());
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
@@ -351,7 +352,7 @@ class ClientGetEventHandlingTest {
         };
 
     // Act
-    handler.receive(unknownEvent, Mockito.mock(ClientContext.class));
+    handler.receive(unknownEvent, Mockito.mock(ClientEventDispatchContext.class));
 
     // Assert
     verify(request, never()).queueProgressMessageInner(any(FCPMessage.class), anyInt());
@@ -381,14 +382,6 @@ class ClientGetEventHandlingTest {
     return request;
   }
 
-  private static ClientContext newContextWithJobRunner(PersistentJobRunner jobRunner) {
-    ClientContext context =
-        Mockito.mock(
-            ClientContext.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
-    setField(context, ClientContext.class, "jobRunner", jobRunner);
-    return context;
-  }
-
   @SuppressWarnings("java:S3011")
   private static void setField(Object target, Class<?> owner, String fieldName, Object value) {
     try {
@@ -401,8 +394,6 @@ class ClientGetEventHandlingTest {
   }
 
   private static LinkageError linkageError(String message, ReflectiveOperationException e) {
-    LinkageError error = new LinkageError(message);
-    error.initCause(e);
-    return error;
+    return new LinkageError(message, e);
   }
 }

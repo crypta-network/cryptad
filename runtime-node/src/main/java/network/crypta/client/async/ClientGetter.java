@@ -25,6 +25,7 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.BinaryBlobWriter.BinaryBlobAlreadyClosedException;
+import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.EnterFiniteCooldownEvent;
 import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedHashesEvent;
@@ -991,7 +992,7 @@ public class ClientGetter extends BaseClientGetter
               new SplitfileProgressTimestamps(this.latestSuccess, this.latestFailure));
     }
     // Already off-thread.
-    ctx.getEventProducer().produceEvent(e, context);
+    ClientEventProducer.dispatchEvent(ctx.getEventProducer(), e, context);
   }
 
   /**
@@ -1005,7 +1006,8 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.getEventProducer().produceEvent(new SendingToNetworkEvent(), context1);
+              ClientEventProducer.dispatchEvent(
+                  ctx.getEventProducer(), new SendingToNetworkEvent(), context1);
               return false;
             });
   }
@@ -1200,7 +1202,8 @@ public class ClientGetter extends BaseClientGetter
                 synchronized (this) {
                   mime = expectedMIME;
                 }
-                ctx.getEventProducer().produceEvent(new ExpectedMIMEEvent(mime), context);
+                ClientEventProducer.dispatchEvent(
+                    ctx.getEventProducer(), new ExpectedMIMEEvent(mime), context);
                 return false;
               }
             });
@@ -1225,7 +1228,8 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.getEventProducer().produceEvent(new ExpectedFileSizeEvent(size), context1);
+              ClientEventProducer.dispatchEvent(
+                  ctx.getEventProducer(), new ExpectedFileSizeEvent(size), context1);
               return false;
             });
   }
@@ -1365,15 +1369,11 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.getEventProducer()
-                  .produceEvent(
-                      new SplitfileCompatibilityModeEvent(
-                          min,
-                          max,
-                          customSplitfileKey,
-                          dontCompress,
-                          bottomLayer || definitiveAnyway),
-                      context1);
+              ClientEventProducer.dispatchEvent(
+                  ctx.getEventProducer(),
+                  new SplitfileCompatibilityModeEvent(
+                      min, max, customSplitfileKey, dontCompress, bottomLayer || definitiveAnyway),
+                  context1);
               return false;
             });
   }
@@ -1394,7 +1394,8 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.getEventProducer().produceEvent(new ExpectedHashesEvent(h), context1);
+              ClientEventProducer.dispatchEvent(
+                  ctx.getEventProducer(), new ExpectedHashesEvent(h), context1);
               return false;
             });
   }
@@ -1406,7 +1407,8 @@ public class ClientGetter extends BaseClientGetter
     }
     if (wakeupTime != Long.MAX_VALUE) {
       // Already off-thread.
-      ctx.getEventProducer().produceEvent(new EnterFiniteCooldownEvent(wakeupTime), context);
+      ClientEventProducer.dispatchEvent(
+          ctx.getEventProducer(), new EnterFiniteCooldownEvent(wakeupTime), context);
     }
   }
 

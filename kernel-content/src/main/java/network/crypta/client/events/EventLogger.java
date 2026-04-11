@@ -1,21 +1,20 @@
 package network.crypta.client.events;
 
-import network.crypta.client.async.ClientContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
 /**
- * Logs client-layer events to SLF4J at a configured severity.
+ * Logs client-layer events to SLF4J at configured severity.
  *
  * <p>This lightweight listener adapts {@link ClientEvent} notifications into structured log lines
  * using the application logger. It is intended for cases where event propagation should not affect
- * control flow and a concise, human‑readable summary is sufficient. The instance is constructed
- * with a desired {@link org.slf4j.event.Level} and, upon {@link #receive(ClientEvent,
- * ClientContext) receipt}, emits the event description at that level. For {@code DEBUG} and {@code
- * TRACE}, the logger's enablement is consulted to avoid unnecessary formatting and noise; when
- * {@code TRACE} is requested but disabled, the message falls back to {@code DEBUG} or {@code INFO}
- * depending on what is enabled.
+ * control flow and a concise, human-readable summary is enough. The instance is constructed with a
+ * desired {@link org.slf4j.event.Level} and, upon {@link #receive(ClientEvent,
+ * ClientEventDispatchContext) receipt}, emits the event description at that level. For {@code
+ * DEBUG} and {@code TRACE}, the logger's enablement is consulted to avoid unnecessary formatting
+ * and noise; when {@code TRACE} is requested but disabled, the message falls back to {@code DEBUG}
+ * or {@code INFO} depending on what is enabled.
  *
  * <p>The class is stateless aside from its configuration and therefore safe to reuse across
  * threads. It performs no I/O beyond logging, retains no references to delivered events, and does
@@ -41,17 +40,17 @@ public class EventLogger implements ClientEventListener {
   /**
    * Creates a logger-backed event listener with the given severity.
    *
-   * <p>The supplied {@code level} determines how {@link #receive(ClientEvent, ClientContext)} emits
-   * messages: {@code ERROR}, {@code WARN}, and {@code INFO} always log at the requested level;
-   * {@code DEBUG} logs only when debug is enabled; {@code TRACE} logs at trace when enabled and
-   * otherwise falls back to debug or info depending on availability. A {@code null} level is
-   * treated as {@link Level#INFO}.
+   * <p>The supplied {@code level} determines how {@link #receive(ClientEvent,
+   * ClientEventDispatchContext)} emits messages: {@code ERROR}, {@code WARN}, and {@code INFO}
+   * always log at the requested level; {@code DEBUG} logs only when debug is enabled; {@code TRACE}
+   * logs at trace when enabled and otherwise falls back to debug or info depending on availability.
+   * A {@code null} level is treated as {@link Level#INFO}.
    *
    * @param level the desired SLF4J severity used when emitting events; if {@code null}, the
-   *     instance defaults to {@code INFO} for predictable behavior across environments.
+   *     instance defaults to {@code INFO} for predictable behavior across environments
    * @param removeWithProducer lifecycle hint carried with the listener; registries may use it to
    *     decide whether to unregister the listener when its producing component is removed. This
-   *     class stores the flag but does not enforce any lifecycle policy itself.
+   *     class stores the flag but does not enforce any lifecycle policy itself
    */
   public EventLogger(Level level, boolean removeWithProducer) {
     this.slf4jLevel = level == null ? Level.INFO : level;
@@ -75,12 +74,12 @@ public class EventLogger implements ClientEventListener {
    * }</pre>
    *
    * @param ce the event being delivered; expected to be non-null; only its {@link
-   *     ClientEvent#getDescription()} is read and used for logging.
+   *     ClientEvent#getDescription()} is read and used for logging
    * @param context execution context associated with the event; may be {@code null} and is not
-   *     consulted by this listener; producers pass it for symmetry with other listeners.
+   *     consulted by this listener; producers pass it for symmetry with other listeners
    */
   @Override
-  public void receive(ClientEvent ce, ClientContext context) {
+  public void receive(ClientEvent ce, ClientEventDispatchContext context) {
     switch (slf4jLevel) {
       case ERROR:
         LOG.error("{}", ce.getDescription());

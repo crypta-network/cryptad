@@ -39,11 +39,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.doThrow;
@@ -381,6 +383,33 @@ class ClientContextTest {
   }
 
   @Test
+  void hasLoadedPersistentState_whenJobRunnerStateChanges_returnsRunnerValue() {
+    jobRunner.loaded = false;
+    assertFalse(ctx.hasLoadedPersistentState());
+
+    jobRunner.loaded = true;
+    assertTrue(ctx.hasLoadedPersistentState());
+  }
+
+  @Test
+  void queuePersistentEventTask_whenQueued_delegatesToJobRunnerAndRunsTask() throws Exception {
+    final int priority = NativeThread.PriorityLevel.HIGH_PRIORITY.value;
+    final boolean[] invoked = {false};
+
+    ctx.queuePersistentEventTask(
+        () -> {
+          invoked[0] = true;
+          return true;
+        },
+        priority);
+
+    assertNotNull(jobRunner.lastJob);
+    assertEquals(priority, jobRunner.lastPriority);
+    assertTrue(jobRunner.lastJob.run(ctx));
+    assertTrue(invoked[0]);
+  }
+
+  @Test
   void getFileRandomAccessBufferFactory_returnsByPersistence() {
     assertSame(fileRAFPersistent, ctx.getFileRandomAccessBufferFactory(true));
     assertSame(fileRAFTransient, ctx.getFileRandomAccessBufferFactory(false));
@@ -522,6 +551,7 @@ class ClientContextTest {
     PersistentJob lastJob;
     int lastPriority;
     int queueCalls;
+    boolean loaded = true;
 
     @Override
     public void queue(PersistentJob persistentJob, int threadPriority) {
@@ -565,7 +595,7 @@ class ClientContextTest {
 
     @Override
     public boolean hasLoaded() {
-      return true;
+      return loaded;
     }
 
     @Override

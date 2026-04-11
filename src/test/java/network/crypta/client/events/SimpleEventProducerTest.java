@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doAnswer;
@@ -33,7 +34,7 @@ class SimpleEventProducerTest {
   @Mock private ClientEventListener l1;
   @Mock private ClientEventListener l2;
   @Mock private ClientEvent event;
-  @Mock private ClientContext context;
+  @Mock private ClientEventDispatchContext context;
 
   @Test
   void constructor_withArray_addsAllListeners() {
@@ -176,7 +177,7 @@ class SimpleEventProducerTest {
 
     // First listener removes the second during dispatch
     doAnswer(
-            invocation -> {
+            _ -> {
               producer.removeEventListener(l2);
               return null;
             })
@@ -191,6 +192,42 @@ class SimpleEventProducerTest {
     verify(l2, times(1)).receive(event, context);
   }
 
+  @Test
+  void produceEvent_whenListenerImplementsLegacySignature_bridgesToLegacyMethod() {
+    // Arrange
+    SimpleEventProducer producer = new SimpleEventProducer();
+    LegacyStyleListener listener = new LegacyStyleListener();
+    ClientContext legacyContext = org.mockito.Mockito.mock(ClientContext.class);
+    producer.addEventListener(listener);
+
+    // Act
+    producer.produceEvent(event, legacyContext);
+
+    // Assert
+    assertSame(event, listener.lastEvent, "Legacy listener should receive the emitted event");
+    assertSame(
+        legacyContext,
+        listener.lastContext,
+        "Legacy listener should receive the original ClientContext");
+  }
+
+  @Test
+  void produceEvent_whenProducerImplementsLegacySignature_bridgesToLegacyMethod() {
+    // Arrange
+    LegacyStyleProducer producer = new LegacyStyleProducer();
+    ClientContext legacyContext = org.mockito.Mockito.mock(ClientContext.class);
+
+    // Act
+    ClientEventProducer.dispatchEvent(producer, event, legacyContext);
+
+    // Assert
+    assertSame(event, producer.lastEvent, "Legacy producer should receive the emitted event");
+    assertSame(
+        legacyContext,
+        producer.lastContext,
+        "Legacy producer should receive the original ClientContext");
+  }
+
   // --- Serialization round-trip tests (merged) ---
 
   private static class CountingListener implements ClientEventListener, Serializable {
@@ -198,8 +235,54 @@ class SimpleEventProducerTest {
     final AtomicInteger count = new AtomicInteger();
 
     @Override
-    public void receive(ClientEvent ce, ClientContext context) {
+    public void receive(ClientEvent ce, ClientEventDispatchContext context) {
       count.incrementAndGet();
+    }
+  }
+
+  private static final class LegacyStyleListener implements ClientEventListener, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private transient ClientEvent lastEvent;
+    private transient ClientContext lastContext;
+
+    @Override
+    public void receive(ClientEvent ce, ClientEventDispatchContext context) {
+      throw new AbstractMethodError("legacy listener bridge");
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    public void receive(ClientEvent ce, ClientContext context) {
+      lastEvent = ce;
+      lastContext = context;
+    }
+  }
+
+  private static final class LegacyStyleProducer implements ClientEventProducer, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private transient ClientEvent lastEvent;
+    private transient ClientContext lastContext;
+
+    @Override
+    public void produceEvent(ClientEvent ce, ClientEventDispatchContext context) {
+      throw new AbstractMethodError("legacy producer bridge");
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    public void produceEvent(ClientEvent ce, ClientContext context) {
+      lastEvent = ce;
+      lastContext = context;
+    }
+
+    @Override
+    public void addEventListener(ClientEventListener cel) {
+      throw new UnsupportedOperationException("Not needed for compatibility bridge test");
+    }
+
+    @Override
+    public boolean removeEventListener(ClientEventListener cel) {
+      throw new UnsupportedOperationException("Not needed for compatibility bridge test");
     }
   }
 

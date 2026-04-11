@@ -20,6 +20,7 @@ import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
@@ -333,7 +334,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   /**
-   * Look up the key in the downloads queue.
+   * Look up the key in the Downloads queue.
    *
    * @return True if it was found, and we don't need to start the request.
    */
@@ -485,7 +486,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   @Override
-  public void receive(ClientEvent ce, ClientContext context) {
+  public void receive(ClientEvent ce, ClientEventDispatchContext context) {
     try {
       switch (ce) {
         case SplitfileProgressEvent split -> {

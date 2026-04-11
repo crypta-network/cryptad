@@ -11,6 +11,7 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertUriChecks;
 import network.crypta.client.Metadata;
+import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SendingToNetworkEvent;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -710,7 +711,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
                   this.blockSetFinalized),
               new SplitfileProgressTimestamps(this.latestSuccess, this.latestFailure));
     }
-    ctx.getEventProducer().produceEvent(e, context);
+    ClientEventProducer.dispatchEvent(ctx.getEventProducer(), e, context);
   }
 
   /**
@@ -719,7 +720,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    */
   @Override
   protected void innerToNetwork(ClientContext context) {
-    ctx.getEventProducer().produceEvent(new SendingToNetworkEvent(), context);
+    ClientEventProducer.dispatchEvent(ctx.getEventProducer(), new SendingToNetworkEvent(), context);
   }
 
   /** Called when we know exactly how many blocks will be needed. */

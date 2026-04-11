@@ -1,10 +1,9 @@
 package network.crypta.clients.fcp;
 
 import java.util.Objects;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.EnterFiniteCooldownEvent;
 import network.crypta.client.events.ExpectedFileSizeEvent;
@@ -38,7 +37,7 @@ final class ClientGetEventHandling implements ClientEventListener {
   }
 
   @Override
-  public void receive(ClientEvent event, ClientContext context) {
+  public void receive(ClientEvent event, ClientEventDispatchContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("Receiving {} on {}", event, request);
     if (event instanceof SplitfileCompatibilityModeEvent compatibilityModeEvent) {
       handleCompatibilityMode(compatibilityModeEvent, context);
@@ -142,24 +141,24 @@ final class ClientGetEventHandling implements ClientEventListener {
   }
 
   private void handleCompatibilityMode(
-      SplitfileCompatibilityModeEvent event, ClientContext context) {
-    if (request.persistence == ClientRequest.Persistence.FOREVER && context.jobRunner.hasLoaded()) {
+      SplitfileCompatibilityModeEvent event, ClientEventDispatchContext context) {
+    if (request.persistence == ClientRequest.Persistence.FOREVER
+        && context.hasLoadedPersistentState()) {
       try {
-        context.jobRunner.queue(
-            (PersistentJob)
-                _ -> {
-                  synchronized (request.persistenceLock()) {
-                    request
-                        .state()
-                        .mergeCompatibilityMode(
-                            event.minCompatibilityMode,
-                            event.maxCompatibilityMode,
-                            event.splitfileCryptoKey,
-                            event.dontCompress,
-                            event.bottomLayer);
-                  }
-                  return false;
-                },
+        context.queuePersistentEventTask(
+            () -> {
+              synchronized (request.persistenceLock()) {
+                request
+                    .state()
+                    .mergeCompatibilityMode(
+                        event.minCompatibilityMode,
+                        event.maxCompatibilityMode,
+                        event.splitfileCryptoKey,
+                        event.dontCompress,
+                        event.bottomLayer);
+              }
+              return false;
+            },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       } catch (PersistenceDisabledException _) {
         // Not much we can do.
