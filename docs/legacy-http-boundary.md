@@ -2,10 +2,11 @@
 
 `:adapter-http-legacy-admin` owns the boundary-frozen legacy `network.crypta.clients.http` tree
 and the matching `network/crypta/clients/http/**` main resources, excluding
-`network.crypta.clients.http.bridge`.
+`network.crypta.clients.http.bridge` and `network.crypta.clients.http.geoip`.
 
-The concrete runtime-binding bridge implementations now live in `:bridge-http-runtime` under
-`network.crypta.clients.http.bridge`.
+`:bridge-http-runtime` now owns the concrete runtime-binding bridge implementations under
+`network.crypta.clients.http.bridge` plus the legacy HTTP GeoIP helper package under
+`network.crypta.clients.http.geoip`.
 
 The adapter leaf still carries three responsibilities:
 

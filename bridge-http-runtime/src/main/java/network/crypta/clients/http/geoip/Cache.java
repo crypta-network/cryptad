@@ -32,7 +32,10 @@ package network.crypta.clients.http.geoip;
  * @see IPConverter
  */
 public class Cache {
+  /** Encoded country codes aligned by index with {@link #ips}. */
   short[] codes;
+
+  /** IPv4 range table entries aligned by index with {@link #codes}. */
   int[] ips;
 
   /**
@@ -72,7 +75,7 @@ public class Cache {
    * Returns the IP table associated with this cache.
    *
    * <p>The returned array is the live backing {@code int[]} provided to the constructor; it is not
-   * a defensive copy. Values are commonly compared as unsigned 32-bit integers (for example via
+   * a defensive copy. Values are commonly compared as unsigned 32-bit integers (for example, via
    * {@code value & 0xffffffffL}) when looking up an IPv4 address represented as a {@code long}.
    * Mutating the array affects all readers of this cache instance.
    *
