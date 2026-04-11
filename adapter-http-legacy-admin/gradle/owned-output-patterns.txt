@@ -1,4 +1,17 @@
 # Aggregated main outputs that must be pruned on non-clean builds because
-# :adapter-http-legacy-admin owns them now.
+# :adapter-http-legacy-admin owns the remaining legacy HTTP tree now.
 
-network/crypta/clients/http/**
+network/crypta/clients/http/*.class
+network/crypta/clients/http/package-info.class
+network/crypta/clients/http/ajaxpush/**
+network/crypta/clients/http/annotation/**
+network/crypta/clients/http/bookmark/**
+network/crypta/clients/http/complexhtmlnodes/**
+network/crypta/clients/http/filter/**
+network/crypta/clients/http/geoip/**
+network/crypta/clients/http/staticfiles/**
+network/crypta/clients/http/templates/**
+network/crypta/clients/http/updateableelements/**
+network/crypta/clients/http/updater/**
+network/crypta/clients/http/utils/**
+network/crypta/clients/http/wizardsteps/**

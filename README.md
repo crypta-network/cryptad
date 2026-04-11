@@ -260,11 +260,13 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.clients.fcp.bridge`.
 - `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree plus
   the matching `network/crypta/clients/http/**` main resources such as `staticfiles/**` and
-  `templates/**`. The root project no longer owns that main source/resource tree, and the
-  remaining legacy browse/FProxy shell inside this leaf is boundary-frozen until a later PR
-  refines it further. That shell now also hosts the temporary `/api/v1/` mount for
-  `:platform-api` plus the first `/app/node/` Web Shell bridge for `:platform-web-shell`; future
-  AppHost UI and remote update-channel work remain separate. See
+  `templates/**`, excluding `network.crypta.clients.http.bridge`. The remaining legacy
+  browse/FProxy shell inside this leaf is boundary-frozen until a later PR refines it further.
+  That shell also hosts the temporary `/api/v1/` mount for `:platform-api` plus the first
+  `/app/node/` Web Shell bridge for `:platform-web-shell`; future AppHost UI and remote
+  update-channel work remain separate. The concrete HTTP bridge implementations now live in
+  `:bridge-http-runtime`, while the updater-action adapters stay in
+  `network.crypta.clients.http.updater` under the adapter leaf. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
@@ -294,14 +296,14 @@ Cryptad now uses a partial multi-project Gradle build.
 - Default production bridge selection now starts in
   `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`. Concrete adapter
   implementations stay in `network.crypta.clients.fcp.bridge` under
-  `:bridge-fcp-runtime`,
-  `network.crypta.clients.http.bridge`, and `network.crypta.clients.http.updater`, while
-  higher-level runtime code depends on runtime-owned seam types such as
+  `:bridge-fcp-runtime`, `network.crypta.clients.http.bridge` under `:bridge-http-runtime`, and
+  `network.crypta.clients.http.updater` under `:adapter-http-legacy-admin`, while higher-level
+  runtime code depends on runtime-owned seam types such as
   `network.crypta.runtime.endpoints.fcp.FcpEndpointHandle`,
   `network.crypta.runtime.http.HttpShellContainer`, and
   `network.crypta.runtime.http.security.PasswordFormPageRenderer`. For HTTP, this bootstrap
   factory remains the production binding site that imports the concrete bridge classes from the
-  extracted adapter leaf.
+  extracted bridge leaf.
 
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
@@ -664,6 +666,10 @@ Root build also includes:
   `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
+- `:bridge-http-runtime`: extracted concrete `network.crypta.clients.http.bridge`
+  runtime-binding leaf. Root bootstrap still selects the default production bridge set in
+  `DefaultNodeRuntimeBridgeFactories`, while `network.crypta.clients.http.updater` remains in
+  `:adapter-http-legacy-admin`.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
   bandwidth-detection helpers now used by first-time setup flows, plus the shared
@@ -726,8 +732,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-web-shell`, `:runtime-node`,
-    `:adapter-fcp`, `:bridge-fcp-runtime`, `:adapter-http-legacy-admin`, `:thirdparty-onion`,
-    `:thirdparty-legacy`, and `:launcher-desktop`.
+    `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+    `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
+    `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
   `:foundation-store` now owns the reusable store implementations, cache layer, and salted-hash
@@ -777,21 +784,21 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   adapters, alert-feed adapters, and endpoint-handle wrappers now live under
   `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
-  `staticfiles/**` and `templates/**` resources. The migrated HTTP management and shell slices
-  cross the boundary in three layers: `RuntimePorts` for JDK-only detached runtime state,
-  `:platform-api` for the Platform API v1 router and JSON surface currently mounted at
-  `/api/v1/`, `:platform-web-shell` for the first browser-facing node-management shell currently
-  mounted at `/app/node/`,
-  runtime-owned shell and password-prompt seams under `network.crypta.runtime.http` and
-  `network.crypta.runtime.http.security`, and client-local helpers such as
-  `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`, and
-  `FProxyRegistrarDependencies`. Concrete HTTP shell, bookmark, GeoIP, security-page, and
-  updater-action adapters now live under `network.crypta.clients.http.bridge` and
-  `network.crypta.clients.http.updater`, while root-local bridge selection stays in
-  `DefaultNodeRuntimeBridgeFactories`. The remaining legacy browse/FProxy tree inside
-  `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines it
-  further, and production code outside the adapter should keep depending on runtime seams rather
-  than taking new `network.crypta.clients.http.*` dependencies. See
+  `staticfiles/**` and `templates/**` resources, excluding the concrete bridge package under
+  `network.crypta.clients.http.bridge`. The migrated HTTP management and shell slices cross the
+  boundary in three layers: `RuntimePorts` for JDK-only detached runtime state, `:platform-api`
+  for the Platform API v1 router and JSON surface currently mounted at `/api/v1/`,
+  `:platform-web-shell` for the first browser-facing node-management shell currently mounted at
+  `/app/node/`, runtime-owned shell and password-prompt seams under
+  `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
+  helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`,
+  and `FProxyRegistrarDependencies`. Concrete HTTP shell, bookmark, GeoIP, and security-page
+  adapters now live under `:bridge-http-runtime`, while the updater-action adapters remain under
+  `network.crypta.clients.http.updater` in `:adapter-http-legacy-admin`. Root-local bridge
+  selection stays in `DefaultNodeRuntimeBridgeFactories`. The remaining legacy browse/FProxy tree
+  inside `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines
+  it further, and production code outside the adapter should keep depending on runtime seams
+  rather than taking new `network.crypta.clients.http.*` dependencies. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
@@ -867,9 +874,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   transport/message execution code, and the remaining daemon-coupled support helpers outside the
   small `:kernel-content` manifest/model helper subset;
   `:adapter-fcp` provides `network.crypta.clients.fcp`;
-  `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`; and
-  `:adapter-http-legacy-admin` provides the current legacy `network.crypta.clients.http` classes
-  and resources.
+  `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`;
+  `:bridge-http-runtime` provides `network.crypta.clients.http.bridge`; and
+  `:adapter-http-legacy-admin` provides the remaining legacy
+  `network.crypta.clients.http` classes, resources, and updater surface outside that bridge
+  package.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 

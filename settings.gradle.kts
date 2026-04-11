@@ -43,6 +43,7 @@ include(
   ":runtime-node",
   ":adapter-fcp",
   ":bridge-fcp-runtime",
+  ":bridge-http-runtime",
   ":adapter-http-legacy-admin",
   ":thirdparty-onion",
   ":thirdparty-legacy",
