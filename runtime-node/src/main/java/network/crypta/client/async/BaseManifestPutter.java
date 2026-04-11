@@ -24,6 +24,7 @@ import network.crypta.client.Metadata.SimpleManifestComposer;
 import network.crypta.client.Metadata;
 import network.crypta.client.MetadataResolutionTarget;
 import network.crypta.client.MetadataUnresolvedException;
+import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.SplitfileProgressTimestamps;
@@ -1590,7 +1591,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
                   this.blockSetFinalized),
               new SplitfileProgressTimestamps(this.latestSuccess, this.latestFailure));
     }
-    ctx.getEventProducer().produceEvent(e, context);
+    ClientEventProducer.dispatchEvent(ctx.getEventProducer(), e, context);
   }
 
   @Override

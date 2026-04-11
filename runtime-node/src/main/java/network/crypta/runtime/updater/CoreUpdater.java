@@ -20,6 +20,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.fs.AppEnv;
@@ -904,7 +905,7 @@ public class CoreUpdater extends NodeUpdater {
     }
 
     @Override
-    public void receive(ClientEvent ce, ClientContext context) {
+    public void receive(ClientEvent ce, ClientEventDispatchContext context) {
       try {
         if (ce instanceof SplitfileProgressEvent progress) {
           int done = progress.succeedBlocks;

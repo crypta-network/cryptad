@@ -16,6 +16,7 @@ import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
@@ -521,7 +522,7 @@ public abstract class ClientPutBase extends ClientRequest
    *     null} when the request is purely persistent
    */
   @Override
-  public void receive(final ClientEvent ce, ClientContext context) {
+  public void receive(final ClientEvent ce, ClientEventDispatchContext context) {
     if (finished) return;
     if (LOG.isDebugEnabled()) LOG.debug("Receiving event {} on {}", ce, this);
     if (ce instanceof SplitfileProgressEvent event) {

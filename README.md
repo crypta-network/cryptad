@@ -203,7 +203,9 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:kernel-content` owns the compile-neutral phase-1 content slice across selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the leaf-safe
-  `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
+  `network.crypta.client.events` contract/helper subset (`ClientEventListener`,
+  `ClientEventProducer`, `SimpleEventProducer`, `EventLogger`, `EventDumper`,
+  `SplitfileProgressEvent`), the leaf-safe `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
   `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
   `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
   client failure/filter exception subset, the MIME helper `network.crypta.support.MediaType`, and
@@ -622,7 +624,9 @@ Root build also includes:
 - `:kernel-content`: compile-neutral phase-1 content leaf spanning selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the
-  leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe
+  `network.crypta.client.events` contract/helper subset (`ClientEventListener`,
+  `ClientEventProducer`, `SimpleEventProducer`, `EventLogger`, `EventDumper`,
+  `SplitfileProgressEvent`), the leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe
   client failure/filter exception subset, `network.crypta.support.MediaType`, and the small
   manifest/model helper subset under `network.crypta.support.*`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected

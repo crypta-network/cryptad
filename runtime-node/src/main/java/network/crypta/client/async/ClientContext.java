@@ -10,6 +10,8 @@ import network.crypta.client.async.alerts.ClientAlert;
 import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
+import network.crypta.client.events.ClientEventDispatchContext;
+import network.crypta.client.events.ClientEventPersistentTask;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.Config;
@@ -65,7 +67,8 @@ import network.crypta.support.io.TempBucketFactory;
  * @see ClientRequestScheduler
  * @see RequestScheduler
  */
-public class ClientContext implements CryptoResumeContext, PersistentRequestRuntimeContext {
+public class ClientContext
+    implements CryptoResumeContext, PersistentRequestRuntimeContext, ClientEventDispatchContext {
 
   private ClientRequestScheduler sskFetchSchedulerBulk;
   private ClientRequestScheduler chkFetchSchedulerBulk;
@@ -344,6 +347,17 @@ public class ClientContext implements CryptoResumeContext, PersistentRequestRunt
    */
   public ClientRequestScheduler getChkInsertScheduler(boolean realTime) {
     return realTime ? chkInsertSchedulerRT : chkInsertSchedulerBulk;
+  }
+
+  @Override
+  public boolean hasLoadedPersistentState() {
+    return jobRunner.hasLoaded();
+  }
+
+  @Override
+  public void queuePersistentEventTask(ClientEventPersistentTask persistentTask, int threadPriority)
+      throws PersistenceDisabledException {
+    jobRunner.queue(_ -> persistentTask.run(), threadPriority);
   }
 
   /**

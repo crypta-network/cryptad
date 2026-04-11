@@ -27,6 +27,8 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   private static final Path RUNTIME_NODE_MAIN_JAVA = Path.of("runtime-node", "src", "main", "java");
   private static final Path RUNTIME_NODE_CLIENT_PACKAGE =
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
+  private static final Path RUNTIME_NODE_EVENTS_PACKAGE =
+      RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "events"));
   private static final Path RUNTIME_NODE_FILTER_PACKAGE =
       RUNTIME_NODE_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
   private static final Path RUNTIME_NODE_ASYNC_PACKAGE =
@@ -43,6 +45,16 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
           "FetchException.java",
           "InsertException.java",
           "MetadataUnresolvedException.java");
+  private static final List<String> MOVED_EVENT_TYPES =
+      List.of(
+          "ClientEventListener.java",
+          "ClientEventProducer.java",
+          "SimpleEventProducer.java",
+          "EventLogger.java",
+          "EventDumper.java",
+          "SplitfileProgressEvent.java",
+          "ClientEventDispatchContext.java",
+          "ClientEventPersistentTask.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
       List.of("DataFilterException.java", "UnsafeContentTypeException.java");
   private static final List<String> MOVED_ASYNC_UTILITY_TYPES =
@@ -128,6 +140,7 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
 
     assertMovedLeafTypesAbsent(
         repoRoot.resolve(RUNTIME_NODE_CLIENT_PACKAGE), MOVED_CLIENT_FAILURE_TYPES);
+    assertMovedLeafTypesAbsent(repoRoot.resolve(RUNTIME_NODE_EVENTS_PACKAGE), MOVED_EVENT_TYPES);
     assertMovedLeafTypesAbsent(
         repoRoot.resolve(RUNTIME_NODE_ASYNC_PACKAGE), MOVED_ASYNC_UTILITY_TYPES);
     assertMovedLeafTypesAbsent(

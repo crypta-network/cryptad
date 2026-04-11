@@ -23,6 +23,7 @@ import network.crypta.client.MetadataTopLayerInfo;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.TopLayerBlockInfo;
 import network.crypta.client.TopLayerHashInfo;
+import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.client.events.StartedCompressionEvent;
@@ -306,7 +307,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
       }
       HashResult[] clientHashes = hashes;
       if (persistent) clientHashes = HashResult.copy(hashes);
-      ctx.getEventProducer().produceEvent(new ExpectedHashesEvent(clientHashes), context);
+      ClientEventProducer.dispatchEvent(
+          ctx.getEventProducer(), new ExpectedHashesEvent(clientHashes), context);
       origHashes = hashes;
     } else {
       hashes = origHashes; // Inherit so it goes all the way to the top.
@@ -406,9 +408,10 @@ class SingleFileInserter implements ClientPutState, Serializable {
       RandomAccessBucket data,
       ClientContext context) {
     short codecID = bestCodec == null ? -1 : bestCodec.metadataID;
-    ctx.getEventProducer()
-        .produceEvent(
-            new FinishedCompressionEvent(codecID, origSize, bestCompressedDataSize), context);
+    ClientEventProducer.dispatchEvent(
+        ctx.getEventProducer(),
+        new FinishedCompressionEvent(codecID, origSize, bestCompressedDataSize),
+        context);
     if (LOG.isDebugEnabled())
       LOG.debug("Compressed {} to {} on {} data = {}", origSize, data.size(), this, data);
   }
@@ -1677,7 +1680,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (parent == cb) {
       if (ctx == null) throw new NullPointerException();
       if (ctx.getEventProducer() == null) throw new NullPointerException();
-      ctx.getEventProducer().produceEvent(new StartedCompressionEvent(ctype), context);
+      ClientEventProducer.dispatchEvent(
+          ctx.getEventProducer(), new StartedCompressionEvent(ctype), context);
     }
   }
 

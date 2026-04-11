@@ -10,8 +10,8 @@ import java.util.Arrays;
 import java.util.stream.Stream;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SimpleEventProducer;
@@ -42,7 +42,7 @@ class InsertContextTest {
     @Serial private static final long serialVersionUID = 1L;
 
     @Override
-    public void receive(ClientEvent ce, ClientContext context) {
+    public void receive(ClientEvent ce, ClientEventDispatchContext context) {
       // No-op; used only for identity during serialization tests.
     }
   }

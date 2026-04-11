@@ -1,7 +1,6 @@
 package network.crypta.client.events;
 
 import java.time.Instant;
-import network.crypta.client.async.ClientRequester;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,9 +30,6 @@ import org.slf4j.LoggerFactory;
  *       operation can be considered complete.
  *   <li>Totals: {@link #finalizedTotal} signals whether the total block count is definitive.
  * </ul>
- *
- * @see network.crypta.client.async.ClientGetter
- * @see network.crypta.client.async.ClientPutter
  */
 public class SplitfileProgressEvent implements ClientEvent {
   private static final Logger LOG = LoggerFactory.getLogger(SplitfileProgressEvent.class);
@@ -58,7 +54,8 @@ public class SplitfileProgressEvent implements ClientEvent {
    * Timestamp of the latest successful block completion. When unavailable, this value is {@code
    * null}.
    *
-   * @see ClientRequester#getLatestSuccess()
+   * <p>The timestamp is supplied by the producing request component and represents the most recent
+   * successful block observed when this snapshot was created.
    */
   public final Instant latestSuccess;
 
@@ -77,7 +74,8 @@ public class SplitfileProgressEvent implements ClientEvent {
   /**
    * Timestamp of the latest block failure. When unavailable, this value is {@code null}.
    *
-   * @see ClientRequester#getLatestFailure()
+   * <p>The timestamp is supplied by the producing request component and represents the most recent
+   * failed block observed when this snapshot was created.
    */
   public final Instant latestFailure;
 
@@ -109,12 +107,10 @@ public class SplitfileProgressEvent implements ClientEvent {
       SplitfileProgressCounts counts, SplitfileProgressTimestamps timestamps) {
     this.totalBlocks = counts.totalBlocks();
     this.succeedBlocks = counts.succeedBlocks();
-    Instant latestSuccessTimestamp = timestamps.latestSuccess();
-    this.latestSuccess = latestSuccessTimestamp;
+    this.latestSuccess = timestamps.latestSuccess();
     this.failedBlocks = counts.failedBlocks();
     this.fatallyFailedBlocks = counts.fatallyFailedBlocks();
-    Instant latestFailureTimestamp = timestamps.latestFailure();
-    this.latestFailure = latestFailureTimestamp;
+    this.latestFailure = timestamps.latestFailure();
     this.minSuccessfulBlocks = counts.minSuccessfulBlocks();
     this.finalizedTotal = counts.finalizedTotal();
     this.minSuccessFetchBlocks = counts.minSuccessFetchBlocks();
@@ -139,7 +135,7 @@ public class SplitfileProgressEvent implements ClientEvent {
     // For serialization support.
     totalBlocks = 0;
     succeedBlocks = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // Historical semantics preserve a non-null default success timestamp.
     latestSuccess = Instant.now();
     failedBlocks = 0;
     fatallyFailedBlocks = 0;
@@ -156,8 +152,8 @@ public class SplitfileProgressEvent implements ClientEvent {
    * #succeedBlocks} reaches or exceeds this number, the client can typically assemble the output or
    * otherwise finalize the request.
    *
-   * @return a non-negative threshold count indicating when progress is sufficient to finish; the
-   *     value does not change for a given event instance
+   * @return a non-negative threshold count indicating when progress is enough to finish; the value
+   *     does not change for a given event instance
    */
   public int getMinSuccessfulBlocks() {
     return minSuccessfulBlocks;

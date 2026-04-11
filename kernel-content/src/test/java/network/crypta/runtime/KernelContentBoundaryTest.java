@@ -23,6 +23,8 @@ class KernelContentBoundaryTest {
       Path.of("kernel-content", "src", "main", "java");
   private static final Path KERNEL_CONTENT_CLIENT_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client"));
+  private static final Path KERNEL_CONTENT_EVENTS_PACKAGE =
+      KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "events"));
   private static final Path KERNEL_CONTENT_FILTER_PACKAGE =
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "client", "filter"));
   private static final Path KERNEL_CONTENT_ASYNC_PACKAGE =
@@ -38,6 +40,8 @@ class KernelContentBoundaryTest {
       KERNEL_CONTENT_MAIN_JAVA.resolve(Path.of("network", "crypta", "support", "api"));
   private static final Path RUNTIME_NODE_CLIENT_PACKAGE =
       Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client");
+  private static final Path RUNTIME_NODE_EVENTS_PACKAGE =
+      Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client", "events");
   private static final Path RUNTIME_NODE_FILTER_PACKAGE =
       Path.of("runtime-node", "src", "main", "java", "network", "crypta", "client", "filter");
   private static final Path RUNTIME_NODE_ALERTS_PACKAGE =
@@ -71,6 +75,16 @@ class KernelContentBoundaryTest {
           "InsertException.java",
           "MetadataResolutionTarget.java",
           "MetadataUnresolvedException.java");
+  private static final List<String> MOVED_EVENT_TYPES =
+      List.of(
+          "ClientEventListener.java",
+          "ClientEventProducer.java",
+          "SimpleEventProducer.java",
+          "EventLogger.java",
+          "EventDumper.java",
+          "SplitfileProgressEvent.java",
+          "ClientEventDispatchContext.java",
+          "ClientEventPersistentTask.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
       List.of("DataFilterException.java", "UnsafeContentTypeException.java");
   private static final List<String> MOVED_ASYNC_UTILITY_TYPES =
@@ -210,6 +224,8 @@ class KernelContentBoundaryTest {
         RUNTIME_NODE_CLIENT_PACKAGE,
         MOVED_CLIENT_FAILURE_TYPES);
     assertOwnedByKernelContent(
+        repoRoot, KERNEL_CONTENT_EVENTS_PACKAGE, RUNTIME_NODE_EVENTS_PACKAGE, MOVED_EVENT_TYPES);
+    assertOwnedByKernelContent(
         repoRoot,
         KERNEL_CONTENT_FILTER_PACKAGE,
         RUNTIME_NODE_FILTER_PACKAGE,
@@ -248,6 +264,31 @@ class KernelContentBoundaryTest {
     assertTrue(
         violations.isEmpty(),
         "kernel-content persistence contracts must stay free of ClientContext imports."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void kernelContentPhaseTwo_whenScanningEventImports_expectNoClientContextImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path kernelContentEvents = repoRoot.resolve(KERNEL_CONTENT_EVENTS_PACKAGE);
+    List<String> violations = new ArrayList<>();
+
+    assertTrue(
+        Files.isDirectory(kernelContentEvents),
+        "kernel-content events package must exist before import scanning");
+
+    for (Path sourceFile : findJavaSources(kernelContentEvents)) {
+      Set<String> imports = readMatchingImports(sourceFile, CLIENT_CONTEXT_IMPORT_PATTERN);
+      if (!imports.isEmpty()) {
+        violations.add(repoRoot.relativize(sourceFile) + " -> " + String.join(", ", imports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "kernel-content event contracts must stay free of ClientContext imports."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }
