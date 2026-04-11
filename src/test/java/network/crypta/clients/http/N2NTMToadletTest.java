@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,11 +17,13 @@ import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessageSendStatus;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.DarknetUploadedFile;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
+import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import org.junit.jupiter.api.BeforeAll;
@@ -56,6 +59,7 @@ class N2NTMToadletTest {
   @Mock private RuntimePorts runtimePorts;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
+  @Mock private LifecyclePort lifecyclePort;
   @Mock private LocalFileN2NMToadlet browser;
   @Mock private HighLevelSimpleClient client;
   @Mock private HTTPRequest request;
@@ -76,12 +80,35 @@ class N2NTMToadletTest {
     org.mockito.Mockito.lenient()
         .when(runtimePorts.darknetMessaging())
         .thenReturn(darknetMessagingPort);
+    org.mockito.Mockito.lenient().when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
     toadlet = new N2NTMToadlet(runtimePorts, browser, client);
   }
 
   @Test
   void path_returnsConfiguredEndpoint() {
     assertEquals("/send_n2ntm/", toadlet.path());
+  }
+
+  @Test
+  void maxSize_whenMemoryLimitUnset_usesDefaultFallback() throws Exception {
+    when(lifecyclePort.memoryLimitBytes()).thenReturn(Long.MAX_VALUE);
+
+    assertEquals(1024L * 1024L, invokeMaxSize());
+  }
+
+  @Test
+  void maxSize_whenMemoryLimitFinite_usesFivePercentAboveDefault() throws Exception {
+    long memoryLimitBytes = 40L * 1024L * 1024L;
+    when(lifecyclePort.memoryLimitBytes()).thenReturn(memoryLimitBytes);
+
+    assertEquals(Math.max(Math.round(0.05d * memoryLimitBytes), 1024L * 1024L), invokeMaxSize());
+  }
+
+  @Test
+  void maxSize_whenMemoryLimitNonPositive_usesDefaultFallback() throws Exception {
+    when(lifecyclePort.memoryLimitBytes()).thenReturn(-1L);
+
+    assertEquals(1024L * 1024L, invokeMaxSize());
   }
 
   @Test
@@ -143,10 +170,12 @@ class N2NTMToadletTest {
 
   @Test
   void handleMethodGET_whenPeerFound_rendersSendFormFromDetachedSnapshot() throws Exception {
+    long memoryLimitBytes = 64L * 1024L * 1024L;
     when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
     when(request.isParameterSet("peernode_hashcode")).thenReturn(true);
     when(request.getParam("peernode_hashcode")).thenReturn("42");
     when(darknetConnectionsPort.listPeers()).thenReturn(List.of(alicePeerSnapshot()));
+    when(lifecyclePort.memoryLimitBytes()).thenReturn(memoryLimitBytes);
 
     PageMaker pageMaker = pageMaker();
     when(ctx.getPageMaker()).thenReturn(pageMaker);
@@ -175,9 +204,14 @@ class N2NTMToadletTest {
         new URI("http://localhost/send_n2ntm/?peernode_hashcode=42"), request, ctx);
 
     String generated = html.get();
+    String normalizedHtml =
+        generated.replace("&nbsp;", " ").replace("&#160;", " ").replace('\u00A0', ' ');
     assertTrue(generated.contains("Alice"));
     assertTrue(generated.contains("node_42"));
     assertTrue(generated.contains("n2ntmtext"));
+    assertTrue(
+        normalizedHtml.contains(SizeUtil.formatSize(N2NTMToadlet.maxSize(memoryLimitBytes))));
+    verify(lifecyclePort).memoryLimitBytes();
   }
 
   @Test
@@ -417,5 +451,11 @@ class N2NTMToadletTest {
     HTMLNode content = outer.addChild("div");
     HTMLNode head = new HTMLNode("head");
     return new PageNode(outer, head, content);
+  }
+
+  private long invokeMaxSize() throws Exception {
+    Method method = N2NTMToadlet.class.getDeclaredMethod("maxSize");
+    method.setAccessible(true);
+    return (Long) method.invoke(toadlet);
   }
 }

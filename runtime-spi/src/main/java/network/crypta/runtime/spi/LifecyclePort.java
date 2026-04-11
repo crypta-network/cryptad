@@ -69,4 +69,16 @@ public interface LifecyclePort {
    */
   @SuppressWarnings("unused")
   long startupTimeMillis();
+
+  /**
+   * Reports the runtime memory limit in bytes.
+   *
+   * <p>This exposes the daemon's existing memory ceiling, so detached HTTP adapters can apply the
+   * same upload and allocation thresholds without reaching back into bootstrap-only classes. The
+   * value preserves current daemon semantics: callers should treat {@link Long#MAX_VALUE} or
+   * non-positive values as sentinel cases rather than as literal byte limits.
+   *
+   * @return the runtime memory limit in bytes according to the daemon's existing semantics
+   */
+  long memoryLimitBytes();
 }

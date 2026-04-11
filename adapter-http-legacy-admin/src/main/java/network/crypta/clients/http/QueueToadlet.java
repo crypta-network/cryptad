@@ -12,11 +12,8 @@ import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.runtime.admin.queue.page.QueueProgressCellContext;
-import network.crypta.runtime.admin.queue.page.QueueProgressCellRenderer;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -71,7 +68,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Renders queue pages with sortable columns and per-item actions.
  *   <li>Enforces public-gateway restrictions before mutating queue state.
  *   <li>Ensures queue completion tracking has been started for the selected side.
- *   <li>Provides utility helpers used by other UI components, such as progress cells.
+ *   <li>Keeps queue-specific HTTP parsing and response rendering inside the adapter layer.
  * </ul>
  *
  * @see FProxyRegistrar
@@ -1830,29 +1827,6 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     NORMAL,
     COUNT,
     KEY_LIST
-  }
-
-  /**
-   * Renders an HTML table cell describing request progress using the supplied counters and state
-   * flags.
-   *
-   * <p>The cell mirrors the appearance used on the queue page, including early status messages for
-   * compression, unknown totals, and finalized uploads. The method is deterministic and does not
-   * mutate the request state; it only formats progress based on the provided counters. Callers can
-   * reuse the returned node within larger tables and should pass consistent counters so the percent
-   * calculations remain stable between refreshes.
-   *
-   * @param context rendering context for the request state flags.
-   * @param counts progress counters for the request.
-   * @return HTML node representing the progress cell, ready to attach.
-   */
-  @SuppressWarnings("unused")
-  public static HTMLNode createProgressCell(
-      ProgressCellContext context, SplitfileProgressCounts counts) {
-    QueueProgressCellContext progressContext =
-        new QueueProgressCellContext(
-            context.advancedMode(), context.started(), context.compressing(), context.upload());
-    return QueueProgressCellRenderer.createProgressCell(progressContext, counts);
   }
 
   private HTMLNode createPanicBox(PageMaker pageMaker, ToadletContext ctx) {

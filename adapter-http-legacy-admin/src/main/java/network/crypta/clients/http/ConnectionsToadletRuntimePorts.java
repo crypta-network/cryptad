@@ -4,6 +4,7 @@ import java.util.Objects;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.PeerPort;
 
@@ -26,13 +27,15 @@ import network.crypta.runtime.spi.PeerPort;
  * @param nodeInfoPort node-info port used for local noderef export.
  * @param configPort config port used for connections-page settings.
  * @param connectionsSupportPort support port used for opennet enablement and peer-offer imports.
+ * @param lifecyclePort lifecycle port used for runtime-wide limits needed by shared form helpers.
  */
 record ConnectionsToadletRuntimePorts(
     ConnectionsPagePort connectionsPage,
     PeerPort peerPort,
     NodeInfoPort nodeInfoPort,
     ConfigPort configPort,
-    ConnectionsSupportPort connectionsSupportPort) {
+    ConnectionsSupportPort connectionsSupportPort,
+    LifecyclePort lifecyclePort) {
   /**
    * Creates one shared runtime-port bundle for connections toadlets.
    *
@@ -47,5 +50,6 @@ record ConnectionsToadletRuntimePorts(
     Objects.requireNonNull(nodeInfoPort);
     Objects.requireNonNull(configPort);
     Objects.requireNonNull(connectionsSupportPort);
+    Objects.requireNonNull(lifecyclePort);
   }
 }

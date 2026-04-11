@@ -28,6 +28,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -129,6 +130,28 @@ class ClientPutBaseTest {
     assertEquals(1, request.freeDataCalls);
     verify(handler).finishedClientRequest(request);
     verify(handler).send(any(PutSuccessfulMessage.class));
+    verify(client).notifySuccess(request);
+  }
+
+  @Test
+  void onSuccess_whenGeneratedUriMissing_usesStateUriForPutSuccessfulAndStatus() throws Exception {
+    TestClientPutBase request = new TestClientPutBase();
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    BaseClientPutter state = mock(BaseClientPutter.class);
+    FreenetURI generatedUri = new FreenetURI("KSK", "fallback-uri");
+    setField(ClientRequest.class, request, "identifier", "fallback-id");
+    setField(ClientRequest.class, request, "persistence", Persistence.CONNECTION);
+    setField(ClientRequest.class, request, "origHandler", handler);
+    setField(ClientRequest.class, request, "client", client);
+    when(state.getURI()).thenReturn(generatedUri);
+
+    request.onSuccess(state);
+
+    ArgumentCaptor<PutSuccessfulMessage> successCaptor =
+        ArgumentCaptor.forClass(PutSuccessfulMessage.class);
+    verify(handler).send(successCaptor.capture());
+    assertSame(generatedUri, request.getGeneratedURI());
+    assertSame(generatedUri, successCaptor.getValue().uri);
     verify(client).notifySuccess(request);
   }
 

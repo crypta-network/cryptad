@@ -11,6 +11,7 @@ import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.runtime.spi.NodeReferenceView;
@@ -96,6 +97,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
               "clear_allow_local",
               peerSettingsUpdate(null, null, null, null, Boolean.FALSE, null)));
   private final DarknetConnectionsPort darknetConnectionsPort;
+  private final LifecyclePort lifecyclePort;
   private final PeerPort peerPort;
 
   DarknetConnectionsToadlet(
@@ -104,6 +106,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       DarknetConnectionsPort darknetConnectionsPort) {
     super(client, runtimePorts);
     this.darknetConnectionsPort = darknetConnectionsPort;
+    this.lifecyclePort = runtimePorts.lifecyclePort();
     this.peerPort = runtimePorts.peerPort();
   }
 
@@ -562,7 +565,8 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
         peers.putIfAbsent(peerHash, peer.displayName());
       }
     }
-    N2NTMToadlet.createN2NTMSendForm(ctx.isAdvancedModeEnabled(), contentNode, ctx, peers);
+    N2NTMToadlet.createN2NTMSendForm(
+        ctx.isAdvancedModeEnabled(), contentNode, ctx, peers, lifecyclePort.memoryLimitBytes());
     writeHTMLReply(ctx, 200, "OK", page.generate());
   }
 

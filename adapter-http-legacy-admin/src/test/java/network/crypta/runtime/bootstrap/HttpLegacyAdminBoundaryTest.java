@@ -29,6 +29,10 @@ class HttpLegacyAdminBoundaryTest {
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_N2NTM_TOADLET =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("N2NTMToadlet.java");
+  private static final Path ADAPTER_QUEUE_TOADLET =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("QueueToadlet.java");
   private static final Set<Path> CONNECTIONS_TOADLETS =
       Set.of(
           ADAPTER_HTTP_MAIN_JAVA.resolve("ConnectionsToadlet.java"),
@@ -66,6 +70,50 @@ class HttpLegacyAdminBoundaryTest {
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path BRIDGE_OWNERSHIP_METADATA =
       Path.of(BRIDGE_MODULE_NAME, "gradle", "owned-output-patterns.txt");
+  private static final Path RUNTIME_SPI_CONNECTIVITY_PAGE_PATHS =
+      Path.of(
+          "runtime-spi",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "runtime",
+          "http",
+          "ConnectivityPagePaths.java");
+  private static final Path RUNTIME_SPI_UPDATER_PATHS =
+      Path.of(
+          "runtime-spi",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "runtime",
+          "updater",
+          "UpdaterPaths.java");
+  private static final Path RUNTIME_NODE_CONNECTIVITY_PAGE_PATHS =
+      Path.of(
+          "runtime-node",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "runtime",
+          "http",
+          "ConnectivityPagePaths.java");
+  private static final Path RUNTIME_NODE_UPDATER_PATHS =
+      Path.of(
+          "runtime-node",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "runtime",
+          "updater",
+          "UpdaterPaths.java");
   private static final Path DEFAULT_BRIDGE_FACTORIES =
       Path.of(
           "src",
@@ -215,6 +263,49 @@ class HttpLegacyAdminBoundaryTest {
             + String.join(System.lineSeparator(), violations));
   }
 
+  @Test
+  void
+      mainSources_whenScanningAdapterHttpImports_expectRemovedLifecycleAndQueueHelperImportsAbsent()
+          throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : List.of(ADAPTER_N2NTM_TOADLET, ADAPTER_QUEUE_TOADLET)) {
+      Set<String> imports = readImports(repoRoot.resolve(sourceFile));
+      for (String forbiddenImport : forbiddenAdapterHttpImports(sourceFile)) {
+        if (imports.contains(forbiddenImport)) {
+          violations.add(sourceFile + " -> " + forbiddenImport);
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "adapter-http-legacy-admin main sources must not import NodeStarter or the queue progress "
+            + "cell helper classes removed in PR-159."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSourceLayout_whenCheckingRuntimeSpiOwnership_expectMovedPathHelpersLiveInRuntimeSpi()
+      throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertTrue(
+        Files.isRegularFile(repoRoot.resolve(RUNTIME_SPI_CONNECTIVITY_PAGE_PATHS)),
+        "ConnectivityPagePaths.java must live under runtime-spi");
+    assertTrue(
+        Files.isRegularFile(repoRoot.resolve(RUNTIME_SPI_UPDATER_PATHS)),
+        "UpdaterPaths.java must live under runtime-spi");
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_CONNECTIVITY_PAGE_PATHS)),
+        "ConnectivityPagePaths.java must not remain under runtime-node");
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_UPDATER_PATHS)),
+        "UpdaterPaths.java must not remain under runtime-node");
+  }
+
   private static List<Path> findMainJavaSources(Path repoRoot) throws IOException {
     try (Stream<Path> walk = Files.walk(repoRoot)) {
       return walk.filter(Files::isRegularFile)
@@ -259,6 +350,19 @@ class HttpLegacyAdminBoundaryTest {
           .filter(line -> line.startsWith("import "))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
+  }
+
+  private static Set<String> forbiddenAdapterHttpImports(Path sourceFile) {
+    if (sourceFile.equals(ADAPTER_N2NTM_TOADLET)) {
+      return Set.of("import network.crypta.runtime.bootstrap.NodeStarter;");
+    }
+    if (sourceFile.equals(ADAPTER_QUEUE_TOADLET)) {
+      return Set.of(
+          "import network.crypta.runtime.admin.queue.page.QueueCompressionState;",
+          "import network.crypta.runtime.admin.queue.page.QueueProgressCellContext;",
+          "import network.crypta.runtime.admin.queue.page.QueueProgressCellRenderer;");
+    }
+    return Set.of();
   }
 
   private static boolean hasJavaSources(Path root) throws IOException {

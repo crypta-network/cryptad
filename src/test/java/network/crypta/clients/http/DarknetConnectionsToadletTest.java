@@ -19,6 +19,7 @@ import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
@@ -31,6 +32,7 @@ import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,6 +78,7 @@ class DarknetConnectionsToadletTest {
   @Mock private ConnectionsPagePort connectionsPage;
   @Mock private ConnectionsSupportPort connectionsSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
+  @Mock private LifecyclePort lifecyclePort;
   @Mock private PeerPort peerPort;
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private ConfigPort configPort;
@@ -88,7 +91,12 @@ class DarknetConnectionsToadletTest {
   void setUp() {
     ConnectionsToadletRuntimePorts runtimePorts =
         new ConnectionsToadletRuntimePorts(
-            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+            connectionsPage,
+            peerPort,
+            nodeInfoPort,
+            configPort,
+            connectionsSupportPort,
+            lifecyclePort);
     toadlet = new DarknetConnectionsToadlet(client, runtimePorts, darknetConnectionsPort);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
   }
@@ -97,10 +105,24 @@ class DarknetConnectionsToadletTest {
   void constructor_withoutNodeClientCoreDependency_acceptsRuntimePortsOnly() {
     ConnectionsToadletRuntimePorts runtimePorts =
         new ConnectionsToadletRuntimePorts(
-            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+            connectionsPage,
+            peerPort,
+            nodeInfoPort,
+            configPort,
+            connectionsSupportPort,
+            lifecyclePort);
 
     assertDoesNotThrow(
         () -> new DarknetConnectionsToadlet(client, runtimePorts, darknetConnectionsPort));
+  }
+
+  @Test
+  void connectionsToadletRuntimePorts_whenLifecyclePortNull_throwsNullPointerException() {
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            new ConnectionsToadletRuntimePorts(
+                connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort, null));
   }
 
   @Test
@@ -345,14 +367,17 @@ class DarknetConnectionsToadletTest {
   void handleAltPost_sendMessageToPeers_buildsComposeFormFromDetachedSnapshots() throws Exception {
     int aliceToken = 101;
     int bobToken = 202;
+    long memoryLimitBytes = 64L * 1024 * 1024;
     when(darknetConnectionsPort.listPeers())
         .thenReturn(
             List.of(
                 darknetPeerSnapshot(aliceToken, "Alice", ""),
                 darknetPeerSnapshot(bobToken, "Bob", "")));
+    when(lifecyclePort.memoryLimitBytes()).thenReturn(memoryLimitBytes);
     when(request.isPartSet("doSendMessageToPeers")).thenReturn(true);
     when(request.isPartSet("node_" + aliceToken)).thenReturn(true);
     when(request.isPartSet("node_" + bobToken)).thenReturn(true);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
     PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     stubFormChild(ctx);
@@ -362,10 +387,15 @@ class DarknetConnectionsToadletTest {
     toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
 
     String html = body.toString(StandardCharsets.UTF_8);
+    String normalizedHtml =
+        html.replace("&nbsp;", " ").replace("&#160;", " ").replace('\u00A0', ' ');
     assertTrue(html.contains("Alice"));
     assertTrue(html.contains("Bob"));
     assertTrue(html.contains("name=\"node_" + aliceToken + '"'));
     assertTrue(html.contains("name=\"node_" + bobToken + '"'));
+    assertTrue(
+        normalizedHtml.contains(SizeUtil.formatSize(N2NTMToadlet.maxSize(memoryLimitBytes))));
+    verify(lifecyclePort).memoryLimitBytes();
   }
 
   @Test

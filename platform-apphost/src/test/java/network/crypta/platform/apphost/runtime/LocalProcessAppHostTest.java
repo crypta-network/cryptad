@@ -1304,6 +1304,24 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void stop_whenRecoveredLateChildExitsWithinStopTimeout_expectCleanSuccess()
+      throws IOException, ReflectiveOperationException {
+    long recoveredChildPid = 84L;
+    LocalProcessAppHost host = host(Duration.ofMillis(200));
+    RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
+    injectRunningProcess(
+        host,
+        RUNNER_APP_ID,
+        snapshot,
+        new LateRecoveredChildProcess(snapshot.pid(), recoveredChildPid, 8),
+        CompletableFuture.completedFuture(null));
+
+    assertTrue(host.stop(RUNNER_APP_ID));
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    assertTrue(host.listRunning().isEmpty());
+  }
+
+  @Test
   void stop_whenShutdownSpawnsReplacementChild_expectFailureAndRunningStatePreserved()
       throws ReflectiveOperationException {
     String appId = "shutdown-respawn-app";
@@ -1503,7 +1521,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = host(Duration.ofSeconds(2));
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledRunnerApp(STDIN_EOF_SCRIPT));
 
@@ -2498,6 +2516,189 @@ class LocalProcessAppHostTest {
         return childSpawned
             ? java.util.stream.Stream.of(childHandle)
             : java.util.stream.Stream.empty();
+      }
+
+      @Override
+      public java.util.stream.Stream<ProcessHandle> descendants() {
+        return children();
+      }
+
+      @Override
+      public int compareTo(ProcessHandle other) {
+        return Long.compare(pid, other.pid());
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        return other instanceof ProcessHandle otherHandle && pid == otherHandle.pid();
+      }
+
+      @Override
+      public int hashCode() {
+        return Long.hashCode(pid);
+      }
+    }
+  }
+
+  private static final class LateRecoveredChildProcess extends Process {
+    private final long pid;
+    private final ProcessHandle handle;
+    private boolean rootAlive = true;
+
+    private LateRecoveredChildProcess(long pid, long childPid, int childAliveChecksBeforeExit) {
+      this.pid = pid;
+      this.handle = new LateRecoveredChildProcessHandle(childPid, childAliveChecksBeforeExit);
+    }
+
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public int waitFor() {
+      return 0;
+    }
+
+    @Override
+    public boolean waitFor(long timeout, TimeUnit unit) {
+      return !rootAlive;
+    }
+
+    @Override
+    public int exitValue() {
+      if (rootAlive) {
+        throw new IllegalThreadStateException("process is still running");
+      }
+      return 0;
+    }
+
+    @Override
+    public void destroy() {
+      rootAlive = false;
+    }
+
+    @Override
+    public Process destroyForcibly() {
+      destroy();
+      return this;
+    }
+
+    @Override
+    public boolean isAlive() {
+      return rootAlive;
+    }
+
+    @Override
+    public long pid() {
+      return pid;
+    }
+
+    @Override
+    public ProcessHandle toHandle() {
+      return handle;
+    }
+
+    private final class LateRecoveredChildProcessHandle implements ProcessHandle {
+      private final ProcessHandle childHandle;
+      private final AtomicInteger deferredChildVisibilityChecks = new AtomicInteger(1);
+
+      private LateRecoveredChildProcessHandle(long childPid, int childAliveChecksBeforeExit) {
+        this.childHandle = new FadingProcessHandle(childPid, childAliveChecksBeforeExit);
+      }
+
+      @Override
+      public long pid() {
+        return pid;
+      }
+
+      @Override
+      public Info info() {
+        return new Info() {
+          @Override
+          public Optional<String> command() {
+            return Optional.empty();
+          }
+
+          @Override
+          public Optional<String> commandLine() {
+            return Optional.empty();
+          }
+
+          @Override
+          public Optional<String[]> arguments() {
+            return Optional.empty();
+          }
+
+          @Override
+          public Optional<Instant> startInstant() {
+            return Optional.empty();
+          }
+
+          @Override
+          public Optional<Duration> totalCpuDuration() {
+            return Optional.empty();
+          }
+
+          @Override
+          public Optional<String> user() {
+            return Optional.empty();
+          }
+        };
+      }
+
+      @Override
+      public CompletableFuture<ProcessHandle> onExit() {
+        return rootAlive ? new CompletableFuture<>() : CompletableFuture.completedFuture(this);
+      }
+
+      @Override
+      public boolean supportsNormalTermination() {
+        return true;
+      }
+
+      @Override
+      public boolean destroy() {
+        LateRecoveredChildProcess.this.destroy();
+        return true;
+      }
+
+      @Override
+      public boolean destroyForcibly() {
+        return destroy();
+      }
+
+      @Override
+      public boolean isAlive() {
+        return rootAlive;
+      }
+
+      @Override
+      public Optional<ProcessHandle> parent() {
+        return Optional.empty();
+      }
+
+      @Override
+      public java.util.stream.Stream<ProcessHandle> children() {
+        if (rootAlive) {
+          return java.util.stream.Stream.empty();
+        }
+        int checksRemaining =
+            deferredChildVisibilityChecks.getAndUpdate(current -> Math.max(0, current - 1));
+        if (checksRemaining > 0) {
+          return java.util.stream.Stream.empty();
+        }
+        return java.util.stream.Stream.of(childHandle);
       }
 
       @Override

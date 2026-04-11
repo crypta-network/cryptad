@@ -11,13 +11,13 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessageSendStatus;
 import network.crypta.runtime.spi.DarknetMessagingPort;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.DarknetUploadedFile;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.UnknownPeerException;
 import network.crypta.support.HTMLNode;
@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * <p>This toadlet renders the message composition form, validates inputs, and routes outgoing
  * messages to selected darknet peers. It also supports optional file offers, either by selecting a
  * local file on the node or by uploading a small file through the HTTP request. Requests are
- * redirected back to the friends page when the flow is not recognized or when permission checks
+ * redirected back to the Friends page when the flow is not recognized or when permission checks
  * fail. Error responses are rendered as infoboxes so the user can retry without losing context.
  *
  * <p>The class delegates file browsing to {@link LocalFileN2NMToadlet} and routes peer lookup and
@@ -70,6 +70,7 @@ public class N2NTMToadlet extends Toadlet {
 
   private final DarknetConnectionsPort darknetConnections;
   private final DarknetMessagingPort darknetMessaging;
+  private final LifecyclePort lifecyclePort;
   private final LocalFileN2NMToadlet browser;
 
   /**
@@ -91,6 +92,7 @@ public class N2NTMToadlet extends Toadlet {
     RuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
     this.darknetConnections = Objects.requireNonNull(ports.darknetConnections());
     this.darknetMessaging = Objects.requireNonNull(ports.darknetMessaging());
+    this.lifecyclePort = Objects.requireNonNull(ports.lifecycle(), "lifecyclePort");
     this.browser = Objects.requireNonNull(browser, "browser");
   }
 
@@ -113,7 +115,7 @@ public class N2NTMToadlet extends Toadlet {
    *
    * <p>The handler first enforces full-access permissions. If the request includes a peer hashcode
    * parameter, it renders a pre-targeted sending form or a peer-not-found error when the hash does
-   * not resolve. Otherwise, it redirects to the friends page so the normal N2N navigation remains
+   * not resolve. Otherwise, it redirects to the Friends page so the normal N2N navigation remains
    * consistent. This method does not mutate a persistent state; it only renders HTML responses or
    * performs a redirect.
    *
@@ -163,7 +165,8 @@ public class N2NTMToadlet extends Toadlet {
     }
     Map<String, String> peers = new LinkedHashMap<>();
     peers.put(inputHashcodeString, peer.displayName());
-    createN2NTMSendForm(ctx.isAdvancedModeEnabled(), contentNode, ctx, peers);
+    createN2NTMSendForm(
+        ctx.isAdvancedModeEnabled(), contentNode, ctx, peers, lifecyclePort.memoryLimitBytes());
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }
 
@@ -197,11 +200,30 @@ public class N2NTMToadlet extends Toadlet {
   /*
    * File size limit is 1 MiB (1024*1024 bytes) or 5% of maximum Java memory, whichever is greater.
    */
-  private static long maxSize() {
-    long memory = NodeStarter.getMemoryLimitBytes();
-    if (memory == Long.MAX_VALUE || memory <= 0) return DEFAULT_MAX_SIZE_BYTES;
-    long maxMem = Math.round(0.05 * memory);
+  private long maxSize() {
+    return maxSize(lifecyclePort.memoryLimitBytes());
+  }
+
+  static long maxSize(long memoryLimitBytes) {
+    if (memoryLimitBytes == Long.MAX_VALUE || memoryLimitBytes <= 0) {
+      return DEFAULT_MAX_SIZE_BYTES;
+    }
+    long maxMem = Math.round(0.05 * memoryLimitBytes);
     return Math.max(maxMem, DEFAULT_MAX_SIZE_BYTES);
+  }
+
+  private static long currentProcessMemoryLimitBytes() {
+    long maxMemory = Runtime.getRuntime().maxMemory();
+    if (maxMemory == Long.MAX_VALUE) {
+      return maxMemory;
+    }
+    if (maxMemory <= 0) {
+      return -1;
+    }
+    if (maxMemory < DEFAULT_MAX_SIZE_BYTES) {
+      return maxMemory * DEFAULT_MAX_SIZE_BYTES;
+    }
+    return maxMemory;
   }
 
   private static HTMLNode createPeerErrorInfobox(String header, String message) {
@@ -560,6 +582,15 @@ public class N2NTMToadlet extends Toadlet {
    */
   public static void createN2NTMSendForm(
       boolean advancedMode, HTMLNode contentNode, ToadletContext ctx, Map<String, String> peers) {
+    createN2NTMSendForm(advancedMode, contentNode, ctx, peers, currentProcessMemoryLimitBytes());
+  }
+
+  static void createN2NTMSendForm(
+      boolean advancedMode,
+      HTMLNode contentNode,
+      ToadletContext ctx,
+      Map<String, String> peers,
+      long memoryLimitBytes) {
     HTMLNode infobox =
         contentNode.addChild(
             "div", new String[] {ATTR_CLASS, "id"}, new String[] {"infobox", "n2nbox"});
@@ -605,7 +636,9 @@ public class N2NTMToadlet extends Toadlet {
           "#",
           NodeL10n.getBase()
               .getString(
-                  "N2NTMToadlet.sizeWarning", "limit", SizeUtil.formatSize(maxSize(), true)));
+                  "N2NTMToadlet.sizeWarning",
+                  "limit",
+                  SizeUtil.formatSize(maxSize(memoryLimitBytes), true)));
       messageForm.addChild("br");
       messageForm.addChild(
           "#", NodeL10n.getBase().getString("QueueToadlet.insertFileLabel") + ": ");
