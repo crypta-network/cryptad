@@ -1,9 +1,6 @@
 package network.crypta.clients.http;
 
-import java.util.Comparator;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.OpennetPeerNodeStatus;
-import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.HTMLNode;
@@ -49,7 +46,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
   /**
    * Selects the public opennet noderef view used by the shared base-class export flow.
    *
-   * @return public opennet noderef view used by the connections page.
+   * @return public opennet noderef view used by the Connections page.
    */
   @Override
   protected NodeReferenceView noderefView() {
@@ -150,64 +147,11 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * hierarchy. This method should remain consistent with {@link #path()} and other opennet-specific
    * toggles.
    *
-   * @return always {@code true} to mark the opennet flavor of the connections page.
+   * @return always {@code true} to mark the opennet flavor of the Connections page.
    */
   @Override
   protected boolean isOpennet() {
     return true;
-  }
-
-  /**
-   * Comparator tailored to opennet peers that optionally prioritizes the time of last successful
-   * communication. It augments the base {@link ComparatorByStatus} sorting logic with opennet-only
-   * metrics while preserving support for reversed ordering when requested by the caller.
-   *
-   * <p>The comparator is created per request to encapsulate the active sort key and direction,
-   * ensuring thread-safety and allowing multiple concurrent sorts without a shared mutable state.
-   */
-  protected static class OpennetComparator extends ComparatorByStatus {
-
-    OpennetComparator(String sortBy, boolean reversed) {
-      super(sortBy, reversed);
-    }
-
-    /**
-     * Adds custom comparison for the {@code successTime} sort key by inspecting the
-     * opennet-specific last-success timestamps. When the key does not match, the method falls back
-     * to the base comparator behavior, preserving existing ordering semantics for other columns.
-     *
-     * @param firstNode first peer node considered by the comparison routine; expected to be an
-     *     {@link OpennetPeerNodeStatus} instance.
-     * @param secondNode second peer node considered by the comparison routine; expected to be an
-     *     {@link OpennetPeerNodeStatus} instance.
-     * @return negative, zero, or positive, according to the configured ordering and reversal flag,
-     *     using last-success timestamps when available.
-     */
-    @Override
-    protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      if (this.sortBy.equals("successTime")) {
-        long t1 = ((OpennetPeerNodeStatus) firstNode).timeLastSuccess;
-        long t2 = ((OpennetPeerNodeStatus) secondNode).timeLastSuccess;
-        if (t1 > t2) return reversed ? 1 : -1;
-        else if (t2 > t1) return reversed ? -1 : 1;
-      }
-      return super.customCompare(firstNode, secondNode);
-    }
-  }
-
-  /**
-   * Creates the comparator to be used for sorting the opennet peer list. The method instantiates a
-   * fresh {@link OpennetComparator} so caller-specific sort keys and directions do not interfere
-   * across requests or threads.
-   *
-   * @param sortBy column identifier specifying which property to sort on, such as {@code
-   *     \"successTime\"}.
-   * @param reversed when {@code true}, invert the natural ordering produced by the comparator.
-   * @return comparator that respects the provided sort key and reversal flag for opennet peers.
-   */
-  @Override
-  protected Comparator<PeerNodeStatus> comparator(String sortBy, boolean reversed) {
-    return new OpennetComparator(sortBy, reversed);
   }
 
   /**

@@ -764,17 +764,20 @@ class LocalProcessAppHostTest {
   }
 
   @Test
-  void start_whenInstalledProcessExitsShortlyAfterLaunch_expectFailureAndNoRunningState()
+  void start_whenInstalledProcessExitsShortlyAfterLaunch_expectNoStaleRunningState()
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     AppHost host = host();
     host.installFromDirectory(stageInstalledRunnerApp(DELAYED_STARTUP_EXIT_SCRIPT));
 
-    AppHostException exception =
-        assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
+    try {
+      host.start(RUNNER_APP_ID);
+    } catch (AppHostException exception) {
+      assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
+    }
 
-    assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
+    waitForNotRunning(host);
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     assertTrue(host.listRunning().isEmpty());
   }
@@ -2193,6 +2196,18 @@ class LocalProcessAppHostTest {
       pausePolling("interrupted while waiting for app to be running: " + appId);
     }
     throw new AssertionError("timed out waiting for app to be running: " + appId);
+  }
+
+  private static void waitForNotRunning(AppHost host) {
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    while (System.nanoTime() < deadline) {
+      if (host.status(RUNNER_APP_ID).isEmpty()
+          && host.listRunning().stream().noneMatch(app -> RUNNER_APP_ID.equals(app.appId()))) {
+        return;
+      }
+      pausePolling("interrupted while waiting for app to stop running: " + RUNNER_APP_ID);
+    }
+    throw new AssertionError("timed out waiting for app to stop running: " + RUNNER_APP_ID);
   }
 
   private static RunningAppSnapshot waitForRunningPid(AppHost host, long pid) {

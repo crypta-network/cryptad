@@ -1,15 +1,10 @@
 package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.URI;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.node.OpennetPeerNodeStatus;
-import network.crypta.node.PeerNodeStatus;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -21,6 +16,8 @@ import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.runtime.spi.PeerPort;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,9 +32,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -111,33 +110,6 @@ class OpennetConnectionsToadletTest {
   }
 
   @Test
-  void comparator_successTimeOrdersByLastSuccess() {
-    Comparator<PeerNodeStatus> comparator = toadlet.comparator("successTime", false);
-    OpennetConnectionsToadlet.OpennetComparator opennetComparator =
-        (OpennetConnectionsToadlet.OpennetComparator) comparator;
-
-    OpennetPeerNodeStatus newer = statusWithLastSuccess(2000L);
-    OpennetPeerNodeStatus older = statusWithLastSuccess(1000L);
-
-    int result = opennetComparator.customCompare(newer, older);
-
-    assertEquals(-1, result, "Newer success should sort before older by default");
-  }
-
-  @Test
-  void comparator_successTimeHonoursReversedFlag() {
-    OpennetConnectionsToadlet.OpennetComparator comparator =
-        (OpennetConnectionsToadlet.OpennetComparator) toadlet.comparator("successTime", true);
-
-    OpennetPeerNodeStatus newer = statusWithLastSuccess(2000L);
-    OpennetPeerNodeStatus older = statusWithLastSuccess(1000L);
-
-    int result = comparator.customCompare(newer, older);
-
-    assertEquals(1, result, "Reversed comparator should flip ordering");
-  }
-
-  @Test
   void handleMethodGET_whenCalled_usesConnectionsPagePortAndSkipsPeerActionsForm()
       throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -206,6 +178,32 @@ class OpennetConnectionsToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenAddPeerFormOmitsTrustAndVisibility_usesDefaultPeerTrustAndVisibility()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("add")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("url", 200)).thenReturn("");
+    when(request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE))
+        .thenReturn("opennet=true\nidentity=opennet-peer\nlastGoodVersion=1\nEnd\n");
+    when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("false");
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn("");
+    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn("");
+    when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot());
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/strangers/"), request, ctx);
+
+    ArgumentCaptor<network.crypta.runtime.spi.PeerFieldSet> fieldSetCaptor =
+        ArgumentCaptor.forClass(network.crypta.runtime.spi.PeerFieldSet.class);
+    verify(peerPort).add(fieldSetCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
+    assertEquals("opennet-peer", fieldSetCaptor.getValue().directValues().get("identity"));
+    assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
+  }
+
+  @Test
   void handleMethodGET_whenAdvancedModeEnabled_rendersOwnNoderefFromNodeInfoPort()
       throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -241,44 +239,22 @@ class OpennetConnectionsToadletTest {
   @Test
   void addNewNode_whenDarknetReferenceSubmittedOnOpennetPage_rejectsWithoutCallingPeerPort()
       throws Exception {
-    ConnectionsToadlet.PeerAdditionReturnCodes result = invokeAddNewNodeWithDarknetReference();
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("add")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("url", 200)).thenReturn("");
+    when(request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE))
+        .thenReturn(VALID_DARKNET_REFERENCE);
+    when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("false");
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn("");
+    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn("");
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    captureBody(ctx);
 
-    assertEquals(ConnectionsToadlet.PeerAdditionReturnCodes.CANT_PARSE, result);
+    toadlet.handleMethodPOST(URI.create("http://localhost/strangers/"), request, ctx);
+
     verify(peerPort, never()).add(any(), any(), any());
-  }
-
-  private OpennetPeerNodeStatus statusWithLastSuccess(long timestamp) {
-    OpennetPeerNodeStatus status = mock(OpennetPeerNodeStatus.class);
-    setTimeLastSuccess(status, timestamp);
-    return status;
-  }
-
-  private void setTimeLastSuccess(OpennetPeerNodeStatus status, long timestamp) {
-    try {
-      Field field = OpennetPeerNodeStatus.class.getField("timeLastSuccess");
-      field.setAccessible(true);
-      field.setLong(status, timestamp);
-    } catch (ReflectiveOperationException e) {
-      throw linkageError(e);
-    }
-  }
-
-  private static LinkageError linkageError(ReflectiveOperationException e) {
-    return new LinkageError("Unable to set timeLastSuccess on mock", e);
-  }
-
-  private ConnectionsToadlet.PeerAdditionReturnCodes invokeAddNewNodeWithDarknetReference()
-      throws Exception {
-    Method method =
-        ConnectionsToadlet.class.getDeclaredMethod(
-            "addNewNode",
-            String.class,
-            String.class,
-            network.crypta.node.DarknetPeerNode.FRIEND_TRUST.class,
-            network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY.class);
-    method.setAccessible(true);
-    return (ConnectionsToadlet.PeerAdditionReturnCodes)
-        method.invoke(toadlet, VALID_DARKNET_REFERENCE, "", null, null);
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {
@@ -289,6 +265,15 @@ class OpennetConnectionsToadletTest {
 
     PageMaker pageMaker = mock(PageMaker.class);
     when(pageMaker.getPageNode(anyString(), any(ToadletContext.class))).thenReturn(page);
+    org.mockito.Mockito.lenient()
+        .when(
+            pageMaker.getInfobox(
+                anyString(), anyString(), any(HTMLNode.class), anyString(), anyBoolean()))
+        .thenAnswer(
+            invocation -> {
+              HTMLNode parentNode = invocation.getArgument(2);
+              return parentNode.addChild("div");
+            });
     return pageMaker;
   }
 
@@ -325,6 +310,11 @@ class OpennetConnectionsToadletTest {
             })
         .when(context)
         .addFormChild(any(HTMLNode.class), anyString(), anyString());
+  }
+
+  private static network.crypta.runtime.spi.PeerSnapshot peerSnapshot() {
+    return new network.crypta.runtime.spi.PeerSnapshot(
+        new network.crypta.runtime.spi.PeerFieldSet(Map.of("identity", "peer-added"), Map.of()));
   }
 
   private static NodeReferenceSnapshot ownNodeReferenceSnapshot() {
