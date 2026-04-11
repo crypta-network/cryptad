@@ -287,7 +287,8 @@ final class FProxyRegistrar {
             runtimePorts.peer(),
             runtimePorts.nodeInfo(),
             runtimePorts.config(),
-            runtimePorts.connectionsSupport());
+            runtimePorts.connectionsSupport(),
+            runtimePorts.lifecycle());
 
     DarknetConnectionsToadlet friendsToadlet =
         new DarknetConnectionsToadlet(

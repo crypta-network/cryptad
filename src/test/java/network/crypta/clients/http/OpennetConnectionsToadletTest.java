@@ -11,6 +11,7 @@ import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsPageRequest;
 import network.crypta.runtime.spi.ConnectionsPageSnapshot;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
+import network.crypta.runtime.spi.LifecyclePort;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
@@ -55,6 +56,7 @@ class OpennetConnectionsToadletTest {
   @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
   @Mock private ConnectionsSupportPort connectionsSupportPort;
+  @Mock private LifecyclePort lifecyclePort;
   @Mock private PeerPort peerPort;
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private ConfigPort configPort;
@@ -67,7 +69,12 @@ class OpennetConnectionsToadletTest {
   void setUp() {
     ConnectionsToadletRuntimePorts runtimePorts =
         new ConnectionsToadletRuntimePorts(
-            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+            connectionsPage,
+            peerPort,
+            nodeInfoPort,
+            configPort,
+            connectionsSupportPort,
+            lifecyclePort);
     toadlet = new OpennetConnectionsToadlet(client, runtimePorts);
   }
 
@@ -75,7 +82,12 @@ class OpennetConnectionsToadletTest {
   void constructor_withoutNodeOrNodeClientCoreDependency_acceptsRuntimePortsOnly() {
     ConnectionsToadletRuntimePorts runtimePorts =
         new ConnectionsToadletRuntimePorts(
-            connectionsPage, peerPort, nodeInfoPort, configPort, connectionsSupportPort);
+            connectionsPage,
+            peerPort,
+            nodeInfoPort,
+            configPort,
+            connectionsSupportPort,
+            lifecyclePort);
 
     assertDoesNotThrow(() -> new OpennetConnectionsToadlet(client, runtimePorts));
   }

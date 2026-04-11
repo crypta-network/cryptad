@@ -8,6 +8,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimePortsBundle;
 import network.crypta.runtime.admin.AdminRuntimePortsFactory;
+import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
@@ -166,6 +167,11 @@ public final class LegacyRuntimePorts implements RuntimePorts {
           @Override
           public long startupTimeMillis() {
             return LegacyRuntimePorts.this.node.getStartupTime();
+          }
+
+          @Override
+          public long memoryLimitBytes() {
+            return NodeStarter.getMemoryLimitBytes();
           }
         };
     this.configPort = new LegacyConfigPort(node, core);

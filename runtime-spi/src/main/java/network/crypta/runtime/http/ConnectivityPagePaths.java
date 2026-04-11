@@ -1,17 +1,16 @@
 package network.crypta.runtime.http;
 
 /**
- * Publishes runtime-owned HTTP path constants that other layers can reuse safely.
+ * Publishes the canonical connectivity dashboard path shared across runtime and adapter layers.
  *
- * <p>This type gives the runtime HTTP layer a stable place to describe routes that must remain
- * visible to non-HTTP code. The main use case in this package is the connectivity dashboard, which
- * node classes need to reference when they generate status text and operator guidance. Keeping the
- * canonical route here avoids a direct dependency on legacy toadlet implementations while
- * preserving the exact URL shape that older code and bookmarks already expect.
+ * <p>This class intentionally keeps the normalized route fragment in a JDK-only location, so both
+ * runtime code and detached HTTP adapters can reference the same endpoint name without depending on
+ * a node-owned implementation class. The value remains stable for existing links, bookmarks, and
+ * tests, while still allowing controlled overrides through a system property for specialized
+ * runtime wiring.
  *
- * <p>The class exposes normalized paths with a leading and trailing slash so callers can use the
- * same value for link generation and endpoint registration without extra string handling. A system
- * property override exists for controlled test scenarios and specialized runtime wiring.
+ * <p>The exported path includes both leading and trailing separators, so callers can use it
+ * directly when registering routes or generating links without additional string handling.
  */
 public final class ConnectivityPagePaths {
   private static final String PATH_PROPERTY =

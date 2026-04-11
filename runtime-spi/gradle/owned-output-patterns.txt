@@ -1,3 +1,7 @@
 # Aggregated main outputs that must be pruned on non-clean builds because :runtime-spi owns them now.
 
 network/crypta/runtime/spi/**
+network/crypta/runtime/http/ConnectivityPagePaths.class
+network/crypta/runtime/http/ConnectivityPagePaths$*.class
+network/crypta/runtime/updater/UpdaterPaths.class
+network/crypta/runtime/updater/UpdaterPaths$*.class

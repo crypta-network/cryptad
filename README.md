@@ -225,7 +225,8 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
   by higher layers, including detached FCP peer management plus the admin-HTTP config,
   connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
-  first-time-wizard, symlinker, and welcome-page slices.
+  first-time-wizard, symlinker, and welcome-page slices plus shared path constants such as
+  `ConnectivityPagePaths` and `UpdaterPaths`.
 - `:platform-api` owns the transport-neutral Platform API v1 under
   `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
   and the minimal local AppHost control surface as JSON-oriented responses, and is currently
@@ -641,7 +642,8 @@ Root build also includes:
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
   `PeerStatusCounts`, and `SendableRequestItem*`.
 - `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
-  and other infrastructure code.
+  and other infrastructure code, including shared path constants such as `ConnectivityPagePaths`
+  and `UpdaterPaths`.
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
