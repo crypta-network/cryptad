@@ -5,6 +5,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
+import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
+import network.crypta.clients.http.ajaxpush.PushDataToadlet;
+import network.crypta.clients.http.ajaxpush.PushFailoverToadlet;
+import network.crypta.clients.http.ajaxpush.PushKeepaliveToadlet;
+import network.crypta.clients.http.ajaxpush.PushLeavingToadlet;
+import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
+import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.IntCallback;
 import network.crypta.config.Option;
@@ -36,13 +44,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +83,7 @@ class FProxyRegistrarTest {
   @Mock private ToadletSymlinkPort toadletSymlinkPort;
   @Mock private TransferAccessPort transferAccess;
   @Mock private SimpleToadletServer server;
+  @Mock private LegacyHttpBrowseRouteRegistrar browseRouteRegistrar;
 
   private Config config;
 
@@ -102,7 +117,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
 
     verify(server)
         .registerMenu(
@@ -213,7 +228,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()
@@ -233,7 +248,7 @@ class FProxyRegistrarTest {
         .thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT, WebShellPaths.SHELL_ROOT);
 
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
 
     ToadletRegistration webShellRegistration =
         capturedRegistrations().stream()
@@ -250,9 +265,130 @@ class FProxyRegistrarTest {
   }
 
   @Test
+  void maybeCreateFProxyEtc_whenUsingConcreteBrowseRegistrar_preservesTailBrowseRouteOrder() {
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
+
+    List<Class<?>> tailRouteTypes = new ArrayList<>();
+    for (RegisteredToadlet registration : capturedRegistrations()) {
+      Class<?> toadletType = registration.toadlet().getClass();
+      if (isTailRouteType(toadletType)) {
+        tailRouteTypes.add(toadletType);
+      }
+    }
+
+    assertEquals(
+        List.of(
+            PushDataToadlet.class,
+            PushNotificationToadlet.class,
+            PushKeepaliveToadlet.class,
+            PushFailoverToadlet.class,
+            PushTesterToadlet.class,
+            PushLeavingToadlet.class,
+            ImageCreatorToadlet.class,
+            LogWritebackToadlet.class,
+            DismissAlertToadlet.class),
+        tailRouteTypes);
+  }
+
+  @Test
+  void maybeCreateFProxyEtc_whenUsingBrowseSeam_preservesHistoricalInsertionPoints() {
+    FProxyRegistrar.maybeCreateFProxyEtc(dependencies(browseRouteRegistrar), server);
+
+    ArgumentCaptor<LegacyHttpBrowseRouteRegistrar.Phase> phaseCaptor =
+        ArgumentCaptor.forClass(LegacyHttpBrowseRouteRegistrar.Phase.class);
+    ArgumentCaptor<LegacyHttpBrowseRouteRegistrarContext> browseContextCaptor =
+        ArgumentCaptor.forClass(LegacyHttpBrowseRouteRegistrarContext.class);
+    verify(browseRouteRegistrar, times(7))
+        .registerRoutes(phaseCaptor.capture(), browseContextCaptor.capture(), same(server));
+    assertEquals(
+        List.of(
+            LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU,
+            LegacyHttpBrowseRouteRegistrar.Phase.INTRO_ROUTES,
+            LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES,
+            LegacyHttpBrowseRouteRegistrar.Phase.POST_CONFIG_ROUTES,
+            LegacyHttpBrowseRouteRegistrar.Phase.POST_MESSAGING_ROUTES,
+            LegacyHttpBrowseRouteRegistrar.Phase.POST_PLATFORM_API_ROUTES,
+            LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES),
+        phaseCaptor.getAllValues());
+    for (LegacyHttpBrowseRouteRegistrarContext browseContext : browseContextCaptor.getAllValues()) {
+      assertSame(client, browseContext.client());
+      assertSame(runtimePorts, browseContext.runtimePorts());
+      assertSame(browseRoot, browseContext.browseRoot());
+    }
+
+    InOrder inOrder = inOrder(server, browseRouteRegistrar);
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    inOrder
+        .verify(server)
+        .registerMenu(
+            LegacyHttpPaths.DOWNLOADS_PATH,
+            LegacyHttpCategories.CATEGORY_QUEUE,
+            "FProxyToadlet.categoryTitleQueue");
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.INTRO_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    verifyRegistrationInOrder(inOrder, server, UserAlertsToadlet.class, "/alerts/");
+    verifyRegistrationInOrder(
+        inOrder, server, LocalFileInsertToadlet.class, LocalFileInsertToadlet.INSERT_BROWSE_PATH);
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    verifyRegistrationInOrder(inOrder, server, SymlinkerToadlet.class, "/sl/");
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.POST_CONFIG_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    verifyRegistrationInOrder(
+        inOrder,
+        server,
+        network.crypta.clients.http.updater.CoreActionToadlet.class,
+        CORE_UPDATE_PATH);
+    verifyRegistrationInOrder(
+        inOrder, server, LocalFileN2NMToadlet.class, LocalFileN2NMToadlet.BROWSE_PATH);
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.POST_MESSAGING_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    verifyRegistrationInOrder(inOrder, server, WebShellToadlet.class, WebShellPaths.SHELL_ROOT);
+    verifyRegistrationInOrder(
+        inOrder, server, PlatformApiToadlet.class, PlatformApiToadlet.MOUNT_PATH);
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.POST_PLATFORM_API_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+    verifyRegistrationInOrder(inOrder, server, StatisticsToadlet.class, "/stats/");
+    verifyRegistrationInOrder(inOrder, server, SimpleHelpToadlet.class, "/help/");
+    inOrder
+        .verify(browseRouteRegistrar)
+        .registerRoutes(
+            eq(LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES),
+            any(LegacyHttpBrowseRouteRegistrarContext.class),
+            same(server));
+  }
+
+  @Test
   void registerRoutes_whenInvokedViaLegacyAdminRegistrar_forwardsEquivalentDependencies() {
     LegacyHttpRouteRegistrarContext context =
-        new LegacyHttpRouteRegistrarContext(client, runtimePorts, appHost, config, browseRoot);
+        new LegacyHttpRouteRegistrarContext(
+            client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar);
 
     try (MockedStatic<FProxyRegistrar> registrar = mockStatic(FProxyRegistrar.class)) {
       new LegacyAdminHttpRouteRegistrar().registerRoutes(context, server);
@@ -261,9 +397,15 @@ class FProxyRegistrarTest {
           () ->
               FProxyRegistrar.maybeCreateFProxyEtc(
                   new FProxyRegistrarDependencies(
-                      client, runtimePorts, appHost, config, browseRoot),
+                      client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar),
                   server));
     }
+  }
+
+  private FProxyRegistrarDependencies dependencies(
+      LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
+    return new FProxyRegistrarDependencies(
+        client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar);
   }
 
   private static void registerBandwidthOption(
@@ -292,6 +434,29 @@ class FProxyRegistrarTest {
 
   private static FirstTimeWizardPort readWizardPortField(Object target) {
     return (FirstTimeWizardPort) readField(target, "wizardPort");
+  }
+
+  private static void verifyRegistrationInOrder(
+      InOrder inOrder,
+      SimpleToadletServer server,
+      Class<? extends Toadlet> toadletType,
+      String urlPrefix) {
+    inOrder
+        .verify(server)
+        .register(
+            argThat(toadletType::isInstance), argThat(reg -> urlPrefix.equals(reg.urlPrefix())));
+  }
+
+  private static boolean isTailRouteType(Class<?> toadletType) {
+    return toadletType == PushDataToadlet.class
+        || toadletType == PushNotificationToadlet.class
+        || toadletType == PushKeepaliveToadlet.class
+        || toadletType == PushFailoverToadlet.class
+        || toadletType == PushTesterToadlet.class
+        || toadletType == PushLeavingToadlet.class
+        || toadletType == ImageCreatorToadlet.class
+        || toadletType == LogWritebackToadlet.class
+        || toadletType == DismissAlertToadlet.class;
   }
 
   private static Object readField(Object target, String fieldName) {

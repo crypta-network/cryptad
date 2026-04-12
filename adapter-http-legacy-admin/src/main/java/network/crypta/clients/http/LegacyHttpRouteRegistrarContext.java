@@ -28,13 +28,16 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param config node configuration view used when listing or filtering sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet that anchors the registration pass at the legacy
  *     browsing root
+ * @param browseRouteRegistrar browse-neutral registrar seam used for concrete browse-owned route
+ *     publication
  */
 public record LegacyHttpRouteRegistrarContext(
     HighLevelSimpleClient client,
     RuntimePorts runtimePorts,
     AppHost appHost,
     Config config,
-    Toadlet browseRoot) {
+    Toadlet browseRoot,
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
 
   /**
    * Creates a validated route-registration context.
@@ -49,6 +52,8 @@ public record LegacyHttpRouteRegistrarContext(
    * @param appHost shared AppHost bridge made visible through HTTP-owned routes
    * @param config node configuration view that registration may inspect for sub-config pages
    * @param browseRoot prebuilt root browse toadlet registered at the browsing root
+   * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
+   *     publication
    * @throws NullPointerException if any required collaborator is absent when the context is built
    */
   public LegacyHttpRouteRegistrarContext {
@@ -57,5 +62,6 @@ public record LegacyHttpRouteRegistrarContext(
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
     Objects.requireNonNull(browseRoot);
+    Objects.requireNonNull(browseRouteRegistrar);
   }
 }

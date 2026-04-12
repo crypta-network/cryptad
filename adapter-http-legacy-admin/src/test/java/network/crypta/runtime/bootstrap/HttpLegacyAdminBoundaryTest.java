@@ -48,6 +48,8 @@ class HttpLegacyAdminBoundaryTest {
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
   private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
       ADAPTER_HTTP_MAIN_JAVA.resolve("LegacyAdminHttpRouteRegistrar.java");
+  private static final Path ADAPTER_FPROXY_REGISTRAR =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("FProxyRegistrar.java");
   private static final Path ADAPTER_LEGACY_HTTP_ROUTE_REGISTRAR_CONTEXT =
       ADAPTER_HTTP_MAIN_JAVA.resolve("LegacyHttpRouteRegistrarContext.java");
   private static final Path ADAPTER_N2NTM_TOADLET =
@@ -410,6 +412,66 @@ class HttpLegacyAdminBoundaryTest {
             "PushDataManagerHandles",
             "PushDataManagerHandles.create(",
             "network.crypta.clients.http.updateableelements.PushDataManager"));
+  }
+
+  @Test
+  void
+      mainSources_whenCheckingAdminOwnedRouteRegistration_expectBrowseConstructionDelegatedThroughSeam()
+          throws IOException {
+    Path repoRoot = repoRoot();
+    String legacyAdminRouteRegistrarSource =
+        Files.readString(repoRoot.resolve(ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR));
+    String fproxyRegistrarSource = Files.readString(repoRoot.resolve(ADAPTER_FPROXY_REGISTRAR));
+
+    assertTrue(
+        legacyAdminRouteRegistrarSource.contains("context.browseRouteRegistrar()"),
+        repoRoot.resolve(ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR)
+            + " must forward the browse-route registrar seam.");
+    assertTrue(
+        fproxyRegistrarSource.contains("browseRouteRegistrar.registerRoutes("),
+        repoRoot.resolve(ADAPTER_FPROXY_REGISTRAR)
+            + " must delegate browse-owned route publication through the neutral seam.");
+    assertSourceDoesNotContainAny(
+        repoRoot.resolve(ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR),
+        List.of(
+            "new DecodeToadlet(",
+            "new InsertFreesiteToadlet(",
+            "new ContentFilterToadlet(",
+            "new LocalFileFilterToadlet(",
+            "new WelcomeToadlet(",
+            "new ExternalLinkToadlet(",
+            "new BookmarkEditorToadlet(",
+            "new BrowserTestToadlet(",
+            "new ImageCreatorToadlet(",
+            "new PushDataToadlet(",
+            "new PushNotificationToadlet(",
+            "new PushKeepaliveToadlet(",
+            "new PushFailoverToadlet(",
+            "new PushTesterToadlet(",
+            "new PushLeavingToadlet(",
+            "new LogWritebackToadlet(",
+            "new DismissAlertToadlet(",
+            "new LegacyFProxyBrowseRouteRegistrar("));
+    assertSourceDoesNotContainAny(
+        repoRoot.resolve(ADAPTER_FPROXY_REGISTRAR),
+        List.of(
+            "new DecodeToadlet(",
+            "new InsertFreesiteToadlet(",
+            "new ContentFilterToadlet(",
+            "new LocalFileFilterToadlet(",
+            "new WelcomeToadlet(",
+            "new ExternalLinkToadlet(",
+            "new BookmarkEditorToadlet(",
+            "new BrowserTestToadlet(",
+            "new ImageCreatorToadlet(",
+            "new PushDataToadlet(",
+            "new PushNotificationToadlet(",
+            "new PushKeepaliveToadlet(",
+            "new PushFailoverToadlet(",
+            "new PushTesterToadlet(",
+            "new PushLeavingToadlet(",
+            "new LogWritebackToadlet(",
+            "new DismissAlertToadlet("));
   }
 
   @Test

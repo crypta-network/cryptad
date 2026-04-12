@@ -9,6 +9,7 @@ import network.crypta.clients.http.FProxyRuntimeSupport;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.LegacyFProxyBrowseRouteRegistrar;
 import network.crypta.clients.http.PushDataManagerHandle;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
@@ -165,6 +166,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
         client,
         appHost,
         FProxyToadlet.create(client, fproxyRuntimeSupport, fetchTracker),
+        new LegacyFProxyBrowseRouteRegistrar(),
         CoreHttpShellRuntimeSupport::initializeFProxySharedState);
   }
 

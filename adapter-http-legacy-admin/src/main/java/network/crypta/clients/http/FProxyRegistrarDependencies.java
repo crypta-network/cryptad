@@ -25,13 +25,15 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param appHost shared AppHost instance exposed through the Platform API bridge
  * @param config node configuration used to list sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet handed to the registrar for root-path registration
+ * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route publication
  */
 record FProxyRegistrarDependencies(
     HighLevelSimpleClient client,
     RuntimePorts runtimePorts,
     AppHost appHost,
     Config config,
-    Toadlet browseRoot) {
+    Toadlet browseRoot,
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
   /**
    * Creates a validated dependency bundle for {@link FProxyRegistrar}.
    *
@@ -44,6 +46,8 @@ record FProxyRegistrarDependencies(
    * @param appHost shared AppHost instance exposed through the Platform API bridge
    * @param config node configuration used to list and filter sub-config toadlets
    * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path
+   * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
+   *     publication
    * @throws NullPointerException if any required collaborator is absent at construction time
    */
   FProxyRegistrarDependencies {
@@ -52,5 +56,10 @@ record FProxyRegistrarDependencies(
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
     Objects.requireNonNull(browseRoot);
+    Objects.requireNonNull(browseRouteRegistrar);
+  }
+
+  LegacyHttpBrowseRouteRegistrarContext browseContext() {
+    return new LegacyHttpBrowseRouteRegistrarContext(client, runtimePorts, browseRoot);
   }
 }
