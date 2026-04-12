@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import network.crypta.clients.http.filter.PushingTagReplacerCallback;
+import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.PageChromePort;
@@ -591,7 +591,7 @@ public final class PageMaker {
             TAG_SCRIPT,
             new String[] {ATTR_TYPE, ATTR_LANGUAGE},
             new String[] {MIME_TEXT_JAVASCRIPT, JAVASCRIPT})
-        .addChild("%", PushingTagReplacerCallback.getClientSideLocalizationScript());
+        .addChild("%", ClientSideLocalizationScript.getClientSideLocalizationScript());
   }
 
   private void renderStatusBar(

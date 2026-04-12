@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.runtime.alerts.UserAlertManager;
 
 /**
@@ -13,10 +12,10 @@ import network.crypta.runtime.alerts.UserAlertManager;
  * @param container the owning toadlet container that enforces request policies
  * @param pageMaker shared page renderer used by UI toadlets
  * @param userAlertManager manager used to surface user-facing alerts
- * @param bookmarkManager bookmark subsystem access point for request handlers
+ * @param bookmarkManager bookmark subsystem handle for request handlers
  */
 public record ToadletRequestServices(
     ToadletContainer container,
     PageMaker pageMaker,
     UserAlertManager userAlertManager,
-    BookmarkManager bookmarkManager) {}
+    BookmarkManagerHandle bookmarkManager) {}

@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -21,7 +20,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  * collaborators are live runtime objects with shared identity, so the record preserves references
  * rather than copying or wrapping them.
  *
- * @param bookmarkManager bookmark manager wired against the daemon-backed bookmark runtime support
+ * @param bookmarkManager bookmark handle wired against the daemon-backed bookmark runtime support
  *     for the surrounding shell lifecycle
  * @param client interactive client shared by HTTP toadlets created during shell startup and route
  *     registration
@@ -31,7 +30,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     for root-path registration
  */
 public record HttpShellBrowseBootstrap(
-    BookmarkManager bookmarkManager,
+    BookmarkManagerHandle bookmarkManager,
     HighLevelSimpleClient client,
     AppHost appHost,
     Toadlet browseRoot) {
@@ -43,7 +42,7 @@ public record HttpShellBrowseBootstrap(
    * retained as-is; this method performs no additional browse-specific initialization beyond the
    * record's null checks.
    *
-   * @param bookmarkManager bookmark manager used by the surrounding shell bootstrap to populate
+   * @param bookmarkManager bookmark handle used by the surrounding shell bootstrap to populate
    *     bookmark-backed routes
    * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
@@ -51,7 +50,7 @@ public record HttpShellBrowseBootstrap(
    * @return browse-neutral bootstrap bundle containing the supplied collaborators and browse root
    */
   public static HttpShellBrowseBootstrap create(
-      BookmarkManager bookmarkManager,
+      BookmarkManagerHandle bookmarkManager,
       HighLevelSimpleClient client,
       AppHost appHost,
       Toadlet browseRoot) {
@@ -69,7 +68,7 @@ public record HttpShellBrowseBootstrap(
    * random state; the shared shell owns that initialization step, so alternative runtime-support
    * implementations receive the same guarantee.
    *
-   * @param bookmarkManager bookmark manager used by the surrounding shell bootstrap to populate
+   * @param bookmarkManager bookmark handle used by the surrounding shell bootstrap to populate
    *     bookmark-backed routes
    * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
@@ -78,7 +77,7 @@ public record HttpShellBrowseBootstrap(
    * @return browse-neutral bootstrap bundle containing the constructed root browse toadlet
    */
   public static HttpShellBrowseBootstrap create(
-      BookmarkManager bookmarkManager,
+      BookmarkManagerHandle bookmarkManager,
       HighLevelSimpleClient client,
       AppHost appHost,
       FProxyRuntimeSupport runtimeSupport,

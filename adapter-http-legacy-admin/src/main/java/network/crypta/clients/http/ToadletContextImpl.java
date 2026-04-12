@@ -23,7 +23,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.SSL;
@@ -100,7 +99,7 @@ public final class ToadletContextImpl implements ToadletContext {
   private final BucketFactory bf;
   private final ToadletContainer container;
   private final UserAlertManager userAlertManager;
-  private final BookmarkManager bookmarkManager;
+  private final BookmarkManagerHandle bookmarkManager;
   private final InetAddress remoteAddr;
   private Exception firstReplySendingException;
   private final AtomicReference<Toadlet> activeToadlet = new AtomicReference<>();
@@ -575,11 +574,12 @@ public final class ToadletContextImpl implements ToadletContext {
    * localization support so individual handlers can focus on user flows rather than storage
    * details.
    *
-   * @return Bookmark manager configured for the running node; never {@code null}.
+   * @return bookmark handle configured for the running node; never {@code null}.
    */
   @Override
-  public BookmarkManager getBookmarkManager() {
-    return bookmarkManager;
+  @SuppressWarnings({"TypeParameterUnusedInFormals", "unchecked"})
+  public <T extends BookmarkManagerHandle> T getBookmarkManager() {
+    return (T) bookmarkManager;
   }
 
   /**

@@ -1,10 +1,11 @@
 package network.crypta.clients.http.updateableelements;
 
 import network.crypta.clients.http.FProxyFetchListener;
+import network.crypta.clients.http.PushDataManagerHandle;
 
 /**
- * Bridges FProxy fetch callbacks to the {@link PushDataManager} so UI-updatable elements stay in
- * sync with background downloads. A single instance is typically scoped to one {@link
+ * Bridges FProxy fetch callbacks to the {@link PushDataManagerHandle} so UI-updatable elements stay
+ * in sync with background downloads. A single instance is typically scoped to one {@link
  * BaseUpdatableElement} and passed to the HTTP client when initiating a fetch. The listener remains
  * lightweight: it delegates immediately without keeping additional state and therefore imposes
  * minimal overhead on the networking thread. Callers rely on it to propagate progress notifications
@@ -12,9 +13,9 @@ import network.crypta.clients.http.FProxyFetchListener;
  *
  * <p><strong>Lifecycle and thread safety:</strong> the listener is usually invoked from the thread
  * that processes HTTP fetch events. It does not mutate shared state on its own; correctness depends
- * on {@link PushDataManager} being safe for concurrent invocation. Instances are immutable after
- * construction, making them safe to reuse for repeated fetch attempts associated with the same
- * element.
+ * on {@link PushDataManagerHandle} being safe for concurrent invocation. Instances are immutable
+ * after construction, making them safe to reuse for repeated fetch attempts associated with the
+ * same element.
  *
  * <p><strong>Typical usage:</strong>
  *
@@ -26,7 +27,7 @@ import network.crypta.clients.http.FProxyFetchListener;
  */
 public class NotifierFetchListener implements FProxyFetchListener {
 
-  private final PushDataManager pushManager;
+  private final PushDataManagerHandle pushManager;
 
   private final BaseUpdatableElement element;
 
@@ -39,7 +40,7 @@ public class NotifierFetchListener implements FProxyFetchListener {
    * @param element updatable element whose identifier is resolved and refreshed when events are
    *     reported; must not be {@code null} for correct updater resolution.
    */
-  public NotifierFetchListener(PushDataManager pushManager, BaseUpdatableElement element) {
+  public NotifierFetchListener(PushDataManagerHandle pushManager, BaseUpdatableElement element) {
     this.pushManager = pushManager;
     this.element = element;
   }

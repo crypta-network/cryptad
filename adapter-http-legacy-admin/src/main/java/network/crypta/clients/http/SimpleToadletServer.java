@@ -15,8 +15,6 @@ import java.util.function.Consumer;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.PageMaker.THEME;
-import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.BooleanCallback;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.IntCallback;
@@ -158,7 +156,7 @@ public final class SimpleToadletServer
     noConfirmPanic = value;
   }
 
-  private BookmarkManager bookmarkManager; // move to WelcomeToadlet / BookmarkEditorToadlet?
+  private BookmarkManagerHandle bookmarkManager; // move to WelcomeToadlet / BookmarkEditorToadlet?
   private volatile boolean fProxyJavascriptEnabled; // ugh?
   private volatile boolean fProxyWebPushingEnabled; // ugh?
   private volatile boolean fproxyHasCompletedWizard; // hmmm..
@@ -173,8 +171,8 @@ public final class SimpleToadletServer
 
   private StartupToadlet startupToadlet;
 
-  /** The PushDataManager handles all the pushing tasks. */
-  private PushDataManager pushDataManager;
+  /** The push/update manager handle coordinates all legacy-pushing tasks. */
+  private PushDataManagerHandle pushDataManager;
 
   /** The IntervalPusherManager handles interval pushing */
   private IntervalPusherManager intervalPushManager;
@@ -476,7 +474,7 @@ public final class SimpleToadletServer
       haveCalledFProxy = true;
     }
 
-    pushDataManager = new PushDataManager(getTicker());
+    pushDataManager = PushDataManagerHandles.create(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
     HttpShellBrowseBootstrap bootstrap =
         runtimeSupportRef.createBrowseBootstrap(publicGatewayMode());
@@ -1786,9 +1784,9 @@ public final class SimpleToadletServer
    * components. Once available, it manages storage, import/export, and UI synchronization for saved
    * bookmarks. Callers should treat the reference as owned by the server.
    *
-   * @return {@link BookmarkManager} instance or {@code null} when not yet available.
+   * @return {@link BookmarkManagerHandle} instance or {@code null} when not yet available.
    */
-  public BookmarkManager getBookmarkManager() {
+  public BookmarkManagerHandle getBookmarkManager() {
     return bookmarkManager;
   }
 
@@ -1797,9 +1795,9 @@ public final class SimpleToadletServer
    *
    * <p>Provided for compatibility with older call sites that referenced the shorter name.
    *
-   * @return bookmark manager instance or {@code null}.
+   * @return bookmark handle instance or {@code null}.
    */
-  public BookmarkManager getBookmarks() {
+  public BookmarkManagerHandle getBookmarks() {
     return getBookmarkManager();
   }
 
@@ -1987,10 +1985,10 @@ public final class SimpleToadletServer
    * <p>Supports one-off push transmissions triggered by toadlets. Like the interval manager, this
    * object is created during {@link #createFproxy()} and owned by the server.
    *
-   * @return {@link PushDataManager} instance or {@code null} if initialization has not yet created
-   *     one.
+   * @return {@link PushDataManagerHandle} instance or {@code null} if initialization has not yet
+   *     created one.
    */
-  public PushDataManager getPushDataManager() {
+  public PushDataManagerHandle getPushDataManager() {
     return pushDataManager;
   }
 }

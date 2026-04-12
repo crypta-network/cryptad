@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
+import network.crypta.clients.http.BookmarkManagerHandle;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
@@ -55,7 +56,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  *   <li>Subscribe/unsubscribe to USK updates for USK-typed bookmark items.
  * </ul>
  */
-public class BookmarkManager {
+public class BookmarkManager implements BookmarkManagerHandle {
   private static final Logger LOG = LoggerFactory.getLogger(BookmarkManager.class);
 
   /**
@@ -591,6 +592,7 @@ public class BookmarkManager {
    *
    * @return an array containing the {@link FreenetURI} for each bookmark item under the main root
    */
+  @Override
   public FreenetURI[] getBookmarkURIs() {
     List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
     FreenetURI[] uris = new FreenetURI[items.size()];

@@ -338,7 +338,8 @@ class FileInsertWizardToadletTest {
     }
 
     @Override
-    public network.crypta.clients.http.bookmark.BookmarkManager getBookmarkManager() {
+    @SuppressWarnings({"TypeParameterUnusedInFormals"})
+    public <T extends network.crypta.clients.http.BookmarkManagerHandle> T getBookmarkManager() {
       return null;
     }
 

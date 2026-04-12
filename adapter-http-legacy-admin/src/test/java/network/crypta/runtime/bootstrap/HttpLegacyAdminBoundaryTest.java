@@ -31,6 +31,17 @@ class HttpLegacyAdminBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_SIMPLE_TOADLET_SERVER =
       ADAPTER_HTTP_MAIN_JAVA.resolve("SimpleToadletServer.java");
+  private static final Path ADAPTER_TOADLET_CONTEXT =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("ToadletContext.java");
+  private static final Path ADAPTER_TOADLET_CONTEXT_IMPL =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("ToadletContextImpl.java");
+  private static final Path ADAPTER_TOADLET_REQUEST_SERVICES =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("ToadletRequestServices.java");
+  private static final Path ADAPTER_HTTP_SHELL_BROWSE_BOOTSTRAP =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellBrowseBootstrap.java");
+  private static final Path ADAPTER_PAGE_MAKER = ADAPTER_HTTP_MAIN_JAVA.resolve("PageMaker.java");
+  private static final Path ADAPTER_INTERVAL_PUSHER_MANAGER =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("IntervalPusherManager.java");
   private static final Path ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellRuntimeSupport.java");
   private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
@@ -45,11 +56,26 @@ class HttpLegacyAdminBoundaryTest {
       ADAPTER_HTTP_MAIN_JAVA.resolve("QueueToadlet.java");
   private static final Path ADAPTER_WEB_SHELL_TOADLET =
       ADAPTER_HTTP_MAIN_JAVA.resolve("WebShellToadlet.java");
-  private static final Set<Path> CONNECTIONS_TOADLETS =
-      Set.of(
+  private static final List<Path> CONNECTIONS_TOADLETS =
+      List.of(
           ADAPTER_HTTP_MAIN_JAVA.resolve("ConnectionsToadlet.java"),
           ADAPTER_HTTP_MAIN_JAVA.resolve("DarknetConnectionsToadlet.java"),
           ADAPTER_HTTP_MAIN_JAVA.resolve("OpennetConnectionsToadlet.java"));
+  private static final List<Path> SHARED_SHELL_FILES_WITH_BROWSE_OWNED_COLLABORATORS =
+      List.of(
+          ADAPTER_SIMPLE_TOADLET_SERVER,
+          ADAPTER_TOADLET_CONTEXT,
+          ADAPTER_TOADLET_CONTEXT_IMPL,
+          ADAPTER_TOADLET_REQUEST_SERVICES,
+          ADAPTER_HTTP_SHELL_BROWSE_BOOTSTRAP,
+          ADAPTER_PAGE_MAKER,
+          ADAPTER_INTERVAL_PUSHER_MANAGER);
+  private static final List<String> FORBIDDEN_BROWSE_OWNED_COLLABORATOR_IMPORTS =
+      List.of(
+          "import network.crypta.clients.http.bookmark.BookmarkManager;",
+          "import network.crypta.clients.http.updateableelements.PushDataManager;",
+          "import network.crypta.clients.http.updateableelements.BaseUpdatableElement;",
+          "import network.crypta.clients.http.filter.PushingTagReplacerCallback;");
   private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
       Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
@@ -271,6 +297,30 @@ class HttpLegacyAdminBoundaryTest {
         source.contains("FProxyFetchInProgress.REFILTER_POLICY"),
         "SimpleToadletServer must use the HTTP-local refilter policy type instead of the nested "
             + "FProxy enum.");
+  }
+
+  @Test
+  void mainSources_whenCheckingSharedShellImports_expectBrowseOwnedCollaboratorsDetached()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : SHARED_SHELL_FILES_WITH_BROWSE_OWNED_COLLABORATORS) {
+      Set<String> imports = readImports(repoRoot.resolve(sourceFile));
+      for (String forbiddenImport : FORBIDDEN_BROWSE_OWNED_COLLABORATOR_IMPORTS) {
+        if (imports.contains(forbiddenImport)) {
+          violations.add(sourceFile + " -> " + forbiddenImport);
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "SimpleToadletServer, ToadletContext, ToadletContextImpl, ToadletRequestServices, "
+            + "HttpShellBrowseBootstrap, PageMaker, and IntervalPusherManager must not import "
+            + "browse-owned bookmark, push, or client-script collaborators."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   @Test

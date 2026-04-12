@@ -1,5 +1,6 @@
 package network.crypta.clients.http.updateableelements;
 
+import network.crypta.clients.http.PushUpdatableElement;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.support.HTMLNode;
@@ -29,7 +30,7 @@ import network.crypta.support.HTMLNode;
  *
  * @see SimpleToadletServer
  */
-public abstract class BaseUpdatableElement extends HTMLNode {
+public abstract class BaseUpdatableElement extends HTMLNode implements PushUpdatableElement {
 
   /**
    * Request context associated with this element's current render/update cycle.
@@ -117,53 +118,4 @@ public abstract class BaseUpdatableElement extends HTMLNode {
           .getPushDataManager()
           .elementRendered(ctx.getUniqueId(), this);
   }
-
-  /**
-   * Rebuilds this element's children to reflect the current server-side state.
-   *
-   * <p>Implementations should treat this as a full refresh of the DOM subtree rooted at this node:
-   * remove any existing children and recreate them from current state. The method is invoked during
-   * initial rendering (from {@link #init(boolean)}) and may be invoked again by the update/push
-   * pipeline when the element needs to change in place.
-   *
-   * <p>Implementations should produce a consistent subtree on every call, even if the underlying
-   * state has not changed.
-   *
-   * @param initial {@code true} when called for the first render of this instance
-   */
-  public abstract void updateState(boolean initial);
-
-  /**
-   * Returns the stable DOM id used to locate this element for client-side updates.
-   *
-   * <p>The returned value is written to the {@code id} attribute during {@link #init(boolean)} and
-   * is used as a key in internal structures for pushed elements. It may incorporate {@code
-   * requestId} to avoid collisions between concurrent renders, but it should remain stable across
-   * internal navigation (for example, redirects) where the same logical element continues to be
-   * updated.
-   *
-   * @param requestId identifier for the current HTTP request, typically from {@link ToadletContext}
-   * @return a stable and deterministic DOM id string for this element instance
-   */
-  public abstract String getUpdaterId(String requestId);
-
-  /**
-   * Returns the client-side updater type identifier for this element.
-   *
-   * <p>The returned string is used by the browser-side update framework to select an updater
-   * implementation that knows how to apply changes for this element. The exact set of supported
-   * identifiers is defined by the HTTP UI layer.
-   *
-   * @return an updater type identifier string understood by the client-side update framework
-   */
-  public abstract String getUpdaterType();
-
-  /**
-   * Releases resources associated with this element and stops further updates.
-   *
-   * <p>This is invoked when the element is no longer needed (for example, when a page is torn down
-   * or when the push framework discards it). Implementations should detach listeners, cancel
-   * scheduled work, and drop references that would otherwise keep request-scoped objects alive.
-   */
-  public abstract void dispose();
 }

@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.PushUpdatableElement;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
-import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
 import network.crypta.support.api.HTTPRequest;
@@ -29,9 +29,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>On success, the reply body is formatted as {@code SUCCESS:<type>:<children>} where {@code
  * <type>} is the UTF-8 Base64 encoding of {@link
- * network.crypta.clients.http.updateableelements.BaseUpdatableElement#getUpdaterType()} and {@code
- * <children>} is the UTF-8 Base64 encoding of {@link
- * network.crypta.clients.http.updateableelements.BaseUpdatableElement#generateChildren()}.
+ * network.crypta.clients.http.PushUpdatableElement#getUpdaterType()} and {@code <children>} is the
+ * UTF-8 Base64 encoding of {@link
+ * network.crypta.clients.http.PushUpdatableElement#generateChildren()}.
  *
  * <ul>
  *   <li>Responsibilities: translate request parameters into a rendered-element lookup and return a
@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see network.crypta.clients.http.updateableelements.PushDataManager
- * @see network.crypta.clients.http.updateableelements.BaseUpdatableElement
+ * @see network.crypta.clients.http.PushUpdatableElement
  * @see network.crypta.clients.http.updateableelements.UpdaterConstants
  */
 public class PushDataToadlet extends Toadlet {
@@ -99,7 +99,7 @@ public class PushDataToadlet extends Toadlet {
         elementId.replace(
             " ", "+"); // This is needed, because BASE64 has '+', but it is an HTML escape for ' '
     if (LOG.isDebugEnabled()) LOG.debug("Fetching push data for elementId={}", elementId);
-    BaseUpdatableElement node =
+    PushUpdatableElement node =
         ((SimpleToadletServer) ctx.getContainer())
             .getPushDataManager()
             .getRenderedElement(requestId, elementId);
