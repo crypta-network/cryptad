@@ -137,6 +137,25 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   final FProxyFetchTracker fetchTracker;
 
   /**
+   * Creates the root legacy browse toadlet.
+   *
+   * <p>The constructor remains package-local, so the bridge must still go through this explicit
+   * factory. That keeps the call site in runtime-owned bootstrap code while preserving the current
+   * implementation class and startup behavior.
+   *
+   * @param client interactive client used by the root browse toadlet
+   * @param runtimeSupport legacy runtime support used by the browse root
+   * @param tracker fetch tracker shared by browse-progress handling
+   * @return legacy browse root toadlet
+   */
+  public static FProxyToadlet create(
+      HighLevelSimpleClient client,
+      FProxyRuntimeSupport runtimeSupport,
+      FProxyFetchTracker tracker) {
+    return new FProxyToadlet(client, runtimeSupport, tracker);
+  }
+
+  /**
    * Seeds the shared legacy HTTP random state used by force links.
    *
    * <p>The current legacy browse flow stores this value statically, so every root-toadlet instance

@@ -317,17 +317,27 @@ class SimpleToadletServerTest {
     FProxyRuntimeSupport fproxyRuntimeSupport = mock(FProxyRuntimeSupport.class);
     FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
     ClientContext clientContext = mock(ClientContext.class);
+    PushDataManagerHandle pushDataManagerHandle = mock(PushDataManagerHandle.class);
+    Ticker ticker = mock(Ticker.class);
     when(runtimeSupport.runtimePorts()).thenReturn(runtimePorts);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     when(runtimeSupport.appHost()).thenReturn(appHost);
     when(runtimeSupport.config()).thenReturn(config);
+    when(runtimeSupport.ticker()).thenReturn(ticker);
+    when(runtimeSupport.createPushDataManagerHandle(ticker)).thenReturn(pushDataManagerHandle);
     when(fproxyRuntimeSupport.clientContext()).thenReturn(clientContext);
     server.setRuntimeSupport(runtimeSupport);
     server.setRouteRegistrar(routeRegistrar);
 
     FProxyToadlet browseRoot = new FProxyToadlet(client, fproxyRuntimeSupport, fetchTracker);
     when(runtimeSupport.createBrowseBootstrap(server.publicGatewayMode()))
-        .thenReturn(HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, browseRoot));
+        .thenReturn(
+            HttpShellBrowseBootstrap.create(
+                bookmarkManager,
+                client,
+                appHost,
+                browseRoot,
+                ports -> FProxyToadlet.initializeSharedRandom(ports.randomness())));
     AtomicReference<LegacyHttpRouteRegistrarContext> routeRegistrarContextRef =
         new AtomicReference<>();
     doAnswer(
@@ -353,6 +363,8 @@ class SimpleToadletServerTest {
     verify(randomnessPort).fillSecureRandom(randomCaptor.capture());
     assertSame(randomCaptor.getValue(), seededRandom);
     assertEquals(32, randomCaptor.getValue().length);
+    verify(runtimeSupport).ticker();
+    verify(runtimeSupport).createPushDataManagerHandle(same(ticker));
     assertSame(browseRoot, routeRegistrarContextRef.get().browseRoot());
   }
 

@@ -380,6 +380,39 @@ class HttpLegacyAdminBoundaryTest {
   }
 
   @Test
+  void mainSources_whenCheckingBrowseConstructionLeaks_expectNoConcreteBrowseBootstrapTypes()
+      throws IOException {
+    Path repoRoot = repoRoot();
+
+    assertSourceDoesNotContainAny(
+        repoRoot.resolve(ADAPTER_HTTP_SHELL_BROWSE_BOOTSTRAP),
+        List.of(
+            "FProxyToadlet",
+            "FProxyRuntimeSupport",
+            "FProxyFetchTracker",
+            "PushDataManagerHandles",
+            "network.crypta.clients.http.updateableelements.PushDataManager"));
+    assertSourceDoesNotContainAny(
+        repoRoot.resolve(ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT),
+        List.of(
+            "FProxyToadlet",
+            "FProxyRuntimeSupport",
+            "FProxyFetchTracker",
+            "PushDataManagerHandles",
+            "network.crypta.clients.http.updateableelements.PushDataManager"));
+    assertSourceDoesNotContainAny(
+        repoRoot.resolve(ADAPTER_SIMPLE_TOADLET_SERVER),
+        List.of(
+            "FProxyToadlet",
+            "FProxyRuntimeSupport",
+            "FProxyFetchTracker",
+            "FProxyToadlet.random",
+            "PushDataManagerHandles",
+            "PushDataManagerHandles.create(",
+            "network.crypta.clients.http.updateableelements.PushDataManager"));
+  }
+
+  @Test
   void mainSources_whenScanningAdapterHttpImports_expectRemovedPeerStatusAndAddPeerImportsAbsent()
       throws IOException {
     Path repoRoot = repoRoot();
@@ -494,6 +527,26 @@ class HttpLegacyAdminBoundaryTest {
           .filter(line -> line.startsWith("import "))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
+  }
+
+  private static void assertSourceDoesNotContainAny(Path file, List<String> forbiddenReferences)
+      throws IOException {
+    String source = Files.readString(file);
+    List<String> violations = new ArrayList<>();
+
+    for (String forbiddenReference : forbiddenReferences) {
+      if (source.contains(forbiddenReference)) {
+        violations.add(forbiddenReference);
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        file
+            + " must not contain any of: "
+            + forbiddenReferences
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   private static Set<String> forbiddenAdapterHttpImports(Path sourceFile) {

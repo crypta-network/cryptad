@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -28,12 +29,15 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     legacy HTTP routes
  * @param browseRoot browse-root toadlet constructed during bootstrap and handed to the registrar
  *     for root-path registration
+ * @param sharedShellInitializer browse-neutral hook for any shell-local initialization that must
+ *     run before route registration
  */
 public record HttpShellBrowseBootstrap(
     BookmarkManagerHandle bookmarkManager,
     HighLevelSimpleClient client,
     AppHost appHost,
-    Toadlet browseRoot) {
+    Toadlet browseRoot,
+    Consumer<RuntimePorts> sharedShellInitializer) {
   /**
    * Creates the bundle while keeping the browse-root toadlet constructor package-local.
    *
@@ -54,47 +58,42 @@ public record HttpShellBrowseBootstrap(
       HighLevelSimpleClient client,
       AppHost appHost,
       Toadlet browseRoot) {
-    return new HttpShellBrowseBootstrap(bookmarkManager, client, appHost, browseRoot);
+    return create(bookmarkManager, client, appHost, browseRoot, _ -> {});
   }
 
   /**
-   * Creates the bundle while keeping the legacy browse-root construction package-owned.
+   * Creates the bundle while keeping the browse-neutral initialization hook package-owned.
    *
-   * <p>The production bridge still assembles concrete FProxy collaborators today, but this helper
-   * keeps that construction detail local to the legacy HTTP package while returning the
-   * browse-neutral seam shape. The method constructs the current root {@link FProxyToadlet} and
-   * preserves the historical startup relationship between that root toadlet, the interactive
-   * client, and the shared fetch tracker. It intentionally does not seed the legacy force-link
-   * random state; the shared shell owns that initialization step, so alternative runtime-support
-   * implementations receive the same guarantee.
+   * <p>Runtime-owned code provides the initialization callback when it needs to perform shell-local
+   * work before route registration. Shared-shell code simply stores and invokes that callback
+   * without needing to know what concrete browse implementation or bootstrap state the bridge
+   * assembled. Callers may pass a no-op callback when no additional initialization is required.
    *
    * @param bookmarkManager bookmark handle used by the surrounding shell bootstrap to populate
    *     bookmark-backed routes
    * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
-   * @param runtimeSupport legacy browse runtime adapter used by the constructed root toadlet
-   * @param fetchTracker fetch tracker shared by root browse request handling and progress state
-   * @return browse-neutral bootstrap bundle containing the constructed root browse toadlet
+   * @param browseRoot browse-root toadlet used by route registration at the legacy browsing root
+   * @param sharedShellInitializer browse-neutral hook invoked before route registration starts
+   * @return browse-neutral bootstrap bundle containing the supplied collaborators and
+   *     initialization hook
    */
   public static HttpShellBrowseBootstrap create(
       BookmarkManagerHandle bookmarkManager,
       HighLevelSimpleClient client,
       AppHost appHost,
-      FProxyRuntimeSupport runtimeSupport,
-      FProxyFetchTracker fetchTracker) {
-    FProxyToadlet browseRoot = new FProxyToadlet(client, runtimeSupport, fetchTracker);
-    return new HttpShellBrowseBootstrap(bookmarkManager, client, appHost, browseRoot);
+      Toadlet browseRoot,
+      Consumer<RuntimePorts> sharedShellInitializer) {
+    return new HttpShellBrowseBootstrap(
+        bookmarkManager, client, appHost, browseRoot, sharedShellInitializer);
   }
 
   /**
    * Initializes shared legacy shell state that must be ready before route registration starts.
    *
-   * <p>The browse-neutral seam still needs to preserve one legacy behavior: browse roots backed by
-   * {@link FProxyToadlet} expect a process-wide force-link seed to be initialized before their
-   * routes are used. The shared shell calls this method after it obtains {@link RuntimePorts} and
-   * before the registrar publishes routes. For non-FProxy browse roots, the method intentionally
-   * does nothing, so alternative implementations can cross the same seam without inheriting a hard
-   * dependency on FProxy-specific state.
+   * <p>The shared shell calls this method after it obtains {@link RuntimePorts} and before the
+   * registrar publishes routes. The bootstrap object decides whether the hook performs any work;
+   * callers do not need to know whether the current browse root is FProxy-backed or no-op.
    *
    * @param runtimePorts shared runtime ports that expose the randomness service used by the legacy
    *     shell bootstrap path
@@ -103,9 +102,7 @@ public record HttpShellBrowseBootstrap(
    */
   void initializeSharedShellState(RuntimePorts runtimePorts) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
-    if (browseRoot instanceof FProxyToadlet) {
-      FProxyToadlet.initializeSharedRandom(runtimePorts.randomness());
-    }
+    sharedShellInitializer.accept(runtimePorts);
   }
 
   /**
@@ -122,5 +119,6 @@ public record HttpShellBrowseBootstrap(
     Objects.requireNonNull(client);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(browseRoot);
+    Objects.requireNonNull(sharedShellInitializer);
   }
 }

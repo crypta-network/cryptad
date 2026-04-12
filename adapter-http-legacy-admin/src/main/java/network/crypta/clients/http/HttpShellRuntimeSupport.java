@@ -52,6 +52,17 @@ public interface HttpShellRuntimeSupport {
   AppHost appHost();
 
   /**
+   * Creates the legacy push-data manager used by the shell's interval push flow.
+   *
+   * <p>The returned handle stays owned by the runtime bridge. Shared-shell code uses this seam so
+   * the concrete browse-owned implementation can live outside the shared admin shell.
+   *
+   * @param ticker scheduler used by the push manager for cleanup and timed work
+   * @return shared-shell push-data manager handle
+   */
+  PushDataManagerHandle createPushDataManagerHandle(Ticker ticker);
+
+  /**
    * Returns the ticker used for shell tasks that rely on the daemon scheduler.
    *
    * <p>The ticker remains owned by the daemon network services. The HTTP shell uses it for

@@ -44,6 +44,18 @@ class FProxyToadletTest {
   }
 
   @Test
+  void create_whenInvoked_returnsConfiguredToadlet() {
+    when(runtimeSupport.clientContext()).thenReturn(clientContext);
+
+    FProxyToadlet toadlet = FProxyToadlet.create(client, runtimeSupport, fetchTracker);
+
+    assertEquals("/", toadlet.path());
+    verify(client).setMaxLength(FProxyToadlet.getMaxLengthNoProgress());
+    verify(client).setMaxIntermediateLength(FProxyToadlet.getMaxLengthNoProgress());
+    verify(runtimeSupport).clientContext();
+  }
+
+  @Test
   void allowPOSTWithoutPassword_alwaysReturnsTrue() {
     FProxyToadlet toadlet = newFProxy();
 

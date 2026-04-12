@@ -1,22 +1,16 @@
 package network.crypta.clients.http;
 
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.async.ClientContext;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.platform.apphost.AppHost;
-import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 class HttpShellBrowseBootstrapTest {
@@ -38,64 +32,48 @@ class HttpShellBrowseBootstrapTest {
   }
 
   @Test
-  void create_whenGivenFproxyCollaborators_returnsBootstrapWithConstructedFproxyToadlet() {
-    BookmarkManager bookmarkManager = mock(BookmarkManager.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    AppHost appHost = mock(AppHost.class);
-    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
-    FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
-    when(runtimeSupport.clientContext()).thenReturn(mock(ClientContext.class));
-
-    HttpShellBrowseBootstrap bootstrap =
-        HttpShellBrowseBootstrap.create(
-            bookmarkManager, client, appHost, runtimeSupport, fetchTracker);
-
-    assertSame(bookmarkManager, bootstrap.bookmarkManager());
-    assertSame(client, bootstrap.client());
-    assertSame(appHost, bootstrap.appHost());
-    assertInstanceOf(FProxyToadlet.class, bootstrap.browseRoot());
-  }
-
-  @Test
-  void initializeSharedShellState_whenBrowseRootIsFproxy_seedsForceLinkRandom() {
-    BookmarkManager bookmarkManager = mock(BookmarkManager.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    AppHost appHost = mock(AppHost.class);
-    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
-    FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
-    RandomnessPort randomnessPort = mock(RandomnessPort.class);
-    when(runtimeSupport.clientContext()).thenReturn(mock(ClientContext.class));
-    when(runtimePorts.randomness()).thenReturn(randomnessPort);
-    HttpShellBrowseBootstrap bootstrap =
-        HttpShellBrowseBootstrap.create(
-            bookmarkManager, client, appHost, runtimeSupport, fetchTracker);
-
-    byte[] previousRandom = FProxyToadlet.random;
-    try {
-      FProxyToadlet.random = null;
-
-      bootstrap.initializeSharedShellState(runtimePorts);
-
-      ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
-      verify(runtimePorts).randomness();
-      verify(randomnessPort).fillSecureRandom(randomCaptor.capture());
-      assertSame(randomCaptor.getValue(), FProxyToadlet.random);
-      assertEquals(32, randomCaptor.getValue().length);
-    } finally {
-      FProxyToadlet.random = previousRandom;
-    }
-  }
-
-  @Test
-  void initializeSharedShellState_whenBrowseRootIsNotFproxy_skipsRandomInitialization() {
+  void create_whenGivenInitializationHook_returnsBootstrapWithSameCollaborators() {
     BookmarkManager bookmarkManager = mock(BookmarkManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
+    AtomicReference<RuntimePorts> runtimePortsSeen = new AtomicReference<>();
+
+    HttpShellBrowseBootstrap bootstrap =
+        HttpShellBrowseBootstrap.create(
+            bookmarkManager, client, appHost, browseRoot, runtimePortsSeen::set);
+
+    assertSame(bookmarkManager, bootstrap.bookmarkManager());
+    assertSame(client, bootstrap.client());
+    assertSame(appHost, bootstrap.appHost());
+    assertSame(browseRoot, bootstrap.browseRoot());
+
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    bootstrap.initializeSharedShellState(runtimePorts);
+
+    assertSame(runtimePorts, runtimePortsSeen.get());
+  }
+
+  @Test
+  void create_whenInitializationHookNull_throwsNullPointerException() {
+    BookmarkManager bookmarkManager = mock(BookmarkManager.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    AppHost appHost = mock(AppHost.class);
+    Toadlet browseRoot = mock(Toadlet.class);
+
+    assertThrows(
+        NullPointerException.class,
+        () -> HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, browseRoot, null));
+  }
+
+  @Test
+  void initializeSharedShellState_whenUsingDefaultHook_skipsInitialization() {
+    BookmarkManager bookmarkManager = mock(BookmarkManager.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    AppHost appHost = mock(AppHost.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     HttpShellBrowseBootstrap bootstrap =
-        HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, browseRoot);
+        HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, mock(Toadlet.class));
 
     bootstrap.initializeSharedShellState(runtimePorts);
 
