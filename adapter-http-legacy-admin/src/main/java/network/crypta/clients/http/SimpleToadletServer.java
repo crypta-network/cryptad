@@ -490,7 +490,8 @@ public final class SimpleToadletServer
             runtimePorts,
             runtimeSupportRef.appHost(),
             runtimeSupportRef.config(),
-            bootstrap.browseRoot()),
+            bootstrap.browseRoot(),
+            bootstrap.browseRouteRegistrar()),
         this);
   }
 

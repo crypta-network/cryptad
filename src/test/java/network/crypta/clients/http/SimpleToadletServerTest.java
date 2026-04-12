@@ -288,6 +288,9 @@ class SimpleToadletServerTest {
     assertSame(appHost, routeRegistrarContextRef.get().appHost());
     assertSame(nodeConfig, routeRegistrarContextRef.get().config());
     assertInstanceOf(FProxyToadlet.class, routeRegistrarContextRef.get().browseRoot());
+    assertInstanceOf(
+        LegacyFProxyBrowseRouteRegistrar.class,
+        routeRegistrarContextRef.get().browseRouteRegistrar());
   }
 
   @Test
@@ -313,6 +316,8 @@ class SimpleToadletServerTest {
     BookmarkManager bookmarkManager = mock(BookmarkManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
+        mock(LegacyHttpBrowseRouteRegistrar.class);
     Config config = new Config();
     FProxyRuntimeSupport fproxyRuntimeSupport = mock(FProxyRuntimeSupport.class);
     FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
@@ -337,6 +342,7 @@ class SimpleToadletServerTest {
                 client,
                 appHost,
                 browseRoot,
+                browseRouteRegistrar,
                 ports -> FProxyToadlet.initializeSharedRandom(ports.randomness())));
     AtomicReference<LegacyHttpRouteRegistrarContext> routeRegistrarContextRef =
         new AtomicReference<>();
@@ -366,6 +372,7 @@ class SimpleToadletServerTest {
     verify(runtimeSupport).ticker();
     verify(runtimeSupport).createPushDataManagerHandle(same(ticker));
     assertSame(browseRoot, routeRegistrarContextRef.get().browseRoot());
+    assertSame(browseRouteRegistrar, routeRegistrarContextRef.get().browseRouteRegistrar());
   }
 
   @Test

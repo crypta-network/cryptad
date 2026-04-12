@@ -29,6 +29,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     legacy HTTP routes
  * @param browseRoot browse-root toadlet constructed during bootstrap and handed to the registrar
  *     for root-path registration
+ * @param browseRouteRegistrar browse-neutral registrar seam that publishes browse-owned routes at
+ *     the historical insertion points
  * @param sharedShellInitializer browse-neutral hook for any shell-local initialization that must
  *     run before route registration
  */
@@ -37,6 +39,7 @@ public record HttpShellBrowseBootstrap(
     HighLevelSimpleClient client,
     AppHost appHost,
     Toadlet browseRoot,
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
     Consumer<RuntimePorts> sharedShellInitializer) {
   /**
    * Creates the bundle while keeping the browse-root toadlet constructor package-local.
@@ -51,14 +54,16 @@ public record HttpShellBrowseBootstrap(
    * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
    * @param browseRoot browse-root toadlet used by route registration at the legacy browsing root
+   * @param browseRouteRegistrar browse-neutral registrar seam for the browse-owned routes
    * @return browse-neutral bootstrap bundle containing the supplied collaborators and browse root
    */
   public static HttpShellBrowseBootstrap create(
       BookmarkManagerHandle bookmarkManager,
       HighLevelSimpleClient client,
       AppHost appHost,
-      Toadlet browseRoot) {
-    return create(bookmarkManager, client, appHost, browseRoot, _ -> {});
+      Toadlet browseRoot,
+      LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
+    return create(bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar, _ -> {});
   }
 
   /**
@@ -74,6 +79,7 @@ public record HttpShellBrowseBootstrap(
    * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
    * @param browseRoot browse-root toadlet used by route registration at the legacy browsing root
+   * @param browseRouteRegistrar browse-neutral registrar seam for the browse-owned routes
    * @param sharedShellInitializer browse-neutral hook invoked before route registration starts
    * @return browse-neutral bootstrap bundle containing the supplied collaborators and
    *     initialization hook
@@ -83,9 +89,10 @@ public record HttpShellBrowseBootstrap(
       HighLevelSimpleClient client,
       AppHost appHost,
       Toadlet browseRoot,
+      LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
       Consumer<RuntimePorts> sharedShellInitializer) {
     return new HttpShellBrowseBootstrap(
-        bookmarkManager, client, appHost, browseRoot, sharedShellInitializer);
+        bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar, sharedShellInitializer);
   }
 
   /**
@@ -119,6 +126,7 @@ public record HttpShellBrowseBootstrap(
     Objects.requireNonNull(client);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(browseRoot);
+    Objects.requireNonNull(browseRouteRegistrar);
     Objects.requireNonNull(sharedShellInitializer);
   }
 }

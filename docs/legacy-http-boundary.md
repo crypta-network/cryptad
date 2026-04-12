@@ -8,14 +8,19 @@ and the matching `network/crypta/clients/http/**` main resources, excluding
 `network.crypta.clients.http.bridge` plus the legacy HTTP GeoIP helper package under
 `network.crypta.clients.http.geoip`.
 
-This PR keeps the existing adapter leaf in place but removes a few browse-specific leaks from the
-shared shell surface before the real browse split. The shared shell now uses browse-neutral
-bootstrap/context types and shared `LegacyHttpPaths` / `LegacyHttpCategories` constants instead of
-pulling those values from `FProxyToadlet` directly. It also uses neutral bookmark, push, and
-client-side script seams instead of importing the concrete browse-owned collaborator classes
-directly. The shared shell no longer constructs the concrete browse root or concrete push manager
-itself; those concrete constructions now live in the bridge/runtime-owned HTTP bootstrap path so
-the shared shell stays browse-neutral ahead of the future `:adapter-http-legacy-browse` split.
+This PR keeps the existing adapter leaf in place and still does not create
+`:adapter-http-legacy-browse`, but it removes the last major route-registration blocker for that
+future split. The shared shell already crosses browse-neutral bootstrap/context types and shared
+`LegacyHttpPaths` / `LegacyHttpCategories` constants instead of pulling those values from
+`FProxyToadlet` directly. It also uses neutral bookmark, push, and client-side script seams
+instead of importing concrete browse-owned collaborator classes directly.
+
+The new change in this PR is route-registration ownership. Admin-owned startup code now preserves
+the historical registration order while delegating browse-owned route publication through a neutral
+`LegacyHttpBrowseRouteRegistrar` seam installed by the bridge/runtime-owned HTTP bootstrap path.
+That keeps the shared shell browse-neutral, keeps the admin-owned registrar from instantiating the
+concrete browse routes directly, and makes the future browse-module move mechanical instead of
+another logic refactor.
 
 The boundary remains intentional. Production code outside `:adapter-http-legacy-admin` and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or
@@ -25,5 +30,5 @@ The boundary remains intentional. Production code outside `:adapter-http-legacy-
 updater-action adapters remain in `:adapter-http-legacy-admin` in this PR.
 
 Future browse/FProxy decomposition or replacement is still deferred. This PR only prepares the
-shared shell for a later `:adapter-http-legacy-browse` split by neutralizing the route/path
-constants and the bootstrap/context seam.
+later `:adapter-http-legacy-browse` extraction by neutralizing the shared shell seams and splitting
+admin-owned versus browse-owned route registration behind that neutral registrar boundary.

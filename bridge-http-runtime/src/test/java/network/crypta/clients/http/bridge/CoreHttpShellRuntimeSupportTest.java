@@ -15,6 +15,7 @@ import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.LegacyFProxyBrowseRouteRegistrar;
 import network.crypta.clients.http.PushDataManagerHandle;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
@@ -334,6 +335,7 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(client, bootstrap.client());
       assertSame(runtimeSupport.appHost(), bootstrap.appHost());
       assertSame(fproxies.constructed().getFirst(), bootstrap.browseRoot());
+      assertInstanceOf(LegacyFProxyBrowseRouteRegistrar.class, bootstrap.browseRouteRegistrar());
       verify(core, never()).getRuntimePorts();
       verifyNoInteractions(bootstrapRuntimePorts);
       verify(core, never()).getEndpoints();

@@ -2,14 +2,6 @@ package network.crypta.clients.http;
 
 import java.util.Arrays;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
-import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
-import network.crypta.clients.http.ajaxpush.PushDataToadlet;
-import network.crypta.clients.http.ajaxpush.PushFailoverToadlet;
-import network.crypta.clients.http.ajaxpush.PushKeepaliveToadlet;
-import network.crypta.clients.http.ajaxpush.PushLeavingToadlet;
-import network.crypta.clients.http.ajaxpush.PushNotificationToadlet;
-import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
@@ -20,22 +12,23 @@ import network.crypta.runtime.spi.TransferAccessPort;
 import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
 
 /**
- * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.
+ * Registers the legacy HTTP route set while delegating browse-owned publication through a seam.
  *
- * <p>This helper centralizes the wiring of the HTTP user interface after daemon-only composition
- * has already happened elsewhere. It assigns menu categories, instantiates secondary toadlets,
- * connects them to prebuilt collaborators, and publishes them on the {@link SimpleToadletServer}.
- * Callers invoke it once during node startup to ensure all public endpoints for browsing, queue
- * management, configuration, alerts, and update actions are available before handling requests. The
- * registrar is intentionally package-private and stateless; it relies only on the narrow
- * dependencies bundle assembled by the admin-owned registrar adapter.
+ * <p>This helper centralizes the remaining admin-owned wiring of the legacy HTTP user interface
+ * after daemon-only composition has already happened elsewhere. It preserves the historical route
+ * and menu order while delegating concrete browse/FProxy route publication to the neutral {@link
+ * LegacyHttpBrowseRouteRegistrar} seam at the exact points where those browse-owned routes used to
+ * be instantiated inline. Callers invoke it once during node startup to ensure all public endpoints
+ * for queue management, configuration, alerts, maintenance flows, and browse-owned insertions are
+ * available before handling requests.
  *
  * <p>Responsibilities include:
  *
  * <ul>
- *   <li>Registering navigation menus under canonical categories for consistent UI grouping.
+ *   <li>Registering the admin-owned navigation menus under canonical categories.
  *   <li>Instantiating functional toadlets for downloads, uploads, security, chat, stats,
  *       connectivity, first-time wizard flows, and core updates.
+ *   <li>Delegating browse-owned registration phases to the browse registrar without changing order.
  * </ul>
  *
  * <p>Thread-safety: registration is expected to run on a single startup thread; no internal state
@@ -49,11 +42,11 @@ final class FProxyRegistrar {
    * Builds and registers the full FProxy toadlet set if the environment supports it.
    *
    * <p>The method assumes the root browse toadlet, interactive client, and runtime ports have
-   * already been assembled by the caller and then registers every relevant toadlet with the
-   * provided server. Registration order aligns with menu placement: browsing first, followed by
-   * queue handlers, configuration, status/alerts, chat, and maintenance endpoints. This method must
-   * be called exactly once during startup; it performs no deduplication and assumes the server is
-   * empty.
+   * already been assembled by the caller and then registers every relevant route with the provided
+   * server. Registration order aligns with the existing legacy shell behavior: browse-owned phases
+   * are delegated through the browse registrar, with admin-owned routes published in between. This
+   * method must be called exactly once during startup; it performs no deduplication and assumes the
+   * server is empty.
    *
    * @param dependencies prebuilt shell dependencies required to register the FProxy HTTP surface
    * @param server toadlet server that exposes HTTP endpoints; expected to be in registration phase.
@@ -63,56 +56,34 @@ final class FProxyRegistrar {
     HighLevelSimpleClient client = dependencies.client();
     RuntimePorts runtimePorts = dependencies.runtimePorts();
     Config config = dependencies.config();
-    Toadlet browseRoot = dependencies.browseRoot();
     TransferAccessPort transferAccess = runtimePorts.transferAccess();
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar = dependencies.browseRouteRegistrar();
+    LegacyHttpBrowseRouteRegistrarContext browseContext = dependencies.browseContext();
 
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU, browseContext, server);
     server.registerMenu(
-        "/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
-    server.registerMenu(
-        FProxyToadlet.DOWNLOADS_PATH,
-        FProxyToadlet.CATEGORY_QUEUE,
+        LegacyHttpPaths.DOWNLOADS_PATH,
+        LegacyHttpCategories.CATEGORY_QUEUE,
         "FProxyToadlet.categoryTitleQueue");
     server.registerMenu(
-        FProxyToadlet.FRIENDS_PATH,
-        FProxyToadlet.CATEGORY_FRIENDS,
+        LegacyHttpPaths.FRIENDS_PATH,
+        LegacyHttpCategories.CATEGORY_FRIENDS,
         "FProxyToadlet.categoryTitleFriends");
     server.registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     server.registerMenu(
-        "/alerts/", FProxyToadlet.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
+        "/alerts/", LegacyHttpCategories.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
     server.registerMenu(
-        "/seclevels/", FProxyToadlet.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
+        "/seclevels/", LegacyHttpCategories.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
 
-    server.register(
-        browseRoot,
-        ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_BROWSING,
-            "/",
-            false,
-            "FProxyToadlet.welcomeTitle",
-            "FProxyToadlet.welcome",
-            false,
-            null));
-
-    DecodeToadlet decodeKeywordURL = new DecodeToadlet(client);
-    server.register(decodeKeywordURL, ToadletRegistration.basic(null, "/decode/", true, false));
-
-    InsertFreesiteToadlet siteinsert = new InsertFreesiteToadlet(client);
-    server.register(
-        siteinsert,
-        ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_BROWSING,
-            "/insertsite/",
-            true,
-            "FProxyToadlet.insertFreesiteTitle",
-            "FProxyToadlet.insertFreesite",
-            false,
-            null));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.INTRO_ROUTES, browseContext, server);
 
     UserAlertsToadlet alerts = new UserAlertsToadlet(client);
     server.register(
         alerts,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             "/alerts/",
             true,
             "FProxyToadlet.alertsTitle",
@@ -137,7 +108,7 @@ final class FProxyRegistrar {
     server.register(
         downloadToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_QUEUE,
+            LegacyHttpCategories.CATEGORY_QUEUE,
             QueueToadlet.PATH_DOWNLOADS,
             true,
             "FProxyToadlet.downloadsTitle",
@@ -166,7 +137,7 @@ final class FProxyRegistrar {
     server.register(
         uploadToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_QUEUE,
+            LegacyHttpCategories.CATEGORY_QUEUE,
             QueueToadlet.PATH_UPLOADS,
             true,
             "FProxyToadlet.uploadsTitle",
@@ -180,7 +151,7 @@ final class FProxyRegistrar {
     server.register(
         fiw,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_QUEUE,
+            LegacyHttpCategories.CATEGORY_QUEUE,
             FileInsertWizardToadlet.PATH,
             true,
             "FProxyToadlet.uploadFileWizardTitle",
@@ -195,23 +166,8 @@ final class FProxyRegistrar {
         localFileInsertToadlet,
         ToadletRegistration.basic(null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false));
 
-    ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client);
-    server.register(
-        contentFilterToadlet,
-        ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_QUEUE,
-            ContentFilterToadlet.CONTENT_FILTER_PATH,
-            true,
-            "FProxyToadlet.filterFileTitle",
-            "FProxyToadlet.filterFile",
-            false,
-            contentFilterToadlet));
-
-    LocalFileFilterToadlet localFileFilterToadlet =
-        new LocalFileFilterToadlet(transferAccess, client);
-    server.register(
-        localFileFilterToadlet,
-        ToadletRegistration.basic(null, LocalFileFilterToadlet.BROWSE_PATH, true, false));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES, browseContext, server);
 
     SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, runtimePorts.toadletSymlinks());
     server.register(symlinkToadlet, ToadletRegistration.basic(null, "/sl/", true, false));
@@ -223,7 +179,7 @@ final class FProxyRegistrar {
     server.register(
         seclevels,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_CONFIG,
+            LegacyHttpCategories.CATEGORY_CONFIG,
             "/seclevels/",
             true,
             "FProxyToadlet.seclevelsTitle",
@@ -242,15 +198,15 @@ final class FProxyRegistrar {
       if (prefix.equals("security-levels")) continue;
       LocalDirectoryConfigToadlet localDirectoryConfigToadlet =
           new LocalDirectoryConfigToadlet(
-              transferAccess, client, FProxyToadlet.CONFIG_PATH + prefix);
+              transferAccess, client, LegacyHttpPaths.CONFIG_PATH + prefix);
       ConfigToadlet configtoadlet =
           new ConfigToadlet(
               localDirectoryConfigToadlet.path(), client, config, cfg, configToadletRuntimePorts);
       server.register(
           configtoadlet,
           ToadletRegistration.menuLink(
-              FProxyToadlet.CATEGORY_CONFIG,
-              FProxyToadlet.CONFIG_PATH + prefix,
+              LegacyHttpCategories.CATEGORY_CONFIG,
+              LegacyHttpPaths.CONFIG_PATH + prefix,
               true,
               "ConfigToadlet." + prefix,
               "ConfigToadlet.title." + prefix,
@@ -261,20 +217,8 @@ final class FProxyRegistrar {
           ToadletRegistration.basic(null, localDirectoryConfigToadlet.path(), true, false));
     }
 
-    WelcomeToadletRuntimePorts welcomeToadletRuntimePorts =
-        new WelcomeToadletRuntimePorts(
-            runtimePorts.welcomePage(),
-            runtimePorts.darknetConnections(),
-            runtimePorts.lifecycle(),
-            runtimePorts.welcomeAction());
-    WelcomeToadlet welcometoadlet = new WelcomeToadlet(client, welcomeToadletRuntimePorts);
-    server.register(
-        welcometoadlet, ToadletRegistration.basic(null, FProxyToadlet.WELCOME_PATH, true, false));
-
-    ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client);
-    server.register(
-        externalLinkToadlet,
-        ToadletRegistration.basic(null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.POST_CONFIG_ROUTES, browseContext, server);
 
     CoreActionToadlet coreActionToadlet =
         new CoreActionToadlet(client, runtimePorts.coreUpdateAction());
@@ -296,8 +240,8 @@ final class FProxyRegistrar {
     server.register(
         friendsToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_FRIENDS,
-            FProxyToadlet.FRIENDS_PATH,
+            LegacyHttpCategories.CATEGORY_FRIENDS,
+            LegacyHttpPaths.FRIENDS_PATH,
             true,
             "FProxyToadlet.friendsTitle",
             "FProxyToadlet.friends",
@@ -310,7 +254,7 @@ final class FProxyRegistrar {
     server.register(
         addRefToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_FRIENDS,
+            LegacyHttpCategories.CATEGORY_FRIENDS,
             "/addfriend/",
             true,
             "FProxyToadlet.addFriendTitle",
@@ -323,7 +267,7 @@ final class FProxyRegistrar {
     server.register(
         opennetToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             "/strangers/",
             true,
             "FProxyToadlet.opennetTitle",
@@ -350,19 +294,14 @@ final class FProxyRegistrar {
         localFileN2NMToadlet,
         ToadletRegistration.basic(null, LocalFileN2NMToadlet.BROWSE_PATH, true, false));
 
-    BookmarkEditorToadlet bookmarkEditorToadlet =
-        new BookmarkEditorToadlet(
-            client,
-            new BookmarkEditorToadletRuntimePorts(
-                runtimePorts.darknetConnections(), runtimePorts.darknetMessaging()));
-    server.register(
-        bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.POST_MESSAGING_ROUTES, browseContext, server);
 
     WebShellToadlet webShellToadlet = new WebShellToadlet(client);
     server.register(
         webShellToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             WebShellPaths.SHELL_ROOT,
             true,
             "FProxyToadlet.webShellTitle",
@@ -376,14 +315,14 @@ final class FProxyRegistrar {
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));
 
-    BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
-    server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.POST_PLATFORM_API_ROUTES, browseContext, server);
 
     StatisticsToadlet statisticsToadlet = new StatisticsToadlet(client, runtimePorts.statistics());
     server.register(
         statisticsToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             "/stats/",
             true,
             "FProxyToadlet.statsTitle",
@@ -395,7 +334,7 @@ final class FProxyRegistrar {
     server.register(
         diagnosticToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             "/diagnostic/",
             true,
             "FProxyToadlet.diagnosticTitle",
@@ -408,7 +347,7 @@ final class FProxyRegistrar {
     server.register(
         connectivityToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_STATUS,
+            LegacyHttpCategories.CATEGORY_STATUS,
             "/connectivity/",
             true,
             "ConnectivityToadlet.connectivityTitle",
@@ -420,7 +359,7 @@ final class FProxyRegistrar {
     server.register(
         translationToadlet,
         ToadletRegistration.menuLink(
-            FProxyToadlet.CATEGORY_CONFIG,
+            LegacyHttpCategories.CATEGORY_CONFIG,
             TranslationToadlet.TOADLET_URL,
             true,
             "TranslationToadlet.title",
@@ -444,47 +383,7 @@ final class FProxyRegistrar {
     SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet(client);
     server.register(simpleHelpToadlet, ToadletRegistration.basic(null, "/help/", true, false));
 
-    PushDataToadlet pushDataToadlet = new PushDataToadlet(client);
-    server.register(
-        pushDataToadlet, ToadletRegistration.basic(null, pushDataToadlet.path(), true, false));
-
-    PushNotificationToadlet pushNotificationToadlet = new PushNotificationToadlet(client);
-    server.register(
-        pushNotificationToadlet,
-        ToadletRegistration.basic(null, pushNotificationToadlet.path(), true, false));
-
-    PushKeepaliveToadlet pushKeepaliveToadlet = new PushKeepaliveToadlet(client);
-    server.register(
-        pushKeepaliveToadlet,
-        ToadletRegistration.basic(null, pushKeepaliveToadlet.path(), true, false));
-
-    PushFailoverToadlet pushFailoverToadlet = new PushFailoverToadlet(client);
-    server.register(
-        pushFailoverToadlet,
-        ToadletRegistration.basic(null, pushFailoverToadlet.path(), true, false));
-
-    PushTesterToadlet pushTesterToadlet = new PushTesterToadlet(client);
-    server.register(
-        pushTesterToadlet, ToadletRegistration.basic(null, pushTesterToadlet.path(), true, false));
-
-    PushLeavingToadlet pushLeavingToadlet = new PushLeavingToadlet(client);
-    server.register(
-        pushLeavingToadlet,
-        ToadletRegistration.basic(null, pushLeavingToadlet.path(), true, false));
-
-    ImageCreatorToadlet imageCreatorToadlet = new ImageCreatorToadlet(client);
-    server.register(
-        imageCreatorToadlet,
-        ToadletRegistration.basic(null, imageCreatorToadlet.path(), true, false));
-
-    LogWritebackToadlet logWritebackToadlet = new LogWritebackToadlet(client);
-    server.register(
-        logWritebackToadlet,
-        ToadletRegistration.basic(null, logWritebackToadlet.path(), true, false));
-
-    DismissAlertToadlet dismissAlertToadlet = new DismissAlertToadlet(client);
-    server.register(
-        dismissAlertToadlet,
-        ToadletRegistration.basic(null, dismissAlertToadlet.path(), true, false));
+    browseRouteRegistrar.registerRoutes(
+        LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES, browseContext, server);
   }
 }
