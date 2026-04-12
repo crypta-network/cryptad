@@ -28,7 +28,7 @@ import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
  * Callers invoke it once during node startup to ensure all public endpoints for browsing, queue
  * management, configuration, alerts, and update actions are available before handling requests. The
  * registrar is intentionally package-private and stateless; it relies only on the narrow
- * dependencies bundle assembled by the HTTP shell.
+ * dependencies bundle assembled by the admin-owned registrar adapter.
  *
  * <p>Responsibilities include:
  *

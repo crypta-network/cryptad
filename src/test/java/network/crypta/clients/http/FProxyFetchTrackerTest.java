@@ -117,8 +117,7 @@ class FProxyFetchTrackerTest {
 
     FProxyFetchWaiter result =
         tracker.makeFetcher(
-            new FProxyFetchCriteria(key, 1024L, fetchContext),
-            FProxyFetchInProgress.REFILTER_POLICY.RE_FETCH);
+            new FProxyFetchCriteria(key, 1024L, fetchContext), RefilterPolicy.RE_FETCH);
 
     assertSame(waiter, result);
     verify(fetch, never()).start(context);
@@ -150,8 +149,7 @@ class FProxyFetchTrackerTest {
               FetchException.class,
               () ->
                   tracker.makeFetcher(
-                      new FProxyFetchCriteria(key, 2048L, fetchContext),
-                      FProxyFetchInProgress.REFILTER_POLICY.RE_FILTER));
+                      new FProxyFetchCriteria(key, 2048L, fetchContext), RefilterPolicy.RE_FILTER));
 
       assertSame(failure, thrown);
       assertTrue(getFetchers(tracker).values().isEmpty(), "fetcher should be removed on failure");

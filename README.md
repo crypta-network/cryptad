@@ -797,15 +797,16 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `/app/node/`, runtime-owned shell and password-prompt seams under
   `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
   helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`,
-  and `FProxyRegistrarDependencies`. Concrete HTTP shell, bookmark, GeoIP, and security-page
-  adapters now live under `network.crypta.clients.http.bridge` in `:bridge-http-runtime`, and
-  that leaf also owns the legacy HTTP GeoIP helper package
+  and the shared HTTP route registrar seam. Concrete HTTP shell, bookmark, GeoIP, and
+  security-page adapters now live under `network.crypta.clients.http.bridge` in
+  `:bridge-http-runtime`, and that leaf also owns the legacy HTTP GeoIP helper package
   `network.crypta.clients.http.geoip`. The updater-action adapters remain under
   `network.crypta.clients.http.updater` in `:adapter-http-legacy-admin`. Root-local bridge
-  selection stays in `DefaultNodeRuntimeBridgeFactories`. The remaining legacy browse/FProxy tree
-  inside `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines
-  it further, and production code outside the adapter should keep depending on runtime seams
-  rather than taking new `network.crypta.clients.http.*` dependencies. See
+  selection stays in `DefaultNodeRuntimeBridgeFactories`, which now installs the admin-owned HTTP
+  registrar implementation into the shared shell. The remaining legacy browse/FProxy tree inside
+  `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines it
+  further, and production code outside the adapter should keep depending on runtime seams rather
+  than taking new `network.crypta.clients.http.*` dependencies. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as

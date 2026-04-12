@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
 import java.time.Instant;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
@@ -20,12 +19,12 @@ import network.crypta.support.io.NoFreeBucket;
  * enforcing security policies such as form-password validation and access level checks. A {@code
  * ToadletContext} is typically created by the request dispatcher and passed into a {@link Toadlet}
  * handler; the handler uses it to send headers and body data, inspect cookies, manage response
- * cookies, and obtain helpers like {@link PageMaker}. Instances are short-lived and not
- * thread-safe: they represent one connection/request pair and should not be shared across threads
- * without external synchronization. Typical call flow is: validate permissions, send reply headers
- * tailored to the content type (static, FProxy, or dynamic), write the body via {@link
- * #writeData(byte[], int, int)}, and optionally adjust connection behavior with {@link
- * #forceDisconnect()}. Implementers must track connection state to prevent writes after closure.
+ * cookies, and get helpers like {@link PageMaker}. Instances are short-lived and not thread-safe:
+ * they represent one connection/request pair and should not be shared across threads without
+ * external synchronization. Typical call flow is: validate permissions, send reply headers tailored
+ * to the content type (static, FProxy, or dynamic), write the body via {@link #writeData(byte[],
+ * int, int)}, and optionally adjust connection behavior with {@link #forceDisconnect()}.
+ * Implementers must track connection state to prevent writes after closure.
  *
  * <p><strong>Responsibilities</strong>
  *
@@ -85,7 +84,7 @@ public interface ToadletContext {
    * Write reply headers for static resources while supplying an explicit last-modified timestamp to
    * support cache validation.
    *
-   * @param code HTTP status code such as 200 or 304; must align with the cache semantics desired.
+   * @param code HTTP status code such as 200 or 304, must align with the cache semantics desired.
    * @param desc Status description paired with {@code code}; required and non-empty.
    * @param mvt Extra headers to include; {@code null} permitted when no additional headers are
    *     needed.
@@ -131,7 +130,7 @@ public interface ToadletContext {
    * @param data Buffer containing response bytes; must not be {@code null}.
    * @param offset Starting index within {@code data} to write; zero or greater.
    * @param length Number of bytes to send from {@code data}; zero allowed for empty writes.
-   * @throws ToadletContextClosedException if the context is closed before or during the write.
+   * @throws ToadletContextClosedException if the context is closed before or during the writing.
    * @throws IOException if writing to the underlying stream fails.
    */
   void writeData(byte[] data, int offset, int length)
@@ -149,7 +148,7 @@ public interface ToadletContext {
    * length.
    *
    * @param data Complete response payload to send; must not be {@code null}.
-   * @throws ToadletContextClosedException if the context was closed before the write begins.
+   * @throws ToadletContextClosedException if the context was closed before the writing begins.
    * @throws IOException if the stream cannot be written due to network or socket errors.
    */
   void writeData(byte[] data) throws ToadletContextClosedException, IOException;
@@ -216,7 +215,7 @@ public interface ToadletContext {
   /**
    * Check a context for whether {@link #isAllowedFullAccess()} is true.
    *
-   * <p>If it is false, an error page is sent to the client, and false is returned. You can then
+   * <p>If it is false, an error page is sent to the client, and the false is returned. You can then
    * abort processing of the request.
    *
    * @return The return value of {@link #isAllowedFullAccess()}.
@@ -288,7 +287,7 @@ public interface ToadletContext {
 
   /**
    * Is this Toadlet allowed full access to the node, including the ability to reconfigure it,
-   * restart it etc.?
+   * restart it, etc.?
    *
    * @return {@code true} when the current request is authorized for full administrative access;
    *     {@code false} otherwise.
@@ -354,5 +353,5 @@ public interface ToadletContext {
    *
    * @return Policy describing whether to refilter, reuse, or skip cached filtered data.
    */
-  REFILTER_POLICY getReFilterPolicy();
+  RefilterPolicy getReFilterPolicy();
 }

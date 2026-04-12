@@ -13,7 +13,8 @@
  * binding selection remains in {@code
  * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories}, while runtime-owned packages
  * continue to treat these classes as adapter implementations rather than as part of the long-lived
- * runtime seam. The remaining browse/FProxy shell stays boundary-frozen in {@code
+ * runtime seam. This leaf also installs the admin-owned HTTP route registrar implementation into
+ * the shared shell. The remaining browse/FProxy shell stays boundary-frozen in {@code
  * :adapter-http-legacy-admin}, and {@code network.crypta.clients.http.updater} also remains in that
  * adapter leaf in this PR.
  */

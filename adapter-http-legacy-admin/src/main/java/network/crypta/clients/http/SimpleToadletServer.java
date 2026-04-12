@@ -14,7 +14,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.updateableelements.PushDataManager;
@@ -136,6 +135,9 @@ public final class SimpleToadletServer
 
   @SuppressWarnings("java:S3077")
   private volatile HttpShellRuntimeSupport runtimeSupport;
+
+  @SuppressWarnings("java:S3077")
+  private volatile LegacyHttpRouteRegistrar routeRegistrar;
 
   // HTTP Option
   private boolean doRobots;
@@ -440,7 +442,7 @@ public final class SimpleToadletServer
 
     @Override
     public String[] getPossibleValues() {
-      REFILTER_POLICY[] possible = REFILTER_POLICY.values();
+      RefilterPolicy[] possible = RefilterPolicy.values();
       String[] ret = new String[possible.length];
       for (int i = 0; i < possible.length; i++) ret[i] = possible[i].name();
       return ret;
@@ -453,7 +455,7 @@ public final class SimpleToadletServer
 
     @Override
     public void set(String val) {
-      refilterPolicy = REFILTER_POLICY.valueOf(val);
+      refilterPolicy = RefilterPolicy.valueOf(val);
     }
   }
 
@@ -465,15 +467,16 @@ public final class SimpleToadletServer
    * the active node. This method is idempotent; later calls are ignored after the first successful
    * invocation. It captures the current runtime support reference, wires the push managers to the
    * shared {@link Ticker}, assembles the daemon-only root FProxy collaborators, and delegates to
-   * {@link FProxyRegistrar} for the remaining HTTP shell registration.
+   * the configured {@link LegacyHttpRouteRegistrar} for the remaining HTTP shell registration.
    */
   public void createFproxy() {
+    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
+    LegacyHttpRouteRegistrar routeRegistrarRef = requireRouteRegistrar();
     synchronized (this) {
       if (haveCalledFProxy) return;
       haveCalledFProxy = true;
     }
 
-    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
     HttpShellFProxyBootstrap bootstrap =
@@ -482,8 +485,8 @@ public final class SimpleToadletServer
     RuntimePorts runtimePorts = runtimeSupportRef.runtimePorts();
     initializeFProxyRandom(runtimePorts.randomness());
 
-    FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(
+    routeRegistrarRef.registerRoutes(
+        new LegacyHttpRouteRegistrarContext(
             bootstrap.client(),
             runtimePorts,
             runtimeSupportRef.appHost(),
@@ -576,6 +579,19 @@ public final class SimpleToadletServer
     this.runtimeSupport = runtimeSupport;
     RuntimePorts runtimePorts = runtimeSupport == null ? null : runtimeSupport.runtimePorts();
     pageMaker.setPageChromePort(runtimePorts == null ? null : runtimePorts.pageChrome());
+  }
+
+  /**
+   * Installs the route registrar used by {@link #createFproxy()}.
+   *
+   * <p>This seam keeps the shared HTTP shell free from direct knowledge of the current admin-owned
+   * registration helper. Bridge wiring should call this before FProxy creation so the shell can
+   * delegate the concrete route-registration pass.
+   *
+   * @param routeRegistrar registrar that will register the concrete legacy HTTP routes
+   */
+  public void setRouteRegistrar(LegacyHttpRouteRegistrar routeRegistrar) {
+    this.routeRegistrar = Objects.requireNonNull(routeRegistrar);
   }
 
   /**
@@ -1279,7 +1295,7 @@ public final class SimpleToadletServer
             "SimpleToadletServer.refilterPolicyLong"),
         new ReFilterCallback());
 
-    this.refilterPolicy = REFILTER_POLICY.valueOf(fproxyConfig.getString("refilterPolicy"));
+    this.refilterPolicy = RefilterPolicy.valueOf(fproxyConfig.getString("refilterPolicy"));
     return configItemOrder;
   }
 
@@ -1363,10 +1379,10 @@ public final class SimpleToadletServer
           // Otherwise, we do RE_FILTER.
           // But we don't change it unless it changes from LOW to not LOW.
           if (newLevel == HttpShellRuntimeSupport.NetworkThreatLevel.LOW && newLevel != oldLevel) {
-            refilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
+            refilterPolicy = RefilterPolicy.ACCEPT_OLD;
           } else if (oldLevel == HttpShellRuntimeSupport.NetworkThreatLevel.LOW
               && newLevel != oldLevel) {
-            refilterPolicy = REFILTER_POLICY.RE_FILTER;
+            refilterPolicy = RefilterPolicy.RE_FILTER;
           }
         });
     runtimeSupportRef.addPhysicalThreatLevelListener(
@@ -1884,7 +1900,11 @@ public final class SimpleToadletServer
     return Objects.requireNonNull(runtimeSupport);
   }
 
-  private REFILTER_POLICY refilterPolicy;
+  private LegacyHttpRouteRegistrar requireRouteRegistrar() {
+    return Objects.requireNonNull(routeRegistrar);
+  }
+
+  private RefilterPolicy refilterPolicy;
 
   /**
    * Returns the active refilter policy applied to request processing.
@@ -1892,10 +1912,10 @@ public final class SimpleToadletServer
    * <p>The policy is updated in response to threat-level changes to balance usability with
    * security. Caller should treat the value as read-only.
    *
-   * @return current {@link REFILTER_POLICY} value.
+   * @return current {@link RefilterPolicy} value.
    */
   @Override
-  public REFILTER_POLICY getReFilterPolicy() {
+  public RefilterPolicy getReFilterPolicy() {
     return refilterPolicy;
   }
 

@@ -17,8 +17,10 @@ The adapter leaf still carries three responsibilities:
 The boundary is intentional. Production code outside `:adapter-http-legacy-admin` and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or
 `:platform-web-shell` instead of growing new direct dependencies on
-`network.crypta.clients.http.*`. The bootstrap-owned binding site remains
-`src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java`.
+`network.crypta.clients.http.*`. The shared shell now routes through an HTTP-local registrar seam
+and a top-level refilter policy type, while the bootstrap-owned binding site remains
+`src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java` and now
+installs the admin-owned HTTP registrar implementation.
 
 Future browse/FProxy decomposition or replacement is explicitly deferred. This PR does not reopen
 that architecture; it only documents the long-term maintenance boundary around the existing legacy

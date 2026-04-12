@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.File;
 import java.net.InetAddress;
 import java.net.URI;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BucketFactory;
@@ -315,7 +314,7 @@ public interface ToadletContainer {
    *
    * @return the refilter policy governing how cached filtered content is handled
    */
-  REFILTER_POLICY getReFilterPolicy();
+  RefilterPolicy getReFilterPolicy();
 
   /**
    * Retrieve a file that overrides defaults for this container.

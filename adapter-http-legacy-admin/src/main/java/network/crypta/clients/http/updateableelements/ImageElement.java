@@ -8,12 +8,12 @@ import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
 import network.crypta.clients.http.FProxyFetchCriteria;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchResult;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyFetchWaiter;
 import network.crypta.clients.http.FProxyToadlet;
+import network.crypta.clients.http.RefilterPolicy;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.keys.FreenetURI;
@@ -225,7 +225,7 @@ public class ImageElement extends BaseUpdatableElement {
                     ImageElement.this.tracker.makeFetcher(
                         new FProxyFetchCriteria(
                             ImageElement.this.key, ImageElement.this.maxSize, null),
-                        REFILTER_POLICY.RE_FILTER);
+                        RefilterPolicy.RE_FILTER);
                 ImageElement.this
                     .tracker
                     .getFetchInProgress(
@@ -246,7 +246,7 @@ public class ImageElement extends BaseUpdatableElement {
                         ImageElement.this.tracker.makeFetcher(
                             new FProxyFetchCriteria(
                                 ImageElement.this.key, ImageElement.this.maxSize, null),
-                            REFILTER_POLICY.RE_FILTER);
+                            RefilterPolicy.RE_FILTER);
                     ImageElement.this
                         .tracker
                         .getFetchInProgress(
@@ -354,8 +354,8 @@ public class ImageElement extends BaseUpdatableElement {
    * {@code true}, the JS-enabled branch points to {@code /imagecreator/} with an “initializing”
    * message and a minimal progress payload ({@code fetchedBlocks=0}, {@code requiredBlocks=1}).
    *
-   * <p>For non-initial updates, this method attempts to obtain a fast fetch result. If the fetch
-   * has completed successfully, it re-renders the original image. If the fetch is still running, it
+   * <p>For non-initial updates, this method attempts to get a fast fetch result. If the fetch has
+   * completed successfully, it re-renders the original image. If the fetch is still running, it
    * renders a progress image that encodes the percentage complete and emits hidden progress inputs.
    * Failures fall back to the original image tag.
    *
@@ -465,7 +465,7 @@ public class ImageElement extends BaseUpdatableElement {
     try {
       resources.waiter =
           tracker.makeFetcher(
-              new FProxyFetchCriteria(key, maxSize, null), REFILTER_POLICY.RE_FILTER);
+              new FProxyFetchCriteria(key, maxSize, null), RefilterPolicy.RE_FILTER);
       resources.result = resources.waiter.getResultFast();
     } catch (FetchException _) {
       whenJsEnabled.addChild("div", "error");

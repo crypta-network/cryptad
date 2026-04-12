@@ -29,6 +29,8 @@ class HttpLegacyAdminBoundaryTest {
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_SIMPLE_TOADLET_SERVER =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("SimpleToadletServer.java");
   private static final Path ADAPTER_N2NTM_TOADLET =
       ADAPTER_HTTP_MAIN_JAVA.resolve("N2NTMToadlet.java");
   private static final Path ADAPTER_QUEUE_TOADLET =
@@ -233,6 +235,32 @@ class HttpLegacyAdminBoundaryTest {
         bootstrapHttpImports,
         "DefaultNodeRuntimeBridgeFactories must remain the narrow bootstrap-owned HTTP binding "
             + "site");
+  }
+
+  @Test
+  void mainSources_whenCheckingSimpleToadletServerImports_expectHttpShellSeamsDetached()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Path sourceFile = repoRoot.resolve(ADAPTER_SIMPLE_TOADLET_SERVER);
+    String source = Files.readString(sourceFile);
+    Set<String> imports = readImports(sourceFile);
+
+    assertFalse(
+        imports.contains("import network.crypta.clients.http.FProxyRegistrar;"),
+        "SimpleToadletServer must not import the admin-owned FProxyRegistrar helper anymore.");
+    assertFalse(
+        imports.contains("import network.crypta.clients.http.FProxyRegistrarDependencies;"),
+        "SimpleToadletServer must not import FProxyRegistrarDependencies anymore.");
+    assertFalse(
+        source.contains("FProxyRegistrar.maybeCreateFProxyEtc"),
+        "SimpleToadletServer must not call FProxyRegistrar.maybeCreateFProxyEtc anymore.");
+    assertFalse(
+        source.contains("new FProxyRegistrarDependencies("),
+        "SimpleToadletServer must not construct FProxyRegistrarDependencies anymore.");
+    assertFalse(
+        source.contains("FProxyFetchInProgress.REFILTER_POLICY"),
+        "SimpleToadletServer must use the HTTP-local refilter policy type instead of the nested "
+            + "FProxy enum.");
   }
 
   @Test
