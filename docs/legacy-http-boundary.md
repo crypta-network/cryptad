@@ -11,9 +11,10 @@ and the matching `network/crypta/clients/http/**` main resources, excluding
 This PR keeps the existing adapter leaf in place but removes a few browse-specific leaks from the
 shared shell surface before the real browse split. The shared shell now uses browse-neutral
 bootstrap/context types and shared `LegacyHttpPaths` / `LegacyHttpCategories` constants instead of
-pulling those values from `FProxyToadlet` directly. The concrete browse root still lives in the
-legacy adapter leaf for now, but the seam exposed to shared-shell and bridge code is no longer
-FProxy-shaped.
+pulling those values from `FProxyToadlet` directly. It also uses neutral bookmark, push, and
+client-side script seams instead of importing the concrete browse-owned collaborator classes
+directly. The concrete browse root still lives in the legacy adapter leaf for now, but the seam
+exposed to shared-shell and bridge code is no longer FProxy-shaped.
 
 The boundary remains intentional. Production code outside `:adapter-http-legacy-admin` and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

@@ -10,6 +10,7 @@ import network.crypta.client.filter.HTMLFilter.ParsedTag;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.updateableelements.PushDataManager;
+import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -88,6 +90,7 @@ class PushingTagReplacerCallbackTest {
     String script = PushingTagReplacerCallback.getClientSideLocalizationScript();
 
     assertNotNull(script);
+    assertEquals(ClientSideLocalizationScript.getClientSideLocalizationScript(), script);
     assertTrue(script.startsWith("var l10n={"));
     assertTrue(script.endsWith("};"));
     assertTrue(script.contains("hide:"), "contains hide key");

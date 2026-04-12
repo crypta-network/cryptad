@@ -2,8 +2,6 @@ package network.crypta.clients.http;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
-import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.support.Ticker;
 
 /**
@@ -14,9 +12,9 @@ import network.crypta.support.Ticker;
  * context, register elements as they become visible to the UI, and allow the manager to keep those
  * elements fresh without bespoke timers. The internal {@link CopyOnWriteArrayList} permits safe
  * iteration from the refresher while callers add or remove elements concurrently. When the list is
- * empty no further jobs are queued, so idle nodes avoid unnecessary wakeups. The manager is
- * intentionally minimal: it delegates all data retrieval to {@link PushDataManager} and uses each
- * element's updater identifier to trigger the appropriate push logic.
+ * empty, no further jobs are queued, so idle nodes avoid unnecessary wakeups. The manager is
+ * intentionally minimal: it delegates all data retrieval to {@link PushDataManagerHandle} and uses
+ * each element's updater identifier to trigger the appropriate push logic.
  *
  * <ul>
  *   <li>Registers UI elements that expect recurring server pushes.
@@ -25,28 +23,28 @@ import network.crypta.support.Ticker;
  * </ul>
  *
  * @see Ticker
- * @see PushDataManager
- * @see BaseUpdatableElement
+ * @see PushDataManagerHandle
+ * @see PushUpdatableElement
  */
 public class IntervalPusherManager {
 
   /** The interval when the elements will be pushed */
   private static final int REFRESH_PERIOD = 10000;
 
-  /** The PushDataManager object */
-  private final PushDataManager pushDataManager;
+  /** The push/update manager handle. */
+  private final PushDataManagerHandle pushDataManager;
 
   /** The Ticker to schedule the interval */
   private final Ticker ticker;
 
-  /** The job, that will refresh the elements */
+  /** The job that will refresh the elements */
   private final Runnable refresherJob =
       new Runnable() {
 
         @Override
         public void run() {
           // Updating
-          for (BaseUpdatableElement element : elements) {
+          for (PushUpdatableElement element : elements) {
             pushDataManager.updateElement(element.getUpdaterId(null));
           }
 
@@ -58,7 +56,7 @@ public class IntervalPusherManager {
       };
 
   /** The elements that are pushed at a fixed interval */
-  private final List<BaseUpdatableElement> elements = new CopyOnWriteArrayList<>();
+  private final List<PushUpdatableElement> elements = new CopyOnWriteArrayList<>();
 
   /**
    * Creates a manager that schedules update pushes with the supplied ticker.
@@ -72,7 +70,7 @@ public class IntervalPusherManager {
    * @param ticker non-null ticker that handles delayed job scheduling
    * @param pushDataManager manager that performs element updates when jobs run
    */
-  public IntervalPusherManager(Ticker ticker, PushDataManager pushDataManager) {
+  public IntervalPusherManager(Ticker ticker, PushDataManagerHandle pushDataManager) {
     this.ticker = ticker;
     this.pushDataManager = pushDataManager;
   }
@@ -85,13 +83,13 @@ public class IntervalPusherManager {
    * manager immediately schedules the refresher job, which subsequently requeues itself every
    * {@value #REFRESH_PERIOD} milliseconds while the list remains non-empty. Duplicate registrations
    * are not deduplicated and result in multiple update calls. The element must expose a stable
-   * updater identifier because the manager forwards that value to {@link PushDataManager} without
-   * further validation.
+   * updater identifier because the manager forwards that value to {@link PushDataManagerHandle}
+   * without further validation.
    *
    * @param element element to track; must not be null
    */
   @SuppressWarnings("unused")
-  public void registerUpdateableElement(BaseUpdatableElement element) {
+  public void registerUpdateableElement(PushUpdatableElement element) {
     boolean needsStart = elements.isEmpty();
     elements.add(element);
     // If this is the first element, then it starts the ticker
@@ -109,10 +107,10 @@ public class IntervalPusherManager {
    * stopping periodic updates until a new element is registered. The method tolerates removal of
    * elements that were not previously registered; in that case it performs no work.
    *
-   * @param element element to remove from recurring update schedule
+   * @param element element to remove from the recurring update schedule
    */
   @SuppressWarnings("unused")
-  public void deregisterUpdateableElement(BaseUpdatableElement element) {
+  public void deregisterUpdateableElement(PushUpdatableElement element) {
     elements.remove(element);
   }
 }

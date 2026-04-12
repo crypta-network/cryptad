@@ -665,7 +665,9 @@ Root build also includes:
 - `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
   HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
-  boundary-frozen for now. It currently hosts both the temporary `/api/v1/` bridge for
+  boundary-frozen for now. The shared shell now crosses neutral bookmark, push, and client-side
+  localization seams instead of importing the concrete browse-owned collaborators directly. It
+  currently hosts both the temporary `/api/v1/` bridge for
   `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
@@ -797,8 +799,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `/app/node/`, runtime-owned shell and password-prompt seams under
   `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
   helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellBrowseBootstrap`,
-  and the shared HTTP route registrar seam. Concrete HTTP shell, bookmark, GeoIP, and
-  security-page adapters now live under `network.crypta.clients.http.bridge` in
+  and the shared HTTP route registrar seam. The shared legacy shell now also uses neutral bookmark,
+  push, and client-side script seams instead of importing browse-owned collaborator classes
+  directly. Concrete HTTP shell, bookmark, GeoIP, and security-page adapters now live under
+  `network.crypta.clients.http.bridge` in
   `:bridge-http-runtime`, and that leaf also owns the legacy HTTP GeoIP helper package
   `network.crypta.clients.http.geoip`. The updater-action adapters remain under
   `network.crypta.clients.http.updater` in `:adapter-http-legacy-admin`. Root-local bridge

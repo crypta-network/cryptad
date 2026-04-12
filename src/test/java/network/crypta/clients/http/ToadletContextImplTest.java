@@ -27,6 +27,7 @@ import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -112,6 +113,15 @@ class ToadletContextImplTest {
         .thenReturn("wrong");
 
     assertFalse(context.hasFormPassword(request));
+  }
+
+  @Test
+  void getBookmarkManager_whenRequestedAsHandleOrConcrete_returnsConfiguredManager() {
+    BookmarkManagerHandle handle = context.getBookmarkManager();
+    BookmarkManager concrete = context.getBookmarkManager();
+
+    assertSame(bookmarkManager, handle);
+    assertSame(bookmarkManager, concrete);
   }
 
   @Test
@@ -209,7 +219,7 @@ class ToadletContextImplTest {
     Map<String, List<String>> map = new LinkedHashMap<>();
     List<String> lines = splitLines(raw);
     if (lines.isEmpty()) return map;
-    String statusLine = lines.get(0);
+    String statusLine = lines.getFirst();
     String[] statusParts = splitOnChar(statusLine, ' ');
     if (statusParts.length >= 2) {
       map.put("__status", List.of(statusParts[1]));
@@ -253,8 +263,8 @@ class ToadletContextImplTest {
       }
     }
     lines.add(raw.substring(start));
-    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
-      lines.remove(lines.size() - 1);
+    while (!lines.isEmpty() && lines.getLast().isEmpty()) {
+      lines.removeLast();
     }
     return lines;
   }
@@ -275,7 +285,7 @@ class ToadletContextImplTest {
         start = i + 1;
       }
     }
-    parts[partIndex] = value.substring(start, value.length());
+    parts[partIndex] = value.substring(start);
 
     int end = parts.length;
     while (end > 0 && parts[end - 1].isEmpty()) {

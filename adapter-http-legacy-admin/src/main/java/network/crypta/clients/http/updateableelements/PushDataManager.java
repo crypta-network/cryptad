@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Map;
+import network.crypta.clients.http.PushDataManagerHandle;
+import network.crypta.clients.http.PushUpdatableElement;
+import network.crypta.clients.http.PushUpdateEvent;
 import network.crypta.support.Ticker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,14 +15,14 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates server-side state for "push" updates in the HTTP UI.
  *
- * <p>This manager tracks which {@link BaseUpdatableElement} instances are rendered on which active
+ * <p>This manager tracks which {@link PushUpdatableElement} instances are rendered on which active
  * HTTP request (page), and it converts element changes into queued {@link UpdateEvent}s for clients
  * that poll for notifications. It is designed for UIs that render elements during normal page
  * handling and then rely on a separate long-polling (or repeated polling) request to ask, "what
- * should I refresh next?".
+ * should I refresh next?"
  *
  * <ul>
- *   <li>{@link #elementRendered(String, BaseUpdatableElement)} registers a rendered element for a
+ *   <li>{@link #elementRendered(String, PushUpdatableElement)} registers a rendered element for a
  *       request/page.
  *   <li>{@link #updateElement(String)} marks an element as changed and queues notifications for all
  *       pages currently rendering it.
@@ -40,16 +43,16 @@ import org.slf4j.LoggerFactory;
  * Cleanup also disposes elements and removes queued notifications that originated from the removed
  * request.
  */
-public class PushDataManager {
+public class PushDataManager implements PushDataManagerHandle {
   private static final Logger LOG = LoggerFactory.getLogger(PushDataManager.class);
 
   /** What notifications are waiting for the leader */
   private final Map<String, List<UpdateEvent>> awaitingNotifications = new HashMap<>();
 
   /** What elements are on the page */
-  private final Map<String, List<BaseUpdatableElement>> pages = new HashMap<>();
+  private final Map<String, List<PushUpdatableElement>> pages = new HashMap<>();
 
-  /** What pages are on the element. It is redundant with the pages map. */
+  /** What pages are on the element. It is redundant with the pages' map. */
   private final Map<String, List<String>> elements = new HashMap<>();
 
   /** Stores whether a keepalive was received for a request since the Cleaner last run */
@@ -73,7 +76,7 @@ public class PushDataManager {
    *
    * <p>The ticker is used only for scheduling the internal cleaner task; it does not execute any
    * work on the caller thread. The cleaner is scheduled lazily on the first call to {@link
-   * #elementRendered(String, BaseUpdatableElement)} and is re-scheduled while at least one active
+   * #elementRendered(String, PushUpdatableElement)} and is re-scheduled while at least one active
    * request is tracked.
    *
    * @param ticker scheduler used to queue periodic cleanup work; must not be {@code null}.
@@ -90,12 +93,13 @@ public class PushDataManager {
    * Object#notifyAll()}. If the element id is not currently registered, this method performs no
    * state changes.
    *
-   * <p>Notifications are de-duplicated per polling request: if an identical {@link UpdateEvent} is
+   * <p>Notifications are deduplicated per polling request: if an identical {@link UpdateEvent} is
    * already present in a request's queue, it is not added again. This provides a simple form of
    * coalescing when the same element changes multiple times before clients have a chance to poll.
    *
-   * @param id updater element id returned by {@link BaseUpdatableElement#getUpdaterId(String)}.
+   * @param id updater element id returned by {@link PushUpdatableElement#getUpdaterId(String)}.
    */
+  @Override
   public synchronized void updateElement(String id) {
     LOG.debug("Element updated id:{}", id);
     List<String> requestIds = elements.get(id);
@@ -151,14 +155,15 @@ public class PushDataManager {
    * <p>This method also ensures the request has an initialized notification queue. Once a request
    * is tracked, it will remain tracked until it is explicitly removed via {@link #leaving(String)}
    * or the periodic cleaner detects missing keepalives. When a request is removed, its rendered
-   * elements are disposed via {@link BaseUpdatableElement#dispose()} and any update events that
+   * elements are disposed via {@link PushUpdatableElement#dispose()} and any update events that
    * originated from that request are removed from all queues.
    *
    * @param requestUniqueId request/page identifier used for polling notifications; should be
    *     stable.
-   * @param element rendered element to track and later dispose on cleanup.
+   * @param element the rendered element to track and later dispose on cleanup.
    */
-  public synchronized void elementRendered(String requestUniqueId, BaseUpdatableElement element) {
+  @Override
+  public synchronized void elementRendered(String requestUniqueId, PushUpdatableElement element) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Element is rendered in page:{} element:{}", requestUniqueId, element);
     }
@@ -185,11 +190,11 @@ public class PushDataManager {
    * Returns the element's current state.
    *
    * <p>This looks up the element within the set previously registered via {@link
-   * #elementRendered(String, BaseUpdatableElement)} for the given request. When found, the element
-   * state is refreshed via {@link BaseUpdatableElement#updateState(boolean)} and the element is
+   * #elementRendered(String, PushUpdatableElement)} for the given request. When found, the element
+   * state is refreshed via {@link PushUpdatableElement#updateState(boolean)} and the element is
    * returned to the caller.
    *
-   * <p>This method does not register new elements and does not create placeholder state. It is
+   * <p>This method does not register new elements and does not create a placeholder state. It is
    * intended to be called by the HTTP layer when it needs to re-render a previously rendered
    * element after receiving an {@link UpdateEvent}. A missing element indicates that the request is
    * no longer tracked (for example, because it timed out and was cleaned) or that the element was
@@ -203,12 +208,13 @@ public class PushDataManager {
    * @param id element updater id previously returned for this request; used for lookup.
    * @return the tracked element with refreshed state, or {@code null} if missing.
    */
-  public synchronized BaseUpdatableElement getRenderedElement(String requestId, String id) {
+  @Override
+  public synchronized PushUpdatableElement getRenderedElement(String requestId, String id) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Getting element data for element:{} in page:{}", id, requestId);
     }
     if (pages.get(requestId) != null)
-      for (BaseUpdatableElement element : pages.get(requestId)) {
+      for (PushUpdatableElement element : pages.get(requestId)) {
         if (element.getUpdaterId(requestId).compareTo(id) == 0) {
           element.updateState(false);
           return element;
@@ -239,9 +245,10 @@ public class PushDataManager {
    * <p>If the original request id is not present, this method performs no changes.
    *
    * @param originalRequestId previous leader request id whose queue should be moved.
-   * @param newRequestId new leader request id that should receive the moved queue.
+   * @param newRequestId the new leader request id that should receive the moved queue.
    * @return {@code true} if a notification queue was migrated; {@code false} otherwise.
    */
+  @Override
   public synchronized boolean failover(String originalRequestId, String newRequestId) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Failover, original:{} new:{}", originalRequestId, newRequestId);
@@ -273,12 +280,13 @@ public class PushDataManager {
    *
    * <p>This method is intended to be called when the HTTP layer knows a page/request is finished,
    * such as when a client navigates away. It is safe to call multiple times for the same request
-   * id; subsequent calls will return {@code false} once the request has already been removed.
+   * id; later calls will return {@code false} once the request has already been removed.
    *
    * @param requestId request/page identifier to remove from internal state maps.
    * @return {@code true} if the request was present and removed; {@code false} if it was already
    *     absent.
    */
+  @Override
   public synchronized boolean leaving(String requestId) {
     return deleteRequest(requestId);
   }
@@ -291,7 +299,7 @@ public class PushDataManager {
    * avoid returning updates for a request that has not yet started polling.
    *
    * <p>This method does not create request state: the request must already have been registered via
-   * {@link #elementRendered(String, BaseUpdatableElement)}. If the request is unknown, the return
+   * {@link #elementRendered(String, PushUpdatableElement)}. If the request is unknown, the return
    * value is {@code false} and no state is created.
    *
    * <p>This call wakes blocked pollers via {@link Object#notifyAll()} so they can re-check their
@@ -300,6 +308,7 @@ public class PushDataManager {
    * @param requestId request/page identifier that is still active and polling.
    * @return {@code true} if the request is still tracked; {@code false} if it was already removed.
    */
+  @Override
   public synchronized boolean keepAliveReceived(String requestId) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Keepalive is received for page:{}", requestId);
@@ -335,7 +344,8 @@ public class PushDataManager {
    * @param requestId request/page identifier to poll; must already be registered.
    * @return the next queued update event, or {@code null} when interrupted or not tracked.
    */
-  public synchronized UpdateEvent getNextNotification(String requestId) {
+  @Override
+  public synchronized PushUpdateEvent getNextNotification(String requestId) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Polling for notification:{}", requestId);
     }
@@ -396,8 +406,8 @@ public class PushDataManager {
 
   private void removeRenderedElements(String requestId) {
     // Iterate over all the pushed elements present on the page
-    List<BaseUpdatableElement> renderedElements = pages.get(requestId);
-    for (BaseUpdatableElement element : new ArrayList<>(renderedElements)) {
+    List<PushUpdatableElement> renderedElements = pages.get(requestId);
+    for (PushUpdatableElement element : new ArrayList<>(renderedElements)) {
       renderedElements.remove(element);
       String elementId = element.getUpdaterId(requestId);
       removeRequestFromElementsIndex(requestId, elementId);
@@ -428,7 +438,7 @@ public class PushDataManager {
    * request id and element id, which allows {@link PushDataManager} to avoid enqueuing duplicates
    * for the same polling request.
    */
-  public static class UpdateEvent {
+  public static class UpdateEvent implements PushUpdateEvent {
     private final String requestId;
     private final String elementId;
 
@@ -441,7 +451,7 @@ public class PushDataManager {
      * Returns the identifier of the request/page that should apply the update.
      *
      * <p>The request id corresponds to the value used when registering rendered elements via {@link
-     * PushDataManager#elementRendered(String, BaseUpdatableElement)} and when polling for
+     * PushDataManager#elementRendered(String, PushUpdatableElement)} and when polling for
      * notifications via {@link PushDataManager#getNextNotification(String)}.
      *
      * <p>This is the target request/page identifier to refresh, not the identifier of the polling
@@ -451,6 +461,7 @@ public class PushDataManager {
      *
      * @return the request/page identifier for this update event; never {@code null}.
      */
+    @Override
     public String getRequestId() {
       return requestId;
     }
@@ -459,14 +470,15 @@ public class PushDataManager {
      * Returns the updater element id that changed and should be re-rendered.
      *
      * <p>The element id corresponds to the value returned from {@link
-     * BaseUpdatableElement#getUpdaterId(String)} for the request that rendered the element.
+     * PushUpdatableElement#getUpdaterId(String)} for the request that rendered the element.
      *
      * <p>Consumers use this id with {@link PushDataManager#getRenderedElement(String, String)} to
-     * resolve the corresponding {@link BaseUpdatableElement} for a particular request/page and then
+     * resolve the corresponding {@link PushUpdatableElement} for a particular request/page and then
      * render the refreshed state back to the client.
      *
      * @return the updater element identifier for this update event; never {@code null}.
      */
+    @Override
     public String getElementId() {
       return elementId;
     }
@@ -492,7 +504,7 @@ public class PushDataManager {
     }
   }
 
-  /** A task for the Cleaner, that periodically checks for failed requests. */
+  /** A task for the Cleaner that periodically checks for failed requests. */
   private class CleanerTimerTask implements Runnable {
     @Override
     public void run() {

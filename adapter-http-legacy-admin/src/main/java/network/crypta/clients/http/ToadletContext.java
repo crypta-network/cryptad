@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
 import java.time.Instant;
-import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -39,6 +38,7 @@ import network.crypta.support.io.NoFreeBucket;
  * @see ToadletContainer
  * @see PageMaker
  */
+@SuppressWarnings("TypeParameterUnusedInFormals")
 public interface ToadletContext {
 
   /**
@@ -233,11 +233,11 @@ public interface ToadletContext {
   UserAlertManager getAlertManager();
 
   /**
-   * Access the {@link BookmarkManager} used to read or update bookmarks within this request.
+   * Access the {@link BookmarkManagerHandle} used to read or update bookmarks within this request.
    *
-   * @return Non-null bookmark manager instance.
+   * @return non-null bookmark handle instance.
    */
-  BookmarkManager getBookmarkManager();
+  <T extends BookmarkManagerHandle> T getBookmarkManager();
 
   /**
    * Obtain the {@link BucketFactory} used to create buckets for reading request bodies or composing

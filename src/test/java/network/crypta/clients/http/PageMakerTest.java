@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.PageChromeSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
@@ -207,6 +208,28 @@ class PageMakerTest {
     assertTrue(html.contains("progressbar-peers"));
     assertTrue(html.contains("/seclevels/"));
     assertTrue(html.contains("4 / 10"));
+  }
+
+  @Test
+  void getPageNode_whenWebPushingEnabled_injectsSharedLocalizationScriptAndRequestId() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(container.isFProxyWebPushingEnabled()).thenReturn(true);
+    when(context.getUniqueId()).thenReturn("req-push");
+
+    PageNode page =
+        maker.getPageNode(
+            "Push",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("/static/freenetjs/freenetjs.nocache.js"));
+    assertTrue(html.contains("id=\"requestId\""));
+    assertTrue(html.contains("value=\"req-push\""));
+    assertTrue(html.contains(ClientSideLocalizationScript.getClientSideLocalizationScript()));
   }
 
   @Test

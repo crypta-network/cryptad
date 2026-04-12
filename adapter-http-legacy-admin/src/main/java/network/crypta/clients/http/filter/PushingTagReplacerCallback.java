@@ -11,9 +11,8 @@ import network.crypta.client.filter.URIProcessor;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.updateableelements.ImageElement;
+import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.keys.FreenetURI;
-import network.crypta.l10n.NodeL10n;
-import network.crypta.support.HTMLEncoder;
 import network.crypta.support.http.StaticResourcePaths;
 
 /**
@@ -29,8 +28,8 @@ import network.crypta.support.http.StaticResourcePaths;
  * <ul>
  *   <li>Replace eligible {@code <img>} elements with updateable image placeholders backed by the
  *       fetch tracker.
- *   <li>Inject the JavaScript, localization data, and hidden request identifier that the web
- *       pushing client expects in the final page.
+ *   <li>Inject the JavaScript, localization data, and hidden request identifier that the
+ *       web-pushing client expects in the final page.
  * </ul>
  *
  * <p>Instances are request-scoped. They hold references to the current {@link ToadletContext},
@@ -49,7 +48,7 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
    * document. The maximum size is forwarded to updateable image elements so they apply the same
    * fetch limit as the surrounding request.
    *
-   * @param tracker Fetch tracker that owns updateable elements for the current request.
+   * @param tracker The fetch tracker that owns updateable elements for the current request.
    * @param maxSize Maximum fetch size, in bytes, for rewritten updateable elements.
    * @param ctx Active toadlet context used to inspect feature flags and request metadata.
    */
@@ -62,29 +61,13 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
   /**
    * Builds the JavaScript localization object consumed by the web-pushing client.
    *
-   * <p>The method exports every localization key under the {@code fproxy.push} prefix into a small
-   * JavaScript object literal and HTML-encodes each translated value before embedding it into the
-   * page. When no matching keys are present, the method still returns a syntactically valid empty
-   * object.
+   * <p>The shared-shell seam now lives in {@link ClientSideLocalizationScript}; this delegate keeps
+   * browse-owned callers and tests source-compatible while avoiding duplication.
    *
-   * @return JavaScript source that initializes the client-side {@code l10n} object.
+   * @return JavaScript source that initializes the client-side {@code l10n} object
    */
   public static String getClientSideLocalizationScript() {
-    StringBuilder l10nBuilder = new StringBuilder("var l10n={\n");
-    boolean isNamePresentAtLeastOnce = false;
-    for (String key : NodeL10n.getBase().getAllNamesWithPrefix("fproxy.push")) {
-      l10nBuilder
-          .append(key.substring("fproxy.push".length() + 1))
-          .append(": \"")
-          .append(HTMLEncoder.encode(NodeL10n.getBase().getString(key)))
-          .append("\",\n");
-      isNamePresentAtLeastOnce = true;
-    }
-    String l10n =
-        isNamePresentAtLeastOnce
-            ? l10nBuilder.substring(0, l10nBuilder.length() - 2)
-            : l10nBuilder.toString();
-    return l10n.concat("\n};");
+    return ClientSideLocalizationScript.getClientSideLocalizationScript();
   }
 
   /**
@@ -154,7 +137,7 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
                 + "\" name=\"requestId\"/>")
         .concat(
             "<script type=\"text/javascript\" language=\"javascript\">"
-                .concat(getClientSideLocalizationScript())
+                .concat(ClientSideLocalizationScript.getClientSideLocalizationScript())
                 .concat("</script>"))
         .concat("</body>");
   }

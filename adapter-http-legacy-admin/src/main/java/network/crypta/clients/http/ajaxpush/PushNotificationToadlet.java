@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.PushUpdateEvent;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
-import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
 import network.crypta.support.api.HTTPRequest;
@@ -21,9 +21,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This {@link Toadlet} is used by the browser-side update mechanism to wait for an event and
  * then return a compact, machine-readable payload. Callers typically issue a GET request to {@link
- * #path()} with a {@code requestId} parameter; the handler consults the {@link PushDataManager}
- * from the current {@link SimpleToadletServer} and blocks until the next {@link
- * PushDataManager.UpdateEvent} becomes available for that request.
+ * #path()} with a {@code requestId} parameter; the handler consults the shared push-data manager
+ * from the current {@link SimpleToadletServer} and blocks until the next {@link PushUpdateEvent}
+ * becomes available for that request.
  *
  * <p>Notable behaviors:
  *
@@ -31,15 +31,14 @@ import org.slf4j.LoggerFactory;
  *   <li>Uses long-poll semantics: it may block until an event arrives or the request context
  *       closes.
  *   <li>Returns either a success payload containing identifiers, or a failure sentinel string.
- *   <li>Performs no state mutation itself; it delegates event sequencing to {@link
- *       PushDataManager}.
+ *   <li>Performs no state mutation itself; it delegates event sequencing to the push-data manager.
  * </ul>
  *
  * <p>Thread-safety: instances are expected to be invoked concurrently by the HTTP server; this
- * implementation performs only local computations and relies on {@link PushDataManager} for
+ * implementation performs only local computations and relies on the push-data manager for
  * synchronization and ordering.
  *
- * @see PushDataManager#getNextNotification(String)
+ * @see network.crypta.clients.http.PushDataManagerHandle#getNextNotification(String)
  * @see UpdaterConstants#NOTIFICATION_PATH
  */
 public class PushNotificationToadlet extends Toadlet {
@@ -63,10 +62,11 @@ public class PushNotificationToadlet extends Toadlet {
    * Wait for and return the next notification event for the given long-poll request.
    *
    * <p>This handler reads the {@code requestId} query parameter from {@code req} and forwards it to
-   * {@link PushDataManager#getNextNotification(String)}. When an event is available, it returns a
-   * success payload composed of the event's request identifier and element identifier; otherwise it
-   * returns a failure sentinel value. The response body is intended to be parsed by the
-   * browser-side updater logic and is not meant for direct human consumption.
+   * {@link network.crypta.clients.http.PushDataManagerHandle#getNextNotification(String)}. When an
+   * event is available, it returns a success payload composed of the event's request identifier and
+   * element identifier; otherwise it returns a failure sentinel value. The response body is
+   * intended to be parsed by the browser-side updater logic and is not meant for direct human
+   * consumption.
    *
    * <p>The method may block while waiting for an event. If the request context closes while
    * blocked, {@link ToadletContextClosedException} can be thrown by the underlying server
@@ -85,7 +85,7 @@ public class PushNotificationToadlet extends Toadlet {
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");
-    PushDataManager.UpdateEvent event =
+    PushUpdateEvent event =
         ((SimpleToadletServer) ctx.getContainer())
             .getPushDataManager()
             .getNextNotification(requestId);

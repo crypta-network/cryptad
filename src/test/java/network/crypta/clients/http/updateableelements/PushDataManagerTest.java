@@ -2,6 +2,8 @@ package network.crypta.clients.http.updateableelements;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import network.crypta.clients.http.PushUpdatableElement;
+import network.crypta.clients.http.PushUpdateEvent;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,7 +56,7 @@ class PushDataManagerTest {
     assertEquals(expectedCleanerDelayMs(), offsetCaptor.getValue().longValue());
 
     assertTrue(manager.keepAliveReceived(requestA));
-    BaseUpdatableElement rendered = manager.getRenderedElement(requestA, "element-a");
+    PushUpdatableElement rendered = manager.getRenderedElement(requestA, "element-a");
     assertSame(elementA, rendered);
     Mockito.verify(elementA).updateState(false);
 
@@ -93,8 +95,8 @@ class PushDataManagerTest {
     assertTrue(manager.keepAliveReceived(originRequest));
 
     // Assert
-    PushDataManager.UpdateEvent eventFromOrigin = manager.getNextNotification(originRequest);
-    PushDataManager.UpdateEvent eventFromPolling = manager.getNextNotification(pollingRequest);
+    PushUpdateEvent eventFromOrigin = manager.getNextNotification(originRequest);
+    PushUpdateEvent eventFromPolling = manager.getNextNotification(pollingRequest);
     assertNotNull(eventFromOrigin);
     assertNotNull(eventFromPolling);
     assertEquals(originRequest, eventFromOrigin.getRequestId());
@@ -106,7 +108,7 @@ class PushDataManagerTest {
         eventFromOrigin.toString());
 
     CountDownLatch done = new CountDownLatch(1);
-    Holder<PushDataManager.UpdateEvent> secondPoll = new Holder<>();
+    Holder<PushUpdateEvent> secondPoll = new Holder<>();
     Thread waiter =
         new Thread(
             () -> {
@@ -134,7 +136,7 @@ class PushDataManagerTest {
     manager.elementRendered(requestId, element);
 
     // Act
-    BaseUpdatableElement rendered = manager.getRenderedElement(requestId, elementId);
+    PushUpdatableElement rendered = manager.getRenderedElement(requestId, elementId);
 
     // Assert
     assertSame(element, rendered);
@@ -190,7 +192,7 @@ class PushDataManagerTest {
     manager.elementRendered(requestId, element);
 
     CountDownLatch started = new CountDownLatch(1);
-    Holder<PushDataManager.UpdateEvent> result = new Holder<>();
+    Holder<PushUpdateEvent> result = new Holder<>();
 
     Thread thread =
         new Thread(
@@ -231,7 +233,7 @@ class PushDataManagerTest {
     assertTrue(manager.keepAliveReceived(originRequest));
 
     // Act
-    PushDataManager.UpdateEvent event = manager.getNextNotification(pollingRequest);
+    PushUpdateEvent event = manager.getNextNotification(pollingRequest);
 
     // Assert
     assertNotNull(event);
@@ -260,7 +262,7 @@ class PushDataManagerTest {
     assertTrue(manager.failover(originalRequest, newRequest));
 
     // Assert
-    PushDataManager.UpdateEvent event = manager.getNextNotification(newRequest);
+    PushUpdateEvent event = manager.getNextNotification(newRequest);
     assertNotNull(event);
     assertEquals(originalRequest, event.getRequestId());
     assertEquals(elementId, event.getElementId());
