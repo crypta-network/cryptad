@@ -13,8 +13,9 @@ shared shell surface before the real browse split. The shared shell now uses bro
 bootstrap/context types and shared `LegacyHttpPaths` / `LegacyHttpCategories` constants instead of
 pulling those values from `FProxyToadlet` directly. It also uses neutral bookmark, push, and
 client-side script seams instead of importing the concrete browse-owned collaborator classes
-directly. The concrete browse root still lives in the legacy adapter leaf for now, but the seam
-exposed to shared-shell and bridge code is no longer FProxy-shaped.
+directly. The shared shell no longer constructs the concrete browse root or concrete push manager
+itself; those concrete constructions now live in the bridge/runtime-owned HTTP bootstrap path so
+the shared shell stays browse-neutral ahead of the future `:adapter-http-legacy-browse` split.
 
 The boundary remains intentional. Production code outside `:adapter-http-legacy-admin` and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

@@ -15,8 +15,10 @@ import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.PushDataManagerHandle;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
+import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -36,6 +38,7 @@ import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.services.NodeServicesSubsystem;
+import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
@@ -45,6 +48,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -289,7 +293,7 @@ class CoreHttpShellRuntimeSupportTest {
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     ClientContext clientContext = mock(ClientContext.class);
     FetchContext fetchContext = mock(FetchContext.class);
-    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RuntimePorts bootstrapRuntimePorts = mock(RuntimePorts.class);
     AtomicReference<List<Object>> bookmarkManagerArguments = new AtomicReference<>();
     AtomicReference<List<Object>> fetchTrackerArguments = new AtomicReference<>();
     AtomicReference<List<Object>> browseRootArguments = new AtomicReference<>();
@@ -331,9 +335,62 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(runtimeSupport.appHost(), bootstrap.appHost());
       assertSame(fproxies.constructed().getFirst(), bootstrap.browseRoot());
       verify(core, never()).getRuntimePorts();
-      verifyNoInteractions(runtimePorts);
+      verifyNoInteractions(bootstrapRuntimePorts);
       verify(core, never()).getEndpoints();
     }
+  }
+
+  @Test
+  void createBrowseBootstrap_whenInitializerInvoked_seedsSharedForceLinkRandom() {
+    NodeClientCore core = mock(NodeClientCore.class);
+    UserAlertManager alerts = mock(UserAlertManager.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    ClientContext clientContext = mock(ClientContext.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
+    when(core.getAlerts()).thenReturn(alerts);
+    when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
+    when(core.getClientContext()).thenReturn(clientContext);
+    when(client.getFetchContext()).thenReturn(fetchContext);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
+
+    try (var _ = mockConstruction(BookmarkManager.class)) {
+      HttpShellBrowseBootstrap bootstrap = runtimeSupport.createBrowseBootstrap(true);
+
+      bootstrap.sharedShellInitializer().accept(runtimePorts);
+    }
+
+    ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(runtimePorts).randomness();
+    verify(randomnessPort).fillSecureRandom(randomCaptor.capture());
+    assertEquals(32, randomCaptor.getValue().length);
+  }
+
+  @Test
+  void createPushDataManagerHandle_whenInvoked_constructsConcreteBrowseManager() {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Ticker ticker = mock(Ticker.class);
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
+
+    try (MockedConstruction<PushDataManager> pushManagers =
+        mockConstruction(
+            PushDataManager.class,
+            (_, invocation) -> assertSame(ticker, invocation.arguments().getFirst()))) {
+      PushDataManagerHandle handle = runtimeSupport.createPushDataManagerHandle(ticker);
+
+      assertEquals(1, pushManagers.constructed().size());
+      assertSame(pushManagers.constructed().getFirst(), handle);
+    }
+  }
+
+  @Test
+  void createPushDataManagerHandle_whenTickerNull_throwsNullPointerException() {
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(mock(NodeClientCore.class));
+
+    assertThrows(
+        NullPointerException.class, () -> runtimeSupport.createPushDataManagerHandle(null));
   }
 
   @Test

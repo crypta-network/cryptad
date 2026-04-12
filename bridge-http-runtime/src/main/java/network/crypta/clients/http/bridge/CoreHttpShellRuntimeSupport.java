@@ -6,11 +6,14 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyRuntimeSupport;
+import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.PushDataManagerHandle;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
+import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.Config;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
@@ -91,6 +94,11 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   }
 
   @Override
+  public PushDataManagerHandle createPushDataManagerHandle(Ticker ticker) {
+    return new PushDataManager(Objects.requireNonNull(ticker, "ticker"));
+  }
+
+  @Override
   public UserAlertManager userAlerts() {
     return core.getAlerts();
   }
@@ -153,7 +161,16 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
             new RequestClientBuilder().realTime().build());
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
     return HttpShellBrowseBootstrap.create(
-        bookmarkManager, client, appHost, fproxyRuntimeSupport, fetchTracker);
+        bookmarkManager,
+        client,
+        appHost,
+        FProxyToadlet.create(client, fproxyRuntimeSupport, fetchTracker),
+        CoreHttpShellRuntimeSupport::initializeFProxySharedState);
+  }
+
+  private static void initializeFProxySharedState(RuntimePorts runtimePorts) {
+    FProxyToadlet.initializeSharedRandom(
+        Objects.requireNonNull(runtimePorts, "runtimePorts").randomness());
   }
 
   /**

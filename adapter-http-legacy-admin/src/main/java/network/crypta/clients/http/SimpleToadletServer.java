@@ -131,7 +131,7 @@ public final class SimpleToadletServer
   private BucketFactory bf;
 
   @SuppressWarnings("java:S3077")
-  private volatile HttpShellRuntimeSupport runtimeSupport;
+  private volatile network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupport;
 
   @SuppressWarnings("java:S3077")
   private volatile LegacyHttpRouteRegistrar routeRegistrar;
@@ -314,7 +314,8 @@ public final class SimpleToadletServer
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
-      HttpShellRuntimeSupport runtimeSupportRef = SimpleToadletServer.this.runtimeSupport;
+      network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef =
+          SimpleToadletServer.this.runtimeSupport;
       if (runtimeSupportRef == null) return;
       if (val.equals(get()) || val.isEmpty()) cssOverride = null;
       else {
@@ -467,15 +468,16 @@ public final class SimpleToadletServer
    * the configured {@link LegacyHttpRouteRegistrar} for the remaining HTTP shell registration.
    */
   public void createFproxy() {
-    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
     LegacyHttpRouteRegistrar routeRegistrarRef = requireRouteRegistrar();
     synchronized (this) {
       if (haveCalledFProxy) return;
       haveCalledFProxy = true;
     }
 
-    pushDataManager = PushDataManagerHandles.create(getTicker());
-    intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
+    Ticker ticker = runtimeSupportRef.ticker();
+    pushDataManager = runtimeSupportRef.createPushDataManagerHandle(ticker);
+    intervalPushManager = new IntervalPusherManager(ticker, pushDataManager);
     HttpShellBrowseBootstrap bootstrap =
         runtimeSupportRef.createBrowseBootstrap(publicGatewayMode());
     bookmarkManager = bootstrap.bookmarkManager();
@@ -567,7 +569,8 @@ public final class SimpleToadletServer
    * @param runtimeSupport fully constructed runtime adapter; may be {@code null} during tests that
    *     intentionally exercise uninitialized behavior
    */
-  public void setRuntimeSupport(HttpShellRuntimeSupport runtimeSupport) {
+  public void setRuntimeSupport(
+      network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupport) {
     this.runtimeSupport = runtimeSupport;
     RuntimePorts runtimePorts = runtimeSupport == null ? null : runtimeSupport.runtimePorts();
     pageMaker.setPageChromePort(runtimePorts == null ? null : runtimePorts.pageChrome());
@@ -1364,7 +1367,7 @@ public final class SimpleToadletServer
    * succeeds, {@link #finishedStartup} becomes true, allowing deferred operations to proceed.
    */
   public void finishStart() {
-    HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = requireRuntimeSupport();
     runtimeSupportRef.addNetworkThreatLevelListener(
         (oldLevel, newLevel) -> {
           // At LOW, we do ACCEPT_OLD.
@@ -1470,7 +1473,7 @@ public final class SimpleToadletServer
   }
 
   private boolean shouldRedirectToWizard(String path) {
-    HttpShellRuntimeSupport runtimeSupportLocal = this.runtimeSupport;
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportLocal = this.runtimeSupport;
     if (runtimeSupportLocal == null
         || !runtimeSupportLocal.canRedirectToWizard()
         || fproxyHasCompletedWizard) {
@@ -1629,7 +1632,7 @@ public final class SimpleToadletServer
    * @return active {@link UserAlertManager}, or {@code null} when unavailable.
    */
   public UserAlertManager getUserAlertManager() {
-    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
     if (runtimeSupportRef == null) return null;
     return runtimeSupportRef.userAlerts();
   }
@@ -1714,7 +1717,7 @@ public final class SimpleToadletServer
 
   @Override
   public String getFormPassword() {
-    HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
     if (runtimeSupportRef == null) return "";
     return runtimeSupportRef.formPassword();
   }
@@ -1888,7 +1891,7 @@ public final class SimpleToadletServer
     return requireRuntimeSupport().ticker();
   }
 
-  private HttpShellRuntimeSupport requireRuntimeSupport() {
+  private network.crypta.clients.http.HttpShellRuntimeSupport requireRuntimeSupport() {
     return Objects.requireNonNull(runtimeSupport);
   }
 

@@ -801,7 +801,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellBrowseBootstrap`,
   and the shared HTTP route registrar seam. The shared legacy shell now also uses neutral bookmark,
   push, and client-side script seams instead of importing browse-owned collaborator classes
-  directly. Concrete HTTP shell, bookmark, GeoIP, and security-page adapters now live under
+  directly. Concrete browse-root and push-manager construction now lives in the
+  bridge/runtime-owned HTTP bootstrap path, keeping the shared shell browse-neutral ahead of the
+  later `:adapter-http-legacy-browse` split. Concrete HTTP shell, bookmark, GeoIP, and
+  security-page adapters now live under
   `network.crypta.clients.http.bridge` in
   `:bridge-http-runtime`, and that leaf also owns the legacy HTTP GeoIP helper package
   `network.crypta.clients.http.geoip`. The updater-action adapters remain under
