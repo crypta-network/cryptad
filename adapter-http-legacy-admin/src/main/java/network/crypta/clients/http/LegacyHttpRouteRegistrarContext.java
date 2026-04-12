@@ -18,15 +18,15 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * <p>The context is intentionally narrow and immutable. It carries only the collaborators needed to
  * publish legacy HTTP routes today: the interactive client, detached runtime ports, AppHost bridge,
- * node configuration, and the already-created root FProxy toadlet. Registrars should treat the
- * record as a startup snapshot and avoid mutating or retaining it beyond registration.
+ * node configuration, and the already-created browse root. Registrars should treat the record as a
+ * startup snapshot and avoid mutating or retaining it beyond registration.
  *
  * @param client shared interactive client that registered toadlets use for request-adjacent
  *     operations
  * @param runtimePorts detached runtime-spi ports surfaced to HTTP routes and helper pages
  * @param appHost shared AppHost bridge that exposes the current Platform API runtime surface
  * @param config node configuration view used when listing or filtering sub-config toadlets
- * @param fproxy prebuilt root FProxy toadlet that anchors the registration pass at the legacy
+ * @param browseRoot prebuilt root browse toadlet that anchors the registration pass at the legacy
  *     browsing root
  */
 public record LegacyHttpRouteRegistrarContext(
@@ -34,7 +34,7 @@ public record LegacyHttpRouteRegistrarContext(
     RuntimePorts runtimePorts,
     AppHost appHost,
     Config config,
-    FProxyToadlet fproxy) {
+    Toadlet browseRoot) {
 
   /**
    * Creates a validated route-registration context.
@@ -48,7 +48,7 @@ public record LegacyHttpRouteRegistrarContext(
    * @param runtimePorts detached runtime-spi ports exposed to the HTTP registrar
    * @param appHost shared AppHost bridge made visible through HTTP-owned routes
    * @param config node configuration view that registration may inspect for sub-config pages
-   * @param fproxy prebuilt root FProxy toadlet registered at the browsing root
+   * @param browseRoot prebuilt root browse toadlet registered at the browsing root
    * @throws NullPointerException if any required collaborator is absent when the context is built
    */
   public LegacyHttpRouteRegistrarContext {
@@ -56,6 +56,6 @@ public record LegacyHttpRouteRegistrarContext(
     Objects.requireNonNull(runtimePorts);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
-    Objects.requireNonNull(fproxy);
+    Objects.requireNonNull(browseRoot);
   }
 }

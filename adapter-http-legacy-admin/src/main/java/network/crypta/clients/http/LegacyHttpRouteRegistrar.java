@@ -23,9 +23,9 @@ public interface LegacyHttpRouteRegistrar {
    *
    * <p>The supplied context contains the collaborators that the registrar may already need today:
    * the shared interactive client, runtime ports, AppHost bridge, node configuration, and the
-   * prebuilt root FProxy toadlet. Implementations should use those values to complete their own
+   * prebuilt browse-root toadlet. Implementations should use those values to complete their own
    * startup wiring without re-fetching the broader daemon state from elsewhere. Callers invoke this
-   * method during the FProxy bootstrap path before request handling begins.
+   * method during the legacy HTTP bootstrap path before request handling begins.
    *
    * @param context prepared bootstrap collaborators that registration may publish into routes and
    *     helper pages

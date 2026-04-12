@@ -48,7 +48,7 @@ final class FProxyRegistrar {
   /**
    * Builds and registers the full FProxy toadlet set if the environment supports it.
    *
-   * <p>The method assumes the root FProxy toadlet, interactive client, and runtime ports have
+   * <p>The method assumes the root browse toadlet, interactive client, and runtime ports have
    * already been assembled by the caller and then registers every relevant toadlet with the
    * provided server. Registration order aligns with menu placement: browsing first, followed by
    * queue handlers, configuration, status/alerts, chat, and maintenance endpoints. This method must
@@ -63,7 +63,7 @@ final class FProxyRegistrar {
     HighLevelSimpleClient client = dependencies.client();
     RuntimePorts runtimePorts = dependencies.runtimePorts();
     Config config = dependencies.config();
-    FProxyToadlet fproxy = dependencies.fproxy();
+    Toadlet browseRoot = dependencies.browseRoot();
     TransferAccessPort transferAccess = runtimePorts.transferAccess();
 
     server.registerMenu(
@@ -83,7 +83,7 @@ final class FProxyRegistrar {
         "/seclevels/", FProxyToadlet.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
 
     server.register(
-        fproxy,
+        browseRoot,
         ToadletRegistration.menuLink(
             FProxyToadlet.CATEGORY_BROWSING,
             "/",

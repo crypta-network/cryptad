@@ -13,7 +13,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyToadlet;
-import network.crypta.clients.http.HttpShellFProxyBootstrap;
+import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
@@ -64,6 +64,7 @@ import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -282,15 +283,16 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   @Test
-  void createFProxyBootstrap_whenInvoked_constructsDependenciesAndReturnsBootstrap() {
+  void createBrowseBootstrap_whenInvoked_constructsDependenciesAndReturnsBootstrap() {
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     ClientContext clientContext = mock(ClientContext.class);
     FetchContext fetchContext = mock(FetchContext.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
     AtomicReference<List<Object>> bookmarkManagerArguments = new AtomicReference<>();
     AtomicReference<List<Object>> fetchTrackerArguments = new AtomicReference<>();
-    AtomicReference<List<Object>> fproxyArguments = new AtomicReference<>();
+    AtomicReference<List<Object>> browseRootArguments = new AtomicReference<>();
     when(core.getAlerts()).thenReturn(alerts);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
     when(core.getClientContext()).thenReturn(clientContext);
@@ -309,8 +311,8 @@ class CoreHttpShellRuntimeSupportTest {
         MockedConstruction<FProxyToadlet> fproxies =
             mockConstruction(
                 FProxyToadlet.class,
-                (_, invocation) -> fproxyArguments.set(List.copyOf(invocation.arguments())))) {
-      HttpShellFProxyBootstrap bootstrap = runtimeSupport.createFProxyBootstrap(true);
+                (_, invocation) -> browseRootArguments.set(List.copyOf(invocation.arguments())))) {
+      HttpShellBrowseBootstrap bootstrap = runtimeSupport.createBrowseBootstrap(true);
 
       assertEquals(1, bookmarkManagers.constructed().size());
       assertEquals(1, fetchTrackers.constructed().size());
@@ -321,13 +323,15 @@ class CoreHttpShellRuntimeSupportTest {
       assertSame(clientContext, fetchTrackerArguments.get().get(0));
       assertSame(fetchContext, fetchTrackerArguments.get().get(1));
       assertNotNull(fetchTrackerArguments.get().get(2));
-      assertSame(client, fproxyArguments.get().get(0));
-      assertInstanceOf(CoreFProxyRuntimeSupport.class, fproxyArguments.get().get(1));
-      assertSame(fetchTrackers.constructed().getFirst(), fproxyArguments.get().get(2));
+      assertSame(client, browseRootArguments.get().get(0));
+      assertInstanceOf(CoreFProxyRuntimeSupport.class, browseRootArguments.get().get(1));
+      assertSame(fetchTrackers.constructed().getFirst(), browseRootArguments.get().get(2));
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
       assertSame(client, bootstrap.client());
       assertSame(runtimeSupport.appHost(), bootstrap.appHost());
-      assertSame(fproxies.constructed().getFirst(), bootstrap.fproxy());
+      assertSame(fproxies.constructed().getFirst(), bootstrap.browseRoot());
+      verify(core, never()).getRuntimePorts();
+      verifyNoInteractions(runtimePorts);
       verify(core, never()).getEndpoints();
     }
   }

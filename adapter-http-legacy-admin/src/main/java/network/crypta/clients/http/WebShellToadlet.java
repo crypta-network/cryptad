@@ -127,14 +127,14 @@ public final class WebShellToadlet extends Toadlet {
    */
   private static List<WebShellBootstrap.LegacyLink> defaultLegacyLinks() {
     return List.of(
-        legacyLink(FProxyToadlet.FRIENDS_PATH, "Friends"),
+        legacyLink(LegacyHttpPaths.FRIENDS_PATH, "Friends"),
         legacyLink(legacyPath(STRANGERS_SEGMENT), "Strangers"),
         legacyLink(QueueToadlet.PATH_DOWNLOADS, "Downloads"),
         legacyLink(ConnectivityToadlet.CONNECTIVITY_PATH, "Connectivity"),
         legacyLink(SecurityLevelsToadlet.PATH, "Security levels"),
         legacyLink(StatisticsToadlet.TOADLET_URL, "Statistics"),
         legacyLink(legacyPath(ALERTS_SEGMENT), "Alerts"),
-        legacyLink(FProxyToadlet.CONFIG_PATH, "Config"));
+        legacyLink(LegacyHttpPaths.CONFIG_PATH, "Config"));
   }
 
   /**

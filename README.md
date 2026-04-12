@@ -796,7 +796,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:platform-web-shell` for the first browser-facing node-management shell currently mounted at
   `/app/node/`, runtime-owned shell and password-prompt seams under
   `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
-  helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellFProxyBootstrap`,
+  helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellBrowseBootstrap`,
   and the shared HTTP route registrar seam. Concrete HTTP shell, bookmark, GeoIP, and
   security-page adapters now live under `network.crypta.clients.http.bridge` in
   `:bridge-http-runtime`, and that leaf also owns the legacy HTTP GeoIP helper package

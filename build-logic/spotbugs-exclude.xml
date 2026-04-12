@@ -1829,7 +1829,7 @@
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
-    <Class name="~network\.crypta\.clients\.http\.(?:HttpShellFProxyBootstrap|QueueToadletRuntimePorts)"/>
+    <Class name="~network\.crypta\.clients\.http\.(?:HttpShellBrowseBootstrap|QueueToadletRuntimePorts)"/>
   </Match>
   <Match>
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

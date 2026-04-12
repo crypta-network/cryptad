@@ -29,11 +29,11 @@ public final class HttpShellContainers {
   /**
    * Creates the adapter-owned HTTP shell container bridge backed by {@link SimpleToadletServer}.
    *
-   * <p>The returned wrapper preserves the existing FProxy shell construction path. It builds a new
-   * {@link SimpleToadletServer} with the same runtime-selected {@link ArrayBucketFactory} and
+   * <p>The returned wrapper preserves the existing legacy HTTP shell construction path. It builds a
+   * new {@link SimpleToadletServer} with the same runtime-selected {@link ArrayBucketFactory} and
    * executor that legacy startup code already relied on, then exposes that server through the
    * narrower runtime seam. Callers should treat the returned container as the sole handle for later
-   * startup, configuration, and FProxy lifecycle operations.
+   * startup, configuration, and shell lifecycle operations.
    *
    * @param fproxyConfig FProxy configuration subsection used to initialize listener, theme, and
    *     related shell settings

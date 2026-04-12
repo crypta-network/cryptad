@@ -6,7 +6,7 @@ import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyRuntimeSupport;
-import network.crypta.clients.http.HttpShellFProxyBootstrap;
+import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
@@ -35,10 +35,10 @@ import org.slf4j.LoggerFactory;
  * instead of letting the server reach directly into the daemon core. Callers normally create one
  * instance during a server bootstrap and then treat it as an immutable delegate. The adapter is
  * intentionally HTTP-local rather than a reusable platform API: it still exposes alerts, config
- * storage, upload permission checks, AppHost access, and FProxy bootstrap work because those
+ * storage, upload permission checks, AppHost access, and browse bootstrap work because those
  * behaviors remain part of the HTTP shell in the current architecture.
  *
- * @param core daemon core that backs delegated shell services and FProxy bootstrap wiring
+ * @param core daemon core that backs delegated shell services and browse bootstrap wiring
  * @param appHost shared AppHost instance used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
@@ -140,7 +140,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   }
 
   @Override
-  public HttpShellFProxyBootstrap createFProxyBootstrap(boolean publicGatewayMode) {
+  public HttpShellBrowseBootstrap createBrowseBootstrap(boolean publicGatewayMode) {
     BookmarkManager bookmarkManager =
         new BookmarkManager(
             new CoreBookmarkRuntimeSupport(core), core.getAlerts(), publicGatewayMode);
@@ -152,7 +152,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
             client.getFetchContext(),
             new RequestClientBuilder().realTime().build());
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
-    return HttpShellFProxyBootstrap.create(
+    return HttpShellBrowseBootstrap.create(
         bookmarkManager, client, appHost, fproxyRuntimeSupport, fetchTracker);
   }
 
