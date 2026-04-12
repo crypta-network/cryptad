@@ -4,7 +4,6 @@ import java.util.List;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.MultiValueTable;
@@ -21,7 +20,7 @@ import org.slf4j.LoggerFactory;
  * state changes rely on {@link ClientContext#ticker} to avoid blocking the calling thread.
  *
  * <p>Typical call flow: a servlet asks for a fetcher via {@link #makeFetcher(FProxyFetchCriteria,
- * REFILTER_POLICY)}, gets a waiter, and later the tracker culls abandoned instances through {@link
+ * RefilterPolicy)}, gets a waiter, and later the tracker culls abandoned instances through {@link
  * #run()}. Instances are intentionally short-lived; they are canceled when a fetch completes, fails
  * fatally, or the scheduled cleanup fires.
  *
@@ -85,7 +84,7 @@ public class FProxyFetchTracker implements Runnable {
    * @throws FetchException if the underlying fetch cannot be started or the request client rejects
    *     the parameters.
    */
-  public FProxyFetchWaiter makeFetcher(FProxyFetchCriteria criteria, REFILTER_POLICY refilterPolicy)
+  public FProxyFetchWaiter makeFetcher(FProxyFetchCriteria criteria, RefilterPolicy refilterPolicy)
       throws FetchException {
     FProxyFetchInProgress progress;
     FProxyFetchCriteria effectiveCriteria = resolveCriteria(criteria);

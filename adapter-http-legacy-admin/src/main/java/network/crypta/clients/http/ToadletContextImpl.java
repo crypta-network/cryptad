@@ -23,7 +23,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UserAlertManager;
@@ -1454,10 +1453,10 @@ public final class ToadletContextImpl implements ToadletContext {
    * value reflects container configuration and any per-request overrides captured when the context
    * was created.
    *
-   * @return {@link REFILTER_POLICY} indicating how the proxy should treat filtering behavior.
+   * @return {@link RefilterPolicy} indicating how the proxy should treat filtering behavior.
    */
   @Override
-  public REFILTER_POLICY getReFilterPolicy() {
+  public RefilterPolicy getReFilterPolicy() {
     return container.getReFilterPolicy();
   }
 }

@@ -31,6 +31,7 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -242,6 +244,22 @@ class FProxyRegistrarTest {
 
     assertFalse(webShellRegistration.callback().isEnabled(null));
     assertTrue(webShellRegistration.callback().isEnabled(null));
+  }
+
+  @Test
+  void registerRoutes_whenInvokedViaLegacyAdminRegistrar_forwardsEquivalentDependencies() {
+    LegacyHttpRouteRegistrarContext context =
+        new LegacyHttpRouteRegistrarContext(client, runtimePorts, appHost, config, fproxy);
+
+    try (MockedStatic<FProxyRegistrar> registrar = mockStatic(FProxyRegistrar.class)) {
+      new LegacyAdminHttpRouteRegistrar().registerRoutes(context, server);
+
+      registrar.verify(
+          () ->
+              FProxyRegistrar.maybeCreateFProxyEtc(
+                  new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy),
+                  server));
+    }
   }
 
   private static void registerBandwidthOption(

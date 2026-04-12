@@ -1,5 +1,6 @@
 package network.crypta.clients.http.bridge;
 
+import network.crypta.clients.http.LegacyAdminHttpRouteRegistrar;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
@@ -44,7 +45,9 @@ public final class HttpShellContainers {
    */
   public static HttpShellContainer create(SubConfig fproxyConfig, PriorityAwareExecutor executor)
       throws InvalidConfigValueException {
-    return new SimpleToadletServerHttpShellContainer(
-        new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor));
+    SimpleToadletServer server =
+        new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor);
+    server.setRouteRegistrar(new LegacyAdminHttpRouteRegistrar());
+    return new SimpleToadletServerHttpShellContainer(server);
   }
 }

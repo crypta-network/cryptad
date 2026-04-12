@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import network.crypta.clients.http.LegacyAdminHttpRouteRegistrar;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.StartupToadlet;
 import network.crypta.config.SubConfig;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.verify;
@@ -91,6 +93,7 @@ class HttpShellContainersTest {
 
       verify(server)
           .setRuntimeSupport((network.crypta.clients.http.HttpShellRuntimeSupport) runtimeSupport);
+      verify(server).setRouteRegistrar(isA(LegacyAdminHttpRouteRegistrar.class));
       verify(server).setBucketFactory(tempBucketFactory);
       verify(server).setPrimaryUiRootListener(primaryUiRootListener);
       verify(server).createFproxy();

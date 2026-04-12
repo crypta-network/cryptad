@@ -7,13 +7,13 @@ import java.util.List;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.clients.http.FProxyFetchCriteria;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchProgressCounts;
 import network.crypta.clients.http.FProxyFetchResult;
 import network.crypta.clients.http.FProxyFetchSnapshotInfo;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyFetchWaiter;
+import network.crypta.clients.http.RefilterPolicy;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
@@ -223,7 +223,7 @@ class ImageElementTest {
       throws FetchException {
     // Arrange
     ImageElement element = ImageElement.createImageElement(tracker, key, 123L, ctx, false);
-    when(tracker.makeFetcher(new FProxyFetchCriteria(key, 123L, null), REFILTER_POLICY.RE_FILTER))
+    when(tracker.makeFetcher(new FProxyFetchCriteria(key, 123L, null), RefilterPolicy.RE_FILTER))
         .thenThrow(new FetchException(FetchExceptionMode.DATA_NOT_FOUND));
 
     // Act
@@ -248,8 +248,7 @@ class ImageElementTest {
     when(bucket.size()).thenReturn(123L);
     FProxyFetchResult result = newFinishedResultWithData(progress, bucket);
 
-    when(tracker.makeFetcher(
-            new FProxyFetchCriteria(key, maxSize, null), REFILTER_POLICY.RE_FILTER))
+    when(tracker.makeFetcher(new FProxyFetchCriteria(key, maxSize, null), RefilterPolicy.RE_FILTER))
         .thenReturn(waiter);
     when(waiter.getResultFast()).thenReturn(result);
     when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, null)))
@@ -279,8 +278,7 @@ class ImageElementTest {
     FetchException failure = new FetchException(FetchExceptionMode.DATA_NOT_FOUND);
     FProxyFetchResult result = newProgressOrFailureResult(progress, 10, 1, failure);
 
-    when(tracker.makeFetcher(
-            new FProxyFetchCriteria(key, maxSize, null), REFILTER_POLICY.RE_FILTER))
+    when(tracker.makeFetcher(new FProxyFetchCriteria(key, maxSize, null), RefilterPolicy.RE_FILTER))
         .thenReturn(waiter);
     when(waiter.getResultFast()).thenReturn(result);
     when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, null)))
@@ -311,8 +309,7 @@ class ImageElementTest {
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
     FProxyFetchResult result = newProgressOrFailureResult(progress, 20, 5, null);
 
-    when(tracker.makeFetcher(
-            new FProxyFetchCriteria(key, maxSize, null), REFILTER_POLICY.RE_FILTER))
+    when(tracker.makeFetcher(new FProxyFetchCriteria(key, maxSize, null), RefilterPolicy.RE_FILTER))
         .thenReturn(waiter);
     when(waiter.getResultFast()).thenReturn(result);
     when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, null)))
@@ -473,8 +470,6 @@ class ImageElementTest {
   }
 
   private static LinkageError linkageError(String message, ReflectiveOperationException e) {
-    LinkageError error = new LinkageError(message);
-    error.initCause(e);
-    return error;
+    return new LinkageError(message, e);
   }
 }

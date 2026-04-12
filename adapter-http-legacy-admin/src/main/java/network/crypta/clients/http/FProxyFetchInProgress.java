@@ -54,7 +54,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * requests can watch the same download safely. After creation the object stays valid for roughly
  * thirty seconds after last access unless {@link #requestImmediateCancel()} is invoked. The class
  * prefers cached data when safe, falls back to live network retrieval otherwise, and optionally
- * re-filters cached content according to the chosen {@link REFILTER_POLICY}.
+ * re-filters cached content according to the chosen {@link RefilterPolicy}.
  *
  * <ul>
  *   <li>Responsibilities: manage a single URI fetch, collect progress, and dispatch listener
@@ -70,29 +70,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class FProxyFetchInProgress implements ClientEventListener, ClientGetCallback {
   private static final Logger LOG = LoggerFactory.getLogger(FProxyFetchInProgress.class);
 
-  /**
-   * What to do when we find data which matches the request, but it has already been filtered,
-   * assuming we want a filtered copy.
-   */
-  public enum REFILTER_POLICY {
-    /**
-     * Re-run the content filter even when cached data was already filtered, usually forcing a new
-     * temporary bucket allocation to rebuild output with current rules.
-     */
-    RE_FILTER,
-    /**
-     * Reuse the previously filtered bytes without reprocessing; correctness depends on the filter
-     * version that produced the cached object and may skip newer safety fixes.
-     */
-    ACCEPT_OLD,
-    /**
-     * Discard any cached representation and perform a fresh fetch from the network to avoid stale
-     * filter artifacts at the cost of extra latency and bandwidth.
-     */
-    RE_FETCH
-  }
-
-  private final REFILTER_POLICY refilterPolicy;
+  private final RefilterPolicy refilterPolicy;
 
   // Legacy logMINOR removed; use LOG.isDebugEnabled() instead.
 
@@ -215,7 +193,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       long identifier,
       ClientContext context,
       RequestClient rc,
-      REFILTER_POLICY refilter) {
+      RefilterPolicy refilter) {
     this.identifier = identifier;
     this.initialContext = context;
     this.refilterPolicy = refilter;
@@ -354,7 +332,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       return false;
     }
 
-    if (result.alreadyFiltered && refilterPolicy == REFILTER_POLICY.ACCEPT_OLD) {
+    if (result.alreadyFiltered && refilterPolicy == RefilterPolicy.ACCEPT_OLD) {
       tracker.removeFetcher(this);
       onSuccess(result, null);
       return true;
@@ -389,7 +367,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   private boolean canReuseFilteredResult(CacheFetchResult result) {
-    if (refilterPolicy == REFILTER_POLICY.RE_FETCH || !fctx.getFilterData()) {
+    if (refilterPolicy == RefilterPolicy.RE_FETCH || !fctx.getFilterData()) {
       return false;
     }
     return shouldAcceptCachedFilteredData(fctx, result);

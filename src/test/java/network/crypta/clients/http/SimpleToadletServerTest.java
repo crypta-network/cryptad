@@ -6,7 +6,6 @@ import java.net.URI;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
@@ -53,6 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -60,6 +60,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -246,27 +247,23 @@ class SimpleToadletServerTest {
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     when(client.getFetchContext()).thenReturn(fetchContext);
     server.setRuntimeSupport(new CoreHttpShellRuntimeSupport(core, appHost));
+    LegacyHttpRouteRegistrar routeRegistrar = mock(LegacyHttpRouteRegistrar.class);
+    server.setRouteRegistrar(routeRegistrar);
 
-    AtomicInteger registrarCalls = new AtomicInteger();
-    AtomicReference<FProxyRegistrarDependencies> dependenciesRef = new AtomicReference<>();
+    AtomicReference<LegacyHttpRouteRegistrarContext> routeRegistrarContextRef =
+        new AtomicReference<>();
     AtomicReference<List<Object>> bookmarkManagerCtorArgs = new AtomicReference<>();
+    doAnswer(
+            invocation -> {
+              routeRegistrarContextRef.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(routeRegistrar)
+        .registerRoutes(any(LegacyHttpRouteRegistrarContext.class), same(server));
     try (MockedConstruction<BookmarkManager> bookmarkManagers =
-            mockConstruction(
-                BookmarkManager.class,
-                (_, context) -> bookmarkManagerCtorArgs.set(List.copyOf(context.arguments())));
-        MockedStatic<FProxyRegistrar> registrarMock = mockStatic(FProxyRegistrar.class)) {
-      registrarMock
-          .when(
-              () ->
-                  FProxyRegistrar.maybeCreateFProxyEtc(
-                      any(FProxyRegistrarDependencies.class), same(server)))
-          .thenAnswer(
-              invocation -> {
-                registrarCalls.incrementAndGet();
-                dependenciesRef.set(invocation.getArgument(0));
-                return null;
-              });
-
+        mockConstruction(
+            BookmarkManager.class,
+            (_, context) -> bookmarkManagerCtorArgs.set(List.copyOf(context.arguments())))) {
       server.createFproxy();
       server.createFproxy();
 
@@ -284,12 +281,25 @@ class SimpleToadletServerTest {
     verify(core, times(1)).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
     verify(core, times(1)).getAlerts();
     verify(core, never()).getRandom();
-    assertEquals(1, registrarCalls.get());
-    assertSame(client, dependenciesRef.get().client());
-    assertSame(runtimePorts, dependenciesRef.get().runtimePorts());
-    assertSame(appHost, dependenciesRef.get().appHost());
-    assertSame(nodeConfig, dependenciesRef.get().config());
-    assertInstanceOf(FProxyToadlet.class, dependenciesRef.get().fproxy());
+    verify(routeRegistrar, times(1))
+        .registerRoutes(any(LegacyHttpRouteRegistrarContext.class), same(server));
+    assertSame(client, routeRegistrarContextRef.get().client());
+    assertSame(runtimePorts, routeRegistrarContextRef.get().runtimePorts());
+    assertSame(appHost, routeRegistrarContextRef.get().appHost());
+    assertSame(nodeConfig, routeRegistrarContextRef.get().config());
+    assertInstanceOf(FProxyToadlet.class, routeRegistrarContextRef.get().fproxy());
+  }
+
+  @Test
+  void createFproxy_whenRouteRegistrarMissing_throwsNullPointerException() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    server.setRuntimeSupport(runtimeSupport);
+    clearInvocations(runtimeSupport);
+
+    assertThrows(NullPointerException.class, server::createFproxy);
+
+    verifyNoInteractions(runtimeSupport);
   }
 
   @Test
@@ -353,14 +363,14 @@ class SimpleToadletServerTest {
           .onChange(
               HttpShellRuntimeSupport.NetworkThreatLevel.NORMAL,
               HttpShellRuntimeSupport.NetworkThreatLevel.LOW);
-      assertEquals(FProxyFetchInProgress.REFILTER_POLICY.ACCEPT_OLD, server.getReFilterPolicy());
+      assertEquals(RefilterPolicy.ACCEPT_OLD, server.getReFilterPolicy());
 
       networkListener
           .get()
           .onChange(
               HttpShellRuntimeSupport.NetworkThreatLevel.LOW,
               HttpShellRuntimeSupport.NetworkThreatLevel.NORMAL);
-      assertEquals(FProxyFetchInProgress.REFILTER_POLICY.RE_FILTER, server.getReFilterPolicy());
+      assertEquals(RefilterPolicy.RE_FILTER, server.getReFilterPolicy());
 
       physicalListener
           .get()

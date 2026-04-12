@@ -7,13 +7,13 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
- * Narrow dependency bundle used to register the FProxy HTTP shell.
+ * Narrow dependency bundle used internally by the admin-owned HTTP registrar.
  *
- * <p>{@link SimpleToadletServer} assembles the live daemon collaborators needed for the root FProxy
- * endpoint, then hands that prebuilt state to {@link FProxyRegistrar}. The registrar can therefore
- * stay focused on HTTP concerns such as menu registration, toadlet registration, and wiring
- * already-created helpers into those routes. This record exists only to make that handoff explicit
- * and local to the HTTP package.
+ * <p>{@link LegacyAdminHttpRouteRegistrar} adapts the public shell-local route-registration seam to
+ * the existing {@link FProxyRegistrar} helper by assembling this package-private dependency bundle.
+ * The registrar can therefore stay focused on HTTP concerns such as menu registration, toadlet
+ * registration, and wiring already-created helpers into those routes. This record exists only to
+ * keep that adaptation explicit and local to the HTTP package.
  *
  * <p>The type is intentionally package-private. It is not a general runtime abstraction and does
  * not try to hide broader node relationships. It simply groups the collaborators that the registrar

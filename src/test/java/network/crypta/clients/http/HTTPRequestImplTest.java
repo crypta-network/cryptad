@@ -294,8 +294,8 @@ class HTTPRequestImplTest {
       }
 
       @Override
-      public FProxyFetchInProgress.REFILTER_POLICY getReFilterPolicy() {
-        return FProxyFetchInProgress.REFILTER_POLICY.ACCEPT_OLD;
+      public RefilterPolicy getReFilterPolicy() {
+        return RefilterPolicy.ACCEPT_OLD;
       }
 
       @Override

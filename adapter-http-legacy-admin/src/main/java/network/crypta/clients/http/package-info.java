@@ -24,10 +24,11 @@
  * security settings, translation, and bookmark management to cover the full administrative
  * workflow.
  *
- * <p>Code outside the HTTP adapter boundary should treat this package as legacy adapter-owned
+ * <p>Code outside the HTTP adapter boundary should treat this package as a legacy adapter-owned
  * implementation detail rather than as a new platform API. Runtime and bootstrap code should
  * continue to depend on runtime-owned seams and the narrow bridge/binding sites instead of growing
- * new direct dependencies on {@code network.crypta.clients.http.*}. In production, {@code
+ * new direct dependencies on {@code network.crypta.clients.http.*}. The shared shell now uses the
+ * HTTP-local route registrar seam and the top-level refilter policy type, while {@code
  * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories} remains the bootstrap-owned
  * binding site for the concrete HTTP bridge implementations.
  *

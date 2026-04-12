@@ -9,7 +9,6 @@ import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.events.SimpleEventProducer;
-import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.api.Bucket;
@@ -134,7 +133,7 @@ class FProxyFetchInProgressTest {
 
     FProxyFetchCriteria criteria = new FProxyFetchCriteria(uri, 1024L, context);
     return new FProxyFetchInProgress(
-        tracker, criteria, 1L, clientContext, requestClient, REFILTER_POLICY.ACCEPT_OLD);
+        tracker, criteria, 1L, clientContext, requestClient, RefilterPolicy.ACCEPT_OLD);
   }
 
   private static FetchContext newFetchContext() {
