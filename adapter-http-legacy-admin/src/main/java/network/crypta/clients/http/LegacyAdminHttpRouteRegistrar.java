@@ -30,7 +30,7 @@ public final class LegacyAdminHttpRouteRegistrar implements LegacyHttpRouteRegis
    * Registers the concrete legacy HTTP routes for the supplied shell instance.
    *
    * <p>The provided context already contains the interactive client, runtime ports, configuration,
-   * AppHost bridge, and root FProxy toadlet prepared by the shared shell bootstrap path.
+   * AppHost bridge, and browse-root toadlet prepared by the shared shell bootstrap path.
    * Repackaging those collaborators here keeps the public seam small while letting the existing
    * admin-owned registrar continue to own menu creation, toadlet instantiation, and registration
    * order.
@@ -46,7 +46,7 @@ public final class LegacyAdminHttpRouteRegistrar implements LegacyHttpRouteRegis
             context.runtimePorts(),
             context.appHost(),
             context.config(),
-            context.fproxy()),
+            context.browseRoot()),
         server);
   }
 }

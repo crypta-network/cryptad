@@ -42,6 +42,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -114,49 +115,44 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   private static final String PARAM_MAX_SIZE = "max-size";
   private static final String PARAM_FORCE = "force";
   private static final String PARAM_FORCED_DOWNLOAD = "forcedownload";
-  private static final String DEFAULT_DOWNLOADS_PATH = defaultPath("downloads");
-  private static final String DEFAULT_FRIENDS_PATH = defaultPath("friends");
-  private static final String DEFAULT_CONFIG_PATH = defaultPath("config");
-  private static final String DEFAULT_WELCOME_PATH = defaultPath("welcome");
-
-  static final String DOWNLOADS_PATH =
-      normalizedPath(System.getProperty("crypta.fproxy.downloadsPath", DEFAULT_DOWNLOADS_PATH));
-  static final String FRIENDS_PATH =
-      normalizedPath(System.getProperty("crypta.fproxy.friendsPath", DEFAULT_FRIENDS_PATH));
-  static final String CONFIG_PATH =
-      normalizedPath(System.getProperty("crypta.fproxy.configPath", DEFAULT_CONFIG_PATH));
-  static final String WELCOME_PATH =
-      normalizedPath(System.getProperty("crypta.fproxy.welcomePath", DEFAULT_WELCOME_PATH));
+  static final String DOWNLOADS_PATH = LegacyHttpPaths.DOWNLOADS_PATH;
+  static final String FRIENDS_PATH = LegacyHttpPaths.FRIENDS_PATH;
+  static final String CONFIG_PATH = LegacyHttpPaths.CONFIG_PATH;
+  static final String WELCOME_PATH = LegacyHttpPaths.WELCOME_PATH;
 
   private static final String CONFIG_NODE_PATH = CONFIG_PATH + "node";
   private static final String OBSOLETED_MESSAGE_KEY = "obsoleted";
   private static final String GO_BACK_TO_PREV_KEY = "goBackToPrev";
   private static final String TOADLET_HOMEPAGE_KEY = "Toadlet.homepage";
   private static final String ABORT_TO_HOMEPAGE_KEY = "abortToHomepage";
-  static final String CATEGORY_BROWSING = L10N_PREFIX + "categoryBrowsing";
-  static final String CATEGORY_QUEUE = L10N_PREFIX + "categoryQueue";
-  static final String CATEGORY_FRIENDS = L10N_PREFIX + "categoryFriends";
-  static final String CATEGORY_STATUS = L10N_PREFIX + "categoryStatus";
-  static final String CATEGORY_CONFIG = L10N_PREFIX + "categoryConfig";
+  static final String CATEGORY_BROWSING = LegacyHttpCategories.CATEGORY_BROWSING;
+  static final String CATEGORY_QUEUE = LegacyHttpCategories.CATEGORY_QUEUE;
+  static final String CATEGORY_FRIENDS = LegacyHttpCategories.CATEGORY_FRIENDS;
+  static final String CATEGORY_STATUS = LegacyHttpCategories.CATEGORY_STATUS;
+  static final String CATEGORY_CONFIG = LegacyHttpCategories.CATEGORY_CONFIG;
 
   static byte[] random;
   final FProxyRuntimeSupport runtimeSupport;
   final ClientContext context;
   final FProxyFetchTracker fetchTracker;
 
-  private static String defaultPath(String segment) {
-    return "/" + segment + "/";
-  }
-
-  private static String normalizedPath(String path) {
-    String normalized = path;
-    if (!normalized.startsWith("/")) {
-      normalized = "/" + normalized;
-    }
-    if (!normalized.endsWith("/")) {
-      normalized = normalized + "/";
-    }
-    return normalized;
+  /**
+   * Seeds the shared legacy HTTP random state used by force links.
+   *
+   * <p>The current legacy browse flow stores this value statically, so every root-toadlet instance
+   * produced during the same shell lifecycle shares the same force-link seed.
+   *
+   * @param randomnessPort runtime randomness source used to fill the seed bytes
+   * @return the initialized seed bytes now stored in the legacy browse static state
+   * @throws NullPointerException if {@code randomnessPort} is {@code null}
+   */
+  @SuppressWarnings("UnusedReturnValue")
+  public static synchronized byte[] initializeSharedRandom(RandomnessPort randomnessPort) {
+    Objects.requireNonNull(randomnessPort, "randomnessPort");
+    byte[] initializedRandom = new byte[32];
+    randomnessPort.fillSecureRandom(initializedRandom);
+    random = initializedRandom;
+    return initializedRandom;
   }
 
   static final Set<String> prefetchAllowedTypes =

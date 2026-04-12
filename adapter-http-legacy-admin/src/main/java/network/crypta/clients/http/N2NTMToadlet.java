@@ -50,7 +50,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see LocalFileN2NMToadlet
- * @see FProxyToadlet
+ * @see LegacyHttpPaths
  */
 public class N2NTMToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(N2NTMToadlet.class);
@@ -237,7 +237,7 @@ public class N2NTMToadlet extends Toadlet {
         .addChild(
             "a",
             new String[] {ATTR_HREF, ATTR_TITLE},
-            new String[] {FProxyToadlet.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
+            new String[] {LegacyHttpPaths.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
             l10n(L10N_FRIENDS));
     return infobox;
   }
@@ -476,7 +476,7 @@ public class N2NTMToadlet extends Toadlet {
         .addChild(
             "a",
             new String[] {ATTR_HREF, ATTR_TITLE},
-            new String[] {FProxyToadlet.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
+            new String[] {LegacyHttpPaths.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
             l10n(L10N_FRIENDS));
     addUnsentMessageTextInfo(peerTableInfobox, message);
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
@@ -524,14 +524,14 @@ public class N2NTMToadlet extends Toadlet {
         .addChild(
             "a",
             new String[] {ATTR_HREF, ATTR_TITLE},
-            new String[] {FProxyToadlet.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
+            new String[] {LegacyHttpPaths.FRIENDS_PATH, l10n(L10N_RETURN_TO_FRIENDS)},
             l10n(L10N_FRIENDS));
   }
 
   private void sendFriendsRedirect(ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     MultiValueTable<String, String> headers =
-        MultiValueTable.from("Location", FProxyToadlet.FRIENDS_PATH);
+        MultiValueTable.from("Location", LegacyHttpPaths.FRIENDS_PATH);
     ctx.sendReplyHeaders(302, "Found", headers, null, 0);
   }
 

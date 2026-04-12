@@ -36,7 +36,6 @@ import network.crypta.node.PrioRunnable;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.core.SSL;
-import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -77,7 +76,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * </ul>
  *
  * @see Toadlet
- * @see network.crypta.clients.http.FProxyToadlet
+ * @see HttpShellBrowseBootstrap
  */
 public final class SimpleToadletServer
     implements ToadletContainer, Runnable, LinkFilterExceptionProvider {
@@ -479,11 +478,11 @@ public final class SimpleToadletServer
 
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
-    HttpShellFProxyBootstrap bootstrap =
-        runtimeSupportRef.createFProxyBootstrap(publicGatewayMode());
+    HttpShellBrowseBootstrap bootstrap =
+        runtimeSupportRef.createBrowseBootstrap(publicGatewayMode());
     bookmarkManager = bootstrap.bookmarkManager();
     RuntimePorts runtimePorts = runtimeSupportRef.runtimePorts();
-    initializeFProxyRandom(runtimePorts.randomness());
+    bootstrap.initializeSharedShellState(runtimePorts);
 
     routeRegistrarRef.registerRoutes(
         new LegacyHttpRouteRegistrarContext(
@@ -491,7 +490,7 @@ public final class SimpleToadletServer
             runtimePorts,
             runtimeSupportRef.appHost(),
             runtimeSupportRef.config(),
-            bootstrap.fproxy()),
+            bootstrap.browseRoot()),
         this);
   }
 
@@ -555,11 +554,6 @@ public final class SimpleToadletServer
 
   private boolean shouldAdvertiseWebShellPrimaryUi() {
     return fproxyHasCompletedWizard && fProxyJavascriptEnabled;
-  }
-
-  private static synchronized void initializeFProxyRandom(RandomnessPort randomnessPort) {
-    FProxyToadlet.random = new byte[32];
-    randomnessPort.fillSecureRandom(FProxyToadlet.random);
   }
 
   /**

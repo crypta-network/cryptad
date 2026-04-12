@@ -14,7 +14,7 @@ import network.crypta.support.Ticker;
  * outside {@code network.crypta.clients.http}. It is not a new platform API. The seam narrows the
  * remaining surface that {@link SimpleToadletServer} uses while the larger daemon bootstrap still
  * starts from the legacy node core. Implementations may expose old HTTP-local concepts such as
- * alerts, ticker access, and FProxy bootstrap work, but the seam is not a new cross-module platform
+ * alerts, ticker access, and legacy bootstrap work, but the seam is not a new cross-module platform
  * abstraction. Its purpose is to keep shell behavior explicit, locally testable, and detached from
  * direct {@link network.crypta.node.NodeClientCore} field access inside the server itself.
  */
@@ -132,16 +132,16 @@ public interface HttpShellRuntimeSupport {
   void addPhysicalThreatLevelListener(ThreatLevelListener<PhysicalThreatLevel> listener);
 
   /**
-   * Creates the root FProxy collaborators required before the shell registers child toadlets.
+   * Creates the browse-neutral collaborators required before the shell registers child toadlets.
    *
-   * <p>Implementations assemble the daemon-backed collaborators required for root FProxy startup,
-   * and callers then pass the resulting bundle through the HTTP registration path. Callers should
-   * treat the result as a one-time bootstrap bundle for the current shell instance.
+   * <p>Implementations assemble the daemon-backed collaborators required for legacy browse startup,
+   * then hand the shell a browse-neutral bundle. Callers should treat the result as a one-time
+   * bootstrap snapshot for the current shell instance.
    *
    * @param publicGatewayMode whether the shell should bootstrap public-gateway bookmark behavior
-   * @return bootstrap bundle containing the bookmark manager, interactive client, and root FProxy
+   * @return bootstrap bundle containing the bookmark manager, interactive client, and browse root
    */
-  HttpShellFProxyBootstrap createFProxyBootstrap(boolean publicGatewayMode);
+  HttpShellBrowseBootstrap createBrowseBootstrap(boolean publicGatewayMode);
 
   /**
    * Receives detached threat-level change notifications from the runtime support implementation.

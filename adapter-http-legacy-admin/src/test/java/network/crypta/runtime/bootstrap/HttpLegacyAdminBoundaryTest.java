@@ -31,10 +31,20 @@ class HttpLegacyAdminBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_SIMPLE_TOADLET_SERVER =
       ADAPTER_HTTP_MAIN_JAVA.resolve("SimpleToadletServer.java");
+  private static final Path ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellRuntimeSupport.java");
+  private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
+  private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("LegacyAdminHttpRouteRegistrar.java");
+  private static final Path ADAPTER_LEGACY_HTTP_ROUTE_REGISTRAR_CONTEXT =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("LegacyHttpRouteRegistrarContext.java");
   private static final Path ADAPTER_N2NTM_TOADLET =
       ADAPTER_HTTP_MAIN_JAVA.resolve("N2NTMToadlet.java");
   private static final Path ADAPTER_QUEUE_TOADLET =
       ADAPTER_HTTP_MAIN_JAVA.resolve("QueueToadlet.java");
+  private static final Path ADAPTER_WEB_SHELL_TOADLET =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("WebShellToadlet.java");
   private static final Set<Path> CONNECTIONS_TOADLETS =
       Set.of(
           ADAPTER_HTTP_MAIN_JAVA.resolve("ConnectionsToadlet.java"),
@@ -261,6 +271,62 @@ class HttpLegacyAdminBoundaryTest {
         source.contains("FProxyFetchInProgress.REFILTER_POLICY"),
         "SimpleToadletServer must use the HTTP-local refilter policy type instead of the nested "
             + "FProxy enum.");
+  }
+
+  @Test
+  void mainSources_whenCheckingBrowseNeutralShellSeam_expectNoSharedFProxyToadletLeaks()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    String simpleToadletServerSource =
+        Files.readString(repoRoot.resolve(ADAPTER_SIMPLE_TOADLET_SERVER));
+    String runtimeSupportSource =
+        Files.readString(repoRoot.resolve(ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT));
+    String legacyAdminRouteRegistrarSource =
+        Files.readString(repoRoot.resolve(ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR));
+    String routeRegistrarContextSource =
+        Files.readString(repoRoot.resolve(ADAPTER_LEGACY_HTTP_ROUTE_REGISTRAR_CONTEXT));
+    String queueToadletSource = Files.readString(repoRoot.resolve(ADAPTER_QUEUE_TOADLET));
+    String webShellToadletSource = Files.readString(repoRoot.resolve(ADAPTER_WEB_SHELL_TOADLET));
+    String n2ntmToadletSource = Files.readString(repoRoot.resolve(ADAPTER_N2NTM_TOADLET));
+
+    assertFalse(
+        Files.exists(repoRoot.resolve(ADAPTER_HTTP_FPROXY_BOOTSTRAP)),
+        "The shared shell must not keep the old FProxy-specific bootstrap type.");
+    assertFalse(
+        simpleToadletServerSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_SIMPLE_TOADLET_SERVER) + " must not contain FProxyToadlet");
+    assertFalse(
+        runtimeSupportSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT) + " must not contain FProxyToadlet");
+    assertFalse(
+        legacyAdminRouteRegistrarSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR)
+            + " must not contain FProxyToadlet");
+    assertFalse(
+        routeRegistrarContextSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_LEGACY_HTTP_ROUTE_REGISTRAR_CONTEXT)
+            + " must not contain FProxyToadlet");
+    for (String forbiddenReference :
+        List.of(
+            "FProxyToadlet.DOWNLOADS_PATH",
+            "FProxyToadlet.FRIENDS_PATH",
+            "FProxyToadlet.CONFIG_PATH",
+            "FProxyToadlet.WELCOME_PATH",
+            "FProxyToadlet.CATEGORY_BROWSING",
+            "FProxyToadlet.CATEGORY_QUEUE",
+            "FProxyToadlet.CATEGORY_FRIENDS",
+            "FProxyToadlet.CATEGORY_STATUS",
+            "FProxyToadlet.CATEGORY_CONFIG")) {
+      assertFalse(
+          queueToadletSource.contains(forbiddenReference),
+          repoRoot.resolve(ADAPTER_QUEUE_TOADLET) + " must not contain " + forbiddenReference);
+    }
+    assertFalse(
+        webShellToadletSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_WEB_SHELL_TOADLET) + " must not contain FProxyToadlet");
+    assertFalse(
+        n2ntmToadletSource.contains("FProxyToadlet"),
+        repoRoot.resolve(ADAPTER_N2NTM_TOADLET) + " must not contain FProxyToadlet");
   }
 
   @Test

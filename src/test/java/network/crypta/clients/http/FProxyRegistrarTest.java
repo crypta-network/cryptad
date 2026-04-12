@@ -56,7 +56,7 @@ class FProxyRegistrarTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private AppHost appHost;
-  @Mock private FProxyToadlet fproxy;
+  @Mock private Toadlet browseRoot;
   @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
@@ -102,28 +102,31 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
 
     verify(server)
-        .registerMenu("/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
+        .registerMenu(
+            "/", LegacyHttpCategories.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
     verify(server)
         .registerMenu(
-            FProxyToadlet.DOWNLOADS_PATH,
-            FProxyToadlet.CATEGORY_QUEUE,
+            LegacyHttpPaths.DOWNLOADS_PATH,
+            LegacyHttpCategories.CATEGORY_QUEUE,
             "FProxyToadlet.categoryTitleQueue");
     verify(server)
         .registerMenu(
-            FProxyToadlet.FRIENDS_PATH,
-            FProxyToadlet.CATEGORY_FRIENDS,
+            LegacyHttpPaths.FRIENDS_PATH,
+            LegacyHttpCategories.CATEGORY_FRIENDS,
             "FProxyToadlet.categoryTitleFriends");
     verify(server)
         .registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     verify(server)
         .registerMenu(
-            "/alerts/", FProxyToadlet.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
+            "/alerts/", LegacyHttpCategories.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
     verify(server)
         .registerMenu(
-            "/seclevels/", FProxyToadlet.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
+            "/seclevels/",
+            LegacyHttpCategories.CATEGORY_CONFIG,
+            "FProxyToadlet.categoryTitleConfig");
 
     InOrder queueCompletionOrder = inOrder(queueCompletionPort);
     queueCompletionOrder.verify(queueCompletionPort).ensureTrackingStarted(false);
@@ -134,7 +137,7 @@ class FProxyRegistrarTest {
         registrations.stream()
             .anyMatch(
                 registered ->
-                    registered.toadlet() == fproxy
+                    registered.toadlet() == browseRoot
                         && "/".equals(registered.registration().urlPrefix())));
     assertTrue(
         registrations.stream()
@@ -210,7 +213,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()
@@ -219,9 +222,9 @@ class FProxyRegistrarTest {
             .collect(Collectors.toSet());
 
     assertEquals(
-        Set.of(FProxyToadlet.CONFIG_PATH + "alpha", FProxyToadlet.CONFIG_PATH + "node"),
+        Set.of(LegacyHttpPaths.CONFIG_PATH + "alpha", LegacyHttpPaths.CONFIG_PATH + "node"),
         configToadletPrefixes);
-    assertFalse(configToadletPrefixes.contains(FProxyToadlet.CONFIG_PATH + "security-levels"));
+    assertFalse(configToadletPrefixes.contains(LegacyHttpPaths.CONFIG_PATH + "security-levels"));
   }
 
   @Test
@@ -230,7 +233,7 @@ class FProxyRegistrarTest {
         .thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT, WebShellPaths.SHELL_ROOT);
 
     FProxyRegistrar.maybeCreateFProxyEtc(
-        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy), server);
+        new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, browseRoot), server);
 
     ToadletRegistration webShellRegistration =
         capturedRegistrations().stream()
@@ -249,7 +252,7 @@ class FProxyRegistrarTest {
   @Test
   void registerRoutes_whenInvokedViaLegacyAdminRegistrar_forwardsEquivalentDependencies() {
     LegacyHttpRouteRegistrarContext context =
-        new LegacyHttpRouteRegistrarContext(client, runtimePorts, appHost, config, fproxy);
+        new LegacyHttpRouteRegistrarContext(client, runtimePorts, appHost, config, browseRoot);
 
     try (MockedStatic<FProxyRegistrar> registrar = mockStatic(FProxyRegistrar.class)) {
       new LegacyAdminHttpRouteRegistrar().registerRoutes(context, server);
@@ -257,7 +260,8 @@ class FProxyRegistrarTest {
       registrar.verify(
           () ->
               FProxyRegistrar.maybeCreateFProxyEtc(
-                  new FProxyRegistrarDependencies(client, runtimePorts, appHost, config, fproxy),
+                  new FProxyRegistrarDependencies(
+                      client, runtimePorts, appHost, config, browseRoot),
                   server));
     }
   }

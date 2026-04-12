@@ -1879,7 +1879,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
   static final String PATH_UPLOADS =
       normalizePath(System.getProperty("queue.uploads.path", DEFAULT_UPLOADS_SEGMENT));
-  static final String PATH_DOWNLOADS = FProxyToadlet.DOWNLOADS_PATH;
+  static final String PATH_DOWNLOADS = LegacyHttpPaths.DOWNLOADS_PATH;
 
   /**
    * Returns the base path used by this toadlet to serve queue content.

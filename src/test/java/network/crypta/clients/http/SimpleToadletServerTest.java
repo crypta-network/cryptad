@@ -287,7 +287,7 @@ class SimpleToadletServerTest {
     assertSame(runtimePorts, routeRegistrarContextRef.get().runtimePorts());
     assertSame(appHost, routeRegistrarContextRef.get().appHost());
     assertSame(nodeConfig, routeRegistrarContextRef.get().config());
-    assertInstanceOf(FProxyToadlet.class, routeRegistrarContextRef.get().fproxy());
+    assertInstanceOf(FProxyToadlet.class, routeRegistrarContextRef.get().browseRoot());
   }
 
   @Test
@@ -300,6 +300,60 @@ class SimpleToadletServerTest {
     assertThrows(NullPointerException.class, server::createFproxy);
 
     verifyNoInteractions(runtimeSupport);
+  }
+
+  @Test
+  void createFproxy_whenRuntimeSupportProvidesPrebuiltFproxy_seedsForceLinkRandomInSharedShell()
+      throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    LegacyHttpRouteRegistrar routeRegistrar = mock(LegacyHttpRouteRegistrar.class);
+    RuntimePorts runtimePorts = mock(RuntimePorts.class);
+    RandomnessPort randomnessPort = mock(RandomnessPort.class);
+    BookmarkManager bookmarkManager = mock(BookmarkManager.class);
+    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    AppHost appHost = mock(AppHost.class);
+    Config config = new Config();
+    FProxyRuntimeSupport fproxyRuntimeSupport = mock(FProxyRuntimeSupport.class);
+    FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
+    ClientContext clientContext = mock(ClientContext.class);
+    when(runtimeSupport.runtimePorts()).thenReturn(runtimePorts);
+    when(runtimePorts.randomness()).thenReturn(randomnessPort);
+    when(runtimeSupport.appHost()).thenReturn(appHost);
+    when(runtimeSupport.config()).thenReturn(config);
+    when(fproxyRuntimeSupport.clientContext()).thenReturn(clientContext);
+    server.setRuntimeSupport(runtimeSupport);
+    server.setRouteRegistrar(routeRegistrar);
+
+    FProxyToadlet browseRoot = new FProxyToadlet(client, fproxyRuntimeSupport, fetchTracker);
+    when(runtimeSupport.createBrowseBootstrap(server.publicGatewayMode()))
+        .thenReturn(HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, browseRoot));
+    AtomicReference<LegacyHttpRouteRegistrarContext> routeRegistrarContextRef =
+        new AtomicReference<>();
+    doAnswer(
+            invocation -> {
+              routeRegistrarContextRef.set(invocation.getArgument(0));
+              return null;
+            })
+        .when(routeRegistrar)
+        .registerRoutes(any(LegacyHttpRouteRegistrarContext.class), same(server));
+
+    byte[] previousRandom = FProxyToadlet.random;
+    byte[] seededRandom;
+    FProxyToadlet.random = null;
+    try {
+      server.createFproxy();
+      seededRandom = FProxyToadlet.random;
+    } finally {
+      FProxyToadlet.random = previousRandom;
+    }
+
+    ArgumentCaptor<byte[]> randomCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(runtimePorts).randomness();
+    verify(randomnessPort).fillSecureRandom(randomCaptor.capture());
+    assertSame(randomCaptor.getValue(), seededRandom);
+    assertEquals(32, randomCaptor.getValue().length);
+    assertSame(browseRoot, routeRegistrarContextRef.get().browseRoot());
   }
 
   @Test
