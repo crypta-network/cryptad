@@ -4,4 +4,5 @@
 network/crypta/crypt/**
 network/crypta/keys/**
 network/crypta/support/io/BucketTools*
+network/crypta/support/io/NoFreeBucket*
 network/crypta/support/io/PrependLengthOutputStream*

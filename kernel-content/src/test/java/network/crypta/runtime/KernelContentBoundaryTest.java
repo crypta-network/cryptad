@@ -224,6 +224,11 @@ class KernelContentBoundaryTest {
         RUNTIME_NODE_CLIENT_PACKAGE,
         MOVED_CLIENT_FAILURE_TYPES);
     assertOwnedByKernelContent(
+        repoRoot,
+        KERNEL_CONTENT_CLIENT_PACKAGE,
+        RUNTIME_NODE_CLIENT_PACKAGE,
+        List.of("InsertUriChecks.java"));
+    assertOwnedByKernelContent(
         repoRoot, KERNEL_CONTENT_EVENTS_PACKAGE, RUNTIME_NODE_EVENTS_PACKAGE, MOVED_EVENT_TYPES);
     assertOwnedByKernelContent(
         repoRoot,

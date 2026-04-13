@@ -13,6 +13,8 @@ network/crypta/io/Inet6AddressMatcher.class
 network/crypta/io/Inet6AddressMatcher$*.class
 network/crypta/io/NetworkInterface.class
 network/crypta/io/NetworkInterface$*.class
+network/crypta/io/SSLNetworkInterface.class
+network/crypta/io/SSLNetworkInterface$*.class
 network/crypta/io/comm/IOStatisticCollector.class
 network/crypta/io/comm/IOStatisticCollector$*.class
 network/crypta/io/comm/PortForwardSensitiveSocketHandler.class

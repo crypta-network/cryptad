@@ -2,7 +2,6 @@ package network.crypta.support;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import network.crypta.test.UTFUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -20,14 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings({"java:S100", "java:S5778"})
 class URIPreEncoderTest {
 
-  private static final String ALL_CHARS = new String(UTFUtil.allCharacters());
-  private final String printableAscii = new String(UTFUtil.printableAscii());
-  private final String stressedUtfChars = new String(UTFUtil.stressedUtf());
+  private static final String ALL_CHARS = new String(allCharacters());
+  private static final String PRINTABLE_ASCII = " !@#$%^&()+=[]{}:;\\\"',<>.?~`";
+  private static final String STRESSED_UTF_CHARS = "ÉâûĔĭņşÊãüĕĮŇŠ漢字";
 
   @Test
   void encode_whenMixedAsciiAndUtf8_expectOnlyAllowedChars() {
     // Arrange
-    String toEncode = printableAscii + stressedUtfChars;
+    String toEncode = PRINTABLE_ASCII + STRESSED_UTF_CHARS;
 
     // Act
     String encoded = URIPreEncoder.encode(toEncode);
@@ -87,13 +86,8 @@ class URIPreEncoderTest {
   }
 
   @Test
-  @SuppressWarnings("DataFlowIssue")
   void encode_whenNull_expectNullPointerException() {
-    assertThrows(
-        NullPointerException.class,
-        () -> {
-          network.crypta.testsupport.SpotBugsTestSupport.ignoreValue(URIPreEncoder.encode(null));
-        });
+    assertThrows(NullPointerException.class, () -> URIPreEncoder.encode(null));
   }
 
   @Test
@@ -122,6 +116,23 @@ class URIPreEncoderTest {
   @Test
   void encodeURI_whenNull_expectNullPointerException() {
     assertThrows(NullPointerException.class, () -> URIPreEncoder.encodeURI(null));
+  }
+
+  private static char[] allCharacters() {
+    char[] chars = new char[Character.MAX_VALUE - Character.MIN_VALUE + 1];
+    for (int i = 0; i <= Character.MAX_VALUE - Character.MIN_VALUE; ++i) {
+      int characterValue = Character.MIN_VALUE + i;
+      if (characterValue >= Character.MIN_LOW_SURROGATE
+          && characterValue <= Character.MAX_LOW_SURROGATE) {
+        chars[i] = ' ';
+      } else if (characterValue >= Character.MIN_HIGH_SURROGATE
+          && characterValue <= Character.MAX_HIGH_SURROGATE) {
+        chars[i] = ' ';
+      } else {
+        chars[i] = (char) characterValue;
+      }
+    }
+    return chars;
   }
 
   private static boolean containsOnlyValidChars(String s) {

@@ -43,8 +43,6 @@ network/crypta/client/InsertContext.class
 network/crypta/client/InsertContext$*.class
 network/crypta/client/InsertContextOptions.class
 network/crypta/client/InsertContextOptions$*.class
-network/crypta/client/InsertUriChecks.class
-network/crypta/client/InsertUriChecks$*.class
 network/crypta/client/Metadata.class
 network/crypta/client/Metadata$*.class
 network/crypta/client/MetadataRedirectTarget.class
@@ -859,8 +857,6 @@ network/crypta/io/InetAddressAddressTrackerItem.class
 network/crypta/io/InetAddressAddressTrackerItem$*.class
 network/crypta/io/PeerAddressTrackerItem.class
 network/crypta/io/PeerAddressTrackerItem$*.class
-network/crypta/io/SSLNetworkInterface.class
-network/crypta/io/SSLNetworkInterface$*.class
 network/crypta/io/package-info*
 network/crypta/io/comm/AsyncMessageFilterCallback.class
 network/crypta/io/comm/AsyncMessageFilterCallback$*.class
@@ -965,8 +961,6 @@ network/crypta/support/TimeSortedHashtable.class
 network/crypta/support/TimeSortedHashtable$*.class
 network/crypta/support/TrivialTicker.class
 network/crypta/support/TrivialTicker$*.class
-network/crypta/support/URIPreEncoder.class
-network/crypta/support/URIPreEncoder$*.class
 network/crypta/support/UptimeContainer.class
 network/crypta/support/UptimeContainer$*.class
 network/crypta/support/WeakHashSet.class
@@ -992,8 +986,6 @@ network/crypta/support/io/MaybeEncryptedRandomAccessBufferFactory.class
 network/crypta/support/io/MaybeEncryptedRandomAccessBufferFactory$*.class
 network/crypta/support/io/MultiReaderBucket.class
 network/crypta/support/io/MultiReaderBucket$*.class
-network/crypta/support/io/NoFreeBucket.class
-network/crypta/support/io/NoFreeBucket$*.class
 network/crypta/support/io/PaddedBucket.class
 network/crypta/support/io/PaddedBucket$*.class
 network/crypta/support/io/PaddedEphemerallyEncryptedBucket.class

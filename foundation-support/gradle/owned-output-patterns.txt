@@ -51,6 +51,7 @@ network/crypta/support/TimeUtil*
 network/crypta/support/URLDecoder*
 network/crypta/support/URLEncodedFormatException*
 network/crypta/support/URLEncoder*
+network/crypta/support/URIPreEncoder*
 network/crypta/support/VirginItemException*
 network/crypta/support/WrapperKeepalive*
 network/crypta/support/XMLCharacterClasses*
