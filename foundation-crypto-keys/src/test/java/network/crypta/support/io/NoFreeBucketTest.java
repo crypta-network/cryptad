@@ -413,7 +413,29 @@ class NoFreeBucketTest {
 
   @Test
   @SuppressWarnings("resource")
-  void readObject_whenProxyFieldPresentButNull_throwsStreamCorruptedException() throws Exception {
+  void readObject_whenProxyFieldPresentButNullAndAppendedBucketPresent_restoresDelegate()
+      throws Exception {
+    // Arrange
+    byte[] payload = "legacy-null-field".getBytes(StandardCharsets.UTF_8);
+    try (Bucket legacyBucket = new ArrayBucket(payload)) {
+      NoFreeBucket target = newNoFreeBucketForDeserialization();
+
+      // Act
+      invokeReadObject(target, new ControlledObjectInputStream(false, null, legacyBucket, false));
+
+      // Assert
+      assertEquals(payload.length, target.size());
+      try (InputStream ins = target.getInputStream()) {
+        assertArrayEquals(payload, ins.readAllBytes());
+      }
+    }
+  }
+
+  @Test
+  @SuppressWarnings("resource")
+  void
+      readObject_whenProxyFieldPresentButNullAndAppendedObjectMissing_throwsStreamCorruptedException()
+          throws Exception {
     // Arrange
     NoFreeBucket target = newNoFreeBucketForDeserialization();
 
@@ -422,9 +444,8 @@ class NoFreeBucketTest {
         assertThrows(
             StreamCorruptedException.class,
             () ->
-                invokeReadObject(
-                    target, new ControlledObjectInputStream(false, null, null, false)));
-    assertEquals("NoFreeBucket: missing delegate in serialized form", thrown.getMessage());
+                invokeReadObject(target, new ControlledObjectInputStream(false, null, null, true)));
+    assertEquals("NoFreeBucket: unexpected EOF while reading delegate", thrown.getMessage());
   }
 
   @Test

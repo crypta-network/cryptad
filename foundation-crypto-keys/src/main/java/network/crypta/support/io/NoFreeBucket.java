@@ -284,16 +284,29 @@ public final class NoFreeBucket implements Bucket, Serializable {
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     ObjectInputStream.GetField fields = in.readFields();
-    Bucket restored = (Bucket) fields.get(PROXY_FIELD_NAME, null);
-    if (restored == null && !fields.defaulted(PROXY_FIELD_NAME)) {
-      throw new StreamCorruptedException("NoFreeBucket: missing delegate in serialized form");
-    }
-    if (restored == null) {
-      try {
-        restored = (Bucket) in.readObject();
-      } catch (EOFException e) {
-        throw new StreamCorruptedException("NoFreeBucket: unexpected EOF while reading delegate");
+    Bucket restored = null;
+    try {
+      Object value = fields.get(PROXY_FIELD_NAME, null);
+      if (value != null) {
+        restored = (Bucket) value;
       }
+    } catch (IllegalArgumentException _) {
+      // Field not present in local descriptor; treat as absent and fall back to appended object.
+    }
+    if (restored != null) {
+      proxyRef = new AtomicReference<>(restored);
+      return;
+    }
+
+    try {
+      restored = (Bucket) in.readObject();
+    } catch (OptionalDataException e) {
+      if (e.eof) {
+        throw new StreamCorruptedException("NoFreeBucket: missing delegate in serialized form");
+      }
+      throw e;
+    } catch (EOFException e) {
+      throw new StreamCorruptedException("NoFreeBucket: unexpected EOF while reading delegate");
     }
     proxyRef = new AtomicReference<>(restored);
   }
