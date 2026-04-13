@@ -654,7 +654,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           // fall through to additional path checks below
         }
       }
-      if (ks.startsWith("/feed/") || ks.equals("/feed")) return handleFeedRequest();
+      if (ks.startsWith("/feed/") || ks.equals("/feed")) {
+        handleFeedRequest();
+        return true;
+      }
       if (ks.equals("/robots.txt") && ctx.doRobots()) {
         writeTextReply(ctx, 200, "Ok", "User-agent: *\nDisallow: /");
         return true;
@@ -735,7 +738,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
     }
 
-    private boolean handleFeedRequest() throws ToadletContextClosedException, IOException {
+    private void handleFeedRequest() throws ToadletContextClosedException, IOException {
       UserAlertManager alertManager = concreteAlertManagerOrNull(ctx);
       if (alertManager == null) {
         LOG.warn(
@@ -743,14 +746,13 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             ToadletContext.class.getSimpleName(),
             ctx.getAlertManager().getClass().getName());
         ctx.sendReplyHeaders(503, "Service Unavailable", null, null, 0);
-        return true;
+        return;
       }
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
       String atom = alertManager.getAtom(schemeHostAndPort);
       byte[] buf = atom.getBytes(StandardCharsets.UTF_8);
       ctx.sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", buf.length);
       ctx.writeData(buf, 0, buf.length);
-      return true;
     }
 
     private UserAlertManager concreteAlertManagerOrNull(ToadletContext context) {

@@ -86,19 +86,21 @@ public class WelcomeToadlet extends Toadlet {
   private static final String PARAM_OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
   private static final String PARAM_FILENAME = "filename";
   private static final String PARAM_RESTART = "restart";
+  private static final String PARAM_DISABLE = "disable";
   private static final String TAG_LABEL = "label";
   private static final String TEXTAREA_DESC_B = "descB";
   private static final String STYLE_BORDER_NONE = "border: none";
   private static final String TARGET_BLANK = "_blank";
-  private static final String ALERTS_PATH = "/alerts/";
 
   private final WelcomeToadletRuntimePorts runtimePorts;
+  private final String alertsPath;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   WelcomeToadlet(HighLevelSimpleClient client, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
+    alertsPath = new UserAlertsToadlet(client).path();
   }
 
   void redirectToRoot(ToadletContext ctx) throws ToadletContextClosedException, IOException {
@@ -414,7 +416,7 @@ public class WelcomeToadlet extends Toadlet {
 
   private boolean handleDisableAlert(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    if (!request.isPartSet("disable")) {
+    if (!request.isPartSet(PARAM_DISABLE)) {
       return false;
     }
     if (!ctx.checkFormPassword(request)) {
@@ -423,27 +425,24 @@ public class WelcomeToadlet extends Toadlet {
     int validAlertsRemaining = 0;
     UserAlert[] alerts = ctx.getAlertManager().getAlerts();
     for (UserAlert alert : alerts) {
-      if (request.getIntPart("disable", -1) == alert.hashCode()) {
+      if (request.getIntPart(PARAM_DISABLE, -1) == alert.hashCode()) {
         disableMatchingAlert(ctx, alert);
       } else if (alert.isValid()) {
         validAlertsRemaining++;
       }
     }
     writePermanentRedirect(
-        ctx, l10n("disabledAlert"), (validAlertsRemaining > 0 ? "/alerts/" : "/"));
+        ctx, l10n("disabledAlert"), (validAlertsRemaining > 0 ? alertsPath : "/"));
     return true;
   }
 
   private void disableMatchingAlert(ToadletContext ctx, UserAlert alert) {
+    boolean shouldUnregister = alert.userCanDismiss() && alert.shouldUnregisterOnDismiss();
+    LOG.info(
+        "{} the userAlert {}", shouldUnregister ? "Unregistering" : "Disabling", alert.hashCode());
     if (alert.userCanDismiss()) {
-      if (alert.shouldUnregisterOnDismiss()) {
-        LOG.info("Unregistering the userAlert {}", alert.hashCode());
-      } else {
-        LOG.info("Disabling the userAlert {}", alert.hashCode());
-      }
       ctx.getAlertManager().dismissAlert(alert.hashCode());
     } else {
-      LOG.info("Disabling the userAlert {}", alert.hashCode());
       alert.isValid(false);
     }
   }
@@ -675,12 +674,12 @@ public class WelcomeToadlet extends Toadlet {
 
     HTMLNode dismissFormNode =
         result
-            .addChild("form", new String[] {"action", "method"}, new String[] {ALERTS_PATH, "post"})
+            .addChild("form", new String[] {"action", "method"}, new String[] {alertsPath, "post"})
             .addChild("div");
     dismissFormNode.addChild(
         ELEMENT_INPUT,
         new String[] {ATTR_TYPE, "name", ATTR_VALUE},
-        new String[] {INPUT_HIDDEN, "disable", String.valueOf(userAlert.hashCode())});
+        new String[] {INPUT_HIDDEN, PARAM_DISABLE, String.valueOf(userAlert.hashCode())});
     dismissFormNode.addChild(
         ELEMENT_INPUT,
         new String[] {ATTR_TYPE, "name", ATTR_VALUE},
