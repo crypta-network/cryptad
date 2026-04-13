@@ -2,7 +2,7 @@
  * Networking utilities for working with IP addresses and inbound server endpoints.
  *
  * <p>This package provides building blocks used by higher-level components to listen for and accept
- * incoming connections, and to decide which clients may connect. Core areas include:
+ * incoming connections and to decide which clients may connect. Core areas include:
  *
  * <ul>
  *   <li><b>Address allow/deny checks</b> — a small, literal-only matching DSL parsed by {@link
@@ -16,8 +16,7 @@
  *   <li><b>Server endpoint abstraction</b> — {@link network.crypta.io.NetworkInterface} wraps one
  *       or more {@link java.net.ServerSocket} instances to bind on multiple addresses, filter
  *       connections using {@link network.crypta.io.AllowedHosts}, and expose a single {@code
- *       accept()} queue. {@link network.crypta.io.SSLNetworkInterface} adds TLS via {@link
- *       javax.net.ssl.SSLServerSocket}.
+ *       accept()} queue.
  *   <li><b>Auxiliary helpers</b> — utilities for tracking/identifying addresses and writing to
  *       streams (for example, {@link network.crypta.io.AddressIdentifier}, {@link
  *       network.crypta.io.AddressTracker}, and {@link
@@ -27,11 +26,11 @@
  * <p>Defaults and behavior:
  *
  * <ul>
- *   <li>When no explicit bind or allow list is provided, the code defaults to loopback-only binding
+ *   <li>When no explicit bind or allowlist is provided, the code defaults to loopback-only binding
  *       as indicated by {@link network.crypta.io.NetworkInterface#DEFAULT_BIND_TO}.
- *   <li>Tokens in allow lists must be numeric address literals; DNS names are ignored.
+ *   <li>Tokens in allowlists must be numeric address literals; DNS names are ignored.
  *   <li>Concurrency characteristics are documented on each type. The implementation favors explicit
- *       locking for accept queues and atomic replacement for rule updates.
+ *       locking for Accept queues and atomic replacement for rule updates.
  * </ul>
  *
  * <p>Related packages:

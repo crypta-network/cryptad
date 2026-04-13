@@ -1,12 +1,24 @@
 package network.crypta.support.io;
 
-import java.io.*;
-
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
+import java.io.OutputStream;
+import java.io.StreamCorruptedException;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.api.ResumeContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -14,11 +26,23 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link NoFreeBucket}.
@@ -203,7 +227,7 @@ class NoFreeBucketTest {
   void onResume_whenProxyThrows_propagates() throws ResumeFailedException {
     // Arrange
     Bucket proxy = mock(Bucket.class);
-    ClientContext ctx = mock(ClientContext.class);
+    ResumeContext ctx = mock(ResumeContext.class);
     ResumeFailedException boom = new ResumeFailedException("resume failed");
     doThrow(boom).when(proxy).onResume(ctx);
     try (NoFreeBucket bucket = new NoFreeBucket(proxy)) {
@@ -338,6 +362,108 @@ class NoFreeBucketTest {
   }
 
   @Test
+  void serialization_whenProxyIsNotSerializable_throwsNotSerializableException() {
+    // Arrange
+    Bucket proxy = mock(Bucket.class);
+    try (NoFreeBucket bucket = new NoFreeBucket(proxy);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+      // Act + Assert
+      NotSerializableException thrown =
+          assertThrows(NotSerializableException.class, () -> oos.writeObject(bucket));
+      assertEquals(proxy.getClass().getName(), thrown.getMessage());
+    } catch (IOException e) {
+      fail(e);
+    }
+  }
+
+  @Test
+  void serialization_whenProxyIsNull_throwsNotSerializableException() {
+    // Arrange
+    try (NoFreeBucket bucket = new NoFreeBucket();
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+      // Act + Assert
+      NotSerializableException thrown =
+          assertThrows(NotSerializableException.class, () -> oos.writeObject(bucket));
+      assertEquals("NoFreeBucket proxy is null", thrown.getMessage());
+    } catch (IOException e) {
+      fail(e);
+    }
+  }
+
+  @Test
+  void readObject_whenProxyFieldDefaultedAndAppendedBucketPresent_restoresDelegate()
+      throws Exception {
+    // Arrange
+    byte[] payload = "legacy-appended".getBytes(StandardCharsets.UTF_8);
+    try (Bucket legacyBucket = new ArrayBucket(payload)) {
+      NoFreeBucket target = newNoFreeBucketForDeserialization();
+
+      // Act
+      invokeReadObject(target, new ControlledObjectInputStream(true, null, legacyBucket, false));
+
+      // Assert
+      assertEquals(payload.length, target.size());
+      try (InputStream ins = target.getInputStream()) {
+        assertArrayEquals(payload, ins.readAllBytes());
+      }
+    }
+  }
+
+  @Test
+  void readObject_whenProxyFieldPresentButNullAndAppendedBucketPresent_restoresDelegate()
+      throws Exception {
+    // Arrange
+    byte[] payload = "legacy-null-field".getBytes(StandardCharsets.UTF_8);
+    try (Bucket legacyBucket = new ArrayBucket(payload)) {
+      NoFreeBucket target = newNoFreeBucketForDeserialization();
+
+      // Act
+      invokeReadObject(target, new ControlledObjectInputStream(false, null, legacyBucket, false));
+
+      // Assert
+      assertEquals(payload.length, target.size());
+      try (InputStream ins = target.getInputStream()) {
+        assertArrayEquals(payload, ins.readAllBytes());
+      }
+    }
+  }
+
+  @Test
+  @SuppressWarnings("resource")
+  void
+      readObject_whenProxyFieldPresentButNullAndAppendedObjectMissing_throwsStreamCorruptedException()
+          throws Exception {
+    // Arrange
+    NoFreeBucket target = newNoFreeBucketForDeserialization();
+
+    // Act + Assert
+    StreamCorruptedException thrown =
+        assertThrows(
+            StreamCorruptedException.class,
+            () ->
+                invokeReadObject(target, new ControlledObjectInputStream(false, null, null, true)));
+    assertEquals("NoFreeBucket: unexpected EOF while reading delegate", thrown.getMessage());
+  }
+
+  @Test
+  @SuppressWarnings("resource")
+  void readObject_whenProxyFieldDefaultedAndAppendedObjectMissing_throwsStreamCorruptedException()
+      throws Exception {
+    // Arrange
+    NoFreeBucket target = newNoFreeBucketForDeserialization();
+
+    // Act + Assert
+    StreamCorruptedException thrown =
+        assertThrows(
+            StreamCorruptedException.class,
+            () ->
+                invokeReadObject(target, new ControlledObjectInputStream(true, null, null, true)));
+    assertEquals("NoFreeBucket: unexpected EOF while reading delegate", thrown.getMessage());
+  }
+
+  @Test
   void serialization_legacy_defaultOnly_isAccepted() throws Exception {
     byte[] payload = "legacy-stream".getBytes(StandardCharsets.UTF_8);
     try (Bucket legacyBucket = new ArrayBucket(payload)) {
@@ -438,6 +564,119 @@ class NoFreeBucketTest {
     try (NoFreeBucket broken = new NoFreeBucket()) {
       org.junit.jupiter.api.function.Executable exec = broken::getName;
       assertThrows(NullPointerException.class, exec);
+    }
+  }
+
+  private static NoFreeBucket newNoFreeBucketForDeserialization() throws Exception {
+    var ctor = NoFreeBucket.class.getDeclaredConstructor();
+    ctor.setAccessible(true);
+    return ctor.newInstance();
+  }
+
+  private static void invokeReadObject(NoFreeBucket target, ObjectInputStream input)
+      throws Exception {
+    var method = NoFreeBucket.class.getDeclaredMethod("readObject", ObjectInputStream.class);
+    method.setAccessible(true);
+    try {
+      method.invoke(target, input);
+    } catch (java.lang.reflect.InvocationTargetException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof Exception exception) {
+        throw exception;
+      }
+      if (cause instanceof Error error) {
+        throw error;
+      }
+      throw e;
+    }
+  }
+
+  private static final class ControlledObjectInputStream extends ObjectInputStream {
+    private final boolean proxyDefaulted;
+    private final Bucket proxyFieldValue;
+    private final Object appendedObject;
+    private final boolean appendedObjectMissing;
+
+    ControlledObjectInputStream(
+        boolean proxyDefaulted,
+        Bucket proxyFieldValue,
+        Object appendedObject,
+        boolean appendedObjectMissing)
+        throws IOException {
+      super();
+      this.proxyDefaulted = proxyDefaulted;
+      this.proxyFieldValue = proxyFieldValue;
+      this.appendedObject = appendedObject;
+      this.appendedObjectMissing = appendedObjectMissing;
+    }
+
+    @Override
+    public GetField readFields() {
+      ObjectStreamClass osc = ObjectStreamClass.lookup(NoFreeBucket.class);
+      return new GetField() {
+        @Override
+        public ObjectStreamClass getObjectStreamClass() {
+          return osc;
+        }
+
+        @Override
+        public boolean defaulted(String name) {
+          return proxyDefaulted || !"proxy".equals(name);
+        }
+
+        @Override
+        public Object get(String name, Object val) {
+          return "proxy".equals(name) ? proxyFieldValue : val;
+        }
+
+        @Override
+        public boolean get(String name, boolean val) {
+          return val;
+        }
+
+        @Override
+        public byte get(String name, byte val) {
+          return val;
+        }
+
+        @Override
+        public char get(String name, char val) {
+          return val;
+        }
+
+        @Override
+        public short get(String name, short val) {
+          return val;
+        }
+
+        @Override
+        public int get(String name, int val) {
+          return val;
+        }
+
+        @Override
+        public long get(String name, long val) {
+          return val;
+        }
+
+        @Override
+        public float get(String name, float val) {
+          return val;
+        }
+
+        @Override
+        public double get(String name, double val) {
+          return val;
+        }
+      };
+    }
+
+    @Override
+    protected Object readObjectOverride() throws IOException {
+      if (appendedObjectMissing) {
+        throw new EOFException();
+      }
+      return appendedObject;
     }
   }
 }

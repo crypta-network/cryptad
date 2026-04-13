@@ -25,6 +25,8 @@ network/crypta/client/InsertBlock.class
 network/crypta/client/InsertBlock$*.class
 network/crypta/client/InsertException.class
 network/crypta/client/InsertException$*.class
+network/crypta/client/InsertUriChecks.class
+network/crypta/client/InsertUriChecks$*.class
 network/crypta/client/MetadataParseException.class
 network/crypta/client/MetadataParseException$*.class
 network/crypta/client/MetadataResolutionTarget.class

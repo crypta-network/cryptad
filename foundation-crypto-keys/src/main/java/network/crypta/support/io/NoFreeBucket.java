@@ -254,72 +254,60 @@ public final class NoFreeBucket implements Bucket, Serializable {
   /* ===== Java serialization support (patterned after DelayedFreeBucket) ===== */
 
   /**
-   * Writes default serializable state and the wrapped bucket when it implements {@link
+   * Writes the persistent bucket field and the wrapped bucket when it implements {@link
    * Serializable}.
    *
    * @param out destination stream
-   * @throws IOException if writing fails or the wrapped bucket is not serializable
+   * @throws IOException if serialization fails
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    // Preserve compatibility with older releases that rely on default Java serialization
-    // (no readObject) and expect the legacy 'proxy' field to carry the wrapped bucket when it is
-    // serializable. Only when the wrapped bucket is not serializable do we throw, matching legacy
-    // behavior.
-    ObjectOutputStream.PutField pf = out.putFields();
-    Bucket current = proxyRef.get();
-    if (current instanceof Serializable serializable) {
-      pf.put(PROXY_FIELD_NAME, serializable);
-      out.writeFields();
-      // Do NOT append another object; newer readers will fall back to the legacy field on EOF.
-    } else {
-      // Write defaults (proxy=null) so newer readers can still tolerate EOF and error early.
-      out.writeFields();
-      throw new NotSerializableException(
-          current == null ? "nullBucket" : current.getClass().getName());
+    Bucket proxy = proxyRef.get();
+    if (proxy == null) {
+      throw new NotSerializableException("NoFreeBucket proxy is null");
     }
+    if (!(proxy instanceof Serializable)) {
+      throw new NotSerializableException(proxy.getClass().getName());
+    }
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put(PROXY_FIELD_NAME, proxy);
+    out.writeFields();
   }
 
   /**
-   * Restores default serializable state and the wrapped bucket previously written by {@link
-   * #writeObject(ObjectOutputStream)}.
+   * Restores the wrapped bucket and reconstructs the atomic delegate holder.
    *
    * @param in source stream
-   * @throws IOException on I/O errors
-   * @throws ClassNotFoundException if the wrapped type cannot be loaded
+   * @throws IOException if deserialization fails
+   * @throws ClassNotFoundException if the wrapped bucket type is unavailable
    */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-    // Read default field block using GetField so we can extract the legacy 'proxy' value
-    // when present in streams written by older releases.
     ObjectInputStream.GetField fields = in.readFields();
-    Bucket legacyProxy = null;
+    Bucket restored = null;
     try {
-      Object v = fields.get(PROXY_FIELD_NAME, null);
-      if (v != null) legacyProxy = (Bucket) v;
+      Object value = fields.get(PROXY_FIELD_NAME, null);
+      if (value != null) {
+        restored = (Bucket) value;
+      }
     } catch (IllegalArgumentException _) {
-      // Field not present in local descriptor; treat as absent.
+      // Field not present in local descriptor; treat as absent and fall back to appended object.
     }
-
-    // If legacy field is present, use it and return without reading further optional data.
-    if (legacyProxy != null) {
-      proxyRef = new AtomicReference<>(legacyProxy);
+    if (restored != null) {
+      proxyRef = new AtomicReference<>(restored);
       return;
     }
 
-    // Otherwise, support older "appended object" format written after the field block.
     try {
-      Object appended = in.readObject();
-      proxyRef = new AtomicReference<>((Bucket) appended);
+      restored = (Bucket) in.readObject();
     } catch (OptionalDataException e) {
       if (e.eof) {
-        // No legacy field and no appended object — malformed stream for this type.
         throw new StreamCorruptedException("NoFreeBucket: missing delegate in serialized form");
       }
       throw e;
-    } catch (EOFException _) {
-      // Reached end of this object's data with no delegate present.
+    } catch (EOFException e) {
       throw new StreamCorruptedException("NoFreeBucket: unexpected EOF while reading delegate");
     }
+    proxyRef = new AtomicReference<>(restored);
   }
 }

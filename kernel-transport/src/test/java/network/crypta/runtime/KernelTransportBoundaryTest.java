@@ -26,6 +26,9 @@ class KernelTransportBoundaryTest {
   private static final Path KERNEL_TRANSPORT_NETWORK_INTERFACE =
       KERNEL_TRANSPORT_MAIN_JAVA.resolve(
           Path.of("network", "crypta", "io", "NetworkInterface.java"));
+  private static final Path KERNEL_TRANSPORT_SSL_NETWORK_INTERFACE =
+      KERNEL_TRANSPORT_MAIN_JAVA.resolve(
+          Path.of("network", "crypta", "io", "SSLNetworkInterface.java"));
   private static final Path KERNEL_TRANSPORT_IO_STATISTIC_COLLECTOR =
       KERNEL_TRANSPORT_MAIN_JAVA.resolve(
           Path.of("network", "crypta", "io", "comm", "IOStatisticCollector.java"));
@@ -48,6 +51,16 @@ class KernelTransportBoundaryTest {
           "crypta",
           "io",
           "NetworkInterface.java");
+  private static final Path RUNTIME_NODE_SSL_NETWORK_INTERFACE =
+      Path.of(
+          "runtime-node",
+          "src",
+          "main",
+          "java",
+          "network",
+          "crypta",
+          "io",
+          "SSLNetworkInterface.java");
   private static final Path RUNTIME_NODE_IO_STATISTIC_COLLECTOR =
       Path.of(
           "runtime-node",
@@ -86,6 +99,8 @@ class KernelTransportBoundaryTest {
           "^import(?:\\s+static)?\\s+"
               + "(network\\.crypta\\.(?:node|runtime|client)\\.[^;]+"
               + "|network\\.crypta\\.clients\\.[^;]+);$");
+  private static final Set<String> ALLOWED_FOUNDATION_COMPAT_IMPORTS =
+      Set.of("network.crypta.runtime.core.SSL");
 
   @Test
   void kernelTransportMain_whenScanningImports_expectNoRuntimeClientOrAdapterImports()
@@ -106,7 +121,8 @@ class KernelTransportBoundaryTest {
 
     assertTrue(
         violations.isEmpty(),
-        "kernel-transport main sources must stay free of node/runtime/client and adapter imports."
+        "kernel-transport main sources must stay free of node/runtime/client and adapter imports,"
+            + " aside from the foundation-compat SSL helper."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }
@@ -123,6 +139,9 @@ class KernelTransportBoundaryTest {
         Files.isRegularFile(repoRoot.resolve(KERNEL_TRANSPORT_NETWORK_INTERFACE)),
         "kernel-transport must own network.crypta.io.NetworkInterface in phase 1");
     assertTrue(
+        Files.isRegularFile(repoRoot.resolve(KERNEL_TRANSPORT_SSL_NETWORK_INTERFACE)),
+        "kernel-transport must own network.crypta.io.SSLNetworkInterface in phase 2");
+    assertTrue(
         Files.isRegularFile(repoRoot.resolve(KERNEL_TRANSPORT_IO_STATISTIC_COLLECTOR)),
         "kernel-transport must own network.crypta.io.comm.IOStatisticCollector in phase 1");
     assertTrue(
@@ -138,6 +157,10 @@ class KernelTransportBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(RUNTIME_NODE_NETWORK_INTERFACE)),
         "runtime-node must not retain network.crypta.io.NetworkInterface after phase-1 extraction");
+    assertFalse(
+        Files.exists(repoRoot.resolve(RUNTIME_NODE_SSL_NETWORK_INTERFACE)),
+        "runtime-node must not retain network.crypta.io.SSLNetworkInterface after phase-2"
+            + " extraction");
     assertFalse(
         Files.exists(repoRoot.resolve(RUNTIME_NODE_IO_STATISTIC_COLLECTOR)),
         "runtime-node must not retain network.crypta.io.comm.IOStatisticCollector after phase-1"
@@ -201,12 +224,15 @@ class KernelTransportBoundaryTest {
 
   private static Set<String> readForbiddenImports(Path file) throws IOException {
     try (Stream<String> lines = Files.lines(file)) {
-      return lines
-          .map(String::trim)
-          .map(FORBIDDEN_IMPORT_PATTERN::matcher)
-          .filter(Matcher::matches)
-          .map(matcher -> matcher.group(1))
-          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+      Set<String> imports =
+          lines
+              .map(String::trim)
+              .map(FORBIDDEN_IMPORT_PATTERN::matcher)
+              .filter(Matcher::matches)
+              .map(matcher -> matcher.group(1))
+              .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+      imports.removeAll(ALLOWED_FOUNDATION_COMPAT_IMPORTS);
+      return imports;
     }
   }
 
