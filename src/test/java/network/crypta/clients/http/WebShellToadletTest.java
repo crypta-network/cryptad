@@ -4,7 +4,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.support.HTMLNode;
@@ -35,7 +34,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class WebShellToadletTest {
-  @Mock private HighLevelSimpleClient client;
   @Mock private ToadletContext ctx;
   @Mock private ToadletContainer container;
   @Mock private HTTPRequest request;
@@ -44,7 +42,7 @@ class WebShellToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new WebShellToadlet(client);
+    toadlet = new WebShellToadlet();
   }
 
   @Test
@@ -117,7 +115,7 @@ class WebShellToadletTest {
 
   @Test
   void handleMethodGET_whenRouteUnknown_expectNotFound() throws Exception {
-    WebShellToadlet spyToadlet = spy(new WebShellToadlet(client));
+    WebShellToadlet spyToadlet = spy(new WebShellToadlet());
     PageMaker pageMaker = mock(PageMaker.class);
     PageNode pageNode = mock(PageNode.class);
     HTMLNode contentNode = new HTMLNode("div");

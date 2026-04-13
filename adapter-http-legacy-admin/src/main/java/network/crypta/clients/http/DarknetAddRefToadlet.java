@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.ConnectionsInstallerSnapshot;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
@@ -63,17 +62,14 @@ public class DarknetAddRefToadlet extends Toadlet {
    *     null}
    * @param nodeInfoPort node-info port supplying the public darknet noderef export; must not be
    *     {@code null}
-   * @param client high-level HTTP client the superclass relies on for responses and redirects; may
-   *     share the lifecycle of the enclosing HTTP server.
    * @param friendsToadlet companion toadlet used to render friend lists and noderef boxes within
    *     this page; should correspond to the same node instance.
    */
   protected DarknetAddRefToadlet(
       ConnectionsSupportPort connectionsSupportPort,
       NodeInfoPort nodeInfoPort,
-      HighLevelSimpleClient client,
       DarknetConnectionsToadlet friendsToadlet) {
-    super(client);
+    super();
     this.connectionsSupportPort = Objects.requireNonNull(connectionsSupportPort);
     this.nodeInfoPort = Objects.requireNonNull(nodeInfoPort);
     this.friendsToadlet = Objects.requireNonNull(friendsToadlet);
@@ -213,8 +209,8 @@ public class DarknetAddRefToadlet extends Toadlet {
    * the immediate HTTP response, because it reflects the node’s current configuration and may
    * change when peers or keys are rotated.
    *
-   * @return field set view of the current exported darknet reference; ownership remains with the
-   *     caller for serialization but should not be mutated.
+   * @return the field set view of the current exported darknet reference; ownership remains with
+   *     the caller for serialization but should not be mutated.
    */
   protected SimpleFieldSet getNoderef() {
     return toSimpleFieldSet(

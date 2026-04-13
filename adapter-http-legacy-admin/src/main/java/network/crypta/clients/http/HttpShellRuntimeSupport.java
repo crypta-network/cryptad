@@ -122,6 +122,17 @@ public interface HttpShellRuntimeSupport {
   boolean canRedirectToWizard();
 
   /**
+   * Returns the detached insert compatibility modes used by legacy HTTP forms.
+   *
+   * <p>The returned value object keeps the admin shell independent of the runtime-node insert enum
+   * while preserving the current ordering, labels, and default selection used by the legacy upload
+   * forms.
+   *
+   * @return HTTP-local compatibility-mode names and their default selection
+   */
+  InsertCompatibilityModes insertCompatibilityModes();
+
+  /**
    * Registers a listener for network threat-level changes using HTTP-local enum values.
    *
    * <p>The callback receives detached values so {@link SimpleToadletServer} does not have to depend
@@ -150,7 +161,7 @@ public interface HttpShellRuntimeSupport {
    * bootstrap snapshot for the current shell instance.
    *
    * @param publicGatewayMode whether the shell should bootstrap public-gateway bookmark behavior
-   * @return bootstrap bundle containing the bookmark manager, interactive client, and browse root
+   * @return bootstrap bundle containing the bookmark manager and browse-owned startup collaborators
    */
   HttpShellBrowseBootstrap createBrowseBootstrap(boolean publicGatewayMode);
 

@@ -486,12 +486,12 @@ public final class SimpleToadletServer
 
     routeRegistrarRef.registerRoutes(
         new LegacyHttpRouteRegistrarContext(
-            bootstrap.client(),
             runtimePorts,
             runtimeSupportRef.appHost(),
             runtimeSupportRef.config(),
             bootstrap.browseRoot(),
-            bootstrap.browseRouteRegistrar()),
+            bootstrap.browseRouteRegistrar(),
+            runtimeSupportRef.insertCompatibilityModes()),
         this);
   }
 

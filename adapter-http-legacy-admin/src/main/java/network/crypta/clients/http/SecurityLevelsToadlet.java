@@ -5,7 +5,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URI;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.WizardL10n;
 import network.crypta.l10n.NodeL10n;
@@ -108,9 +107,8 @@ public class SecurityLevelsToadlet extends Toadlet {
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
-  SecurityLevelsToadlet(
-      HighLevelSimpleClient client, SecurityLevelsToadletRuntimePorts runtimePorts) {
-    super(client);
+  SecurityLevelsToadlet(SecurityLevelsToadletRuntimePorts runtimePorts) {
+    super();
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
   }
 

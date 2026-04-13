@@ -4,7 +4,6 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -30,14 +29,13 @@ import static org.mockito.Mockito.when;
 class LocalDownloadDirectoryToadletTest {
 
   @Mock TransferAccessPort transferAccess;
-  @Mock HighLevelSimpleClient client;
 
   private LocalDownloadDirectoryToadlet toadlet;
 
   @BeforeEach
   void setUp() {
     lenient().doCallRealMethod().when(transferAccess).defaultDownloadDir();
-    toadlet = new LocalDownloadDirectoryToadlet(transferAccess, client, "/post");
+    toadlet = new LocalDownloadDirectoryToadlet(transferAccess, "/post");
   }
 
   @ParameterizedTest

@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import javax.naming.SizeLimitExceededException;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.alerts.AbstractNodeToNodeFileOfferUserAlert;
 import network.crypta.runtime.alerts.NodeToNodeMessageUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
@@ -43,7 +42,6 @@ class UserAlertsToadletTest {
 
   private static final URI ALERTS_URI = URI.create("http://localhost/alerts/");
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ToadletContext context;
   @Mock private PageMaker pageMaker;
   @Mock private UserAlertManager alertManager;
@@ -52,7 +50,7 @@ class UserAlertsToadletTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    toadlet = new UserAlertsToadlet(client);
+    toadlet = new UserAlertsToadlet();
 
     when(context.getAlertManager()).thenReturn(alertManager);
     when(context.getPageMaker()).thenReturn(pageMaker);

@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -61,7 +60,6 @@ class N2NTMToadletTest {
   @Mock private DarknetMessagingPort darknetMessagingPort;
   @Mock private LifecyclePort lifecyclePort;
   @Mock private LocalFileN2NMToadlet browser;
-  @Mock private HighLevelSimpleClient client;
   @Mock private HTTPRequest request;
   @Mock private ToadletContext ctx;
 
@@ -81,7 +79,7 @@ class N2NTMToadletTest {
         .when(runtimePorts.darknetMessaging())
         .thenReturn(darknetMessagingPort);
     org.mockito.Mockito.lenient().when(runtimePorts.lifecycle()).thenReturn(lifecyclePort);
-    toadlet = new N2NTMToadlet(runtimePorts, browser, client);
+    toadlet = new N2NTMToadlet(runtimePorts, browser);
   }
 
   @Test

@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
@@ -64,12 +63,9 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
    *
    * @param transferAccess transfer-access runtime port used for upload permission checks; must not
    *     be {@code null} and should stay alive for as long as requests may be served.
-   * @param highLevelSimpleClient HTTP client abstraction used by the superclass to render and link
-   *     HTML responses; must not be {@code null}.
    */
-  public LocalFileFilterToadlet(
-      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
-    super(transferAccess, highLevelSimpleClient);
+  public LocalFileFilterToadlet(TransferAccessPort transferAccess) {
+    super(transferAccess);
   }
 
   /**

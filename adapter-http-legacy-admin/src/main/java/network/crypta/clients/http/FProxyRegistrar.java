@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.Arrays;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
@@ -53,12 +52,12 @@ final class FProxyRegistrar {
    */
   static void maybeCreateFProxyEtc(
       FProxyRegistrarDependencies dependencies, SimpleToadletServer server) {
-    HighLevelSimpleClient client = dependencies.client();
     RuntimePorts runtimePorts = dependencies.runtimePorts();
     Config config = dependencies.config();
     TransferAccessPort transferAccess = runtimePorts.transferAccess();
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar = dependencies.browseRouteRegistrar();
     LegacyHttpBrowseRouteRegistrarContext browseContext = dependencies.browseContext();
+    InsertCompatibilityModes insertCompatibilityModes = dependencies.insertCompatibilityModes();
 
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU, browseContext, server);
@@ -79,7 +78,7 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.INTRO_ROUTES, browseContext, server);
 
-    UserAlertsToadlet alerts = new UserAlertsToadlet(client);
+    UserAlertsToadlet alerts = new UserAlertsToadlet();
     server.register(
         alerts,
         ToadletRegistration.menuLink(
@@ -93,7 +92,6 @@ final class FProxyRegistrar {
 
     QueueToadlet downloadToadlet =
         new QueueToadlet(
-            client,
             false,
             new QueueToadletRuntimePorts(
                 runtimePorts.queuePage(),
@@ -104,7 +102,8 @@ final class FProxyRegistrar {
                 runtimePorts.queueSupport(),
                 runtimePorts.queueCompletion(),
                 runtimePorts.darknetConnections(),
-                runtimePorts.darknetMessaging()));
+                runtimePorts.darknetMessaging(),
+                insertCompatibilityModes));
     server.register(
         downloadToadlet,
         ToadletRegistration.menuLink(
@@ -116,13 +115,12 @@ final class FProxyRegistrar {
             false,
             downloadToadlet));
     LocalDownloadDirectoryToadlet localDownloadDirectoryToadlet =
-        new LocalDownloadDirectoryToadlet(transferAccess, client, QueueToadlet.PATH_DOWNLOADS);
+        new LocalDownloadDirectoryToadlet(transferAccess, QueueToadlet.PATH_DOWNLOADS);
     server.register(
         localDownloadDirectoryToadlet,
         ToadletRegistration.basic(null, localDownloadDirectoryToadlet.path(), true, false));
     QueueToadlet uploadToadlet =
         new QueueToadlet(
-            client,
             true,
             new QueueToadletRuntimePorts(
                 runtimePorts.queuePage(),
@@ -133,7 +131,8 @@ final class FProxyRegistrar {
                 runtimePorts.queueSupport(),
                 runtimePorts.queueCompletion(),
                 runtimePorts.darknetConnections(),
-                runtimePorts.darknetMessaging()));
+                runtimePorts.darknetMessaging(),
+                insertCompatibilityModes));
     server.register(
         uploadToadlet,
         ToadletRegistration.menuLink(
@@ -147,7 +146,8 @@ final class FProxyRegistrar {
 
     FileInsertWizardToadlet fiw =
         new FileInsertWizardToadlet(
-            client, new FileInsertWizardToadletRuntimePorts(runtimePorts.securityLevels()));
+            new FileInsertWizardToadletRuntimePorts(
+                runtimePorts.securityLevels(), insertCompatibilityModes));
     server.register(
         fiw,
         ToadletRegistration.menuLink(
@@ -160,8 +160,7 @@ final class FProxyRegistrar {
             fiw));
     uploadToadlet.setFIW(fiw);
 
-    LocalFileInsertToadlet localFileInsertToadlet =
-        new LocalFileInsertToadlet(transferAccess, client);
+    LocalFileInsertToadlet localFileInsertToadlet = new LocalFileInsertToadlet(transferAccess);
     server.register(
         localFileInsertToadlet,
         ToadletRegistration.basic(null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false));
@@ -169,13 +168,12 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES, browseContext, server);
 
-    SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, runtimePorts.toadletSymlinks());
+    SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(runtimePorts.toadletSymlinks());
     server.register(symlinkToadlet, ToadletRegistration.basic(null, "/sl/", true, false));
 
     SecurityLevelsToadletRuntimePorts securityLevelsToadletRuntimePorts =
         new SecurityLevelsToadletRuntimePorts(runtimePorts.securityLevels(), runtimePorts.config());
-    SecurityLevelsToadlet seclevels =
-        new SecurityLevelsToadlet(client, securityLevelsToadletRuntimePorts);
+    SecurityLevelsToadlet seclevels = new SecurityLevelsToadlet(securityLevelsToadletRuntimePorts);
     server.register(
         seclevels,
         ToadletRegistration.menuLink(
@@ -197,11 +195,10 @@ final class FProxyRegistrar {
       String prefix = cfg.getPrefix();
       if (prefix.equals("security-levels")) continue;
       LocalDirectoryConfigToadlet localDirectoryConfigToadlet =
-          new LocalDirectoryConfigToadlet(
-              transferAccess, client, LegacyHttpPaths.CONFIG_PATH + prefix);
+          new LocalDirectoryConfigToadlet(transferAccess, LegacyHttpPaths.CONFIG_PATH + prefix);
       ConfigToadlet configtoadlet =
           new ConfigToadlet(
-              localDirectoryConfigToadlet.path(), client, config, cfg, configToadletRuntimePorts);
+              localDirectoryConfigToadlet.path(), config, cfg, configToadletRuntimePorts);
       server.register(
           configtoadlet,
           ToadletRegistration.menuLink(
@@ -220,8 +217,7 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.POST_CONFIG_ROUTES, browseContext, server);
 
-    CoreActionToadlet coreActionToadlet =
-        new CoreActionToadlet(client, runtimePorts.coreUpdateAction());
+    CoreActionToadlet coreActionToadlet = new CoreActionToadlet(runtimePorts.coreUpdateAction());
     server.register(
         coreActionToadlet, ToadletRegistration.basic(null, CORE_UPDATE_PATH, true, false));
 
@@ -236,7 +232,7 @@ final class FProxyRegistrar {
 
     DarknetConnectionsToadlet friendsToadlet =
         new DarknetConnectionsToadlet(
-            client, connectionsToadletRuntimePorts, runtimePorts.darknetConnections());
+            connectionsToadletRuntimePorts, runtimePorts.darknetConnections());
     server.register(
         friendsToadlet,
         ToadletRegistration.menuLink(
@@ -250,7 +246,7 @@ final class FProxyRegistrar {
 
     DarknetAddRefToadlet addRefToadlet =
         new DarknetAddRefToadlet(
-            runtimePorts.connectionsSupport(), runtimePorts.nodeInfo(), client, friendsToadlet);
+            runtimePorts.connectionsSupport(), runtimePorts.nodeInfo(), friendsToadlet);
     server.register(
         addRefToadlet,
         ToadletRegistration.menuLink(
@@ -263,7 +259,7 @@ final class FProxyRegistrar {
             null));
 
     OpennetConnectionsToadlet opennetToadlet =
-        new OpennetConnectionsToadlet(client, connectionsToadletRuntimePorts);
+        new OpennetConnectionsToadlet(connectionsToadletRuntimePorts);
     server.register(
         opennetToadlet,
         ToadletRegistration.menuLink(
@@ -275,7 +271,7 @@ final class FProxyRegistrar {
             true,
             opennetToadlet));
 
-    ChatForumsToadlet chatForumsToadlet = new ChatForumsToadlet(client);
+    ChatForumsToadlet chatForumsToadlet = new ChatForumsToadlet();
     server.register(
         chatForumsToadlet,
         ToadletRegistration.menuLink(
@@ -287,8 +283,8 @@ final class FProxyRegistrar {
             true,
             chatForumsToadlet));
 
-    LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(transferAccess, client);
-    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(runtimePorts, localFileN2NMToadlet, client);
+    LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(transferAccess);
+    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(runtimePorts, localFileN2NMToadlet);
     server.register(n2ntmToadlet, ToadletRegistration.basic(null, "/send_n2ntm/", true, true));
     server.register(
         localFileN2NMToadlet,
@@ -297,7 +293,7 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.POST_MESSAGING_ROUTES, browseContext, server);
 
-    WebShellToadlet webShellToadlet = new WebShellToadlet(client);
+    WebShellToadlet webShellToadlet = new WebShellToadlet();
     server.register(
         webShellToadlet,
         ToadletRegistration.menuLink(
@@ -310,7 +306,7 @@ final class FProxyRegistrar {
             ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot())));
 
     PlatformApiToadlet platformApiToadlet =
-        new PlatformApiToadlet(client, runtimePorts, dependencies.appHost());
+        new PlatformApiToadlet(runtimePorts, dependencies.appHost());
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));
@@ -318,7 +314,7 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.POST_PLATFORM_API_ROUTES, browseContext, server);
 
-    StatisticsToadlet statisticsToadlet = new StatisticsToadlet(client, runtimePorts.statistics());
+    StatisticsToadlet statisticsToadlet = new StatisticsToadlet(runtimePorts.statistics());
     server.register(
         statisticsToadlet,
         ToadletRegistration.menuLink(
@@ -330,7 +326,7 @@ final class FProxyRegistrar {
             true,
             null));
 
-    DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(client, runtimePorts.diagnostic());
+    DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(runtimePorts.diagnostic());
     server.register(
         diagnosticToadlet,
         ToadletRegistration.menuLink(
@@ -342,8 +338,7 @@ final class FProxyRegistrar {
             true,
             null));
 
-    ConnectivityToadlet connectivityToadlet =
-        new ConnectivityToadlet(client, runtimePorts.connectivity());
+    ConnectivityToadlet connectivityToadlet = new ConnectivityToadlet(runtimePorts.connectivity());
     server.register(
         connectivityToadlet,
         ToadletRegistration.menuLink(
@@ -355,7 +350,7 @@ final class FProxyRegistrar {
             true,
             null));
 
-    TranslationToadlet translationToadlet = new TranslationToadlet(client);
+    TranslationToadlet translationToadlet = new TranslationToadlet();
     server.register(
         translationToadlet,
         ToadletRegistration.menuLink(
@@ -369,18 +364,18 @@ final class FProxyRegistrar {
 
     FirstTimeWizardToadlet firstTimeWizardToadlet =
         new FirstTimeWizardToadlet(
-            client, config, new FirstTimeWizardToadletRuntimePorts(runtimePorts.firstTimeWizard()));
+            config, new FirstTimeWizardToadletRuntimePorts(runtimePorts.firstTimeWizard()));
     server.register(
         firstTimeWizardToadlet,
         ToadletRegistration.basic(null, FirstTimeWizardToadlet.TOADLET_URL, true, false));
 
     FirstTimeWizardNewToadlet firstTimeWizardNewToadlet =
-        new FirstTimeWizardNewToadlet(client, runtimePorts.firstTimeWizard());
+        new FirstTimeWizardNewToadlet(runtimePorts.firstTimeWizard());
     server.register(
         firstTimeWizardNewToadlet,
         ToadletRegistration.basic(null, FirstTimeWizardNewToadlet.TOADLET_URL, true, false));
 
-    SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet(client);
+    SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet();
     server.register(simpleHelpToadlet, ToadletRegistration.basic(null, "/help/", true, false));
 
     browseRouteRegistrar.registerRoutes(

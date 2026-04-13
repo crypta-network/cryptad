@@ -19,8 +19,11 @@ import network.crypta.runtime.spi.SecurityLevelsPort;
  *
  * @param securityLevelsPort detached runtime view that supplies the current network threat level
  *     used when the wizard chooses its default key type
+ * @param insertCompatibilityModes detached HTTP-local compatibility-mode names used by the wizard
+ *     insert form
  */
-record FileInsertWizardToadletRuntimePorts(SecurityLevelsPort securityLevelsPort) {
+record FileInsertWizardToadletRuntimePorts(
+    SecurityLevelsPort securityLevelsPort, InsertCompatibilityModes insertCompatibilityModes) {
   /**
    * Creates the runtime bundle for the file-insert wizard.
    *
@@ -32,5 +35,6 @@ record FileInsertWizardToadletRuntimePorts(SecurityLevelsPort securityLevelsPort
    */
   FileInsertWizardToadletRuntimePorts {
     Objects.requireNonNull(securityLevelsPort);
+    Objects.requireNonNull(insertCompatibilityModes);
   }
 }

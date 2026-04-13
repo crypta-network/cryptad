@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -78,17 +77,14 @@ public class N2NTMToadlet extends Toadlet {
    *
    * <p>The instance keeps references to the detached runtime ports and its browser toadlet so it
    * can resolve peers, send messages, open the local file browser, and emit localized responses.
-   * Callers should provide the same {@link HighLevelSimpleClient} used by other toadlets to keep
-   * configuration and permissions consistent. The constructor performs no I/O and does not register
-   * itself; registration is managed elsewhere by the HTTP subsystem.
+   * The constructor performs no I/O and does not register itself; registration is managed elsewhere
+   * by the HTTP subsystem.
    *
    * @param runtimePorts runtime aggregate that exposes detached peer lookup and messaging ports.
    * @param browser browser toadlet used for local file selection.
-   * @param client HTTP client wrapper used by the base {@link Toadlet}.
    */
-  protected N2NTMToadlet(
-      RuntimePorts runtimePorts, LocalFileN2NMToadlet browser, HighLevelSimpleClient client) {
-    super(client);
+  protected N2NTMToadlet(RuntimePorts runtimePorts, LocalFileN2NMToadlet browser) {
+    super();
     RuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
     this.darknetConnections = Objects.requireNonNull(ports.darknetConnections());
     this.darknetMessaging = Objects.requireNonNull(ports.darknetMessaging());

@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.support.HTMLNode;
@@ -32,14 +31,11 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    * state. The instance can be created eagerly during UI wiring because it defers all data
    * retrieval to per-request handlers, avoiding heavy startup costs.
    *
-   * @param client high-level client for UI links and redirects; expected to be configured for
-   *     opennet-safe operations.
    * @param runtimePorts shared detached runtime ports backing page rendering, noderef export, and
    *     legacy support helpers.
    */
-  OpennetConnectionsToadlet(
-      HighLevelSimpleClient client, ConnectionsToadletRuntimePorts runtimePorts) {
-    super(client, runtimePorts);
+  OpennetConnectionsToadlet(ConnectionsToadletRuntimePorts runtimePorts) {
+    super(runtimePorts);
     this.connectionsSupportPort = runtimePorts.connectionsSupportPort();
   }
 

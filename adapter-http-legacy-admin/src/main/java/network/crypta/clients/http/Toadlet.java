@@ -8,18 +8,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
-import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException;
-import network.crypta.client.FetchResult;
-import network.crypta.client.FetchWaiter;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.InsertBlock;
-import network.crypta.client.InsertException;
-import network.crypta.client.InsertUriChecks;
-import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.RequestClient;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -33,8 +22,8 @@ import org.slf4j.LoggerFactory;
  * Abstract base for HTTP "toadlets" served by Crypta's browser interface. Each subclass maps to a
  * controller that renders pages or performs actions over FProxy-style endpoints without relying on
  * a servlet container. The type orchestrates reflection-based dispatch to {@code handleMethod*}
- * handlers, keeps the node-specific client helper available, and exposes helpers for common reply
- * and error patterns so subclasses stay focused on domain logic.
+ * handlers and exposes helpers for common reply and error patterns so subclasses stay focused on
+ * domain logic.
  *
  * <p>Typical usage creates a concrete toadlet, registers it with a {@link ToadletContainer}, and
  * lets the container invoke {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)} or the
@@ -70,21 +59,8 @@ public abstract class Toadlet {
    */
   public static final String HANDLE_METHOD_PREFIX = "handleMethod";
 
-  final HighLevelSimpleClient client;
   ToadletContainer container;
   private String supportedMethodsCache;
-
-  /**
-   * Creates a toadlet bound to the high-level client helper used for fetch and insert operations.
-   * The client is typically shared across multiple toadlets, so connection pooling, throttling, and
-   * authentication remain consistent. Implementations should store configuration on the client
-   * rather than subclass fields so that instances stay lightweight and easy to construct.
-   *
-   * @param client Non-null helper that performs network requests on behalf of this toadlet.
-   */
-  protected Toadlet(HighLevelSimpleClient client) {
-    this.client = client;
-  }
 
   private static String l10nWithReason(String key, String value) {
     return NodeL10n.getBase()
@@ -297,46 +273,6 @@ public abstract class Toadlet {
       supportedMethodsCache = sb.toString();
     }
     return supportedMethodsCache;
-  }
-
-  /**
-   * Client calls from the above messages to run a Freenet request. This method may block (or
-   * suspend).
-   *
-   * @param maxSize Maximum length of returned content.
-   * @param clientContext Client context object. This should be the same for any group of related
-   *     requests, but different for any two unrelated requests. Request selection round-robin's
-   *     over these, within any priority and retry count class, and above the level of individual
-   *     block fetches.
-   */
-  FetchResult fetch(FreenetURI uri, long maxSize, RequestClient clientContext, FetchContext fctx)
-      throws FetchException {
-    // Honor the provided maxSize for this request.
-    if (maxSize > 0) {
-      fctx.setMaxOutputLength(maxSize);
-      fctx.setMaxTempLength(maxSize);
-    }
-    FetchWaiter fw = new FetchWaiter(clientContext);
-    getClientImpl().fetch(uri, fw, fctx);
-    return fw.waitForCompletion();
-  }
-
-  /**
-   * Returns a default FetchContext
-   *
-   * @param maxSize The maximum allowable size of the fetch's result
-   * @return A default FetchContext
-   */
-  FetchContext getFetchContext(long maxSize, String schemeHostAndPort) {
-    // We want to retrieve a FetchContext we may override
-    return getClientImpl().getFetchContext(maxSize, schemeHostAndPort);
-  }
-
-  FreenetURI insert(InsertBlock insert, String filenameHint) throws InsertException {
-    // For now, just run it blocking.
-    FreenetURI desiredURI = Objects.requireNonNull(insert.desiredURI, "InsertBlock.desiredURI");
-    InsertUriChecks.checkInsertURI(desiredURI);
-    return getClientImpl().insert(insert, false, filenameHint);
   }
 
   /**
@@ -581,7 +517,7 @@ public abstract class Toadlet {
    * @param ctx The context object for this request.
    * @param desc The title of the error page
    * @param message The message to be sent to the user. The stack trace will follow.
-   * @param t The Throwable which caused the error.
+   * @param t The Throwable that caused the error.
    * @throws IOException If there is an error writing the reply.
    * @throws ToadletContextClosedException If the context has already been closed.
    */
@@ -650,16 +586,5 @@ public abstract class Toadlet {
     pw.flush();
     msg = msg + sw + "</pre></body></html>";
     writeHTMLReply(ctx, 500, "Internal Error", msg);
-  }
-
-  /**
-   * Exposes the underlying high-level client used for network operations. Callers may tweak shared
-   * settings or initiate fetch/insert requests, but should respect the container's threading model
-   * and avoid blocking calls on UI threads.
-   *
-   * @return The reusable {@link HighLevelSimpleClient} instance backing this toadlet.
-   */
-  protected HighLevelSimpleClient getClientImpl() {
-    return client;
   }
 }

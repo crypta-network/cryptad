@@ -8,7 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.ToadletSymlinkEntry;
 import network.crypta.runtime.spi.ToadletSymlinkPort;
@@ -51,11 +50,10 @@ public class SymlinkerToadlet extends Toadlet {
    * port and populates the in-memory map. Construction is not thread-safe, but further alias access
    * is synchronized on the internal map.
    *
-   * @param client high-level HTTP client used to write responses and redirects for requests.
    * @param symlinkPort runtime port supplying a configuration-backed alias load and persistence.
    */
-  public SymlinkerToadlet(HighLevelSimpleClient client, ToadletSymlinkPort symlinkPort) {
-    super(client);
+  public SymlinkerToadlet(ToadletSymlinkPort symlinkPort) {
+    super();
     this.symlinkPort = Objects.requireNonNull(symlinkPort, "symlinkPort");
     for (ToadletSymlinkEntry entry : symlinkPort.loadConfiguredSymlinks()) {
       addLink(entry.alias(), entry.target(), false);

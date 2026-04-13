@@ -29,7 +29,7 @@ import network.crypta.support.api.HTTPRequest;
  * @see Toadlet
  * @see ToadletContext
  */
-public class DecodeToadlet extends Toadlet {
+public class DecodeToadlet extends ContentToadlet {
   DecodeToadlet(HighLevelSimpleClient client) {
     super(client);
   }

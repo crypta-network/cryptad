@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ReplyHeaders;
@@ -102,13 +101,11 @@ public class CoreActionToadlet extends Toadlet {
    * installer path validation while the toadlet keeps runtime environment and response rendering
    * behavior in the HTTP layer.
    *
-   * @param client high-level client used by the toadlet base class for HTTP operations
    * @param coreUpdateActionPort runtime port that exposes the remaining daemon-backed updater
    *     actions needed by this toadlet
    */
-  public CoreActionToadlet(
-      HighLevelSimpleClient client, CoreUpdateActionPort coreUpdateActionPort) {
-    super(client);
+  public CoreActionToadlet(CoreUpdateActionPort coreUpdateActionPort) {
+    super();
     this.coreUpdateActionPort =
         Objects.requireNonNull(coreUpdateActionPort, "coreUpdateActionPort");
   }

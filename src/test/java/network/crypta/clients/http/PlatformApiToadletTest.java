@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
@@ -30,7 +29,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PlatformApiToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private PlatformApiRouter router;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -39,7 +37,7 @@ class PlatformApiToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new PlatformApiToadlet(client, router);
+    toadlet = new PlatformApiToadlet(router);
   }
 
   @Test

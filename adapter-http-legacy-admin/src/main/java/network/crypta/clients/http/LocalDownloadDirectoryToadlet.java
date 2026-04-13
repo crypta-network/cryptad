@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -32,9 +31,8 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
   private static final String BULK_DOWNLOADS = "bulkDownloads";
   private static final String FILTER_DATA = "filterData";
 
-  LocalDownloadDirectoryToadlet(
-      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient, String post) {
-    super(transferAccess, highLevelSimpleClient, post);
+  LocalDownloadDirectoryToadlet(TransferAccessPort transferAccess, String post) {
+    super(transferAccess, post);
   }
 
   /**

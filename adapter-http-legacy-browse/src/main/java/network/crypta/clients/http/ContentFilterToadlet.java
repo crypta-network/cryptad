@@ -28,8 +28,6 @@ import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static network.crypta.clients.http.LegacyContentFilterSupport.l10n;
-
 /**
  * Exposes a small HTTP UI that lets advanced users run the content filter against uploaded or local
  * files and inspect the sanitized output.
@@ -56,7 +54,7 @@ import static network.crypta.clients.http.LegacyContentFilterSupport.l10n;
  * @see LocalFileFilterToadlet
  * @see ContentFilter
  */
-public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback {
+public class ContentFilterToadlet extends ContentToadlet implements LinkEnabledCallback {
   private static final Logger LOG = LoggerFactory.getLogger(ContentFilterToadlet.class);
 
   /**

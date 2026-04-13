@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.SecurityLevelsSnapshot;
@@ -37,7 +36,6 @@ class SecurityLevelsToadletTest {
     ConfigPort configPort = mock(ConfigPort.class);
     SecurityLevelsToadlet toadlet =
         new SecurityLevelsToadlet(
-            mock(HighLevelSimpleClient.class),
             new SecurityLevelsToadletRuntimePorts(securityLevelsPort, configPort));
 
     String result = toadlet.path();
@@ -51,7 +49,6 @@ class SecurityLevelsToadletTest {
     ConfigPort configPort = mock(ConfigPort.class);
     SecurityLevelsToadlet toadlet =
         new SecurityLevelsToadlet(
-            mock(HighLevelSimpleClient.class),
             new SecurityLevelsToadletRuntimePorts(securityLevelsPort, configPort));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext ctx = mock(ToadletContext.class);

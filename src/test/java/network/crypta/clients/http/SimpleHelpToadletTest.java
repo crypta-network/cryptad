@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
@@ -31,8 +30,7 @@ class SimpleHelpToadletTest {
 
   @Test
   void handleMethodGET_whenFullAccess_addsSummaryAndWritesHtml() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client));
+    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet());
 
     ToadletContext ctx = mock(ToadletContext.class);
     PageMaker pageMaker = mock(PageMaker.class);
@@ -78,8 +76,7 @@ class SimpleHelpToadletTest {
 
   @Test
   void handleMethodGET_whenRestricted_doesNotAddSummary() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet(client));
+    SimpleHelpToadlet toadlet = spy(new SimpleHelpToadlet());
 
     ToadletContext ctx = mock(ToadletContext.class);
     PageMaker pageMaker = mock(PageMaker.class);
@@ -109,13 +106,13 @@ class SimpleHelpToadletTest {
   void constructor_withoutCoreDependency_acceptsClientOnly() {
     assertEquals(1, SimpleHelpToadlet.class.getDeclaredConstructors().length);
     assertArrayEquals(
-        new Class<?>[] {HighLevelSimpleClient.class},
+        new Class<?>[] {},
         SimpleHelpToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
   }
 
   @Test
   void path_whenCalled_returnsHelpPath() {
-    SimpleHelpToadlet toadlet = new SimpleHelpToadlet(mock(HighLevelSimpleClient.class));
+    SimpleHelpToadlet toadlet = new SimpleHelpToadlet();
     assertEquals("/help/", toadlet.path());
   }
 }

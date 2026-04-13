@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.platform.webshell.WebShellPageRenderer;
 import network.crypta.platform.webshell.WebShellResources;
@@ -46,13 +45,9 @@ public final class WebShellToadlet extends Toadlet {
   /** Adapter-owned bootstrap payload injected into the rendered shell document. */
   private final WebShellBootstrap bootstrap;
 
-  /**
-   * Creates a Web Shell bridge backed by the shared interactive HTTP client.
-   *
-   * @param client high-level client retained by the toadlet base type
-   */
-  public WebShellToadlet(HighLevelSimpleClient client) {
-    this(client, createNodeManagementBootstrap(defaultLegacyLinks()));
+  /** Creates a Web Shell bridge backed by the default node-management bootstrap payload. */
+  public WebShellToadlet() {
+    this(createNodeManagementBootstrap(defaultLegacyLinks()));
   }
 
   /**
@@ -61,11 +56,10 @@ public final class WebShellToadlet extends Toadlet {
    * <p>This package-local constructor exists for focused adapter tests that need to verify
    * bootstrap injection without relying on the default legacy-link set.
    *
-   * @param client high-level client retained by the toadlet base type
    * @param bootstrap shell bootstrap payload to embed in the rendered page
    */
-  WebShellToadlet(HighLevelSimpleClient client, WebShellBootstrap bootstrap) {
-    super(client);
+  WebShellToadlet(WebShellBootstrap bootstrap) {
+    super();
     this.bootstrap = Objects.requireNonNull(bootstrap, "bootstrap");
   }
 

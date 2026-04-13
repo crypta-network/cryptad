@@ -127,7 +127,7 @@ class ChatForumsToadletTest {
     private String lastReplyBody;
 
     TestableChatForumsToadlet(HighLevelSimpleClient client) {
-      super(client);
+      super();
     }
 
     @Override

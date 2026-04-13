@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.ConnectivityGapSnapshot;
@@ -41,7 +40,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ConnectivityToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ConnectivityPort connectivity;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -50,7 +48,7 @@ class ConnectivityToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new ConnectivityToadlet(client, connectivity);
+    toadlet = new ConnectivityToadlet(connectivity);
   }
 
   @Test

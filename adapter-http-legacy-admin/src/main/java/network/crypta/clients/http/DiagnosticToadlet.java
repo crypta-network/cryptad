@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
@@ -29,13 +28,12 @@ public class DiagnosticToadlet extends Toadlet {
   private final DiagnosticPort diagnostic;
 
   /**
-   * Builds a diagnostic toadlet bound to the provided client plumbing and diagnostic port.
+   * Builds a diagnostic toadlet bound to the provided diagnostic port.
    *
-   * @param client HTTP client facade supplied to the superclass for response handling
    * @param diagnostic read-only runtime port that supplies detached diagnostic report snapshots
    */
-  protected DiagnosticToadlet(HighLevelSimpleClient client, DiagnosticPort diagnostic) {
-    super(client);
+  protected DiagnosticToadlet(DiagnosticPort diagnostic) {
+    super();
     this.diagnostic = diagnostic;
   }
 

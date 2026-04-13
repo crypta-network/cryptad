@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -53,7 +52,6 @@ class OpennetConnectionsToadletTest {
   private static final String OWN_NODE_IDENTITY = "peer-1";
   private static final String OWN_NODE_LAST_GOOD_VERSION = "1";
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
   @Mock private ConnectionsSupportPort connectionsSupportPort;
   @Mock private LifecyclePort lifecyclePort;
@@ -75,7 +73,7 @@ class OpennetConnectionsToadletTest {
             configPort,
             connectionsSupportPort,
             lifecyclePort);
-    toadlet = new OpennetConnectionsToadlet(client, runtimePorts);
+    toadlet = new OpennetConnectionsToadlet(runtimePorts);
   }
 
   @Test
@@ -89,7 +87,7 @@ class OpennetConnectionsToadletTest {
             connectionsSupportPort,
             lifecyclePort);
 
-    assertDoesNotThrow(() -> new OpennetConnectionsToadlet(client, runtimePorts));
+    assertDoesNotThrow(() -> new OpennetConnectionsToadlet(runtimePorts));
   }
 
   @Test

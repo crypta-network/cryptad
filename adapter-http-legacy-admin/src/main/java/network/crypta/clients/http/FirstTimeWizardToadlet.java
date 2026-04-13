@@ -7,7 +7,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumMap;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.wizardsteps.Bandwidth;
 import network.crypta.clients.http.wizardsteps.BandwidthMonthly;
 import network.crypta.clients.http.wizardsteps.BandwidthRate;
@@ -150,12 +149,9 @@ public class FirstTimeWizardToadlet extends Toadlet {
     HIGH
   }
 
-  FirstTimeWizardToadlet(
-      HighLevelSimpleClient client,
-      Config config,
-      FirstTimeWizardToadletRuntimePorts runtimePorts) {
+  FirstTimeWizardToadlet(Config config, FirstTimeWizardToadletRuntimePorts runtimePorts) {
     // Generic Toadlet-related initialization.
-    super(client);
+    super();
     FirstTimeWizardToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts, "runtimePorts");
     wizardPort = ports.firstTimeWizardPort();
 

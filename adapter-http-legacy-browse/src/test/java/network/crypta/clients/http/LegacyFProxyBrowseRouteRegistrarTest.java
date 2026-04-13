@@ -54,8 +54,8 @@ class LegacyFProxyBrowseRouteRegistrarTest {
 
   @BeforeEach
   void setUp() {
-    context = new LegacyHttpBrowseRouteRegistrarContext(client, runtimePorts, browseRoot);
-    registrar = new LegacyFProxyBrowseRouteRegistrar();
+    context = new LegacyHttpBrowseRouteRegistrarContext(runtimePorts, browseRoot);
+    registrar = new LegacyFProxyBrowseRouteRegistrar(client);
   }
 
   @Test
@@ -76,6 +76,8 @@ class LegacyFProxyBrowseRouteRegistrarTest {
     assertSame(browseRoot, registrations.get(0).toadlet());
     assertInstanceOf(DecodeToadlet.class, registrations.get(1).toadlet());
     assertInstanceOf(InsertFreesiteToadlet.class, registrations.get(2).toadlet());
+    assertContentToadlet(registrations.get(1).toadlet());
+    assertContentToadlet(registrations.get(2).toadlet());
     assertEquals(List.of("/", "/decode/", "/insertsite/"), registrationPrefixes(registrations));
   }
 
@@ -89,6 +91,7 @@ class LegacyFProxyBrowseRouteRegistrarTest {
     List<RegisteredToadlet> registrations = capturedRegistrations(2);
     assertInstanceOf(ContentFilterToadlet.class, registrations.get(0).toadlet());
     assertInstanceOf(LocalFileFilterToadlet.class, registrations.get(1).toadlet());
+    assertContentToadlet(registrations.get(0).toadlet());
     assertEquals(
         List.of(ContentFilterToadlet.CONTENT_FILTER_PATH, LocalFileFilterToadlet.BROWSE_PATH),
         registrationPrefixes(registrations));
@@ -109,6 +112,8 @@ class LegacyFProxyBrowseRouteRegistrarTest {
     List<RegisteredToadlet> registrations = capturedRegistrations(2);
     assertInstanceOf(WelcomeToadlet.class, registrations.get(0).toadlet());
     assertInstanceOf(ExternalLinkToadlet.class, registrations.get(1).toadlet());
+    assertContentToadlet(registrations.get(0).toadlet());
+    assertContentToadlet(registrations.get(1).toadlet());
     assertEquals(
         List.of(LegacyHttpPaths.WELCOME_PATH, ExternalLinkToadlet.EXTERNAL_LINK_PATH),
         registrationPrefixes(registrations));
@@ -131,6 +136,7 @@ class LegacyFProxyBrowseRouteRegistrarTest {
 
     List<RegisteredToadlet> registrations = capturedRegistrations(1);
     assertInstanceOf(BookmarkEditorToadlet.class, registrations.getFirst().toadlet());
+    assertContentToadlet(registrations.getFirst().toadlet());
     assertEquals(List.of("/bookmarkEditor/"), registrationPrefixes(registrations));
 
     BookmarkEditorToadletRuntimePorts bookmarkRuntimePorts =
@@ -147,6 +153,7 @@ class LegacyFProxyBrowseRouteRegistrarTest {
 
     List<RegisteredToadlet> registrations = capturedRegistrations(1);
     assertInstanceOf(BrowserTestToadlet.class, registrations.getFirst().toadlet());
+    assertContentToadlet(registrations.getFirst().toadlet());
     assertEquals(List.of("/test/"), registrationPrefixes(registrations));
   }
 
@@ -167,6 +174,9 @@ class LegacyFProxyBrowseRouteRegistrarTest {
             LogWritebackToadlet.class,
             DismissAlertToadlet.class),
         registrations.stream().map(RegisteredToadlet::toadlet).map(Object::getClass).toList());
+    assertContentToadlet(registrations.get(6).toadlet());
+    assertContentToadlet(registrations.get(7).toadlet());
+    assertContentToadlet(registrations.get(8).toadlet());
     assertEquals(
         registrations.stream().map(RegisteredToadlet::toadlet).map(Toadlet::path).toList(),
         registrationPrefixes(registrations));
@@ -191,6 +201,13 @@ class LegacyFProxyBrowseRouteRegistrarTest {
         .map(RegisteredToadlet::registration)
         .map(ToadletRegistration::urlPrefix)
         .toList();
+  }
+
+  private static void assertContentToadlet(Toadlet toadlet) {
+    assertInstanceOf(
+        ContentToadlet.class,
+        toadlet,
+        toadlet.getClass().getName() + " must extend ContentToadlet");
   }
 
   private static Object readField(Object target, String fieldName) {

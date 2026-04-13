@@ -5,7 +5,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.l10n.TranslationPaths;
@@ -36,10 +35,9 @@ import network.crypta.support.io.BucketTools;
  *   <li>After changes, the user can download the override file for persistence.
  * </ul>
  *
- * The toadlet relies on {@link HighLevelSimpleClient} for application glue, but it keeps
- * request-level parsing and HTML generation self-contained to minimize coupling. Callers should
- * treat it as a long-lived endpoint registered once during node initialization and reused for
- * multiple sessions.
+ * The toadlet keeps request-level parsing and HTML generation self-contained to minimize coupling.
+ * Callers should treat it as a long-lived endpoint registered once during node initialization and
+ * reused for multiple sessions.
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  * @author Artefact2
@@ -82,8 +80,8 @@ public class TranslationToadlet extends Toadlet {
   private BaseL10n base;
   private String translatingFor;
 
-  TranslationToadlet(HighLevelSimpleClient client) {
-    super(client);
+  TranslationToadlet() {
+    super();
     this.base = NodeL10n.getBase();
     this.translatingFor = "Node";
   }

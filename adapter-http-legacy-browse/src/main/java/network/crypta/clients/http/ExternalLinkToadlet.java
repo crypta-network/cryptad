@@ -34,7 +34,7 @@ import network.crypta.support.http.ExternalLinkSupport;
  * relies on upstream components for network access and policy. Because it operates on user-supplied
  * URLs, callers should ensure the surrounding flow already escaped or encoded values appropriately.
  */
-public class ExternalLinkToadlet extends Toadlet {
+public class ExternalLinkToadlet extends ContentToadlet {
 
   private static final int MAX_URL_LENGTH = 1024 * 1024;
 

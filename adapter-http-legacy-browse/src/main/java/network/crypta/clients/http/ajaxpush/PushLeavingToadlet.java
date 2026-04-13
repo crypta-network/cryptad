@@ -3,9 +3,9 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory;
  * or other per-page resources after the client is no longer present.
  *
  * <p><strong>Thread-safety:</strong> Instances are used by the toadlet server and may be invoked
- * concurrently for different connections. This class is effectively stateless; all mutable state is
- * owned by the container and its push-data manager.
+ * concurrently for different connections. This class is effectively stateless; all mutable states
+ * are owned by the container and its push-data manager.
  *
  * <p>Responsibilities include:
  *
@@ -36,15 +36,15 @@ import org.slf4j.LoggerFactory;
  *
  * @see UpdaterConstants#LEAVING_PATH
  */
-public class PushLeavingToadlet extends Toadlet {
+public class PushLeavingToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushLeavingToadlet.class);
 
   /**
    * Creates a toadlet instance that can be registered on a {@link SimpleToadletServer}.
    *
-   * <p>The provided client is forwarded to the {@link Toadlet} base type and is used for common
-   * toadlet functionality. This implementation does not store additional mutable state; request
-   * handling delegates to the container's push-data manager obtained from the {@link
+   * <p>The provided client is forwarded to the {@link ContentToadlet} base type and is used for
+   * common toadlet functionality. This implementation does not store additional mutable state;
+   * request handling delegates to the container's push-data manager obtained from the {@link
    * ToadletContext} provided at request time.
    *
    * @param client the node client backing this toadlet, passed to the superclass for shared

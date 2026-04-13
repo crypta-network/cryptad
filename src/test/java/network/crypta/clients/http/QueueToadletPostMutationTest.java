@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientContextDefaults;
@@ -91,7 +90,6 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "MockNotUsedInProduction"})
 class QueueToadletPostMutationTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
   @Mock private QueuePagePort queuePagePort;
   @Mock private TransferAccessPort transferAccessPort;
@@ -345,7 +343,6 @@ class QueueToadletPostMutationTest {
 
     QueueToadlet toadlet =
         new QueueToadlet(
-            client,
             uploads,
             new QueueToadletRuntimePorts(
                 queuePagePort,
@@ -356,7 +353,11 @@ class QueueToadletPostMutationTest {
                 queueSupportPort,
                 queueCompletionPort,
                 darknetConnectionsPort,
-                darknetMessagingPort));
+                darknetMessagingPort,
+                new InsertCompatibilityModes(
+                    java.util.List.of(
+                        InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern().name()),
+                    InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern().name())));
     toadlet.container = container;
     return toadlet;
   }

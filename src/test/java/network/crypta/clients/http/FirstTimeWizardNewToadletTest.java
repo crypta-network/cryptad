@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
@@ -55,7 +54,6 @@ class FirstTimeWizardNewToadletTest {
           "",
           -1L);
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private FirstTimeWizardPort wizardPort;
   @Mock private ToadletContext ctx;
   @Mock private PageMaker pageMaker;
@@ -77,15 +75,14 @@ class FirstTimeWizardNewToadletTest {
 
   @Test
   void path_returnsWizardUrl() {
-    FirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    FirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
 
     assertEquals(FirstTimeWizardNewToadlet.TOADLET_URL, toadlet.path());
   }
 
   @Test
   void handleMethodGET_whenAccessDenied_returnsEarly() throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(false);
 
     toadlet.handleMethodGET(
@@ -100,8 +97,7 @@ class FirstTimeWizardNewToadletTest {
   @Test
   void handleMethodGET_whenSnapshotHasSuggestedValues_populatesModelFromSnapshot()
       throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     when(wizardPort.snapshot())
         .thenReturn(
@@ -140,8 +136,7 @@ class FirstTimeWizardNewToadletTest {
 
   @Test
   void handleMethodPOST_whenValidInput_appliesDetachedSubmissionAndRedirects() throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
     Map<String, String> parts = new HashMap<>();
@@ -178,8 +173,7 @@ class FirstTimeWizardNewToadletTest {
 
   @Test
   void handleMethodPOST_whenDownloadBelowMinimum_rendersErrorsInsteadOfRedirect() throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
     Map<String, String> parts = new HashMap<>();
@@ -208,8 +202,7 @@ class FirstTimeWizardNewToadletTest {
 
   @Test
   void handleMethodPOST_whenDownloadExceedsIntBackedConfigRange_rendersErrors() throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
     Map<String, String> parts = new HashMap<>();
@@ -238,8 +231,7 @@ class FirstTimeWizardNewToadletTest {
 
   @Test
   void handleMethodPOST_whenStorageExceedsExactRoundedCap_rendersErrors() throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     when(wizardPort.snapshot())
         .thenReturn(
@@ -284,8 +276,7 @@ class FirstTimeWizardNewToadletTest {
   @Test
   void handleMethodPOST_whenMonthlyLimitUsesUnsupportedExponentFormat_rendersErrors()
       throws Exception {
-    TestableFirstTimeWizardNewToadlet toadlet =
-        new TestableFirstTimeWizardNewToadlet(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet toadlet = new TestableFirstTimeWizardNewToadlet(wizardPort);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
     Map<String, String> parts = new HashMap<>();
@@ -350,9 +341,8 @@ class FirstTimeWizardNewToadletTest {
     Map<String, Object> lastModel;
     boolean htmlWritten;
 
-    TestableFirstTimeWizardNewToadlet(
-        HighLevelSimpleClient client, FirstTimeWizardPort wizardPort) {
-      super(client, wizardPort);
+    TestableFirstTimeWizardNewToadlet(FirstTimeWizardPort wizardPort) {
+      super(wizardPort);
     }
 
     @Override

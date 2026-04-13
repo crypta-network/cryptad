@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
@@ -56,23 +55,20 @@ public final class PlatformApiToadlet extends Toadlet {
   /**
    * Creates a platform API toadlet backed by the supplied runtime ports.
    *
-   * @param client high-level client helper retained by the toadlet base type
    * @param runtimePorts detached runtime ports exposed to the platform API leaf
    */
-  public PlatformApiToadlet(HighLevelSimpleClient client, RuntimePorts runtimePorts) {
-    this(client, new PlatformApiRouter(runtimePorts));
+  public PlatformApiToadlet(RuntimePorts runtimePorts) {
+    this(new PlatformApiRouter(runtimePorts));
   }
 
   /**
    * Creates a platform API toadlet backed by runtime ports and AppHost.
    *
-   * @param client high-level client helper retained by the toadlet base type
    * @param runtimePorts detached runtime ports exposed to the platform API leaf
    * @param appHost detached AppHost exposed through the app-management control surface
    */
-  public PlatformApiToadlet(
-      HighLevelSimpleClient client, RuntimePorts runtimePorts, AppHost appHost) {
-    this(client, new PlatformApiRouter(runtimePorts, appHost));
+  public PlatformApiToadlet(RuntimePorts runtimePorts, AppHost appHost) {
+    this(new PlatformApiRouter(runtimePorts, appHost));
   }
 
   /**
@@ -80,14 +76,12 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>This constructor exists for tests and narrow composition sites that need to inject a router
    * with controlled behavior. Production wiring normally uses {@link
-   * #PlatformApiToadlet(HighLevelSimpleClient, RuntimePorts, AppHost)} so the bridge owns router
-   * creation.
+   * #PlatformApiToadlet(RuntimePorts, AppHost)} so the bridge owns router creation.
    *
-   * @param client high-level client helper retained by the toadlet base type
    * @param router transport-neutral router that handles request validation and response generation
    */
-  PlatformApiToadlet(HighLevelSimpleClient client, PlatformApiRouter router) {
-    super(client);
+  PlatformApiToadlet(PlatformApiRouter router) {
+    super();
     this.router = Objects.requireNonNull(router, "router");
   }
 

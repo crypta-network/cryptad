@@ -47,7 +47,7 @@ public class StartupToadlet extends Toadlet {
    *     is not needed during startup.
    */
   public StartupToadlet(StaticToadlet staticToadlet) {
-    super(null);
+    super();
     this.staticToadlet = staticToadlet;
   }
 

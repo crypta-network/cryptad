@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.http.ConnectivityPagePaths;
 import network.crypta.runtime.spi.ConnectivityGapSnapshot;
@@ -48,13 +47,12 @@ public class ConnectivityToadlet extends Toadlet {
   private final ConnectivityPort connectivity;
 
   /**
-   * Creates a new connectivity toadlet bound to the given client and connectivity port.
+   * Creates a new connectivity toadlet bound to the given connectivity port.
    *
-   * @param client high-level HTTP client used by the superclass for rendering utilities
    * @param connectivity read-only runtime connectivity port backing this page
    */
-  protected ConnectivityToadlet(HighLevelSimpleClient client, ConnectivityPort connectivity) {
-    super(client);
+  protected ConnectivityToadlet(ConnectivityPort connectivity) {
+    super();
     this.connectivity = connectivity;
   }
 

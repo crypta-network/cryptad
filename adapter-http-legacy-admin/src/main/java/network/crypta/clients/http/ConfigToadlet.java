@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigCallback;
 import network.crypta.config.DirectorySelectionCallback;
@@ -160,9 +159,9 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   private enum OptionType {
     /** A writable option with an enumerable list of possible values. */
     DROP_DOWN("dropdown"),
-    /** A writable option which can be either true or false. */
+    /** A writable option that can be either true or false. */
     BOOLEAN("boolean"),
-    /** A writable option which is a path to a directory. */
+    /** A writable option that is a path to a directory. */
     DIRECTORY("directory"),
     /** A writable option set with a string of text. */
     TEXT("text"),
@@ -188,7 +187,6 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * @param directoryBrowserPath path segment for directory browsing, with or without slashes; never
    *     {@code null} after normalization.
-   * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
    * @param conf configuration root used to traverse and update legacy option metadata.
    * @param subConfig logical configuration group that provides the options to render and update.
    * @param runtimePorts detached runtime services used for persistence, wrapper-state checks, and
@@ -196,11 +194,10 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    */
   ConfigToadlet(
       String directoryBrowserPath,
-      HighLevelSimpleClient client,
       Config conf,
       SubConfig subConfig,
       ConfigToadletRuntimePorts runtimePorts) {
-    this(client, conf, subConfig, runtimePorts);
+    this(conf, subConfig, runtimePorts);
     this.directoryBrowserPath = normalizeDirectoryBrowserPath(directoryBrowserPath);
   }
 
@@ -211,18 +208,13 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    * directory browsing endpoint. The path defaults to {@code /unset-browser-path/} until the caller
    * supplies a real location via the alternate constructor.
    *
-   * @param client HTTP client used for outbound helper requests initiated by the parent toadlet.
    * @param conf configuration root used to traverse and update legacy option metadata.
    * @param subConfig logical configuration group that provides the options to render and update.
    * @param runtimePorts detached runtime services used for persistence, wrapper-state checks, and
    *     directory-browser defaults.
    */
-  ConfigToadlet(
-      HighLevelSimpleClient client,
-      Config conf,
-      SubConfig subConfig,
-      ConfigToadletRuntimePorts runtimePorts) {
-    super(client);
+  ConfigToadlet(Config conf, SubConfig subConfig, ConfigToadletRuntimePorts runtimePorts) {
+    super();
     config = conf;
     this.runtimePorts = runtimePorts;
     this.subConfig = subConfig;

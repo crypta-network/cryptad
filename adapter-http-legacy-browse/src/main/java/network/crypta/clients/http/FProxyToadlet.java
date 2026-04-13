@@ -94,7 +94,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * @see QueueToadlet
  * @see FProxyFetchTracker
  */
-public final class FProxyToadlet extends Toadlet implements RequestClient {
+public final class FProxyToadlet extends ContentToadlet implements RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(FProxyToadlet.class);
 
   private static final String L10N_PREFIX = "FProxyToadlet.";

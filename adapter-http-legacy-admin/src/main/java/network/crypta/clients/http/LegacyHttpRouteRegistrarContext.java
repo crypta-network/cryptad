@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -17,12 +16,10 @@ import network.crypta.runtime.spi.RuntimePorts;
  * on route registration rather than broader daemon lifecycle control.
  *
  * <p>The context is intentionally narrow and immutable. It carries only the collaborators needed to
- * publish legacy HTTP routes today: the interactive client, detached runtime ports, AppHost bridge,
- * node configuration, and the already-created browse root. Registrars should treat the record as a
- * startup snapshot and avoid mutating or retaining it beyond registration.
+ * publish legacy HTTP routes today: detached runtime ports, AppHost bridge, node configuration, and
+ * the already-created browse root. Registrars should treat the record as a startup snapshot and
+ * avoid mutating or retaining it beyond registration.
  *
- * @param client shared interactive client that registered toadlets use for request-adjacent
- *     operations
  * @param runtimePorts detached runtime-spi ports surfaced to HTTP routes and helper pages
  * @param appHost shared AppHost bridge that exposes the current Platform API runtime surface
  * @param config node configuration view used when listing or filtering sub-config toadlets
@@ -30,14 +27,16 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     browsing root
  * @param browseRouteRegistrar browse-neutral registrar seam used for concrete browse-owned route
  *     publication
+ * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+ *     forms
  */
 public record LegacyHttpRouteRegistrarContext(
-    HighLevelSimpleClient client,
     RuntimePorts runtimePorts,
     AppHost appHost,
     Config config,
     Toadlet browseRoot,
-    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
+    InsertCompatibilityModes insertCompatibilityModes) {
 
   /**
    * Creates a validated route-registration context.
@@ -47,21 +46,22 @@ public record LegacyHttpRouteRegistrarContext(
    * toadlets. The stored references are the same objects prepared by the shell bootstrap path; the
    * constructor does not wrap, copy, or otherwise transform them.
    *
-   * @param client shared interactive client that registered toadlets may call into during startup
    * @param runtimePorts detached runtime-spi ports exposed to the HTTP registrar
    * @param appHost shared AppHost bridge made visible through HTTP-owned routes
    * @param config node configuration view that registration may inspect for sub-config pages
    * @param browseRoot prebuilt root browse toadlet registered at the browsing root
    * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
    *     publication
+   * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+   *     forms
    * @throws NullPointerException if any required collaborator is absent when the context is built
    */
   public LegacyHttpRouteRegistrarContext {
-    Objects.requireNonNull(client);
     Objects.requireNonNull(runtimePorts);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
     Objects.requireNonNull(browseRoot);
     Objects.requireNonNull(browseRouteRegistrar);
+    Objects.requireNonNull(insertCompatibilityModes);
   }
 }

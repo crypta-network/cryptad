@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,8 +42,16 @@ class LegacyFProxyAjaxPushRouteRegistrarTest {
             PushTesterToadlet.class,
             PushLeavingToadlet.class),
         toadlets.stream().map(Object::getClass).toList());
+    toadlets.forEach(LegacyFProxyAjaxPushRouteRegistrarTest::assertContentToadlet);
     assertEquals(
         toadlets.stream().map(Toadlet::path).toList(),
         registrationCaptor.getAllValues().stream().map(ToadletRegistration::urlPrefix).toList());
+  }
+
+  private static void assertContentToadlet(Toadlet toadlet) {
+    assertInstanceOf(
+        ContentToadlet.class,
+        toadlet,
+        toadlet.getClass().getName() + " must extend ContentToadlet");
   }
 }

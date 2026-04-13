@@ -5,7 +5,6 @@ import java.net.URI;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import javax.naming.SizeLimitExceededException;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.AbstractNodeToNodeFileOfferUserAlert;
 import network.crypta.runtime.alerts.NodeToNodeMessageUserAlert;
@@ -20,7 +19,7 @@ import network.crypta.support.api.HTTPRequest;
  * <p>This toadlet renders a dedicated alerts page for browser clients. The page shows the current
  * queue of {@link UserAlert} instances produced by the running node, optionally providing bulk
  * controls to dismiss every dismissible alert or to permanently delete node-to-node messages after
- * explicit confirmation. When no alerts exist it renders a localized infobox explaining that the
+ * explicit confirmation. When no alerts exist, it renders a localized infobox explaining that the
  * inbox is empty. The class is stateless apart from its injected client, so each invocation uses
  * the request-scoped {@link ToadletContext} and the alert manager it exposes.
  *
@@ -32,7 +31,7 @@ import network.crypta.support.api.HTTPRequest;
  * markup consistent with the surrounding UI.
  *
  * <ul>
- *   <li>Responsibilities: render alert list, expose bulk dismiss/delete controls, perform safe
+ *   <li>Responsibilities: render the alert list, expose bulk dismiss/delete controls, perform safe
  *       redirects after mutation.
  *   <li>Thread safety: relies on request-scoped context; no mutable state stored on the instance.
  * </ul>
@@ -48,18 +47,18 @@ public class UserAlertsToadlet extends Toadlet {
   private static final String TITLE = "title";
   private static final String INPUT_TAG = "input";
 
-  UserAlertsToadlet(HighLevelSimpleClient client) {
-    super(client);
+  UserAlertsToadlet() {
+    super();
   }
 
   /**
-   * Handles GET requests to render the alerts page and present available bulk actions.
+   * Handles GET requests to render the Alerts page and present available bulk actions.
    *
    * <p>The method first enforces full-access requirements for the current user, then constructs a
-   * page using the {@link PageMaker} provided by the context. When alerts exist it attaches
+   * page using the {@link PageMaker} provided by the context. When alerts exist, it attaches
    * localized buttons to dismiss every dismissible alert or delete eligible node-to-node messages;
    * otherwise it renders a friendly infobox explaining that no messages are pending. The resulting
-   * HTML is written with a 200 OK status and without modifying alert state.
+   * HTML is written with a 200 OK status and without modifying the alert state.
    *
    * @param uri absolute request URI that should point to the "alerts" endpoint.
    * @param request HTTP request carrying any query parameters; body content is ignored.
@@ -132,10 +131,10 @@ public class UserAlertsToadlet extends Toadlet {
    * <p>The handler inspects submitted form parts to determine which action to execute. It supports
    * dismissing a single alert by hash code, bulk dismissing every user-dismissible alert, and
    * deleting all node-to-node message alerts after the caller affirms a dedicated confirmation
-   * checkbox. After mutating state it redirects to a constrained, validated location to avoid
+   * checkbox. After mutating the state, it redirects to a constrained, validated location to avoid
    * untrusted redirects.
    *
-   * @param uri absolute request URI for the alerts endpoint; not directly mutated.
+   * @param uri absolute request URI for the Alerts endpoint; not directly mutated.
    * @param request HTTP request containing form parts that indicate the desired alert action.
    * @param ctx toadlet context providing alert management facilities and redirect helpers.
    * @throws ToadletContextClosedException if the client disconnects before the redirect headers are

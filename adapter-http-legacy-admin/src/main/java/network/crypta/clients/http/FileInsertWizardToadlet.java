@@ -3,9 +3,6 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.InsertContext;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.clients.http.LegacyContentFilterSupport.ResultHandling;
 import network.crypta.l10n.NodeL10n;
@@ -43,21 +40,18 @@ import static network.crypta.clients.http.LegacyContentFilterSupport.CONTENT_FIL
 public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallback {
 
   /**
-   * Creates the toadlet that renders the file-insert wizard for the given client and detached
-   * runtime ports. The instance keeps only lightweight preferences and is intended to be
-   * short-lived; callers typically construct one per incoming HTTP request or per handler
-   * registration. The constructor does not perform I/O, and all dependencies are assumed to remain
-   * valid for the lifetime of the toadlet. State stored in the instance is not synchronized and
-   * should not be shared across threads without external coordination.
+   * Creates the toadlet that renders the file-insert wizard for the detached runtime ports. The
+   * instance keeps only lightweight preferences and is intended to be short-lived; callers
+   * typically construct one per incoming HTTP request or per handler registration. The constructor
+   * does not perform I/O, and all dependencies are assumed to remain valid for the lifetime of the
+   * toadlet. State stored in the instance is not synchronized and should not be shared across
+   * threads without external coordination.
    *
-   * @param client high-level client used to bind uploads to the current session; never {@code
-   *     null}.
    * @param runtimePorts detached runtime collaborators used to read the current network threat
    *     level; never {@code null}.
    */
-  FileInsertWizardToadlet(
-      HighLevelSimpleClient client, FileInsertWizardToadletRuntimePorts runtimePorts) {
-    super(client);
+  FileInsertWizardToadlet(FileInsertWizardToadletRuntimePorts runtimePorts) {
+    super();
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
   }
 
@@ -218,17 +212,15 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
     insertForm.addChild("br");
     insertForm.addChild("#", NodeL10n.getBase().getString("QueueToadlet.compatModeLabel") + ": ");
     HTMLNode select = insertForm.addChild("select", "name", "compatibilityMode");
-    for (CompatibilityMode mode : InsertContext.CompatibilityMode.values()) {
-      if (mode == CompatibilityMode.COMPAT_UNKNOWN) {
-        continue;
-      }
+    InsertCompatibilityModes insertCompatibilityModes = runtimePorts.insertCompatibilityModes();
+    for (String modeName : insertCompatibilityModes.supportedModeNames()) {
       HTMLNode option =
           select.addChild(
               "option",
               ATTR_VALUE,
-              mode.name(),
-              NodeL10n.getBase().getString("InsertContext.CompatibilityMode." + mode.name()));
-      if (mode == CompatibilityMode.COMPAT_DEFAULT) {
+              modeName,
+              NodeL10n.getBase().getString("InsertContext.CompatibilityMode." + modeName));
+      if (modeName.equals(insertCompatibilityModes.defaultModeName())) {
         option.addAttribute("selected", "");
       }
     }

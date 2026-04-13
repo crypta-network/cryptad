@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -23,8 +22,6 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * @param bookmarkManager bookmark handle wired against the daemon-backed bookmark runtime support
  *     for the surrounding shell lifecycle
- * @param client interactive client shared by HTTP toadlets created during shell startup and route
- *     registration
  * @param appHost shared AppHost instance used by the Platform API control plane and exposed through
  *     legacy HTTP routes
  * @param browseRoot browse-root toadlet constructed during bootstrap and handed to the registrar
@@ -36,7 +33,6 @@ import network.crypta.runtime.spi.RuntimePorts;
  */
 public record HttpShellBrowseBootstrap(
     BookmarkManagerHandle bookmarkManager,
-    HighLevelSimpleClient client,
     AppHost appHost,
     Toadlet browseRoot,
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
@@ -51,7 +47,6 @@ public record HttpShellBrowseBootstrap(
    *
    * @param bookmarkManager bookmark handle used by the surrounding shell bootstrap to populate
    *     bookmark-backed routes
-   * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
    * @param browseRoot browse-root toadlet used by route registration at the legacy browsing root
    * @param browseRouteRegistrar browse-neutral registrar seam for the browse-owned routes
@@ -59,11 +54,10 @@ public record HttpShellBrowseBootstrap(
    */
   public static HttpShellBrowseBootstrap create(
       BookmarkManagerHandle bookmarkManager,
-      HighLevelSimpleClient client,
       AppHost appHost,
       Toadlet browseRoot,
       LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
-    return create(bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar, _ -> {});
+    return create(bookmarkManager, appHost, browseRoot, browseRouteRegistrar, _ -> {});
   }
 
   /**
@@ -76,7 +70,6 @@ public record HttpShellBrowseBootstrap(
    *
    * @param bookmarkManager bookmark handle used by the surrounding shell bootstrap to populate
    *     bookmark-backed routes
-   * @param client interactive client shared by shell toadlets that are registered during startup
    * @param appHost shared AppHost instance used by the platform control plane and related routes
    * @param browseRoot browse-root toadlet used by route registration at the legacy browsing root
    * @param browseRouteRegistrar browse-neutral registrar seam for the browse-owned routes
@@ -86,13 +79,12 @@ public record HttpShellBrowseBootstrap(
    */
   public static HttpShellBrowseBootstrap create(
       BookmarkManagerHandle bookmarkManager,
-      HighLevelSimpleClient client,
       AppHost appHost,
       Toadlet browseRoot,
       LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
       Consumer<RuntimePorts> sharedShellInitializer) {
     return new HttpShellBrowseBootstrap(
-        bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar, sharedShellInitializer);
+        bookmarkManager, appHost, browseRoot, browseRouteRegistrar, sharedShellInitializer);
   }
 
   /**
@@ -123,7 +115,6 @@ public record HttpShellBrowseBootstrap(
    */
   public HttpShellBrowseBootstrap {
     Objects.requireNonNull(bookmarkManager);
-    Objects.requireNonNull(client);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(browseRoot);
     Objects.requireNonNull(browseRouteRegistrar);

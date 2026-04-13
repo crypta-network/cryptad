@@ -5,18 +5,23 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.ClientContext;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.InsertCompatibilityModes;
 import network.crypta.clients.http.LegacyFProxyBrowseRouteRegistrar;
 import network.crypta.clients.http.PushDataManagerHandle;
+import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.clients.http.updateableelements.PushDataManager;
@@ -145,6 +150,23 @@ class CoreHttpShellRuntimeSupportTest {
     String formPassword = runtimeSupport.formPassword();
 
     assertEquals("secret-token", formPassword);
+  }
+
+  @Test
+  void insertCompatibilityModes_whenInvoked_returnsDetachedOrderedModeNames() {
+    CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(mock(NodeClientCore.class));
+
+    InsertCompatibilityModes actualModes = runtimeSupport.insertCompatibilityModes();
+
+    List<String> expectedModeNames =
+        Arrays.stream(CompatibilityMode.values())
+            .map(CompatibilityMode::intern)
+            .filter(mode -> mode != CompatibilityMode.COMPAT_UNKNOWN)
+            .map(CompatibilityMode::name)
+            .distinct()
+            .toList();
+    assertEquals(expectedModeNames, actualModes.supportedModeNames());
+    assertEquals(CompatibilityMode.COMPAT_DEFAULT.intern().name(), actualModes.defaultModeName());
   }
 
   @ParameterizedTest
@@ -333,10 +355,13 @@ class CoreHttpShellRuntimeSupportTest {
       assertInstanceOf(CoreFProxyRuntimeSupport.class, browseRootArguments.get().get(1));
       assertSame(fetchTrackers.constructed().getFirst(), browseRootArguments.get().get(2));
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
-      assertSame(client, bootstrap.client());
       assertSame(runtimeSupport.appHost(), bootstrap.appHost());
       assertSame(fproxies.constructed().getFirst(), bootstrap.browseRoot());
-      assertInstanceOf(LegacyFProxyBrowseRouteRegistrar.class, bootstrap.browseRouteRegistrar());
+      assertContentToadlet(fproxies.constructed().getFirst());
+      LegacyFProxyBrowseRouteRegistrar browseRouteRegistrar =
+          assertInstanceOf(
+              LegacyFProxyBrowseRouteRegistrar.class, bootstrap.browseRouteRegistrar());
+      assertSame(client, readRegistrarClient(browseRouteRegistrar));
       verify(core, never()).getRuntimePorts();
       verifyNoInteractions(bootstrapRuntimePorts);
       verify(core, never()).getEndpoints();
@@ -503,6 +528,17 @@ class CoreHttpShellRuntimeSupportTest {
     return new CoreHttpShellRuntimeSupport(core, mock(AppHost.class));
   }
 
+  private static HighLevelSimpleClient readRegistrarClient(
+      LegacyFProxyBrowseRouteRegistrar registrar) {
+    try {
+      Field field = registrar.getClass().getDeclaredField("client");
+      field.setAccessible(true);
+      return (HighLevelSimpleClient) field.get(registrar);
+    } catch (ReflectiveOperationException e) {
+      throw new LinkageError("Failed reading field 'client'", e);
+    }
+  }
+
   private static AppHostLayout readLayout(LocalProcessAppHost appHost) {
     try {
       Field field = appHost.getClass().getDeclaredField("layout");
@@ -534,6 +570,13 @@ class CoreHttpShellRuntimeSupportTest {
             Path.of("build", "test-runtime", "apphost", "run", appId).toAbsolutePath());
     return new RunningAppSnapshot(
         manifest, paths, "token-" + appId, 4242L, Instant.parse("2024-01-02T03:04:05Z"));
+  }
+
+  private static void assertContentToadlet(Toadlet toadlet) {
+    assertInstanceOf(
+        ContentToadlet.class,
+        toadlet,
+        toadlet.getClass().getName() + " must extend ContentToadlet");
   }
 
   private record NetworkListenerContext(

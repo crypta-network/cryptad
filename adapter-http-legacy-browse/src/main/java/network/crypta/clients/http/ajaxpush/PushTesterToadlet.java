@@ -3,6 +3,7 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.RedirectException;
@@ -35,18 +36,18 @@ import network.crypta.support.api.HTTPRequest;
  *
  * @see TesterElement
  */
-public class PushTesterToadlet extends Toadlet {
+public class PushTesterToadlet extends ContentToadlet {
 
   /**
    * Creates a new instance that serves the push-test page.
    *
-   * <p>The provided {@link HighLevelSimpleClient} is forwarded to the {@link Toadlet} superclass.
-   * This class does not retain additional mutable state, so instances are safe to reuse across
-   * requests as long as the surrounding toadlet container provides the usual per-request {@link
-   * ToadletContext}.
+   * <p>The provided {@link HighLevelSimpleClient} is forwarded to the {@link ContentToadlet}
+   * superclass. This class does not retain additional mutable state, so instances are safe to reuse
+   * across requests as long as the surrounding toadlet container provides the usual per-request
+   * {@link ToadletContext}.
    *
-   * @param client client instance passed to the {@link Toadlet} superclass; must be non-null and
-   *     configured
+   * @param client client instance passed to the {@link ContentToadlet} superclass; must be non-null
+   *     and configured
    */
   public PushTesterToadlet(HighLevelSimpleClient client) {
     super(client);

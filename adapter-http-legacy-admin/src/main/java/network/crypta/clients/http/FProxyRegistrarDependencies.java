@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -20,20 +19,21 @@ import network.crypta.runtime.spi.RuntimePorts;
  * actually consumes so startup composition remains in one place while HTTP registration remains
  * deterministic and easy to test.
  *
- * @param client shared interactive client used by registered HTTP toadlets
  * @param runtimePorts detached runtime ports exposed to the HTTP shell
  * @param appHost shared AppHost instance exposed through the Platform API bridge
  * @param config node configuration used to list sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet handed to the registrar for root-path registration
  * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route publication
+ * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+ *     forms
  */
 record FProxyRegistrarDependencies(
-    HighLevelSimpleClient client,
     RuntimePorts runtimePorts,
     AppHost appHost,
     Config config,
     Toadlet browseRoot,
-    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
+    LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
+    InsertCompatibilityModes insertCompatibilityModes) {
   /**
    * Creates a validated dependency bundle for {@link FProxyRegistrar}.
    *
@@ -41,25 +41,26 @@ record FProxyRegistrarDependencies(
    * constructor rejects the partially assembled state early, so the caller fails to close to the
    * HTTP shell composition site rather than later during menu or toadlet registration.
    *
-   * @param client shared interactive client used by registered HTTP toadlets during registration
    * @param runtimePorts runtime-spi ports exposed to HTTP-layer toadlets and helper pages
    * @param appHost shared AppHost instance exposed through the Platform API bridge
    * @param config node configuration used to list and filter sub-config toadlets
    * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path
    * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
    *     publication
+   * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+   *     forms
    * @throws NullPointerException if any required collaborator is absent at construction time
    */
   FProxyRegistrarDependencies {
-    Objects.requireNonNull(client);
     Objects.requireNonNull(runtimePorts);
     Objects.requireNonNull(appHost);
     Objects.requireNonNull(config);
     Objects.requireNonNull(browseRoot);
     Objects.requireNonNull(browseRouteRegistrar);
+    Objects.requireNonNull(insertCompatibilityModes);
   }
 
   LegacyHttpBrowseRouteRegistrarContext browseContext() {
-    return new LegacyHttpBrowseRouteRegistrarContext(client, runtimePorts, browseRoot);
+    return new LegacyHttpBrowseRouteRegistrarContext(runtimePorts, browseRoot);
   }
 }

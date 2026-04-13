@@ -5,11 +5,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientContextDefaults;
@@ -98,7 +98,6 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "MockNotUsedInProduction"})
 class QueueToadletPostInsertTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private FCPServer fcp;
   @Mock private QueuePagePort queuePagePort;
   @Mock private TransferAccessPort transferAccessPort;
@@ -162,6 +161,58 @@ class QueueToadletPostInsertTest {
     try (var inputStream = request.upload().openStream()) {
       assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8), inputStream.readAllBytes());
     }
+  }
+
+  @Test
+  void handleMethodPOST_whenSupportedCompatibilityProvided_passesDetachedModeThrough()
+      throws Exception {
+    String customCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_1468.name();
+    QueueToadlet toadlet =
+        createQueueToadlet(
+            new InsertCompatibilityModes(
+                List.of(defaultCompatibilityMode(), customCompatibilityMode),
+                defaultCompatibilityMode()));
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    when(queueInsertPort.enqueueBrowserUploadInsert(any()))
+        .thenReturn(QueueInsertOutcome.METADATA_UNRESOLVED);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                "insert", "yes",
+                "keytype", "CHK",
+                "compatibilityMode", customCompatibilityMode),
+            uploadedFile),
+        ctx);
+
+    ArgumentCaptor<QueueBrowserUploadInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueBrowserUploadInsertRequest.class);
+    verify(queueInsertPort).enqueueBrowserUploadInsert(requestCaptor.capture());
+    assertEquals(customCompatibilityMode, requestCaptor.getValue().compatibilityMode());
+  }
+
+  @Test
+  void handleMethodPOST_whenCompatCurrentProvided_normalizesToDetachedDefault() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    when(queueInsertPort.enqueueBrowserUploadInsert(any()))
+        .thenReturn(QueueInsertOutcome.METADATA_UNRESOLVED);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                "insert", "yes",
+                "keytype", "CHK",
+                "compatibilityMode", InsertContext.CompatibilityMode.COMPAT_CURRENT.name()),
+            uploadedFile),
+        ctx);
+
+    ArgumentCaptor<QueueBrowserUploadInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueBrowserUploadInsertRequest.class);
+    verify(queueInsertPort).enqueueBrowserUploadInsert(requestCaptor.capture());
+    assertEquals(defaultCompatibilityMode(), requestCaptor.getValue().compatibilityMode());
   }
 
   @Test
@@ -319,6 +370,14 @@ class QueueToadletPostInsertTest {
   }
 
   private QueueToadlet createQueueToadlet() throws Exception {
+    return createQueueToadlet(
+        new InsertCompatibilityModes(
+            List.of(InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern().name()),
+            InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern().name()));
+  }
+
+  private QueueToadlet createQueueToadlet(InsertCompatibilityModes compatibilityModes)
+      throws Exception {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
@@ -375,7 +434,6 @@ class QueueToadletPostInsertTest {
 
     QueueToadlet toadlet =
         new QueueToadlet(
-            client,
             true,
             new QueueToadletRuntimePorts(
                 queuePagePort,
@@ -386,7 +444,8 @@ class QueueToadletPostInsertTest {
                 queueSupportPort,
                 queueCompletionPort,
                 darknetConnectionsPort,
-                darknetMessagingPort));
+                darknetMessagingPort,
+                compatibilityModes));
     toadlet.container = container;
     return toadlet;
   }

@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.lang.reflect.Field;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.l10n.TranslationPaths;
@@ -36,7 +35,6 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class TranslationToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
 
@@ -56,7 +54,7 @@ class TranslationToadletTest {
     when(baseL10n.getString(anyString(), any(String[].class), any(String[].class)))
         .thenAnswer(invocation -> invocation.getArgument(0, String.class));
 
-    toadlet = new TranslationToadlet(client);
+    toadlet = new TranslationToadlet();
   }
 
   @AfterEach

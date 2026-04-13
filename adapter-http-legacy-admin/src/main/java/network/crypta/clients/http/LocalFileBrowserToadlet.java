@@ -8,7 +8,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -69,12 +68,8 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    *
    * @param transferAccess transfer-access runtime port that exposes allowed directories and
    *     download defaults; must not be {@code null}.
-   * @param highLevelSimpleClient HTTP client passed to the {@link Toadlet} base for responding to
-   *     user requests; must not be {@code null}.
    */
-  protected LocalFileBrowserToadlet(
-      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
-    super(highLevelSimpleClient);
+  protected LocalFileBrowserToadlet(TransferAccessPort transferAccess) {
     this.transferAccess = transferAccess;
   }
 
@@ -378,7 +373,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * Presents a file selection screen, or a something has been selected notes its directory and
    * redirects to the POST target.
    *
-   * @param fieldPairs fields which are to be persisted between views
+   * @param fieldPairs fields that are to be persisted between views
    * @param path current path to display
    * @param ctx context used for rendering
    * @param filename a filename if a file or directory is selected, NULL if not.

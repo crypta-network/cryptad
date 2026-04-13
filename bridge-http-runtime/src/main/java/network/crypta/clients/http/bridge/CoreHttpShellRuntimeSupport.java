@@ -2,13 +2,16 @@ package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyRuntimeSupport;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
+import network.crypta.clients.http.InsertCompatibilityModes;
 import network.crypta.clients.http.LegacyFProxyBrowseRouteRegistrar;
 import network.crypta.clients.http.PushDataManagerHandle;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -120,6 +123,18 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   }
 
   @Override
+  public InsertCompatibilityModes insertCompatibilityModes() {
+    return new InsertCompatibilityModes(
+        Arrays.stream(CompatibilityMode.values())
+            .map(CompatibilityMode::intern)
+            .filter(mode -> mode != CompatibilityMode.COMPAT_UNKNOWN)
+            .map(CompatibilityMode::name)
+            .distinct()
+            .toList(),
+        CompatibilityMode.COMPAT_DEFAULT.intern().name());
+  }
+
+  @Override
   public boolean canRedirectToWizard() {
     return true;
   }
@@ -163,10 +178,9 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
     FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
     return HttpShellBrowseBootstrap.create(
         bookmarkManager,
-        client,
         appHost,
         FProxyToadlet.create(client, fproxyRuntimeSupport, fetchTracker),
-        new LegacyFProxyBrowseRouteRegistrar(),
+        new LegacyFProxyBrowseRouteRegistrar(client),
         CoreHttpShellRuntimeSupport::initializeFProxySharedState);
   }
 

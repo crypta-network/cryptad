@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
@@ -43,17 +42,12 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
    *
    * @param transferAccess initialized transfer-access runtime port carried by the shared local
    *     browser base; must be non-null and remain reachable for the lifetime of the instance.
-   * @param highLevelSimpleClient HTTP client helper passed to the parent {@link Toadlet}; must be
-   *     non-null and thread-safe for concurrent request handling.
    * @param postTo relative URL segment (beginning with a slash) that identifies the handler to
    *     receive selected directories; the value is concatenated with {@link #path()} and reused for
    *     redirects.
    */
-  public LocalDirectoryConfigToadlet(
-      TransferAccessPort transferAccess,
-      HighLevelSimpleClient highLevelSimpleClient,
-      String postTo) {
-    super(transferAccess, highLevelSimpleClient, postTo);
+  public LocalDirectoryConfigToadlet(TransferAccessPort transferAccess, String postTo) {
+    super(transferAccess, postTo);
   }
 
   /**

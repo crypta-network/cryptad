@@ -4,7 +4,6 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
@@ -59,12 +58,9 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
    *
    * @param transferAccess transfer-access runtime port that supplies configuration and upload
    *     permission checks; must not be {@code null}.
-   * @param highLevelSimpleClient helper used to build client requests and responses for this
-   *     toadlet; expected to be initialized by the surrounding HTTP layer.
    */
-  public LocalFileN2NMToadlet(
-      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
-    super(transferAccess, highLevelSimpleClient);
+  public LocalFileN2NMToadlet(TransferAccessPort transferAccess) {
+    super(transferAccess);
   }
 
   /**
