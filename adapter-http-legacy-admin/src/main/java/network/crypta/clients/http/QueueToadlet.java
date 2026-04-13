@@ -1138,6 +1138,9 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       if (compatibilityMode.isEmpty()) {
         return insertCompatibilityModes.defaultModeName();
       }
+      if ("COMPAT_CURRENT".equals(compatibilityMode)) {
+        return insertCompatibilityModes.defaultModeName();
+      }
       if (insertCompatibilityModes.supportedModeNames().contains(compatibilityMode)) {
         return compatibilityMode;
       }

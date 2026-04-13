@@ -193,6 +193,29 @@ class QueueToadletPostInsertTest {
   }
 
   @Test
+  void handleMethodPOST_whenCompatCurrentProvided_normalizesToDetachedDefault() throws Exception {
+    QueueToadlet toadlet = createQueueToadlet();
+    HTTPUploadedFile uploadedFile = uploadedFile();
+    when(queueInsertPort.enqueueBrowserUploadInsert(any()))
+        .thenReturn(QueueInsertOutcome.METADATA_UNRESOLVED);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/uploads/"),
+        createRequest(
+            Map.of(
+                "insert", "yes",
+                "keytype", "CHK",
+                "compatibilityMode", InsertContext.CompatibilityMode.COMPAT_CURRENT.name()),
+            uploadedFile),
+        ctx);
+
+    ArgumentCaptor<QueueBrowserUploadInsertRequest> requestCaptor =
+        ArgumentCaptor.forClass(QueueBrowserUploadInsertRequest.class);
+    verify(queueInsertPort).enqueueBrowserUploadInsert(requestCaptor.capture());
+    assertEquals(defaultCompatibilityMode(), requestCaptor.getValue().compatibilityMode());
+  }
+
+  @Test
   void handleMethodPOST_whenBrowserUploadRejected_returnsInsertErrorPage() throws Exception {
     QueueToadlet toadlet = createQueueToadlet();
     HTTPUploadedFile uploadedFile = uploadedFile();
