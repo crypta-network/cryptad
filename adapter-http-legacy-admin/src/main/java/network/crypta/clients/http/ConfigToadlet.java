@@ -5,6 +5,7 @@ import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigCallback;
+import network.crypta.config.DirectorySelectionCallback;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -12,7 +13,6 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.config.WrapperConfig;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.ProgramDirectory;
 import network.crypta.runtime.alerts.AbstractUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.support.HTMLNode;
@@ -759,7 +759,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     if (isBooleanCallback(callback)) {
       return OptionType.BOOLEAN;
     }
-    if (callback instanceof ProgramDirectory.DirectoryCallback && !callback.isReadOnly()) {
+    if (callback instanceof DirectorySelectionCallback && !callback.isReadOnly()) {
       return OptionType.DIRECTORY;
     }
     if (!callback.isReadOnly()) {

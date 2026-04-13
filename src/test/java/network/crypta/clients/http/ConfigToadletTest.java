@@ -10,9 +10,11 @@ import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigCallback;
+import network.crypta.config.DirectorySelectionCallback;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
+import network.crypta.config.StringCallback;
 import network.crypta.config.StringOption;
 import network.crypta.config.SubConfig;
 import network.crypta.config.WrapperConfig;
@@ -413,7 +415,9 @@ class ConfigToadletTest {
           }
 
           @Override
-          public void set(Boolean value) {}
+          public void set(Boolean value) {
+            ignoreCallbackMutation();
+          }
         };
     Object optionType = resolveOptionType(toadlet, callback);
 
@@ -442,17 +446,43 @@ class ConfigToadletTest {
   }
 
   @Test
+  void resolveOptionType_whenMarkerBasedWritableDirectoryCallback_expectDirectory()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    ConfigCallback<?> callback = new MarkerDirectoryStringCallback(false);
+
+    Object optionType = resolveOptionType(toadlet, callback);
+
+    assertEquals("DIRECTORY", optionType.toString());
+  }
+
+  @Test
+  void resolveOptionType_whenMarkerBasedReadOnlyDirectoryCallback_expectTextReadOnly()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    ConfigCallback<?> callback = new MarkerDirectoryStringCallback(true);
+
+    Object optionType = resolveOptionType(toadlet, callback);
+
+    assertEquals("TEXT_READ_ONLY", optionType.toString());
+  }
+
+  @Test
   @SuppressWarnings("deprecation")
   void resolveOptionType_whenLegacyEnumerableStringCallbackRegistered_expectDropDown()
       throws Exception {
     ConfigToadlet toadlet = createToadlet();
-    Config config = new Config();
-    SubConfig subConfig = config.createSubConfig("compat");
+    Config compatConfig = new Config();
+    SubConfig compatSubConfig = compatConfig.createSubConfig("compat");
     network.crypta.support.api.StringCallback callback =
         new LegacyEnumerableStringCallback("dark", new String[] {"light", "dark"});
     StringOption option =
         new StringOption(
-            subConfig, "theme", "dark", new Option.Meta(1, false, false, "sd", "ld"), callback);
+            compatSubConfig,
+            "theme",
+            "dark",
+            new Option.Meta(1, false, false, "sd", "ld"),
+            callback);
 
     Object optionType = resolveOptionType(toadlet, option.getCallback());
 
@@ -461,16 +491,75 @@ class ConfigToadletTest {
 
   @Test
   @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyEnumerableMarkerDirectoryCallbackRegistered_expectDropDown()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    Config compatConfig = new Config();
+    SubConfig compatSubConfig = compatConfig.createSubConfig("compat");
+    network.crypta.support.api.StringCallback callback =
+        new LegacyEnumerableDirectoryStringCallback("dark", false, new String[] {"light", "dark"});
+    StringOption option =
+        new StringOption(
+            compatSubConfig,
+            "theme",
+            "dark",
+            new Option.Meta(1, false, false, "sd", "ld"),
+            callback);
+
+    Object optionType = resolveOptionType(toadlet, option.getCallback());
+
+    assertEquals("DROP_DOWN", optionType.toString());
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyMarkerDirectoryCallbackConstructed_expectDirectory()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    Config compatConfig = new Config();
+    SubConfig compatSubConfig = compatConfig.createSubConfig("compat");
+    network.crypta.support.api.StringCallback callback =
+        new LegacyDirectoryStringCallback("directory", false);
+    StringOption option =
+        new StringOption(
+            compatSubConfig, "dir", "path", new Option.Meta(1, false, false, "sd", "ld"), callback);
+
+    Object optionType = resolveOptionType(toadlet, option.getCallback());
+
+    assertEquals("DIRECTORY", optionType.toString());
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void resolveOptionType_whenLegacyMarkerDirectoryCallbackRegisteredReadOnly_expectTextReadOnly()
+      throws Exception {
+    ConfigToadlet toadlet = createToadlet();
+    Config compatConfig = new Config();
+    SubConfig compatSubConfig = compatConfig.createSubConfig("compat");
+
+    compatSubConfig.register(
+        "dir",
+        "path",
+        new Option.Meta(1, false, false, "sd", "ld"),
+        new LegacyDirectoryStringCallback("directory", true));
+
+    Object optionType = resolveOptionType(toadlet, compatSubConfig.getOption("dir").getCallback());
+
+    assertEquals("TEXT_READ_ONLY", optionType.toString());
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
   void resolveOptionType_whenLegacyProgramDirectoryCallbackRegistered_expectDirectory()
       throws Exception {
     ConfigToadlet toadlet = createToadlet();
-    Config config = new Config();
-    SubConfig subConfig = config.createSubConfig("compat");
+    Config compatConfig = new Config();
+    SubConfig compatSubConfig = compatConfig.createSubConfig("compat");
     network.crypta.support.api.StringCallback callback =
         new ProgramDirectory("move.error").getStringCallback();
     StringOption option =
         new StringOption(
-            subConfig, "dir", "path", new Option.Meta(1, false, false, "sd", "ld"), callback);
+            compatSubConfig, "dir", "path", new Option.Meta(1, false, false, "sd", "ld"), callback);
 
     Object optionType = resolveOptionType(toadlet, option.getCallback());
 
@@ -483,6 +572,93 @@ class ConfigToadletTest {
         ConfigToadlet.class.getDeclaredMethod("resolveOptionType", ConfigCallback.class);
     resolveOptionType.setAccessible(true);
     return resolveOptionType.invoke(toadlet, callback);
+  }
+
+  private static final class MarkerDirectoryStringCallback extends StringCallback
+      implements DirectorySelectionCallback {
+    private final boolean readOnly;
+
+    private MarkerDirectoryStringCallback(boolean readOnly) {
+      this.readOnly = readOnly;
+    }
+
+    @Override
+    public String get() {
+      return "directory";
+    }
+
+    @Override
+    public void set(String value) {
+      ignoreCallbackMutation();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return readOnly;
+    }
+  }
+
+  @SuppressWarnings("deprecation")
+  private static final class LegacyDirectoryStringCallback
+      extends network.crypta.support.api.StringCallback implements DirectorySelectionCallback {
+    private final String value;
+    private final boolean readOnly;
+
+    private LegacyDirectoryStringCallback(String value, boolean readOnly) {
+      this.value = value;
+      this.readOnly = readOnly;
+    }
+
+    @Override
+    public String get() {
+      return value;
+    }
+
+    @Override
+    public void set(String updatedValue) {
+      ignoreCallbackMutation();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return readOnly;
+    }
+  }
+
+  @SuppressWarnings("deprecation")
+  private static final class LegacyEnumerableDirectoryStringCallback
+      extends network.crypta.support.api.StringCallback
+      implements EnumerableOptionCallback, DirectorySelectionCallback {
+    private final String currentValue;
+    private final boolean readOnly;
+    private final String[] possibleValues;
+
+    private LegacyEnumerableDirectoryStringCallback(
+        String currentValue, boolean readOnly, String[] possibleValues) {
+      this.currentValue = currentValue;
+      this.readOnly = readOnly;
+      this.possibleValues = possibleValues;
+    }
+
+    @Override
+    public String get() {
+      return currentValue;
+    }
+
+    @Override
+    public void set(String value) {
+      ignoreCallbackMutation();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return readOnly;
+    }
+
+    @Override
+    public String[] getPossibleValues() {
+      return possibleValues;
+    }
   }
 
   @SuppressWarnings("deprecation")
@@ -502,7 +678,9 @@ class ConfigToadletTest {
     }
 
     @Override
-    public void set(String value) {}
+    public void set(String value) {
+      ignoreCallbackMutation();
+    }
 
     @Override
     public String[] getPossibleValues() {
@@ -518,6 +696,10 @@ class ConfigToadletTest {
     when(request.getPartAsStringFailsafe(anyString(), anyInt()))
         .thenAnswer(invocation -> parts.getOrDefault(invocation.getArgument(0, String.class), ""));
     return request;
+  }
+
+  private static void ignoreCallbackMutation() {
+    // These helper callbacks exist only to exercise ConfigToadlet option-type resolution.
   }
 
   private void stubPageMaker() {

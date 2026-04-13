@@ -16,6 +16,10 @@
  * may indicate a logical {@link network.crypta.config.Dimension} (for example, {@code SIZE} or
  * {@code DURATION}).
  *
+ * <p>Some callbacks also carry narrow UI markers such as {@link
+ * network.crypta.config.DirectorySelectionCallback} so HTTP admin code can classify special input
+ * flows without importing concrete runtime implementations.
+ *
  * <p>Persistence is environment-specific. {@link network.crypta.config.PersistentConfig} consumes
  * an initial {@link network.crypta.support.SimpleFieldSet} and exports the current state back to a
  * field set for storage. {@link network.crypta.config.WrapperConfig} provides limited support for

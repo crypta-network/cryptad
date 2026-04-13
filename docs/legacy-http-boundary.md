@@ -25,6 +25,11 @@ HTTP/admin alert rendering now crosses the detached
 manager type directly. This is one focused step in the ongoing removal of
 `adapter-http-legacy-admin -> :runtime-node` coupling without widening `:runtime-spi`.
 
+Admin config classification now also crosses a detached config-owned marker:
+`network.crypta.config.DirectorySelectionCallback` in `:foundation-config`. `ConfigToadlet`
+uses that marker to recognize directory-selection fields without importing the concrete
+runtime-owned `ProgramDirectory` callback types.
+
 The shared shell stays browse-neutral by crossing `LegacyHttpPaths` / `LegacyHttpCategories`
 constants and other small seam types instead of importing concrete browse-owned collaborator
 classes directly. Route publication, bookmark handling, push handling, and browser-side helpers

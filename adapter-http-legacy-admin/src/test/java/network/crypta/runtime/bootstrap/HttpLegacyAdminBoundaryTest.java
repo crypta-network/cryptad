@@ -30,6 +30,8 @@ class HttpLegacyAdminBoundaryTest {
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_CONFIG_TOADLET =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("ConfigToadlet.java");
   private static final Path BROWSE_HTTP_MAIN_JAVA =
       Path.of(BROWSE_MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_SIMPLE_TOADLET_SERVER =
@@ -49,6 +51,8 @@ class HttpLegacyAdminBoundaryTest {
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellRuntimeSupport.java");
   private static final String USER_ALERT_MANAGER_IMPORT =
       "import network.crypta.runtime.alerts.UserAlertManager;";
+  private static final String PROGRAM_DIRECTORY_IMPORT =
+      "import network.crypta.node.ProgramDirectory;";
   private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
   private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
@@ -643,6 +647,19 @@ class HttpLegacyAdminBoundaryTest {
             + "importing UserAlertManager directly."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenCheckingConfigToadletImports_expectProgramDirectoryImportRemoved()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Set<String> imports = readImports(repoRoot.resolve(ADAPTER_CONFIG_TOADLET));
+
+    assertFalse(
+        imports.contains(PROGRAM_DIRECTORY_IMPORT),
+        repoRoot.resolve(ADAPTER_CONFIG_TOADLET)
+            + " must use the detached config directory-selection marker instead of importing "
+            + "ProgramDirectory directly.");
   }
 
   @Test

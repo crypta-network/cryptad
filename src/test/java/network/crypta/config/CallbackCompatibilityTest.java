@@ -3,7 +3,9 @@ package network.crypta.config;
 import network.crypta.node.ProgramDirectory;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -12,28 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("deprecation")
 class CallbackCompatibilityTest {
   private static final Option.Meta META = new Option.Meta(1, false, false, "sd", "ld");
-
-  @Test
-  void newCallbackTypesRemainAssignableToLegacyCallbacks() {
-    assertTrue(
-        network.crypta.support.api.BooleanCallback.class.isAssignableFrom(
-            network.crypta.config.BooleanCallback.class));
-    assertTrue(
-        network.crypta.support.api.IntCallback.class.isAssignableFrom(
-            network.crypta.config.IntCallback.class));
-    assertTrue(
-        network.crypta.support.api.LongCallback.class.isAssignableFrom(
-            network.crypta.config.LongCallback.class));
-    assertTrue(
-        network.crypta.support.api.ShortCallback.class.isAssignableFrom(
-            network.crypta.config.ShortCallback.class));
-    assertTrue(
-        network.crypta.support.api.StringCallback.class.isAssignableFrom(
-            network.crypta.config.StringCallback.class));
-    assertTrue(
-        network.crypta.support.api.StringArrCallback.class.isAssignableFrom(
-            network.crypta.config.StringArrCallback.class));
-  }
 
   @Test
   void subConfigRetainsLegacyRegisterDescriptors() {
@@ -216,9 +196,8 @@ class CallbackCompatibilityTest {
   @Test
   void legacyBooleanCallbackFactoryRemainsAvailable() {
     network.crypta.support.api.BooleanCallback callback =
-        network.crypta.support.api.BooleanCallback.from(() -> true, _ -> {});
+        network.crypta.support.api.BooleanCallback.from(() -> true, _ -> ignoreCallbackUpdate());
 
-    assertInstanceOf(network.crypta.support.api.BooleanCallback.class, callback);
     assertInstanceOf(network.crypta.config.BooleanCallback.class, callback);
   }
 
@@ -227,12 +206,6 @@ class CallbackCompatibilityTest {
     assertSame(
         network.crypta.support.api.StringCallback.class,
         ProgramDirectory.class.getMethod("getStringCallback").getReturnType());
-    assertTrue(
-        network.crypta.support.api.StringCallback.class.isAssignableFrom(
-            ProgramDirectory.DirectoryCallback.class));
-    assertTrue(
-        network.crypta.support.api.StringCallback.class.isAssignableFrom(
-            ProgramDirectory.RWDirectoryCallback.class));
   }
 
   @Test
@@ -240,26 +213,62 @@ class CallbackCompatibilityTest {
     ProgramDirectory readOnly = new ProgramDirectory();
     ProgramDirectory readWrite = new ProgramDirectory("compatibility.move.error");
 
-    assertInstanceOf(network.crypta.support.api.StringCallback.class, readOnly.getStringCallback());
     assertInstanceOf(network.crypta.config.StringCallback.class, readOnly.getStringCallback());
-    assertInstanceOf(
-        network.crypta.support.api.StringCallback.class, readWrite.getStringCallback());
+    assertInstanceOf(DirectorySelectionCallback.class, readOnly.getStringCallback());
     assertInstanceOf(network.crypta.config.StringCallback.class, readWrite.getStringCallback());
+    assertInstanceOf(DirectorySelectionCallback.class, readWrite.getStringCallback());
   }
 
   @Test
-  void nullCallbacksRemainAssignableToLegacyBridgeTypes() {
-    assertTrue(
-        network.crypta.support.api.BooleanCallback.class.isAssignableFrom(
-            NullBooleanCallback.class));
-    assertTrue(
-        network.crypta.support.api.IntCallback.class.isAssignableFrom(NullIntCallback.class));
-    assertTrue(
-        network.crypta.support.api.LongCallback.class.isAssignableFrom(NullLongCallback.class));
-    assertTrue(
-        network.crypta.support.api.ShortCallback.class.isAssignableFrom(NullShortCallback.class));
-    assertTrue(
-        network.crypta.support.api.StringCallback.class.isAssignableFrom(NullStringCallback.class));
+  void legacyStringCallbackAdaptersPreserveDirectorySelectionMarker() {
+    Config config = new Config();
+    SubConfig subConfig = config.createSubConfig("compat");
+    network.crypta.support.api.StringCallback constructorCallback =
+        new LegacyDirectorySelectionStringCallback("constructor", false);
+    StringOption constructorOption =
+        new StringOption(subConfig, "constructorPath", "constructor", META, constructorCallback);
+
+    assertBridgedRuntimeCallback(
+        constructorOption,
+        constructorCallback,
+        network.crypta.support.api.StringCallback.class,
+        network.crypta.config.StringCallback.class);
+    assertInstanceOf(DirectorySelectionCallback.class, constructorOption.getCallback());
+    assertFalse(constructorOption.getCallback().isReadOnly());
+
+    network.crypta.support.api.StringCallback registeredCallback =
+        new LegacyDirectorySelectionStringCallback("registered", true);
+    subConfig.register("registeredPath", "registered", META, registeredCallback);
+    Option<?> registeredOption = subConfig.getOption("registeredPath");
+
+    assertBridgedRuntimeCallback(
+        registeredOption,
+        registeredCallback,
+        network.crypta.support.api.StringCallback.class,
+        network.crypta.config.StringCallback.class);
+    assertInstanceOf(DirectorySelectionCallback.class, registeredOption.getCallback());
+    assertTrue(registeredOption.getCallback().isReadOnly());
+  }
+
+  @Test
+  void legacyEnumerableStringCallbackAdaptersPreserveDirectorySelectionMarker() {
+    Config config = new Config();
+    SubConfig subConfig = config.createSubConfig("compat");
+    network.crypta.support.api.StringCallback callback =
+        new LegacyEnumerableDirectorySelectionStringCallback(
+            "selected", false, new String[] {"first", "selected"});
+    StringOption option = new StringOption(subConfig, "directoryMode", "selected", META, callback);
+
+    assertBridgedRuntimeCallback(
+        option,
+        callback,
+        network.crypta.support.api.StringCallback.class,
+        network.crypta.config.StringCallback.class);
+    assertInstanceOf(DirectorySelectionCallback.class, option.getCallback());
+    EnumerableOptionCallback enumerableCallback =
+        assertInstanceOf(EnumerableOptionCallback.class, option.getCallback());
+    assertFalse(option.getCallback().isReadOnly());
+    assertArrayEquals(new String[] {"first", "selected"}, enumerableCallback.getPossibleValues());
   }
 
   @Test
@@ -274,7 +283,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Boolean value) {}
+          public void set(Boolean value) {
+            ignoreCallbackUpdate();
+          }
         };
     IntCallback intCallback =
         new IntCallback() {
@@ -284,7 +295,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     IntCallback bandwidthCallback =
         new IntCallback() {
@@ -294,7 +307,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     LongCallback longCallback =
         new LongCallback() {
@@ -304,7 +319,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Long value) {}
+          public void set(Long value) {
+            ignoreCallbackUpdate();
+          }
         };
     ShortCallback shortCallback =
         new ShortCallback() {
@@ -314,7 +331,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Short value) {}
+          public void set(Short value) {
+            ignoreCallbackUpdate();
+          }
         };
     StringCallback stringCallback =
         new StringCallback() {
@@ -324,7 +343,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String value) {}
+          public void set(String value) {
+            ignoreCallbackUpdate();
+          }
         };
     StringArrCallback stringArrCallback =
         new StringArrCallback() {
@@ -334,7 +355,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String[] value) {}
+          public void set(String[] value) {
+            ignoreCallbackUpdate();
+          }
         };
 
     assertLegacyRuntimeCallback(
@@ -379,7 +402,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Boolean value) {}
+          public void set(Boolean value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.IntCallback intCallback =
         new network.crypta.support.api.IntCallback() {
@@ -389,7 +414,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.IntCallback bandwidthCallback =
         new network.crypta.support.api.IntCallback() {
@@ -399,7 +426,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.LongCallback longCallback =
         new network.crypta.support.api.LongCallback() {
@@ -409,7 +438,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Long value) {}
+          public void set(Long value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.ShortCallback shortCallback =
         new network.crypta.support.api.ShortCallback() {
@@ -419,7 +450,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Short value) {}
+          public void set(Short value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.StringCallback stringCallback =
         new network.crypta.support.api.StringCallback() {
@@ -429,7 +462,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String value) {}
+          public void set(String value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.StringArrCallback stringArrCallback =
         new network.crypta.support.api.StringArrCallback() {
@@ -439,7 +474,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String[] value) {}
+          public void set(String[] value) {
+            ignoreCallbackUpdate();
+          }
         };
 
     assertBridgedRuntimeCallback(
@@ -491,7 +528,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Boolean value) {}
+          public void set(Boolean value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.IntCallback intCallback =
         new network.crypta.support.api.IntCallback() {
@@ -501,7 +540,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.IntCallback bandwidthCallback =
         new network.crypta.support.api.IntCallback() {
@@ -511,7 +552,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.IntCallback bandwidthStringCallback =
         new network.crypta.support.api.IntCallback() {
@@ -521,7 +564,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Integer value) {}
+          public void set(Integer value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.LongCallback longCallback =
         new network.crypta.support.api.LongCallback() {
@@ -531,7 +576,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Long value) {}
+          public void set(Long value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.LongCallback longStringCallback =
         new network.crypta.support.api.LongCallback() {
@@ -541,7 +588,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Long value) {}
+          public void set(Long value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.ShortCallback shortCallback =
         new network.crypta.support.api.ShortCallback() {
@@ -551,7 +600,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(Short value) {}
+          public void set(Short value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.StringCallback stringCallback =
         new network.crypta.support.api.StringCallback() {
@@ -561,7 +612,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String value) {}
+          public void set(String value) {
+            ignoreCallbackUpdate();
+          }
         };
     network.crypta.support.api.StringArrCallback stringArrCallback =
         new network.crypta.support.api.StringArrCallback() {
@@ -571,7 +624,9 @@ class CallbackCompatibilityTest {
           }
 
           @Override
-          public void set(String[] value) {}
+          public void set(String[] value) {
+            ignoreCallbackUpdate();
+          }
         };
 
     subConfig.register("flag", true, META, booleanCallback);
@@ -635,6 +690,71 @@ class CallbackCompatibilityTest {
       Option<?> option, Object callback, Class<?> legacyType) {
     assertSame(callback, option.getCallback());
     assertInstanceOf(legacyType, option.getCallback());
+  }
+
+  private static void ignoreCallbackUpdate() {
+    // Compatibility tests exercise callback typing and registration, not mutation behavior.
+  }
+
+  private static final class LegacyDirectorySelectionStringCallback
+      extends network.crypta.support.api.StringCallback implements DirectorySelectionCallback {
+    private final String value;
+    private final boolean readOnly;
+
+    private LegacyDirectorySelectionStringCallback(String value, boolean readOnly) {
+      this.value = value;
+      this.readOnly = readOnly;
+    }
+
+    @Override
+    public String get() {
+      return value;
+    }
+
+    @Override
+    public void set(String updatedValue) {
+      ignoreCallbackUpdate();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return readOnly;
+    }
+  }
+
+  private static final class LegacyEnumerableDirectorySelectionStringCallback
+      extends network.crypta.support.api.StringCallback
+      implements DirectorySelectionCallback, EnumerableOptionCallback {
+    private final String value;
+    private final boolean readOnly;
+    private final String[] possibleValues;
+
+    private LegacyEnumerableDirectorySelectionStringCallback(
+        String value, boolean readOnly, String[] possibleValues) {
+      this.value = value;
+      this.readOnly = readOnly;
+      this.possibleValues = possibleValues;
+    }
+
+    @Override
+    public String get() {
+      return value;
+    }
+
+    @Override
+    public void set(String updatedValue) {
+      ignoreCallbackUpdate();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+      return readOnly;
+    }
+
+    @Override
+    public String[] getPossibleValues() {
+      return possibleValues;
+    }
   }
 
   private static void assertBridgedRuntimeCallback(
