@@ -47,6 +47,8 @@ class HttpLegacyAdminBoundaryTest {
       ADAPTER_HTTP_MAIN_JAVA.resolve("IntervalPusherManager.java");
   private static final Path ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellRuntimeSupport.java");
+  private static final String USER_ALERT_MANAGER_IMPORT =
+      "import network.crypta.runtime.alerts.UserAlertManager;";
   private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
   private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
@@ -612,6 +614,33 @@ class HttpLegacyAdminBoundaryTest {
         violations.isEmpty(),
         "adapter-http-legacy-admin main sources must not import NodeStarter or the queue progress "
             + "cell helper classes removed in PR-159."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenCheckingSharedShellAlertImports_expectDetachedAlertSurfaceUsed()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile :
+        List.of(
+            ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT,
+            ADAPTER_TOADLET_CONTEXT,
+            ADAPTER_TOADLET_CONTEXT_IMPL,
+            ADAPTER_TOADLET_REQUEST_SERVICES,
+            ADAPTER_SIMPLE_TOADLET_SERVER)) {
+      Set<String> imports = readImports(repoRoot.resolve(sourceFile));
+      if (imports.contains(USER_ALERT_MANAGER_IMPORT)) {
+        violations.add(sourceFile + " -> " + USER_ALERT_MANAGER_IMPORT);
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Shared HTTP/admin shell sources must use the detached runtime-alerts surface instead of "
+            + "importing UserAlertManager directly."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }

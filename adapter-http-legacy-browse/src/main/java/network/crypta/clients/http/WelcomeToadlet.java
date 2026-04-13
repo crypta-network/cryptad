@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
@@ -85,18 +86,21 @@ public class WelcomeToadlet extends Toadlet {
   private static final String PARAM_OUTPUT_BANDWIDTH_LIMIT = "outputBandwidthLimit";
   private static final String PARAM_FILENAME = "filename";
   private static final String PARAM_RESTART = "restart";
+  private static final String PARAM_DISABLE = "disable";
   private static final String TAG_LABEL = "label";
   private static final String TEXTAREA_DESC_B = "descB";
   private static final String STYLE_BORDER_NONE = "border: none";
   private static final String TARGET_BLANK = "_blank";
 
   private final WelcomeToadletRuntimePorts runtimePorts;
+  private final String alertsPath;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   WelcomeToadlet(HighLevelSimpleClient client, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
+    alertsPath = new UserAlertsToadlet(client).path();
   }
 
   void redirectToRoot(ToadletContext ctx) throws ToadletContextClosedException, IOException {
@@ -154,8 +158,7 @@ public class WelcomeToadlet extends Toadlet {
     if (updated) {
       HTMLNode alertCell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE);
       alertCell.addChild(
-          ctx.getAlertManager()
-              .renderDismissButton(item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
+          renderDismissButton(ctx, item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
     }
   }
 
@@ -413,7 +416,7 @@ public class WelcomeToadlet extends Toadlet {
 
   private boolean handleDisableAlert(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    if (!request.isPartSet("disable")) {
+    if (!request.isPartSet(PARAM_DISABLE)) {
       return false;
     }
     if (!ctx.checkFormPassword(request)) {
@@ -422,24 +425,24 @@ public class WelcomeToadlet extends Toadlet {
     int validAlertsRemaining = 0;
     UserAlert[] alerts = ctx.getAlertManager().getAlerts();
     for (UserAlert alert : alerts) {
-      if (request.getIntPart("disable", -1) == alert.hashCode()) {
+      if (request.getIntPart(PARAM_DISABLE, -1) == alert.hashCode()) {
         disableMatchingAlert(ctx, alert);
       } else if (alert.isValid()) {
         validAlertsRemaining++;
       }
     }
     writePermanentRedirect(
-        ctx, l10n("disabledAlert"), (validAlertsRemaining > 0 ? "/alerts/" : "/"));
+        ctx, l10n("disabledAlert"), (validAlertsRemaining > 0 ? alertsPath : "/"));
     return true;
   }
 
   private void disableMatchingAlert(ToadletContext ctx, UserAlert alert) {
-    if (alert.userCanDismiss() && alert.shouldUnregisterOnDismiss()) {
-      alert.onDismiss();
-      LOG.info("Unregistering the userAlert {}", alert.hashCode());
-      ctx.getAlertManager().unregister(alert);
+    boolean shouldUnregister = alert.userCanDismiss() && alert.shouldUnregisterOnDismiss();
+    LOG.info(
+        "{} the userAlert {}", shouldUnregister ? "Unregistering" : "Disabling", alert.hashCode());
+    if (alert.userCanDismiss()) {
+      ctx.getAlertManager().dismissAlert(alert.hashCode());
     } else {
-      LOG.info("Disabling the userAlert {}", alert.hashCode());
       alert.isValid(false);
     }
   }
@@ -649,9 +652,49 @@ public class WelcomeToadlet extends Toadlet {
     String[] alertAnchors = alertsToDump.split(",");
     HashSet<String> toDump = new HashSet<>();
     Collections.addAll(toDump, alertAnchors);
-    ctx.getAlertManager().dumpEvents(toDump);
+    dismissMatchingEventAlerts(ctx, toDump);
     redirectToRoot(ctx);
     return true;
+  }
+
+  private void dismissMatchingEventAlerts(ToadletContext ctx, Set<String> toDump) {
+    for (UserAlert alert : ctx.getAlertManager().getAlerts()) {
+      if (alert.isEventNotification() && toDump.contains(alert.anchor())) {
+        ctx.getAlertManager().dismissAlert(alert.hashCode());
+      }
+    }
+  }
+
+  private HTMLNode renderDismissButton(
+      ToadletContext ctx, UserAlert userAlert, String redirectToAfterDisable) {
+    HTMLNode result = new HTMLNode("div");
+    if (!userAlert.userCanDismiss()) {
+      return result;
+    }
+
+    HTMLNode dismissFormNode =
+        result
+            .addChild("form", new String[] {"action", "method"}, new String[] {alertsPath, "post"})
+            .addChild("div");
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_HIDDEN, PARAM_DISABLE, String.valueOf(userAlert.hashCode())});
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_HIDDEN, PARAM_FORM_PASSWORD, ctx.getFormPassword()});
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_SUBMIT, "dismiss-user-alert", userAlert.dismissButtonText()});
+    if (redirectToAfterDisable != null) {
+      dismissFormNode.addChild(
+          ELEMENT_INPUT,
+          new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+          new String[] {INPUT_HIDDEN, "redirectToAfterDisable", redirectToAfterDisable});
+    }
+    return result;
   }
 
   private boolean handleUpgradeConnectionSpeed(HTTPRequest request, ToadletContext ctx)
@@ -1087,10 +1130,10 @@ public class WelcomeToadlet extends Toadlet {
    * present and readable.
    *
    * <p>The method reads up to 2,000 lines (respecting the byte cap in {@link
-   * FileUtil#getLogTailReader(File, long)}) and streams them into an infobox labeled “Current
-   * status”. It is safe to call even when the file is absent or unreadable; failures are logged at
-   * DEBUG, and the page continues rendering without interruption. No locks are taken beyond
-   * standard file reads, and the caller retains ownership of the provided {@link HTMLNode}.
+   * FileUtil#getLogTailReader}) and streams them into an infobox labeled “Current status”. It is
+   * safe to call even when the file is absent or unreadable; failures are logged at DEBUG, and the
+   * page continues rendering without interruption. No locks are taken beyond standard file reads,
+   * and the caller retains ownership of the provided {@link HTMLNode}.
    *
    * @param ctx toadlet context used to create localized infobox markup
    * @param contentNode the page node that receives the log output if available

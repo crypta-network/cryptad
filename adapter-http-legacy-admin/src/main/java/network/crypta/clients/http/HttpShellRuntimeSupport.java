@@ -3,7 +3,7 @@ package network.crypta.clients.http;
 import java.io.File;
 import network.crypta.config.Config;
 import network.crypta.platform.apphost.AppHost;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 
@@ -73,14 +73,14 @@ public interface HttpShellRuntimeSupport {
   Ticker ticker();
 
   /**
-   * Returns the alert manager surfaced through HTTP status and warning pages.
+   * Returns the detached alert surface surfaced through HTTP status and warning pages.
    *
-   * <p>The manager is shared with the rest of the daemon. Shell code should treat it as a live
+   * <p>The surface is shared with the rest of the daemon. Shell code should treat it as a live
    * runtime service whose contents may change as the node state changes.
    *
-   * @return shared user-alert manager visible to HTTP toadlets
+   * @return shared user-alert surface visible to HTTP toadlets
    */
-  UserAlertManager userAlerts();
+  UserAlertSurface userAlerts();
 
   /**
    * Returns the current hidden form password inserted into shell-generated forms.

@@ -32,7 +32,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PrioRunnable;
 import network.crypta.platform.webshell.routes.WebShellPaths;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.core.SSL;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
@@ -1623,16 +1623,16 @@ public final class SimpleToadletServer
   }
 
   /**
-   * Returns the user alert manager associated with the current runtime support.
+   * Returns the detached user-alert surface associated with the current runtime support.
    *
-   * <p>The alert manager surfaces node warnings and informational banners to the UI and handles
+   * <p>The alert surface exposes node warnings and informational banners to the UI and handles
    * their dismissal state. When runtime support has not yet been assigned this method returns
    * {@code null}; callers should therefore wait until after {@link
    * #setRuntimeSupport(HttpShellRuntimeSupport)} is invoked.
    *
-   * @return active {@link UserAlertManager}, or {@code null} when unavailable.
+   * @return active {@link UserAlertSurface}, or {@code null} when unavailable.
    */
-  public UserAlertManager getUserAlertManager() {
+  public UserAlertSurface getUserAlertManager() {
     network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = this.runtimeSupport;
     if (runtimeSupportRef == null) return null;
     return runtimeSupportRef.userAlerts();

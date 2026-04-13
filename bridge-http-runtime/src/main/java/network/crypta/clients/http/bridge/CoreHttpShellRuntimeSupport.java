@@ -26,7 +26,7 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 import org.slf4j.Logger;
@@ -100,7 +100,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   }
 
   @Override
-  public UserAlertManager userAlerts() {
+  public UserAlertSurface userAlerts() {
     return core.getAlerts();
   }
 

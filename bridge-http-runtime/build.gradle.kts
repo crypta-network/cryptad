@@ -15,6 +15,7 @@ dependencies {
   implementation(project(":foundation-crypto-keys"))
   implementation(project(":kernel-content"))
   implementation(project(":kernel-routing"))
+  implementation(project(":runtime-alerts"))
   implementation(project(":runtime-spi"))
   implementation(project(":platform-apphost"))
   implementation(project(":runtime-node"))

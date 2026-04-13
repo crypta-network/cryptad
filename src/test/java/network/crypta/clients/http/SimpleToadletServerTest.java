@@ -24,6 +24,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.HTMLNode;
@@ -487,6 +488,27 @@ class SimpleToadletServerTest {
     assertEquals("hidden", inputNode.getAttribute("type"));
     assertEquals("formPassword", inputNode.getAttribute("name"));
     assertEquals("secret-token", inputNode.getAttribute("value"));
+  }
+
+  @Test
+  void getUserAlertManager_whenRuntimeSupportUnavailable_returnsNull() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+
+    assertNull(server.getUserAlertManager());
+  }
+
+  @Test
+  void getUserAlertManager_whenRuntimeSupportConfigured_returnsDetachedAlertSurface()
+      throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    UserAlertSurface alertSurface = mock(UserAlertSurface.class);
+    when(runtimeSupport.userAlerts()).thenReturn(alertSurface);
+    server.setRuntimeSupport(runtimeSupport);
+
+    UserAlertSurface actualAlertSurface = server.getUserAlertManager();
+
+    assertSame(alertSurface, actualAlertSurface);
   }
 
   @Test

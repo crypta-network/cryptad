@@ -61,7 +61,7 @@ import static java.util.Arrays.stream;
  * @see UserAlert
  * @see UserEvent
  */
-public class UserAlertManager implements Comparator<UserAlert> {
+public class UserAlertManager implements UserAlertSurface, Comparator<UserAlert> {
   private static final Logger LOG = LoggerFactory.getLogger(UserAlertManager.class);
   private static final char PATH_SEPARATOR = '/';
   private static final String ALERTS_PATH_SEGMENT = "alerts";
@@ -110,6 +110,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * @param alert the alert to register; must be a non-null alert instance
    */
+  @Override
   public void register(UserAlert alert) {
     if (alert instanceof UserEvent event) register(event);
     synchronized (alerts) {
@@ -216,6 +217,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * @param alertHashCode the hash code identifying the alert to dismiss
    * @see #unregister(UserAlert)
    */
+  @Override
   public void dismissAlert(int alertHashCode) {
     UserAlert[] userAlerts = getAlerts();
     for (UserAlert userAlert : userAlerts) {
@@ -241,6 +243,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * @return a newly allocated array sorted by alert priority and recency
    */
+  @Override
   public UserAlert[] getAlerts() {
     UserAlert[] a;
     synchronized (alerts) {
@@ -321,6 +324,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * @param showOnlyErrors whether to include only error-level alerts in the output
    * @return the root HTML node for the rendered alerts, or an empty marker node
    */
+  @Override
   public HTMLNode createAlerts(boolean showOnlyErrors) {
     HTMLNode alertsNode = new HTMLNode("div");
     int totalNumber = 0;
@@ -439,6 +443,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    *
    * @return an HTML fragment containing error-level alerts, or an empty marker node
    */
+  @Override
   public HTMLNode createSummary() {
     // This method is called by the toadlets when they want to show
     // a summary of alerts. With a status bar, we only show full errors here.
@@ -458,6 +463,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
    * @param oneLine whether to emit a compact single-line summary instead of a full infobox
    * @return the summary infobox node, an empty marker node, or {@code null} when suppressed
    */
+  @Override
   public HTMLNode createSummary(boolean oneLine) {
     SummaryStats stats = collectSummaryStats();
     if (stats.shouldHideSummary(oneLine)) {

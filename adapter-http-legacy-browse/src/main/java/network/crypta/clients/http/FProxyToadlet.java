@@ -42,6 +42,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
@@ -125,12 +126,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   private static final String GO_BACK_TO_PREV_KEY = "goBackToPrev";
   private static final String TOADLET_HOMEPAGE_KEY = "Toadlet.homepage";
   private static final String ABORT_TO_HOMEPAGE_KEY = "abortToHomepage";
-  static final String CATEGORY_BROWSING = LegacyHttpCategories.CATEGORY_BROWSING;
-  static final String CATEGORY_QUEUE = LegacyHttpCategories.CATEGORY_QUEUE;
-  static final String CATEGORY_FRIENDS = LegacyHttpCategories.CATEGORY_FRIENDS;
-  static final String CATEGORY_STATUS = LegacyHttpCategories.CATEGORY_STATUS;
-  static final String CATEGORY_CONFIG = LegacyHttpCategories.CATEGORY_CONFIG;
-
   static byte[] random;
   final FProxyRuntimeSupport runtimeSupport;
   final ClientContext context;
@@ -659,7 +654,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           // fall through to additional path checks below
         }
       }
-      if (ks.startsWith("/feed/") || ks.equals("/feed")) return handleFeedRequest();
+      if (ks.startsWith("/feed/") || ks.equals("/feed")) {
+        handleFeedRequest();
+        return true;
+      }
       if (ks.equals("/robots.txt") && ctx.doRobots()) {
         writeTextReply(ctx, 200, "Ok", "User-agent: *\nDisallow: /");
         return true;
@@ -740,13 +738,28 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
     }
 
-    private boolean handleFeedRequest() throws ToadletContextClosedException, IOException {
+    private void handleFeedRequest() throws ToadletContextClosedException, IOException {
+      UserAlertManager alertManager = concreteAlertManagerOrNull(ctx);
+      if (alertManager == null) {
+        LOG.warn(
+            "Cannot serve alert feed because {} exposed {} instead of UserAlertManager",
+            ToadletContext.class.getSimpleName(),
+            ctx.getAlertManager().getClass().getName());
+        ctx.sendReplyHeaders(503, "Service Unavailable", null, null, 0);
+        return;
+      }
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
-      String atom = ctx.getAlertManager().getAtom(schemeHostAndPort);
+      String atom = alertManager.getAtom(schemeHostAndPort);
       byte[] buf = atom.getBytes(StandardCharsets.UTF_8);
       ctx.sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", buf.length);
       ctx.writeData(buf, 0, buf.length);
-      return true;
+    }
+
+    private UserAlertManager concreteAlertManagerOrNull(ToadletContext context) {
+      if (context.getAlertManager() instanceof UserAlertManager manager) {
+        return manager;
+      }
+      return null;
     }
 
     private boolean validateRangeHeader() throws ToadletContextClosedException, IOException {

@@ -245,7 +245,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `/app/node/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`.
 - `:runtime-alerts` owns the extracted leaf-safe alert/feed subset under
   `network.crypta.runtime.alerts`, including the full `feed` package plus the reusable alert
-  model/base types that no longer need direct daemon state.
+  model/base types that no longer need direct daemon state, along with the detached
+  consumer-facing `UserAlertSurface` used by the legacy HTTP/admin shell.
 - `:runtime-node` owns the remaining daemon runtime body across the still-cyclic
   `network.crypta.client` async/request engine and high-level client APIs, large slices of
   `network.crypta.node` after the phase-1 routing/helper move, the retained runtime-owned client
@@ -684,7 +685,8 @@ Root build also includes:
   `network.crypta.runtime.core.SSL` helper.
 - `:runtime-alerts`: extracted leaf-safe alert/feed module owning the full
   `network.crypta.runtime.alerts.feed` package plus reusable alert model/base classes that stay
-  free of direct `Node`/`NodeClientCore` coupling.
+  free of direct `Node`/`NodeClientCore` coupling, including the detached `UserAlertSurface`
+  contract for HTTP/admin consumers.
 
 ### Spotless + Dependency Verification
 
@@ -823,8 +825,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   such as `ClientEndpoints`, `NodeClientCoreInit`, and `NodeClientPersistence`; shell/password
   seams under `runtime.http`; and updater classes such as `NodeUpdateManager` and `CoreUpdater`.
   The extracted `:runtime-alerts` leaf now owns the reusable alert/feed model subset under
-  `network.crypta.runtime.alerts`, while `:runtime-node` keeps `UserAlertManager` and the
-  daemon-coupled alert producers. The root project keeps the composition class
+  `network.crypta.runtime.alerts`, plus the detached `UserAlertSurface` consumed by legacy HTTP,
+  while `:runtime-node` keeps `UserAlertManager` and the daemon-coupled alert producers. The root
+  project keeps the composition class
   `DefaultNodeRuntimeBridgeFactories`, which selects the concrete FCP and HTTP bridge
   implementations from the extracted adapter leaves.
 - Config + localization leaf (`:foundation-config`): `network.crypta.config`,
@@ -865,7 +868,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.node` helper slice across selected request/routing value, exception, callback,
   and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
   `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
-  feed/model subset;
+  feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps;

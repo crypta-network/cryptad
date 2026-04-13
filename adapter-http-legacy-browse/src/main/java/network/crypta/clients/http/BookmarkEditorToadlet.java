@@ -12,6 +12,7 @@ import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.UnknownPeerException;
@@ -824,7 +825,7 @@ public class BookmarkEditorToadlet extends Toadlet {
    * @param ctx execution context used for page creation, access control, redirects, and bookmark
    *     management; must not be {@code null}.
    * @throws ToadletContextClosedException if the response stream closes while emitting output,
-   *     indicating the client disconnected mid-request.
+   *     indicating the client-disconnected mid-request.
    * @throws IOException if reading form data or writing the HTML response encounters an I/O error.
    */
   public void handleMethodPOST(URI uri, HTTPRequest req, ToadletContext ctx)
@@ -979,6 +980,11 @@ public class BookmarkEditorToadlet extends Toadlet {
       throws MalformedURLException {
     Bookmark newBookmark;
     if (ACTION_ADD_ITEM.equals(action)) {
+      UserAlertManager alertManager = concreteAlertManagerOrNull(postCtx.ctx());
+      if (alertManager == null) {
+        addMissingAlertManagerError(postCtx.pageMaker(), postCtx.content());
+        return;
+      }
       FreenetURI key = new FreenetURI(req.getPartAsStringFailsafe("key", MAX_KEY_LENGTH));
       // Checkbox values are treated as true when present.
       boolean hasAnActivelink = req.isPartSet(ACTIVE_LINK_FIELD);
@@ -990,7 +996,7 @@ public class BookmarkEditorToadlet extends Toadlet {
               req.getPartAsStringFailsafe(EXPLAIN_FIELD, MAX_EXPLANATION_LENGTH),
               hasAnActivelink,
               postCtx.bookmarkManager(),
-              postCtx.ctx().getAlertManager());
+              alertManager);
     } else {
       newBookmark = new BookmarkCategory(name);
     }
@@ -1010,6 +1016,24 @@ public class BookmarkEditorToadlet extends Toadlet {
             "bookmark-add-new",
             false)
         .addChild("p", NodeL10n.getBase().getString("BookmarkEditorToadlet.addedNewBookmark"));
+  }
+
+  private UserAlertManager concreteAlertManagerOrNull(ToadletContext ctx) {
+    if (ctx.getAlertManager() instanceof UserAlertManager alertManager) {
+      return alertManager;
+    }
+    return null;
+  }
+
+  private void addMissingAlertManagerError(PageMaker pageMaker, HTMLNode content) {
+    pageMaker
+        .getInfobox(
+            INFOBOX_ERROR,
+            NodeL10n.getBase().getString("Toadlet.internalErrorTitle"),
+            content,
+            BOOKMARK_ERROR_ID,
+            false)
+        .addChild("#", NodeL10n.getBase().getString("Toadlet.internalErrorPleaseReport"));
   }
 
   private void addInvalidKeyError(PageMaker pageMaker, HTMLNode content) {

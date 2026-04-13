@@ -1,6 +1,6 @@
 package network.crypta.clients.http;
 
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 
 /**
  * Shared services needed to build per-request {@link ToadletContextImpl} instances.
@@ -11,11 +11,11 @@ import network.crypta.runtime.alerts.UserAlertManager;
  *
  * @param container the owning toadlet container that enforces request policies
  * @param pageMaker shared page renderer used by UI toadlets
- * @param userAlertManager manager used to surface user-facing alerts
+ * @param userAlertManager alert surface used to render and mutate user-facing alerts
  * @param bookmarkManager bookmark subsystem handle for request handlers
  */
 public record ToadletRequestServices(
     ToadletContainer container,
     PageMaker pageMaker,
-    UserAlertManager userAlertManager,
+    UserAlertSurface userAlertManager,
     BookmarkManagerHandle bookmarkManager) {}
