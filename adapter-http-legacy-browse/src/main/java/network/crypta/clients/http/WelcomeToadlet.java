@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
@@ -22,7 +23,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Version;
 import network.crypta.runtime.alerts.UserAlert;
-import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.WelcomePageSnapshot;
 import network.crypta.support.HTMLNode;
@@ -90,6 +90,7 @@ public class WelcomeToadlet extends Toadlet {
   private static final String TEXTAREA_DESC_B = "descB";
   private static final String STYLE_BORDER_NONE = "border: none";
   private static final String TARGET_BLANK = "_blank";
+  private static final String ALERTS_PATH = "/alerts/";
 
   private final WelcomeToadletRuntimePorts runtimePorts;
 
@@ -155,8 +156,7 @@ public class WelcomeToadlet extends Toadlet {
     if (updated) {
       HTMLNode alertCell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE);
       alertCell.addChild(
-          concreteAlertManager(ctx)
-              .renderDismissButton(item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
+          renderDismissButton(ctx, item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
     }
   }
 
@@ -435,10 +435,13 @@ public class WelcomeToadlet extends Toadlet {
   }
 
   private void disableMatchingAlert(ToadletContext ctx, UserAlert alert) {
-    if (alert.userCanDismiss() && alert.shouldUnregisterOnDismiss()) {
-      alert.onDismiss();
-      LOG.info("Unregistering the userAlert {}", alert.hashCode());
-      concreteAlertManager(ctx).unregister(alert);
+    if (alert.userCanDismiss()) {
+      if (alert.shouldUnregisterOnDismiss()) {
+        LOG.info("Unregistering the userAlert {}", alert.hashCode());
+      } else {
+        LOG.info("Disabling the userAlert {}", alert.hashCode());
+      }
+      ctx.getAlertManager().dismissAlert(alert.hashCode());
     } else {
       LOG.info("Disabling the userAlert {}", alert.hashCode());
       alert.isValid(false);
@@ -650,13 +653,49 @@ public class WelcomeToadlet extends Toadlet {
     String[] alertAnchors = alertsToDump.split(",");
     HashSet<String> toDump = new HashSet<>();
     Collections.addAll(toDump, alertAnchors);
-    concreteAlertManager(ctx).dumpEvents(toDump);
+    dismissMatchingEventAlerts(ctx, toDump);
     redirectToRoot(ctx);
     return true;
   }
 
-  private UserAlertManager concreteAlertManager(ToadletContext ctx) {
-    return (UserAlertManager) ctx.getAlertManager();
+  private void dismissMatchingEventAlerts(ToadletContext ctx, Set<String> toDump) {
+    for (UserAlert alert : ctx.getAlertManager().getAlerts()) {
+      if (alert.isEventNotification() && toDump.contains(alert.anchor())) {
+        ctx.getAlertManager().dismissAlert(alert.hashCode());
+      }
+    }
+  }
+
+  private HTMLNode renderDismissButton(
+      ToadletContext ctx, UserAlert userAlert, String redirectToAfterDisable) {
+    HTMLNode result = new HTMLNode("div");
+    if (!userAlert.userCanDismiss()) {
+      return result;
+    }
+
+    HTMLNode dismissFormNode =
+        result
+            .addChild("form", new String[] {"action", "method"}, new String[] {ALERTS_PATH, "post"})
+            .addChild("div");
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_HIDDEN, "disable", String.valueOf(userAlert.hashCode())});
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_HIDDEN, PARAM_FORM_PASSWORD, ctx.getFormPassword()});
+    dismissFormNode.addChild(
+        ELEMENT_INPUT,
+        new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+        new String[] {INPUT_SUBMIT, "dismiss-user-alert", userAlert.dismissButtonText()});
+    if (redirectToAfterDisable != null) {
+      dismissFormNode.addChild(
+          ELEMENT_INPUT,
+          new String[] {ATTR_TYPE, "name", ATTR_VALUE},
+          new String[] {INPUT_HIDDEN, "redirectToAfterDisable", redirectToAfterDisable});
+    }
+    return result;
   }
 
   private boolean handleUpgradeConnectionSpeed(HTTPRequest request, ToadletContext ctx)

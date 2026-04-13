@@ -6,11 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.bookmark.BookmarkItem;
+import network.crypta.runtime.alerts.AbstractUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
@@ -40,7 +40,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -85,7 +84,6 @@ class WelcomeToadletTest {
     when(container.publicGatewayMode()).thenReturn(false);
     when(container.enableActivelinks()).thenReturn(true);
     when(alertManager.createSummary()).thenReturn(new HTMLNode("div", "id", "alert-summary"));
-    when(alertManager.renderDismissButton(any(), anyString())).thenReturn(new HTMLNode("button"));
     when(request.getParam("newbookmark")).thenReturn("");
     when(request.getPartAsStringFailsafe("updateconfirm", 32)).thenReturn("");
     when(request.getPartAsStringFailsafe("update", 32)).thenReturn("");
@@ -298,16 +296,21 @@ class WelcomeToadletTest {
   }
 
   @Test
-  void handleMethodPOST_whenDismissEventsSubmitted_dumpsEventsViaConcreteAlertManager()
+  void handleMethodPOST_whenDismissEventsSubmitted_dismissesMatchingEventAlertsViaSurface()
       throws Exception {
+    UserAlert bookmarkEvent = new TestUserAlert("bookmark", true);
+    UserAlert peerEvent = new TestUserAlert("peer", true);
+    UserAlert nonEvent = new TestUserAlert("other", false);
     when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(request.isPartSet("dismiss-events")).thenReturn(true);
     when(request.getPartAsStringFailsafe("events", Integer.MAX_VALUE)).thenReturn("bookmark,peer");
+    when(alertManager.getAlerts()).thenReturn(new UserAlert[] {bookmarkEvent, nonEvent, peerEvent});
 
     toadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
 
-    verify(alertManager).dumpEvents(argThat(events -> events.equals(Set.of("bookmark", "peer"))));
+    verify(alertManager).dismissAlert(bookmarkEvent.hashCode());
+    verify(alertManager).dismissAlert(peerEvent.hashCode());
     @SuppressWarnings("unchecked")
     ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
         ArgumentCaptor.forClass(MultiValueTable.class);
@@ -355,10 +358,10 @@ class WelcomeToadletTest {
   }
 
   @Test
-  void addBookmarkItemRow_whenBookmarkUpdated_usesContextAlertManagerDismissButton()
+  void addBookmarkItemRow_whenBookmarkUpdated_rendersDismissFormUsingAlertSurfaceData()
       throws Exception {
     BookmarkItem item = mock(BookmarkItem.class);
-    UserAlert userAlert = mock(UserAlert.class);
+    UserAlert userAlert = new TestUserAlert("bookmark", false);
     HTMLNode table = new HTMLNode("table");
     when(item.hasAnActivelink()).thenReturn(false);
     when(item.hasUpdated()).thenReturn(true);
@@ -378,14 +381,19 @@ class WelcomeToadletTest {
     method.setAccessible(true);
     method.invoke(toadlet, false, table, item, ctx);
 
-    verify(alertManager).renderDismissButton(userAlert, "/#bookmarks");
+    String html = table.generate();
+    assertTrue(html.contains("action=\"/alerts/\""));
+    assertTrue(html.contains("name=\"disable\""));
+    assertTrue(html.contains("value=\"" + userAlert.hashCode() + "\""));
+    assertTrue(html.contains("name=\"formPassword\""));
+    assertTrue(html.contains("value=\"form-password\""));
+    assertTrue(html.contains("name=\"redirectToAfterDisable\""));
+    assertTrue(html.contains("value=\"/#bookmarks\""));
   }
 
   @Test
-  void disableMatchingAlert_whenAlertShouldUnregister_usesConcreteAlertManager() throws Exception {
-    UserAlert userAlert = mock(UserAlert.class);
-    when(userAlert.userCanDismiss()).thenReturn(true);
-    when(userAlert.shouldUnregisterOnDismiss()).thenReturn(true);
+  void disableMatchingAlert_whenAlertShouldUnregister_usesAlertSurfaceDismissal() throws Exception {
+    UserAlert userAlert = new TestUserAlert("dismiss", false);
 
     Method method =
         WelcomeToadlet.class.getDeclaredMethod(
@@ -393,8 +401,7 @@ class WelcomeToadletTest {
     method.setAccessible(true);
     method.invoke(toadlet, ctx, userAlert);
 
-    verify(userAlert).onDismiss();
-    verify(alertManager).unregister(userAlert);
+    verify(alertManager).dismissAlert(userAlert.hashCode());
   }
 
   @Test
@@ -507,5 +514,33 @@ class WelcomeToadletTest {
 
   private static DarknetConnectionPeerSnapshot alicePeer() {
     return new DarknetConnectionPeerSnapshot(42, "peer-1", "Alice", "", false);
+  }
+
+  private static final class TestUserAlert extends AbstractUserAlert {
+
+    private final String anchor;
+    private final boolean eventNotification;
+
+    private TestUserAlert(String anchor, boolean eventNotification) {
+      super(
+          true,
+          "Title",
+          Body.of("Text", "Short", new HTMLNode("div", "Alert")),
+          UserAlert.MINOR,
+          true,
+          new DismissOptions("Dismiss", true));
+      this.anchor = anchor;
+      this.eventNotification = eventNotification;
+    }
+
+    @Override
+    public String anchor() {
+      return anchor;
+    }
+
+    @Override
+    public boolean isEventNotification() {
+      return eventNotification;
+    }
   }
 }

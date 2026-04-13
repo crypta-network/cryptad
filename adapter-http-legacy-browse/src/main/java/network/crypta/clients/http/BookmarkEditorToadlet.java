@@ -980,6 +980,11 @@ public class BookmarkEditorToadlet extends Toadlet {
       throws MalformedURLException {
     Bookmark newBookmark;
     if (ACTION_ADD_ITEM.equals(action)) {
+      UserAlertManager alertManager = concreteAlertManagerOrNull(postCtx.ctx());
+      if (alertManager == null) {
+        addMissingAlertManagerError(postCtx.pageMaker(), postCtx.content());
+        return;
+      }
       FreenetURI key = new FreenetURI(req.getPartAsStringFailsafe("key", MAX_KEY_LENGTH));
       // Checkbox values are treated as true when present.
       boolean hasAnActivelink = req.isPartSet(ACTIVE_LINK_FIELD);
@@ -991,7 +996,7 @@ public class BookmarkEditorToadlet extends Toadlet {
               req.getPartAsStringFailsafe(EXPLAIN_FIELD, MAX_EXPLANATION_LENGTH),
               hasAnActivelink,
               postCtx.bookmarkManager(),
-              concreteAlertManager(postCtx.ctx()));
+              alertManager);
     } else {
       newBookmark = new BookmarkCategory(name);
     }
@@ -1013,8 +1018,22 @@ public class BookmarkEditorToadlet extends Toadlet {
         .addChild("p", NodeL10n.getBase().getString("BookmarkEditorToadlet.addedNewBookmark"));
   }
 
-  private UserAlertManager concreteAlertManager(ToadletContext ctx) {
-    return (UserAlertManager) ctx.getAlertManager();
+  private UserAlertManager concreteAlertManagerOrNull(ToadletContext ctx) {
+    if (ctx.getAlertManager() instanceof UserAlertManager alertManager) {
+      return alertManager;
+    }
+    return null;
+  }
+
+  private void addMissingAlertManagerError(PageMaker pageMaker, HTMLNode content) {
+    pageMaker
+        .getInfobox(
+            INFOBOX_ERROR,
+            NodeL10n.getBase().getString("Toadlet.internalErrorTitle"),
+            content,
+            BOOKMARK_ERROR_ID,
+            false)
+        .addChild("#", NodeL10n.getBase().getString("Toadlet.internalErrorPleaseReport"));
   }
 
   private void addInvalidKeyError(PageMaker pageMaker, HTMLNode content) {

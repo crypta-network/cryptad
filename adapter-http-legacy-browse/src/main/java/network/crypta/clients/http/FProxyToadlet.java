@@ -736,16 +736,28 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
 
     private boolean handleFeedRequest() throws ToadletContextClosedException, IOException {
+      UserAlertManager alertManager = concreteAlertManagerOrNull(ctx);
+      if (alertManager == null) {
+        LOG.warn(
+            "Cannot serve alert feed because {} exposed {} instead of UserAlertManager",
+            ToadletContext.class.getSimpleName(),
+            ctx.getAlertManager().getClass().getName());
+        ctx.sendReplyHeaders(503, "Service Unavailable", null, null, 0);
+        return true;
+      }
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
-      String atom = concreteAlertManager(ctx).getAtom(schemeHostAndPort);
+      String atom = alertManager.getAtom(schemeHostAndPort);
       byte[] buf = atom.getBytes(StandardCharsets.UTF_8);
       ctx.sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", buf.length);
       ctx.writeData(buf, 0, buf.length);
       return true;
     }
 
-    private UserAlertManager concreteAlertManager(ToadletContext context) {
-      return (UserAlertManager) context.getAlertManager();
+    private UserAlertManager concreteAlertManagerOrNull(ToadletContext context) {
+      if (context.getAlertManager() instanceof UserAlertManager manager) {
+        return manager;
+      }
+      return null;
     }
 
     private boolean validateRangeHeader() throws ToadletContextClosedException, IOException {

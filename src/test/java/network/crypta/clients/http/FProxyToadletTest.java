@@ -8,6 +8,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
@@ -22,9 +23,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -143,6 +149,27 @@ class FProxyToadletTest {
     ArgumentCaptor<byte[]> dataCaptor = ArgumentCaptor.forClass(byte[].class);
     verify(ctx).writeData(dataCaptor.capture(), eq(0), eq(atomBytes.length));
     assertArrayEquals(atomBytes, dataCaptor.getValue());
+  }
+
+  @Test
+  void handleMethodGET_whenFeedPathRequestedWithoutConcreteAlertManager_returnsServiceUnavailable()
+      throws Exception {
+    FProxyToadlet toadlet = newFProxy();
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    UserAlertSurface alertSurface = mock(UserAlertSurface.class);
+
+    toadlet.container = container;
+    when(container.publicGatewayMode()).thenReturn(false);
+    when(ctx.getHeaders()).thenReturn(new MultiValueTable<>());
+    when(ctx.getAlertManager()).thenReturn(alertSurface);
+
+    toadlet.handleMethodGET(URI.create("http://example.test/feed"), request, ctx);
+
+    verify(ctx).sendReplyHeaders(503, "Service Unavailable", null, null, 0);
+    verify(ctx, never())
+        .sendReplyHeadersFProxy(anyInt(), anyString(), any(), anyString(), anyLong());
+    verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
   }
 
   @Test
