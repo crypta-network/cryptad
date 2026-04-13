@@ -1,7 +1,10 @@
 package network.crypta.runtime.admin;
 
+import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestStarter;
+import network.crypta.support.http.HttpFetchSizeLimits;
 
 /**
  * Creates the legacy admin and page-oriented runtime SPI adapters as one package-owned bundle.
@@ -37,9 +40,14 @@ public final class AdminRuntimePortsFactory {
    */
   public static AdminRuntimePortsBundle create(
       Node node, NodeClientCore core, AdminRuntimeBridgeInputs bridgeInputs) {
+    long maxLengthNoProgress = HttpFetchSizeLimits.getMaxLengthNoProgress();
+    HighLevelSimpleClient peerReferenceClient =
+        core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    peerReferenceClient.setMaxLength(maxLengthNoProgress);
+    peerReferenceClient.setMaxIntermediateLength(maxLengthNoProgress);
     return new AdminRuntimePortsBundle(
         new LegacyConnectionsPagePort(node, bridgeInputs.geoIpCountryLookup()),
-        new LegacyConnectionsSupportPort(node),
+        new LegacyConnectionsSupportPort(node, peerReferenceClient),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
         new LegacyDiagnosticPort(node, core, bridgeInputs.queueAdminBackend()),

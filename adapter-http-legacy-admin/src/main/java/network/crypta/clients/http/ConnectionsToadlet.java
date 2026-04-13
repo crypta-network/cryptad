@@ -1,20 +1,15 @@
 package network.crypta.clients.http;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URL;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringTokenizer;
-import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.ConfigException;
-import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -376,51 +371,27 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private StringBuilder fetchReference(AddPeerRequestData data, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!data.urltext().isEmpty()) {
-      return fetchReferenceFromUrl(data.urltext(), ctx);
+      try {
+        return connectionsSupportPort.readPeerReferenceText(data.urltext());
+      } catch (IOException _) {
+        this.sendErrorPage(
+            ctx,
+            200,
+            l10n("failedToAddNodeTitle"),
+            NodeL10n.getBase()
+                .getString(
+                    "DarknetConnectionsToadlet.cantFetchNoderefURL",
+                    new String[] {"url"},
+                    new String[] {data.urltext()}),
+            !isOpennet());
+        return null;
+      }
     }
     if (!data.reftext().isEmpty()) {
       return new StringBuilder(cleanReferenceText(data.reftext()));
     }
     this.sendErrorPage(ctx, 200, l10n("failedToAddNodeTitle"), l10n("noRefOrURL"), !isOpennet());
     return null;
-  }
-
-  private StringBuilder fetchReferenceFromUrl(String urltext, ToadletContext ctx)
-      throws ToadletContextClosedException, IOException {
-    try {
-      return fetchReferenceViaUrl(urltext);
-    } catch (IOException _) {
-      this.sendErrorPage(
-          ctx,
-          200,
-          l10n("failedToAddNodeTitle"),
-          NodeL10n.getBase()
-              .getString(
-                  "DarknetConnectionsToadlet.cantFetchNoderefURL",
-                  new String[] {"url"},
-                  new String[] {urltext}),
-          !isOpennet());
-      return null;
-    }
-  }
-
-  private StringBuilder fetchReferenceViaUrl(String urltext) throws IOException {
-    try {
-      FreenetURI refUri = new FreenetURI(urltext);
-      return PeerReferenceTextLoader.readFromFreenetUri(refUri, client);
-    } catch (MalformedURLException | FetchException _) {
-      LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urltext);
-      URL url = buildUrl(urltext);
-      return PeerReferenceTextLoader.readFromUrl(url);
-    }
-  }
-
-  private URL buildUrl(String urltext) throws MalformedURLException {
-    try {
-      return URI.create(urltext).toURL();
-    } catch (IllegalArgumentException uriException) {
-      throw new MalformedURLException(uriException.getMessage());
-    }
   }
 
   private void processReferences(AddPeerRequestData data, StringBuilder ref, ToadletContext ctx)

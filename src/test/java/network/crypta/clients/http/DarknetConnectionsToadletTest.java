@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -55,6 +56,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -428,6 +430,63 @@ class DarknetConnectionsToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenAddPeerFormUsesUrl_delegatesReferenceLoadingThroughSupportPort()
+      throws Exception {
+    String locationText = "https://example.invalid/noderef";
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("add")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("url", 200)).thenReturn(locationText);
+    when(request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("peerPrivateNote", 250)).thenReturn("");
+    when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("false");
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn(PeerTrust.NORMAL.name());
+    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn(PeerVisibility.NO.name());
+    when(connectionsSupportPort.readPeerReferenceText(locationText))
+        .thenReturn(new StringBuilder(VALID_PEER_REFERENCE));
+    when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("peer-added"));
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/friends/"), request, ctx);
+
+    verify(connectionsSupportPort).readPeerReferenceText(locationText);
+    ArgumentCaptor<PeerFieldSet> fieldSetCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
+    verify(peerPort).add(fieldSetCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.NO));
+    assertEquals("peer-identity", fieldSetCaptor.getValue().directValues().get("identity"));
+    assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
+  }
+
+  @Test
+  void handleMethodPOST_whenUrlReferenceLoadingFails_rendersErrorPageAndSkipsPeerAdd()
+      throws Exception {
+    String locationText = "https://example.invalid/noderef";
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(request.isPartSet("add")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("url", 200)).thenReturn(locationText);
+    when(request.getPartAsStringFailsafe("ref", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("reffile", Integer.MAX_VALUE)).thenReturn("");
+    when(request.getPartAsStringFailsafe("peerPrivateNote", 250)).thenReturn("");
+    when(request.getPartAsStringFailsafe("peers-offers-files", 5)).thenReturn("false");
+    when(request.getPartAsStringFailsafe("trust", 10)).thenReturn(PeerTrust.NORMAL.name());
+    when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn(PeerVisibility.NO.name());
+    when(connectionsSupportPort.readPeerReferenceText(locationText))
+        .thenThrow(new IOException("boom"));
+    PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
+    when(ctx.getPageMaker()).thenReturn(pageMaker);
+    ByteArrayOutputStream body = captureBody(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/friends/"), request, ctx);
+
+    verify(connectionsSupportPort).readPeerReferenceText(locationText);
+    verifyNoInteractions(peerPort);
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains(locationText));
+    assertTrue(html.contains("/addfriend/"));
+  }
+
+  @Test
   void handleMethodPOST_whenAddPeerFormContainsDarknetReference_addsPeerAndWritesPrivateNote()
       throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -564,7 +623,11 @@ class DarknetConnectionsToadletTest {
     Mockito.lenient()
         .when(
             pageMaker.getInfobox(
-                anyString(), anyString(), any(HTMLNode.class), anyString(), anyBoolean()))
+                anyString(),
+                anyString(),
+                any(HTMLNode.class),
+                nullable(String.class),
+                anyBoolean()))
         .thenAnswer(
             invocation -> {
               HTMLNode parentNode = invocation.getArgument(2);
