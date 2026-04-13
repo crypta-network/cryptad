@@ -213,13 +213,20 @@ final class LegacyCallbackAdapters {
     }
   }
 
-  private static final class DirectoryEnumerableStringCallbackAdapter
-      extends EnumerableStringCallbackAdapter implements DirectorySelectionCallback {
+  private static final class DirectoryEnumerableStringCallbackAdapter extends StringCallbackAdapter
+      implements EnumerableOptionCallback, DirectorySelectionCallback {
+    private final EnumerableOptionCallback enumerableCallback;
 
     private DirectoryEnumerableStringCallbackAdapter(
         network.crypta.support.api.StringCallback callback,
         EnumerableOptionCallback enumerableCallback) {
-      super(callback, enumerableCallback);
+      super(callback);
+      this.enumerableCallback = enumerableCallback;
+    }
+
+    @Override
+    public String[] getPossibleValues() {
+      return enumerableCallback.getPossibleValues();
     }
   }
 }
