@@ -831,8 +831,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       assertEquals(childPid, running.pid());
       RunningAppSnapshot current = waitForRunningApp(host, RUNNER_APP_ID);
@@ -874,11 +873,8 @@ class LocalProcessAppHostTest {
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
     Path wrapperPidFile = installation.paths().runDir().resolve("wrapper.pid");
-    waitForFile(childPidFile);
-    waitForFile(wrapperPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
-    long wrapperPid =
-        Long.parseLong(Files.readString(wrapperPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
+    long wrapperPid = waitForPidFileValue(wrapperPidFile);
     Path wrapperExitedFile = installation.paths().runDir().resolve("wrapper-exited.txt");
     waitForFile(wrapperExitedFile);
     try {
@@ -922,8 +918,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
@@ -959,8 +954,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(PYTHON_DAEMON_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       RunningAppSnapshot current = waitForRunningPid(host, PYTHON_DAEMON_APP_ID, childPid);
       assertEquals(running.appId(), current.appId());
@@ -999,8 +993,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
@@ -1038,8 +1031,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       RunningAppSnapshot current = waitForRunningPid(host, childPid);
       assertEquals(running.appId(), current.appId());
@@ -1208,8 +1200,7 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(LATE_CHILD_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     Path wrapperExitedFile = installation.paths().runDir().resolve("wrapper-exited.txt");
     waitForFile(wrapperExitedFile);
     try {
@@ -1291,8 +1282,7 @@ class LocalProcessAppHostTest {
     host.start(RUNNER_APP_ID);
 
     Path childPidFile = installation.paths().runDir().resolve(CHILD_PID_FILE_NAME);
-    waitForFile(childPidFile);
-    long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8).trim());
+    long childPid = waitForPidFileValue(childPidFile);
     try {
       assertTrue(host.stop(RUNNER_APP_ID));
       waitForProcessExit(childPid);
@@ -2341,6 +2331,64 @@ class LocalProcessAppHostTest {
     throw new AssertionError("timed out waiting for " + file);
   }
 
+  private static long waitForPidFileValue(Path file) throws IOException {
+    ObservedPid observedPid = tryReadPidFileValue(file);
+    if (observedPid.pid() != null) {
+      return observedPid.pid();
+    }
+
+    Path parent = file.getParent();
+    if (parent == null) {
+      throw new AssertionError("file has no parent: " + file);
+    }
+
+    long timeoutMillis = Duration.ofSeconds(10).toMillis();
+    try (WatchService watchService = parent.getFileSystem().newWatchService()) {
+      parent.register(
+          watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY);
+      long deadline = System.nanoTime() + Duration.ofMillis(timeoutMillis).toNanos();
+      while (System.nanoTime() < deadline) {
+        WatchKey key = pollWatchKey(watchService, deadline, file);
+        observedPid = tryReadPidFileValue(file);
+        if (observedPid.pid() != null) {
+          return observedPid.pid();
+        }
+        if (key != null && !key.reset()) {
+          throw new AssertionError("watch service closed before " + file + " became readable");
+        }
+      }
+    }
+
+    observedPid = tryReadPidFileValue(file);
+    if (observedPid.pid() != null) {
+      return observedPid.pid();
+    }
+
+    throw new AssertionError(
+        "timed out waiting for numeric pid in "
+            + file
+            + (observedPid.contents() == null
+                ? ""
+                : "; last observed contents: '" + observedPid.contents() + "'"));
+  }
+
+  private static ObservedPid tryReadPidFileValue(Path file) throws IOException {
+    if (!Files.isRegularFile(file)) {
+      return new ObservedPid(null, null);
+    }
+
+    String contents = Files.readString(file, StandardCharsets.UTF_8).trim();
+    if (contents.isEmpty()) {
+      return new ObservedPid(null, contents);
+    }
+
+    try {
+      return new ObservedPid(Long.parseLong(contents), contents);
+    } catch (NumberFormatException e) {
+      return new ObservedPid(null, contents);
+    }
+  }
+
   private static WatchKey pollWatchKey(WatchService watchService, long deadline, Path file)
       throws IOException {
     long remainingNanos = deadline - System.nanoTime();
@@ -2365,6 +2413,8 @@ class LocalProcessAppHostTest {
     }
     return false;
   }
+
+  private record ObservedPid(@Nullable Long pid, @Nullable String contents) {}
 
   private static final class LateChildSpawningProcess extends Process {
     private final long pid;
