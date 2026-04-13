@@ -6,6 +6,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.ExternalLinkSupport;
 
 /**
  * Renders the informational page that guides users through inserting a freesite into Crypta via the
@@ -81,7 +82,7 @@ public class InsertFreesiteToadlet extends Toadlet {
             new String[] {"jsite-http", "jsite-freenet", "jsite-freenet-version", "jsite-info"},
             new HTMLNode[] {
               HTMLNode.link(
-                  ExternalLinkToadlet.escape("http://downloads.freenetproject.org/alpha/jSite/")),
+                  ExternalLinkSupport.escape("http://downloads.freenetproject.org/alpha/jSite/")),
               HTMLNode.link(
                   "/SSK@1waTsw46L9-JEQ8yX1khjkfHcn--g0MlMsTlYHax9zQ,oYyxr5jyFnaTsVGDQWk9e3ddOWGKnqEASxAk08MHT2Y,AQACAAE/jSite-15/jSite-0.14-jar-with-dependencies.jar"),
               HTMLNode.text("0.14"),
@@ -112,7 +113,7 @@ public class InsertFreesiteToadlet extends Toadlet {
             new String[] {"thingamablog", "thingamablog-freenet"},
             new HTMLNode[] {
               HTMLNode.link(
-                  ExternalLinkToadlet.escape(
+                  ExternalLinkSupport.escape(
                       "http://downloads.freenetproject.org/alpha/thingamablog/thingamablog.zip")),
               HTMLNode.link(
                   "/CHK@o8j9T2Ghc9cfKMLvv9aLrHbvW5XiAMEGwGDqH2UANTk,sVxLdxoNL-UAsvrlXRZtI5KyKlp0zv3Ysk4EcO627V0,AAIC--8/thingamablog.zip")

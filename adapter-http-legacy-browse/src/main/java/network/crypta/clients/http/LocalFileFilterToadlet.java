@@ -52,7 +52,7 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
    * divergent copy; use this constant to keep navigation coherent with {@link
    * ContentFilterToadlet}.
    */
-  public static final String POST_TO = ContentFilterToadlet.CONTENT_FILTER_PATH;
+  public static final String POST_TO = LegacyContentFilterSupport.CONTENT_FILTER_PATH;
 
   /**
    * Creates a stateless browser toadlet that reuses the provided client core and HTTP helper.
@@ -137,7 +137,7 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
     node.addChild(
         "input",
         new String[] {"type", "name", "value"},
-        new String[] {"submit", SELECT_FILE, ContentFilterToadlet.l10n("selectFile")});
+        new String[] {"submit", SELECT_FILE, LegacyContentFilterSupport.l10n("selectFile")});
     node.addChild(
         "input",
         new String[] {"type", "name", "value"},

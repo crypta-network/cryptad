@@ -13,9 +13,8 @@ import network.crypta.clients.http.ajaxpush.PushTesterToadlet;
  *
  * <p>This helper keeps the tightly related push toadlets together and out of {@link
  * LegacyFProxyBrowseRouteRegistrar} so the top-level browse registrar can stay focused on the phase
- * boundaries that matter for the future physical browse split. The class remains in the legacy
- * admin module for now because this PR only introduces the registrar seam. It does not move the
- * browse-owned code yet.
+ * boundaries that matter for the physical browse split. The helper now lives in {@code
+ * :adapter-http-legacy-browse} together with the browse-owned code it registers.
  *
  * <p>Callers use this helper only during one-shot HTTP startup. It instantiates the concrete
  * AJAX-push toadlets, registers them in the historical order already exposed by the legacy shell,

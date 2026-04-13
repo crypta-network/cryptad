@@ -28,11 +28,11 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Collects threat-level and bandwidth choices through the shared HTML template system.
  *   <li>Validates submitted values against detached runtime bounds and suggested defaults.
- *   <li>Redirects to {@link WelcomeToadlet#ROOT_PATH} after successful completion.
+ *   <li>Redirects to {@link LegacyHttpPaths#ROOT_PATH} after successful completion.
  * </ul>
  *
  * @see WebTemplateToadlet
- * @see WelcomeToadlet
+ * @see LegacyHttpPaths
  * @see FirstTimeWizardPort
  */
 public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
@@ -129,7 +129,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     if (formModel.isValid()) {
       wizardPort.applySubmission(formModel.toSubmission());
-      super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.ROOT_PATH);
+      super.writeTemporaryRedirect(ctx, "Wizard complete", LegacyHttpPaths.ROOT_PATH);
       return;
     }
 

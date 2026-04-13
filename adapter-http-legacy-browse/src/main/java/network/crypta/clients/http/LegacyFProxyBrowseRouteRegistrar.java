@@ -9,12 +9,11 @@ import network.crypta.runtime.spi.TransferAccessPort;
 /**
  * Concrete browse-owned legacy HTTP route registrar used by the current FProxy-backed shell.
  *
- * <p>This implementation stays in {@code :adapter-http-legacy-admin} for now so the physical
- * browse-module move can remain a later mechanical PR. Its job is deliberately small: instantiate
- * the browse/FProxy-owned routes that still live in this package tree today and publish them only
- * when the admin-owned orchestrator asks for the matching registration phase. That keeps concrete
- * browse classes out of the admin-owned startup path while preserving the exact historical
- * insertion points that the legacy shell already exposed.
+ * <p>This implementation now lives in {@code :adapter-http-legacy-browse}. Its job is deliberately
+ * small: instantiate the browse/FProxy-owned routes in this package tree and publish them only when
+ * the admin-owned orchestrator asks for the matching registration phase. That keeps concrete browse
+ * classes out of the admin-owned startup path while preserving the exact historical insertion
+ * points that the legacy shell already exposed.
  *
  * <p>The registrar is stateless and safe to reuse across startup attempts as long as callers still
  * treat registration as a one-shot action for a single {@link SimpleToadletServer}. It does not

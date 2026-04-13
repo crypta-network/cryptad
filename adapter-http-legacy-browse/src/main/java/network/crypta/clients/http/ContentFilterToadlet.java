@@ -28,6 +28,8 @@ import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static network.crypta.clients.http.LegacyContentFilterSupport.l10n;
+
 /**
  * Exposes a small HTTP UI that lets advanced users run the content filter against uploaded or local
  * files and inspect the sanitized output.
@@ -57,18 +59,14 @@ import org.slf4j.LoggerFactory;
 public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback {
   private static final Logger LOG = LoggerFactory.getLogger(ContentFilterToadlet.class);
 
-  private static final String PATH_PROPERTY =
-      "network.crypta.clients.http.ContentFilterToadlet.path";
-  private static final String DEFAULT_PATH_SEGMENT = "filterfile";
-  private static final String DEFAULT_PATH = String.join("/", "", DEFAULT_PATH_SEGMENT, "");
-
   /**
-   * Resolved URL path where the content filter UI and submission endpoint are mounted. The path is
-   * derived from the {@code network.crypta.clients.http.ContentFilterToadlet.path} system property
-   * when present; otherwise it defaults to {@code /filterfile/}. The trailing slash is preserved so
-   * relative links in rendered forms remain stable.
+   * Public route constant retained for compatibility with existing browse code and tests.
+   *
+   * <p>The canonical value now lives in {@link LegacyContentFilterSupport}, but this alias keeps
+   * the historical {@code ContentFilterToadlet.CONTENT_FILTER_PATH} surface intact while admin code
+   * switches to the shared-shell helper instead of importing this browse-owned type.
    */
-  public static final String CONTENT_FILTER_PATH = resolvePath();
+  public static final String CONTENT_FILTER_PATH = LegacyContentFilterSupport.CONTENT_FILTER_PATH;
 
   private static final String MIME_TYPE_PART = "mime-type";
   private static final String FILTER_OPERATION_PART = "filter-operation";
@@ -102,14 +100,6 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
    */
   public ContentFilterToadlet(HighLevelSimpleClient client) {
     super(client);
-  }
-
-  private static String resolvePath() {
-    String configuredPath = System.getProperty(PATH_PROPERTY);
-    if (configuredPath == null || configuredPath.isBlank()) {
-      return DEFAULT_PATH;
-    }
-    return configuredPath;
   }
 
   @Override
@@ -561,7 +551,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
   }
 
   static String l10n(String key) {
-    return NodeL10n.getBase().getString("ContentFilterToadlet." + key);
+    return LegacyContentFilterSupport.l10n(key);
   }
 
   private String cannotReadFileMessage(String filename) {

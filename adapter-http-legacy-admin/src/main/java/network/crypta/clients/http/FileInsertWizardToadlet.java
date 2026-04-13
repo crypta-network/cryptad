@@ -7,11 +7,13 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.filter.FilterOperation;
-import network.crypta.clients.http.ContentFilterToadlet.ResultHandling;
+import network.crypta.clients.http.LegacyContentFilterSupport.ResultHandling;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
+
+import static network.crypta.clients.http.LegacyContentFilterSupport.CONTENT_FILTER_PATH;
 
 /**
  * Renders the web-based wizard for inserting a single file into the node and wires the page to the
@@ -324,9 +326,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
     InfoboxNode infobox = pageMaker.getInfobox(l10n("previewFilterFile"), "insert-queue", true);
     HTMLNode insertBox = infobox.getOuterNode();
     HTMLNode insertContent = infobox.getContentNode();
-    HTMLNode insertForm =
-        ctx.addFormChild(
-            insertContent, ContentFilterToadlet.CONTENT_FILTER_PATH, "filterPreviewForm");
+    HTMLNode insertForm = ctx.addFormChild(insertContent, CONTENT_FILTER_PATH, "filterPreviewForm");
     insertForm.addChild("#", l10n("filterFileLabel"));
     insertForm.addChild("br");
     insertForm.addChild("br");
@@ -349,7 +349,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
         TAG_LABEL,
         new String[] {"for"},
         new String[] {"resHandlingDisplay"},
-        ContentFilterToadlet.l10n("displayResultLabel"));
+        LegacyContentFilterSupport.l10n("displayResultLabel"));
     insertForm.addChild("br");
     insertForm.addChild(
         TAG_INPUT,
@@ -361,18 +361,18 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
         TAG_LABEL,
         new String[] {"for"},
         new String[] {"resHandlingSave"},
-        ContentFilterToadlet.l10n("saveResultLabel"));
+        LegacyContentFilterSupport.l10n("saveResultLabel"));
     insertForm.addChild("br");
     insertForm.addChild("br");
 
     // mime type
-    insertForm.addChild("#", ContentFilterToadlet.l10n("mimeTypeLabel") + ": ");
+    insertForm.addChild("#", LegacyContentFilterSupport.l10n("mimeTypeLabel") + ": ");
     insertForm.addChild(
         TAG_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
         new String[] {"text", "mime-type", ""});
     insertForm.addChild("br");
-    insertForm.addChild("#", ContentFilterToadlet.l10n("mimeTypeText"));
+    insertForm.addChild("#", LegacyContentFilterSupport.l10n("mimeTypeText"));
     insertForm.addChild("br");
     insertForm.addChild("br");
 
@@ -401,7 +401,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
         TAG_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
         new String[] {
-          INPUT_SUBMIT, "filter-upload", ContentFilterToadlet.l10n("filterFileFilterLabel")
+          INPUT_SUBMIT, "filter-upload", LegacyContentFilterSupport.l10n("filterFileFilterLabel")
         });
     return insertBox;
   }

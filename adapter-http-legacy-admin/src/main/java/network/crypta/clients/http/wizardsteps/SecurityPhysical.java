@@ -1,7 +1,6 @@
 package network.crypta.clients.http.wizardsteps;
 
 import java.io.IOException;
-import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.clients.http.SecurityLevelsToadlet;
@@ -12,6 +11,7 @@ import network.crypta.runtime.spi.SecurityLevelsSnapshot;
 import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.io.FileUtil.OperatingSystem;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -122,7 +122,7 @@ public class SecurityPhysical implements Step {
             new String[] {"bold", "truecrypt"},
             new HTMLNode[] {
               HTMLNode.STRONG,
-              HTMLNode.linkInNewWindow(ExternalLinkToadlet.escape("http://www.truecrypt.org/"))
+              HTMLNode.linkInNewWindow(ExternalLinkSupport.escape("http://www.truecrypt.org/"))
             });
     OperatingSystem os = FileUtil.detectedOS;
     div.addChild(

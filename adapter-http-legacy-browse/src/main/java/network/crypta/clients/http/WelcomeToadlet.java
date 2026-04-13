@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -31,7 +30,6 @@ import network.crypta.support.URLDecoder;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
-import network.crypta.support.io.LineReadingInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -772,7 +770,7 @@ public class WelcomeToadlet extends Toadlet {
             INFOBOX_INFORMATION, l10n("shutdownDone"), contentNode, "shutdown-progressing", true)
         .addChild("#", l10n("thanks"));
 
-    WelcomeToadlet.maybeDisplayWrapperLogfile(ctx, contentNode);
+    LegacyWelcomePageSupport.maybeDisplayWrapperLogfile(ctx, contentNode);
 
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }
@@ -1072,21 +1070,7 @@ public class WelcomeToadlet extends Toadlet {
   }
 
   static HTMLNode sendRestartingPageInner(ToadletContext ctx) {
-    // Tell the user that the node is restarting
-    PageNode page =
-        ctx.getPageMaker()
-            .getPageNode("Node Restart", ctx, new RenderParameters().renderNavigationLinks(false));
-    HTMLNode pageNode = page.getOuterNode();
-    HTMLNode headNode = page.getHeadNode();
-    headNode.addChild(
-        "meta", new String[] {"http-equiv", "content"}, new String[] {"refresh", "20; url="});
-    HTMLNode contentNode = page.getContentNode();
-    ctx.getPageMaker()
-        .getInfobox(
-            INFOBOX_INFORMATION, l10n("restartingTitle"), contentNode, "shutdown-progressing", true)
-        .addChild("#", l10n("restarting"));
-    LOG.info("Node is restarting");
-    return pageNode;
+    return LegacyWelcomePageSupport.sendRestartingPageInner(ctx);
   }
 
   private static String l10n(String key) {
@@ -1112,29 +1096,14 @@ public class WelcomeToadlet extends Toadlet {
    * @param contentNode the page node that receives the log output if available
    */
   public static void maybeDisplayWrapperLogfile(ToadletContext ctx, HTMLNode contentNode) {
-    final File logs = new File("wrapper.log");
-    long logSize = logs.length();
-    if (logs.exists() && logs.isFile() && logs.canRead() && (logSize > 0)) {
-      HTMLNode logInfoboxContent =
-          ctx.getPageMaker()
-              .getInfobox("infobox-info", "Current status", contentNode, "start-progress", true);
-      try (LineReadingInputStream logreader = FileUtil.getLogTailReader(logs, 2000)) {
-        String line;
-        while ((line = logreader.readLine(100000, 200, true)) != null) {
-          logInfoboxContent.addChild("#", line);
-          logInfoboxContent.addChild("br");
-        }
-      } catch (IOException e) {
-        LOG.debug("Failed to read wrapper log tail", e);
-      }
-    }
+    LegacyWelcomePageSupport.maybeDisplayWrapperLogfile(ctx, contentNode);
   }
 
   /**
    * Canonical welcome-page route used by FProxy navigation and bookmark creation flows; all welcome
    * toadlet links resolve relative to this root path.
    */
-  public static final String ROOT_PATH = "/";
+  public static final String ROOT_PATH = LegacyHttpPaths.ROOT_PATH;
 
   /**
    * Returns the public entry path for the welcome toadlet so the container can route requests to

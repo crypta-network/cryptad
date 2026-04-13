@@ -1612,7 +1612,8 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private void sendPanicingPage(ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
-      writeHTMLReply(ctx, 200, "OK", WelcomeToadlet.sendRestartingPageInner(ctx).generate());
+      writeHTMLReply(
+          ctx, 200, "OK", LegacyWelcomePageSupport.sendRestartingPageInner(ctx).generate());
     }
 
     private void sendConfirmPanicPage(ToadletContext ctx)

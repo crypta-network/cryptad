@@ -37,6 +37,7 @@ val internalLeafProjects =
     project(":bridge-fcp-runtime"),
     project(":bridge-http-runtime"),
     project(":adapter-http-legacy-admin"),
+    project(":adapter-http-legacy-browse"),
     project(":thirdparty-onion"),
     project(":thirdparty-legacy"),
     project(":launcher-desktop"),
@@ -106,6 +107,7 @@ dependencies {
   implementation(project(":bridge-fcp-runtime"))
   implementation(project(":bridge-http-runtime"))
   implementation(project(":adapter-http-legacy-admin"))
+  implementation(project(":adapter-http-legacy-browse"))
   implementation(project(":thirdparty-onion"))
   implementation(project(":thirdparty-legacy"))
   implementation(libs.bcprov)

@@ -27,7 +27,7 @@ import network.crypta.support.api.HTTPRequest;
  * <ul>
  *   <li>Responsibilities: render startup status, surface entropy readiness, proxy static assets.
  *   <li>Lifecycle: active only during bootstrap, replaced by the normal UI when the node is ready.
- *   <li>Concurrency: stateless per request; readiness flag may be set from background threads.
+ *   <li>Concurrency: stateless per request; a readiness flag may be set from background threads.
  * </ul>
  */
 public class StartupToadlet extends Toadlet {
@@ -76,7 +76,7 @@ public class StartupToadlet extends Toadlet {
   @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
-    // If we don't disconnect we will have pipelining issues
+    // If we don't disconnect, we will have pipelining issues
     ctx.forceDisconnect();
 
     String path = uri.getPath();
@@ -115,9 +115,9 @@ public class StartupToadlet extends Toadlet {
           ctx.getPageMaker().getInfobox("infobox-error", desc, contentNode, null, true);
       infoboxContent.addChild("#", NodeL10n.getBase().getString("StartupToadlet.isStartingUp"));
 
-      WelcomeToadlet.maybeDisplayWrapperLogfile(ctx, contentNode);
+      LegacyWelcomePageSupport.maybeDisplayWrapperLogfile(ctx, contentNode);
 
-      // Retry cadence is controlled via meta refresh rather than HTTP header.
+      // Retry cadence is controlled via meta-refresh rather than HTTP header.
       writeHTMLReply(ctx, 503, desc, page.generate());
     }
   }
@@ -127,9 +127,9 @@ public class StartupToadlet extends Toadlet {
    *
    * <p>This flag is intended to be invoked by whichever component monitors entropy availability
    * during startup (for example, once a secure PRNG has seeded). Because the field is {@code
-   * volatile}, updates become visible to subsequent HTTP requests without additional
-   * synchronization. Callers should set this only once the PRNG is genuinely usable to avoid
-   * misleading the startup page about entropy quality.
+   * volatile}, updates become visible to later HTTP requests without additional synchronization.
+   * Callers should set this only once the PRNG is genuinely usable to avoid misleading the startup
+   * page about entropy quality.
    */
   public void setIsPRNGReady() {
     isPRNGReady = true;
@@ -138,7 +138,7 @@ public class StartupToadlet extends Toadlet {
   /**
    * Returns the URL path served by this toadlet while the node is starting up.
    *
-   * <p>The startup handler is registered on the root path so it intercepts all incoming requests
+   * <p>The startup handler is registered on the root path, so it intercepts all incoming requests
    * until the main UI replaces it after initialization completes. Keeping the path fixed ensures
    * clients that attempt to reach {@code /} receive a consistent status page rather than a socket
    * error during the transition. The string is immutable and safe to cache by routing layers.

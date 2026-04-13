@@ -48,6 +48,9 @@ class BridgeHttpRuntimeBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "bridge");
   private static final Path BRIDGE_GEOIP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "geoip");
+  private static final Path BRIDGE_BUILD_FILE = Path.of(MODULE_NAME, "build.gradle.kts");
+  private static final Path ADAPTER_BUILD_FILE =
+      Path.of("adapter-http-legacy-admin", "build.gradle.kts");
   private static final Path OWNERSHIP_METADATA =
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path ADAPTER_OWNERSHIP_METADATA =
@@ -82,13 +85,23 @@ class BridgeHttpRuntimeBoundaryTest {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String bridgeBuild = Files.readString(repoRoot.resolve(BRIDGE_BUILD_FILE));
+    String adapterBuild = Files.readString(repoRoot.resolve(ADAPTER_BUILD_FILE));
     Set<String> bridgeMetadataPatterns =
         readOwnershipPatterns(repoRoot.resolve(OWNERSHIP_METADATA));
     Set<String> adapterMetadataPatterns =
         readOwnershipPatterns(repoRoot.resolve(ADAPTER_OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":bridge-http-runtime\""));
+    assertTrue(settings.contains("\":adapter-http-legacy-browse\""));
     assertTrue(build.contains("project(\":bridge-http-runtime\")"));
+    assertTrue(build.contains("project(\":adapter-http-legacy-browse\")"));
+    assertTrue(
+        bridgeBuild.contains("project(\":adapter-http-legacy-browse\")"),
+        ":bridge-http-runtime must depend on :adapter-http-legacy-browse");
+    assertFalse(
+        adapterBuild.contains("project(\":adapter-http-legacy-browse\")"),
+        ":adapter-http-legacy-admin must not depend on :adapter-http-legacy-browse");
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(OWNERSHIP_METADATA)),
         ":bridge-http-runtime must declare owned-output-patterns.txt");

@@ -45,6 +45,7 @@ include(
   ":bridge-fcp-runtime",
   ":bridge-http-runtime",
   ":adapter-http-legacy-admin",
+  ":adapter-http-legacy-browse",
   ":thirdparty-onion",
   ":thirdparty-legacy",
   ":launcher-desktop",
