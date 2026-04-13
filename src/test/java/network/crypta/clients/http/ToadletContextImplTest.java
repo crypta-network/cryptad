@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import network.crypta.clients.http.bookmark.BookmarkManager;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
@@ -39,7 +39,7 @@ class ToadletContextImplTest {
   @Mock private BucketFactory bucketFactory;
   @Mock private PageMaker pageMaker;
   @Mock private ToadletContainer container;
-  @Mock private UserAlertManager alertManager;
+  @Mock private UserAlertSurface alertManager;
   @Mock private BookmarkManager bookmarkManager;
   @Mock private HTTPRequest request;
 
@@ -122,6 +122,13 @@ class ToadletContextImplTest {
 
     assertSame(bookmarkManager, handle);
     assertSame(bookmarkManager, concrete);
+  }
+
+  @Test
+  void getAlertManager_whenRequested_returnsConfiguredAlertSurface() {
+    UserAlertSurface alertSurface = context.getAlertManager();
+
+    assertSame(alertManager, alertSurface);
   }
 
   @Test

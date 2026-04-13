@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -296,6 +298,24 @@ class WelcomeToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenDismissEventsSubmitted_dumpsEventsViaConcreteAlertManager()
+      throws Exception {
+    when(ctx.checkFullAccess(any(Toadlet.class))).thenReturn(true);
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(request.isPartSet("dismiss-events")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("events", Integer.MAX_VALUE)).thenReturn("bookmark,peer");
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/"), request, ctx);
+
+    verify(alertManager).dumpEvents(argThat(events -> events.equals(Set.of("bookmark", "peer"))));
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), eq(null), eq(0L));
+    assertEquals("/", headersCaptor.getValue().getFirst("Location"));
+  }
+
+  @Test
   void handleMethodGET_whenWrapperInUse_rendersRestartButtonFromLifecyclePort() throws Exception {
     WelcomeToadlet spyToadlet = createSpyToadlet();
     AtomicReference<String> html = captureHtmlReply(spyToadlet);
@@ -359,6 +379,22 @@ class WelcomeToadletTest {
     method.invoke(toadlet, false, table, item, ctx);
 
     verify(alertManager).renderDismissButton(userAlert, "/#bookmarks");
+  }
+
+  @Test
+  void disableMatchingAlert_whenAlertShouldUnregister_usesConcreteAlertManager() throws Exception {
+    UserAlert userAlert = mock(UserAlert.class);
+    when(userAlert.userCanDismiss()).thenReturn(true);
+    when(userAlert.shouldUnregisterOnDismiss()).thenReturn(true);
+
+    Method method =
+        WelcomeToadlet.class.getDeclaredMethod(
+            "disableMatchingAlert", ToadletContext.class, UserAlert.class);
+    method.setAccessible(true);
+    method.invoke(toadlet, ctx, userAlert);
+
+    verify(userAlert).onDismiss();
+    verify(alertManager).unregister(userAlert);
   }
 
   @Test

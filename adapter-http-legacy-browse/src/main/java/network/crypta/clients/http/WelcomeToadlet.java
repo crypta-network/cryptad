@@ -22,6 +22,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Version;
 import network.crypta.runtime.alerts.UserAlert;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.WelcomePageSnapshot;
 import network.crypta.support.HTMLNode;
@@ -154,7 +155,7 @@ public class WelcomeToadlet extends Toadlet {
     if (updated) {
       HTMLNode alertCell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE);
       alertCell.addChild(
-          ctx.getAlertManager()
+          concreteAlertManager(ctx)
               .renderDismissButton(item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
     }
   }
@@ -437,7 +438,7 @@ public class WelcomeToadlet extends Toadlet {
     if (alert.userCanDismiss() && alert.shouldUnregisterOnDismiss()) {
       alert.onDismiss();
       LOG.info("Unregistering the userAlert {}", alert.hashCode());
-      ctx.getAlertManager().unregister(alert);
+      concreteAlertManager(ctx).unregister(alert);
     } else {
       LOG.info("Disabling the userAlert {}", alert.hashCode());
       alert.isValid(false);
@@ -649,9 +650,13 @@ public class WelcomeToadlet extends Toadlet {
     String[] alertAnchors = alertsToDump.split(",");
     HashSet<String> toDump = new HashSet<>();
     Collections.addAll(toDump, alertAnchors);
-    ctx.getAlertManager().dumpEvents(toDump);
+    concreteAlertManager(ctx).dumpEvents(toDump);
     redirectToRoot(ctx);
     return true;
+  }
+
+  private UserAlertManager concreteAlertManager(ToadletContext ctx) {
+    return (UserAlertManager) ctx.getAlertManager();
   }
 
   private boolean handleUpgradeConnectionSpeed(HTTPRequest request, ToadletContext ctx)
@@ -1087,10 +1092,10 @@ public class WelcomeToadlet extends Toadlet {
    * present and readable.
    *
    * <p>The method reads up to 2,000 lines (respecting the byte cap in {@link
-   * FileUtil#getLogTailReader(File, long)}) and streams them into an infobox labeled “Current
-   * status”. It is safe to call even when the file is absent or unreadable; failures are logged at
-   * DEBUG, and the page continues rendering without interruption. No locks are taken beyond
-   * standard file reads, and the caller retains ownership of the provided {@link HTMLNode}.
+   * FileUtil#getLogTailReader}) and streams them into an infobox labeled “Current status”. It is
+   * safe to call even when the file is absent or unreadable; failures are logged at DEBUG, and the
+   * page continues rendering without interruption. No locks are taken beyond standard file reads,
+   * and the caller retains ownership of the provided {@link HTMLNode}.
    *
    * @param ctx toadlet context used to create localized infobox markup
    * @param contentNode the page node that receives the log output if available

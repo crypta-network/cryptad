@@ -5,10 +5,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.bookmark.Bookmark;
 import network.crypta.clients.http.bookmark.BookmarkCategory;
 import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.keys.FreenetURI;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -24,7 +26,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -53,6 +57,7 @@ class BookmarkEditorToadletTest {
   @Mock private PageMaker pageMaker;
   @Mock private ToadletContext context;
   @Mock private ToadletContainer container;
+  @Mock private UserAlertManager alertManager;
 
   private BookmarkEditorToadlet toadlet;
 
@@ -68,6 +73,7 @@ class BookmarkEditorToadletTest {
     when(context.getPageMaker()).thenReturn(pageMaker);
     when(context.getBookmarkManager()).thenReturn(bookmarkManager);
     when(context.getContainer()).thenReturn(container);
+    when(context.getAlertManager()).thenReturn(alertManager);
     when(context.checkFullAccess(any(Toadlet.class))).thenReturn(true);
     when(container.isFProxyJavascriptEnabled()).thenReturn(false);
     when(context.addFormChild(any(HTMLNode.class), anyString(), anyString()))
@@ -206,6 +212,39 @@ class BookmarkEditorToadletTest {
         .shareBookmark("peer-1", "KSK@shared", "shared-name", "publicDesc", true);
     verify(darknetMessagingPort, never())
         .shareBookmark(eq("peer-2"), anyString(), anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
+  void handleMethodPOST_whenAddingBookmarkItem_usesContextAlertManagerForCreatedBookmark()
+      throws Exception {
+    HTTPRequest request = mock(HTTPRequest.class);
+    BookmarkCategory targetCategory = mock(BookmarkCategory.class);
+
+    when(request.isPartSet("AddDefaultBookmarks")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("bookmark", 5000)).thenReturn("/target/");
+    when(request.getPartAsStringFailsafe("action", 20)).thenReturn("addItem");
+    when(request.isPartSet("confirmdelete")).thenReturn(false);
+    when(request.isPartSet("cancelCut")).thenReturn(false);
+    when(request.isPartSet("name")).thenReturn(true);
+    when(request.getPartAsStringFailsafe("name", 500)).thenReturn("newItem");
+    when(request.getPartAsStringFailsafe("key", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("KSK@newkey");
+    when(request.getPartAsStringFailsafe("descB", QueueToadlet.MAX_KEY_LENGTH)).thenReturn("desc");
+    when(request.getPartAsStringFailsafe("explain", 1024)).thenReturn("expl");
+    when(request.getPartAsStringFailsafe("publicDescB", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("publicDesc");
+    when(bookmarkManager.getCategoryByPath("/target/")).thenReturn(targetCategory);
+    when(bookmarkManager.parentPath("/target/")).thenReturn("/target/");
+    when(bookmarkManager.getBookmarkByPath("/target/newItem")).thenReturn(null);
+
+    toadlet.handleMethodPOST(DUMMY_URI, request, context);
+
+    ArgumentCaptor<Bookmark> bookmarkCaptor = ArgumentCaptor.forClass(Bookmark.class);
+    verify(bookmarkManager).addBookmark(eq("/target/"), bookmarkCaptor.capture());
+    BookmarkItem bookmarkItem = assertInstanceOf(BookmarkItem.class, bookmarkCaptor.getValue());
+    Field alertsField = BookmarkItem.class.getDeclaredField("alerts");
+    alertsField.setAccessible(true);
+    assertSame(alertManager, alertsField.get(bookmarkItem));
   }
 
   @Test

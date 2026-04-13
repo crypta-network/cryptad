@@ -38,6 +38,7 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -130,7 +131,7 @@ class CoreHttpShellRuntimeSupportTest {
     when(core.getAlerts()).thenReturn(alerts);
     CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
-    UserAlertManager actualAlerts = runtimeSupport.userAlerts();
+    UserAlertSurface actualAlerts = runtimeSupport.userAlerts();
 
     assertSame(alerts, actualAlerts);
   }

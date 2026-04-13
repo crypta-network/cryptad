@@ -24,5 +24,7 @@ network/crypta/runtime/alerts/TimeSkewDetectedUserAlert.class
 network/crypta/runtime/alerts/TimeSkewDetectedUserAlert$*.class
 network/crypta/runtime/alerts/UserAlert.class
 network/crypta/runtime/alerts/UserAlert$*.class
+network/crypta/runtime/alerts/UserAlertSurface.class
+network/crypta/runtime/alerts/UserAlertSurface$*.class
 network/crypta/runtime/alerts/UserEvent.class
 network/crypta/runtime/alerts/UserEvent$*.class

@@ -42,6 +42,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
@@ -125,12 +126,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   private static final String GO_BACK_TO_PREV_KEY = "goBackToPrev";
   private static final String TOADLET_HOMEPAGE_KEY = "Toadlet.homepage";
   private static final String ABORT_TO_HOMEPAGE_KEY = "abortToHomepage";
-  static final String CATEGORY_BROWSING = LegacyHttpCategories.CATEGORY_BROWSING;
-  static final String CATEGORY_QUEUE = LegacyHttpCategories.CATEGORY_QUEUE;
-  static final String CATEGORY_FRIENDS = LegacyHttpCategories.CATEGORY_FRIENDS;
-  static final String CATEGORY_STATUS = LegacyHttpCategories.CATEGORY_STATUS;
-  static final String CATEGORY_CONFIG = LegacyHttpCategories.CATEGORY_CONFIG;
-
   static byte[] random;
   final FProxyRuntimeSupport runtimeSupport;
   final ClientContext context;
@@ -742,11 +737,15 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private boolean handleFeedRequest() throws ToadletContextClosedException, IOException {
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
-      String atom = ctx.getAlertManager().getAtom(schemeHostAndPort);
+      String atom = concreteAlertManager(ctx).getAtom(schemeHostAndPort);
       byte[] buf = atom.getBytes(StandardCharsets.UTF_8);
       ctx.sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", buf.length);
       ctx.writeData(buf, 0, buf.length);
       return true;
+    }
+
+    private UserAlertManager concreteAlertManager(ToadletContext context) {
+      return (UserAlertManager) context.getAlertManager();
     }
 
     private boolean validateRangeHeader() throws ToadletContextClosedException, IOException {

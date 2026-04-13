@@ -15,7 +15,8 @@
  * continue to treat these classes as adapter implementations rather than as part of the long-lived
  * runtime seam. This leaf also installs the admin-owned HTTP route registrar implementation into
  * the shared shell. The remaining browse/FProxy shell stays boundary-frozen in {@code
- * :adapter-http-legacy-admin}, and {@code network.crypta.clients.http.updater} also remains in that
- * adapter leaf in this PR.
+ * :adapter-http-legacy-admin}, now receives the detached {@code
+ * network.crypta.runtime.alerts.UserAlertSurface} from {@code :runtime-alerts}, and {@code
+ * network.crypta.clients.http.updater} also remains in that adapter leaf in this PR.
  */
 package network.crypta.clients.http.bridge;

@@ -12,6 +12,7 @@ import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetPeerRequiredException;
 import network.crypta.runtime.spi.UnknownPeerException;
@@ -824,7 +825,7 @@ public class BookmarkEditorToadlet extends Toadlet {
    * @param ctx execution context used for page creation, access control, redirects, and bookmark
    *     management; must not be {@code null}.
    * @throws ToadletContextClosedException if the response stream closes while emitting output,
-   *     indicating the client disconnected mid-request.
+   *     indicating the client-disconnected mid-request.
    * @throws IOException if reading form data or writing the HTML response encounters an I/O error.
    */
   public void handleMethodPOST(URI uri, HTTPRequest req, ToadletContext ctx)
@@ -990,7 +991,7 @@ public class BookmarkEditorToadlet extends Toadlet {
               req.getPartAsStringFailsafe(EXPLAIN_FIELD, MAX_EXPLANATION_LENGTH),
               hasAnActivelink,
               postCtx.bookmarkManager(),
-              postCtx.ctx().getAlertManager());
+              concreteAlertManager(postCtx.ctx()));
     } else {
       newBookmark = new BookmarkCategory(name);
     }
@@ -1010,6 +1011,10 @@ public class BookmarkEditorToadlet extends Toadlet {
             "bookmark-add-new",
             false)
         .addChild("p", NodeL10n.getBase().getString("BookmarkEditorToadlet.addedNewBookmark"));
+  }
+
+  private UserAlertManager concreteAlertManager(ToadletContext ctx) {
+    return (UserAlertManager) ctx.getAlertManager();
   }
 
   private void addInvalidKeyError(PageMaker pageMaker, HTMLNode content) {

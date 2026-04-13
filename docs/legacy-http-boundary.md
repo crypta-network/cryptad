@@ -18,6 +18,13 @@ The dependency direction is one way. `:adapter-http-legacy-browse` may depend on
 must not depend on the browse leaf. `:bridge-http-runtime` depends on the browse leaf for concrete
 browse construction and still uses admin-owned seams for shell orchestration.
 
+HTTP/admin alert rendering now crosses the detached
+`network.crypta.runtime.alerts.UserAlertSurface` owned by `:runtime-alerts`. The concrete
+`UserAlertManager` remains runtime-node-owned, while `:adapter-http-legacy-admin` and
+`:bridge-http-runtime` consume the narrower alert surface instead of importing that concrete
+manager type directly. This is one focused step in the ongoing removal of
+`adapter-http-legacy-admin -> :runtime-node` coupling without widening `:runtime-spi`.
+
 The shared shell stays browse-neutral by crossing `LegacyHttpPaths` / `LegacyHttpCategories`
 constants and other small seam types instead of importing concrete browse-owned collaborator
 classes directly. Route publication, bookmark handling, push handling, and browser-side helpers

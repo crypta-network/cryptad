@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
@@ -98,7 +98,7 @@ public final class ToadletContextImpl implements ToadletContext {
   private final PageMaker pagemaker;
   private final BucketFactory bf;
   private final ToadletContainer container;
-  private final UserAlertManager userAlertManager;
+  private final UserAlertSurface userAlertManager;
   private final BookmarkManagerHandle bookmarkManager;
   private final InetAddress remoteAddr;
   private Exception firstReplySendingException;
@@ -560,10 +560,10 @@ public final class ToadletContextImpl implements ToadletContext {
    * queuing, deduplication, and localization concerns so individual toadlets can raise alerts
    * without worrying about display semantics or thread confinement.
    *
-   * @return Shared {@link UserAlertManager} instance used by the container for UI alerts.
+   * @return shared {@link UserAlertSurface} instance used by the container for UI alerts.
    */
   @Override
-  public UserAlertManager getAlertManager() {
+  public UserAlertSurface getAlertManager() {
     return userAlertManager;
   }
 

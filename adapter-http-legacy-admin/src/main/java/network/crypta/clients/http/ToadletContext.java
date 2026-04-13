@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
 import java.time.Instant;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
@@ -226,11 +226,11 @@ public interface ToadletContext {
   boolean checkFullAccess(Toadlet toadlet) throws ToadletContextClosedException, IOException;
 
   /**
-   * Access the {@link UserAlertManager} that accumulates alerts for the current node.
+   * Access the detached {@link UserAlertSurface} that accumulates alerts for the current node.
    *
-   * @return Non-null alert manager tied to this context.
+   * @return non-null alert surface tied to this context.
    */
-  UserAlertManager getAlertManager();
+  UserAlertSurface getAlertManager();
 
   /**
    * Access the {@link BookmarkManagerHandle} used to read or update bookmarks within this request.
