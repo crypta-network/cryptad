@@ -412,7 +412,6 @@ class NoFreeBucketTest {
   }
 
   @Test
-  @SuppressWarnings("resource")
   void readObject_whenProxyFieldPresentButNullAndAppendedBucketPresent_restoresDelegate()
       throws Exception {
     // Arrange
