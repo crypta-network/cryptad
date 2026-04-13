@@ -216,6 +216,7 @@ class HttpLegacyAdminBoundaryTest {
           "import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;",
           "import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;",
           "import network.crypta.node.Version;",
+          "import network.crypta.runtime.peers.reference.PeerReferenceTextLoader;",
           "import network.crypta.runtime.peers.html.PeerTrustInputForAddPeerBoxNode;",
           "import network.crypta.runtime.peers.html.PeerVisibilityInputForAddPeerBoxNode;");
   private static final Set<String> EXPECTED_DEFAULT_BRIDGE_FACTORIES_HTTP_IMPORTS =

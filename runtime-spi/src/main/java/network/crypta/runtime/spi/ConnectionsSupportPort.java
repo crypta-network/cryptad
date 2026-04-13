@@ -8,9 +8,9 @@ import java.io.IOException;
  * <p>This port is intentionally transitional and page-oriented. The legacy friends and strangers
  * pages still need a small set of support helpers that do not justify widening broader runtime SPI
  * surfaces such as {@link ConnectionsPagePort} or {@link NodeInfoPort}: installer download metadata
- * for the add-friend page, one feature-flag check, and one file-backed noderef import source.
- * Implementations may delegate to live daemon state internally while exposing only JDK-only types
- * here.
+ * for the add-friend page, one feature-flag check, one file-backed noderef import source, and one
+ * URL/Freenet-URI noderef loading helper. Implementations may delegate to live daemon state
+ * internally while exposing only JDK-only types here.
  *
  * <p>The port is not a general node API. It exists only to finish removing direct daemon-root
  * dependencies from the legacy connections-family HTTP toadlets.
@@ -59,4 +59,17 @@ public interface ConnectionsSupportPort {
    * @throws IOException on I/O failure while reading the peer-offer reference files
    */
   String readPeerOfferReferencesText() throws IOException;
+
+  /**
+   * Reads peer-reference text from a URL or Freenet URI source for legacy add-peer import.
+   *
+   * <p>The supplied location text may be a Freenet URI or a regular URL. Implementations should
+   * preserve the historical URI-first then URL-fallback loading behavior while keeping the exposed
+   * API JDK-only.
+   *
+   * @param locationText source text naming the peer-reference document to load
+   * @return fetched peer-reference text with the legacy newline-preserving shape
+   * @throws IOException if the text cannot be parsed as a usable location or if loading fails
+   */
+  StringBuilder readPeerReferenceText(String locationText) throws IOException;
 }
