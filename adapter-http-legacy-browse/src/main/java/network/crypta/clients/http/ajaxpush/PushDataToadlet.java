@@ -4,10 +4,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.PushUpdatableElement;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
@@ -44,15 +44,15 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.clients.http.PushUpdatableElement
  * @see network.crypta.clients.http.updateableelements.UpdaterConstants
  */
-public class PushDataToadlet extends Toadlet {
+public class PushDataToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushDataToadlet.class);
 
   /**
    * Creates a new toadlet instance bound to the supplied high-level client helper.
    *
-   * <p>The client is stored by the {@link network.crypta.clients.http.Toadlet} base class and is
-   * available for toadlets that need to perform networked operations. This specific endpoint only
-   * reads request parameters and queries the {@link
+   * <p>The client is stored by the {@link network.crypta.clients.http.ContentToadlet} base class
+   * and is available for toadlets that need to perform networked operations. This specific endpoint
+   * only reads request parameters and queries the {@link
    * network.crypta.clients.http.updateableelements.PushDataManager}, but it follows the same
    * construction pattern as other toadlets and is typically registered with the toadlet container
    * during HTTP server initialization.
@@ -87,7 +87,7 @@ public class PushDataToadlet extends Toadlet {
    * @param req Parsed HTTP request providing query parameters for the lookup operation.
    * @param ctx Request context used to resolve the server container and write the reply.
    * @throws ToadletContextClosedException If the connection is closed while writing the response.
-   * @throws IOException If writing the response fails due to an I/O error.
+   * @throws IOException If writing, the response fails due to an I/O error.
    * @throws RedirectException If the container requests a redirect while processing this request.
    */
   @Override
@@ -97,7 +97,7 @@ public class PushDataToadlet extends Toadlet {
     String elementId = req.getParam("elementId");
     elementId =
         elementId.replace(
-            " ", "+"); // This is needed, because BASE64 has '+', but it is an HTML escape for ' '
+            " ", "+"); // This is needed because BASE64 has '+', but it is an HTML escape for ' '
     if (LOG.isDebugEnabled()) LOG.debug("Fetching push data for elementId={}", elementId);
     PushUpdatableElement node =
         ((SimpleToadletServer) ctx.getContainer())

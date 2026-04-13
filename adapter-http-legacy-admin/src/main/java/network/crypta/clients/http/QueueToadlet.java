@@ -10,8 +10,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
@@ -113,6 +111,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private final QueueSupportPort queueSupportPort;
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
+  private final InsertCompatibilityModes insertCompatibilityModes;
   private FileInsertWizardToadlet fiw;
   private final QueuePostHandler postHandler;
 
@@ -164,13 +163,11 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * this instance renders and which operations it allows; callers should create one instance per
    * queue side.
    *
-   * @param client HTTP client used by {@link Toadlet} for replies and navigation.
    * @param uploads {@code true} for upload queues, {@code false} for download queues.
    * @param runtimePorts queue-specific runtime-port bundle used by the legacy HTTP handlers
    */
-  public QueueToadlet(
-      HighLevelSimpleClient client, boolean uploads, QueueToadletRuntimePorts runtimePorts) {
-    super(client);
+  public QueueToadlet(boolean uploads, QueueToadletRuntimePorts runtimePorts) {
+    super();
     QueueToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
     this.queuePagePort = ports.queuePagePort();
     this.transferAccessPort = ports.transferAccessPort();
@@ -180,6 +177,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     this.queueSupportPort = ports.queueSupportPort();
     this.darknetConnectionsPort = ports.darknetConnectionsPort();
     this.darknetMessagingPort = ports.darknetMessagingPort();
+    this.insertCompatibilityModes = ports.insertCompatibilityModes();
     this.uploads = uploads;
     this.postHandler = new QueuePostHandler();
     ports.queueCompletionPort().ensureTrackingStarted(uploads);
@@ -1138,9 +1136,12 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private String parseCompatibilityMode(HTTPRequest request) {
       String compatibilityMode = request.getPartAsStringFailsafe(COMPATIBILITY_MODE_FIELD, 100);
       if (compatibilityMode.isEmpty()) {
-        return CompatibilityMode.COMPAT_DEFAULT.intern().name();
+        return insertCompatibilityModes.defaultModeName();
       }
-      return CompatibilityMode.valueOf(compatibilityMode).intern().name();
+      if (insertCompatibilityModes.supportedModeNames().contains(compatibilityMode)) {
+        return compatibilityMode;
+      }
+      throw new IllegalArgumentException(compatibilityMode);
     }
 
     private QueueUploadedFile toQueueUploadedFile(HTTPUploadedFile file) {

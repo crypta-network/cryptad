@@ -3,6 +3,7 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
@@ -38,18 +39,18 @@ import org.slf4j.LoggerFactory;
  * <p>Thread-safety: instances are stateless and safe to reuse concurrently as long as the
  * surrounding {@link Toadlet} infrastructure is used as intended.
  */
-public class LogWritebackToadlet extends Toadlet {
+public class LogWritebackToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(LogWritebackToadlet.class);
 
   /**
    * Creates a new instance bound to the provided high-level client helper.
    *
-   * <p>The client is required by the {@link Toadlet} base type even though this particular endpoint
-   * does not perform network fetches or inserts. Callers typically construct this once and register
-   * it with the HTTP container that routes requests based on {@link #path()}.
+   * <p>The client is required by the {@link ContentToadlet} base type even though this particular
+   * endpoint does not perform network fetches or inserts. Callers typically construct this once and
+   * register it with the HTTP container that routes requests based on {@link #path()}.
    *
-   * @param client non-null client helper retained by the base {@link Toadlet}; unused by this
-   *     implementation but required for consistent wiring and future compatibility
+   * @param client non-null client helper retained by the base {@link ContentToadlet}; unused by
+   *     this implementation but required for consistent wiring and future compatibility
    */
   public LogWritebackToadlet(HighLevelSimpleClient client) {
     super(client);
@@ -65,7 +66,7 @@ public class LogWritebackToadlet extends Toadlet {
    *
    * <p>Regardless of logging outcome, the handler sends an HTML response with status {@code 200},
    * reason phrase {@code "OK"}, and body {@link UpdaterConstants#SUCCESS}. The method is intended
-   * to be idempotent: repeated calls with the same input do not change server state beyond
+   * to be idempotent: repeated calls with the same input do not change the server state beyond
    * producing log output.
    *
    * @param uri request URI passed by the container; not used by this handler but provided for
@@ -74,8 +75,8 @@ public class LogWritebackToadlet extends Toadlet {
    *     HTTPRequest#getParam(String)} and defaults to an empty string when missing
    * @param ctx response context used to write the {@code 200 OK} success reply; must be open when
    *     called or a close exception is thrown by the context implementation
-   * @throws ToadletContextClosedException if the client disconnects before the success reply can be
-   *     written to the {@link ToadletContext}
+   * @throws ToadletContextClosedException if the client disconnects before the success, reply can
+   *     be written to the {@link ToadletContext}
    * @throws IOException if writing the response fails due to an underlying I/O error
    * @throws RedirectException declared for the base dispatch contract; this implementation does not
    *     initiate redirects

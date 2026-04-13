@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -54,7 +53,6 @@ class QueueToadletTest {
 
   private static final String TEST_FORM_PASSWORD = "queue-form-password";
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private QueuePagePort queuePagePort;
   @Mock private TransferAccessPort transferAccessPort;
   @Mock private QueueDownloadPort queueDownloadPort;
@@ -333,7 +331,6 @@ class QueueToadletTest {
   private QueueToadlet createQueueToadlet(boolean uploads) {
     QueueToadlet toadlet =
         new QueueToadlet(
-            client,
             uploads,
             new QueueToadletRuntimePorts(
                 queuePagePort,
@@ -344,7 +341,15 @@ class QueueToadletTest {
                 queueSupportPort,
                 queueCompletionPort,
                 darknetConnectionsPort,
-                darknetMessagingPort));
+                darknetMessagingPort,
+                new InsertCompatibilityModes(
+                    java.util.List.of(
+                        network.crypta.client.InsertContext.CompatibilityMode.COMPAT_DEFAULT
+                            .intern()
+                            .name()),
+                    network.crypta.client.InsertContext.CompatibilityMode.COMPAT_DEFAULT
+                        .intern()
+                        .name())));
     toadlet.container = container;
     return toadlet;
   }

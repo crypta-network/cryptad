@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.PushUpdateEvent;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -30,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Uses long-poll semantics: it may block until an event arrives or the request context
  *       closes.
- *   <li>Returns either a success payload containing identifiers, or a failure sentinel string.
+ *   <li>Returns either a success payload containing identifiers or a failure sentinel string.
  *   <li>Performs no state mutation itself; it delegates event sequencing to the push-data manager.
  * </ul>
  *
@@ -41,15 +42,15 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.clients.http.PushDataManagerHandle#getNextNotification(String)
  * @see UpdaterConstants#NOTIFICATION_PATH
  */
-public class PushNotificationToadlet extends Toadlet {
+public class PushNotificationToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushNotificationToadlet.class);
 
   /**
    * Create a toadlet bound to a client context.
    *
-   * <p>The provided client is passed to the parent {@link Toadlet} and is used for shared
-   * HTTP/toadlet infrastructure. This class does not retain additional mutable state, so a single
-   * instance can serve multiple requests over its lifetime as managed by the server.
+   * <p>The provided client is passed to the parent {@link ContentToadlet} and is used for shared
+   * HTTP/toadlet infrastructure. This class does not retain an additional mutable state, so a
+   * single instance can serve multiple requests over its lifetime as managed by the server.
    *
    * @param client client context used by the toadlet framework; must be non-null for normal
    *     operation

@@ -52,7 +52,7 @@ import static network.crypta.clients.http.QueueToadlet.MAX_KEY_LENGTH;
  * to track clipboard state, so callers should ensure per-request isolation. All other operations
  * are delegated to thread-safe components owned by the surrounding node.
  */
-public class BookmarkEditorToadlet extends Toadlet {
+public class BookmarkEditorToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(BookmarkEditorToadlet.class);
   private static final int MAX_ACTION_LENGTH = 20;
   private static final String ATTRIBUTE_CLASS = "class";

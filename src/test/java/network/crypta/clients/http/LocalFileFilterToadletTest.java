@@ -4,7 +4,6 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,14 +26,13 @@ import static org.mockito.Mockito.when;
 class LocalFileFilterToadletTest {
 
   @Mock private TransferAccessPort transferAccess;
-  @Mock private HighLevelSimpleClient client;
 
   private LocalFileFilterToadlet toadlet;
 
   @BeforeEach
   void setUp() {
     lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
-    toadlet = new LocalFileFilterToadlet(transferAccess, client);
+    toadlet = new LocalFileFilterToadlet(transferAccess);
   }
 
   @Test

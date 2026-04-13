@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -39,8 +38,8 @@ import network.crypta.support.api.HTTPRequest;
 public class SimpleHelpToadlet extends Toadlet {
   private static final String INFOBOX_CONTENT = "infobox-content";
 
-  SimpleHelpToadlet(HighLevelSimpleClient client) {
-    super(client);
+  SimpleHelpToadlet() {
+    super();
   }
 
   /**

@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.StatisticsPageSnapshot;
 import network.crypta.runtime.spi.StatisticsPort;
@@ -35,7 +34,6 @@ class StatisticsToadletTest {
 
   private static final String TEST_FORM_PASSWORD = "test-form-password";
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private StatisticsPort statistics;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -44,7 +42,7 @@ class StatisticsToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new StatisticsToadlet(client, statistics);
+    toadlet = new StatisticsToadlet(statistics);
   }
 
   @Test
@@ -54,8 +52,7 @@ class StatisticsToadletTest {
 
   @Test
   void path_whenCustomPathConfigured_returnsConfiguredPath() {
-    StatisticsToadlet customPathToadlet =
-        new StatisticsToadlet(client, statistics, "/custom-stats/");
+    StatisticsToadlet customPathToadlet = new StatisticsToadlet(statistics, "/custom-stats/");
 
     assertEquals("/custom-stats/", customPathToadlet.path());
   }

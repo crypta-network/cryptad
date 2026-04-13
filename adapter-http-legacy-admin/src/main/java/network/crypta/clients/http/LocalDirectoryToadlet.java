@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.HTMLNode;
 
@@ -50,16 +49,11 @@ public abstract class LocalDirectoryToadlet extends LocalFileBrowserToadlet {
    *
    * @param transferAccess transfer-access runtime port providing access to validation and default
    *     directory resolution; must be initialized and non-null.
-   * @param highLevelSimpleClient client helper used for higher-level operations triggered by user
-   *     actions; expected to be thread-safe and non-null.
    * @param postTo relative URL suffix appended to {@link #BASE_PATH} when building form actions;
    *     must not be null and should start with a leading slash for correct concatenation.
    */
-  protected LocalDirectoryToadlet(
-      TransferAccessPort transferAccess,
-      HighLevelSimpleClient highLevelSimpleClient,
-      String postTo) {
-    super(transferAccess, highLevelSimpleClient);
+  protected LocalDirectoryToadlet(TransferAccessPort transferAccess, String postTo) {
+    super(transferAccess);
     this.postToPath = postTo;
   }
 
@@ -73,7 +67,7 @@ public abstract class LocalDirectoryToadlet extends LocalFileBrowserToadlet {
    * string concatenation, callers should perform any necessary URL encoding for user-supplied
    * segments that might be appended later.
    *
-   * @return full path, starting with a slash, that uniquely identifies this directory browsing
+   * @return full path, starting with a slash that uniquely identifies this directory browsing
    *     endpoint within the local HTTP UI; never null.
    */
   @Override

@@ -15,26 +15,25 @@ import network.crypta.runtime.spi.TransferAccessPort;
  * classes out of the admin-owned startup path while preserving the exact historical insertion
  * points that the legacy shell already exposed.
  *
- * <p>The registrar is stateless and safe to reuse across startup attempts as long as callers still
- * treat registration as a one-shot action for a single {@link SimpleToadletServer}. It does not
- * create menus or routes eagerly. Instead, it reacts to the requested {@link Phase}, publishes only
- * the browse-owned routes assigned to that phase, and leaves the surrounding admin registrar
- * responsible for the overall route order. The AJAX-push route family is delegated to {@link
+ * <p>The registrar captures the browse-side client during bridge/runtime construction, so the
+ * admin-owned shell records no longer need to carry it through the registration seam. It is safe to
+ * reuse across startup attempts as long as callers still treat registration as a one-shot action
+ * for a single {@link SimpleToadletServer}. The AJAX-push route family is delegated to {@link
  * LegacyFProxyAjaxPushRouteRegistrar} so this class can focus on the larger browse ownership seam.
  */
 public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseRouteRegistrar {
   private static final LegacyFProxyAjaxPushRouteRegistrar AJAX_PUSH_ROUTE_REGISTRAR =
       new LegacyFProxyAjaxPushRouteRegistrar();
 
+  private final HighLevelSimpleClient client;
+
   /**
-   * Creates a stateless browse-route registrar for the current FProxy-backed legacy HTTP shell.
+   * Creates a browse-route registrar bound to the shared interactive client.
    *
-   * <p>Construction performs no route instantiation and does not capture runtime-specific state.
-   * All browse-owned collaborators still arrive later through the registration context prepared by
-   * the shared shell bootstrap path.
+   * @param client shared interactive client used by browse-owned HTTP toadlets
    */
-  public LegacyFProxyBrowseRouteRegistrar() {
-    // This registrar is intentionally stateless.
+  public LegacyFProxyBrowseRouteRegistrar(HighLevelSimpleClient client) {
+    this.client = client;
   }
 
   /**
@@ -59,8 +58,8 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
       case QUEUE_FILTER_ROUTES -> registerQueueFilterRoutes(context, server);
       case POST_CONFIG_ROUTES -> registerPostConfigRoutes(context, server);
       case POST_MESSAGING_ROUTES -> registerPostMessagingRoutes(context, server);
-      case POST_PLATFORM_API_ROUTES -> registerPostPlatformApiRoutes(context, server);
-      case TAIL_ROUTES -> registerTailRoutes(context.client(), server);
+      case POST_PLATFORM_API_ROUTES -> registerPostPlatformApiRoutes(server);
+      case TAIL_ROUTES -> registerTailRoutes(server);
     }
   }
 
@@ -69,10 +68,8 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
         "/", LegacyHttpCategories.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
   }
 
-  private static void registerIntroRoutes(
+  private void registerIntroRoutes(
       LegacyHttpBrowseRouteRegistrarContext context, SimpleToadletServer server) {
-    HighLevelSimpleClient client = context.client();
-
     server.register(
         context.browseRoot(),
         ToadletRegistration.menuLink(
@@ -100,9 +97,8 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
             null));
   }
 
-  private static void registerQueueFilterRoutes(
+  private void registerQueueFilterRoutes(
       LegacyHttpBrowseRouteRegistrarContext context, SimpleToadletServer server) {
-    HighLevelSimpleClient client = context.client();
     TransferAccessPort transferAccess = context.runtimePorts().transferAccess();
 
     ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client);
@@ -117,16 +113,14 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
             false,
             contentFilterToadlet));
 
-    LocalFileFilterToadlet localFileFilterToadlet =
-        new LocalFileFilterToadlet(transferAccess, client);
+    LocalFileFilterToadlet localFileFilterToadlet = new LocalFileFilterToadlet(transferAccess);
     server.register(
         localFileFilterToadlet,
         ToadletRegistration.basic(null, LocalFileFilterToadlet.BROWSE_PATH, true, false));
   }
 
-  private static void registerPostConfigRoutes(
+  private void registerPostConfigRoutes(
       LegacyHttpBrowseRouteRegistrarContext context, SimpleToadletServer server) {
-    HighLevelSimpleClient client = context.client();
     RuntimePorts runtimePorts = context.runtimePorts();
 
     WelcomeToadletRuntimePorts welcomeToadletRuntimePorts =
@@ -145,25 +139,24 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
         ToadletRegistration.basic(null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false));
   }
 
-  private static void registerPostMessagingRoutes(
+  private void registerPostMessagingRoutes(
       LegacyHttpBrowseRouteRegistrarContext context, SimpleToadletServer server) {
     RuntimePorts runtimePorts = context.runtimePorts();
     BookmarkEditorToadlet bookmarkEditorToadlet =
         new BookmarkEditorToadlet(
-            context.client(),
+            client,
             new BookmarkEditorToadletRuntimePorts(
                 runtimePorts.darknetConnections(), runtimePorts.darknetMessaging()));
     server.register(
         bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
   }
 
-  private static void registerPostPlatformApiRoutes(
-      LegacyHttpBrowseRouteRegistrarContext context, SimpleToadletServer server) {
-    BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(context.client());
+  private void registerPostPlatformApiRoutes(SimpleToadletServer server) {
+    BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
     server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
   }
 
-  private static void registerTailRoutes(HighLevelSimpleClient client, SimpleToadletServer server) {
+  private void registerTailRoutes(SimpleToadletServer server) {
     AJAX_PUSH_ROUTE_REGISTRAR.registerRoutes(client, server);
 
     ImageCreatorToadlet imageCreatorToadlet = new ImageCreatorToadlet(client);

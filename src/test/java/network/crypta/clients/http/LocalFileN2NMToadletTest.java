@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,14 +26,12 @@ class LocalFileN2NMToadletTest {
 
   @Mock private TransferAccessPort transferAccess;
 
-  @Mock private HighLevelSimpleClient highLevelSimpleClient;
-
   private LocalFileN2NMToadlet toadlet;
 
   @BeforeEach
   void setUp() {
     lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
-    toadlet = new LocalFileN2NMToadlet(transferAccess, highLevelSimpleClient);
+    toadlet = new LocalFileN2NMToadlet(transferAccess);
   }
 
   @Test

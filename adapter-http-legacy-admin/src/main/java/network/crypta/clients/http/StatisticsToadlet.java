@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.StatisticsPageSnapshot;
 import network.crypta.runtime.spi.StatisticsPort;
@@ -38,12 +37,12 @@ public class StatisticsToadlet extends Toadlet {
   private final String path;
   private final StatisticsPort statistics;
 
-  protected StatisticsToadlet(HighLevelSimpleClient client, StatisticsPort statistics) {
-    this(client, statistics, TOADLET_URL);
+  protected StatisticsToadlet(StatisticsPort statistics) {
+    this(statistics, TOADLET_URL);
   }
 
-  StatisticsToadlet(HighLevelSimpleClient client, StatisticsPort statistics, String path) {
-    super(client);
+  StatisticsToadlet(StatisticsPort statistics, String path) {
+    super();
     this.path = Objects.requireNonNull(path);
     this.statistics = statistics;
   }

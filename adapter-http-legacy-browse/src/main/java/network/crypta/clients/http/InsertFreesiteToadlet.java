@@ -30,7 +30,7 @@ import network.crypta.support.http.ExternalLinkSupport;
  * localization and link content are fixed at compile time, which avoids runtime variability and
  * keeps the rendered HTML deterministic for testing.
  */
-public class InsertFreesiteToadlet extends Toadlet {
+public class InsertFreesiteToadlet extends ContentToadlet {
 
   /**
    * Create a new freesite help toadlet bound to the shared high-level client.

@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.time.Instant;
-import network.crypta.client.HighLevelSimpleClient;
+import java.util.List;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.SecurityLevelsSnapshot;
@@ -41,8 +41,6 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class FileInsertWizardToadletTest {
 
-  @Mock HighLevelSimpleClient client;
-
   @Mock SecurityLevelsPort securityLevelsPort;
 
   @Mock ToadletContainer container;
@@ -52,9 +50,7 @@ class FileInsertWizardToadletTest {
   @BeforeEach
   void setUp() throws Exception {
     toadlet =
-        new FileInsertWizardToadlet(
-            client, new FileInsertWizardToadletRuntimePorts(securityLevelsPort));
-    setContainer(toadlet, container);
+        createToadlet(new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT"));
   }
 
   @Test
@@ -66,7 +62,7 @@ class FileInsertWizardToadletTest {
   void constructor_whenRuntimePortsProvided_noLongerNeedsNodeClientCore() {
     assertEquals(1, FileInsertWizardToadlet.class.getDeclaredConstructors().length);
     assertArrayEquals(
-        new Class<?>[] {HighLevelSimpleClient.class, FileInsertWizardToadletRuntimePorts.class},
+        new Class<?>[] {FileInsertWizardToadletRuntimePorts.class},
         FileInsertWizardToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
   }
 
@@ -157,6 +153,33 @@ class FileInsertWizardToadletTest {
   }
 
   @Test
+  void handleMethodGET_whenAdvancedModeEnabled_rendersDetachedCompatibilityOptionsInOrder()
+      throws Exception {
+    toadlet =
+        createToadlet(
+            new InsertCompatibilityModes(List.of("COMPAT_DEFAULT", "COMPAT_1468"), "COMPAT_1468"));
+    when(container.publicGatewayMode()).thenReturn(false);
+    when(securityLevelsPort.snapshot())
+        .thenReturn(securitySnapshot(SecurityNetworkThreatLevel.LOW));
+
+    PageHolder holder = new PageHolder();
+    PageMaker pageMaker = buildPageMaker(holder);
+    CapturingContext ctx = new CapturingContext(pageMaker, true, true);
+
+    toadlet.handleMethodGET(new URI("http://localhost/insertfile/"), mock(HTTPRequest.class), ctx);
+
+    HTMLNode select =
+        findByNameAndAttribute(holder.page.getContentNode(), "select", "name", "compatibilityMode");
+    assertNotNull(select);
+    List<HTMLNode> options = select.getChildren();
+    assertEquals(
+        List.of("COMPAT_DEFAULT", "COMPAT_1468"),
+        options.stream().map(option -> option.getAttribute("value")).toList());
+    assertNull(options.getFirst().getAttribute("selected"));
+    assertEquals("", options.get(1).getAttribute("selected"));
+  }
+
+  @Test
   void handleMethodGET_whenPublicGatewayAndNoFullAccess_sendsUnauthorized() throws Exception {
     when(container.publicGatewayMode()).thenReturn(true);
 
@@ -167,6 +190,15 @@ class FileInsertWizardToadletTest {
     toadlet.handleMethodGET(new URI("http://localhost/insertfile/"), mock(HTTPRequest.class), ctx);
 
     assertEquals(403, ctx.getStatusCode());
+  }
+
+  private FileInsertWizardToadlet createToadlet(InsertCompatibilityModes compatibilityModes)
+      throws Exception {
+    FileInsertWizardToadlet created =
+        new FileInsertWizardToadlet(
+            new FileInsertWizardToadletRuntimePorts(securityLevelsPort, compatibilityModes));
+    setContainer(created, container);
+    return created;
   }
 
   private static void setContainer(FileInsertWizardToadlet toadlet, ToadletContainer container)
@@ -182,6 +214,20 @@ class FileInsertWizardToadletTest {
     }
     for (HTMLNode child : root.getChildren()) {
       HTMLNode found = findById(child, id);
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  private static HTMLNode findByNameAndAttribute(
+      HTMLNode root, String name, String attributeName, String attributeValue) {
+    if (name.equals(root.getName()) && attributeValue.equals(root.getAttribute(attributeName))) {
+      return root;
+    }
+    for (HTMLNode child : root.getChildren()) {
+      HTMLNode found = findByNameAndAttribute(child, name, attributeName, attributeValue);
       if (found != null) {
         return found;
       }

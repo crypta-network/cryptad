@@ -3,9 +3,9 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
@@ -38,18 +38,18 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.clients.http.updateableelements.PushDataManager#keepAliveReceived(String)
  * @see network.crypta.clients.http.updateableelements.UpdaterConstants#KEEPALIVE_PATH
  */
-public class PushKeepaliveToadlet extends Toadlet {
+public class PushKeepaliveToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushKeepaliveToadlet.class);
 
   /**
    * Creates a keepalive endpoint bound to the given client context.
    *
-   * <p>The {@code HighLevelSimpleClient} is passed through to the {@link Toadlet} base class and is
-   * used by shared toadlet infrastructure (for example, reply helpers and common request wiring).
-   * This toadlet itself does not retain additional mutable state beyond what the superclass
-   * maintains.
+   * <p>The {@code HighLevelSimpleClient} is passed through to the {@link ContentToadlet} base class
+   * and is used by shared toadlet infrastructure (for example, reply helpers and common request
+   * wiring). This toadlet itself does not retain an additional mutable state beyond what the
+   * superclass maintains.
    *
-   * @param client client context used by the {@link Toadlet} superclass; must be non-null
+   * @param client client context used by the {@link ContentToadlet} superclass; must be non-null
    */
   public PushKeepaliveToadlet(HighLevelSimpleClient client) {
     super(client);

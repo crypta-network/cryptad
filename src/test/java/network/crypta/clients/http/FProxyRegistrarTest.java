@@ -117,7 +117,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenInvoked_registersMenusSetsFProxyAndStartsQueueCompletion() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
 
     verify(server)
         .registerMenu(
@@ -228,7 +228,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenSecurityLevelsSubconfigPresent_skipsSecurityLevelsConfigToadlet() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
 
     Set<String> configToadletPrefixes =
         capturedRegistrations().stream()
@@ -248,7 +248,7 @@ class FProxyRegistrarTest {
         .thenReturn(LauncherReadinessInfo.DEFAULT_UI_ROOT, WebShellPaths.SHELL_ROOT);
 
     FProxyRegistrar.maybeCreateFProxyEtc(
-        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
 
     ToadletRegistration webShellRegistration =
         capturedRegistrations().stream()
@@ -267,7 +267,7 @@ class FProxyRegistrarTest {
   @Test
   void maybeCreateFProxyEtc_whenUsingConcreteBrowseRegistrar_preservesTailBrowseRouteOrder() {
     FProxyRegistrar.maybeCreateFProxyEtc(
-        dependencies(new LegacyFProxyBrowseRouteRegistrar()), server);
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
 
     List<Class<?>> tailRouteTypes = new ArrayList<>();
     for (RegisteredToadlet registration : capturedRegistrations()) {
@@ -312,7 +312,6 @@ class FProxyRegistrarTest {
             LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES),
         phaseCaptor.getAllValues());
     for (LegacyHttpBrowseRouteRegistrarContext browseContext : browseContextCaptor.getAllValues()) {
-      assertSame(client, browseContext.client());
       assertSame(runtimePorts, browseContext.runtimePorts());
       assertSame(browseRoot, browseContext.browseRoot());
     }
@@ -388,7 +387,12 @@ class FProxyRegistrarTest {
   void registerRoutes_whenInvokedViaLegacyAdminRegistrar_forwardsEquivalentDependencies() {
     LegacyHttpRouteRegistrarContext context =
         new LegacyHttpRouteRegistrarContext(
-            client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar);
+            runtimePorts,
+            appHost,
+            config,
+            browseRoot,
+            browseRouteRegistrar,
+            new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT"));
 
     try (MockedStatic<FProxyRegistrar> registrar = mockStatic(FProxyRegistrar.class)) {
       new LegacyAdminHttpRouteRegistrar().registerRoutes(context, server);
@@ -397,7 +401,12 @@ class FProxyRegistrarTest {
           () ->
               FProxyRegistrar.maybeCreateFProxyEtc(
                   new FProxyRegistrarDependencies(
-                      client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar),
+                      runtimePorts,
+                      appHost,
+                      config,
+                      browseRoot,
+                      browseRouteRegistrar,
+                      new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT")),
                   server));
     }
   }
@@ -405,7 +414,12 @@ class FProxyRegistrarTest {
   private FProxyRegistrarDependencies dependencies(
       LegacyHttpBrowseRouteRegistrar browseRouteRegistrar) {
     return new FProxyRegistrarDependencies(
-        client, runtimePorts, appHost, config, browseRoot, browseRouteRegistrar);
+        runtimePorts,
+        appHost,
+        config,
+        browseRoot,
+        browseRouteRegistrar,
+        new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT"));
   }
 
   private static void registerBandwidthOption(

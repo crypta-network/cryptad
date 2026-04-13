@@ -5,7 +5,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
@@ -62,8 +61,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   private static final String CHECKED_VALUE = "checked";
 
-  FirstTimeWizardNewToadlet(HighLevelSimpleClient client, FirstTimeWizardPort wizardPort) {
-    super(client);
+  FirstTimeWizardNewToadlet(FirstTimeWizardPort wizardPort) {
+    super();
     this.wizardPort = Objects.requireNonNull(wizardPort, "wizardPort");
   }
 

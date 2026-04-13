@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringTokenizer;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.ConfigPort;
@@ -118,13 +117,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Creates a toadlet bound to shared node infrastructure used by connection pages.
    *
-   * @param client high-level client used to retrieve noderefs via Freenet or HTTP when users submit
-   *     URLs instead of pasted references.
    * @param runtimePorts shared detached runtime ports backing page rendering, peer changes, noderef
    *     export, config lookups, and legacy page-support helpers.
    */
-  ConnectionsToadlet(HighLevelSimpleClient client, ConnectionsToadletRuntimePorts runtimePorts) {
-    super(client);
+  ConnectionsToadlet(ConnectionsToadletRuntimePorts runtimePorts) {
+    super();
     ConnectionsToadletRuntimePorts ports = Objects.requireNonNull(runtimePorts);
     this.connectionsPage = ports.connectionsPage();
     this.peerPort = ports.peerPort();

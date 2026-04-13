@@ -4,6 +4,7 @@
 network/crypta/clients/http/BookmarkEditorToadlet*.class
 network/crypta/clients/http/BookmarkEditorToadletRuntimePorts*.class
 network/crypta/clients/http/BrowserTestToadlet*.class
+network/crypta/clients/http/ContentToadlet*.class
 network/crypta/clients/http/ContentFilterToadlet*.class
 network/crypta/clients/http/DecodeToadlet*.class
 network/crypta/clients/http/ExternalLinkToadlet*.class

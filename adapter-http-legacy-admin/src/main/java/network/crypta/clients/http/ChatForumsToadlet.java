@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -31,15 +30,11 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * Creates a toadlet that can render the chat/forums landing page using the provided dependencies.
    *
-   * <p>The constructor passes the {@link HighLevelSimpleClient} to the {@link Toadlet} base class.
-   * No network operations occur here; the instance is ready for registration immediately after
+   * <p>No network operations occur here; the instance is ready for registration immediately after
    * construction and may be reused across requests because it contains no per-request state.
-   *
-   * @param client high-level client used by the superclass to perform standard toadlet duties; must
-   *     be non-null and already initialized for HTTP routing.
    */
-  protected ChatForumsToadlet(HighLevelSimpleClient client) {
-    super(client);
+  protected ChatForumsToadlet() {
+    super();
   }
 
   /**

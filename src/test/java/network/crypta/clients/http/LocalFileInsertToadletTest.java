@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,14 +25,12 @@ class LocalFileInsertToadletTest {
 
   @Mock private TransferAccessPort transferAccess;
 
-  @Mock private HighLevelSimpleClient highLevelSimpleClient;
-
   private LocalFileInsertToadlet toadlet;
 
   @BeforeEach
   void setUp() {
     lenient().doCallRealMethod().when(transferAccess).defaultUploadDir();
-    toadlet = new LocalFileInsertToadlet(transferAccess, highLevelSimpleClient);
+    toadlet = new LocalFileInsertToadlet(transferAccess);
   }
 
   @Test

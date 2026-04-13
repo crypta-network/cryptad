@@ -284,7 +284,6 @@ class SimpleToadletServerTest {
     verify(core, never()).getRandom();
     verify(routeRegistrar, times(1))
         .registerRoutes(any(LegacyHttpRouteRegistrarContext.class), same(server));
-    assertSame(client, routeRegistrarContextRef.get().client());
     assertSame(runtimePorts, routeRegistrarContextRef.get().runtimePorts());
     assertSame(appHost, routeRegistrarContextRef.get().appHost());
     assertSame(nodeConfig, routeRegistrarContextRef.get().config());
@@ -330,6 +329,8 @@ class SimpleToadletServerTest {
     when(runtimeSupport.appHost()).thenReturn(appHost);
     when(runtimeSupport.config()).thenReturn(config);
     when(runtimeSupport.ticker()).thenReturn(ticker);
+    when(runtimeSupport.insertCompatibilityModes())
+        .thenReturn(new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT"));
     when(runtimeSupport.createPushDataManagerHandle(ticker)).thenReturn(pushDataManagerHandle);
     when(fproxyRuntimeSupport.clientContext()).thenReturn(clientContext);
     server.setRuntimeSupport(runtimeSupport);
@@ -340,7 +341,6 @@ class SimpleToadletServerTest {
         .thenReturn(
             HttpShellBrowseBootstrap.create(
                 bookmarkManager,
-                client,
                 appHost,
                 browseRoot,
                 browseRouteRegistrar,
@@ -599,7 +599,7 @@ class SimpleToadletServerTest {
     private final String path;
 
     DummyToadlet(String path) {
-      super(null);
+      super();
       this.path = path;
     }
 

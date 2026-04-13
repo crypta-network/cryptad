@@ -6,7 +6,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ToadletContext;
@@ -44,8 +43,7 @@ class CoreActionToadletTest {
 
   @Test
   void path_whenCalled_expectCoreUpdatePath() {
-    CoreActionToadlet toadlet =
-        new CoreActionToadlet(mock(HighLevelSimpleClient.class), mock(CoreUpdateActionPort.class));
+    CoreActionToadlet toadlet = new CoreActionToadlet(mock(CoreUpdateActionPort.class));
 
     assertEquals(UpdaterPaths.CORE_UPDATE_PATH, toadlet.path());
   }
@@ -54,8 +52,7 @@ class CoreActionToadletTest {
   void handleMethodGET_whenCalled_expectRedirectToAlerts() throws Exception {
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet =
-        new CoreActionToadlet(mock(HighLevelSimpleClient.class), mock(CoreUpdateActionPort.class));
+    CoreActionToadlet toadlet = new CoreActionToadlet(mock(CoreUpdateActionPort.class));
 
     doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
 
@@ -70,11 +67,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenFormPasswordInvalid_expectNoRedirect() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(false);
 
@@ -86,11 +82,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenCoreUpdaterMissing_expectRedirect() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(false);
@@ -108,11 +103,10 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenActionUnknownAndCoreUpdaterAvailable_expectRedirect() throws Exception {
     // Arrange
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
@@ -132,11 +126,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenDownloadAction_expectStartDownloadAndRedirect() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("download");
@@ -155,11 +148,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenInstallPathInvalid_expectFailurePage() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     String invalidPath = tempDir.resolve("outside/installer.deb").toFile().getAbsolutePath();
 
@@ -180,11 +172,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenInstallPathValidInServiceMode_expectFailurePage() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     File baseDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(baseDir, "updates/core");
@@ -216,11 +207,10 @@ class CoreActionToadletTest {
 
   @Test
   void handleMethodPOST_whenOpenStoreUnknown_expectFailurePage() throws Exception {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
@@ -241,11 +231,10 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenInstallSnapInsideSnapSandbox_expectGuidancePage() throws Exception {
     // Arrange
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     File baseDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(baseDir, "updates/core");
@@ -287,11 +276,10 @@ class CoreActionToadletTest {
   void handleMethodPOST_whenOpenStoreSnapInsideSnapSandbox_expectManualCommandPage()
       throws Exception {
     // Arrange
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
-    CoreActionToadlet toadlet = new CoreActionToadlet(client, coreUpdateActionPort);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
     when(ctx.checkFormPassword(request)).thenReturn(true);
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);

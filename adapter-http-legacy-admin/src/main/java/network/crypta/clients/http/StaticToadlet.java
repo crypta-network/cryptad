@@ -43,7 +43,7 @@ import network.crypta.support.io.FileBucket;
  */
 public class StaticToadlet extends Toadlet {
   StaticToadlet() {
-    super(null);
+    super();
   }
 
   private static final String KEY_PATH_NOT_FOUND_TITLE = "pathNotFoundTitle";
@@ -150,7 +150,7 @@ public class StaticToadlet extends Toadlet {
 
       long lastModified = connection.getLastModified();
       return lastModified == 0 ? null : Instant.ofEpochMilli(lastModified);
-    } catch (IOException e) {
+    } catch (IOException _) {
       return null;
     }
   }

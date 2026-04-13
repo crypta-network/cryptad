@@ -57,7 +57,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * @see network.crypta.clients.http.Toadlet
  * @see network.crypta.clients.http.PageMaker
  */
-public class WelcomeToadlet extends Toadlet {
+public class WelcomeToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(WelcomeToadlet.class);
 
   /** Suffix {@link #path()} with "#" + BOOKMARKS_ANCHOR to deep link to the bookmark list */
@@ -100,7 +100,7 @@ public class WelcomeToadlet extends Toadlet {
   WelcomeToadlet(HighLevelSimpleClient client, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
-    alertsPath = new UserAlertsToadlet(client).path();
+    alertsPath = new UserAlertsToadlet().path();
   }
 
   void redirectToRoot(ToadletContext ctx) throws ToadletContextClosedException, IOException {

@@ -6,7 +6,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeFile;
@@ -52,7 +51,6 @@ class DarknetAddRefToadletTest {
 
   @Mock private ConnectionsSupportPort connectionsSupportPort;
   @Mock private NodeInfoPort nodeInfoPort;
-  @Mock private HighLevelSimpleClient client;
   @Mock private DarknetConnectionsToadlet friendsToadlet;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -75,8 +73,7 @@ class DarknetAddRefToadletTest {
         .when(nodeInfoPort.exportReference(NodeReferenceView.DARKNET_PUBLIC, false))
         .thenReturn(sampleNoderefSnapshot());
     toadlet =
-        new TestableDarknetAddRefToadlet(
-            connectionsSupportPort, nodeInfoPort, client, friendsToadlet);
+        new TestableDarknetAddRefToadlet(connectionsSupportPort, nodeInfoPort, friendsToadlet);
   }
 
   @Test
@@ -253,9 +250,8 @@ class DarknetAddRefToadletTest {
     TestableDarknetAddRefToadlet(
         ConnectionsSupportPort connectionsSupportPort,
         NodeInfoPort nodeInfoPort,
-        HighLevelSimpleClient client,
         DarknetConnectionsToadlet friendsToadlet) {
-      super(connectionsSupportPort, nodeInfoPort, client, friendsToadlet);
+      super(connectionsSupportPort, nodeInfoPort, friendsToadlet);
     }
 
     @Override

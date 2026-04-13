@@ -39,7 +39,9 @@ import network.crypta.runtime.spi.TransferAccessPort;
  *     startup
  * @param darknetConnectionsPort detached darknet friends-page companion port used by queue
  *     recommendation rendering
- * @param darknetMessagingPort detached darknet messaging port used by queue recommendation sends
+ * @param darknetMessagingPort detached darknet messaging port used by queue recommendation sending
+ * @param insertCompatibilityModes detached HTTP-local compatibility-mode names used by queue insert
+ *     parsing and form rendering
  */
 public record QueueToadletRuntimePorts(
     QueuePagePort queuePagePort,
@@ -50,7 +52,8 @@ public record QueueToadletRuntimePorts(
     QueueSupportPort queueSupportPort,
     QueueCompletionPort queueCompletionPort,
     DarknetConnectionsPort darknetConnectionsPort,
-    DarknetMessagingPort darknetMessagingPort) {
+    DarknetMessagingPort darknetMessagingPort,
+    InsertCompatibilityModes insertCompatibilityModes) {
   /**
    * Creates one validated queue-toadlet port bundle.
    *
@@ -70,6 +73,8 @@ public record QueueToadletRuntimePorts(
    *     download and upload toadlets for queue recommendation rendering
    * @param darknetMessagingPort detached darknet messaging port shared by the download and upload
    *     toadlets for queue recommendation sends
+   * @param insertCompatibilityModes detached HTTP-local compatibility-mode bundle shared by the
+   *     download and upload toadlets
    * @throws NullPointerException if any port is {@code null}
    */
   public QueueToadletRuntimePorts {
@@ -82,5 +87,6 @@ public record QueueToadletRuntimePorts(
     Objects.requireNonNull(queueCompletionPort);
     Objects.requireNonNull(darknetConnectionsPort);
     Objects.requireNonNull(darknetMessagingPort);
+    Objects.requireNonNull(insertCompatibilityModes);
   }
 }

@@ -33,7 +33,7 @@ import network.crypta.support.api.HTTPRequest;
  *
  * @see Toadlet
  */
-public class BrowserTestToadlet extends Toadlet {
+public class BrowserTestToadlet extends ContentToadlet {
 
   BrowserTestToadlet(HighLevelSimpleClient client) {
     super(client);
@@ -206,7 +206,7 @@ public class BrowserTestToadlet extends Toadlet {
    * summaries sourced from the context's alert manager.
    *
    * @param uri URI identifying the resource path within the test toadlet.
-   * @param request HTTPRequest containing query parameters and browser capability hints sent by
+   * @param request HTTPRequest containing query parameters and browser capability hints sent by the
    *     client.
    * @param ctx Context that renders HTML, manages permissions, and writes response safely.
    * @throws ToadletContextClosedException if the connection closes before the response is written.
@@ -215,7 +215,7 @@ public class BrowserTestToadlet extends Toadlet {
   @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    // Yes, we need that in order to test the browser (number of connections per server)
+    // Yes, we need that to test the browser (number of connections per server)
     if (request.isParameterSet("wontload")) return;
 
     PageNode page = ctx.getPageMaker().getPageNode("Crypta browser testing tool", ctx);
@@ -224,7 +224,7 @@ public class BrowserTestToadlet extends Toadlet {
     if (ctx.isAllowedFullAccess()) contentNode.addChild(ctx.getAlertManager().createSummary());
 
     // #### Test MIME inline
-    /* for test (for allow <img src="data:...) add "; img-src 'self' data:"
+    /* for test (for allowing <img src="data:...) add "; img-src 'self' data:"
      * to freenet.clients.http.ToadletContextImpl#generateCSP return statement */
     ctx.getPageMaker()
         .getInfobox(INFOBOX_WARNING_CLASS, "MIME Inline", contentNode, "mime-inline-test", true)

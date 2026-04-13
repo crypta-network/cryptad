@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
@@ -32,7 +31,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DiagnosticToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private DiagnosticPort diagnostic;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -41,7 +39,7 @@ class DiagnosticToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new DiagnosticToadlet(client, diagnostic);
+    toadlet = new DiagnosticToadlet(diagnostic);
   }
 
   @Test

@@ -3,8 +3,8 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
-import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
@@ -39,15 +39,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Registration is performed by the HTTP container setup for the node.
  */
-public class DismissAlertToadlet extends Toadlet {
+public class DismissAlertToadlet extends ContentToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(DismissAlertToadlet.class);
 
   /**
    * Creates a new dismiss-alert toadlet bound to the node's high-level client helper.
    *
-   * <p>The client is passed through to {@link Toadlet}'s constructor for consistency with other
-   * HTTP toadlets, even though this endpoint does not currently perform network operations itself.
-   * The instance is expected to be registered once with a {@link
+   * <p>The client is passed through to {@link ContentToadlet}'s constructor for consistency with
+   * other HTTP toadlets, even though this endpoint does not currently perform network operations
+   * itself. The instance is expected to be registered once with a {@link
    * network.crypta.clients.http.ToadletContainer} and then reused for incoming requests.
    *
    * @param client High-level client associated with the node; must be non-null.
@@ -73,7 +73,7 @@ public class DismissAlertToadlet extends Toadlet {
    * @param req Parsed HTTP request providing access to query parameters and headers.
    * @param ctx Active toadlet context used to write the HTTP response.
    * @throws ToadletContextClosedException If the client disconnects before the reply is written.
-   * @throws IOException If writing the response fails due to I/O problems.
+   * @throws IOException If writing, the response fails due to I/O problems.
    * @throws RedirectException Never thrown by this implementation, but declared by contract.
    */
   @Override

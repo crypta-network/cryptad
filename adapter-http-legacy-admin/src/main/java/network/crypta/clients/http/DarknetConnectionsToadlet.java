@@ -5,7 +5,6 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -101,10 +100,8 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private final PeerPort peerPort;
 
   DarknetConnectionsToadlet(
-      HighLevelSimpleClient client,
-      ConnectionsToadletRuntimePorts runtimePorts,
-      DarknetConnectionsPort darknetConnectionsPort) {
-    super(client, runtimePorts);
+      ConnectionsToadletRuntimePorts runtimePorts, DarknetConnectionsPort darknetConnectionsPort) {
+    super(runtimePorts);
     this.darknetConnectionsPort = darknetConnectionsPort;
     this.lifecyclePort = runtimePorts.lifecyclePort();
     this.peerPort = runtimePorts.peerPort();

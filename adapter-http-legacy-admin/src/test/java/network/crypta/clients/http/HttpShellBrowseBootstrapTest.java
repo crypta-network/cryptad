@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
@@ -17,18 +16,15 @@ class HttpShellBrowseBootstrapTest {
   @Test
   void create_whenGivenBrowseRoot_returnsBootstrapWithSameCollaborators() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
         mock(LegacyHttpBrowseRouteRegistrar.class);
 
     HttpShellBrowseBootstrap bootstrap =
-        HttpShellBrowseBootstrap.create(
-            bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar);
+        HttpShellBrowseBootstrap.create(bookmarkManager, appHost, browseRoot, browseRouteRegistrar);
 
     assertSame(bookmarkManager, bootstrap.bookmarkManager());
-    assertSame(client, bootstrap.client());
     assertSame(appHost, bootstrap.appHost());
     assertSame(browseRoot, bootstrap.browseRoot());
     assertSame(browseRouteRegistrar, bootstrap.browseRouteRegistrar());
@@ -37,7 +33,6 @@ class HttpShellBrowseBootstrapTest {
   @Test
   void create_whenGivenInitializationHook_returnsBootstrapWithSameCollaborators() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
@@ -46,15 +41,9 @@ class HttpShellBrowseBootstrapTest {
 
     HttpShellBrowseBootstrap bootstrap =
         HttpShellBrowseBootstrap.create(
-            bookmarkManager,
-            client,
-            appHost,
-            browseRoot,
-            browseRouteRegistrar,
-            runtimePortsSeen::set);
+            bookmarkManager, appHost, browseRoot, browseRouteRegistrar, runtimePortsSeen::set);
 
     assertSame(bookmarkManager, bootstrap.bookmarkManager());
-    assertSame(client, bootstrap.client());
     assertSame(appHost, bootstrap.appHost());
     assertSame(browseRoot, bootstrap.browseRoot());
     assertSame(browseRouteRegistrar, bootstrap.browseRouteRegistrar());
@@ -68,7 +57,6 @@ class HttpShellBrowseBootstrapTest {
   @Test
   void create_whenInitializationHookNull_throwsNullPointerException() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
@@ -78,32 +66,30 @@ class HttpShellBrowseBootstrapTest {
         NullPointerException.class,
         () ->
             HttpShellBrowseBootstrap.create(
-                bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar, null));
+                bookmarkManager, appHost, browseRoot, browseRouteRegistrar, null));
   }
 
   @Test
   void create_whenBrowseRouteRegistrarNull_throwsNullPointerException() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
 
     assertThrows(
         NullPointerException.class,
-        () -> HttpShellBrowseBootstrap.create(bookmarkManager, client, appHost, browseRoot, null));
+        () -> HttpShellBrowseBootstrap.create(bookmarkManager, appHost, browseRoot, null));
   }
 
   @Test
   void initializeSharedShellState_whenUsingDefaultHook_skipsInitialization() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
         mock(LegacyHttpBrowseRouteRegistrar.class);
     HttpShellBrowseBootstrap bootstrap =
         HttpShellBrowseBootstrap.create(
-            bookmarkManager, client, appHost, mock(Toadlet.class), browseRouteRegistrar);
+            bookmarkManager, appHost, mock(Toadlet.class), browseRouteRegistrar);
 
     bootstrap.initializeSharedShellState(runtimePorts);
 
@@ -113,14 +99,12 @@ class HttpShellBrowseBootstrapTest {
   @Test
   void initializeSharedShellState_whenRuntimePortsNull_throwsNullPointerException() {
     BookmarkManagerHandle bookmarkManager = mock(BookmarkManagerHandle.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
     AppHost appHost = mock(AppHost.class);
     Toadlet browseRoot = mock(Toadlet.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
         mock(LegacyHttpBrowseRouteRegistrar.class);
     HttpShellBrowseBootstrap bootstrap =
-        HttpShellBrowseBootstrap.create(
-            bookmarkManager, client, appHost, browseRoot, browseRouteRegistrar);
+        HttpShellBrowseBootstrap.create(bookmarkManager, appHost, browseRoot, browseRouteRegistrar);
 
     assertThrows(NullPointerException.class, () -> bootstrap.initializeSharedShellState(null));
   }

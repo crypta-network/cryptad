@@ -49,10 +49,21 @@ class HttpLegacyAdminBoundaryTest {
       ADAPTER_HTTP_MAIN_JAVA.resolve("IntervalPusherManager.java");
   private static final Path ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellRuntimeSupport.java");
+  private static final Path ADAPTER_LEGACY_HTTP_BROWSE_ROUTE_REGISTRAR_CONTEXT =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("LegacyHttpBrowseRouteRegistrarContext.java");
+  private static final Path ADAPTER_FPROXY_REGISTRAR_DEPENDENCIES =
+      ADAPTER_HTTP_MAIN_JAVA.resolve("FProxyRegistrarDependencies.java");
   private static final String USER_ALERT_MANAGER_IMPORT =
       "import network.crypta.runtime.alerts.UserAlertManager;";
   private static final String PROGRAM_DIRECTORY_IMPORT =
       "import network.crypta.node.ProgramDirectory;";
+  private static final Set<String> FORBIDDEN_RUNTIME_NODE_CLIENT_IMPORTS =
+      Set.of(
+          "import network.crypta.client.HighLevelSimpleClient;",
+          "import network.crypta.client.FetchContext;",
+          "import network.crypta.client.FetchWaiter;",
+          "import network.crypta.client.InsertContext;",
+          "import network.crypta.client.InsertContext.CompatibilityMode;");
   private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
   private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
@@ -277,6 +288,7 @@ class HttpLegacyAdminBoundaryTest {
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
     String adapterBuild = Files.readString(repoRoot.resolve(ADAPTER_BUILD_FILE));
     String browseBuild = Files.readString(repoRoot.resolve(BROWSE_BUILD_FILE));
+    String browseMetadata = Files.readString(repoRoot.resolve(BROWSE_OWNERSHIP_METADATA));
     String bridgeMetadata = Files.readString(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
     String adapterMetadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
 
@@ -289,6 +301,9 @@ class HttpLegacyAdminBoundaryTest {
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(BROWSE_OWNERSHIP_METADATA)),
         ":adapter-http-legacy-browse must declare owned-output-patterns.txt");
+    assertTrue(
+        browseMetadata.contains("network/crypta/clients/http/ContentToadlet*.class"),
+        ":adapter-http-legacy-browse must own network/crypta/clients/http/ContentToadlet*.class");
     assertTrue(
         browseBuild.contains("project(\":adapter-http-legacy-admin\")"),
         ":adapter-http-legacy-browse must depend on :adapter-http-legacy-admin");
@@ -306,6 +321,9 @@ class HttpLegacyAdminBoundaryTest {
     assertFalse(
         adapterMetadata.contains("network/crypta/clients/http/geoip/**"),
         ":adapter-http-legacy-admin must not claim network/crypta/clients/http/geoip/**");
+    assertFalse(
+        adapterMetadata.contains("network/crypta/clients/http/ContentToadlet*.class"),
+        ":adapter-http-legacy-admin must not claim ContentToadlet*.class");
   }
 
   @Test
@@ -391,6 +409,64 @@ class HttpLegacyAdminBoundaryTest {
         "SimpleToadletServer, ToadletContext, ToadletContextImpl, ToadletRequestServices, "
             + "HttpShellBrowseBootstrap, PageMaker, and IntervalPusherManager must not import "
             + "browse-owned bookmark, push, or client-script collaborators."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenCheckingAdminHttpImports_expectRuntimeNodeClientContractsRemoved()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : findMainJavaSources(repoRoot)) {
+      Path relativePath = repoRoot.relativize(sourceFile);
+      if (!relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)) {
+        continue;
+      }
+
+      Set<String> imports = readImports(sourceFile);
+      for (String forbiddenImport : FORBIDDEN_RUNTIME_NODE_CLIENT_IMPORTS) {
+        if (imports.contains(forbiddenImport)) {
+          violations.add(relativePath + " -> " + forbiddenImport);
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "adapter-http-legacy-admin main sources must not import runtime-node client contracts "
+            + "directly anymore."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenCheckingAdminBrowseSeam_expectRegistrarContextsDetached()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile :
+        List.of(
+            ADAPTER_HTTP_SHELL_BROWSE_BOOTSTRAP,
+            ADAPTER_LEGACY_HTTP_BROWSE_ROUTE_REGISTRAR_CONTEXT,
+            ADAPTER_FPROXY_REGISTRAR_DEPENDENCIES,
+            ADAPTER_HTTP_SHELL_RUNTIME_SUPPORT,
+            ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR,
+            ADAPTER_FPROXY_REGISTRAR,
+            ADAPTER_LEGACY_HTTP_ROUTE_REGISTRAR_CONTEXT,
+            ADAPTER_QUEUE_TOADLET,
+            ADAPTER_HTTP_MAIN_JAVA.resolve("FileInsertWizardToadlet.java"))) {
+      String source = Files.readString(repoRoot.resolve(sourceFile));
+      if (source.contains("HighLevelSimpleClient")) {
+        violations.add(sourceFile + " -> HighLevelSimpleClient");
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Admin-owned legacy HTTP seam classes should no longer mention HighLevelSimpleClient."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }

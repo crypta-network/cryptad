@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -76,7 +75,6 @@ class DarknetConnectionsToadletTest {
   private static final String OWN_NODE_PHYSICAL_UDP = "127.0.0.1:1234";
   private static final String TEST_NODE_IDENTIFIER = "peer-1";
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ConnectionsPagePort connectionsPage;
   @Mock private ConnectionsSupportPort connectionsSupportPort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
@@ -99,7 +97,7 @@ class DarknetConnectionsToadletTest {
             configPort,
             connectionsSupportPort,
             lifecyclePort);
-    toadlet = new DarknetConnectionsToadlet(client, runtimePorts, darknetConnectionsPort);
+    toadlet = new DarknetConnectionsToadlet(runtimePorts, darknetConnectionsPort);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
   }
 
@@ -114,8 +112,7 @@ class DarknetConnectionsToadletTest {
             connectionsSupportPort,
             lifecyclePort);
 
-    assertDoesNotThrow(
-        () -> new DarknetConnectionsToadlet(client, runtimePorts, darknetConnectionsPort));
+    assertDoesNotThrow(() -> new DarknetConnectionsToadlet(runtimePorts, darknetConnectionsPort));
   }
 
   @Test

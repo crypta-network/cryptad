@@ -8,7 +8,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.spi.ToadletSymlinkEntry;
 import network.crypta.runtime.spi.ToadletSymlinkPort;
 import network.crypta.support.api.HTTPRequest;
@@ -34,7 +33,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SymlinkerToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
   @Mock private ToadletSymlinkPort symlinkPort;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
@@ -43,7 +41,7 @@ class SymlinkerToadletTest {
   void handleMethodGET_whenAliasMatches_redirectsWithOriginalQueryAndFragment() throws Exception {
     when(symlinkPort.loadConfiguredSymlinks())
         .thenReturn(List.of(new ToadletSymlinkEntry("/cfg/", "/target/")));
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, symlinkPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(symlinkPort);
 
     URI incoming = new URI("http://localhost/cfg/path?foo=bar#frag");
 
@@ -59,7 +57,7 @@ class SymlinkerToadletTest {
   @Test
   void addLink_whenStoreTrue_persistsAndRedirects() {
     when(symlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, symlinkPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(symlinkPort);
 
     boolean added = toadlet.addLink("/alias/", "/dest/", true);
 
@@ -78,7 +76,7 @@ class SymlinkerToadletTest {
   @Test
   void addLink_whenConcurrentStoredUpdates_persistsSnapshotsInMutationOrder() throws Exception {
     BlockingToadletSymlinkPort blockingPort = new BlockingToadletSymlinkPort();
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, blockingPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(blockingPort);
     CountDownLatch secondStarted = new CountDownLatch(1);
     Thread firstUpdate = new Thread(() -> toadlet.addLink("/a/", "/dest-a/", true));
     Thread secondUpdate =
@@ -114,7 +112,7 @@ class SymlinkerToadletTest {
   @Test
   void removeLink_whenExistingAlias_returnsTrueAndPreventsRedirect() throws Exception {
     when(symlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, symlinkPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(symlinkPort);
 
     toadlet.addLink("/remove/", "/kept/", false);
 
@@ -140,7 +138,7 @@ class SymlinkerToadletTest {
   @Test
   void handleMethodGET_whenNoMatchingAlias_sends404Response() throws Exception {
     when(symlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, symlinkPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(symlinkPort);
 
     assertDoesNotThrow(
         () -> toadlet.handleMethodGET(new URI("http://localhost/unknown"), request, ctx));
@@ -159,7 +157,7 @@ class SymlinkerToadletTest {
   @Test
   void handleMethodGET_whenTargetContainsSpaces_redirectsWithEncodedPath() {
     when(symlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
-    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, symlinkPort);
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(symlinkPort);
     toadlet.addLink("/bad/", "/target with space/", false);
 
     RedirectException redirect =

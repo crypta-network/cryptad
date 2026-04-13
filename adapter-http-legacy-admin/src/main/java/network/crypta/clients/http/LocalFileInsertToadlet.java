@@ -4,7 +4,6 @@ import java.io.File;
 import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
 
@@ -76,12 +75,9 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
    *
    * @param transferAccess transfer-access runtime port used for permission checks and default
    *     directory resolution; must not be {@code null}.
-   * @param highLevelSimpleClient client wrapper that binds uploads to the current user session;
-   *     must not be {@code null}.
    */
-  public LocalFileInsertToadlet(
-      TransferAccessPort transferAccess, HighLevelSimpleClient highLevelSimpleClient) {
-    super(transferAccess, highLevelSimpleClient);
+  public LocalFileInsertToadlet(TransferAccessPort transferAccess) {
+    super(transferAccess);
   }
 
   /**

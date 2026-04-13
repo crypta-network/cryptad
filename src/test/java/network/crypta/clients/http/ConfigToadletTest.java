@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigCallback;
 import network.crypta.config.DirectorySelectionCallback;
@@ -62,7 +61,6 @@ class ConfigToadletTest {
 
   @Mock private SubConfig subConfig;
   @Mock private Config config;
-  @Mock private HighLevelSimpleClient client;
   @Mock private ConfigPort configPort;
   @Mock private TransferAccessPort transferAccessPort;
   @Mock private LifecyclePort lifecyclePort;
@@ -77,7 +75,6 @@ class ConfigToadletTest {
 
   private ConfigToadlet createToadlet() {
     return new ConfigToadlet(
-        client,
         config,
         subConfig,
         new ConfigToadletRuntimePorts(configPort, transferAccessPort, lifecyclePort));
@@ -261,7 +258,6 @@ class ConfigToadletTest {
     ConfigToadlet toadlet =
         new ConfigToadlet(
             "directory-browser",
-            client,
             config,
             subConfig,
             new ConfigToadletRuntimePorts(configPort, transferAccessPort, lifecyclePort));

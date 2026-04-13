@@ -25,11 +25,11 @@ import network.crypta.support.api.HTTPRequest;
  * parameter and may optionally influence the canvas size through {@code width} and {@code height}
  * query parameters. When either dimension is omitted, sensible defaults keep the output compact
  * enough for inline display. Oversized inputs are rejected to avoid unbounded memory growth and to
- * keep latency predictable even under concurrent load.
+ * keep latency predictable even under a concurrent load.
  *
  * <p>Responses include a strong {@code Last-Modified} header keyed to the class timestamp so
  * browsers can reuse cached images without regenerating them on every request. The implementation
- * is effectively stateless; each request builds its own buffer and disposes it immediately after
+ * is effectively stateless; each request builds its own buffer and disposes of it immediately after
  * the PNG is streamed to the client-side bucket. No shared mutable state is retained, so instances
  * are safe to serve multiple requests concurrently when registered with the toadlet server.
  *
@@ -41,7 +41,7 @@ import network.crypta.support.api.HTTPRequest;
  *
  * @see network.crypta.clients.http.Toadlet
  */
-public class ImageCreatorToadlet extends Toadlet {
+public class ImageCreatorToadlet extends ContentToadlet {
 
   private static final String ROOT_URL = "/imagecreator/";
 
@@ -84,7 +84,7 @@ public class ImageCreatorToadlet extends Toadlet {
    * and response writing. Instances created through this constructor are stateless; multiple
    * toadlets may coexist and serve concurrent requests as long as the client manages shared
    * resources safely. Callers typically register the instance with the toadlet server immediately
-   * after construction so HTTP requests under the configured path are dispatched here.
+   * after construction, so HTTP requests under the configured path are dispatched here.
    *
    * @param client non-null high-level client used for bucket creation and other inherited helpers
    */

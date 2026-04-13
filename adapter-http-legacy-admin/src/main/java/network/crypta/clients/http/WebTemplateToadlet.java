@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.util.Map;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.utils.PebbleUtils;
 import network.crypta.support.HTMLNode;
 
@@ -13,9 +12,8 @@ import network.crypta.support.HTMLNode;
  * are already being composed in memory rather than streamed directly to the client. It keeps the
  * templating concerns narrowly focused on delegating to {@link PebbleUtils}, while leaving request
  * routing, validation, and error handling to concrete toadlets. The class is stateless apart from
- * the shared {@link HighLevelSimpleClient} reference, so instances can be reused across requests as
- * long as callers supply thread-safe model data and do not share mutable {@link HTMLNode} trees
- * unsafely.
+ * the shared HTTP shell, so instances can be reused across requests as long as callers supply
+ * thread-safe model data and do not share mutable {@link HTMLNode} trees unsafely.
  *
  * <p>Typical usage is to build an {@code HTMLNode} hierarchy with structural elements, then call
  * {@link #addChild(HTMLNode, String, Map, String)} for each section that should be rendered from a
@@ -32,19 +30,9 @@ import network.crypta.support.HTMLNode;
  */
 abstract class WebTemplateToadlet extends Toadlet {
 
-  /**
-   * Creates a template-aware toadlet wrapper bound to the provided client.
-   *
-   * <p>The client reference is retained for use by subclasses; it is neither copied nor closed by
-   * this base class. Callers should ensure the client remains valid for the lifetime of the
-   * toadlet. The constructor performs no I/O and is safe to invoke during application startup or
-   * lazy initialization.
-   *
-   * @param client client used by subclasses to perform higher-level HTTP interactions; must remain
-   *     usable for the lifespan of this toadlet instance.
-   */
-  WebTemplateToadlet(HighLevelSimpleClient client) {
-    super(client);
+  /** Creates a template-aware toadlet wrapper. */
+  WebTemplateToadlet() {
+    super();
   }
 
   /**
