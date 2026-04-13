@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
+import network.crypta.config.DirectorySelectionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.api.StringCallback;
@@ -103,7 +104,8 @@ public class ProgramDirectory {
    *
    * <p>Allows the first assignment and accepts idempotent writes; rejects changes thereafter.
    */
-  public class DirectoryCallback extends network.crypta.config.StringCallback {
+  public class DirectoryCallback extends network.crypta.config.StringCallback
+      implements DirectorySelectionCallback {
     @Override
     public String get() {
       return dir.getPath();

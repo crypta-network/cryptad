@@ -127,8 +127,15 @@ final class LegacyCallbackAdapters {
     if (callback instanceof StringCallback adapted) {
       return adapted;
     }
+    boolean directorySelectionCallback = callback instanceof DirectorySelectionCallback;
     if (callback instanceof EnumerableOptionCallback enumerableCallback) {
+      if (directorySelectionCallback) {
+        return new DirectoryEnumerableStringCallbackAdapter(callback, enumerableCallback);
+      }
       return new EnumerableStringCallbackAdapter(callback, enumerableCallback);
+    }
+    if (directorySelectionCallback) {
+      return new DirectoryStringCallbackAdapter(callback);
     }
     return new StringCallbackAdapter(callback);
   }
@@ -181,11 +188,36 @@ final class LegacyCallbackAdapters {
     }
   }
 
-  private static final class EnumerableStringCallbackAdapter extends StringCallbackAdapter
+  private static class DirectoryStringCallbackAdapter extends StringCallbackAdapter
+      implements DirectorySelectionCallback {
+
+    private DirectoryStringCallbackAdapter(network.crypta.support.api.StringCallback callback) {
+      super(callback);
+    }
+  }
+
+  private static class EnumerableStringCallbackAdapter extends StringCallbackAdapter
       implements EnumerableOptionCallback {
     private final EnumerableOptionCallback enumerableCallback;
 
     private EnumerableStringCallbackAdapter(
+        network.crypta.support.api.StringCallback callback,
+        EnumerableOptionCallback enumerableCallback) {
+      super(callback);
+      this.enumerableCallback = enumerableCallback;
+    }
+
+    @Override
+    public String[] getPossibleValues() {
+      return enumerableCallback.getPossibleValues();
+    }
+  }
+
+  private static final class DirectoryEnumerableStringCallbackAdapter extends StringCallbackAdapter
+      implements EnumerableOptionCallback, DirectorySelectionCallback {
+    private final EnumerableOptionCallback enumerableCallback;
+
+    private DirectoryEnumerableStringCallbackAdapter(
         network.crypta.support.api.StringCallback callback,
         EnumerableOptionCallback enumerableCallback) {
       super(callback);

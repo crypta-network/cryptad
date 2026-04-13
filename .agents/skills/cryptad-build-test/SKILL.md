@@ -22,9 +22,10 @@ Use this skill when you need to:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`,
-  `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
-  `:launcher-desktop`.
+  `:platform-apphost`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`,
+  `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+  `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
+  `:thirdparty-legacy`, and `:launcher-desktop`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -70,9 +71,10 @@ Use this skill when you need to:
 - Focused leaf-local boundary tests now freeze the current extracted layout.
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
-  `AdapterFcpBoundaryTest`, `AppHostBoundaryTest`, `WebShellBoundaryTest`, and
-  `HttpLegacyAdminBoundaryTest` are the focused regression checks for leaf ownership/import
-  boundaries. The runtime, kernel, platform, and adapter-fcp boundary suites also enforce
+  `AdapterFcpBoundaryTest`, `BridgeFcpRuntimeBoundaryTest`, `AppHostBoundaryTest`,
+  `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`, `LegacyHttpBrowseBoundaryTest`, and
+  `BridgeHttpRuntimeBoundaryTest` are the focused regression checks for leaf ownership/import
+  boundaries. The runtime, kernel, platform, FCP, and HTTP boundary suites also enforce
   `package-info.java` coverage for the production packages they own.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
@@ -82,17 +84,27 @@ Use this skill when you need to:
   tests under `platform-apphost/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
   `platform-web-shell/src/test/java`.
+- `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
+  subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine side of
   `network.crypta.node`, the retained node-coupled transport/message execution code in
   `network.crypta.io*`, `network.crypta.runtime.*`, and the remaining daemon-coupled support
   helpers.
-- `:adapter-fcp` owns `network.crypta.clients.fcp`, including
-  `network.crypta.clients.fcp.bridge`.
-- `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree and the
-  matching `network/crypta/clients/http/**` main resources. On the root test/runtime classpath,
-  those resources often resolve from the leaf JAR, so tests must treat them as classpath resources
-  rather than assume a plain filesystem `Path`.
+- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` tree.
+- `:bridge-fcp-runtime` owns the concrete runtime-binding `network.crypta.clients.fcp.bridge`
+  implementations and its focused leaf tests under `bridge-fcp-runtime/src/test/java`.
+- `:bridge-http-runtime` owns the concrete `network.crypta.clients.http.bridge` runtime-binding
+  implementations plus the legacy HTTP `network.crypta.clients.http.geoip` helper package, with
+  focused leaf tests under `bridge-http-runtime/src/test/java`.
+- `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, admin
+  toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
+  `network/crypta/clients/http/**` main resources.
+- `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, and helper
+  models under `network.crypta.clients.http`, with focused leaf tests under
+  `adapter-http-legacy-browse/src/test/java`.
+- On the root test/runtime classpath, admin-owned HTTP resources often resolve from the leaf JAR,
+  so tests must treat them as classpath resources rather than assume a plain filesystem `Path`.
 - Most tests still live in the root project and compile against the leaf subprojects through the
   root build, but the extracted boundary suites now live with their owning leaves under each
   module's `src/test/java` tree.
@@ -131,7 +143,10 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :kernel-routing:test`
   - `./gradlew :runtime-node:test`
   - `./gradlew :adapter-fcp:test`
+  - `./gradlew :bridge-fcp-runtime:test`
+  - `./gradlew :bridge-http-runtime:test`
   - `./gradlew :adapter-http-legacy-admin:test`
+  - `./gradlew :adapter-http-legacy-browse:test`
 - Run the remaining root-owned Platform API/bootstrap slice explicitly against the root project:
   - `./gradlew :test --tests *DefaultNodeRuntimeBridgeFactoriesTest --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
 
@@ -173,14 +188,23 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-apphost:compileJava`
 - Compile the Web Shell leaf when you touched `network.crypta.platform.webshell`:
   - `./gradlew :platform-web-shell:compileJava`
+- Compile the extracted runtime-alerts leaf when you touched `network.crypta.runtime.alerts`:
+  - `./gradlew :runtime-alerts:compileJava`
 - Compile the extracted runtime-node leaf when you touched daemon runtime, node, client, xfer, or
   remaining support code that now lives there:
   - `./gradlew :runtime-node:compileJava`
 - Compile the FCP adapter leaf when you touched `network.crypta.clients.fcp`:
   - `./gradlew :adapter-fcp:compileJava`
-- Compile the legacy HTTP adapter leaf when you touched `network.crypta.clients.http` sources or
-  resources:
+- Compile the concrete FCP bridge leaf when you touched `network.crypta.clients.fcp.bridge`:
+  - `./gradlew :bridge-fcp-runtime:compileJava`
+- Compile the shared legacy HTTP admin leaf when you touched shared shell/admin
+  `network.crypta.clients.http` sources or admin-owned resources:
   - `./gradlew :adapter-http-legacy-admin:compileJava :adapter-http-legacy-admin:processResources`
+- Compile the concrete legacy HTTP browse leaf when you touched browse/FProxy classes:
+  - `./gradlew :adapter-http-legacy-browse:compileJava`
+- Compile the concrete legacy HTTP runtime bridge leaf when you touched
+  `network.crypta.clients.http.bridge` or `network.crypta.clients.http.geoip`:
+  - `./gradlew :bridge-http-runtime:compileJava`
 - Compile the root project and its unchanged test tree against the leaf-module layout:
   - `./gradlew compileJava compileTestJava`
 

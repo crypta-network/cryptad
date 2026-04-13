@@ -24,9 +24,10 @@ Use this skill when working on:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-web-shell`, `:runtime-node`, `:adapter-fcp`,
-  `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
-  `:launcher-desktop`.
+  `:platform-apphost`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`,
+  `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+  `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
+  `:thirdparty-legacy`, and `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
 - `:foundation-support` and `:foundation-store-contracts` contribute shared runtime classes via
   their leaf JARs like the other extracted modules.
@@ -42,15 +43,23 @@ Use this skill when working on:
   `:platform-apphost` JAR contributes the transport-neutral local AppHost core used by that API.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
   JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
+- The `:runtime-alerts` JAR contributes the detached alert/feed model subset, including the
+  `UserAlertSurface` consumed by the legacy HTTP/admin shell.
 - The `:runtime-node` JAR now carries a large extracted daemon runtime/node/client/support subset
   and participates in the root runtime classpath and packaged distribution like the other leaf
   artifacts.
 - The `:adapter-fcp` JAR carries the extracted FCP adapter code.
-- The `:adapter-http-legacy-admin` JAR carries the current legacy HTTP adapter classes plus the
+- The `:bridge-fcp-runtime` JAR carries the concrete runtime-binding
+  `network.crypta.clients.fcp.bridge` implementations.
+- The `:adapter-http-legacy-admin` JAR carries the shared legacy HTTP shell/admin classes plus the
   matching `network/crypta/clients/http/**` resources. Static files and templates now ship from
   that leaf JAR on the runtime classpath, so packaged/runtime code must treat them as classpath
-  resources rather than plain files. This adapter also hosts the current `/api/v1/` bridge for
+  resources rather than plain files. This leaf also hosts the current `/api/v1/` bridge for
   `:platform-api` and the `/app/node/` bridge for `:platform-web-shell`.
+- The `:adapter-http-legacy-browse` JAR carries the concrete legacy browse/FProxy classes.
+- The `:bridge-http-runtime` JAR carries the concrete `network.crypta.clients.http.bridge`
+  runtime-binding implementations plus the legacy HTTP `network.crypta.clients.http.geoip`
+  helper package.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
 
