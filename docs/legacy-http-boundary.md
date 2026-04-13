@@ -1,34 +1,34 @@
 # Legacy HTTP Boundary
 
-`:adapter-http-legacy-admin` owns the boundary-frozen legacy `network.crypta.clients.http` tree
-and the matching `network/crypta/clients/http/**` main resources, excluding
-`network.crypta.clients.http.bridge` and `network.crypta.clients.http.geoip`.
+`:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
+admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
+`network/crypta/clients/http/**` main resources. It does not own the concrete browse/FProxy
+implementation classes.
+
+`:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, helper models,
+and browse-only packages under `network.crypta.clients.http`.
 
 `:bridge-http-runtime` owns the concrete runtime-binding bridge implementations under
 `network.crypta.clients.http.bridge` plus the legacy HTTP GeoIP helper package under
-`network.crypta.clients.http.geoip`.
+`network.crypta.clients.http.geoip`. It depends on `:adapter-http-legacy-browse` for concrete
+browse construction while keeping the admin-owned shell seams intact.
 
-This PR keeps the existing adapter leaf in place and still does not create
-`:adapter-http-legacy-browse`, but it removes the last major route-registration blocker for that
-future split. The shared shell already crosses browse-neutral bootstrap/context types and shared
-`LegacyHttpPaths` / `LegacyHttpCategories` constants instead of pulling those values from
-`FProxyToadlet` directly. It also uses neutral bookmark, push, and client-side script seams
-instead of importing concrete browse-owned collaborator classes directly.
+The dependency direction is one way. `:adapter-http-legacy-browse` may depend on
+`:adapter-http-legacy-admin` for shared shell and seam types, but `:adapter-http-legacy-admin`
+must not depend on the browse leaf. `:bridge-http-runtime` depends on the browse leaf for concrete
+browse construction and still uses admin-owned seams for shell orchestration.
 
-The new change in this PR is route-registration ownership. Admin-owned startup code now preserves
-the historical registration order while delegating browse-owned route publication through a neutral
-`LegacyHttpBrowseRouteRegistrar` seam installed by the bridge/runtime-owned HTTP bootstrap path.
-That keeps the shared shell browse-neutral, keeps the admin-owned registrar from instantiating the
-concrete browse routes directly, and makes the future browse-module move mechanical instead of
-another logic refactor.
+The shared shell stays browse-neutral by crossing `LegacyHttpPaths` / `LegacyHttpCategories`
+constants and other small seam types instead of importing concrete browse-owned collaborator
+classes directly. Route publication, bookmark handling, push handling, and browser-side helpers
+stay split across the admin shell, the browse leaf, and the runtime bridge.
 
-The boundary remains intentional. Production code outside `:adapter-http-legacy-admin` and
+Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or
 `:platform-web-shell` instead of growing new direct dependencies on
 `network.crypta.clients.http.*`. The bootstrap-owned binding site remains
 `src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java`, and the
-updater-action adapters remain in `:adapter-http-legacy-admin` in this PR.
+updater-action adapters remain in `:adapter-http-legacy-admin`.
 
-Future browse/FProxy decomposition or replacement is still deferred. This PR only prepares the
-later `:adapter-http-legacy-browse` extraction by neutralizing the shared shell seams and splitting
-admin-owned versus browse-owned route registration behind that neutral registrar boundary.
+Future browse/FProxy decomposition or replacement is still deferred beyond the physical module
+split. This page documents the current admin/shared-shell, browse, and runtime boundary.

@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class HttpLegacyAdminBoundaryTest {
   private static final String MODULE_NAME = "adapter-http-legacy-admin";
+  private static final String BROWSE_MODULE_NAME = "adapter-http-legacy-browse";
   private static final String BRIDGE_MODULE_NAME = "bridge-http-runtime";
   private static final Path ROOT_HTTP_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "http");
@@ -29,6 +30,8 @@ class HttpLegacyAdminBoundaryTest {
       Path.of("src", "main", "resources", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_HTTP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
+  private static final Path BROWSE_HTTP_MAIN_JAVA =
+      Path.of(BROWSE_MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http");
   private static final Path ADAPTER_SIMPLE_TOADLET_SERVER =
       ADAPTER_HTTP_MAIN_JAVA.resolve("SimpleToadletServer.java");
   private static final Path ADAPTER_TOADLET_CONTEXT =
@@ -80,6 +83,10 @@ class HttpLegacyAdminBoundaryTest {
           "import network.crypta.clients.http.filter.PushingTagReplacerCallback;");
   private static final Path ADAPTER_HTTP_MAIN_RESOURCES =
       Path.of(MODULE_NAME, "src", "main", "resources", "network", "crypta", "clients", "http");
+  private static final Path ADAPTER_BUILD_FILE = Path.of(MODULE_NAME, "build.gradle.kts");
+  private static final Path BROWSE_BUILD_FILE = Path.of(BROWSE_MODULE_NAME, "build.gradle.kts");
+  private static final Path BROWSE_OWNERSHIP_METADATA =
+      Path.of(BROWSE_MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path ADAPTER_BRIDGE_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "http", "bridge");
   private static final Path ADAPTER_GEOIP_MAIN_JAVA =
@@ -166,6 +173,35 @@ class HttpLegacyAdminBoundaryTest {
           "DefaultNodeRuntimeBridgeFactories.java");
   private static final Pattern LEGACY_HTTP_IMPORT_PATTERN =
       Pattern.compile("^import(?:\\s+static)?\\s+(network\\.crypta\\.clients\\.http\\.[^;]+);$");
+  private static final List<String> MOVED_BROWSE_TOP_LEVEL_FILES =
+      List.of(
+          "BookmarkEditorToadlet.java",
+          "BookmarkEditorToadletRuntimePorts.java",
+          "BrowserTestToadlet.java",
+          "ContentFilterToadlet.java",
+          "DecodeToadlet.java",
+          "ExternalLinkToadlet.java",
+          "FProxyFetchCriteria.java",
+          "FProxyFetchInProgress.java",
+          "FProxyFetchListener.java",
+          "FProxyFetchProgressCounts.java",
+          "FProxyFetchResult.java",
+          "FProxyFetchSnapshotInfo.java",
+          "FProxyFetchTracker.java",
+          "FProxyFetchWaiter.java",
+          "FProxyRuntimeSupport.java",
+          "FProxyToadlet.java",
+          "HTTPRangeException.java",
+          "ImageCreatorToadlet.java",
+          "InsertFreesiteToadlet.java",
+          "LegacyFProxyAjaxPushRouteRegistrar.java",
+          "LegacyFProxyBrowseRouteRegistrar.java",
+          "LocalFileFilterToadlet.java",
+          "RssSniffer.java",
+          "WelcomeToadlet.java",
+          "WelcomeToadletRuntimePorts.java");
+  private static final List<String> MOVED_BROWSE_PACKAGE_DIRS =
+      List.of("ajaxpush", "bookmark", "complexhtmlnodes", "filter", "updateableelements");
   private static final Set<String> FORBIDDEN_ADAPTER_HTTP_IMPORTS =
       Set.of(
           "import network.crypta.node.PeerNodeStatus;",
@@ -192,6 +228,9 @@ class HttpLegacyAdminBoundaryTest {
         Files.isDirectory(repoRoot.resolve(ADAPTER_HTTP_MAIN_JAVA)),
         "adapter-http-legacy-admin must own network/crypta/clients/http main sources");
     assertTrue(
+        Files.isDirectory(repoRoot.resolve(BROWSE_HTTP_MAIN_JAVA)),
+        ":adapter-http-legacy-browse must own network/crypta/clients/http main sources");
+    assertTrue(
         Files.isDirectory(repoRoot.resolve(ADAPTER_HTTP_MAIN_RESOURCES)),
         "adapter-http-legacy-admin must own network/crypta/clients/http main resources");
     assertFalse(
@@ -200,6 +239,16 @@ class HttpLegacyAdminBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(ROOT_HTTP_MAIN_RESOURCES)),
         "Root project must not re-own network/crypta/clients/http main resources");
+    for (String fileName : MOVED_BROWSE_TOP_LEVEL_FILES) {
+      assertFalse(
+          Files.exists(repoRoot.resolve(ADAPTER_HTTP_MAIN_JAVA.resolve(fileName))),
+          "adapter-http-legacy-admin must not own moved browse file " + fileName);
+    }
+    for (String packageDir : MOVED_BROWSE_PACKAGE_DIRS) {
+      assertFalse(
+          hasJavaSources(repoRoot.resolve(ADAPTER_HTTP_MAIN_JAVA.resolve(packageDir))),
+          "adapter-http-legacy-admin must not own moved browse package " + packageDir);
+    }
     assertFalse(
         hasJavaSources(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
         "adapter-http-legacy-admin must not own network/crypta/clients/http/bridge main sources");
@@ -219,13 +268,26 @@ class HttpLegacyAdminBoundaryTest {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String adapterBuild = Files.readString(repoRoot.resolve(ADAPTER_BUILD_FILE));
+    String browseBuild = Files.readString(repoRoot.resolve(BROWSE_BUILD_FILE));
     String bridgeMetadata = Files.readString(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
     String adapterMetadata = Files.readString(repoRoot.resolve(OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":bridge-http-runtime\""));
+    assertTrue(settings.contains("\":adapter-http-legacy-browse\""));
     assertTrue(build.contains("project(\":bridge-http-runtime\")"));
+    assertTrue(build.contains("project(\":adapter-http-legacy-browse\")"));
     assertTrue(settings.contains("\":adapter-http-legacy-admin\""));
     assertTrue(build.contains("project(\":adapter-http-legacy-admin\")"));
+    assertTrue(
+        Files.isRegularFile(repoRoot.resolve(BROWSE_OWNERSHIP_METADATA)),
+        ":adapter-http-legacy-browse must declare owned-output-patterns.txt");
+    assertTrue(
+        browseBuild.contains("project(\":adapter-http-legacy-admin\")"),
+        ":adapter-http-legacy-browse must depend on :adapter-http-legacy-admin");
+    assertFalse(
+        adapterBuild.contains("project(\":adapter-http-legacy-browse\")"),
+        ":adapter-http-legacy-admin must not depend on :adapter-http-legacy-browse");
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA)),
         ":bridge-http-runtime must declare owned-output-patterns.txt");
@@ -256,6 +318,7 @@ class HttpLegacyAdminBoundaryTest {
       Set<String> imports = readLegacyHttpImports(sourceFile);
       if (!imports.isEmpty()
           && !relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)
+          && !relativePath.startsWith(BROWSE_HTTP_MAIN_JAVA)
           && !relativePath.startsWith(BRIDGE_HTTP_MAIN_JAVA)
           && !relativePath.startsWith(BRIDGE_GEOIP_MAIN_JAVA)) {
         violations.add(relativePath + " -> " + String.join(", ", imports));
@@ -264,8 +327,8 @@ class HttpLegacyAdminBoundaryTest {
 
     assertTrue(
         violations.isEmpty(),
-        "Only adapter-http-legacy-admin, bridge-http-runtime, and the bootstrap binding site may "
-            + "import network.crypta.clients.http.*."
+        "Only adapter-http-legacy-admin, adapter-http-legacy-browse, bridge-http-runtime, and "
+            + "the bootstrap binding site may import network.crypta.clients.http.*."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
     assertEquals(
@@ -412,6 +475,33 @@ class HttpLegacyAdminBoundaryTest {
             "PushDataManagerHandles",
             "PushDataManagerHandles.create(",
             "network.crypta.clients.http.updateableelements.PushDataManager"));
+  }
+
+  @Test
+  void mainSources_whenCheckingAdminCallers_expectBrowseStaticReferencesNeutralized()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<Path> files =
+        List.of(
+            ADAPTER_QUEUE_TOADLET,
+            ADAPTER_SIMPLE_TOADLET_SERVER,
+            ADAPTER_HTTP_MAIN_JAVA.resolve("FileInsertWizardToadlet.java"),
+            ADAPTER_HTTP_MAIN_JAVA.resolve("StartupToadlet.java"),
+            ADAPTER_HTTP_MAIN_JAVA.resolve("FirstTimeWizardToadlet.java"),
+            ADAPTER_HTTP_MAIN_JAVA.resolve("FirstTimeWizardNewToadlet.java"),
+            ADAPTER_HTTP_MAIN_JAVA.resolve("SecurityLevelsToadlet.java"),
+            ADAPTER_HTTP_MAIN_JAVA.resolve("wizardsteps").resolve("SecurityPhysical.java"));
+
+    for (Path file : files) {
+      String source = Files.readString(repoRoot.resolve(file));
+      assertFalse(source.contains("WelcomeToadlet."), file + " must not reference WelcomeToadlet.");
+      assertFalse(
+          source.contains("ContentFilterToadlet."),
+          file + " must not reference ContentFilterToadlet.");
+      assertFalse(
+          source.contains("ExternalLinkToadlet."),
+          file + " must not reference ExternalLinkToadlet.");
+    }
   }
 
   @Test

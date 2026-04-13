@@ -1,0 +1,33 @@
+# Aggregated main outputs that must be pruned on non-clean builds because
+# :adapter-http-legacy-browse owns the concrete browse/FProxy leaf code.
+
+network/crypta/clients/http/BookmarkEditorToadlet*.class
+network/crypta/clients/http/BookmarkEditorToadletRuntimePorts*.class
+network/crypta/clients/http/BrowserTestToadlet*.class
+network/crypta/clients/http/ContentFilterToadlet*.class
+network/crypta/clients/http/DecodeToadlet*.class
+network/crypta/clients/http/ExternalLinkToadlet*.class
+network/crypta/clients/http/FProxyFetchCriteria*.class
+network/crypta/clients/http/FProxyFetchInProgress*.class
+network/crypta/clients/http/FProxyFetchListener*.class
+network/crypta/clients/http/FProxyFetchProgressCounts*.class
+network/crypta/clients/http/FProxyFetchResult*.class
+network/crypta/clients/http/FProxyFetchSnapshotInfo*.class
+network/crypta/clients/http/FProxyFetchTracker*.class
+network/crypta/clients/http/FProxyFetchWaiter*.class
+network/crypta/clients/http/FProxyRuntimeSupport*.class
+network/crypta/clients/http/FProxyToadlet*.class
+network/crypta/clients/http/HTTPRangeException*.class
+network/crypta/clients/http/ImageCreatorToadlet*.class
+network/crypta/clients/http/InsertFreesiteToadlet*.class
+network/crypta/clients/http/LegacyFProxyAjaxPushRouteRegistrar*.class
+network/crypta/clients/http/LegacyFProxyBrowseRouteRegistrar*.class
+network/crypta/clients/http/LocalFileFilterToadlet*.class
+network/crypta/clients/http/RssSniffer*.class
+network/crypta/clients/http/WelcomeToadlet*.class
+network/crypta/clients/http/WelcomeToadletRuntimePorts*.class
+network/crypta/clients/http/ajaxpush/**
+network/crypta/clients/http/bookmark/**
+network/crypta/clients/http/complexhtmlnodes/**
+network/crypta/clients/http/filter/**
+network/crypta/clients/http/updateableelements/**

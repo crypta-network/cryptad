@@ -17,6 +17,7 @@ import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.http.ExternalLinkSupport;
 import network.crypta.support.io.FileUtil.OperatingSystem;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -29,8 +30,9 @@ import org.slf4j.LoggerFactory;
  * prompting for master passwords when high-security modes require them, and rendering
  * confirmation/rollback screens before persisting changes. It keeps the HTTP request branching,
  * HTML construction, and localization logic in the toadlet, while delegating live runtime state and
- * mutations to the detached security-levels and config ports. The class assumes callers gate access
- * through {@link ToadletContext#checkFullAccess(Toadlet)} so it can operate on administrative data.
+ * mutations to the detached security-levels and config ports. The class assumes callers' gate
+ * access through {@link ToadletContext#checkFullAccess(Toadlet)} so it can operate on
+ * administrative data.
  *
  * <p>Lifecycle highlights:
  *
@@ -728,7 +730,7 @@ public class SecurityLevelsToadlet extends Toadlet {
   }
 
   /**
-   * Sends a form requesting a master password change when the node already operates at high
+   * Sends a form requesting a master password change when the node already operates at a high
    * physical threat level. The form highlights empty or incorrect passwords when indicated,
    * preserves the current physical threat level through hidden fields, and links back to the
    * security levels page. Configuration is not persisted here; callers remain responsible for
@@ -972,7 +974,7 @@ public class SecurityLevelsToadlet extends Toadlet {
             new HTMLNode[] {
               HTMLNode.STRONG,
               HTMLNode.linkInNewWindow(
-                  ExternalLinkToadlet.escape(l10nSec("physicalThreatLevelFDELink")))
+                  ExternalLinkSupport.escape(l10nSec("physicalThreatLevelFDELink")))
             });
     HTMLNode swapWarning = seclevelGroup.addChild("p").addChild("i");
     OperatingSystem os = FileUtil.detectedOS;

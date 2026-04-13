@@ -1,10 +1,11 @@
 /**
  * Browser-facing HTTP interface for Crypta nodes, often referred to as the FProxy console.
  *
- * <p>This package is owned by the extracted {@code :adapter-http-legacy-admin} leaf together with
- * the matching {@code network/crypta/clients/http/**} main resources. The root project no longer
- * owns this main source/resource tree. The remaining browse and FProxy shell collected here is
- * boundary-frozen until a later PR narrows or replaces it with smaller seams.
+ * <p>This package is split across the extracted {@code :adapter-http-legacy-admin} and {@code
+ * :adapter-http-legacy-browse} leaves, together with the matching {@code
+ * network/crypta/clients/http/**} main resources that currently remain in the admin leaf. The root
+ * project no longer owns this main source/resource tree. The admin leaf keeps the shared shell and
+ * seam types, while the browse leaf owns the concrete browse and FProxy implementation classes.
  *
  * <p>The package provides the lightweight HTTP server surface that lets users browse freesites,
  * upload or insert files, inspect queue progress, and configure the node without embedding a
@@ -28,9 +29,9 @@
  * implementation detail rather than as a new platform API. Runtime and bootstrap code should
  * continue to depend on runtime-owned seams and the narrow bridge/binding sites instead of growing
  * new direct dependencies on {@code network.crypta.clients.http.*}. The shared shell now uses the
- * HTTP-local route registrar seam and the top-level refilter policy type, while {@code
- * network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories} remains the bootstrap-owned
- * binding site for the concrete HTTP bridge implementations.
+ * HTTP-local route registrar seam, shared path/category helpers, and other browse-neutral helpers,
+ * while {@code network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories} remains the
+ * bootstrap-owned binding site for the concrete HTTP bridge implementations.
  *
  * <ul>
  *   <li>Implements the public web console and REST-like helper endpoints.

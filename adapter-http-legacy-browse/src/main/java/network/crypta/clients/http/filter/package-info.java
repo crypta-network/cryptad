@@ -1,11 +1,9 @@
 /**
  * Legacy HTTP filtering callbacks for the extracted browse and FProxy adapter.
  *
- * <p>This package belongs to {@code :adapter-http-legacy-admin}. It contains HTTP-specific filter
+ * <p>This package belongs to {@code :adapter-http-legacy-browse}. It contains HTTP-specific filter
  * helpers that adapt the sanitized content-filter pipeline to the current FProxy shell, including
- * rewriting tags so legacy push-enabled pages can inject scripts or updateable placeholders. The
- * package remains part of the extracted but still legacy {@code network.crypta.clients.http} tree
- * while that shell is boundary-frozen.
+ * rewriting tags so legacy push-enabled pages can inject scripts or updateable placeholders.
  *
  * <p>These types are adapter-owned implementation details, not a new platform API. Code outside
  * {@code :adapter-http-legacy-admin} should not begin depending on them. They exist only to support

@@ -259,20 +259,17 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
   `network.crypta.clients.fcp.bridge`.
-- `:adapter-http-legacy-admin` owns the current legacy `network.crypta.clients.http` tree plus
-  the matching `network/crypta/clients/http/**` main resources such as `staticfiles/**` and
-  `templates/**`, excluding `network.crypta.clients.http.bridge` and
-  `network.crypta.clients.http.geoip`. The remaining legacy
-  browse/FProxy shell inside this leaf is still not physically split yet, but route-registration
-  ownership is now separated behind a neutral browse registrar seam so the later browse extraction
-  can stay mechanical.
-  That shell also hosts the temporary `/api/v1/` mount for `:platform-api` plus the first
-  `/app/node/` Web Shell bridge for `:platform-web-shell`; future AppHost UI and remote
-  update-channel work remain separate. The concrete HTTP bridge implementations plus the legacy
-  HTTP GeoIP helper package now live in `:bridge-http-runtime`, while the updater-action adapters stay in
-  `network.crypta.clients.http.updater` under the adapter leaf. See
-  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
-  boundary.
+- `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
+  admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
+  `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`.
+  It keeps the browse-neutral shell and seam types, but no longer owns the concrete browse/FProxy
+  implementations. See [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the
+  explicit maintenance boundary.
+- `:adapter-http-legacy-browse` owns the concrete legacy browse/FProxy routes, toadlets, helper
+  models, and browse-only packages under `network.crypta.clients.http`.
+- `:bridge-http-runtime` owns the concrete `network.crypta.clients.http.bridge` runtime-binding
+  leaf plus the legacy HTTP `network.crypta.clients.http.geoip` helper package. It depends on the
+  browse leaf for concrete browse construction while keeping the admin-owned shell seams intact.
 - `:thirdparty-onion` owns `com.onionnetworks` and `lib/fec.properties`.
 - `:thirdparty-legacy` owns `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 - `:launcher-desktop` owns `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, and launcher
@@ -664,19 +661,22 @@ Root build also includes:
 - `:adapter-fcp`: extracted `network.crypta.clients.fcp` protocol leaf.
 - `:bridge-fcp-runtime`: extracted concrete `network.crypta.clients.fcp.bridge` runtime-binding
   leaf.
-- `:adapter-http-legacy-admin`: extracted legacy `network.crypta.clients.http` adapter code plus
+- `:adapter-http-legacy-admin`: extracted shared legacy `network.crypta.clients.http` shell plus
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
-  HTTP source/resource tree, and the remaining browse/FProxy shell in this adapter is
-  boundary-frozen for now. The shared shell now crosses neutral bookmark, push, client-side
-  localization, and browse-route-registration seams instead of importing or instantiating the
-  concrete browse-owned collaborators directly. It currently hosts both the temporary `/api/v1/` bridge for
-  `:platform-api` and the initial `/app/node/` bridge for `:platform-web-shell`. See
+  HTTP source/resource tree, and the browse/FProxy implementation now lives in
+  `:adapter-http-legacy-browse`. The shared shell uses browse-neutral bookmark, push, client-side
+  localization, and route-registration seams instead of importing or instantiating the concrete
+  browse-owned collaborators directly. It still hosts the temporary `/api/v1/` bridge for
+  `:platform-api` and the `/app/node/` bridge for `:platform-web-shell`. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
+- `:adapter-http-legacy-browse`: extracted concrete legacy browse/FProxy leaf owning the browse
+  routes, toadlets, helper models, and browse-only packages under `network.crypta.clients.http`.
 - `:bridge-http-runtime`: extracted concrete `network.crypta.clients.http.bridge`
   runtime-binding leaf plus the legacy HTTP `network.crypta.clients.http.geoip` helper package
   used by that bridge. Root bootstrap still selects the default production bridge set in
-  `DefaultNodeRuntimeBridgeFactories`, while `network.crypta.clients.http.updater` remains in
+  `DefaultNodeRuntimeBridgeFactories`, and the bridge depends on the browse leaf for concrete
+  browse construction while `network.crypta.clients.http.updater` remains in
   `:adapter-http-legacy-admin`.
 - `:foundation-fs` and `:foundation-compat`: extracted filesystem/environment and compatibility
   leaf modules used by the root daemon. `:foundation-compat` also carries the wizard-neutral
@@ -741,8 +741,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-web-shell`, `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
-    `:adapter-http-legacy-admin`, `:thirdparty-onion`, `:thirdparty-legacy`, and
-    `:launcher-desktop`.
+    `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
+    `:thirdparty-legacy`, and `:launcher-desktop`.
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
 - Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
   `:foundation-store` now owns the reusable store implementations, cache layer, and salted-hash
@@ -792,33 +792,18 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   adapters, alert-feed adapters, and endpoint-handle wrappers now live under
   `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
-  `staticfiles/**` and `templates/**` resources, excluding the concrete bridge package under
-  `network.crypta.clients.http.bridge` and the legacy HTTP GeoIP helper package under
-  `network.crypta.clients.http.geoip`. The migrated HTTP management and shell slices cross the
-  boundary in three layers: `RuntimePorts` for JDK-only detached runtime state, `:platform-api`
-  for the Platform API v1 router and JSON surface currently mounted at `/api/v1/`,
-  `:platform-web-shell` for the first browser-facing node-management shell currently mounted at
-  `/app/node/`, runtime-owned shell and password-prompt seams under
-  `network.crypta.runtime.http` and `network.crypta.runtime.http.security`, and client-local
-  helpers such as `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellBrowseBootstrap`,
-  and the shared HTTP route registrar seam. The shared legacy shell now also uses neutral bookmark,
-  push, client-side script, and browse-route-registration seams instead of importing or
-  instantiating browse-owned collaborator classes directly. Concrete browse-root, browse-route
-  registrar, and push-manager construction now lives in the bridge/runtime-owned HTTP bootstrap
-  path, keeping the shared shell browse-neutral ahead of the later
-  `:adapter-http-legacy-browse` split. Concrete HTTP shell, bookmark, GeoIP, and
-  security-page adapters now live under
-  `network.crypta.clients.http.bridge` in
-  `:bridge-http-runtime`, and that leaf also owns the legacy HTTP GeoIP helper package
-  `network.crypta.clients.http.geoip`. The updater-action adapters remain under
-  `network.crypta.clients.http.updater` in `:adapter-http-legacy-admin`. Root-local bridge
-  selection stays in `DefaultNodeRuntimeBridgeFactories`, which now installs the admin-owned HTTP
-  registrar implementation into the shared shell. The remaining legacy browse/FProxy tree inside
-  `:adapter-http-legacy-admin` is intentionally boundary-frozen until a later PR refines it
-  further, and production code outside the adapter should keep depending on runtime seams rather
-  than taking new `network.crypta.clients.http.*` dependencies. See
-  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
-  boundary.
+  `staticfiles/**` and `templates/**` resources, excluding `network.crypta.clients.http.bridge`
+  and `network.crypta.clients.http.geoip`. The legacy HTTP surface now has a physical browse leaf:
+  `:adapter-http-legacy-admin` keeps the shared shell, admin routes, and seam types;
+  `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, and helper
+  models; and `:bridge-http-runtime` owns the concrete runtime-binding bridge code. The shared
+  shell crosses neutral bookmark, push, client-side script, and route-registration seams instead
+  of importing concrete browse-owned collaborators directly. Root-local bridge selection stays in
+  `DefaultNodeRuntimeBridgeFactories`, which installs the admin-owned shell wiring and lets the
+  bridge leaf depend on the browse leaf for concrete browse construction. The updater-action
+  adapters remain under `network.crypta.clients.http.updater` in
+  `:adapter-http-legacy-admin`. See [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md)
+  for the explicit maintenance boundary.
 - Runtime SPI (`network.crypta.runtime.spi`): JDK-only ports and detached DTOs such as
   `RuntimePorts`, `ConfigPort`, `NodeInfoPort`, `PeerPort`, `ConnectionsPagePort`,
   `ConnectionsSupportPort`, `DarknetConnectionsPort`, `DarknetMessagingPort`, `QueuePagePort`,
@@ -894,10 +879,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:adapter-fcp` provides `network.crypta.clients.fcp`;
   `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`;
   `:bridge-http-runtime` provides `network.crypta.clients.http.bridge` and
-  `network.crypta.clients.http.geoip`; and
-  `:adapter-http-legacy-admin` provides the remaining legacy
-  `network.crypta.clients.http` classes, resources, and updater surface outside those bridge-owned
-  packages.
+  `network.crypta.clients.http.geoip`;
+  `:adapter-http-legacy-browse` provides the concrete legacy browse/FProxy classes and browse-only
+  packages; and
+  `:adapter-http-legacy-admin` provides the shared legacy `network.crypta.clients.http` shell,
+  resources, seam types, and updater surface outside those browse- and bridge-owned packages.
 - Vendored libraries: `:thirdparty-onion` provides `com.onionnetworks`,
   `:thirdparty-legacy` provides `org.bitpedia`, `org.sevenzip`, and `org.spaceroots`.
 

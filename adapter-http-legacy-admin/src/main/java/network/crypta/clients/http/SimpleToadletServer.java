@@ -1487,7 +1487,7 @@ public final class SimpleToadletServer
     return path.startsWith(FirstTimeWizardToadlet.TOADLET_URL)
         || path.startsWith(FirstTimeWizardNewToadlet.TOADLET_URL)
         || path.startsWith(StaticToadlet.ROOT_URL)
-        || path.startsWith(ExternalLinkToadlet.EXTERNAL_LINK_PATH)
+        || path.startsWith(LegacyHttpPaths.EXTERNAL_LINK_PATH)
         || path.equals("/favicon.ico")
         || path.equals("/favicon.svg");
   }

@@ -76,8 +76,8 @@ class StartupToadletTest {
     when(l10n.getString("StartupToadlet.isStartingUp")).thenReturn("Starting Up");
 
     try (MockedStatic<NodeL10n> nodeL10n = org.mockito.Mockito.mockStatic(NodeL10n.class);
-        MockedStatic<WelcomeToadlet> welcomeToadlet =
-            org.mockito.Mockito.mockStatic(WelcomeToadlet.class)) {
+        MockedStatic<LegacyWelcomePageSupport> welcomePageSupport =
+            org.mockito.Mockito.mockStatic(LegacyWelcomePageSupport.class)) {
       nodeL10n.when(NodeL10n::getBase).thenReturn(l10n);
 
       when(pageMaker.getPageNode(eq("Startup Title"), eq(ctx), any(RenderParameters.class)))
@@ -130,7 +130,8 @@ class StartupToadletTest {
               .anyMatch(
                   node -> "#".equals(node.getName()) && "Starting Up".equals(node.getContent())));
 
-      welcomeToadlet.verify(() -> WelcomeToadlet.maybeDisplayWrapperLogfile(ctx, contentNode));
+      welcomePageSupport.verify(
+          () -> LegacyWelcomePageSupport.maybeDisplayWrapperLogfile(ctx, contentNode));
 
       int expectedLength = HTML_REPLY.getBytes(StandardCharsets.UTF_8).length;
       verify(ctx)
@@ -172,8 +173,8 @@ class StartupToadletTest {
     when(l10n.getString("StartupToadlet.isStartingUp")).thenReturn("Starting Up");
 
     try (MockedStatic<NodeL10n> nodeL10n = org.mockito.Mockito.mockStatic(NodeL10n.class);
-        MockedStatic<WelcomeToadlet> welcomeToadlet =
-            org.mockito.Mockito.mockStatic(WelcomeToadlet.class)) {
+        MockedStatic<LegacyWelcomePageSupport> welcomePageSupport =
+            org.mockito.Mockito.mockStatic(LegacyWelcomePageSupport.class)) {
       nodeL10n.when(NodeL10n::getBase).thenReturn(l10n);
 
       when(pageMaker.getPageNode(eq("Startup Title"), eq(ctx), any(RenderParameters.class)))
@@ -207,7 +208,8 @@ class StartupToadletTest {
               .anyMatch(child -> "Need Entropy".equals(child.getContent())),
           "Entropy infobox should be skipped when PRNG is ready");
 
-      welcomeToadlet.verify(() -> WelcomeToadlet.maybeDisplayWrapperLogfile(ctx, contentNode));
+      welcomePageSupport.verify(
+          () -> LegacyWelcomePageSupport.maybeDisplayWrapperLogfile(ctx, contentNode));
     }
   }
 

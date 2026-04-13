@@ -286,7 +286,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
           persistFields.appendTo(stepURL(WIZARD_STEP.DATASTORE_SIZE.name())));
       return;
     } else if (currentStep == WIZARD_STEP.COMPLETE) {
-      super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.ROOT_PATH);
+      super.writeTemporaryRedirect(ctx, "Wizard complete", LegacyHttpPaths.ROOT_PATH);
       return;
     }
 
