@@ -17,7 +17,7 @@ Use this skill when you need to:
 - Cryptad now uses a partial multi-project Gradle build.
 - The root project `:cryptad` remains the daemon/application project.
 - The root project still owns `buildJar`, `run`, `runLauncher`, distribution/jpackage tasks, the
-  strongly coupled core packages, and all tests.
+  strongly coupled core packages, and most broad tests.
 - Leaf subprojects:
   - `:foundation-support` → the current stable generic subset of `network.crypta.support`,
     `network.crypta.support.api`, `network.crypta.support.io`,
@@ -61,15 +61,24 @@ Use this skill when you need to:
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
+  - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
+    plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
     `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
     `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
     transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
     `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
-  - `:adapter-fcp` → `network.crypta.clients.fcp`, including
+  - `:adapter-fcp` → the protocol-side `network.crypta.clients.fcp` package tree
+  - `:bridge-fcp-runtime` → the concrete runtime-binding FCP bridge package
     `network.crypta.clients.fcp.bridge`
-  - `:adapter-http-legacy-admin` → the full current legacy `network.crypta.clients.http` tree
-    plus matching `network/crypta/clients/http/**` main resources
+  - `:adapter-http-legacy-admin` → the shared legacy `network.crypta.clients.http` shell, admin
+    toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and matching
+    `network/crypta/clients/http/**` main resources
+  - `:adapter-http-legacy-browse` → the concrete legacy browse/FProxy routes, toadlets, helper
+    models, and browse-only packages under `network.crypta.clients.http`
+  - `:bridge-http-runtime` → the concrete runtime-binding HTTP bridge implementations under
+    `network.crypta.clients.http.bridge` plus the legacy HTTP GeoIP helper package
+    `network.crypta.clients.http.geoip`
   - `:thirdparty-onion` → `com.onionnetworks` plus `lib/fec.properties`
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
@@ -100,10 +109,13 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
   transport-neutral AppHost core, `:platform-web-shell` owns the browser-facing node-management
-  shell, `:runtime-node` owns the remaining runtime/node/client/support body, `:adapter-fcp`
-  owns the FCP adapter tree, `:adapter-http-legacy-admin` owns the legacy HTTP adapter tree and
-  resources, and the root project keeps tests, packaging, tool entrypoints, and remaining
-  composition glue.
+  shell, `:runtime-alerts` owns the extracted alert/feed model subset, `:runtime-node` owns the
+  remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
+  `:bridge-fcp-runtime` owns the concrete FCP bridge implementations,
+  `:adapter-http-legacy-admin` owns the shared legacy HTTP shell/admin layer,
+  `:adapter-http-legacy-browse` owns the concrete browse/FProxy layer,
+  `:bridge-http-runtime` owns the concrete HTTP runtime bridge, and the root project keeps tests,
+  packaging, tool entrypoints, and remaining composition glue.
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, `:kernel-transport` owns the compile-neutral
   transport helper slice (`AllowedHosts`, `NetworkInterface`, `IOStatisticCollector`,
@@ -125,10 +137,11 @@ Use this skill when you need to:
 - Focused leaf-local boundary tests now freeze the extracted layout. In particular,
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
-  `AdapterFcpBoundaryTest`, `AppHostBoundaryTest`, `WebShellBoundaryTest`, and
-  `HttpLegacyAdminBoundaryTest` guard leaf ownership/import rules. The runtime, kernel, platform,
-  and adapter-fcp boundary suites also require `package-info.java` in the production packages they
-  own.
+  `AdapterFcpBoundaryTest`, `BridgeFcpRuntimeBoundaryTest`, `AppHostBoundaryTest`,
+  `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`, `LegacyHttpBrowseBoundaryTest`, and
+  `BridgeHttpRuntimeBoundaryTest` guard leaf ownership/import rules. The runtime, kernel,
+  platform, FCP, and HTTP boundary suites also require `package-info.java` in the production
+  packages they own.
 
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
@@ -223,12 +236,18 @@ Use this skill when you need to:
     adapters, alert-feed adapters, and endpoint-handle wrappers now live under
     `network.crypta.clients.fcp.bridge`.
 - HTTP interface: `network.crypta.clients.http`
-  - This package now lives in `:adapter-http-legacy-admin` together with the matching
-    `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`.
+  - The package family is now split physically:
+    `:adapter-http-legacy-admin` owns the shared shell/admin routes and the matching
+    `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`;
+    `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, and helper
+    models; `:bridge-http-runtime` owns the concrete runtime-binding bridge implementations under
+    `network.crypta.clients.http.bridge` plus the legacy HTTP GeoIP helper package.
   - The migrated management and shell slices no longer depend directly on live daemon peers or
     node-info exports for their core data flow.
   - `ConfigToadlet` now takes detached configuration export/update capabilities from
-    `ConfigPort` through `ConfigToadletRuntimePorts`.
+    `ConfigPort` through `ConfigToadletRuntimePorts` and classifies directory-browser fields
+    through the detached `network.crypta.config.DirectorySelectionCallback` marker instead of
+    importing `ProgramDirectory`.
   - `ConnectionsToadlet`, `DarknetConnectionsToadlet`, `OpennetConnectionsToadlet`, and
     `DarknetAddRefToadlet` use detached ports such as `ConnectionsPagePort`,
     `ConnectionsSupportPort`, `PeerPort`, and `NodeInfoPort`.
@@ -249,8 +268,11 @@ Use this skill when you need to:
   - FProxy and shell bootstrap now have local package-private seams:
     `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
     `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`.
+  - HTTP/admin alert rendering now crosses the detached
+    `network.crypta.runtime.alerts.UserAlertSurface` instead of importing
+    `UserAlertManager` directly.
   - Concrete HTTP shell, bookmark, GeoIP, and security-page bridge implementations now live under
-    `network.crypta.clients.http.bridge`.
+    `network.crypta.clients.http.bridge` in `:bridge-http-runtime`.
   - `BookmarkEditorToadletRuntimePorts` and `FileInsertWizardToadletRuntimePorts` are small
     page-specific records used to keep constructor surfaces explicit during HTTP wiring.
   - `N2NTMToadlet` uses `DarknetConnectionsPort` and `DarknetMessagingPort` for selected-peer
@@ -314,6 +336,10 @@ Use this skill when you need to:
 - Main localization sources and `crypta.l10n.en.properties` also live in `:foundation-config`
   under `network.crypta.l10n`.
 - Shared setup helpers such as `DatastoreSizingSupport` also live in `:foundation-config`.
+- Narrow callback-level UI markers such as
+  `network.crypta.config.DirectorySelectionCallback` also live in `:foundation-config`, so HTTP
+  admin code can classify directory-selection fields without importing concrete runtime-owned
+  callback implementations.
 - Higher layers should prefer the narrow `RuntimePorts` sub-port that already covers the needed
   operation (`config()`, `peer()`, `nodeInfo()`, `connectionsPage()`, `connectionsSupport()`,
   `darknetConnections()`, `darknetMessaging()`, `queuePage()`, `queueDownload()`,
@@ -367,12 +393,18 @@ Use this skill when you need to:
 - `:platform-api`: `network.crypta.platform.api`
 - `:platform-apphost`: `network.crypta.platform.apphost`
 - `:platform-web-shell`: `network.crypta.platform.webshell`
+- `:runtime-alerts`: `network.crypta.runtime.alerts`, including the detached
+  `UserAlertSurface`
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code, and the remaining daemon-coupled support helpers
 - `:adapter-fcp`: `network.crypta.clients.fcp`
-- `:adapter-http-legacy-admin`: `network.crypta.clients.http`
+- `:bridge-fcp-runtime`: `network.crypta.clients.fcp.bridge`
+- `:adapter-http-legacy-admin`: shared legacy HTTP shell/admin layer plus matching resources
+- `:adapter-http-legacy-browse`: concrete legacy browse/FProxy layer
+- `:bridge-http-runtime`: `network.crypta.clients.http.bridge` and
+  `network.crypta.clients.http.geoip`
 
 ### Vendored library leaf modules
 - `:thirdparty-onion`: `com.onionnetworks`

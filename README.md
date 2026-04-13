@@ -343,7 +343,10 @@ leaf ownership and import rules:
 ./gradlew :kernel-routing:test
 ./gradlew :runtime-node:test
 ./gradlew :adapter-fcp:test
+./gradlew :bridge-fcp-runtime:test
+./gradlew :bridge-http-runtime:test
 ./gradlew :adapter-http-legacy-admin:test
+./gradlew :adapter-http-legacy-browse:test
 ```
 
 Those boundary suites also enforce the current extracted-leaf documentation convention that the
@@ -834,7 +837,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.l10n`, and the main l10n properties. Its public APIs re-export
   `:foundation-support` and `:foundation-fs` where config surfaces expose `SimpleFieldSet` or
   filesystem-facing types. Shared setup helpers such as `DatastoreSizingSupport` now also live in
-  this leaf. Higher layers should still prefer `RuntimePorts#config()` and the root
+  this leaf. It also owns narrow callback-level UI markers such as
+  `DirectorySelectionCallback`, which lets legacy HTTP config code classify directory-selection
+  fields without importing concrete runtime-owned callbacks such as `ProgramDirectory`.
+  Higher layers should still prefer `RuntimePorts#config()` and the root
   `network.crypta.runtime.core.LegacyConfigPort` bridge instead of reaching through daemon
   internals.
 - Support foundation leaf (`:foundation-support`): stable generic support, support-api,
