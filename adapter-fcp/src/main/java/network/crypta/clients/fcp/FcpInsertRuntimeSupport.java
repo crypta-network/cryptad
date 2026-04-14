@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -15,9 +14,9 @@ import network.crypta.support.api.RandomAccessBucket;
  * wiring independent of direct {@code NodeClientCore} access while preserving the current runtime
  * behavior. It exposes only the insert-specific services needed by {@link ClientPutBase}, {@link
  * ClientPut}, {@link ClientPutDir}, {@link ClientPutPreparedDataFactory}, {@link ClientPutMessage},
- * and {@link SubscribeUSK}: the default persistent {@link InsertContext}, transfer-policy checks,
- * bucket factories, forever-persistent upload allocation, URI normalization, and opaque execution
- * handle creation.
+ * and {@link SubscribeUSK}: the default persistent detached insert-context handle, transfer-policy
+ * checks, bucket factories, forever-persistent upload allocation, URI normalization, and opaque
+ * execution handle creation.
  *
  * <p>Typical call paths get one instance from {@link FCPServer} and thread it through request
  * constructors while they normalize URIs, validate disk access, allocate temporary buckets, and
@@ -35,15 +34,16 @@ import network.crypta.support.api.RandomAccessBucket;
 public interface FcpInsertRuntimeSupport {
 
   /**
-   * Returns the default persistent insert context template for new put requests.
+   * Returns the default persistent detached insert-context template for new put requests.
    *
    * <p>Callers typically get this baseline once during request construction and immediately tune
    * retries, compression, caching, and compatibility flags for the specific insert being assembled.
-   * The returned context should therefore match the daemon's current persistent insert defaults.
+   * The returned handle should therefore match the daemon's current persistent insert defaults
+   * while remaining adapter-owned and serializable.
    *
-   * @return persistent insert context defaults supplied by the daemon runtime
+   * @return persistent detached insert-context defaults supplied by the daemon runtime
    */
-  InsertContext defaultPersistentInsertContext();
+  FcpInsertContextHandle defaultPersistentInsertContextHandle();
 
   /**
    * Returns the transfer-access policy used for upload validation and DDA checks.

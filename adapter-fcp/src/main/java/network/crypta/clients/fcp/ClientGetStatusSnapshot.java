@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.time.Instant;
 import java.util.Arrays;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.jetbrains.annotations.NotNull;
@@ -309,7 +308,7 @@ public final class ClientGetStatusSnapshot {
    *
    * @return the compatibility mode array, or {@code null} when no modes were recorded
    */
-  public CompatibilityMode[] compatModes() {
+  public FcpCompatibilityMode[] compatModes() {
     return contextSnapshot.compatModes();
   }
 

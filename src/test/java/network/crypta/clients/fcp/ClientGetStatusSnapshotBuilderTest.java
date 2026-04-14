@@ -172,10 +172,10 @@ class ClientGetStatusSnapshotBuilderTest {
     setField(request, "clientToken", clientToken);
     setField(request, "started", started);
     setField(request, "client", client);
-    setField(request, "returnType", returnType);
-    setField(request, "targetFile", targetFile);
-    setField(request, "binaryBlob", binaryBlob);
-    setField(request, "fetchConfig", fetchConfig);
+    ClientGetTestProfiles.setReturnType(request, returnType);
+    ClientGetTestProfiles.setTargetFile(request, targetFile);
+    ClientGetTestProfiles.setBinaryBlob(request, binaryBlob);
+    ClientGetTestProfiles.setFetchConfig(request, fetchConfig);
     setField(request, "lowLevelClient", requestClient);
     return request;
   }

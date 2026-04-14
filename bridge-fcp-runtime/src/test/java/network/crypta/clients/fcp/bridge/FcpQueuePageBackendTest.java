@@ -9,6 +9,7 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.DownloadRequestStatus;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpCompatibilityMode;
 import network.crypta.clients.fcp.RequestStatus;
 import network.crypta.clients.fcp.UploadDirRequestStatus;
 import network.crypta.clients.fcp.UploadFileRequestStatus;
@@ -110,7 +111,10 @@ class FcpQueuePageBackendTest {
     UploadDirRequestStatus uploadDir = org.mockito.Mockito.mock(UploadDirRequestStatus.class);
     Instant lastSuccess = Instant.parse("2026-03-28T12:34:56Z");
     Instant lastFailure = Instant.parse("2026-03-28T12:35:56Z");
-    InsertContext.CompatibilityMode[] compatModes = {
+    FcpCompatibilityMode[] compatModes = {
+      FcpCompatibilityMode.COMPAT_1468, FcpCompatibilityMode.COMPAT_1468
+    };
+    InsertContext.CompatibilityMode[] runtimeCompatModes = {
       InsertContext.CompatibilityMode.COMPAT_1468, InsertContext.CompatibilityMode.COMPAT_1468
     };
     byte[] overrideKey = new byte[] {0x01, 0x23};
@@ -197,7 +201,8 @@ class FcpQueuePageBackendTest {
     QueuePageRequestView[] views = backend.getGlobalRequests();
 
     assertEquals(3, views.length);
-    assertDownloadView(views[0], lastSuccess, lastFailure, downloadUri, compatModes, overrideKey);
+    assertDownloadView(
+        views[0], lastSuccess, lastFailure, downloadUri, runtimeCompatModes, overrideKey);
     assertUploadFileView(views[1], lastSuccess, uploadUri);
     assertUploadDirView(views[2], lastSuccess, lastFailure, uploadUri);
   }

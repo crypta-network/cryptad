@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.Locale;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.BaseManifestPutter;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.crypt.EncryptedRandomAccessBucket;
@@ -69,7 +68,7 @@ public final class PersistentPutDir extends FCPMessage {
   final String compressorDescriptor;
   final boolean realTime;
   final byte[] splitfileCryptoKey;
-  final InsertContext.CompatibilityMode compatMode;
+  final FcpCompatibilityMode compatMode;
 
   /**
    * Creates a persistent directory insert message snapshot with all supporting metadata.

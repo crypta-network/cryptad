@@ -10,12 +10,12 @@ import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.ManifestPutter;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.SplitfileProgressTimestamps;
@@ -314,11 +314,7 @@ class ClientPutDirTest {
     setField(ClientPutDir.class, putDir, "putter", execution);
     setField(ClientPutDir.class, putDir, "manifestElements", new HashMap<>());
     setField(ClientPutDir.class, putDir, "defaultName", "index.html");
-    setField(
-        ClientPutBase.class,
-        putDir,
-        "ctx",
-        mock(InsertContext.class, withSettings().serializable()));
+    setField(ClientPutBase.class, putDir, "ctx", newSerializableInsertContextHandle());
     setField(ClientRequest.class, putDir, "identifier", "put-dir");
     setField(ClientRequest.class, putDir, "uri", new FreenetURI("CHK", "target"));
     setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.REBOOT);
@@ -326,6 +322,7 @@ class ClientPutDirTest {
     ClientPutDir restored = roundTrip(putDir);
 
     assertInstanceOf(ClientPutDirExecution.class, getField(ClientPutDir.class, restored, "putter"));
+    assertInstanceOf(FcpInsertContextHandle.class, getField(ClientPutBase.class, restored, "ctx"));
     assertInstanceOf(ManifestPutter.class, restored.getClientRequest());
   }
 
@@ -361,7 +358,7 @@ class ClientPutDirTest {
                 false,
                 null,
                 false),
-            mock(InsertContext.class, withSettings().serializable()),
+            mock(FcpInsertContextHandle.class, withSettings().serializable()),
             "index.html",
             null);
 
@@ -371,6 +368,17 @@ class ClientPutDirTest {
 
   private static ClientPutDir newClientPutDir() {
     return new ClientPutDir();
+  }
+
+  private static FcpInsertContextHandle newSerializableInsertContextHandle() {
+    return new DefaultFcpInsertContextHandle(
+        new SimpleEventProducer(),
+        new FcpInsertContextLimits(0, 1, 1),
+        new FcpInsertOptions(
+            new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+            new FcpInsertTuningOptions(
+                true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
+            null));
   }
 
   private static ClientPutDir newClientPutDirWithPersistentMessage(FCPMessage message) {

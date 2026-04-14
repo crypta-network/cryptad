@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
 import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.BinaryBlob;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
@@ -109,7 +108,7 @@ final class ClientGetGetterFactory {
     File destinationFile = snapshot.destinationFile();
     Bucket dataBucket = snapshot.dataBucket();
     ClientGetFetchConfig fetchConfig = snapshot.fetchConfig();
-    InsertContext.CompatibilityMode[] compatModes = snapshot.compatModes();
+    FcpCompatibilityMode[] compatModes = snapshot.compatModes();
     byte[] splitfileKey = snapshot.splitfileKey();
     FreenetURI uri = snapshot.uri();
     boolean dontCompress = snapshot.dontCompress();

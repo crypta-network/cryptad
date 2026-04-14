@@ -279,7 +279,9 @@ class ClientGetEventHandlingTest {
             taskCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
     assertDoesNotThrow(() -> taskCaptor.getValue().run());
     assertArrayEquals(
-        new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
+        },
         request.state().getCompatibilityMode());
     assertArrayEquals(new byte[] {1, 2, 3}, request.state().getOverriddenSplitfileCryptoKey());
   }
@@ -304,7 +306,9 @@ class ClientGetEventHandlingTest {
 
     // Assert
     assertArrayEquals(
-        new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
+        },
         request.state().getCompatibilityMode());
     assertArrayEquals(new byte[] {4, 5, 6}, request.state().getOverriddenSplitfileCryptoKey());
     verify(context, never())

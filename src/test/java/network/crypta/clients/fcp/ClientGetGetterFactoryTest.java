@@ -7,7 +7,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.BinaryBlob;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
@@ -140,7 +139,7 @@ class ClientGetGetterFactoryTest {
     DownloadContextSnapshot contextSnapshot =
         new DownloadContextSnapshot(
             fetchConfig,
-            new CompatibilityMode[] {CompatibilityMode.COMPAT_1250},
+            new FcpCompatibilityMode[] {FcpCompatibilityMode.COMPAT_1250},
             new byte[] {1, 2, 3},
             FreenetURI.EMPTY_CHK_URI,
             false);

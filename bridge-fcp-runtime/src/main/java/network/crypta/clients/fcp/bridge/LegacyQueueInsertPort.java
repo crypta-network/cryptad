@@ -9,7 +9,6 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.HighLevelSimpleClientImpl;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -21,6 +20,7 @@ import network.crypta.clients.fcp.ClientPutDir;
 import network.crypta.clients.fcp.ClientPutUpload;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpCompatibilityMode;
 import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRequest;
@@ -324,7 +324,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
             null,
             HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
             HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-            CompatibilityMode.valueOf(compatibilityMode).intern()),
+            FcpCompatibilityMode.valueOf(compatibilityMode).intern()),
         overrideSplitfileCryptoKey);
   }
 

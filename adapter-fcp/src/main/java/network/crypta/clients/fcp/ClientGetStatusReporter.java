@@ -198,7 +198,7 @@ final class ClientGetStatusReporter {
             request.getBucket());
     DownloadContextSnapshot contextSnapshot =
         new DownloadContextSnapshot(
-            request.fetchConfig(),
+            request.requestProfile().fetchConfig(),
             request.getCompatibilityMode(),
             request.getOverriddenSplitfileCryptoKey(),
             request.getURI(),

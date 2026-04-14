@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InvalidObjectException;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -63,13 +62,11 @@ public final class ClientPut extends ClientPutBase {
 
   private static final String LEGACY_PUTTER_TYPE = "network.crypta.client.async.ClientPutter";
 
-  private static final String BRIDGE_RUNTIME_SUPPORT =
-      "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport";
-
   @SuppressWarnings("UnusedVariable")
+  @Serial
   private static final ObjectStreamField[] serialPersistentFields =
       new ObjectStreamField[] {
-        new ObjectStreamField("putter", requiredClass(LEGACY_PUTTER_TYPE)),
+        new ObjectStreamField("putter", requiredLegacyPutterClass()),
         new ObjectStreamField("uploadFrom", UploadFrom.class),
         new ObjectStreamField("origFilename", File.class),
         new ObjectStreamField("targetURI", FreenetURI.class),
@@ -434,7 +431,9 @@ public final class ClientPut extends ClientPutBase {
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     ObjectInputStream.GetField fields = in.readFields();
-    putter = wrapLegacySingleFileExecution(fields.get("putter", null));
+    putter =
+        LegacyInsertExecutionBridgeLoader.load()
+            .wrapLegacySingleFileExecution(fields.get("putter", null));
     uploadFrom = (UploadFrom) fields.get("uploadFrom", null);
     origFilename = (File) fields.get("origFilename", null);
     targetURI = (FreenetURI) fields.get("targetURI", null);
@@ -454,7 +453,7 @@ public final class ClientPut extends ClientPutBase {
     if (requester == null) {
       return null;
     }
-    if (!requiredClass(LEGACY_PUTTER_TYPE).isInstance(requester)) {
+    if (!requiredLegacyPutterClass().isInstance(requester)) {
       throw new NotSerializableException(
           "Single-file putter requester is not compatible with "
               + LEGACY_PUTTER_TYPE
@@ -464,35 +463,12 @@ public final class ClientPut extends ClientPutBase {
     return requester;
   }
 
-  private static ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter)
-      throws InvalidObjectException {
-    if (legacyPutter == null) {
-      return null;
-    }
+  private static Class<?> requiredLegacyPutterClass() {
     try {
-      Class<?> bridgeClass = Class.forName(BRIDGE_RUNTIME_SUPPORT);
-      java.lang.reflect.Method method =
-          bridgeClass.getDeclaredMethod("wrapLegacySingleFileExecution", Object.class);
-      method.setAccessible(true);
-      return (ClientPutExecution) method.invoke(null, legacyPutter);
-    } catch (ReflectiveOperationException e) {
-      InvalidObjectException failure =
-          new InvalidObjectException("Could not restore legacy single-file putter");
-      failure.initCause(rootCause(e));
-      throw failure;
-    }
-  }
-
-  private static Class<?> requiredClass(String className) {
-    try {
-      return Class.forName(className);
+      return Class.forName(LEGACY_PUTTER_TYPE);
     } catch (ClassNotFoundException e) {
       throw new ExceptionInInitializerError(e);
     }
-  }
-
-  private static Throwable rootCause(ReflectiveOperationException e) {
-    return e.getCause() == null ? e : e.getCause();
   }
 
   @Override

@@ -3,8 +3,6 @@ package network.crypta.clients.fcp;
 import java.lang.reflect.Field;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -55,9 +53,8 @@ class ClientGetStateTest {
     assertNull(state.getFailedMessage());
     assertNotNull(state.getCompatibilityAnalyser());
     assertArrayEquals(
-        new InsertContext.CompatibilityMode[] {
-          InsertContext.CompatibilityMode.COMPAT_UNKNOWN,
-          InsertContext.CompatibilityMode.COMPAT_UNKNOWN
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_UNKNOWN, FcpCompatibilityMode.COMPAT_UNKNOWN
         },
         state.getCompatibilityMode());
     assertTrue(state.getDontCompress());
@@ -147,11 +144,11 @@ class ClientGetStateTest {
   @Test
   void setCompatibilityAnalyser_whenCustomAnalyserProvided_reflectsMergedValues() {
     ClientGetState state = new ClientGetState(new ClientGet());
-    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
     byte[] splitfileKey = new byte[] {1, 2, 3, 4};
     analyser.merge(
-        InsertContext.CompatibilityMode.COMPAT_1250,
-        InsertContext.CompatibilityMode.COMPAT_1468,
+        FcpCompatibilityMode.COMPAT_1250,
+        FcpCompatibilityMode.COMPAT_1468,
         splitfileKey,
         true,
         false);
@@ -160,8 +157,8 @@ class ClientGetStateTest {
 
     assertSame(analyser, state.getCompatibilityAnalyser());
     assertArrayEquals(
-        new InsertContext.CompatibilityMode[] {
-          InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
         },
         state.getCompatibilityMode());
     assertTrue(state.getDontCompress());
@@ -181,7 +178,7 @@ class ClientGetStateTest {
   @Test
   void ensureCompatibilityMode_whenAnalyserPresent_keepsSameInstance() {
     ClientGetState state = new ClientGetState(new ClientGet());
-    CompatibilityAnalyser analyser = state.getCompatibilityAnalyser();
+    FcpCompatibilityAnalysis analyser = state.getCompatibilityAnalyser();
 
     state.ensureCompatibilityMode();
 
@@ -191,7 +188,7 @@ class ClientGetStateTest {
   @Test
   void resetCompatibilityMode_whenInvoked_replacesAnalyserInstance() {
     ClientGetState state = new ClientGetState(new ClientGet());
-    CompatibilityAnalyser before = state.getCompatibilityAnalyser();
+    FcpCompatibilityAnalysis before = state.getCompatibilityAnalyser();
 
     state.resetCompatibilityMode();
 
@@ -206,15 +203,15 @@ class ClientGetStateTest {
     byte[] splitfileKey = new byte[] {9, 8, 7};
 
     state.mergeCompatibilityMode(
-        InsertContext.CompatibilityMode.COMPAT_1250,
-        InsertContext.CompatibilityMode.COMPAT_1468,
+        FcpCompatibilityMode.COMPAT_1250,
+        FcpCompatibilityMode.COMPAT_1468,
         splitfileKey,
         false,
         false);
 
     assertArrayEquals(
-        new InsertContext.CompatibilityMode[] {
-          InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
         },
         state.getCompatibilityMode());
     assertArrayEquals(splitfileKey, state.getOverriddenSplitfileCryptoKey());
@@ -238,20 +235,20 @@ class ClientGetStateTest {
     byte[] splitfileKey = new byte[] {3, 1, 4};
 
     state.mergeCompatibilityMode(
-        InsertContext.CompatibilityMode.COMPAT_1250,
-        InsertContext.CompatibilityMode.COMPAT_1468,
+        FcpCompatibilityMode.COMPAT_1250,
+        FcpCompatibilityMode.COMPAT_1468,
         splitfileKey,
         true,
         false);
 
-    ArgumentCaptor<InsertContext.CompatibilityMode[]> modesCaptor =
-        ArgumentCaptor.forClass(InsertContext.CompatibilityMode[].class);
+    ArgumentCaptor<FcpCompatibilityMode[]> modesCaptor =
+        ArgumentCaptor.forClass(FcpCompatibilityMode[].class);
     verify(cache)
         .updateDetectedCompatModes(
             eq("req-compat"), modesCaptor.capture(), eq(splitfileKey), eq(true));
     assertArrayEquals(
-        new InsertContext.CompatibilityMode[] {
-          InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
         },
         modesCaptor.getValue());
     verify(request)
@@ -272,8 +269,8 @@ class ClientGetStateTest {
     setClientRequestField(request, "verbosity", 0);
 
     state.mergeCompatibilityMode(
-        InsertContext.CompatibilityMode.COMPAT_1250,
-        InsertContext.CompatibilityMode.COMPAT_1468,
+        FcpCompatibilityMode.COMPAT_1250,
+        FcpCompatibilityMode.COMPAT_1468,
         new byte[] {5},
         false,
         false);

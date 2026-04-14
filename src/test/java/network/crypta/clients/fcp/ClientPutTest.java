@@ -9,9 +9,6 @@ import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.lang.reflect.Field;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.InsertContext;
-import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
@@ -54,21 +51,20 @@ import static org.mockito.Mockito.withSettings;
 class ClientPutTest {
 
   private ClientPut clientPut;
-  private InsertContext insertContext;
+  private DefaultFcpInsertContextHandle insertContext;
 
   @BeforeEach
   void setUp() throws Exception {
     clientPut = new ClientPut();
     insertContext =
-        new InsertContext(
-            InsertContextOptions.builder()
-                .retryLimits(1, 0)
-                .splitfileSegmentLimits(1, 1)
-                .clientOptions(new SimpleEventProducer(), true, false, false)
-                .compressorDescriptor(null)
-                .redundancy(0, 0)
-                .compatibility(CompatibilityMode.COMPAT_CURRENT)
-                .build());
+        new DefaultFcpInsertContextHandle(
+            new SimpleEventProducer(),
+            new FcpInsertContextLimits(0, 1, 1),
+            new FcpInsertOptions(
+                new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+                new FcpInsertTuningOptions(
+                    true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
+                null));
     setField(ClientPutBase.class, clientPut, "ctx", insertContext);
     setField(ClientPut.class, clientPut, "clientMetadata", new ClientMetadata("text/plain"));
     setField(ClientRequest.class, clientPut, "identifier", "test-id");
@@ -447,6 +443,7 @@ class ClientPutTest {
     ClientPut restored = roundTrip(clientPut);
 
     assertInstanceOf(ClientPutExecution.class, getField(ClientPut.class, restored, "putter"));
+    assertInstanceOf(FcpInsertContextHandle.class, getField(ClientPutBase.class, restored, "ctx"));
     assertInstanceOf(ClientPutter.class, restored.getClientRequest());
   }
 

@@ -3,13 +3,13 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.net.MalformedURLException;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.BaseClientPutter;
@@ -56,16 +56,35 @@ import org.slf4j.LoggerFactory;
 public abstract class ClientPutBase extends ClientRequest
     implements ClientPutCallback, ClientEventListener {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutBase.class);
+  private static final String LEGACY_INSERT_CONTEXT_TYPE = "network.crypta.client.InsertContext";
+  private static final String FIELD_SUCCEEDED = "succeeded";
+  private static final String FIELD_CTX = "ctx";
+  private static final String FIELD_GENERATED_METADATA = "generatedMetadata";
+  private static final String FIELD_GENERATED_URI = "generatedURI";
+  private static final String FIELD_PUT_FAILED_MESSAGE = "putFailedMessage";
+  private static final String FIELD_PUBLIC_URI = "publicURI";
 
   @Serial private static final long serialVersionUID = 1L;
 
+  @SuppressWarnings("UnusedVariable")
+  @Serial
+  private static final ObjectStreamField[] serialPersistentFields =
+      new ObjectStreamField[] {
+        new ObjectStreamField(FIELD_SUCCEEDED, boolean.class),
+        new ObjectStreamField(FIELD_CTX, requiredLegacyInsertContextClass()),
+        new ObjectStreamField(FIELD_GENERATED_METADATA, Bucket.class),
+        new ObjectStreamField(FIELD_GENERATED_URI, FreenetURI.class),
+        new ObjectStreamField(FIELD_PUT_FAILED_MESSAGE, PutFailedMessage.class),
+        new ObjectStreamField(FIELD_PUBLIC_URI, FreenetURI.class)
+      };
+
   /**
-   * Per-request insert context seeded from the node defaults. It carries retry rules, redundancy
-   * knobs, and compatibility flags and therefore must be explicitly cleaned up in {@link
-   * #requestWasRemoved(network.crypta.client.async.ClientContext) requestWasRemoved(ClientContext)}
-   * to avoid leaking stale listeners.
+   * Per-request detached insert-context handle seeded from the node defaults. It carries retry
+   * rules, redundancy knobs, and compatibility flags and therefore must be explicitly cleaned up in
+   * {@link #requestWasRemoved(network.crypta.client.async.ClientContext)
+   * requestWasRemoved(ClientContext)} to avoid leaking stale listeners.
    */
-  final InsertContext ctx;
+  FcpInsertContextHandle ctx;
 
   // Verbosity bitmasks
   private static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
@@ -110,7 +129,7 @@ public abstract class ClientPutBase extends ClientRequest
    * clients that are not authorized to see the full CHK/SSK details. It is computed once per
    * instance and therefore safe to cache for UI purposes.
    */
-  protected final FreenetURI publicURI;
+  protected FreenetURI publicURI;
 
   /** Metadata returned instead of URI */
   private Bucket generatedMetadata;
@@ -180,10 +199,10 @@ public abstract class ClientPutBase extends ClientRequest
    * Builds a connection-scoped put request from raw FCP input streamed through a server handler.
    *
    * <p>This constructor is used while a client socket is still attached. It wires transient handler
-   * state, derives a baseline {@link InsertContext}, subscribes to progress events, and records
-   * every tunable requested by the remote peer. Subclasses can immediately begin staging data once
-   * control returns because scheduling metadata, verbosity flags, and caches have all been
-   * populated consistently.
+   * state, derives a baseline-detached insert-context handle, subscribes to progress events, and
+   * records every tunable requested by the remote peer. Subclasses can immediately begin staging
+   * data once control returns because scheduling metadata, verbosity flags, and caches have all
+   * been populated consistently.
    *
    * @param requestParams request metadata including URI, identifiers, and scheduling flags
    * @param charset optional declared source charset; unsupported values trigger warnings only
@@ -201,10 +220,10 @@ public abstract class ClientPutBase extends ClientRequest
       FreenetURI publicURI) {
     super(prepareConstructorInit(requestParams, handler));
     warnIfUnsupportedCharset(charset);
-    ctx = runtimeSupport.defaultPersistentInsertContext();
+    ctx = runtimeSupport.defaultPersistentInsertContextHandle();
     ctx.setGetCHKOnly(options.getCHKOnly());
     ctx.setDontCompress(options.dontCompress());
-    ctx.getEventProducer().addEventListener(this);
+    ctx.addEventListener(this);
     ctx.setMaxInsertRetries(options.maxRetries());
     ctx.setCanWriteClientCache(options.canWriteClientCache());
     ctx.setCompressorDescriptor(options.compressorDescriptor());
@@ -250,9 +269,9 @@ public abstract class ClientPutBase extends ClientRequest
    * disk or migrating between schedulers.
    *
    * <p>The constructor receives a fully resolved persistent client handle and reuses the
-   * persistence-aware {@link InsertContext} provided by the insert runtime support seam. It mirrors
-   * the connection-bound constructor but skips server-specific bookkeeping, allowing REST API
-   * callers or resuming jobs to bypass socket handlers entirely while preserving the same
+   * persistence-aware detached insert-context handle provided by the insert runtime support seam.
+   * It mirrors the connection-bound constructor but skips server-specific bookkeeping, allowing
+   * REST API callers or resuming jobs to bypass socket handlers entirely while preserving the same
    * configuration surface.
    *
    * @param requestParams request metadata including URI, identifiers, and scheduling flags
@@ -274,10 +293,10 @@ public abstract class ClientPutBase extends ClientRequest
       FreenetURI publicURI) {
     super(prepareConstructorInit(requestParams, handler, client));
     warnIfUnsupportedCharset(charset);
-    ctx = runtimeSupport.defaultPersistentInsertContext();
+    ctx = runtimeSupport.defaultPersistentInsertContextHandle();
     ctx.setGetCHKOnly(options.getCHKOnly());
     ctx.setDontCompress(options.dontCompress());
-    ctx.getEventProducer().addEventListener(this);
+    ctx.addEventListener(this);
     ctx.setMaxInsertRetries(options.maxRetries());
     ctx.setCanWriteClientCache(options.canWriteClientCache());
     ctx.setCompressorDescriptor(options.compressorDescriptor());
@@ -491,6 +510,9 @@ public abstract class ClientPutBase extends ClientRequest
    */
   @Override
   public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
+    if (ctx != null) {
+      ctx.removeEventListener(this);
+    }
     // if the request is still running, send a PutFailed with code=canceled
     if (!finished) {
       synchronized (this) {
@@ -949,7 +971,14 @@ public abstract class ClientPutBase extends ClientRequest
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    out.defaultWriteObject();
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put(FIELD_SUCCEEDED, succeeded);
+    fields.put(FIELD_CTX, legacyInsertContextForSerialization());
+    fields.put(FIELD_GENERATED_METADATA, generatedMetadata);
+    fields.put(FIELD_GENERATED_URI, generatedURI);
+    fields.put(FIELD_PUT_FAILED_MESSAGE, putFailedMessage);
+    fields.put(FIELD_PUBLIC_URI, publicURI);
+    out.writeFields();
   }
 
   /**
@@ -963,7 +992,27 @@ public abstract class ClientPutBase extends ClientRequest
    */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+    ObjectInputStream.GetField fields = in.readFields();
+    succeeded = fields.get(FIELD_SUCCEEDED, false);
+    ctx =
+        LegacyInsertExecutionBridgeLoader.load()
+            .wrapLegacyInsertContext(fields.get(FIELD_CTX, null));
+    generatedMetadata = (Bucket) fields.get(FIELD_GENERATED_METADATA, null);
+    generatedURI = (FreenetURI) fields.get(FIELD_GENERATED_URI, null);
+    putFailedMessage = (PutFailedMessage) fields.get(FIELD_PUT_FAILED_MESSAGE, null);
+    publicURI = (FreenetURI) fields.get(FIELD_PUBLIC_URI, null);
+  }
+
+  private static Class<?> requiredLegacyInsertContextClass() {
+    try {
+      return Class.forName(LEGACY_INSERT_CONTEXT_TYPE);
+    } catch (ClassNotFoundException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private Object legacyInsertContextForSerialization() throws IOException {
+    return LegacyInsertExecutionBridgeLoader.load().legacyInsertContextForSerialization(ctx);
   }
 
   private static void warnIfUnsupportedCharset(String charset) {

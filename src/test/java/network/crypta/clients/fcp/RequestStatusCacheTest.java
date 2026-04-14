@@ -5,7 +5,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -226,7 +225,8 @@ class RequestStatusCacheTest {
     when(status.getURI()).thenReturn(mock(FreenetURI.class));
     cache.addDownload(status);
 
-    CompatibilityMode[] compat = new CompatibilityMode[] {CompatibilityMode.COMPAT_UNKNOWN};
+    FcpCompatibilityMode[] compat =
+        new FcpCompatibilityMode[] {FcpCompatibilityMode.COMPAT_UNKNOWN};
     byte[] key = new byte[] {1, 2, 3};
 
     cache.updateDetectedCompatModes("dl-compat", compat, key, true);

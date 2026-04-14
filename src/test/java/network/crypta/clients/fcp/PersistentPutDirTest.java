@@ -5,10 +5,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
@@ -70,8 +68,6 @@ class PersistentPutDirTest {
   @TempDir Path tempDir;
 
   @Mock FCPConnectionHandler connectionHandler;
-
-  @Mock Node node;
 
   @Test
   void getFieldSet_whenDiskDirectAndRedirectElements_populatesAllFields() throws Exception {
@@ -189,7 +185,10 @@ class PersistentPutDirTest {
     manifest.put(WRAPPED_FILE_NAME, element);
 
     PersistentPutDir message = buildWrappedMessage(manifest);
-    SimpleFieldSet fileSubset = message.getFieldSet().subset("Files").subset("0");
+    SimpleFieldSet filesSubset = message.getFieldSet().subset("Files");
+    assertNotNull(filesSubset);
+    SimpleFieldSet fileSubset = filesSubset.subset("0");
+    assertNotNull(fileSubset);
     assertEquals("disk", fileSubset.get(UPLOAD_FROM_KEY));
     assertEquals(underlyingFile.getPath(), fileSubset.get(FILENAME_KEY));
   }
@@ -209,13 +208,7 @@ class PersistentPutDirTest {
             publicUri, "id-123", 2, (short) 3, Persistence.FOREVER, true, "client-token", true);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            privateUri,
-            true,
-            5,
-            InsertContext.CompatibilityMode.COMPAT_1468,
-            true,
-            "gzip",
-            cryptoKey);
+            privateUri, true, 5, FcpCompatibilityMode.COMPAT_1468, true, "gzip", cryptoKey);
     PersistentPutDir message =
         new PersistentPutDir(
             requestParams, metadata, "index.html", new LinkedHashMap<>(manifest), true);
@@ -235,7 +228,7 @@ class PersistentPutDirTest {
             false);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
     PersistentPutDir message =
         new PersistentPutDir(
             requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
@@ -255,7 +248,7 @@ class PersistentPutDirTest {
             false);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 1, InsertContext.CompatibilityMode.COMPAT_1250, false, null, null);
+            null, false, 1, FcpCompatibilityMode.COMPAT_1250, false, null, null);
     return new PersistentPutDir(
         requestParams, metadata, "wrapped", new LinkedHashMap<>(manifest), false);
   }
@@ -273,7 +266,7 @@ class PersistentPutDirTest {
             true);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
     return new PersistentPutDir(
         requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
   }
@@ -317,7 +310,7 @@ class PersistentPutDirTest {
             false);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
     new PersistentPutDir(
         requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
   }

@@ -9,7 +9,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicInteger;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
@@ -127,7 +126,7 @@ class ClientGetPersistenceCodecTest {
     ClientGetExecution execution = mock(ClientGetExecution.class);
     //noinspection resource
     doReturn(bucket).when(request).makePersistenceBucket();
-    doReturn(execution).when(request).makeExecutionForPersistence(fetchRuntimeSupport, bucket);
+    doReturn(execution).when(request).makeExecutionForPersistence(bucket);
 
     try (DataInputStream input = input(new byte[0]);
         MockedStatic<ClientGetPersistenceIO> mocked =
@@ -197,8 +196,8 @@ class ClientGetPersistenceCodecTest {
               return null;
             })
         .when(fetchRuntimeSupport)
-        .encodeFetchConfig(eq(request.fetchConfig()), any(DataOutputStream.class));
-    setField(request, ClientGet.class, "runtimeFetchSupport", fetchRuntimeSupport);
+        .encodeFetchConfig(eq(request.requestProfile().fetchConfig()), any(DataOutputStream.class));
+    ClientGetTestProfiles.setRuntimeFetchSupport(request, fetchRuntimeSupport);
 
     ClientGet restored = serializeAndDeserialize(request);
 
@@ -226,7 +225,7 @@ class ClientGetPersistenceCodecTest {
                   ClientGetGetterFactory.checksummedWriter(
                       any(DataOutputStream.class), eq(checker)))
           .thenAnswer(
-              invocation ->
+              _ ->
                   new DataOutputStream(
                       checksummedWriterCalls.getAndIncrement() == 0
                           ? encodedFetchConfig
@@ -259,7 +258,7 @@ class ClientGetPersistenceCodecTest {
               return null;
             })
         .when(fetchRuntimeSupport)
-        .encodeFetchConfig(eq(request.fetchConfig()), any(DataOutputStream.class));
+        .encodeFetchConfig(eq(request.requestProfile().fetchConfig()), any(DataOutputStream.class));
     Mockito.when(execution.writeTrivialProgress(any(DataOutputStream.class))).thenReturn(false);
     ChecksumChecker checker = mock(ChecksumChecker.class);
     ByteArrayOutputStream capturedFetchConfig = new ByteArrayOutputStream();
@@ -273,7 +272,7 @@ class ClientGetPersistenceCodecTest {
                   ClientGetGetterFactory.checksummedWriter(
                       any(DataOutputStream.class), eq(checker)))
           .thenAnswer(
-              invocation ->
+              _ ->
                   new DataOutputStream(
                       checksummedWriterCalls.getAndIncrement() == 0
                           ? capturedFetchConfig
@@ -285,7 +284,8 @@ class ClientGetPersistenceCodecTest {
 
     assertArrayEquals(encodedFetchConfig, capturedFetchConfig.toByteArray());
     assertArrayEquals(encodedFetchConfig, request.persistedFetchConfigEncoding());
-    Mockito.verify(fetchRuntimeSupport).encodeFetchConfig(eq(request.fetchConfig()), any());
+    Mockito.verify(fetchRuntimeSupport)
+        .encodeFetchConfig(eq(request.requestProfile().fetchConfig()), any());
   }
 
   private static ClientGet finishedDirectRequest() throws Exception {
@@ -293,7 +293,7 @@ class ClientGetPersistenceCodecTest {
     setField(request, ClientRequest.class, "identifier", "req-finished-direct");
     setField(request, ClientRequest.class, "global", false);
     setField(request, ClientRequest.class, "finished", true);
-    setField(request, ClientGet.class, "returnType", ClientGet.ReturnType.DIRECT);
+    ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.DIRECT);
     request.state().setSucceeded(true);
     return request;
   }
@@ -303,8 +303,8 @@ class ClientGetPersistenceCodecTest {
     setField(request, ClientRequest.class, "identifier", "req-persist");
     setField(request, ClientRequest.class, "global", false);
     setField(request, ClientRequest.class, "uri", new FreenetURI("KSK@persist"));
-    setField(request, ClientGet.class, "fetchConfig", new ClientGetFetchConfig());
-    setField(request, ClientGet.class, "returnType", ClientGet.ReturnType.DIRECT);
+    ClientGetTestProfiles.setFetchConfig(request, new ClientGetFetchConfig());
+    ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.DIRECT);
     return request;
   }
 
@@ -347,7 +347,7 @@ class ClientGetPersistenceCodecTest {
       if (mimeType != null) {
         out.writeUTF(mimeType);
       }
-      new CompatibilityAnalyser().writeTo(out);
+      new FcpCompatibilityAnalysis().writeTo(out);
       out.writeInt(0);
     }
     return buffer.toByteArray();

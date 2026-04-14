@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.Locale;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -90,7 +89,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
   final boolean forkOnCacheable;
   final int extraInsertsSingleBlock;
   final int extraInsertsSplitfileHeaderBlock;
-  final InsertContext.CompatibilityMode compatibilityMode;
+  final FcpCompatibilityMode compatibilityMode;
   final byte[] overrideSplitfileCryptoKey;
   final boolean localRequestOnly;
   final boolean realTimeFlag;
@@ -169,18 +168,22 @@ public final class ClientPutMessage extends DataCarryingMessage {
     ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
   }
 
-  private static InsertContext.CompatibilityMode parseCompatibilityMode(
+  private static FcpCompatibilityMode parseCompatibilityMode(
       SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
     String s = fs.get("CompatibilityMode");
-    InsertContext.CompatibilityMode cmode;
+    FcpCompatibilityMode cmode;
     if (s == null) {
-      cmode = InsertContext.CompatibilityMode.COMPAT_DEFAULT;
+      cmode = FcpCompatibilityMode.COMPAT_DEFAULT;
     } else {
       try {
-        cmode = InsertContext.CompatibilityMode.valueOf(s);
+        if ("COMPAT_DEFAULT".equals(s)) {
+          cmode = FcpCompatibilityMode.COMPAT_DEFAULT;
+        } else {
+          cmode = FcpCompatibilityMode.valueOf(s);
+        }
       } catch (IllegalArgumentException _) {
         try {
-          cmode = InsertContext.CompatibilityMode.byCode((short) Integer.parseInt(s));
+          cmode = FcpCompatibilityMode.byCode((short) Integer.parseInt(s));
         } catch (NumberFormatException _) {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,

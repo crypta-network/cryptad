@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.nio.file.Path;
-import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -41,13 +40,7 @@ class PersistentPutTest {
             UploadFrom.DIRECT, originalFile, "text/plain", null, targetUri, "target.dat", true);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            privateUri,
-            true,
-            3,
-            InsertContext.CompatibilityMode.COMPAT_1468,
-            true,
-            "lzma",
-            cryptoKey);
+            privateUri, true, 3, FcpCompatibilityMode.COMPAT_1468, true, "lzma", cryptoKey);
     PersistentPut put = new PersistentPut(requestParams, upload, metadata, 1024L);
 
     SimpleFieldSet fs = put.getFieldSet();
@@ -124,7 +117,7 @@ class PersistentPutTest {
         new ClientPutUpload(UploadFrom.DIRECT, null, null, null, null, null, false);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
     PersistentPut put = new PersistentPut(requestParams, upload, metadata, -1);
 
     assertEquals("PersistentPut", put.getName());
@@ -160,7 +153,7 @@ class PersistentPutTest {
     ClientPutUpload upload = new ClientPutUpload(uploadFrom, null, null, null, null, null, false);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
-            null, false, 0, InsertContext.CompatibilityMode.COMPAT_UNKNOWN, false, null, null);
+            null, false, 0, FcpCompatibilityMode.COMPAT_UNKNOWN, false, null, null);
     return new PersistentPut(requestParams, upload, metadata, -1);
   }
 }

@@ -3,8 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,8 +56,8 @@ final class ClientGetState implements Serializable {
   /** True once a {@link SendingToNetworkMessage} has been observed. */
   private boolean sentToNetwork;
 
-  /** Compatibility analyzer accumulating splitfile compatibility hints. */
-  private CompatibilityAnalyser compatMode;
+  /** Compatibility analysis accumulating splitfile compatibility hints. */
+  private FcpCompatibilityAnalysis compatMode;
 
   /** Expected hashes derived from splitfile metadata, or {@code null} when unknown. */
   private ExpectedHashes expectedHashes;
@@ -78,7 +76,7 @@ final class ClientGetState implements Serializable {
    */
   ClientGetState(ClientGet request) {
     this.request = Objects.requireNonNull(request, "request");
-    this.compatMode = new CompatibilityAnalyser();
+    this.compatMode = new FcpCompatibilityAnalysis();
   }
 
   /**
@@ -228,7 +226,7 @@ final class ClientGetState implements Serializable {
    *
    * @return compatibility analyzer instance; may be {@code null} if not initialized.
    */
-  CompatibilityAnalyser getCompatibilityAnalyser() {
+  FcpCompatibilityAnalysis getCompatibilityAnalyser() {
     return compatMode;
   }
 
@@ -237,20 +235,20 @@ final class ClientGetState implements Serializable {
    *
    * @param compatMode analyzer instance to store; may be {@code null}.
    */
-  void setCompatibilityAnalyser(CompatibilityAnalyser compatMode) {
+  void setCompatibilityAnalyser(FcpCompatibilityAnalysis compatMode) {
     this.compatMode = compatMode;
   }
 
-  /** Ensures a compatibility analyzer exists, creating one if missing. */
+  /** Ensures a compatibility analysis exists, creating one if missing. */
   void ensureCompatibilityMode() {
     if (compatMode == null) {
-      compatMode = new CompatibilityAnalyser();
+      compatMode = new FcpCompatibilityAnalysis();
     }
   }
 
-  /** Resets the compatibility analyzer to a fresh, empty instance. */
+  /** Resets the compatibility analysis to a fresh, empty instance. */
   void resetCompatibilityMode() {
-    compatMode = new CompatibilityAnalyser();
+    compatMode = new FcpCompatibilityAnalysis();
   }
 
   /**
@@ -258,7 +256,7 @@ final class ClientGetState implements Serializable {
    *
    * @return array of compatibility modes; never {@code null}.
    */
-  InsertContext.CompatibilityMode[] getCompatibilityMode() {
+  FcpCompatibilityMode[] getCompatibilityMode() {
     return compatMode.getModes();
   }
 
@@ -293,11 +291,12 @@ final class ClientGetState implements Serializable {
    * @param bottomLayer true when hints apply to the bottom layer of the splitfile.
    */
   void mergeCompatibilityMode(
-      InsertContext.CompatibilityMode minCompatibilityMode,
-      InsertContext.CompatibilityMode maxCompatibilityMode,
+      FcpCompatibilityMode minCompatibilityMode,
+      FcpCompatibilityMode maxCompatibilityMode,
       byte[] splitfileCryptoKey,
       boolean dontCompress,
       boolean bottomLayer) {
+    ensureCompatibilityMode();
     compatMode.merge(
         minCompatibilityMode, maxCompatibilityMode, splitfileCryptoKey, dontCompress, bottomLayer);
     if (request.client != null) {

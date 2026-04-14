@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.time.Instant;
 import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -28,8 +27,8 @@ class DownloadRequestStatusTest {
 
   private static final String IDENTIFIER = "req-1";
   private static final short PRIORITY = 3;
-  private static final CompatibilityMode[] COMPAT_SAMPLE =
-      new CompatibilityMode[] {CompatibilityMode.COMPAT_1250};
+  private static final FcpCompatibilityMode[] COMPAT_SAMPLE =
+      new FcpCompatibilityMode[] {FcpCompatibilityMode.COMPAT_1250};
   private static final byte[] SPLITFILE_KEY = new byte[] {1, 2, 3};
 
   @Test
@@ -136,8 +135,10 @@ class DownloadRequestStatusTest {
     DownloadRequestStatus status =
         buildStatus(
             new File("/tmp/file.bin"), new FreenetURI("KSK", "file.bin"), false, initialShadow);
-    CompatibilityMode[] newModes =
-        new CompatibilityMode[] {CompatibilityMode.COMPAT_1255, CompatibilityMode.COMPAT_1468};
+    FcpCompatibilityMode[] newModes =
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1255, FcpCompatibilityMode.COMPAT_1468
+        };
 
     status.updateDetectedCompatModes(newModes, true);
 

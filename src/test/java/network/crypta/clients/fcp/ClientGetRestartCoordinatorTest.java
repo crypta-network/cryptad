@@ -150,7 +150,7 @@ class ClientGetRestartCoordinatorTest {
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
     setClientGetField(request, "execution", execution);
-    setClientGetField(request, "fetchConfig", fetchConfig);
+    ClientGetTestProfiles.setFetchConfig(request, fetchConfig);
 
     request.state().setSucceeded(false);
     request.state().setFailedMessage(new GetFailedMessage(failure, "req-redirect", false));
@@ -191,7 +191,7 @@ class ClientGetRestartCoordinatorTest {
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
     setClientGetField(request, "execution", execution);
-    setClientGetField(request, "fetchConfig", fetchConfig);
+    ClientGetTestProfiles.setFetchConfig(request, fetchConfig);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
@@ -222,7 +222,7 @@ class ClientGetRestartCoordinatorTest {
     setClientRequestField(request, "client", client);
     setClientRequestField(request, "finished", true);
     setClientGetField(request, "execution", execution);
-    setClientGetField(request, "fetchConfig", fetchConfig);
+    ClientGetTestProfiles.setFetchConfig(request, fetchConfig);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 

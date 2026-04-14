@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.Arrays;
 import java.util.Objects;
-import network.crypta.client.InsertContext;
 import network.crypta.keys.FreenetURI;
 import org.jetbrains.annotations.NotNull;
 
@@ -12,12 +11,12 @@ import org.jetbrains.annotations.NotNull;
  * <p>This record groups the optional private URI alongside retry and compression settings that are
  * reused by both single-file and directory persistent put messages.
  */
-@SuppressWarnings("java:S6206")
+@SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class PersistentPutRequestMetadata {
   private final FreenetURI privateURI;
   private final boolean started;
   private final int maxRetries;
-  private final InsertContext.CompatibilityMode compatMode;
+  private final FcpCompatibilityMode compatMode;
   private final boolean dontCompress;
   private final String compressorDescriptor;
   private final byte[] splitfileCryptoKey;
@@ -37,7 +36,7 @@ public final class PersistentPutRequestMetadata {
       FreenetURI privateURI,
       boolean started,
       int maxRetries,
-      InsertContext.CompatibilityMode compatMode,
+      FcpCompatibilityMode compatMode,
       boolean dontCompress,
       String compressorDescriptor,
       byte[] splitfileCryptoKey) {
@@ -62,7 +61,7 @@ public final class PersistentPutRequestMetadata {
     return maxRetries;
   }
 
-  public InsertContext.CompatibilityMode compatMode() {
+  public FcpCompatibilityMode compatMode() {
     return compatMode;
   }
 

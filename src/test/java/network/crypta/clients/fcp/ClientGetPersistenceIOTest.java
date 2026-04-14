@@ -6,7 +6,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import network.crypta.client.FetchException;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.support.api.Bucket;
@@ -220,7 +219,7 @@ class ClientGetPersistenceIOTest {
 
   private static ClientGet newRequestWithState() {
     ClientGet request = new ClientGet();
-    request.state().setCompatibilityAnalyser(new CompatibilityAnalyser());
+    request.state().setCompatibilityAnalyser(new FcpCompatibilityAnalysis());
     return request;
   }
 
@@ -238,7 +237,7 @@ class ClientGetPersistenceIOTest {
       dos.writeLong(42L);
       dos.writeBoolean(true);
       dos.writeUTF("text/plain");
-      new CompatibilityAnalyser().writeTo(dos);
+      new FcpCompatibilityAnalysis().writeTo(dos);
       dos.writeInt(0);
     }
     return output.toByteArray();

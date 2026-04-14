@@ -16,12 +16,15 @@
  * persistent-request recovery path, queue semantics, and alert delivery behavior remain unchanged
  * while ownership is made explicit for later extraction work. It also owns the concrete mapping
  * between adapter-owned FCP peer/probe seam types and the live node peer/probe runtime classes,
- * plus the AddPeer noderef-loading bridge that still requires live client and runtime loader
- * access.
+ * plus the bridge-side translation between adapter-owned detached insert compatibility types and
+ * the live {@code InsertContext}/{@code CompatibilityAnalyser} implementations. The AddPeer
+ * noderef-loading bridge still requires live client and runtime loader access.
  *
  * <ul>
  *   <li>Owns the concrete persistent-request bundle and recovery adapters for FCP-backed state.
  *   <li>Owns queue, admin, and alert-feed adapters that still require direct FCP knowledge.
+ *   <li>Owns the compatibility and insert-context translation helpers that keep detached FCP values
+ *       and live runtime state in sync.
  *   <li>Owns wrappers that convert between concrete {@code FCPServer} instances and runtime-owned
  *       endpoint handles.
  * </ul>

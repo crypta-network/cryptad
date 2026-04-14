@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Objects;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,11 +12,11 @@ import org.jetbrains.annotations.NotNull;
  * <p>This value object complements {@link RequestStatusSnapshot} by packaging fields that are
  * unique to {@link DownloadRequestStatus}.
  */
-@SuppressWarnings("java:S6206")
+@SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class DownloadRequestStatusDetails {
   private final DownloadOutcomeInfo outcome;
   private final File destFilename;
-  private final CompatibilityMode[] compatModes;
+  private final FcpCompatibilityMode[] compatModes;
   private final byte[] splitfileKey;
   private final FreenetURI uri;
   private final boolean overriddenDataType;
@@ -37,7 +36,7 @@ public final class DownloadRequestStatusDetails {
   public DownloadRequestStatusDetails(
       DownloadOutcomeInfo outcome,
       File destFilename,
-      CompatibilityMode[] compatModes,
+      FcpCompatibilityMode[] compatModes,
       byte[] splitfileKey,
       FreenetURI uri,
       boolean overriddenDataType,
@@ -59,7 +58,7 @@ public final class DownloadRequestStatusDetails {
     return destFilename;
   }
 
-  public CompatibilityMode[] compatModes() {
+  public FcpCompatibilityMode[] compatModes() {
     return copyCompatModes(compatModes);
   }
 
@@ -124,7 +123,7 @@ public final class DownloadRequestStatusDetails {
         + ']';
   }
 
-  private static CompatibilityMode[] copyCompatModes(CompatibilityMode[] input) {
+  private static FcpCompatibilityMode[] copyCompatModes(FcpCompatibilityMode[] input) {
     return input == null ? null : input.clone();
   }
 

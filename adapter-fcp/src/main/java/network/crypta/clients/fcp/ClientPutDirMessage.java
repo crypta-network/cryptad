@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.net.MalformedURLException;
 import java.util.Locale;
 import java.util.Optional;
-import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.HexUtil;
@@ -113,7 +112,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
 
   final int extraInsertsSingleBlock;
   final int extraInsertsSplitfileHeaderBlock;
-  final InsertContext.CompatibilityMode compatibilityMode;
+  final FcpCompatibilityMode compatibilityMode;
   final byte[] overrideSplitfileCryptoKey;
   final boolean localRequestOnly;
   final boolean realTimeFlag;
@@ -170,8 +169,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     String identifier = fs.get("Identifier");
     boolean global = fs.getBoolean("Global", false);
     String defaultName = fs.get("DefaultName");
-    InsertContext.CompatibilityMode compatibilityMode =
-        parseCompatibilityMode(fs, identifier, global);
+    FcpCompatibilityMode compatibilityMode = parseCompatibilityMode(fs, identifier, global);
     byte[] overrideSplitfileCryptoKey =
         parseOverrideSplitfileCryptoKey(fs, identifier, global).orElse(null);
     boolean localRequestOnly = fs.getBoolean("LocalRequestOnly", false);
@@ -278,18 +276,21 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     return sfs;
   }
 
-  private static InsertContext.CompatibilityMode parseCompatibilityMode(
+  private static FcpCompatibilityMode parseCompatibilityMode(
       SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
     String modeValue = fs.get("CompatibilityMode");
     if (modeValue == null) {
-      return InsertContext.CompatibilityMode.COMPAT_DEFAULT.intern();
+      return FcpCompatibilityMode.COMPAT_DEFAULT.intern();
     }
     try {
-      return InsertContext.CompatibilityMode.valueOf(modeValue).intern();
+      if ("COMPAT_DEFAULT".equals(modeValue)) {
+        return FcpCompatibilityMode.COMPAT_DEFAULT.intern();
+      }
+      return FcpCompatibilityMode.valueOf(modeValue).intern();
     } catch (IllegalArgumentException _) {
       try {
         int code = Integer.parseInt(modeValue);
-        return InsertContext.CompatibilityMode.byCode((short) code).intern();
+        return FcpCompatibilityMode.byCode((short) code).intern();
       } catch (NumberFormatException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,

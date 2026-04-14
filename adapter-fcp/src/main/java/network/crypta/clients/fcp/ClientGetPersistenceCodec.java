@@ -5,7 +5,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -98,20 +97,21 @@ final class ClientGetPersistenceCodec {
    */
   static void writeClientDetail(ClientGet request, DataOutputStream dos, ChecksumChecker checker)
       throws IOException {
+    ClientGetRequestProfile requestProfile = request.requestProfile();
     dos.writeLong(CLIENT_DETAIL_MAGIC);
     dos.writeInt(CLIENT_DETAIL_VERSION);
     dos.writeUTF(request.getURI().toString());
-    ClientGet.ReturnType returnType = request.returnTypeForGetter();
+    ClientGet.ReturnType returnType = requestProfile.returnType();
     dos.writeShort(returnType.code);
     if (returnType == ClientGet.ReturnType.DISK) {
-      dos.writeUTF(request.targetFileForLifecycle().toString());
+      dos.writeUTF(requestProfile.targetFile().toString());
     }
-    dos.writeBoolean(request.binaryBlobRequested());
+    dos.writeBoolean(requestProfile.binaryBlob());
     byte[] encodedFetchConfig = encodedFetchConfigForPersistence(request);
     try (DataOutputStream ctxStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
       ctxStream.write(encodedFetchConfig);
     }
-    String extensionCheck = request.extensionCheckForGetter();
+    String extensionCheck = requestProfile.extensionCheck();
     if (extensionCheck != null) {
       dos.writeBoolean(true);
       dos.writeUTF(extensionCheck);
@@ -120,7 +120,7 @@ final class ClientGetPersistenceCodec {
     }
     // Request-owned bucket; closing here would free it prematurely.
     @SuppressWarnings({"resource", "java:S2095"})
-    Bucket initialMetadata = request.initialMetadataBucket();
+    Bucket initialMetadata = requestProfile.initialMetadata();
     if (initialMetadata != null) {
       dos.writeBoolean(true);
       try (DataOutputStream metadataStream =
@@ -223,7 +223,7 @@ final class ClientGetPersistenceCodec {
       return null;
     }
     ClientGetExecution inProgressExecution =
-        request.makeExecutionForPersistence(fetchRuntimeSupport, request.makePersistenceBucket());
+        request.makeExecutionForPersistence(request.makePersistenceBucket());
     ClientGetPersistenceIO.restoreInProgressState(
         dis, fetchRuntimeSupport, checker, inProgressExecution, request);
     return inProgressExecution;
@@ -289,11 +289,12 @@ final class ClientGetPersistenceCodec {
   }
 
   private static byte[] encodedFetchConfigForPersistence(ClientGet request) throws IOException {
-    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupportForPersistence(request);
+    FcpFetchRuntimeSupport fetchRuntimeSupport =
+        ClientGetPersistenceIO.resolveRuntimeFetchSupport(request);
     if (fetchRuntimeSupport != null) {
       try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
           DataOutputStream encoded = new DataOutputStream(buffer)) {
-        fetchRuntimeSupport.encodeFetchConfig(request.fetchConfig(), encoded);
+        fetchRuntimeSupport.encodeFetchConfig(request.requestProfile().fetchConfig(), encoded);
         byte[] encodedFetchConfig = buffer.toByteArray();
         request.setPersistedFetchConfigEncoding(encodedFetchConfig);
         return encodedFetchConfig;
@@ -304,22 +305,6 @@ final class ClientGetPersistenceCodec {
       return cachedEncoding;
     }
     throw new IOException("No runtime fetch support or cached fetch configuration encoding");
-  }
-
-  private static FcpFetchRuntimeSupport runtimeFetchSupportForPersistence(ClientGet request) {
-    FcpFetchRuntimeSupport runtimeFetchSupport = request.runtimeFetchSupport();
-    if (runtimeFetchSupport != null) {
-      return runtimeFetchSupport;
-    }
-    PersistentRequestClient client = request.client;
-    if (client == null) {
-      return null;
-    }
-    FCPConnectionHandler connection = client.getConnection();
-    if (connection == null) {
-      return null;
-    }
-    return connection.getServer().fetchRuntimeSupport();
   }
 
   /**
@@ -350,7 +335,7 @@ final class ClientGetPersistenceCodec {
     state.setSucceeded(dis.readBoolean());
     readTransientProgressFields(request, dis, reqID.identifier, reqID.globalQueue);
     if (state.hasSucceeded()) {
-      if (request.returnTypeForGetter() == ClientGet.ReturnType.DIRECT) {
+      if (request.requestProfile().returnType() == ClientGet.ReturnType.DIRECT) {
         Bucket restoredBucket =
             ClientGetPersistenceIO.restoreCompletedDirectBucketOrNull(
                 dis, fetchRuntimeSupport, checker);
@@ -419,7 +404,7 @@ final class ClientGetPersistenceCodec {
     state.setFoundDataLength(dis.readLong());
     if (dis.readBoolean()) state.setFoundDataMimeType(dis.readUTF());
     else state.setFoundDataMimeType(null);
-    state.setCompatibilityAnalyser(new CompatibilityAnalyser(dis));
+    state.setCompatibilityAnalyser(new FcpCompatibilityAnalysis(dis));
     state.setExpectedHashes(ClientGetGetterFactory.readExpectedHashes(dis, identifier, global));
   }
 

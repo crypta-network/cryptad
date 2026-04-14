@@ -3,8 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.InsertContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
@@ -49,7 +47,7 @@ public class DownloadRequestStatus extends RequestStatus {
   private long dataSize;
   // Null = to temp space
   private final File destFilename;
-  private CompatibilityMode[] detectedCompatModes;
+  private FcpCompatibilityMode[] detectedCompatModes;
   private byte[] detectedSplitfileKey;
   private FreenetURI uri;
   boolean filterData;
@@ -208,7 +206,7 @@ public class DownloadRequestStatus extends RequestStatus {
    * @return an array describing the effective {@link CompatibilityMode}s, or {@code null} when
    *     undetected.
    */
-  public CompatibilityMode[] getCompatibilityMode() {
+  public FcpCompatibilityMode[] getCompatibilityMode() {
     return detectedCompatModes;
   }
 
@@ -257,7 +255,7 @@ public class DownloadRequestStatus extends RequestStatus {
   }
 
   synchronized void updateDetectedCompatModes(
-      InsertContext.CompatibilityMode[] compatModes, boolean dontCompress) {
+      FcpCompatibilityMode[] compatModes, boolean dontCompress) {
     this.detectedCompatModes = compatModes;
     this.detectedDontCompress = dontCompress;
   }

@@ -151,8 +151,8 @@ final class ClientGetEventHandling implements ClientEventListener {
                 request
                     .state()
                     .mergeCompatibilityMode(
-                        event.minCompatibilityMode,
-                        event.maxCompatibilityMode,
+                        FcpCompatibilityMode.byCode(event.minCompatibilityMode.code),
+                        FcpCompatibilityMode.byCode(event.maxCompatibilityMode.code),
                         event.splitfileCryptoKey,
                         event.dontCompress,
                         event.bottomLayer);
@@ -168,8 +168,8 @@ final class ClientGetEventHandling implements ClientEventListener {
         request
             .state()
             .mergeCompatibilityMode(
-                event.minCompatibilityMode,
-                event.maxCompatibilityMode,
+                FcpCompatibilityMode.byCode(event.minCompatibilityMode.code),
+                FcpCompatibilityMode.byCode(event.maxCompatibilityMode.code),
                 event.splitfileCryptoKey,
                 event.dontCompress,
                 event.bottomLayer);

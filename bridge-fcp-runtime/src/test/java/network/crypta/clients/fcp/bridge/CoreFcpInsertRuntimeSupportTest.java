@@ -1,18 +1,30 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.clients.fcp.ClientPutDir;
 import network.crypta.clients.fcp.ClientPutDirExecution;
 import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ClientRequestParams;
+import network.crypta.clients.fcp.DefaultFcpInsertContextHandle;
+import network.crypta.clients.fcp.FcpCompatibilityAnalysis;
+import network.crypta.clients.fcp.FcpCompatibilityMode;
+import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
+import network.crypta.clients.fcp.FcpInsertContextHandle;
+import network.crypta.clients.fcp.FcpInsertContextLimits;
+import network.crypta.clients.fcp.FcpInsertOptions;
+import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -24,6 +36,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,16 +61,34 @@ class CoreFcpInsertRuntimeSupportTest {
   @Mock private RandomAccessBucket bucket;
 
   @Test
-  void defaultPersistentInsertContext_whenRequested_returnsClientContextDefault() {
+  void defaultPersistentInsertContextHandle_whenRequested_returnsDetachedCopyOfClientDefaults() {
     InsertContext defaultInsertContext = mock(InsertContext.class);
+    when(defaultInsertContext.isGetCHKOnly()).thenReturn(true);
+    when(defaultInsertContext.isDontCompress()).thenReturn(true);
+    when(defaultInsertContext.getMaxInsertRetries()).thenReturn(9);
+    when(defaultInsertContext.getConsecutiveRNFsCountAsSuccess()).thenReturn(4);
+    when(defaultInsertContext.getSplitfileSegmentDataBlocks()).thenReturn(10);
+    when(defaultInsertContext.getSplitfileSegmentCheckBlocks()).thenReturn(11);
+    when(defaultInsertContext.isCanWriteClientCache()).thenReturn(true);
+    when(defaultInsertContext.getCompressorDescriptor()).thenReturn("GZIP");
+    when(defaultInsertContext.isForkOnCacheable()).thenReturn(true);
+    when(defaultInsertContext.getExtraInsertsSingleBlock()).thenReturn(2);
+    when(defaultInsertContext.getExtraInsertsSplitfileHeaderBlock()).thenReturn(3);
+    when(defaultInsertContext.getCompatibilityMode())
+        .thenReturn(InsertContext.CompatibilityMode.COMPAT_1468);
+    when(defaultInsertContext.isLocalRequestOnly()).thenReturn(true);
+    when(defaultInsertContext.isEarlyEncode()).thenReturn(true);
+    when(defaultInsertContext.isIgnoreUSKDatehints()).thenReturn(true);
     when(core.getClientContext()).thenReturn(clientContext);
     when(clientContext.getDefaultPersistentInsertContext()).thenReturn(defaultInsertContext);
     CoreFcpInsertRuntimeSupport support =
         new CoreFcpInsertRuntimeSupport(core, () -> transferAccess);
 
-    InsertContext actual = support.defaultPersistentInsertContext();
+    FcpInsertContextHandle actual = support.defaultPersistentInsertContextHandle();
 
-    assertSame(defaultInsertContext, actual);
+    assertTrue(actual.getCHKOnly());
+    assertTrue(actual.isDontCompress());
+    assertSame(FcpCompatibilityMode.COMPAT_1468, actual.getCompatibilityMode());
     verify(clientContext).getDefaultPersistentInsertContext();
   }
 
@@ -64,6 +98,113 @@ class CoreFcpInsertRuntimeSupportTest {
         new CoreFcpInsertRuntimeSupport(core, () -> transferAccess);
 
     assertSame(transferAccess, support.transferAccess());
+  }
+
+  @Test
+  void compatibilityModeValue_whenMappedBetweenBridgeAndRuntime_preservesCodes() {
+    assertSame(
+        FcpCompatibilityMode.COMPAT_1468,
+        CoreFcpInsertRuntimeSupport.toCompatibilityMode(
+            InsertContext.CompatibilityMode.COMPAT_1468));
+    assertSame(
+        InsertContext.CompatibilityMode.COMPAT_1468,
+        CoreFcpInsertRuntimeSupport.toRuntimeCompatibilityMode(FcpCompatibilityMode.COMPAT_1468));
+    assertSame(FcpCompatibilityMode.COMPAT_1468, FcpCompatibilityMode.COMPAT_CURRENT.intern());
+    assertSame(
+        InsertContext.CompatibilityMode.COMPAT_1468,
+        CoreFcpInsertRuntimeSupport.toRuntimeCompatibilityMode(
+            FcpCompatibilityMode.COMPAT_CURRENT));
+  }
+
+  @Test
+  void compatibilityAnalysis_whenRoundTrippedThroughBridge_preservesRuntimeEncoding()
+      throws Exception {
+    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    byte[] cryptoKey = new byte[32];
+    cryptoKey[0] = 7;
+    cryptoKey[31] = 42;
+    analyser.merge(
+        InsertContext.CompatibilityMode.COMPAT_1250,
+        InsertContext.CompatibilityMode.COMPAT_1468,
+        cryptoKey,
+        false,
+        true);
+
+    FcpCompatibilityAnalysis bridgeAnalysis =
+        CoreFcpInsertRuntimeSupport.toCompatibilityAnalysis(analyser);
+
+    assertSame(FcpCompatibilityMode.COMPAT_1250, bridgeAnalysis.min());
+    assertSame(FcpCompatibilityMode.COMPAT_1468, bridgeAnalysis.max());
+    assertArrayEquals(cryptoKey, bridgeAnalysis.getCryptoKey());
+    assertFalse(bridgeAnalysis.dontCompress());
+    assertTrue(bridgeAnalysis.definitive());
+
+    byte[] runtimeBytes = serialize(analyser);
+    byte[] bridgeBytes = serialize(bridgeAnalysis);
+    assertArrayEquals(runtimeBytes, bridgeBytes);
+
+    CompatibilityAnalyser roundTripped =
+        CoreFcpInsertRuntimeSupport.toRuntimeCompatibilityAnalyser(bridgeAnalysis);
+    assertArrayEquals(runtimeBytes, serialize(roundTripped));
+  }
+
+  @Test
+  void compatibilityAnalysis_whenReadFromSerializedRuntime_preservesValues() throws Exception {
+    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    byte[] cryptoKey = new byte[32];
+    cryptoKey[3] = 9;
+    analyser.merge(
+        InsertContext.CompatibilityMode.COMPAT_1255,
+        InsertContext.CompatibilityMode.COMPAT_1416,
+        cryptoKey,
+        true,
+        false);
+
+    FcpCompatibilityAnalysis read =
+        new FcpCompatibilityAnalysis(
+            new java.io.DataInputStream(new ByteArrayInputStream(serialize(analyser))));
+
+    assertSame(FcpCompatibilityMode.COMPAT_1255, read.min());
+    assertSame(FcpCompatibilityMode.COMPAT_1416, read.max());
+    assertArrayEquals(cryptoKey, read.getCryptoKey());
+    assertTrue(read.dontCompress());
+    assertFalse(read.definitive());
+  }
+
+  @Test
+  void legacyInsertContextBridge_whenRoundTripped_preservesDetachedValues() throws Exception {
+    SimpleEventProducer eventProducer = new SimpleEventProducer();
+    FcpInsertContextHandle handle =
+        new DefaultFcpInsertContextHandle(
+            eventProducer,
+            new FcpInsertContextLimits(4, 10, 11),
+            new FcpInsertOptions(
+                new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+                new FcpInsertTuningOptions(
+                    true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
+                null));
+
+    Object legacyContext = CoreFcpInsertRuntimeSupport.legacyInsertContextForSerialization(handle);
+    FcpInsertContextHandle restored =
+        CoreFcpInsertRuntimeSupport.wrapLegacyInsertContext(legacyContext);
+
+    assertInstanceOf(InsertContext.class, legacyContext);
+    assertSame(eventProducer, restored.eventProducer());
+    assertTrue(restored.getCHKOnly());
+    assertTrue(restored.isDontCompress());
+    assertEquals(9, restored.getMaxInsertRetries());
+    assertEquals(4, restored.getConsecutiveRnfsCountAsSuccess());
+    assertEquals(10, restored.getSplitfileSegmentDataBlocks());
+    assertEquals(11, restored.getSplitfileSegmentCheckBlocks());
+    assertTrue(restored.canWriteClientCache());
+    assertEquals("GZIP", restored.getCompressorDescriptor());
+    assertTrue(restored.forkOnCacheable());
+    assertEquals(2, restored.getExtraInsertsSingleBlock());
+    assertEquals(3, restored.getExtraInsertsSplitfileHeaderBlock());
+    assertSame(FcpCompatibilityMode.COMPAT_1468, restored.getCompatibilityMode());
+    assertTrue(restored.localRequestOnly());
+    assertTrue(restored.earlyEncode());
+    assertTrue(restored.ignoreUSKDatehints());
   }
 
   @Test
@@ -121,7 +262,7 @@ class CoreFcpInsertRuntimeSupportTest {
                 false,
                 null,
                 false),
-            mock(InsertContext.class, withSettings().serializable()),
+            mock(FcpInsertContextHandle.class, withSettings().serializable()),
             "index.html",
             null);
     ManifestPutter putter = mock(ManifestPutter.class, withSettings().serializable());
@@ -156,6 +297,24 @@ class CoreFcpInsertRuntimeSupportTest {
         ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
       objectOutput.writeObject(value);
       objectOutput.flush();
+      return output.toByteArray();
+    }
+  }
+
+  private static byte[] serialize(CompatibilityAnalyser analyser) throws Exception {
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+        DataOutputStream dataOutput = new DataOutputStream(output)) {
+      analyser.writeTo(dataOutput);
+      dataOutput.flush();
+      return output.toByteArray();
+    }
+  }
+
+  private static byte[] serialize(FcpCompatibilityAnalysis analysis) throws Exception {
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+        DataOutputStream dataOutput = new DataOutputStream(output)) {
+      analysis.writeTo(dataOutput);
+      dataOutput.flush();
       return output.toByteArray();
     }
   }

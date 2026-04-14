@@ -1,8 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext;
-import network.crypta.client.InsertContextOptions;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
@@ -41,7 +39,13 @@ class ClientPutPutterFactoryTest {
         new ClientPutExecutionSpec(
             callback,
             requestParams,
-            new InsertContext(InsertContextOptions.builder().build()),
+            new DefaultFcpInsertContextHandle(
+                new FcpInsertContextLimits(0, 0, 0),
+                new FcpInsertOptions(
+                    new FcpInsertBehaviorOptions(false, false, false, 0, false, false, false),
+                    new FcpInsertTuningOptions(
+                        false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
+                    null)),
             new ArrayBucket(),
             new ClientMetadata("text/plain"),
             true,

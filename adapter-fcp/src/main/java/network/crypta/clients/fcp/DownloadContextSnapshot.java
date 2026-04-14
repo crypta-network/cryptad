@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 
 /**
@@ -29,7 +28,7 @@ import network.crypta.keys.FreenetURI;
 @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class DownloadContextSnapshot {
   private final ClientGetFetchConfig fetchConfig;
-  private final CompatibilityMode[] compatModes;
+  private final FcpCompatibilityMode[] compatModes;
   private final byte[] splitfileKey;
   private final FreenetURI uri;
   private final boolean dontCompress;
@@ -58,7 +57,7 @@ public final class DownloadContextSnapshot {
    */
   public DownloadContextSnapshot(
       ClientGetFetchConfig fetchConfig,
-      CompatibilityMode[] compatModes,
+      FcpCompatibilityMode[] compatModes,
       byte[] splitfileKey,
       FreenetURI uri,
       boolean dontCompress) {
@@ -90,7 +89,7 @@ public final class DownloadContextSnapshot {
    *
    * @return the compatibility mode array, or {@code null} if no modes were recorded
    */
-  public CompatibilityMode[] compatModes() {
+  public FcpCompatibilityMode[] compatModes() {
     return copyCompatModes(compatModes);
   }
 
@@ -132,7 +131,7 @@ public final class DownloadContextSnapshot {
     return dontCompress;
   }
 
-  private static CompatibilityMode[] copyCompatModes(CompatibilityMode[] input) {
+  private static FcpCompatibilityMode[] copyCompatModes(FcpCompatibilityMode[] input) {
     return input == null ? null : input.clone();
   }
 

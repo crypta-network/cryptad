@@ -82,7 +82,7 @@ final class ClientGetRestartCoordinator {
    */
   boolean restart(boolean disableFilterData) {
     if (!canRestart()) return false;
-    ClientGetFetchConfig fetchConfig = request.fetchConfig();
+    ClientGetFetchConfig fetchConfig = request.requestProfile().fetchConfig();
     if (fetchConfig == null) {
       LOG.warn("Cannot restart because fetch context is missing for {}", request.identifier);
       return false;

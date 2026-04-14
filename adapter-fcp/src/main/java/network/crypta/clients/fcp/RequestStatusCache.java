@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -21,18 +20,18 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The cache keeps a primary index by request identifier and secondary indexes for download
  * requests (by {@link FreenetURI}) and uploads (by final URI). It is designed for callers that
- * routinely look up, update, and remove request state while UI components render progress or while
- * protocol handlers process asynchronous callbacks. Most mutating operations are synchronized on
- * the cache instance so readers can safely reuse the same instance across threads; {@link
+ * routinely look up, update, and remove the request state while UI components render progress or
+ * while protocol handlers process asynchronous callbacks. Most mutating operations are synchronized
+ * on the cache instance so readers can safely reuse the same instance across threads; {@link
  * #updateCompressionStatus(String, COMPRESS_STATE)} and {@link #setPriority(String, short)} rely on
  * callers to provide any external ordering they require. Missing identifiers are treated as benign
  * to accommodate races between completion and cancellation.
  *
- * <p>Typical usage is: add a request when it starts, update status as events arrive, then remove it
- * when it finishes or is cancelled. Secondary indexes are pruned in tandem so lookup by URI never
- * returns stale entries. The class does not persist data; callers should rebuild it after node
- * restarts. Because it holds live {@code RequestStatus} objects, consumers should avoid long-lived
- * references outside synchronized blocks unless they copy them via {@link #addTo(List)}.
+ * <p>Typical usage is: add a request when it starts, update the status as events arrive, then
+ * remove it when it finishes or is canceled. Secondary indexes are pruned in tandem, so lookup by
+ * URI never returns stale entries. The class does not persist data; callers should rebuild it after
+ * the node restarts. Because it holds live {@code RequestStatus} objects, consumers should avoid
+ * long-lived references outside synchronized blocks unless they copy them via {@link #addTo(List)}.
  *
  * <ul>
  *   <li>Provides fast lookup by identifier for all request kinds.
@@ -111,7 +110,7 @@ public class RequestStatusCache {
 
   synchronized void updateDetectedCompatModes(
       String identifier,
-      InsertContext.CompatibilityMode[] compatModes,
+      FcpCompatibilityMode[] compatModes,
       byte[] splitfileKey,
       boolean dontCompress) {
     DownloadRequestStatus status = (DownloadRequestStatus) requestsByIdentifier.get(identifier);
@@ -150,14 +149,14 @@ public class RequestStatusCache {
    *
    * <p>The method is intentionally unsynchronized because it only touches a single status instance
    * and is expected to be called from the same thread that initiated the upload. If the identifier
-   * is unknown the call is ignored, allowing callers to send speculative or late updates without
+   * is unknown, the call is ignored, allowing callers to send speculative or late updates without
    * raising errors. Compression state transitions should follow the sequence defined by {@link
    * ClientPut.COMPRESS_STATE}; no validation is enforced here.
    *
    * @param identifier identifier of the upload being compressed; must reference an active entry to
    *     have any effect.
-   * @param compressing new compression state describing the current stage; values come from the FCP
-   *     client pipeline and are not null-checked here.
+   * @param compressing the new compression state describing the current stage; values come from the
+   *     FCP client pipeline and are not null-checked here.
    */
   public void updateCompressionStatus(String identifier, COMPRESS_STATE compressing) {
     UploadFileRequestStatus status = (UploadFileRequestStatus) requestsByIdentifier.get(identifier);
@@ -186,7 +185,7 @@ public class RequestStatusCache {
   /**
    * Updates the expected MIME type for a pending download if it remains present in the cache.
    *
-   * <p>The method is tolerant of late notifications; when the identifier is no longer tracked it
+   * <p>The method is tolerant of late notifications; when the identifier is no longer tracked, it
    * returns silently. Callers typically invoke this after metadata discovery but before final data
    * delivery so UI components can present a more accurate content type. The provided MIME string is
    * stored as-is; callers should supply normalized values when necessary.
@@ -203,12 +202,12 @@ public class RequestStatusCache {
   /**
    * Records the expected data length for an in-flight download so progress bars can estimate work.
    *
-   * <p>If the identifier is missing the method exits without side effects, enabling callers to send
-   * redundant or late updates safely. The value is interpreted as bytes; negative values are not
-   * rejected here but may be validated downstream by {@link DownloadRequestStatus}.
+   * <p>If the identifier is missing, the method exits without side effects, enabling callers to
+   * send redundant or late updates safely. The value is interpreted as bytes; negative values are
+   * not rejected here but may be validated downstream by {@link DownloadRequestStatus}.
    *
    * @param identifier request identifier whose download metadata is being updated; non-null.
-   * @param expectedDataLength anticipated byte length of the payload; callers should supply
+   * @param expectedDataLength expected byte length of the payload; callers should supply
    *     non-negative values.
    */
   public synchronized void updateExpectedDataLength(String identifier, long expectedDataLength) {
@@ -236,14 +235,14 @@ public class RequestStatusCache {
   }
 
   /**
-   * Restart a request. Caller should call ,false first, at which point we setStarted, and ,true
+   * Restart a request. Caller should call, false first, at which point we setStarted, and, true
    * when it has actually started (a race condition means we don't setStarted at that point since
    * it's possible the success/failure callback might happen first).
    *
    * <p>The boolean overload clears finished state when invoked with {@code false} and marks the
    * request as started when invoked with {@code true}. It tolerates late or duplicate updates by
-   * ignoring identifiers that are no longer tracked. All mutations are serialized on the cache lock
-   * so callers can safely use the same cache across worker and UI threads.
+   * ignoring identifiers that are no longer tracked. All mutations are serialized on the cache
+   * lock, so callers can safely use the same cache across worker and UI threads.
    *
    * @param identifier request identifier being restarted; must be non-null and match a cached entry
    *     to take effect.
@@ -264,7 +263,7 @@ public class RequestStatusCache {
   }
 
   /**
-   * Restart a download. Caller should call ,false first, at which point we setStarted, and ,true
+   * Restart a download. Caller should call, false first, at which point we setStarted, and, true
    * when it has actually started (a race condition means we don't setStarted at that point since
    * it's possible the success/failure callback might happen first).
    *

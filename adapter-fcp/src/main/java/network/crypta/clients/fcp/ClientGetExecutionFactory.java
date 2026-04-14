@@ -47,18 +47,19 @@ final class ClientGetExecutionFactory {
   static ClientGetExecution create(
       ClientGet request, FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket returnBucket)
       throws IOException {
+    ClientGetRequestProfile requestProfile = request.requestProfile();
     ClientGetExecutionSpec executionSpec =
         new ClientGetExecutionSpec(
             request,
             request.getURI(),
             request.getPriority(),
-            request.fetchConfig(),
+            requestProfile.fetchConfig(),
             returnBucket,
-            request.returnTypeForGetter() == ClientGet.ReturnType.NONE,
-            request.binaryBlobRequested(),
+            requestProfile.returnType() == ClientGet.ReturnType.NONE,
+            requestProfile.binaryBlob(),
             request.persistence == ClientRequest.Persistence.FOREVER,
-            request.initialMetadataBucket(),
-            request.extensionCheckForGetter(),
+            requestProfile.initialMetadata(),
+            requestProfile.extensionCheck(),
             new ClientGetEventHandling(request));
     return fetchRuntimeSupport.createExecution(executionSpec);
   }

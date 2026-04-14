@@ -4,8 +4,6 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext;
-import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SplitfileProgressCounts;
@@ -45,7 +43,7 @@ class ClientPutStatusSnapshotBuilderTest {
     ClientMetadata metadata = new ClientMetadata("text/plain");
     String filename = "data" + ".bin";
     File origFile = createFile(filename);
-    InsertContext context = new InsertContext(InsertContextOptions.builder().build());
+    DefaultFcpInsertContextHandle context = newContext();
 
     setField(request, "identifier", "id");
     setField(request, "uri", new FreenetURI(VALID_CHK));
@@ -84,7 +82,7 @@ class ClientPutStatusSnapshotBuilderTest {
     ClientPut request = new ClientPut();
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     when(bucket.size()).thenReturn(42L);
-    InsertContext context = new InsertContext(InsertContextOptions.builder().build());
+    DefaultFcpInsertContextHandle context = newContext();
     Instant success = Instant.ofEpochMilli(1000L);
     Instant failure = Instant.ofEpochMilli(2000L);
     SplitfileProgressCounts counts = new SplitfileProgressCounts(10, 3, 2, 1, 5, 0, true);
@@ -141,6 +139,16 @@ class ClientPutStatusSnapshotBuilderTest {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static DefaultFcpInsertContextHandle newContext() {
+    return new DefaultFcpInsertContextHandle(
+        new FcpInsertContextLimits(0, 0, 0),
+        new FcpInsertOptions(
+            new FcpInsertBehaviorOptions(false, false, false, 0, false, false, false),
+            new FcpInsertTuningOptions(
+                false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
+            null));
   }
 
   private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
