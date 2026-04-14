@@ -1585,15 +1585,14 @@ public final class LocalProcessAppHost implements AppHost {
 
   private RunningProcess trackRunningProcessForStop(String appId, RunningProcess runningProcess) {
     List<ProcessHandle> processTree = runningProcess.processTree();
-    try {
-      RunningProcess trackedRunningProcess = runningProcess.withProcessTree(processTree);
-      runningApps.replace(appId, runningProcess, trackedRunningProcess);
-      return trackedRunningProcess;
-    } catch (IllegalArgumentException _) {
+    RunningProcess trackedRunningProcess = runningProcess.tryWithProcessTree(processTree);
+    if (trackedRunningProcess == null) {
       runningProcess.exitCleanup().join();
       runningApps.remove(appId, runningProcess);
       return null;
     }
+    runningApps.replace(appId, runningProcess, trackedRunningProcess);
+    return trackedRunningProcess;
   }
 
   private RunningProcess refreshTrackedRunningProcess(String appId, RunningProcess runningProcess) {
@@ -1638,7 +1637,7 @@ public final class LocalProcessAppHost implements AppHost {
     if (recoveredHandles.isEmpty()) {
       return null;
     }
-    return runningProcess.withProcessTree(recoveredHandles);
+    return runningProcess.tryWithProcessTree(recoveredHandles);
   }
 
   private List<ProcessHandle> recoverTrackedProcesses(
@@ -2096,13 +2095,13 @@ public final class LocalProcessAppHost implements AppHost {
       if (currentProcessTree.isEmpty()) {
         return null;
       }
-      return withProcessTree(currentProcessTree);
+      return tryWithProcessTree(currentProcessTree);
     }
 
-    private RunningProcess withProcessTree(List<ProcessHandle> newProcessTree) {
+    private RunningProcess tryWithProcessTree(List<ProcessHandle> newProcessTree) {
       List<ProcessHandle> aliveProcessTree = aliveHandles(newProcessTree);
       if (aliveProcessTree.isEmpty()) {
-        throw new IllegalArgumentException("newProcessTree must contain a live process");
+        return null;
       }
       long updatedPid = representativePid(aliveProcessTree, snapshot.pid(), false);
       RunningAppSnapshot updatedSnapshot =
