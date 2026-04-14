@@ -120,9 +120,13 @@ public class DatastoreSize implements Step {
    * Applies the datastore size selection submitted for this wizard step.
    *
    * <p>The selected size is read from the {@code ds} form field and passed through the same parsing
-   * and validation logic used by {@link #setDatastoreSize(String, Config, LongSupplier)}. When this
-   * step is executed as part of the full wizard flow (i.e., not in single-step mode), it advances
-   * to the bandwidth step; otherwise it returns the completion step.
+   * and validation logic used by {@link #setDatastoreSize(String, Config, LongSupplier)}. The
+   * posted value is validated against {@link FirstTimeWizardSnapshot#maxStorageLimitBytes()} so the
+   * detached multipage wizard keeps the historical acceptance behavior even when its legacy
+   * dropdown thresholds are bounded more aggressively by {@link
+   * FirstTimeWizardSnapshot#legacyMaxStorageLimitBytes()}. When this step is executed as part of
+   * the full wizard flow (i.e., not in single-step mode), it advances to the bandwidth step;
+   * otherwise it returns the completion step.
    *
    * @param request HTTP request containing the submitted {@code ds} selection and optional flags
    * @return the next wizard step name, suitable for {@code FirstTimeWizardToadlet.WIZARD_STEP}
@@ -139,7 +143,7 @@ public class DatastoreSize implements Step {
         request.getPartAsStringFailsafe("ds", 20),
         firsttime,
         config,
-        snapshot::legacyMaxStorageLimitBytes);
+        snapshot::maxStorageLimitBytes);
     if (firsttime) {
       return FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name();
     } else {

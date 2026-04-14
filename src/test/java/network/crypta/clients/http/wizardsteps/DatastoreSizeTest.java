@@ -123,6 +123,30 @@ class DatastoreSizeTest {
   }
 
   @Test
+  void postStep_whenLegacyDropdownCapIsLowerThanSelection_expectValidationUsesTrueMax() {
+    Config config = newConfigWithNodeDefaults(10, 0, 1000L);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(512L * 1024 * 1024, -1L));
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
+
+    HTTPRequest request = mock(HTTPRequest.class);
+    when(request.isPartSet("singlestep")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("ds", 20)).thenReturn("1GiB");
+
+    String next = step.postStep(request);
+
+    assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name(), next);
+
+    SubConfig node = config.get("node");
+    assertNotNull(node);
+    assertTrue(
+        Config.longOption(node, KEY_STORE_SIZE).getValue() > 0,
+        "store size should be applied even when the legacy dropdown cap is below 1 GiB");
+    assertEquals(VALUE_SALT_HASH, node.getString(KEY_STORE_TYPE));
+    assertEquals(VALUE_SALT_HASH, node.getString(KEY_CLIENT_CACHE_TYPE));
+  }
+
+  @Test
   void postStep_whenSingleStep_expectNextStepCompleteAndDoesNotSetTypes() {
     Config config = newConfigWithNodeDefaults(10, 0, 1000L);
     SubConfig node = config.get("node");
