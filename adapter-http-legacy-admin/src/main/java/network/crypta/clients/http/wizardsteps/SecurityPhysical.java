@@ -12,8 +12,7 @@ import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.http.ExternalLinkSupport;
-import network.crypta.support.io.FileUtil.OperatingSystem;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,15 +123,15 @@ public class SecurityPhysical implements Step {
               HTMLNode.STRONG,
               HTMLNode.linkInNewWindow(ExternalLinkSupport.escape("http://www.truecrypt.org/"))
             });
-    OperatingSystem os = FileUtil.detectedOS;
+    String operatingSystemNameKey = LegacyFileSupport.operatingSystemNameKey();
     div.addChild(
         "p",
         NodeL10n.getBase()
             .getString(
                 "SecurityLevels.physicalThreatLevelSwapfile",
                 "operatingSystem",
-                NodeL10n.getBase().getString("OperatingSystemName." + os.name())));
-    if (os == FileUtil.OperatingSystem.WINDOWS) {
+                NodeL10n.getBase().getString("OperatingSystemName." + operatingSystemNameKey)));
+    if (LegacyFileSupport.isWindows()) {
       swapWarning.addChild("#", " " + WizardL10n.l10nSec("physicalThreatLevelSwapfileWindows"));
     }
     for (SecurityPhysicalThreatLevel level : SecurityPhysicalThreatLevel.values()) {

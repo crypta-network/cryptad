@@ -5,7 +5,7 @@ import java.io.IOException;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import network.crypta.support.io.LineReadingInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * <p>The class is stateless and safe for repeated use across requests. Callers provide the current
  * {@link ToadletContext} and destination content node, and the helper fills in the same infobox and
  * meta-refresh structure that operators already expect during startup and restart transitions. It
- * deliberately fails soft when the wrapper log is unreadable, because the absence of log text
+ * deliberately fails quietly when the wrapper log is unreadable because the absence of log text
  * should not block the surrounding status page from rendering.
  *
  * <ul>
@@ -93,7 +93,7 @@ final class LegacyWelcomePageSupport {
       HTMLNode logInfoboxContent =
           ctx.getPageMaker()
               .getInfobox("infobox-info", "Current status", contentNode, "start-progress", true);
-      try (LineReadingInputStream logreader = FileUtil.getLogTailReader(logs, 2000)) {
+      try (LineReadingInputStream logreader = LegacyFileSupport.getLogTailReader(logs, 2000)) {
         String line;
         while ((line = logreader.readLine(100000, 200, true)) != null) {
           logInfoboxContent.addChild("#", line);

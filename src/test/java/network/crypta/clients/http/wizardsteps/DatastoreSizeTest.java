@@ -1,25 +1,20 @@
 package network.crypta.clients.http.wizardsteps;
 
-import java.io.File;
 import java.util.List;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
-import network.crypta.node.Node;
-import network.crypta.runtime.bootstrap.NodeStarter;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.DatastoreUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,7 +26,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,69 +49,11 @@ class DatastoreSizeTest {
   private static final String VALUE_SALT_HASH = "salt-hash";
 
   @Test
-  void maxDatastoreSize_whenMemoryLimitIsUnknown_expectOneGiB() {
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
-      nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(Long.MAX_VALUE);
-
-      long result = DatastoreUtil.maxDatastoreSize(node);
-
-      assertEquals(1024L * 1024 * 1024, result);
-    }
-  }
-
-  @Test
-  void maxDatastoreSize_whenMemoryLimitIsVerySmall_expectOneGiB() {
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
-      nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(127L * 1024 * 1024);
-
-      long result = DatastoreUtil.maxDatastoreSize(node);
-
-      assertEquals(1024L * 1024 * 1024, result);
-    }
-  }
-
-  @Test
-  void maxDatastoreSize_whenMemoryBasedExceedsDisk_expectDiskBasedMinusMargin() {
-    // Keep free-space math deterministic instead of relying on the real filesystem.
-    long freeSpace = 20L * 1024 * 1024 * 1024;
-    File storeDir = mock(File.class);
-    File fileA = mock(File.class);
-    File fileB = mock(File.class);
-    when(fileA.length()).thenReturn(1234L);
-    when(fileB.length()).thenReturn(5678L);
-    when(storeDir.getUsableSpace()).thenReturn(freeSpace);
-    when(storeDir.listFiles()).thenReturn(new File[] {fileA, fileB});
-
-    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    when(node.getStoreDir()).thenReturn(storeDir);
-
-    long expectedDiskCap = freeSpace + 1234L + 5678L;
-
-    long mockedMaxMemoryBytes = 64L * 1024 * 1024 * 1024;
-    long available = mockedMaxMemoryBytes - 100L * 1024 * 1024;
-    available = available / 2;
-    long slots = available / 4;
-    slots /= 3;
-    long expectedMemoryCap =
-        slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
-    long expectedCap = Math.min(expectedDiskCap, expectedMemoryCap);
-
-    try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
-      nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(mockedMaxMemoryBytes);
-
-      long result = DatastoreUtil.maxDatastoreSize(node);
-
-      assertEquals(expectedCap - 1024L * 1024 * 1024, result);
-    }
-  }
-
-  @Test
   void setDatastoreSize_whenUnparseable_expectNumberFormatException() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
     assertThrows(
-        NumberFormatException.class, () -> DatastoreSize.setDatastoreSize("not-a-number", config));
+        NumberFormatException.class,
+        () -> DatastoreSize.setDatastoreSize("not-a-number", config, () -> Long.MAX_VALUE));
   }
 
   @Test
@@ -132,11 +68,7 @@ class DatastoreSizeTest {
     String defaultStoreType = node.getString(KEY_STORE_TYPE);
     String defaultClientCacheType = node.getString(KEY_CLIENT_CACHE_TYPE);
 
-    try (MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreUtil.when(DatastoreUtil::maxDatastoreSize).thenReturn(1024L);
-
-      DatastoreSize.setDatastoreSize("2KiB", config);
-    }
+    DatastoreSize.setDatastoreSize("2KiB", config, () -> 1024L);
 
     assertEquals(defaultStoreSize, Config.longOption(node, KEY_STORE_SIZE).getValue());
     assertEquals(defaultClientCacheSize, Config.longOption(node, KEY_CLIENT_CACHE_SIZE).getValue());
@@ -154,11 +86,7 @@ class DatastoreSizeTest {
 
     long selectedSize = Fields.parseLong("1GiB");
 
-    try (MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreUtil.when(DatastoreUtil::maxDatastoreSize).thenReturn(selectedSize + 1);
-
-      DatastoreSize.setDatastoreSize("1GiB", config);
-    }
+    DatastoreSize.setDatastoreSize("1GiB", config, () -> selectedSize + 1);
 
     long expectedClientCacheSize = selectedSize / 10;
     long expectedSlashdotCacheSize = 10L;
@@ -176,22 +104,44 @@ class DatastoreSizeTest {
   @Test
   void postStep_whenFirstTime_expectNextStepBandwidthAndUsesSelected() {
     Config config = newConfigWithNodeDefaults(10, 0, 1000L);
-    DatastoreSize step = new DatastoreSize(mock(FirstTimeWizardPort.class), config);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(2L * 1024 * 1024 * 1024));
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(false);
     when(request.getPartAsStringFailsafe("ds", 20)).thenReturn("1GiB");
 
-    try (MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreUtil.when(DatastoreUtil::maxDatastoreSize).thenReturn(2L * 1024 * 1024 * 1024);
+    String next = step.postStep(request);
 
-      String next = step.postStep(request);
-
-      assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name(), next);
-    }
+    assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name(), next);
 
     SubConfig node = config.get("node");
     assertNotNull(node);
+    assertEquals(VALUE_SALT_HASH, node.getString(KEY_STORE_TYPE));
+    assertEquals(VALUE_SALT_HASH, node.getString(KEY_CLIENT_CACHE_TYPE));
+  }
+
+  @Test
+  void postStep_whenLegacyDropdownCapIsLowerThanSelection_expectValidationUsesTrueMax() {
+    Config config = newConfigWithNodeDefaults(10, 0, 1000L);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(512L * 1024 * 1024, -1L));
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
+
+    HTTPRequest request = mock(HTTPRequest.class);
+    when(request.isPartSet("singlestep")).thenReturn(false);
+    when(request.getPartAsStringFailsafe("ds", 20)).thenReturn("1GiB");
+
+    String next = step.postStep(request);
+
+    assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name(), next);
+
+    SubConfig node = config.get("node");
+    assertNotNull(node);
+    assertTrue(
+        Config.longOption(node, KEY_STORE_SIZE).getValue() > 0,
+        "store size should be applied even when the legacy dropdown cap is below 1 GiB");
     assertEquals(VALUE_SALT_HASH, node.getString(KEY_STORE_TYPE));
     assertEquals(VALUE_SALT_HASH, node.getString(KEY_CLIENT_CACHE_TYPE));
   }
@@ -204,19 +154,17 @@ class DatastoreSizeTest {
     assertEquals(VALUE_DEFAULT, node.getString(KEY_STORE_TYPE));
     assertEquals(VALUE_DEFAULT, node.getString(KEY_CLIENT_CACHE_TYPE));
 
-    DatastoreSize step = new DatastoreSize(mock(FirstTimeWizardPort.class), config);
+    FirstTimeWizardPort wizardPort = mock(FirstTimeWizardPort.class);
+    when(wizardPort.snapshot()).thenReturn(snapshot(2L * 1024 * 1024 * 1024));
+    DatastoreSize step = new DatastoreSize(wizardPort, config);
 
     HTTPRequest request = mock(HTTPRequest.class);
     when(request.isPartSet("singlestep")).thenReturn(true);
     when(request.getPartAsStringFailsafe("ds", 20)).thenReturn("1GiB");
 
-    try (MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreUtil.when(DatastoreUtil::maxDatastoreSize).thenReturn(2L * 1024 * 1024 * 1024);
+    String next = step.postStep(request);
 
-      String next = step.postStep(request);
-
-      assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.COMPLETE.name(), next);
-    }
+    assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.COMPLETE.name(), next);
 
     assertEquals(VALUE_DEFAULT, node.getString(KEY_STORE_TYPE));
     assertEquals(VALUE_DEFAULT, node.getString(KEY_CLIENT_CACHE_TYPE));
@@ -232,11 +180,7 @@ class DatastoreSizeTest {
     assertNotNull(node);
 
     long selectedSize = Fields.parseLong(selected);
-    try (MockedStatic<DatastoreUtil> datastoreUtil = mockStatic(DatastoreUtil.class)) {
-      datastoreUtil.when(DatastoreUtil::maxDatastoreSize).thenReturn(selectedSize + 1);
-
-      DatastoreSize.setDatastoreSize(selected, config);
-    }
+    DatastoreSize.setDatastoreSize(selected, config, () -> selectedSize + 1);
 
     long actualClientCacheSize = Config.longOption(node, KEY_CLIENT_CACHE_SIZE).getValue();
     assertEquals(expectedClientCacheSize, actualClientCacheSize);
@@ -407,27 +351,13 @@ class DatastoreSizeTest {
         KEY_SLASHDOT_CACHE_LIFETIME,
         slashdotLifetimeMs,
         new Option.Meta(0, false, false, "", ""),
-        (network.crypta.config.LongCallback) null,
+        null,
         false);
 
+    node.register(KEY_STORE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
+    node.register(KEY_CLIENT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
     node.register(
-        KEY_STORE_SIZE,
-        0L,
-        new Option.Meta(0, false, false, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
-    node.register(
-        KEY_CLIENT_CACHE_SIZE,
-        0L,
-        new Option.Meta(0, false, false, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
-    node.register(
-        KEY_SLASHDOT_CACHE_SIZE,
-        0L,
-        new Option.Meta(0, false, false, "", ""),
-        (network.crypta.config.LongCallback) null,
-        true);
+        KEY_SLASHDOT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
 
     node.register(
         KEY_STORE_TYPE,

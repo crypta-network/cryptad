@@ -10,7 +10,6 @@ import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.DatastoreUtil;
 
 /**
  * Renders and processes the “monthly bandwidth cap” step in the first-time configuration wizard.
@@ -41,6 +40,7 @@ import network.crypta.support.io.DatastoreUtil;
  */
 public class BandwidthMonthly extends BandwidthManipulator implements Step {
 
+  private static final long ONE_GIB = 1024L * 1024L * 1024L;
   private static final long KIB = 1024L;
   private static final String L10N_KEY_BANDWIDTH_SELECT = "bandwidthSelect";
   private static final String TAG_INPUT = "input";
@@ -186,11 +186,11 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
    * Processes a submitted cap value and updates the node’s bandwidth configuration.
    *
    * <p>The handler reads the {@code capTo} form parameter, interprets it as a monthly cap in
-   * “GB”-labeled units, and converts it to a byte total using {@link DatastoreUtil#ONE_GIB}. The
-   * resulting value is then mapped to upload and download limits via {@link WizardBandwidthLimit}
-   * and persisted using {@link #setBandwidthLimit(String, boolean)}. If parsing fails, or if the
-   * cap is below the minimum accepted limit, this method returns a redirect target that re-displays
-   * the current step with an appropriate error indicator.
+   * “GB”-labeled units, and converts it to a byte total using a local GiB constant. The resulting
+   * value is then mapped to upload and download limits via {@link WizardBandwidthLimit} and
+   * persisted using {@link #setBandwidthLimit(String, boolean)}. If parsing fails, or if the cap is
+   * below the minimum accepted limit, this method returns a redirect target that re-displays the
+   * current step with an appropriate error indicator.
    *
    * <p>This method is intended to be called once per form submission; repeating the same submission
    * is effectively idempotent with respect to the resulting stored limit values.
@@ -210,7 +210,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
             .append("&parseTarget=");
     try {
       gbPerMonth = Double.parseDouble(capTo);
-      bytesPerMonth = Math.round(gbPerMonth * DatastoreUtil.ONE_GIB);
+      bytesPerMonth = Math.round(gbPerMonth * ONE_GIB);
     } catch (NumberFormatException _) {
       target.append(URLEncoder.encode(capTo, true));
       target.append("&parseError=true");

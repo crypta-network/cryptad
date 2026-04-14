@@ -95,6 +95,8 @@ network/crypta/client/filter/FilterMIMETypeDangerousFlags.class
 network/crypta/client/filter/FilterMIMETypeDangerousFlags$*.class
 network/crypta/client/filter/FilterMIMETypeNames.class
 network/crypta/client/filter/FilterMIMETypeNames$*.class
+network/crypta/client/filter/HTMLFilterPolicy.class
+network/crypta/client/filter/HTMLFilterPolicy$*.class
 network/crypta/client/filter/FilterOperation.class
 network/crypta/client/filter/FilterOperation$*.class
 network/crypta/client/filter/FlacPacket.class

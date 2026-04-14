@@ -22,7 +22,7 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +48,8 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see ConnectionsToadlet
- * @see network.crypta.node.DarknetPeerNode
+ * @see DarknetConnectionPeerSnapshot
+ * @see DarknetConnectionsPort
  */
 public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetConnectionsToadlet.class);
@@ -659,7 +660,8 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     }
 
     SimpleFieldSet fs = toSimpleFieldSet(snapshot.root());
-    String filename = FileUtil.sanitizeFileNameWithExtras(peer.displayName() + FREF_SUFFIX, "\" ");
+    String filename =
+        LegacyFileSupport.sanitizeFileNameWithExtras(peer.displayName() + FREF_SUFFIX, "\" ");
     String content = fs.toString();
     MultiValueTable<String, String> extraHeaders =
         MultiValueTable.from(

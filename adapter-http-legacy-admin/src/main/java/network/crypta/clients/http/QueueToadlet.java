@@ -42,7 +42,7 @@ import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1688,7 +1688,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               "persistenceBroken",
               new String[] {"TEMPDIR", "DBFILE"},
               new String[] {
-                FileUtil.getCanonicalFile(persistenceStatus.persistentTempDir()).toString()
+                LegacyFileSupport.getCanonicalFile(persistenceStatus.persistentTempDir()).toString()
                     + File.separator,
                 persistenceStatus.databasePath()
               }));

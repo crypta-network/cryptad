@@ -17,8 +17,7 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.http.ExternalLinkSupport;
-import network.crypta.support.io.FileUtil.OperatingSystem;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -975,15 +974,15 @@ public class SecurityLevelsToadlet extends Toadlet {
                   ExternalLinkSupport.escape(l10nSec("physicalThreatLevelFDELink")))
             });
     HTMLNode swapWarning = seclevelGroup.addChild("p").addChild("i");
-    OperatingSystem os = FileUtil.detectedOS;
+    String operatingSystemNameKey = LegacyFileSupport.operatingSystemNameKey();
     swapWarning.addChild(
         "#",
         NodeL10n.getBase()
             .getString(
                 "SecurityLevels.physicalThreatLevelSwapfile",
                 "operatingSystem",
-                NodeL10n.getBase().getString("OperatingSystemName." + os.name())));
-    if (os == FileUtil.OperatingSystem.WINDOWS) {
+                NodeL10n.getBase().getString("OperatingSystemName." + operatingSystemNameKey)));
+    if (LegacyFileSupport.isWindows()) {
       swapWarning.addChild("#", " " + WizardL10n.l10nSec("physicalThreatLevelSwapfileWindows"));
     }
 

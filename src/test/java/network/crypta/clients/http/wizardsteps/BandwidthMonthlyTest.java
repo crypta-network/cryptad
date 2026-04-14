@@ -13,7 +13,6 @@ import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.DatastoreUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +36,7 @@ import static org.mockito.Mockito.when;
 class BandwidthMonthlyTest {
 
   private static final long KIB = 1024L;
+  private static final long ONE_GIB = 1024L * 1024L * 1024L;
   private static final long MIN_BANDWIDTH_KIB = 256L;
   private static final double MIN_MONTHLY_LIMIT_GIB =
       WizardBandwidthLimit.minimumMonthlyLimitGiB(MIN_BANDWIDTH_KIB * KIB);
@@ -102,7 +102,7 @@ class BandwidthMonthlyTest {
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.COMPLETE.name(), next);
     assertTrue(step.wizardComplete, "Wizard must be marked complete on success");
 
-    long bytesPerMonth = Math.round(Double.parseDouble(capTo) * DatastoreUtil.ONE_GIB);
+    long bytesPerMonth = Math.round(Double.parseDouble(capTo) * ONE_GIB);
     WizardBandwidthLimit expected =
         WizardBandwidthLimit.fromMonthlyBudget(
             bytesPerMonth, DEFAULT_SNAPSHOT.minBandwidthKiB() * KIB);

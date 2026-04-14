@@ -12,7 +12,7 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import network.crypta.client.filter.HTMLFilter;
+import network.crypta.client.filter.HTMLFilterPolicy;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.config.BooleanCallback;
@@ -1214,7 +1214,7 @@ public final class SimpleToadletServer
 
           @Override
           public Integer get() {
-            return HTMLFilter.getMetaRefreshSamePageMinInterval();
+            return HTMLFilterPolicy.getMetaRefreshSamePageMinInterval();
           }
 
           @Override
@@ -1222,11 +1222,11 @@ public final class SimpleToadletServer
             if (val < -1)
               throw new InvalidConfigValueException(
                   "-1 = disabled, 0+ = set a minimum interval"); // localization pending
-            HTMLFilter.setMetaRefreshSamePageMinInterval(val);
+            HTMLFilterPolicy.setMetaRefreshSamePageMinInterval(val);
           }
         },
         false);
-    HTMLFilter.setMetaRefreshSamePageMinInterval(
+    HTMLFilterPolicy.setMetaRefreshSamePageMinInterval(
         Math.max(-1, fproxyConfig.getInt("metaRefreshSamePageInterval")));
 
     fproxyConfig.register(
@@ -1242,7 +1242,7 @@ public final class SimpleToadletServer
 
           @Override
           public Integer get() {
-            return HTMLFilter.getMetaRefreshRedirectMinInterval();
+            return HTMLFilterPolicy.getMetaRefreshRedirectMinInterval();
           }
 
           @Override
@@ -1250,11 +1250,11 @@ public final class SimpleToadletServer
             if (val < -1)
               throw new InvalidConfigValueException(
                   "-1 = disabled, 0+ = set a minimum interval"); // localization pending
-            HTMLFilter.setMetaRefreshRedirectMinInterval(val);
+            HTMLFilterPolicy.setMetaRefreshRedirectMinInterval(val);
           }
         },
         false);
-    HTMLFilter.setMetaRefreshRedirectMinInterval(
+    HTMLFilterPolicy.setMetaRefreshRedirectMinInterval(
         Math.max(-1, fproxyConfig.getInt("metaRefreshRedirectInterval")));
 
     fproxyConfig.register(
@@ -1270,15 +1270,15 @@ public final class SimpleToadletServer
 
           @Override
           public Boolean get() {
-            return HTMLFilter.isEmbedM3uPlayerEnabled();
+            return HTMLFilterPolicy.isEmbedM3uPlayerEnabled();
           }
 
           @Override
           public void set(Boolean val) {
-            HTMLFilter.setEmbedM3uPlayerEnabled(val);
+            HTMLFilterPolicy.setEmbedM3uPlayerEnabled(val);
           }
         });
-    HTMLFilter.setEmbedM3uPlayerEnabled(fproxyConfig.getBoolean("embedM3uPlayerInFreesites"));
+    HTMLFilterPolicy.setEmbedM3uPlayerEnabled(fproxyConfig.getBoolean("embedM3uPlayerInFreesites"));
 
     fproxyConfig.register(
         "refilterPolicy",
