@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Objects;
-import network.crypta.client.FetchContext;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
@@ -15,8 +14,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This helper isolates DDA checks, existing file handling, and extension validation so the core
  * request flow can focus on scheduling and status coordination. It is intentionally stateful to
- * carry the request identifier and {@link FetchContext} needed for error reporting and per-request
- * validation.
+ * carry the request identifier and detached fetch configuration needed for error reporting and
+ * per-request validation.
  *
  * <p>Typical usage is to construct one planner per request and call either {@link
  * #forGlobalRequest(ClientGet.ReturnType, File, boolean, TransferAccessPort)} for global requests
@@ -47,7 +46,7 @@ final class ClientGetReturnPlanner {
   private final boolean global;
 
   /** Fetch settings supplying filter decisions for disk return setups. */
-  private final FetchContext fetchContext;
+  private final ClientGetFetchConfig fetchConfig;
 
   /**
    * Creates a planner for a single request using the supplied identifier and fetch settings.
@@ -59,13 +58,13 @@ final class ClientGetReturnPlanner {
    *
    * @param identifier request identifier to associate with protocol errors; must be non-null.
    * @param global whether generated errors should be flagged as connection-global.
-   * @param fetchContext fetch settings used for filter decisions; must be non-null.
-   * @throws NullPointerException if {@code identifier} or {@code fetchContext} is null.
+   * @param fetchConfig fetch settings used for filter decisions; must be non-null.
+   * @throws NullPointerException if {@code identifier} or {@code fetchConfig} is null.
    */
-  ClientGetReturnPlanner(String identifier, boolean global, FetchContext fetchContext) {
+  ClientGetReturnPlanner(String identifier, boolean global, ClientGetFetchConfig fetchConfig) {
     this.identifier = Objects.requireNonNull(identifier, "identifier");
     this.global = global;
-    this.fetchContext = Objects.requireNonNull(fetchContext, "fetchContext");
+    this.fetchConfig = Objects.requireNonNull(fetchConfig, "fetchConfig");
   }
 
   /**
@@ -173,7 +172,7 @@ final class ClientGetReturnPlanner {
       mie.initCause(e);
       throw mie;
     }
-    return createDiskReturnSetup(diskFile, fetchContext.getFilterData());
+    return createDiskReturnSetup(diskFile, fetchConfig.getFilterData());
   }
 
   /**

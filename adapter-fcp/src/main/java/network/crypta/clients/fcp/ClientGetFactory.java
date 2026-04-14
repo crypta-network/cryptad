@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
-import network.crypta.client.FetchContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
@@ -11,10 +10,11 @@ import org.slf4j.LoggerFactory;
  * Builds fully configured {@link ClientGet} instances from FCP inputs.
  *
  * <p>The factory performs the deterministic wiring for GET requests: it validates identifiers,
- * assembles an appropriate {@link FetchContext}, plans return handling, and packages everything
- * into a {@link ClientGetSetup}. Callers use the resulting request object for registration and
- * execution; the factory does not start or enqueue the request itself. Because it is stateless and
- * uses only local variables, the class is thread-safe and can be called concurrently.
+ * assembles an appropriate detached fetch configuration, plans return handling, and packages
+ * everything into a {@link ClientGetSetup}. Callers use the resulting request object for
+ * registration and execution; the factory does not start or enqueue the request itself. Because it
+ * is stateless and uses only local variables, the class is thread-safe and can be called
+ * concurrently.
  *
  * <p>The factory is intentionally conservative about side effects: it only logs ignored parameters
  * (such as a legacy charset hint) and throws explicit exceptions for identifier collisions or
@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><strong>Validation</strong>: checks identifier uniqueness in the appropriate scope.
- *   <li><strong>Context setup</strong>: clones and adjusts a persistent {@link FetchContext}.
+ *   <li><strong>Context setup</strong>: clones and adjusts a persistent fetch configuration.
  *   <li><strong>Return planning</strong>: resolves disk/bucket targets and metadata buckets.
  * </ul>
  *
@@ -41,7 +41,7 @@ final class ClientGetFactory {
   /**
    * Creates a persistent, global-queue {@link ClientGet} from a validated configuration.
    *
-   * <p>The method derives a persistent {@link FetchContext} from the node core, applies the
+   * <p>The method derives persistent fetch defaults from the runtime bridge, applies the
    * configuration's limits and flags, and plans the return path according to {@link
    * ClientGet.ReturnType}. It then constructs a {@link ClientGet} instance without starting it. The
    * returned request is ready to be registered with a persistent client and subsequently started.
@@ -92,7 +92,8 @@ final class ClientGetFactory {
       FcpFetchRuntimeSupport fetchRuntimeSupport)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
-    FetchContext fctx = buildFetchContextForGlobal(fetchRuntimeSupport, requestConfig);
+    ClientGetFetchConfig fetchConfig =
+        buildFetchConfigForGlobal(fetchRuntimeSupport, requestConfig);
     if (requestConfig.charset() != null && LOG.isDebugEnabled()) {
       LOG.debug(
           "Charset parameter is ignored for ClientGet global queue requests: {}",
@@ -101,7 +102,7 @@ final class ClientGetFactory {
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForGlobal(
             requestConfig.identifier(),
-            fctx,
+            fetchConfig,
             requestConfig.returnType(),
             requestConfig.returnFilename(),
             requestConfig.filterData(),
@@ -120,7 +121,7 @@ final class ClientGetFactory {
             true);
     ClientGetSetup requestSetup =
         new ClientGetSetup(
-            fctx,
+            fetchConfig,
             returnSetup,
             requestConfig.returnType(),
             requestConfig.binaryBlob(),
@@ -165,12 +166,12 @@ final class ClientGetFactory {
     if (message.persistence == ClientRequest.Persistence.CONNECTION) {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
-    FetchContext fctx = buildFetchContextForMessage(fetchRuntimeSupport, message);
+    ClientGetFetchConfig fetchConfig = buildFetchConfigForMessage(fetchRuntimeSupport, message);
     ClientGetReturnPlanner.ReturnSetup returnSetup =
         ClientGetGetterFactory.planReturnForMessage(
             message.identifier,
             message.global,
-            fctx,
+            fetchConfig,
             message,
             fetchRuntimeSupport.transferAccess(),
             handler);
@@ -178,7 +179,7 @@ final class ClientGetFactory {
     try {
       ClientGetSetup requestSetup =
           new ClientGetSetup(
-              fctx,
+              fetchConfig,
               returnSetup,
               message.returnType,
               message.binaryBlob,
@@ -227,7 +228,7 @@ final class ClientGetFactory {
   }
 
   /**
-   * Builds a {@link FetchContext} for global-queue requests using default persistent settings.
+   * Builds detached fetch configuration for global-queue requests using persistent defaults.
    *
    * <p>The context is cloned from the node core's persistent template and then adjusted with the
    * configuration's limits, datastore flags, and filtering preferences. The returned context is
@@ -236,24 +237,24 @@ final class ClientGetFactory {
    * @param fetchRuntimeSupport fetch runtime support providing the default persistent fetch
    *     context.
    * @param requestConfig configuration containing datastore flags and retry limits.
-   * @return configured fetch context instance tailored for this request.
+   * @return configured detached fetch configuration tailored for this request.
    */
-  private static FetchContext buildFetchContextForGlobal(
+  private static ClientGetFetchConfig buildFetchConfigForGlobal(
       FcpFetchRuntimeSupport fetchRuntimeSupport, ClientGetGlobalRequestConfig requestConfig) {
-    FetchContext fctx = fetchRuntimeSupport.defaultPersistentFetchContext();
-    fctx.setLocalRequestOnly(requestConfig.dsOnly());
-    fctx.setIgnoreStore(requestConfig.ignoreDS());
-    fctx.setMaxNonSplitfileRetries(requestConfig.maxNonSplitfileRetries());
-    fctx.setMaxSplitfileBlockRetries(requestConfig.maxSplitfileRetries());
-    fctx.setFilterData(requestConfig.filterData());
-    fctx.setMaxOutputLength(requestConfig.maxOutputLength());
-    fctx.setMaxTempLength(requestConfig.maxOutputLength());
-    fctx.setCanWriteClientCache(requestConfig.writeToClientCache());
-    return fctx;
+    ClientGetFetchConfig fetchConfig = fetchRuntimeSupport.defaultPersistentFetchConfig();
+    fetchConfig.setLocalRequestOnly(requestConfig.dsOnly());
+    fetchConfig.setIgnoreStore(requestConfig.ignoreDS());
+    fetchConfig.setMaxNonSplitfileRetries(requestConfig.maxNonSplitfileRetries());
+    fetchConfig.setMaxSplitfileBlockRetries(requestConfig.maxSplitfileRetries());
+    fetchConfig.setFilterData(requestConfig.filterData());
+    fetchConfig.setMaxOutputLength(requestConfig.maxOutputLength());
+    fetchConfig.setMaxTempLength(requestConfig.maxOutputLength());
+    fetchConfig.setCanWriteClientCache(requestConfig.writeToClientCache());
+    return fetchConfig;
   }
 
   /**
-   * Builds a {@link FetchContext} for message-driven requests with per-message overrides.
+   * Builds detached fetch configuration for message-driven requests with per-message overrides.
    *
    * <p>The context starts from the persistent defaults and is then updated with message-specific
    * retry limits, size limits, allowed MIME types, and USK date hint behavior. The returned context
@@ -262,22 +263,22 @@ final class ClientGetFactory {
    * @param fetchRuntimeSupport fetch runtime support providing the default persistent fetch
    *     context.
    * @param message the parsed message supplying overrides and allowed MIME type hints.
-   * @return configured fetch context instance tailored for the message.
+   * @return configured detached fetch configuration tailored for the message.
    */
-  private static FetchContext buildFetchContextForMessage(
+  private static ClientGetFetchConfig buildFetchConfigForMessage(
       FcpFetchRuntimeSupport fetchRuntimeSupport, ClientGetMessage message) {
-    FetchContext fctx = fetchRuntimeSupport.defaultPersistentFetchContext();
-    fctx.setLocalRequestOnly(message.dsOnly);
-    fctx.setIgnoreStore(message.ignoreDS);
-    fctx.setMaxNonSplitfileRetries(message.maxRetries);
-    fctx.setMaxSplitfileBlockRetries(message.maxRetries);
-    fctx.setMaxOutputLength(message.maxSize);
-    fctx.setMaxTempLength(message.maxTempSize);
-    fctx.setCanWriteClientCache(message.shouldWriteToClientCache());
-    fctx.setFilterData(message.filterData);
-    fctx.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
-    ClientGetGetterFactory.applyAllowedMimeTypes(fctx, message.allowedMIMETypes);
-    return fctx;
+    ClientGetFetchConfig fetchConfig = fetchRuntimeSupport.defaultPersistentFetchConfig();
+    fetchConfig.setLocalRequestOnly(message.dsOnly);
+    fetchConfig.setIgnoreStore(message.ignoreDS);
+    fetchConfig.setMaxNonSplitfileRetries(message.maxRetries);
+    fetchConfig.setMaxSplitfileBlockRetries(message.maxRetries);
+    fetchConfig.setMaxOutputLength(message.maxSize);
+    fetchConfig.setMaxTempLength(message.maxTempSize);
+    fetchConfig.setCanWriteClientCache(message.shouldWriteToClientCache());
+    fetchConfig.setFilterData(message.filterData);
+    fetchConfig.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
+    ClientGetGetterFactory.applyAllowedMimeTypes(fetchConfig, message.allowedMIMETypes);
+    return fetchConfig;
   }
 
   /**

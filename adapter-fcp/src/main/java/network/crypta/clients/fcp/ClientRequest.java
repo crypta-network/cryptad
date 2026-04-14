@@ -1150,6 +1150,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    *
    * @param dis input stream positioned at the start of a client-detail record
    * @param reqID identifier describing the request type and queue used during serialization
+   * @param fetchRuntimeSupport fetch runtime support used to rebuild detached GET execution state
    * @param context client context used to create any dependent objects during restart
    * @param checker checksum helper responsible for validating the integrity of the serialized data
    * @return reconstructed request instance, or {@code null} when the type is not supported here
@@ -1159,10 +1160,14 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * @throws ResumeFailedException if the request cannot be reattached to the runtime environment
    */
   public static ClientRequest restartFrom(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis,
+      RequestIdentifier reqID,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
+      ClientContext context,
+      ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
     return reqID.type == GET
-        ? ClientGetPersistenceCodec.restartFrom(dis, reqID, context, checker)
+        ? ClientGetPersistenceCodec.restartFrom(dis, reqID, fetchRuntimeSupport, context, checker)
         : null;
   }
 

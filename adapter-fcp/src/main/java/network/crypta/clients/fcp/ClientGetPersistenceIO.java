@@ -2,13 +2,9 @@ package network.crypta.clients.fcp;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import network.crypta.client.FetchContext;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
@@ -35,7 +31,7 @@ final class ClientGetPersistenceIO {
    * Creates a checksummed reader that wraps the supplied stream.
    *
    * @param dis input stream positioned at the checksummed payload.
-   * @param context client context providing a temporary bucket factory.
+   * @param fetchRuntimeSupport fetch runtime support providing temporary bucket services.
    * @param checker checksum helper used to verify the payload.
    * @param maxLength maximum length accepted for the checksummed payload.
    * @return a {@link DataInputStream} that validates checksums on close.
@@ -43,16 +39,12 @@ final class ClientGetPersistenceIO {
    * @throws StorageFormatException if checksum verification fails.
    */
   static DataInputStream openChecksummed(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker, long maxLength)
+      DataInputStream dis,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
+      ChecksumChecker checker,
+      long maxLength)
       throws IOException, StorageFormatException {
-    try {
-      return new DataInputStream(
-          checker.checksumReaderWithLength(dis, context.tempBucketFactory, maxLength));
-    } catch (ChecksumFailedException e) {
-      StorageFormatException storageFormatException = new StorageFormatException("Checksum failed");
-      storageFormatException.initCause(e);
-      throw storageFormatException;
-    }
+    return fetchRuntimeSupport.openChecksummed(dis, checker, maxLength);
   }
 
   private static boolean isChecksumFailure(StorageFormatException exception) {
@@ -60,18 +52,18 @@ final class ClientGetPersistenceIO {
   }
 
   /**
-   * Restores the {@link FetchContext}, or returns defaults when recovery fails.
+   * Restores detached fetch configuration or returns defaults when recovery fails.
    *
    * @param dis input stream positioned at the fetch context data.
-   * @param context client context providing default fetch settings.
+   * @param fetchRuntimeSupport fetch runtime support providing default fetch settings.
    * @param checker checksum helper used to verify the serialized block.
-   * @return restored {@link FetchContext} or the default when recovery fails.
+   * @return restored detached fetch configuration or the default when recovery fails.
    */
-  static FetchContext readFetchContextOrDefault(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker) {
+  static ClientGetFetchConfig readFetchConfigOrDefault(
+      DataInputStream dis, FcpFetchRuntimeSupport fetchRuntimeSupport, ChecksumChecker checker) {
     try (DataInputStream inner =
-        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
-      return new FetchContext(inner);
+        openChecksummed(dis, fetchRuntimeSupport, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
+      return fetchRuntimeSupport.decodeFetchConfig(inner);
     } catch (IOException e) {
       LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
     } catch (StorageFormatException e) {
@@ -81,14 +73,14 @@ final class ClientGetPersistenceIO {
         LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
       }
     }
-    return context.getDefaultPersistentFetchContext();
+    return fetchRuntimeSupport.defaultPersistentFetchConfig();
   }
 
   /**
    * Restores a bucket from a checksummed payload.
    *
    * @param dis input stream positioned at the bucket payload.
-   * @param context client context owning persistent bucket services.
+   * @param fetchRuntimeSupport fetch runtime support owning persistent bucket services.
    * @param checker checksum helper used to verify the bucket metadata.
    * @return restored bucket from the checksummed payload.
    * @throws IOException if the underlying stream cannot be read.
@@ -96,15 +88,11 @@ final class ClientGetPersistenceIO {
    * @throws ResumeFailedException if bucket restoration fails.
    */
   static Bucket restoreBucketFromChecksummedBlock(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis, FcpFetchRuntimeSupport fetchRuntimeSupport, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     try (DataInputStream inner =
-        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
-      return BucketTools.restoreFrom(
-          inner,
-          context.persistentFG,
-          context.getPersistentFileTracker(),
-          context.getPersistentMasterSecret());
+        openChecksummed(dis, fetchRuntimeSupport, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
+      return fetchRuntimeSupport.restorePersistentBucket(inner);
     }
   }
 
@@ -112,7 +100,7 @@ final class ClientGetPersistenceIO {
    * Restores an initial metadata bucket for the request, if present.
    *
    * @param dis input stream positioned at the metadata bucket marker.
-   * @param context client context owning persistent bucket services.
+   * @param fetchRuntimeSupport fetch runtime support owning persistent bucket services.
    * @param checker checksum helper used to verify the bucket metadata.
    * @return restored bucket or {@code null} when no metadata marker was set.
    * @throws IOException if the underlying stream cannot be read.
@@ -120,13 +108,13 @@ final class ClientGetPersistenceIO {
    * @throws ResumeFailedException if bucket restoration fails.
    */
   static Bucket readInitialMetadata(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis, FcpFetchRuntimeSupport fetchRuntimeSupport, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     if (!dis.readBoolean()) {
       return null;
     }
     try {
-      return restoreBucketFromChecksummedBlock(dis, context, checker);
+      return restoreBucketFromChecksummedBlock(dis, fetchRuntimeSupport, checker);
     } catch (StorageFormatException e) {
       if (isChecksumFailure(e)) {
         StorageFormatException storageFormatException =
@@ -143,16 +131,16 @@ final class ClientGetPersistenceIO {
    * Restores a completed direct bucket from persistent storage.
    *
    * @param dis input stream positioned at the bucket payload.
-   * @param context client context owning persistent bucket services.
+   * @param fetchRuntimeSupport fetch runtime support owning persistent bucket services.
    * @param checker checksum helper used to verify the bucket metadata.
    * @return restored bucket, or {@code null} when restoration failed.
    * @throws ResumeFailedException if bucket restoration fails.
    */
   static Bucket restoreCompletedDirectBucketOrNull(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis, FcpFetchRuntimeSupport fetchRuntimeSupport, ChecksumChecker checker)
       throws ResumeFailedException {
     try {
-      return restoreBucketFromChecksummedBlock(dis, context, checker);
+      return restoreBucketFromChecksummedBlock(dis, fetchRuntimeSupport, checker);
     } catch (IOException | StorageFormatException e) {
       LOG.error(COMPLETED_DOWNLOAD_RESTORE_FAILURE, e);
       return null;
@@ -166,7 +154,7 @@ final class ClientGetPersistenceIO {
    * @param reqID request identifier used to populate the failure message.
    * @param foundDataLength recorded data length for the request.
    * @param foundDataMimeType recorded MIME type for the request.
-   * @param context client context providing checksum helpers.
+   * @param fetchRuntimeSupport fetch runtime support providing checksum helpers.
    * @param checker checksum helper used to verify the payload.
    * @return restored {@link GetFailedMessage} or {@code null} when recovery fails.
    */
@@ -175,10 +163,10 @@ final class ClientGetPersistenceIO {
       RequestIdentifier reqID,
       long foundDataLength,
       String foundDataMimeType,
-      ClientContext context,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
       ChecksumChecker checker) {
     try (DataInputStream inner =
-        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
+        openChecksummed(dis, fetchRuntimeSupport, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
       return new GetFailedMessage(inner, reqID, foundDataLength, foundDataMimeType);
     } catch (IOException | StorageFormatException e) {
       LOG.error("Unable to restore reason for failure, restarting request", e);
@@ -190,22 +178,22 @@ final class ClientGetPersistenceIO {
    * Restores in-progress getter state along with transient progress fields.
    *
    * @param dis input stream positioned at the progress data block.
-   * @param context client context used to resume the getter.
+   * @param fetchRuntimeSupport fetch runtime support used to resume the execution.
    * @param checker checksum helper used to validate the block.
-   * @param inProgressGetter getter instance to resume.
-   * @param request request instance for restoring transient fields.
+   * @param execution execution handle to resume.
+   * @param request the request instance for restoring transient fields.
    * @throws StorageFormatException if the serialized state is invalid.
    */
   static void restoreInProgressState(
       DataInputStream dis,
-      ClientContext context,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
       ChecksumChecker checker,
-      ClientGetter inProgressGetter,
+      ClientGetExecution execution,
       ClientGet request)
       throws StorageFormatException {
     try (DataInputStream inner =
-        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
-      if (inProgressGetter.resumeFromTrivialProgress(inner, context)) {
+        openChecksummed(dis, fetchRuntimeSupport, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
+      if (execution.resumeFromTrivialProgress(inner)) {
         ClientGetPersistenceCodec.readTransientProgressFields(request, inner);
       }
     } catch (IOException e) {

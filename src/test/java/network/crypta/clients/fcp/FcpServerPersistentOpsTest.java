@@ -6,7 +6,6 @@ import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
@@ -641,48 +640,51 @@ class FcpServerPersistentOpsTest {
   }
 
   private FcpServerPersistentOps newOps(PersistentRequestRoot root) {
-    Supplier<ClientContext> clientContextSupplier = core::getClientContext;
-    BooleanSupplier persistenceDisabledSupplier = core::killedDatabase;
-    Supplier<BucketFactory> tempBucketFactorySupplier = core::getTempBucketFactory;
-    Supplier<PersistentTempBucketFactory> persistentTempBucketFactorySupplier =
-        core::getPersistentTempBucketFactory;
-    Supplier<RandomSource> randomSourceSupplier = core::getRandom;
-    FcpServerRuntimeSupport runtimeSupport =
-        new FcpServerRuntimeSupport() {
-          @Override
-          public ClientContext clientContext() {
-            return clientContextSupplier.get();
-          }
-
-          @Override
-          public boolean persistenceDisabled() {
-            return persistenceDisabledSupplier.getAsBoolean();
-          }
-
-          @Override
-          public BucketFactory tempBucketFactory() {
-            return tempBucketFactorySupplier.get();
-          }
-
-          @Override
-          public PersistentTempBucketFactory persistentTempBucketFactory() {
-            return persistentTempBucketFactorySupplier.get();
-          }
-
-          @Override
-          public void fillSecureRandom(byte[] bytes) {
-            randomSourceSupplier.get().nextBytes(bytes);
-          }
-        };
+    FcpServerRuntimeSupport runtimeSupport = newRuntimeSupport();
     lenient().when(server.runtime()).thenReturn(runtimePorts);
     lenient().when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     lenient().when(server.fetchRuntimeSupport()).thenReturn(fetchRuntimeSupport);
     lenient().when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     lenient().when(fetchRuntimeSupport.transferAccess()).thenReturn(transferAccess);
     lenient()
-        .when(fetchRuntimeSupport.defaultPersistentFetchContext())
-        .thenReturn(mock(FetchContext.class));
+        .when(fetchRuntimeSupport.defaultPersistentFetchConfig())
+        .thenReturn(new ClientGetFetchConfig());
     return new FcpServerPersistentOps(server, runtimeSupport, root);
+  }
+
+  private FcpServerRuntimeSupport newRuntimeSupport() {
+    Supplier<ClientContext> clientContextSupplier = core::getClientContext;
+    BooleanSupplier persistenceDisabledSupplier = core::killedDatabase;
+    Supplier<BucketFactory> tempBucketFactorySupplier = core::getTempBucketFactory;
+    Supplier<PersistentTempBucketFactory> persistentTempBucketFactorySupplier =
+        core::getPersistentTempBucketFactory;
+    Supplier<RandomSource> randomSourceSupplier = core::getRandom;
+    return new FcpServerRuntimeSupport() {
+      @Override
+      public ClientContext clientContext() {
+        return clientContextSupplier.get();
+      }
+
+      @Override
+      public boolean persistenceDisabled() {
+        return persistenceDisabledSupplier.getAsBoolean();
+      }
+
+      @Override
+      public BucketFactory tempBucketFactory() {
+        return tempBucketFactorySupplier.get();
+      }
+
+      @Override
+      public PersistentTempBucketFactory persistentTempBucketFactory() {
+        return persistentTempBucketFactorySupplier.get();
+      }
+
+      @Override
+      public void fillSecureRandom(byte[] bytes) {
+        randomSourceSupplier.get().nextBytes(bytes);
+      }
+    };
   }
 
   private static void setField(Object target, String fieldName, Object value) throws Exception {

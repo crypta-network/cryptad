@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.util.Objects;
-import network.crypta.client.FetchContext;
 
 /**
  * Builds persistent tag and status snapshot messages for {@link ClientGet}.
@@ -62,15 +61,15 @@ final class ClientGetStatusSnapshotBuilder {
             request.isRealTime(),
             request.clientToken,
             request.client.isGlobalQueue);
-    FetchContext fetchContext = request.fetchContextForGetter();
+    ClientGetFetchConfig fetchConfig = Objects.requireNonNull(request.fetchConfig(), "fetchConfig");
     PersistentGetDescriptor descriptor =
         new PersistentGetDescriptor(
             request.returnTypeForReplay(),
             request.targetFileForLifecycle(),
             request.started,
-            fetchContext.getMaxNonSplitfileRetries(),
+            fetchConfig.getMaxNonSplitfileRetries(),
             request.binaryBlobRequested(),
-            fetchContext.getMaxOutputLength());
+            fetchConfig.getMaxOutputLength());
     return new PersistentGet(requestParams, descriptor);
   }
 }

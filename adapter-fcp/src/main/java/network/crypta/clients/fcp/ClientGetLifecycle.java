@@ -3,8 +3,6 @@ package network.crypta.clients.fcp;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -61,11 +59,11 @@ final class ClientGetLifecycle {
    * requests, the payload length and MIME type are derived from the blob bucket.
    *
    * @param result result wrapper providing MIME metadata and the decoded data bucket.
-   * @param state client getter instance used to access BinaryBlob buckets when required.
+   * @param state execution handle used to access Binary Blob buckets when required.
    */
-  void onSuccess(FetchResult result, ClientGetter state) {
+  void onSuccess(FetchResult result, ClientGetExecution state) {
     LOG.debug("Succeeded: {}", request.identifier);
-    Bucket data = request.binaryBlobRequested() ? state.getBlobBucket() : result.asBucket();
+    Bucket data = request.binaryBlobRequested() ? state.blobBucket() : result.asBucket();
     ClientGetState requestState = request.state();
     synchronized (request.persistenceLock()) {
       if (requestState.hasSucceeded()) {
@@ -108,17 +106,11 @@ final class ClientGetLifecycle {
    * ResumeFailedException} to signal that the request should restart instead of trusting corrupted
    * state.
    *
-   * @param context client context used for migration validation callbacks.
    * @param completionTime epoch milliseconds to record as the completion timestamp.
    * @param data bucket holding the payload when {@link ClientGet.ReturnType#DIRECT} applies.
    * @throws ResumeFailedException when stored output does not match the recorded metadata.
-   * @throws NullPointerException when {@code context} is {@code null}.
    */
-  void setSuccessForMigration(ClientContext context, long completionTime, Bucket data)
-      throws ResumeFailedException {
-    if (context == null) {
-      throw new NullPointerException("context");
-    }
+  void setSuccessForMigration(long completionTime, Bucket data) throws ResumeFailedException {
     ClientGetState requestState = request.state();
     synchronized (request.persistenceLock()) {
       requestState.setSucceeded(true);
@@ -126,15 +118,19 @@ final class ClientGetLifecycle {
       request.finished = true;
       request.completionTime = completionTime;
       ClientGet.ReturnType returnType = request.returnTypeForReplay();
+      if (returnType == null) {
+        throw new ResumeFailedException("Success but return type is missing");
+      }
+      java.io.File targetFile = request.targetFileForLifecycle();
       switch (returnType) {
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.NONE -> {
           // Nothing to validate.
         }
         case ClientGet.ReturnType type
             when type == ClientGet.ReturnType.DISK
-                && (!request.targetFileForLifecycle().exists()
-                    || request.targetFileForLifecycle().length()
-                        != requestState.getFoundDataLength()) ->
+                && (targetFile == null
+                    || !targetFile.exists()
+                    || targetFile.length() != requestState.getFoundDataLength()) ->
             throw new ResumeFailedException("Success but target file doesn't exist or isn't valid");
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.DISK -> {
           // Validation already passed.

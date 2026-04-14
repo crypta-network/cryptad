@@ -1821,6 +1821,21 @@ class LocalProcessAppHostTest {
     assertTrue(host.listRunning().isEmpty());
   }
 
+  @Test
+  void preserveRunningState_whenTrackedProcessExitsDuringRefresh_expectEntryRemovedWithoutFailure()
+      throws ReflectiveOperationException {
+    LocalProcessAppHost host = host();
+    RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
+    injectRunningProcess(host, RUNNER_APP_ID, snapshot, new FadingProcess(snapshot.pid(), 1));
+
+    Object runningProcess = runnerProcessEntry(host);
+    boolean preserved = invokePreserveRunnerState(host, runningProcess);
+
+    assertFalse(preserved);
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    assertTrue(host.listRunning().isEmpty());
+  }
+
   private LocalProcessAppHost host() {
     return host(Duration.ofSeconds(1));
   }

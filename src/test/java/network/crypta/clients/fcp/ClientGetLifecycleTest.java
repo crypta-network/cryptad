@@ -6,8 +6,6 @@ import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.support.api.Bucket;
@@ -38,7 +36,7 @@ class ClientGetLifecycleTest {
     Bucket bucket = Mockito.mock(Bucket.class);
     when(bucket.size()).thenReturn(123L);
     FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), bucket);
-    ClientGetter getter = Mockito.mock(ClientGetter.class);
+    ClientGetExecution execution = Mockito.mock(ClientGetExecution.class);
     PersistentRequestClient client = Mockito.mock(PersistentRequestClient.class);
     setField(request, "client", client);
     doNothing().when(request).trySendDataFoundOrGetFailed(null, null);
@@ -47,7 +45,7 @@ class ClientGetLifecycleTest {
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act
-    lifecycle.onSuccess(result, getter);
+    lifecycle.onSuccess(result, execution);
 
     // Assert
     assertTrue(getBooleanField(request, "started"));
@@ -70,33 +68,20 @@ class ClientGetLifecycleTest {
     Bucket blobBucket = Mockito.mock(Bucket.class);
     when(blobBucket.size()).thenReturn(50L);
     FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), resultBucket);
-    ClientGetter getter = Mockito.mock(ClientGetter.class);
-    when(getter.getBlobBucket()).thenReturn(blobBucket);
+    ClientGetExecution execution = Mockito.mock(ClientGetExecution.class);
+    when(execution.blobBucket()).thenReturn(blobBucket);
     doNothing().when(request).trySendDataFoundOrGetFailed(null, null);
     doNothing().when(request).trySendAllDataMessage(null, null);
     doNothing().when(request).finish();
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act
-    lifecycle.onSuccess(result, getter);
+    lifecycle.onSuccess(result, execution);
 
     // Assert
     assertEquals(50L, request.state().getFoundDataLength());
     assertEquals(
         ClientGetGetterFactory.binaryBlobMimeType(), request.state().getFoundDataMimeType());
-  }
-
-  @Test
-  void setSuccessForMigration_whenContextNull_expectNullPointerException() {
-    // Arrange
-    ClientGet request = new ClientGet();
-    ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
-    //noinspection resource
-    Bucket bucket = Mockito.mock(Bucket.class);
-
-    // Act + Assert
-    assertThrows(
-        NullPointerException.class, () -> lifecycle.setSuccessForMigration(null, 1L, bucket));
   }
 
   @Test
@@ -108,12 +93,10 @@ class ClientGetLifecycleTest {
     when(bucket.size()).thenReturn(7L);
     setField(request, "returnType", ReturnType.DIRECT);
     request.state().setFoundDataLength(5L);
-    ClientContext context = Mockito.mock(ClientContext.class);
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act + Assert
-    assertThrows(
-        ResumeFailedException.class, () -> lifecycle.setSuccessForMigration(context, 10L, bucket));
+    assertThrows(ResumeFailedException.class, () -> lifecycle.setSuccessForMigration(10L, bucket));
     assertEquals(bucket, request.state().getReturnBucketDirect());
   }
 
@@ -124,12 +107,10 @@ class ClientGetLifecycleTest {
     //noinspection resource
     Bucket bucket = Mockito.mock(Bucket.class);
     setField(request, "returnType", ReturnType.CHUNKED);
-    ClientContext context = Mockito.mock(ClientContext.class);
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act + Assert
-    assertThrows(
-        ResumeFailedException.class, () -> lifecycle.setSuccessForMigration(context, 10L, bucket));
+    assertThrows(ResumeFailedException.class, () -> lifecycle.setSuccessForMigration(10L, bucket));
   }
 
   @Test

@@ -45,6 +45,7 @@ public class PersistentRequestRoot implements PersistentRequestCoordinator {
 
   final PersistentRequestClient globalForeverClient;
   private final Map<String, PersistentRequestClient> clients;
+  private transient FcpFetchRuntimeSupport fetchRuntimeSupport;
 
   // Legacy threshold callback removed.
 
@@ -214,6 +215,14 @@ public class PersistentRequestRoot implements PersistentRequestCoordinator {
    */
   public PersistentRequestClient getGlobalForeverClient() {
     return globalForeverClient;
+  }
+
+  void setFetchRuntimeSupport(FcpFetchRuntimeSupport fetchRuntimeSupport) {
+    this.fetchRuntimeSupport = fetchRuntimeSupport;
+  }
+
+  FcpFetchRuntimeSupport fetchRuntimeSupport() {
+    return fetchRuntimeSupport;
   }
 
   private static ClientRequest requireClientRequest(PersistentRequestHandle request) {

@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
@@ -36,7 +35,6 @@ class ClientGetReturnPlannerTest {
   private static final String PAYLOAD_BIN = "payload.bin";
   private static final String REQUEST_ID = "id";
 
-  @Mock private FetchContext fetchContext;
   @Mock private TransferAccessPort transferAccess;
   @Mock private FCPConnectionHandler handler;
   @Mock private DdaAccessController ddaAccessController;
@@ -45,8 +43,10 @@ class ClientGetReturnPlannerTest {
 
   @Test
   void constructor_whenIdentifierNull_throwsNullPointerException() {
+    ClientGetFetchConfig fetchConfig = newFetchConfig(false);
+
     assertThrows(
-        NullPointerException.class, () -> new ClientGetReturnPlanner(null, false, fetchContext));
+        NullPointerException.class, () -> new ClientGetReturnPlanner(null, false, fetchConfig));
   }
 
   @Test
@@ -57,7 +57,8 @@ class ClientGetReturnPlannerTest {
 
   @Test
   void forGlobalRequest_whenReturnTypeNotDisk_returnsEmptySetup() throws Exception {
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
 
     ClientGetReturnPlanner.ReturnSetup setup =
         planner.forGlobalRequest(ReturnType.DIRECT, null, false, transferAccess);
@@ -71,7 +72,8 @@ class ClientGetReturnPlannerTest {
 
   @Test
   void forGlobalRequest_whenDiskNotAllowed_throwsNotAllowedException() {
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
     File target = tempDir.resolve(PAYLOAD_BIN).toFile();
     when(transferAccess.allowDownloadTo(target)).thenReturn(false);
 
@@ -84,7 +86,8 @@ class ClientGetReturnPlannerTest {
 
   @Test
   void forGlobalRequest_whenDiskAndZeroLengthFile_deletesAndReturnsSetup() throws Exception {
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
     File target = tempDir.resolve(PAYLOAD_BIN).toFile();
     assertTrue(target.createNewFile());
     when(transferAccess.allowDownloadTo(target)).thenReturn(true);
@@ -101,7 +104,8 @@ class ClientGetReturnPlannerTest {
 
   @Test
   void forGlobalRequest_whenDiskAndExistingNonZeroFile_throwsIOException() throws Exception {
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     Files.writeString(targetPath, "data");
     File target = targetPath.toFile();
@@ -119,7 +123,8 @@ class ClientGetReturnPlannerTest {
   @Test
   void forMessage_whenReturnTypeNotDisk_returnsEmptySetup() throws Exception {
     ClientGetMessage message = buildMessage(ReturnType.NONE, null);
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
 
     ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, transferAccess, handler);
 
@@ -134,7 +139,8 @@ class ClientGetReturnPlannerTest {
   void forMessage_whenDownloadNotAllowed_throwsMessageInvalidException() throws Exception {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, true, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, true, newFetchConfig(false));
     when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(false);
 
     MessageInvalidException thrown =
@@ -152,7 +158,8 @@ class ClientGetReturnPlannerTest {
   void forMessage_whenDdaDenied_throwsMessageInvalidException() throws Exception {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
     when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(false);
@@ -171,7 +178,8 @@ class ClientGetReturnPlannerTest {
     Path targetPath = tempDir.resolve(PAYLOAD_BIN);
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
     Files.writeString(targetPath, "data");
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(false));
     when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(true);
@@ -191,11 +199,11 @@ class ClientGetReturnPlannerTest {
   void forMessage_whenAllowedAndFilterDataTrue_returnsSetupWithExtension() throws Exception {
     Path targetPath = tempDir.resolve("payload.txt");
     ClientGetMessage message = buildMessage(ReturnType.DISK, targetPath.toFile());
-    ClientGetReturnPlanner planner = new ClientGetReturnPlanner(REQUEST_ID, false, fetchContext);
+    ClientGetReturnPlanner planner =
+        new ClientGetReturnPlanner(REQUEST_ID, false, newFetchConfig(true));
     when(transferAccess.allowDownloadTo(targetPath.toFile())).thenReturn(true);
     when(handler.ddaAccessController()).thenReturn(ddaAccessController);
     when(ddaAccessController.allowDDAFrom(targetPath.toFile(), true)).thenReturn(true);
-    when(fetchContext.getFilterData()).thenReturn(true);
 
     ClientGetReturnPlanner.ReturnSetup setup = planner.forMessage(message, transferAccess, handler);
 
@@ -203,6 +211,12 @@ class ClientGetReturnPlannerTest {
         () -> assertInstanceOf(FileBucket.class, setup.bucket()),
         () -> assertEquals(targetPath.toFile(), setup.targetFile()),
         () -> assertEquals("txt", setup.extension()));
+  }
+
+  private static ClientGetFetchConfig newFetchConfig(boolean filterData) {
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setFilterData(filterData);
+    return fetchConfig;
   }
 
   private ClientGetMessage buildMessage(ReturnType type, File diskFile)

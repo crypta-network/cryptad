@@ -5,10 +5,8 @@ import java.io.IOException;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.util.Arrays;
-import network.crypta.client.FetchContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.events.ClientEventProducer;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -22,17 +20,20 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,8 +43,8 @@ import static org.mockito.Mockito.when;
 class ClientGetFactoryTest {
 
   @Mock private FcpFetchRuntimeSupport fetchRuntimeSupport;
-  @Mock private FetchContext fetchContext;
-  @Mock private ClientEventProducer eventProducer;
+  @Mock private ClientGetExecution execution;
+  @Mock private ClientRequester requester;
   @Mock private TransferAccessPort transferAccess;
 
   @Test
@@ -80,9 +81,9 @@ class ClientGetFactoryTest {
 
   @ParameterizedTest
   @CsvSource({"true,false", "false,true"})
-  void fromGlobal_whenValidConfig_buildsRequestAndAppliesFetchContext(
+  void fromGlobal_whenValidConfig_buildsRequestAndAppliesFetchConfig(
       boolean persistRebootOnly, boolean expectedForever) throws Exception {
-    configureFetchRuntimeSupportWithFetchContext();
+    configureFetchRuntimeSupportDefaults();
     PersistentRequestClient client =
         newPersistentClient(persistRebootOnly ? Persistence.REBOOT : Persistence.FOREVER);
     FreenetURI uri = new FreenetURI("KSK@global-ok-" + persistRebootOnly);
@@ -107,35 +108,22 @@ class ClientGetFactoryTest {
 
     ClientGet request = ClientGetFactory.fromGlobal(client, uri, config, fetchRuntimeSupport);
 
-    assertNotNull(request);
-    assertEquals(config.identifier(), request.getIdentifier());
-    assertSame(uri, request.getURI());
-    assertEquals(config.prioClass(), request.getPriority());
-    assertTrue(request.isPersistent());
-    assertEquals(expectedForever, request.isPersistentForever());
-    assertTrue(request.isDirect());
-    assertFalse(request.isToDisk());
-
-    RequestClient lowLevelClient = request.getRequestClient();
-    assertEquals(expectedForever, lowLevelClient.persistent());
-    assertTrue(lowLevelClient.realTimeFlag());
-
-    verify(fetchContext).setLocalRequestOnly(config.dsOnly());
-    verify(fetchContext).setIgnoreStore(config.ignoreDS());
-    verify(fetchContext).setMaxNonSplitfileRetries(config.maxNonSplitfileRetries());
-    verify(fetchContext).setMaxSplitfileBlockRetries(config.maxSplitfileRetries());
-    verify(fetchContext).setFilterData(config.filterData());
-    verify(fetchContext).setMaxOutputLength(config.maxOutputLength());
-    verify(fetchContext).setMaxTempLength(config.maxOutputLength());
-    verify(fetchContext).setCanWriteClientCache(config.writeToClientCache());
-    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
-    verify(fetchRuntimeSupport).transferAccess();
-    verify(eventProducer).addEventListener(any(ClientGetEventHandling.class));
+    checkGlobalRequestState(request, config, uri, expectedForever);
+    ClientGetFetchConfig fetchConfig = fetchConfigFrom(request);
+    checkGlobalFetchConfig(fetchConfig, config);
+    checkFetchRuntimeSupportInteractions();
+    checkExecutionSpecShape(
+        executionSpecFromRuntimeSupport(),
+        request,
+        uri,
+        config.prioClass(),
+        fetchConfig,
+        expectedForever);
   }
 
   @Test
   void fromGlobal_whenUsingLegacyPublicConfigAlias_buildsRequest() throws Exception {
-    configureFetchRuntimeSupportWithFetchContext();
+    configureFetchRuntimeSupportDefaults();
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     FreenetURI uri = new FreenetURI("KSK@legacy-global-config");
     ClientGet.GlobalRequestConfig config =
@@ -162,12 +150,13 @@ class ClientGetFactoryTest {
     assertNotNull(request);
     assertEquals(config.identifier(), request.getIdentifier());
     assertSame(uri, request.getURI());
-    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
+    verify(fetchRuntimeSupport).defaultPersistentFetchConfig();
     verify(fetchRuntimeSupport).transferAccess();
   }
 
   @Test
-  void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir) {
+  void fromGlobal_whenDiskReturnDenied_throwsNotAllowedException(@TempDir Path tempDir)
+      throws IOException {
     configureFetchRuntimeSupportDefaults();
     PersistentRequestClient client = newPersistentClient(Persistence.REBOOT);
     File target = tempDir.resolve("target.bin").toFile();
@@ -214,9 +203,9 @@ class ClientGetFactoryTest {
   }
 
   @Test
-  void fromMessage_whenValidConnectionMessage_buildsRequestAndAppliesFetchContext()
+  void fromMessage_whenValidConnectionMessage_buildsRequestAndAppliesFetchConfig()
       throws Exception {
-    configureFetchRuntimeSupportWithFetchContext();
+    configureFetchRuntimeSupportDefaults();
     SimpleFieldSet fs = baseMessageFieldSet("message-ok");
     fs.putOverwrite("DSOnly", "true");
     fs.putOverwrite("IgnoreDS", "true");
@@ -232,37 +221,47 @@ class ClientGetFactoryTest {
 
     ClientGet request = ClientGetFactory.fromMessage(null, message, fetchRuntimeSupport);
 
-    assertNotNull(request);
-    assertEquals("message-ok", request.getIdentifier());
-    assertEquals((short) 3, request.getPriority());
-    assertTrue(request.isDirect());
-    assertFalse(request.isToDisk());
-    assertFalse(request.isPersistent());
-    assertFalse(request.isPersistentForever());
-    assertFalse(request.getRequestClient().persistent());
-    assertTrue(request.getRequestClient().realTimeFlag());
+    checkMessageRequestState(request);
+    ClientGetFetchConfig fetchConfig = fetchConfigFrom(request);
+    checkMessageFetchConfig(fetchConfig);
+    checkFetchRuntimeSupportInteractions();
+    checkExecutionSpecShape(
+        executionSpecFromRuntimeSupport(),
+        request,
+        request.getURI(),
+        (short) 3,
+        fetchConfig,
+        false);
+  }
 
-    verify(fetchContext).setLocalRequestOnly(true);
-    verify(fetchContext).setIgnoreStore(true);
-    verify(fetchContext).setMaxNonSplitfileRetries(9);
-    verify(fetchContext).setMaxSplitfileBlockRetries(9);
-    verify(fetchContext).setMaxOutputLength(2048);
-    verify(fetchContext).setMaxTempLength(1024);
-    verify(fetchContext).setCanWriteClientCache(false);
-    verify(fetchContext).setFilterData(true);
-    verify(fetchContext).setIgnoreUSKDatehints(true);
-    verify(fetchRuntimeSupport).defaultPersistentFetchContext();
-    verify(fetchRuntimeSupport).transferAccess();
-    verify(eventProducer).addEventListener(any(ClientGetEventHandling.class));
+  @Test
+  void fromMessage_whenReturnTypeNone_marksExecutionSpecDiscardData() throws Exception {
+    configureFetchRuntimeSupportDefaults();
+    SimpleFieldSet fs = baseMessageFieldSet("message-none");
+    fs.putOverwrite("ReturnType", ReturnType.NONE.name());
+    ClientGetMessage message = new ClientGetMessage(fs);
+
+    ClientGet request = ClientGetFactory.fromMessage(null, message, fetchRuntimeSupport);
+
+    assertNotNull(request);
+    assertFalse(request.isDirect());
+    assertFalse(request.isToDisk());
+    ArgumentCaptor<ClientGetExecutionSpec> executionSpecCaptor =
+        ArgumentCaptor.forClass(ClientGetExecutionSpec.class);
+    verify(fetchRuntimeSupport).createExecution(executionSpecCaptor.capture());
+    ClientGetExecutionSpec executionSpec = executionSpecCaptor.getValue();
+    assertTrue(executionSpec.discardData());
+    assertNull(executionSpec.returnBucket());
+    assertFalse(executionSpec.binaryBlob());
   }
 
   @Test
   void fromMessage_whenBinaryBlobBucketCreationFails_wrapsIntoMessageInvalidException()
       throws Exception {
-    configureFetchRuntimeSupportWithFetchContext();
+    configureFetchRuntimeSupportDefaults();
     IOException ioFailure = new IOException("disk-full");
-    when(fetchContext.getMaxOutputLength()).thenReturn(333L);
-    when(fetchRuntimeSupport.allocateBinaryBlobBucket(333L, false)).thenThrow(ioFailure);
+    when(fetchRuntimeSupport.createExecution(any(ClientGetExecutionSpec.class)))
+        .thenThrow(ioFailure);
 
     SimpleFieldSet fs = baseMessageFieldSet("blob-io");
     fs.putOverwrite("BinaryBlob", "true");
@@ -278,18 +277,17 @@ class ClientGetFactoryTest {
     assertFalse(exception.global);
     assertSame(ioFailure, exception.getCause());
     assertTrue(exception.getMessage().contains("Cannot create bucket for temporary storage"));
-    //noinspection resource
-    verify(fetchRuntimeSupport).allocateBinaryBlobBucket(333L, false);
+    verify(fetchRuntimeSupport).createExecution(any(ClientGetExecutionSpec.class));
   }
 
-  private void configureFetchRuntimeSupportWithFetchContext() {
-    configureFetchRuntimeSupportDefaults();
-    when(fetchContext.getEventProducer()).thenReturn(eventProducer);
-  }
-
-  private void configureFetchRuntimeSupportDefaults() {
-    when(fetchRuntimeSupport.defaultPersistentFetchContext()).thenReturn(fetchContext);
+  private void configureFetchRuntimeSupportDefaults() throws IOException {
+    when(fetchRuntimeSupport.defaultPersistentFetchConfig()).thenReturn(new ClientGetFetchConfig());
     when(fetchRuntimeSupport.transferAccess()).thenReturn(transferAccess);
+    lenient()
+        .doReturn(execution)
+        .when(fetchRuntimeSupport)
+        .createExecution(any(ClientGetExecutionSpec.class));
+    lenient().when(execution.requester()).thenReturn(requester);
   }
 
   private FCPConnectionHandler newConnectionHandler() {
@@ -312,6 +310,101 @@ class ClientGetFactoryTest {
         .when(randomnessPort)
         .fillSecureRandom(any(byte[].class));
     return new FCPConnectionHandler(socket, server);
+  }
+
+  private void checkFetchRuntimeSupportInteractions() {
+    verify(fetchRuntimeSupport).defaultPersistentFetchConfig();
+    verify(fetchRuntimeSupport).transferAccess();
+  }
+
+  private ClientGetExecutionSpec executionSpecFromRuntimeSupport() throws IOException {
+    ArgumentCaptor<ClientGetExecutionSpec> executionSpecCaptor =
+        ArgumentCaptor.forClass(ClientGetExecutionSpec.class);
+    verify(fetchRuntimeSupport).createExecution(executionSpecCaptor.capture());
+    return executionSpecCaptor.getValue();
+  }
+
+  private static void checkGlobalRequestState(
+      ClientGet request,
+      ClientGetGlobalRequestConfig config,
+      FreenetURI uri,
+      boolean expectedForever) {
+    assertNotNull(request);
+    assertEquals(config.identifier(), request.getIdentifier());
+    assertSame(uri, request.getURI());
+    assertEquals(config.prioClass(), request.getPriority());
+    assertTrue(request.isPersistent());
+    assertEquals(expectedForever, request.isPersistentForever());
+    assertTrue(request.isDirect());
+    assertFalse(request.isToDisk());
+
+    RequestClient lowLevelClient = request.getRequestClient();
+    assertEquals(expectedForever, lowLevelClient.persistent());
+    assertTrue(lowLevelClient.realTimeFlag());
+  }
+
+  private static void checkMessageRequestState(ClientGet request) {
+    assertNotNull(request);
+    assertEquals("message-ok", request.getIdentifier());
+    assertEquals((short) 3, request.getPriority());
+    assertTrue(request.isDirect());
+    assertFalse(request.isToDisk());
+    assertFalse(request.isPersistent());
+    assertFalse(request.isPersistentForever());
+
+    RequestClient lowLevelClient = request.getRequestClient();
+    assertFalse(lowLevelClient.persistent());
+    assertTrue(lowLevelClient.realTimeFlag());
+  }
+
+  private static ClientGetFetchConfig fetchConfigFrom(ClientGet request) {
+    ClientGetFetchConfig fetchConfig = request.fetchConfig();
+    assertNotNull(fetchConfig);
+    return fetchConfig;
+  }
+
+  private static void checkGlobalFetchConfig(
+      ClientGetFetchConfig fetchConfig, ClientGetGlobalRequestConfig config) {
+    assertTrue(fetchConfig.getLocalRequestOnly());
+    assertTrue(fetchConfig.getIgnoreStore());
+    assertEquals(config.maxNonSplitfileRetries(), fetchConfig.getMaxNonSplitfileRetries());
+    assertEquals(config.maxSplitfileRetries(), fetchConfig.getMaxSplitfileBlockRetries());
+    assertTrue(fetchConfig.getFilterData());
+    assertEquals(config.maxOutputLength(), fetchConfig.getMaxOutputLength());
+    assertEquals(config.maxOutputLength(), fetchConfig.getMaxTempLength());
+    assertFalse(fetchConfig.getCanWriteClientCache());
+  }
+
+  private static void checkMessageFetchConfig(ClientGetFetchConfig fetchConfig) {
+    assertTrue(fetchConfig.getLocalRequestOnly());
+    assertTrue(fetchConfig.getIgnoreStore());
+    assertEquals(9, fetchConfig.getMaxNonSplitfileRetries());
+    assertEquals(9, fetchConfig.getMaxSplitfileBlockRetries());
+    assertEquals(2048L, fetchConfig.getMaxOutputLength());
+    assertEquals(1024L, fetchConfig.getMaxTempLength());
+    assertFalse(fetchConfig.getCanWriteClientCache());
+    assertTrue(fetchConfig.getFilterData());
+    assertTrue(fetchConfig.getIgnoreUSKDatehints());
+  }
+
+  private static void checkExecutionSpecShape(
+      ClientGetExecutionSpec executionSpec,
+      ClientGet request,
+      FreenetURI uri,
+      short priority,
+      ClientGetFetchConfig fetchConfig,
+      boolean persistenceForever) {
+    assertSame(request, executionSpec.request());
+    assertSame(uri, executionSpec.uri());
+    assertEquals(priority, executionSpec.priorityClass());
+    assertSame(fetchConfig, executionSpec.fetchConfig());
+    assertNull(executionSpec.returnBucket());
+    assertFalse(executionSpec.discardData());
+    assertFalse(executionSpec.binaryBlob());
+    assertEquals(persistenceForever, executionSpec.persistenceForever());
+    assertNull(executionSpec.initialMetadata());
+    assertNull(executionSpec.extensionCheck());
+    assertNotNull(executionSpec.eventListener());
   }
 
   private static PersistentRequestClient newPersistentClient(Persistence persistence) {

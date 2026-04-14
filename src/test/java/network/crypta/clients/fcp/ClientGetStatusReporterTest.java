@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.time.Instant;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext;
@@ -166,8 +165,8 @@ class ClientGetStatusReporterTest {
     setClientRequestField(request, "uri", new FreenetURI("KSK@status"));
     setClientGetField(request, "returnType", ClientGet.ReturnType.DIRECT);
     setClientGetField(request, "targetFile", new File("download.bin"));
-    FetchContext fetchContext = mock(FetchContext.class);
-    setClientGetField(request, "fctx", fetchContext);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    setClientGetField(request, "fetchConfig", fetchConfig);
 
     Bucket bucket = mock(Bucket.class);
     request.state().setReturnBucketDirect(bucket);
@@ -226,7 +225,7 @@ class ClientGetStatusReporterTest {
       assertEquals(123L, snapshot.foundDataLength());
       assertEquals("download.bin", snapshot.destinationFile().getPath());
       assertSame(bucket, snapshot.dataBucket());
-      assertSame(fetchContext, snapshot.fetchContext());
+      assertEquals(fetchConfig, snapshot.fetchConfig());
       assertArrayEquals(
           new InsertContext.CompatibilityMode[] {
             InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
@@ -253,7 +252,7 @@ class ClientGetStatusReporterTest {
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
     setClientGetField(request, "returnType", ClientGet.ReturnType.NONE);
-    setClientGetField(request, "fctx", mock(FetchContext.class));
+    setClientGetField(request, "fetchConfig", new ClientGetFetchConfig());
     request.state().setSucceeded(true);
     SimpleProgressMessage progress = mock(SimpleProgressMessage.class);
     when(progress.isTotalFinalized()).thenReturn(false);
