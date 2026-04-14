@@ -64,7 +64,7 @@ public final class ClientGet extends ClientRequest {
   private final ClientGetFetchConfig fetchConfig;
 
   /** Opaque live execution responsible for talking to the node core. */
-  private final transient ClientGetExecution execution;
+  private ClientGetExecution execution;
 
   /** Selected return strategy describing how result data should be surfaced to the caller. */
   private final ReturnType returnType;
@@ -745,7 +745,19 @@ public final class ClientGet extends ClientRequest {
   }
 
   FcpFetchRuntimeSupport runtimeFetchSupport() {
-    return runtimeFetchSupport;
+    if (runtimeFetchSupport != null) {
+      return runtimeFetchSupport;
+    }
+    PersistentRequestClient persistentClient = client;
+    if (persistentClient == null) {
+      return null;
+    }
+    FCPConnectionHandler connection = persistentClient.getConnection();
+    if (connection != null) {
+      return connection.getServer().fetchRuntimeSupport();
+    }
+    PersistentRequestRoot persistentRoot = persistentClient.root;
+    return persistentRoot == null ? null : persistentRoot.fetchRuntimeSupport();
   }
 
   byte[] persistedFetchConfigEncoding() {
@@ -1200,11 +1212,25 @@ public final class ClientGet extends ClientRequest {
   @Override
   protected void innerResume(network.crypta.client.async.ClientContext context)
       throws ResumeFailedException {
+    if (execution != null) {
+      execution.onResume(context);
+    } else if (!finished) {
+      execution = recreateExecutionForResume();
+      try {
+        execution.start();
+      } catch (FetchException e) {
+        throw new ResumeFailedException(e);
+      }
+    }
     if (state.getReturnBucketDirect() != null) state.getReturnBucketDirect().onResume(context);
     if (initialMetadata != null) initialMetadata.onResume(context);
     // We might already have these if we've just restored.
-    if (state.getFoundDataLength() <= 0) state.setFoundDataLength(execution.expectedSize());
-    if (state.getFoundDataMimeType() == null) state.setFoundDataMimeType(execution.expectedMime());
+    if (execution != null && state.getFoundDataLength() <= 0) {
+      state.setFoundDataLength(execution.expectedSize());
+    }
+    if (execution != null && state.getFoundDataMimeType() == null) {
+      state.setFoundDataMimeType(execution.expectedMime());
+    }
   }
 
   @Override
@@ -1236,15 +1262,31 @@ public final class ClientGet extends ClientRequest {
   }
 
   private void refreshPersistedFetchConfigEncoding() {
-    if (runtimeFetchSupport == null || fetchConfig == null) {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupport();
+    if (fetchRuntimeSupport == null || fetchConfig == null) {
       return;
     }
     try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         DataOutputStream encoded = new DataOutputStream(buffer)) {
-      runtimeFetchSupport.encodeFetchConfig(fetchConfig, encoded);
+      fetchRuntimeSupport.encodeFetchConfig(fetchConfig, encoded);
       persistedFetchConfigEncoding = buffer.toByteArray();
     } catch (IOException e) {
       LOG.warn("Unable to refresh cached fetch configuration encoding for {}", identifier, e);
+    }
+  }
+
+  private ClientGetExecution recreateExecutionForResume() throws ResumeFailedException {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupport();
+    if (fetchRuntimeSupport == null) {
+      throw new ResumeFailedException("Missing fetch runtime support for GET resume");
+    }
+    try {
+      ClientGetExecution resumedExecution =
+          makeExecutionForPersistence(fetchRuntimeSupport, makePersistenceBucket());
+      applyDiagnosticIdentifier(resumedExecution.requester());
+      return resumedExecution;
+    } catch (IOException e) {
+      throw new ResumeFailedException(e);
     }
   }
 

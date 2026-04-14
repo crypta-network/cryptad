@@ -240,6 +240,54 @@ class ClientGetPersistenceCodecTest {
     Mockito.verify(execution).writeTrivialProgress(any(DataOutputStream.class));
   }
 
+  @Test
+  void writeClientDetail_whenClientRootProvidesRuntimeSupport_encodesFetchConfig()
+      throws Exception {
+    ClientGet request = persistenceReadyRequest();
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    FcpFetchRuntimeSupport fetchRuntimeSupport = mock(FcpFetchRuntimeSupport.class);
+    byte[] encodedFetchConfig = new byte[] {9, 8, 7};
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    root.setFetchRuntimeSupport(fetchRuntimeSupport);
+    PersistentRequestClient client = root.registerForeverClient("persist-client", null);
+    setField(request, ClientRequest.class, "client", client);
+    setField(request, ClientGet.class, "execution", execution);
+    Mockito.doAnswer(
+            invocation -> {
+              DataOutputStream encoded = invocation.getArgument(1);
+              encoded.write(encodedFetchConfig);
+              return null;
+            })
+        .when(fetchRuntimeSupport)
+        .encodeFetchConfig(eq(request.fetchConfig()), any(DataOutputStream.class));
+    Mockito.when(execution.writeTrivialProgress(any(DataOutputStream.class))).thenReturn(false);
+    ChecksumChecker checker = mock(ChecksumChecker.class);
+    ByteArrayOutputStream capturedFetchConfig = new ByteArrayOutputStream();
+    AtomicInteger checksummedWriterCalls = new AtomicInteger();
+
+    try (MockedStatic<ClientGetGetterFactory> mocked =
+        Mockito.mockStatic(ClientGetGetterFactory.class)) {
+      mocked
+          .when(
+              () ->
+                  ClientGetGetterFactory.checksummedWriter(
+                      any(DataOutputStream.class), eq(checker)))
+          .thenAnswer(
+              invocation ->
+                  new DataOutputStream(
+                      checksummedWriterCalls.getAndIncrement() == 0
+                          ? capturedFetchConfig
+                          : new ByteArrayOutputStream()));
+
+      ClientGetPersistenceCodec.writeClientDetail(
+          request, new DataOutputStream(new ByteArrayOutputStream()), checker);
+    }
+
+    assertArrayEquals(encodedFetchConfig, capturedFetchConfig.toByteArray());
+    assertArrayEquals(encodedFetchConfig, request.persistedFetchConfigEncoding());
+    Mockito.verify(fetchRuntimeSupport).encodeFetchConfig(eq(request.fetchConfig()), any());
+  }
+
   private static ClientGet finishedDirectRequest() throws Exception {
     ClientGet request = new ClientGet();
     setField(request, ClientRequest.class, "identifier", "req-finished-direct");

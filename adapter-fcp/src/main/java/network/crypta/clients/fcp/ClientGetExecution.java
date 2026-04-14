@@ -3,8 +3,10 @@ package network.crypta.clients.fcp;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serializable;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 
@@ -33,7 +35,19 @@ import network.crypta.support.api.Bucket;
  *       #resumeFromTrivialProgress(DataInputStream)}.
  * </ul>
  */
-public interface ClientGetExecution {
+public interface ClientGetExecution extends Serializable {
+
+  /**
+   * Rebinds transient runtime collaborators after Java deserialization.
+   *
+   * <p>Execution handles may preserve serializable requester state across durable snapshots while
+   * still needing a fresh runtime context when the daemon comes back up. Implementations should use
+   * this callback to reconnect any transient context providers needed for later restart or trivial
+   * resume operations. The callback must not itself start network activity.
+   *
+   * @param context runtime resume token supplied by the persistent-request owner.
+   */
+  void onResume(PersistentRequestRuntimeContext context);
 
   /**
    * Returns the low-level requester currently backing this execution.

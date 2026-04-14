@@ -113,6 +113,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.fetchRuntimeSupport = dependencies.fetchRuntimeSupport();
     this.messageFetchRuntimeSupport = dependencies.messageFetchRuntimeSupport();
     this.insertRuntimeSupport = dependencies.insertRuntimeSupport();
+    dependencies.persistentRoot().setFetchRuntimeSupport(this.fetchRuntimeSupport);
     this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
     this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
     this.neverDropAMessage = config.neverDropAMessage();

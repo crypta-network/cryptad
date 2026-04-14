@@ -3,6 +3,7 @@ package network.crypta.clients.fcp.bridge;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashSet;
@@ -21,6 +22,7 @@ import network.crypta.client.async.ClientGetterOptions;
 import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistentClientCallback;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.clients.fcp.ClientGet;
@@ -221,7 +223,9 @@ record CoreFcpFetchRuntimeSupport(
   }
 
   private static final class CoreClientGetExecution implements ClientGetExecution {
-    private final Supplier<ClientContext> clientContextSupplier;
+    @Serial private static final long serialVersionUID = 1L;
+
+    private transient Supplier<ClientContext> clientContextSupplier;
     private final ClientGetter getter;
 
     private CoreClientGetExecution(
@@ -241,6 +245,11 @@ record CoreFcpFetchRuntimeSupport(
     @Override
     public ClientRequester requester() {
       return getter;
+    }
+
+    @Override
+    public void onResume(PersistentRequestRuntimeContext context) {
+      clientContextSupplier = () -> requireClientContext(context);
     }
 
     @Override
@@ -290,6 +299,12 @@ record CoreFcpFetchRuntimeSupport(
 
     private ClientContext clientContext() {
       return Objects.requireNonNull(clientContextSupplier.get());
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      clientContextSupplier = null;
     }
 
     private ClientGetterOptions createOptions(
@@ -361,6 +376,8 @@ record CoreFcpFetchRuntimeSupport(
 
   @SuppressWarnings("ClassCanBeRecord")
   private static final class CallbackSuccessExecution implements ClientGetExecution {
+    @Serial private static final long serialVersionUID = 1L;
+
     private final ClientGetter getter;
 
     private CallbackSuccessExecution(ClientGetter getter) {
@@ -370,6 +387,11 @@ record CoreFcpFetchRuntimeSupport(
     @Override
     public ClientRequester requester() {
       return getter;
+    }
+
+    @Override
+    public void onResume(PersistentRequestRuntimeContext context) {
+      // Success callback executions are ephemeral wrappers and do not hold resume-only state.
     }
 
     @Override
@@ -417,5 +439,14 @@ record CoreFcpFetchRuntimeSupport(
     public boolean resumedFetcher() {
       return getter.resumedFetcher();
     }
+  }
+
+  private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+    if (context instanceof ClientContext clientContext) {
+      return clientContext;
+    }
+    String contextType = context == null ? "null" : context.getClass().getName();
+    throw new IllegalArgumentException(
+        "FCP GET execution resume requires ClientContext but got " + contextType);
   }
 }
