@@ -3,8 +3,11 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InvalidObjectException;
+import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.net.MalformedURLException;
 import java.time.Instant;
@@ -14,14 +17,7 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.Metadata;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.ContainerInserter;
-import network.crypta.client.async.DefaultManifestPutter;
-import network.crypta.client.async.InsertRequestParams;
-import network.crypta.client.async.ManifestPutter;
-import network.crypta.client.async.ManifestPutterParams;
-import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
@@ -34,19 +30,20 @@ import org.slf4j.LoggerFactory;
  * Coordinates the lifecycle of inserting an entire directory tree into Crypta via the Freenet
  * Client Protocol (FCP).
  *
- * <p>Instances bundle files into a manifest, track sizes, and feed work to a {@link ManifestPutter}
- * so that complex directory uploads can be paused, resumed, and monitored without re-enumerating
- * the source tree. Typical callers construct this class either from a {@link ClientPutDirMessage}
- * delivered by the network stack or from an on-disk directory chosen by an operator, register it
- * with a {@code PersistentRequestClient}, and finally invoke {@link #start(ClientContext)} to
- * launch the asynchronous transfer. The object records defaults such as the preferred manifest
- * name, cryptographic overrides, persistence flavor, and file counts so that serialized requests
- * can survive node restarts.
+ * <p>Instances bundle files into a manifest, track sizes, and feed work to an opaque execution
+ * handle so that complex directory uploads can be paused, resumed, and monitored without
+ * re-enumerating the source tree. Typical callers construct this class either from a {@link
+ * ClientPutDirMessage} delivered by the network stack or from an on-disk directory chosen by an
+ * operator, register it with a {@code PersistentRequestClient}, and finally invoke {@link
+ * #start(network.crypta.client.async.ClientContext)} to launch the asynchronous transfer. The
+ * object records defaults such as the preferred manifest name, cryptographic overrides, persistence
+ * flavor, and file counts so that serialized requests can survive node restarts.
  *
  * <p>The class is not thread-safe; the owning request scheduler must serialize calls such as {@link
- * #start(ClientContext)}, {@link #restart(ClientContext, boolean)}, and {@link
- * #requestWasRemoved(ClientContext)}. Internal caches are mutable until {@link #freeData()} runs,
- * after which the manifest tree is eligible for garbage collection.
+ * #start(network.crypta.client.async.ClientContext)}, {@link
+ * #restart(network.crypta.client.async.ClientContext, boolean)}, and {@link
+ * #requestWasRemoved(network.crypta.client.async.ClientContext)}. Internal caches are mutable until
+ * {@link #freeData()} runs, after which the manifest tree is eligible for garbage collection.
  *
  * <ul>
  *   <li>Builds manifests from disk or pre-parsed maps.
@@ -55,36 +52,49 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see ClientPutBase
- * @see ManifestPutter
  */
 public final class ClientPutDir extends ClientPutBase {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutDir.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
+  private static final String LEGACY_PUTTER_TYPE = "network.crypta.client.async.ManifestPutter";
+
+  private static final String BRIDGE_RUNTIME_SUPPORT =
+      "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport";
+
+  @SuppressWarnings("UnusedVariable")
+  private static final ObjectStreamField[] serialPersistentFields =
+      new ObjectStreamField[] {
+        new ObjectStreamField("manifestElements", Map.class),
+        new ObjectStreamField("putter", requiredClass(LEGACY_PUTTER_TYPE)),
+        new ObjectStreamField("defaultName", String.class),
+        new ObjectStreamField("totalSize", long.class),
+        new ObjectStreamField("numberOfFiles", int.class),
+        new ObjectStreamField("wasDiskPut", boolean.class),
+        new ObjectStreamField("overrideSplitfileCryptoKey", byte[].class)
+      };
+
   /** Mutable tree describing pending manifest elements keyed by child name. */
   private Map<String, Object> manifestElements;
 
-  /**
-   * Worker responsible for chunking content, scheduling inserts, and reporting progress back to the
-   * client request cache.
-   */
-  private ManifestPutter putter;
+  /** Worker responsible for chunking content, scheduling inserts, and reporting progress. */
+  private ClientPutDirExecution putter;
 
   /** Default manifest name used when callers omit an explicit index document. */
-  private final String defaultName;
+  private String defaultName;
 
   /** Aggregate byte size of every file discovered when the manifest was created. */
-  private final long totalSize;
+  private long totalSize;
 
   /** Number of discrete files queued for upload, or {@code -1} when unknown. */
-  private final int numberOfFiles;
+  private int numberOfFiles;
 
   /** Flag indicating whether the manifest originated from a local disk scan. */
-  private final boolean wasDiskPut;
+  private boolean wasDiskPut;
 
   /** Optional caller-provided symmetric key overriding the generated splitfile key ladder. */
-  private final byte[] overrideSplitfileCryptoKey;
+  private byte[] overrideSplitfileCryptoKey;
 
   // Legacy threshold callback removed.
 
@@ -94,9 +104,10 @@ public final class ClientPutDir extends ClientPutBase {
    * <p>Use this constructor when the remote client already described the directory layout and
    * optional {@link ManifestElement} entries. The initializer validates the URI, copies the
    * manifest tree locally, wires persistence, throttling, and crypto settings as requested, and
-   * instantiates a {@link ManifestPutter} so file counts and total sizes are available for quick
-   * replies. Typical callers construct the object, register it with the persistent client cache,
-   * and then call {@link #start(ClientContext)} to launch asynchronous transmission toward peers.
+   * instantiates the backing {@link ClientPutDirExecution} so file counts and total sizes are
+   * available for quick replies. Typical callers construct the object, register it with the
+   * persistent client cache, and then call {@link #start(network.crypta.client.async.ClientContext)
+   * start(ClientContext)} to launch asynchronous transmission toward peers.
    *
    * <pre>{@code
    * var request = new ClientPutDir(handler, msg, msg.manifest, false, server);
@@ -109,7 +120,8 @@ public final class ClientPutDir extends ClientPutBase {
    * @param wasDiskPut true if the manifest originated from a disk enumeration on the node.
    * @param server FCP server reference providing access to the shared node client core.
    * @throws MalformedURLException if the request URI cannot be parsed or canonicalized.
-   * @throws TooManyFilesInsertException if the manifest exceeds the allowed file count budget.
+   * @throws network.crypta.client.async.TooManyFilesInsertException if the manifest exceeds the
+   *     allowed file count budget.
    */
   public ClientPutDir(
       FCPConnectionHandler handler,
@@ -117,7 +129,7 @@ public final class ClientPutDir extends ClientPutBase {
       Map<String, Object> manifestElements,
       boolean wasDiskPut,
       FCPServer server)
-      throws MalformedURLException, TooManyFilesInsertException {
+      throws MalformedURLException, network.crypta.client.async.TooManyFilesInsertException {
     FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     FcpInsertOptions options =
         new FcpInsertOptions(
@@ -142,7 +154,7 @@ public final class ClientPutDir extends ClientPutBase {
             checkEmptySSK(
                 message.uri,
                 message.targetFilename != null ? message.targetFilename : "site",
-                runtimeSupport.clientContext()),
+                runtimeSupport),
             message.identifier,
             message.verbosity,
             message.priorityClass,
@@ -168,7 +180,7 @@ public final class ClientPutDir extends ClientPutBase {
     this.manifestElements.putAll(manifestElements);
 
     this.defaultName = message.defaultName;
-    makePutter(runtimeSupport.clientContext());
+    makePutter(runtimeSupport, requestParams);
     if (putter != null) {
       numberOfFiles = putter.countFiles();
       totalSize = putter.totalSize();
@@ -189,7 +201,8 @@ public final class ClientPutDir extends ClientPutBase {
    * the request is registered with a {@link PersistentRequestClient}. The constructor immediately
    * counts files and bytes, so progress meters have deterministic totals, and it captures the
    * optional override splitfile key for callers who precompute keys. After construction, invoke
-   * {@link #start(ClientContext)} to stream blocks while leveraging the provided {@link FCPServer}.
+   * {@link #start(network.crypta.client.async.ClientContext) start(ClientContext)} to stream blocks
+   * while leveraging the provided {@link FCPServer}.
    *
    * <pre>{@code
    * var request =
@@ -223,7 +236,8 @@ public final class ClientPutDir extends ClientPutBase {
    * @param server owning server providing insert runtime support and cryptographic settings.
    * @throws FileNotFoundException if unreadable files are encountered while not permitted.
    * @throws MalformedURLException if the URI cannot be parsed, normalized, or validated.
-   * @throws TooManyFilesInsertException if the directory exceeds the configured file limit.
+   * @throws network.crypta.client.async.TooManyFilesInsertException if the directory exceeds the
+   *     configured file limit.
    */
   public ClientPutDir(
       FcpInsertRequest request,
@@ -233,11 +247,13 @@ public final class ClientPutDir extends ClientPutBase {
       boolean allowUnreadableFiles,
       boolean includeHiddenFiles,
       FCPServer server)
-      throws FileNotFoundException, MalformedURLException, TooManyFilesInsertException {
+      throws FileNotFoundException,
+          MalformedURLException,
+          network.crypta.client.async.TooManyFilesInsertException {
     FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(request.uri(), "site", runtimeSupport.clientContext()),
+            checkEmptySSK(request.uri(), "site", runtimeSupport),
             request.identifier(),
             request.verbosity(),
             request.priorityClass(),
@@ -258,7 +274,7 @@ public final class ClientPutDir extends ClientPutBase {
     // debug level captured via LOG.isDebugEnabled()
     this.manifestElements = makeDiskDirManifest(dir, "", allowUnreadableFiles, includeHiddenFiles);
     this.defaultName = defaultName;
-    makePutter(runtimeSupport.clientContext());
+    makePutter(runtimeSupport, requestParams);
     if (putter != null) {
       numberOfFiles = putter.countFiles();
       totalSize = putter.totalSize();
@@ -293,24 +309,32 @@ public final class ClientPutDir extends ClientPutBase {
    * Writes the minimal serialization form so persistent request queues can be resumed verbatim.
    *
    * <p>The implementation delegates to {@link ObjectOutputStream#defaultWriteObject()} because all
-   * mutable fields participate in standard Java serialization. No transient handles are written, so
-   * callers must reconstruct runtime collaborators (such as {@link ManifestPutter}) separately.
+   * mutable fields participate in standard Java serialization. The serialized form deliberately
+   * avoids eagerly rebuilding bridge-owned runtime collaborators during persistence operations.
    *
    * @param out destination stream that will receive the serialized state for this object.
    * @throws IOException if the stream fails, is closed, or otherwise rejects the serialized data.
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    out.defaultWriteObject();
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put("manifestElements", manifestElements);
+    fields.put("putter", legacyPutterForSerialization());
+    fields.put("defaultName", defaultName);
+    fields.put("totalSize", totalSize);
+    fields.put("numberOfFiles", numberOfFiles);
+    fields.put("wasDiskPut", wasDiskPut);
+    fields.put("overrideSplitfileCryptoKey", overrideSplitfileCryptoKey);
+    out.writeFields();
   }
 
   /**
    * Restores persisted fields so the request can rejoin the scheduler after JVM restarts.
    *
    * <p>Only the raw data required to reconstruct manifests and statistics is restored here; higher
-   * level collaborators will be rebuilt later through {@link #makePutter(ClientContext)} or other
-   * initialization paths. The method intentionally leaves runtime caches null to avoid premature
-   * resource allocation during deserialization.
+   * level collaborators will be rebuilt later through {@link #makePutter(FcpInsertRuntimeSupport,
+   * ClientRequestParams)} or other initialization paths. The method intentionally leaves runtime
+   * caches null to avoid premature resource allocation during deserialization.
    *
    * @param in source stream from which serialized field values are read sequentially.
    * @throws IOException if the serialized form is truncated or cannot be read.
@@ -318,7 +342,78 @@ public final class ClientPutDir extends ClientPutBase {
    */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+    ObjectInputStream.GetField fields = in.readFields();
+    manifestElements = castManifestElements(fields.get("manifestElements", null));
+    defaultName = (String) fields.get("defaultName", null);
+    totalSize = fields.get("totalSize", 0L);
+    numberOfFiles = fields.get("numberOfFiles", 0);
+    wasDiskPut = fields.get("wasDiskPut", false);
+    overrideSplitfileCryptoKey = (byte[]) fields.get("overrideSplitfileCryptoKey", null);
+    putter =
+        wrapLegacyDirectoryExecution(
+            fields.get("putter", null),
+            new ClientPutDirExecutionSpec(
+                this, currentRequestParams(), ctx, defaultName, overrideSplitfileCryptoKey));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> castManifestElements(Object manifestElements) {
+    return manifestElements == null ? null : (Map<String, Object>) manifestElements;
+  }
+
+  private Object legacyPutterForSerialization() throws NotSerializableException {
+    if (putter == null) {
+      return null;
+    }
+    Object requester = putter.requester();
+    if (requester == null) {
+      return null;
+    }
+    if (!requiredClass(LEGACY_PUTTER_TYPE).isInstance(requester)) {
+      throw new NotSerializableException(
+          "Directory putter requester is not compatible with "
+              + LEGACY_PUTTER_TYPE
+              + ": "
+              + requester.getClass().getName());
+    }
+    return requester;
+  }
+
+  private ClientRequestParams currentRequestParams() {
+    return new ClientRequestParams(
+        uri, identifier, verbosity, priorityClass, persistence, realTime, clientToken, global);
+  }
+
+  private static ClientPutDirExecution wrapLegacyDirectoryExecution(
+      Object legacyPutter, ClientPutDirExecutionSpec executionSpec) throws InvalidObjectException {
+    if (legacyPutter == null) {
+      return null;
+    }
+    try {
+      Class<?> bridgeClass = Class.forName(BRIDGE_RUNTIME_SUPPORT);
+      java.lang.reflect.Method method =
+          bridgeClass.getDeclaredMethod(
+              "wrapLegacyDirectoryExecution", Object.class, ClientPutDirExecutionSpec.class);
+      method.setAccessible(true);
+      return (ClientPutDirExecution) method.invoke(null, legacyPutter, executionSpec);
+    } catch (ReflectiveOperationException e) {
+      InvalidObjectException failure =
+          new InvalidObjectException("Could not restore legacy directory putter");
+      failure.initCause(rootCause(e));
+      throw failure;
+    }
+  }
+
+  private static Class<?> requiredClass(String className) {
+    try {
+      return Class.forName(className);
+    } catch (ClassNotFoundException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private static Throwable rootCause(ReflectiveOperationException e) {
+    return e.getCause() == null ? e : e.getCause();
   }
 
   @Override
@@ -409,32 +504,33 @@ public final class ClientPutDir extends ClientPutBase {
             includeHiddenFiles));
   }
 
-  private void makePutter(ClientContext context) throws TooManyFilesInsertException {
+  private void makePutter(FcpInsertRuntimeSupport runtimeSupport, ClientRequestParams requestParams)
+      throws network.crypta.client.async.TooManyFilesInsertException {
     putter =
-        DefaultManifestPutter.create(
-            new ManifestPutterParams(
-                new InsertRequestParams(this, uri, ctx, priorityClass),
-                manifestElements,
-                defaultName,
-                overrideSplitfileCryptoKey,
-                context),
-            persistence == Persistence.FOREVER);
+        runtimeSupport.createDirectoryExecution(
+            new ClientPutDirExecutionSpec(
+                this, requestParams, ctx, defaultName, overrideSplitfileCryptoKey));
+  }
+
+  Map<String, Object> manifestElementsForExecution() {
+    return manifestElements;
   }
 
   /**
-   * Begins manifest insertion by arming the {@link ManifestPutter} and notifying interested
+   * Begins manifest insertion by arming the {@link ClientPutDirExecution} and notifying interested
    * clients.
    *
    * <p>The method is idempotent: repeated calls after the first successful start are ignored. It
    * configures the request cache so that CALL/RESULT messages reflect the running state, queues a
    * persistent tag message when applicable, and handles {@link InsertException}s by reporting
-   * immediate failure. Callers should provide the same {@link ClientContext} used during
-   * construction so caches, thread pools, and retry policies remain consistent.
+   * immediate failure. Callers should provide the same {@link
+   * network.crypta.client.async.ClientContext ClientContext} used during construction so caches,
+   * thread pools, and retry policies remain consistent.
    *
    * @param context client context supplying thread pools and scheduler knobs for this transfer.
    */
   @Override
-  public void start(ClientContext context) {
+  public void start(network.crypta.client.async.ClientContext context) {
     if (finished) return;
     if (started) return;
     try {
@@ -518,7 +614,7 @@ public final class ClientPutDir extends ClientPutBase {
    */
   @Override
   protected ClientRequester getClientRequest() {
-    return putter;
+    return putter == null ? null : putter.requester();
   }
 
   /**
@@ -573,11 +669,12 @@ public final class ClientPutDir extends ClientPutBase {
   /**
    * Reports whether the insert completed successfully according to the latest status snapshot.
    *
-   * <p>The flag is updated by the {@link ManifestPutter} when the final block commits or when a
-   * fatal error occurs. Consumers should treat the value as monotonic: once {@code true}, the
-   * request will not revert even if further callbacks arrive. A {@code false} value may still mean
-   * work is ongoing, so callers should also consult the general completion flags exposed by the FCP
-   * status APIs before deciding whether retries or restarts are appropriate.
+   * <p>The flag is updated by the backing {@link ClientPutDirExecution} when the final block
+   * commits or when a fatal error occurs. Consumers should treat the value as monotonic: once
+   * {@code true}, the request will not revert even if further callbacks arrive. A {@code false}
+   * value may still mean work is ongoing, so callers should also consult the general completion
+   * flags exposed by the FCP status APIs before deciding whether retries or restarts are
+   * appropriate.
    *
    * @return {@code true} after every file has been inserted and the final URI has been published.
    */
@@ -604,10 +701,11 @@ public final class ClientPutDir extends ClientPutBase {
   /**
    * Reports how many discrete files were counted when the manifest was constructed.
    *
-   * <p>The count is derived from the {@link ManifestPutter} during initialization and therefore
-   * reflects the directory structure at scan time, not real-time filesystem changes. When the
-   * manifest is provided by a remote client, the number reflects that client's enumeration. A value
-   * of {@code -1} indicates that counting was skipped because the putter could not be created.
+   * <p>The count is derived from the {@link ClientPutDirExecution} during initialization and
+   * therefore reflects the directory structure at scan time, not real-time filesystem changes. When
+   * the manifest is provided by a remote client, the number reflects that client's enumeration. A
+   * value of {@code -1} indicates that counting was skipped because the putter could not be
+   * created.
    *
    * @return non-negative number of file entries, or {@code -1} when unavailable.
    */
@@ -635,7 +733,7 @@ public final class ClientPutDir extends ClientPutBase {
    * <p>The method blocks restarts while work is still running or after success, only allowing
    * retries for finished-but-failed requests. It also emits debug logging so operators can diagnose
    * why a restart attempt was rejected. Callers should check this flag before invoking {@link
-   * #restart(ClientContext, boolean)} to avoid unnecessarily rebuilding manifests.
+   * #restart(network.crypta.client.async.ClientContext, boolean) restart(ClientContext, boolean)}.
    *
    * @return {@code true} when the request is finished, not successful, and eligible for restart.
    */
@@ -649,24 +747,26 @@ public final class ClientPutDir extends ClientPutBase {
       LOG.debug("Restart blocked: request already succeeded id={}", identifier);
       return false;
     }
-    return true;
+    return putter != null && putter.canRestart();
   }
 
   /**
    * Rebuilds transient state and re-queues the request after a recoverable failure.
    *
    * <p>The restart sequence verifies eligibility via {@link #canRestart()}, resets counters,
-   * refreshes persistent cache entries, and constructs a new {@link ManifestPutter}. If manifest
-   * enumeration now exceeds configured limits, the method surfaces an {@link InsertException} and
-   * aborts. Successful restarts immediately call {@link #start(ClientContext)} so callers do not
-   * need to issue two API operations.
+   * refreshes persistent cache entries, and delegates the retry to the existing {@link
+   * ClientPutDirExecution}. Successful persistent restarts also emit a fresh {@link
+   * PersistentPutDir} tag so connected FCP clients observe the renewed {@code Started} state and
+   * any updated splitfile key. If the bridge reports an {@link InsertException}, the method aborts
+   * and surfaces the failure through the usual request path.
    *
    * @param context client context used for thread pools, throttling, and crypto settings.
    * @param disableFilterData ignored flag maintained for backwards compatibility with filters.
    * @return {@code true} when the restart was scheduled; {@code false} if prerequisites failed.
    */
   @Override
-  public boolean restart(ClientContext context, final boolean disableFilterData) {
+  public boolean restart(
+      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
     if (!canRestart()) return false;
     setVarsRestart();
     if (client != null) {
@@ -676,14 +776,26 @@ public final class ClientPutDir extends ClientPutBase {
       }
     }
     try {
-      makePutter(context);
-    } catch (TooManyFilesInsertException _) {
-      this.onFailure(
-          new InsertException(
-              InsertException.InsertExceptionMode.TOO_MANY_FILES, (String) null, null),
-          null);
+      if (putter.restart(context)) {
+        synchronized (this) {
+          generatedURI = null;
+          started = true;
+        }
+      }
+    } catch (InsertException e) {
+      this.onFailure(e, null);
+      return false;
     }
-    start(context);
+    if (client != null) {
+      RequestStatusCache cache = client.getRequestStatusCache();
+      if (cache != null) {
+        cache.updateStarted(identifier, true);
+      }
+    }
+    if (persistence != Persistence.CONNECTION && !finished) {
+      FCPMessage msg = persistentTagMessage();
+      client.queueClientRequestMessage(msg, 0);
+    }
     return true;
   }
 
@@ -691,14 +803,14 @@ public final class ClientPutDir extends ClientPutBase {
    * Handles eviction from the scheduler or request cache by releasing runtime helpers.
    *
    * <p>Persistent FOREVER requests can survive removal events, so this hook nulls out the {@link
-   * ManifestPutter} to avoid holding on to stale channels until a later resuming occurs. The
+   * ClientPutDirExecution} to avoid holding on to stale channels until a later resuming occurs. The
    * superclass observes the event as well, ensuring that shared bookkeeping such as rate limiting
    * and identifier mappings stay consistent.
    *
    * @param context client context associated with the scheduler issuing the removal.
    */
   @Override
-  public void requestWasRemoved(ClientContext context) {
+  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
     if (persistence == Persistence.FOREVER) {
       putter = null;
     }
@@ -706,12 +818,12 @@ public final class ClientPutDir extends ClientPutBase {
   }
 
   /**
-   * Intentionally left empty because directory inserts rely on {@link ManifestPutter} compression
-   * reporting instead of request-level callbacks.
+   * Intentionally left empty because directory inserts rely on the backing {@link
+   * ClientPutDirExecution} for compression reporting instead of request-level callbacks.
    *
-   * <p>The {@link ContainerInserter} owns all compressor instances for manifests, so there is no
-   * additional bookkeeping required when compression starts or stops. The override exists only to
-   * acknowledge the lifecycle hook and documents that no state transition occurs here.
+   * <p>The bridge-owned manifest execution owns all compressor instances for manifests, so there is
+   * no additional bookkeeping required when compression starts or stops. The override exists only
+   * to acknowledge the lifecycle hook and documents that no state transition occurs here.
    */
   @Override
   protected void onStartCompressing() {
@@ -721,9 +833,9 @@ public final class ClientPutDir extends ClientPutBase {
   /**
    * Intentionally left empty because no per-request cleanup is needed when compression stops.
    *
-   * <p>Directory inserts delegate to {@link ManifestPutter}, which owns the compressor lifetime and
-   * frees its resources once chunks are flushed. Leaving this hook empty prevents duplicate
-   * bookkeeping while still satisfying the superclass contract.
+   * <p>Directory inserts delegate to the backing {@link ClientPutDirExecution}, which owns the
+   * compressor lifetime and frees its resources once chunks are flushed. Leaving this hook empty
+   * prevents duplicate bookkeeping while still satisfying the superclass contract.
    */
   @Override
   protected void onStopCompressing() {
@@ -785,20 +897,25 @@ public final class ClientPutDir extends ClientPutBase {
   }
 
   /**
-   * Reattaches persisted manifests to a live {@link ClientContext} during resume sequences.
+   * Reattaches persisted manifests to a live {@link network.crypta.client.async.ClientContext
+   * ClientContext} during resume sequences.
    *
-   * <p>The method delegates to {@link ContainerInserter#resumeMetadata(Map, ClientContext)}, which
-   * rebuilds transient metadata for each {@link ManifestElement} so the putter can continue where
-   * it left off. Any metadata mismatch triggers a {@link ResumeFailedException}, signaling that the
-   * request should be abandoned or rebuilt from disk.
+   * <p>The method delegates to {@link ClientPutDirExecution#resumeMetadata(Map,
+   * network.crypta.client.async.ClientContext)}, which rebuilds transient metadata for each {@link
+   * ManifestElement} so the putter can continue where it left off. Any metadata mismatch triggers a
+   * {@link ResumeFailedException}, signaling that the request should be abandoned or rebuilt from
+   * disk.
    *
    * @param context context supplying the memory pools and cryptographic providers required for
    *     resumed manifests.
    * @throws ResumeFailedException if the persisted manifest cannot be revalidated or restored.
    */
   @Override
-  public void innerResume(ClientContext context) throws ResumeFailedException {
-    ContainerInserter.resumeMetadata(manifestElements, context);
+  public void innerResume(network.crypta.client.async.ClientContext context)
+      throws ResumeFailedException {
+    if (putter != null) {
+      putter.resumeMetadata(manifestElements, context);
+    }
   }
 
   @Override
@@ -810,9 +927,9 @@ public final class ClientPutDir extends ClientPutBase {
    * Indicates whether every component of the request has been fully restored after resuming.
    *
    * <p>Directory inserts currently resume lazily, rebuilding manifest metadata only when {@link
-   * #innerResume(ClientContext)} is invoked later in the lifecycle. Consequently, this method
-   * always returns {@code false}, signaling to higher layers that additional resume work may be
-   * pending.
+   * #innerResume(network.crypta.client.async.ClientContext) innerResume(ClientContext)} is invoked
+   * later in the lifecycle. Consequently, this method always returns {@code false}, signaling to
+   * higher layers that additional resume work may be pending.
    *
    * @return always {@code false} because manifest metadata is resumed incrementally.
    */

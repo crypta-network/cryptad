@@ -121,6 +121,31 @@ public final class SubscribeUSKMessage extends FCPMessage {
     return NAME;
   }
 
+  /** Returns the parsed USK key targeted by this subscription request. */
+  public USK key() {
+    return key;
+  }
+
+  /** Returns whether background polling should remain enabled for this subscription. */
+  public boolean shouldPoll() {
+    return !dontPoll;
+  }
+
+  /** Returns whether the client requested sparse polling updates. */
+  public boolean sparsePoll() {
+    return sparsePoll;
+  }
+
+  /** Returns whether the subscription should use the realtime request client. */
+  public boolean realTimeFlag() {
+    return realTimeFlag;
+  }
+
+  /** Returns whether USK date hints should be ignored while polling. */
+  public boolean ignoreUSKDatehints() {
+    return ignoreUSKDatehints;
+  }
+
   /**
    * Executes the subscription by wiring the parsed options into the node and acknowledging the
    * client.

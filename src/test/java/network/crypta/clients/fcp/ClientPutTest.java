@@ -1,6 +1,12 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.lang.reflect.Field;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -10,6 +16,7 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
+import network.crypta.client.async.ClientRequester;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -26,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,6 +47,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
@@ -204,7 +213,7 @@ class ClientPutTest {
 
   @Test
   void start_whenPersistentRequestStarts_updatesCacheAndQueuesTag() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     ClientContext context = mock(ClientContext.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     RequestStatusCache cache = mock(RequestStatusCache.class);
@@ -219,7 +228,7 @@ class ClientPutTest {
 
     put.start(context);
 
-    verify(putter).start(false, context);
+    verify(putter).start(context);
     verify(client).queueClientRequestMessage(tagMessage, 0);
     verify(cache).updateStarted("start-id", true);
     assertTrue((boolean) getField(ClientRequest.class, put, "started"));
@@ -227,7 +236,7 @@ class ClientPutTest {
 
   @Test
   void start_whenPutterThrowsInsertException_invokesOnFailure() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     ClientContext context = mock(ClientContext.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     InsertException failure = new InsertException(InsertExceptionMode.INTERNAL_ERROR, "boom", null);
@@ -235,7 +244,7 @@ class ClientPutTest {
     setField(ClientPut.class, put, "putter", putter);
     setField(ClientRequest.class, put, "persistence", Persistence.REBOOT);
     setField(ClientRequest.class, put, "client", client);
-    doThrow(failure).when(putter).start(false, context);
+    doThrow(failure).when(putter).start(context);
 
     put.start(context);
 
@@ -255,13 +264,14 @@ class ClientPutTest {
 
   @Test
   void innerResume_whenPutterPresent_reappliesDiagnosticIdentifier() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientRequester requester = mock(ClientRequester.class);
+    ClientPutExecution putter = createExecution(requester);
     setField(ClientPut.class, clientPut, "putter", putter);
     ClientContext context = mock(ClientContext.class);
 
     clientPut.innerResume(context);
 
-    verify(putter).setExternalRequestIdentifier("fcp:test-id");
+    verify(requester).setExternalRequestIdentifier("fcp:test-id");
   }
 
   @Test
@@ -277,7 +287,7 @@ class ClientPutTest {
 
   @Test
   void canRestart_whenNotFinished_returnsFalse() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     setField(ClientPut.class, clientPut, "putter", putter);
     setField(ClientRequest.class, clientPut, "finished", false);
 
@@ -287,7 +297,7 @@ class ClientPutTest {
 
   @Test
   void canRestart_whenSucceeded_returnsFalse() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     setField(ClientPut.class, clientPut, "putter", putter);
     setField(ClientRequest.class, clientPut, "finished", true);
     setField(ClientPutBase.class, clientPut, "succeeded", true);
@@ -298,7 +308,7 @@ class ClientPutTest {
 
   @Test
   void canRestart_whenDelegateAllows_returnsDelegateDecision() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     setField(ClientPut.class, clientPut, "putter", putter);
     setField(ClientRequest.class, clientPut, "finished", true);
     setField(ClientPutBase.class, clientPut, "succeeded", false);
@@ -309,7 +319,7 @@ class ClientPutTest {
 
   @Test
   void restart_whenDelegateSucceeds_updatesCacheAndState() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     ClientContext context = mock(ClientContext.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     RequestStatusCache cache = mock(RequestStatusCache.class);
@@ -334,7 +344,7 @@ class ClientPutTest {
 
   @Test
   void restart_whenDelegateThrowsInsertException_invokesOnFailure() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     ClientContext context = mock(ClientContext.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     setField(ClientPut.class, clientPut, "putter", putter);
@@ -369,7 +379,7 @@ class ClientPutTest {
 
   @Test
   void requestWasRemoved_whenForeverPersistence_clearsPutter() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientPutExecution putter = createExecution();
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     setField(ClientPut.class, clientPut, "putter", putter);
     setField(ClientRequest.class, clientPut, "persistence", Persistence.FOREVER);
@@ -386,10 +396,11 @@ class ClientPutTest {
 
   @Test
   void getClientRequest_whenPutterSet_returnsPutter() throws Exception {
-    ClientPutter putter = mock(ClientPutter.class);
+    ClientRequester requester = mock(ClientRequester.class);
+    ClientPutExecution putter = createExecution(requester);
     setField(ClientPut.class, clientPut, "putter", putter);
 
-    assertSame(putter, clientPut.getClientRequest());
+    assertSame(requester, clientPut.getClientRequest());
   }
 
   @Test
@@ -417,6 +428,39 @@ class ClientPutTest {
     assertFalse(clientPut.fullyResumed());
   }
 
+  @Test
+  void serializationFields_whenInspected_keepLegacyClientPutterType() {
+    ObjectStreamClass descriptor = ObjectStreamClass.lookup(ClientPut.class);
+
+    assertEquals(
+        "network.crypta.client.async.ClientPutter",
+        descriptor.getField("putter").getType().getName());
+  }
+
+  @Test
+  void serialization_whenRoundTripped_restoresExecutionFromLegacyClientPutter() throws Exception {
+    ClientPutter legacyPutter = mock(ClientPutter.class, withSettings().serializable());
+    ClientPutExecution execution = createExecution(legacyPutter);
+    setField(ClientPut.class, clientPut, "putter", execution);
+    setField(ClientPut.class, clientPut, "uploadFrom", ClientPutBase.UploadFrom.DIRECT);
+
+    ClientPut restored = roundTrip(clientPut);
+
+    assertInstanceOf(ClientPutExecution.class, getField(ClientPut.class, restored, "putter"));
+    assertInstanceOf(ClientPutter.class, restored.getClientRequest());
+  }
+
+  @Test
+  void serialization_whenExecutionRequesterIsNotLegacyClientPutter_throwsNotSerializableException()
+      throws Exception {
+    ClientRequester requester = mock(ClientRequester.class, withSettings().serializable());
+    ClientPutExecution execution = createExecution(requester);
+    setField(ClientPut.class, clientPut, "putter", execution);
+    setField(ClientPut.class, clientPut, "uploadFrom", ClientPutBase.UploadFrom.DIRECT);
+
+    assertThrows(NotSerializableException.class, () -> roundTrip(clientPut));
+  }
+
   private static void setField(Class<?> owner, Object target, String name, Object value)
       throws ReflectiveOperationException {
     Field field = owner.getDeclaredField(name);
@@ -429,5 +473,29 @@ class ClientPutTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  private static ClientPutExecution createExecution() {
+    return mock(ClientPutExecution.class);
+  }
+
+  private static ClientPutExecution createExecution(ClientRequester requester) {
+    ClientPutExecution execution = mock(ClientPutExecution.class);
+    when(execution.requester()).thenReturn(requester);
+    return execution;
+  }
+
+  private static ClientPut roundTrip(ClientPut value) throws Exception {
+    byte[] serialized;
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
+      objectOutput.writeObject(value);
+      objectOutput.flush();
+      serialized = output.toByteArray();
+    }
+    try (ObjectInputStream objectInput =
+        new ObjectInputStream(new ByteArrayInputStream(serialized))) {
+      return (ClientPut) objectInput.readObject();
+    }
   }
 }

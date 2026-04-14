@@ -10,7 +10,6 @@ import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -268,7 +267,7 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   private void notifyLostRequests(ClientRequest[] requests) {
-    ClientContext clientContext = serverClientContext();
+    network.crypta.client.async.ClientContext clientContext = serverClientContext();
     for (ClientRequest request : requests) {
       request.onLostConnection(clientContext);
     }
@@ -579,7 +578,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(server.insertRuntimeSupport().clientContext());
+    request.start(serverClientContext());
   }
 
   private void startRebootClientPut(ClientPutMessage message) {
@@ -591,7 +590,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(server.insertRuntimeSupport().clientContext());
+    request.start(serverClientContext());
   }
 
   private void startForeverClientPut(ClientPutMessage message) {
@@ -660,7 +659,7 @@ public class FCPConnectionHandler implements Closeable {
       return;
     }
     RegistrationResult registration = registerConnectionScopedRequest(message.identifier, request);
-    ClientContext clientContext = server.insertRuntimeSupport().clientContext();
+    network.crypta.client.async.ClientContext clientContext = serverClientContext();
     if (registration == RegistrationResult.DUPLICATE) {
       request.cancel(clientContext);
       handleIdentifierCollision(message.identifier, message.global);
@@ -679,7 +678,7 @@ public class FCPConnectionHandler implements Closeable {
     if (request == null) {
       return;
     }
-    ClientContext clientContext = server.insertRuntimeSupport().clientContext();
+    network.crypta.client.async.ClientContext clientContext = serverClientContext();
     if (!registerPersistentRequest(request, message.identifier, message.global)) {
       request.cancel(clientContext);
       return;
@@ -1002,7 +1001,7 @@ public class FCPConnectionHandler implements Closeable {
       req = requestsByIdentifier.remove(identifier);
     }
     if (req != null) {
-      ClientContext clientContext = serverClientContext();
+      network.crypta.client.async.ClientContext clientContext = serverClientContext();
       if (kill) req.cancel(clientContext);
       req.requestWasRemoved(clientContext);
     }
@@ -1037,7 +1036,7 @@ public class FCPConnectionHandler implements Closeable {
     return req;
   }
 
-  private ClientContext serverClientContext() {
+  private network.crypta.client.async.ClientContext serverClientContext() {
     return server.serverRuntimeSupport().clientContext();
   }
 

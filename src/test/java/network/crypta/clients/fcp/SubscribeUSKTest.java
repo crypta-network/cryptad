@@ -1,13 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.USKFoundEdition;
-import network.crypta.client.async.USKFoundEditionPayload;
-import network.crypta.client.async.USKFoundEditionProgress;
-import network.crypta.client.async.USKManager;
-import network.crypta.client.async.USKSparseProxyCallback;
-import network.crypta.keys.USK;
-import network.crypta.node.RequestClient;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,9 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,85 +25,35 @@ class SubscribeUSKTest {
       "USK@0I8gctpUE32CM0iQhXaYpCMvtPPGfT4pjXm01oid5Zc,3dAcn4fX2LyxO6uCnWFTx-2HKZ89uruurcKwLSCxbZ4,AQACAAE/FakeM3UHostingFreesite/23/";
 
   @Mock private FcpInsertRuntimeSupport runtimeSupport;
-  @Mock private USKManager uskManager;
   @Mock private FCPConnectionHandler handler;
-  @Mock private PersistentRequestClient persistentRequestClient;
-  @Mock private RequestClient requestClient;
-  @Mock private USKSparseProxyCallback sparseProxyCallback;
-  @Mock private ClientContext clientContext;
+  @Mock private UskSubscriptionHandle subscriptionHandle;
 
   @Test
-  void constructor_whenSparsePollRequested_usesSubscribeSparseAndStoresProxyForUnsubscribe()
-      throws Exception {
+  void constructor_whenCreated_registersWithHandlerAndRuntimeSupport() throws Exception {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-sparse", false, true, (short) 5, (short) 4, true, true);
-    mockCommonBehavior();
-    when(uskManager.subscribeSparse(eq(message.key), any(), eq(true), eq(requestClient)))
-        .thenReturn(sparseProxyCallback);
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
 
     SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     verify(handler).addUSKSubscription("id-sparse", subscription);
-    verify(persistentRequestClient).lowLevelClient(true);
-    verify(uskManager).subscribeSparse(message.key, subscription, true, requestClient);
-    verify(uskManager, never()).subscribe(any(USK.class), any(), anyBoolean(), anyBoolean(), any());
+    verify(runtimeSupport).subscribeUSK(message, subscription, handler);
 
     subscription.unsubscribe();
 
-    verify(uskManager).unsubscribe(message.key, sparseProxyCallback);
-  }
-
-  @Test
-  void constructor_whenBackgroundPollingEnabled_subscribesWithPollingAndUsesSelfForUnsubscribe()
-      throws Exception {
-    SubscribeUSKMessage message =
-        buildSubscribeUSKMessage("id-poll", false, false, (short) 6, (short) 5, false, false);
-    mockCommonBehavior();
-
-    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
-
-    verify(handler).addUSKSubscription("id-poll", subscription);
-    verify(persistentRequestClient).lowLevelClient(false);
-    verify(uskManager).subscribe(message.key, subscription, true, false, requestClient);
-    verify(uskManager, never())
-        .subscribeSparse(eq(message.key), eq(subscription), anyBoolean(), eq(requestClient));
-
-    subscription.unsubscribe();
-
-    verify(uskManager).unsubscribe(message.key, subscription);
-  }
-
-  @Test
-  void onFoundEdition_whenHandlerClosed_unsubscribesWithoutSending() throws Exception {
-    SubscribeUSKMessage message =
-        buildSubscribeUSKMessage("id-closed", true, false, (short) 2, (short) 1, false, false);
-    mockCommonBehavior();
-    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
-    when(handler.isClosed()).thenReturn(true);
-
-    subscription.onFoundEdition(
-        new USKFoundEdition(
-            new USKFoundEditionPayload(7L, message.key, false, (short) 1, new byte[0]),
-            clientContext,
-            new USKFoundEditionProgress(true, false)));
-
-    verify(uskManager).unsubscribe(message.key, subscription);
-    verify(handler, never()).send(any());
+    verify(subscriptionHandle).unsubscribe();
   }
 
   @Test
   void onFoundEdition_whenHandlerOpen_sendsSubscribedUSKUpdate() throws Exception {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-open", true, false, (short) 3, (short) 1, false, false);
-    mockCommonBehavior();
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
     SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
-    when(handler.isClosed()).thenReturn(false);
 
-    subscription.onFoundEdition(
-        new USKFoundEdition(
-            new USKFoundEditionPayload(12L, message.key, false, (short) 1, null),
-            clientContext,
-            new USKFoundEditionProgress(true, false)));
+    subscription.onFoundEdition(12L, message.key, true, false);
 
     ArgumentCaptor<SubscribedUSKUpdate> captor = ArgumentCaptor.forClass(SubscribedUSKUpdate.class);
     verify(handler).send(captor.capture());
@@ -124,30 +64,32 @@ class SubscribeUSKTest {
     assertSame(message.key, update.key);
     assertTrue(update.newKnownGood);
     assertFalse(update.newSlotToo);
-
-    verify(uskManager, never()).unsubscribe(any(), any());
   }
 
   @Test
   void getPollingPriorityMethods_whenCalled_returnValuesFromMessage() throws Exception {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-prio", true, false, (short) 9, (short) 2, false, false);
-    mockCommonBehavior();
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
 
     SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
     assertEquals(9, subscription.getPollingPriorityNormal());
     assertEquals(2, subscription.getPollingPriorityProgress());
+    assertEquals(9, subscription.pollingPriorityNormal());
+    assertEquals(2, subscription.pollingPriorityProgress());
   }
 
   @Test
   void onSendingToNetwork_whenInvoked_sendsSendingToNetworkMessage() throws Exception {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-send", true, false, (short) 1, (short) 0, false, false);
-    mockCommonBehavior();
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
     SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
-    subscription.onSendingToNetwork(clientContext);
+    subscription.onSendingToNetwork();
 
     ArgumentCaptor<SubscribedUSKSendingToNetworkMessage> captor =
         ArgumentCaptor.forClass(SubscribedUSKSendingToNetworkMessage.class);
@@ -161,10 +103,11 @@ class SubscribeUSKTest {
   void onRoundFinished_whenInvoked_sendsRoundFinishedMessage() throws Exception {
     SubscribeUSKMessage message =
         buildSubscribeUSKMessage("id-round", true, false, (short) 1, (short) 0, false, false);
-    mockCommonBehavior();
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
     SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
 
-    subscription.onRoundFinished(clientContext);
+    subscription.onRoundFinished();
 
     ArgumentCaptor<SubscribedUSKRoundFinishedMessage> captor =
         ArgumentCaptor.forClass(SubscribedUSKRoundFinishedMessage.class);
@@ -174,11 +117,18 @@ class SubscribeUSKTest {
     assertEquals("id-round", finished.getFieldSet().get("Identifier"));
   }
 
-  private void mockCommonBehavior() {
-    when(runtimeSupport.uskManager()).thenReturn(uskManager);
-    when(handler.getRebootClient()).thenReturn(persistentRequestClient);
-    when(persistentRequestClient.lowLevelClient(anyBoolean())).thenReturn(requestClient);
-    lenient().when(requestClient.persistent()).thenReturn(false);
+  @Test
+  void callbackSurface_whenQueried_reflectsCurrentSubscriptionState() throws Exception {
+    SubscribeUSKMessage message =
+        buildSubscribeUSKMessage("id-state", true, false, (short) 7, (short) 6, false, false);
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
+    when(handler.isClosed()).thenReturn(true);
+    SubscribeUSK subscription = new SubscribeUSK(message, runtimeSupport, handler);
+
+    assertTrue(subscription.isClosed());
+    assertEquals("id-state", subscription.clientIdentifier());
+    verify(handler, never()).send(any());
   }
 
   private SubscribeUSKMessage buildSubscribeUSKMessage(

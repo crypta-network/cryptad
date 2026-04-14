@@ -23,6 +23,12 @@ final class FcpInsertDefaults {
    */
   static final boolean FORK_ON_CACHEABLE_DEFAULT = true;
 
+  /** Default number of extra inserts for single-block payloads. */
+  static final int EXTRA_INSERTS_SINGLE_BLOCK_DEFAULT = 2;
+
+  /** Default number of extra inserts for splitfile header blocks. */
+  static final int EXTRA_INSERTS_SPLITFILE_HEADER_DEFAULT = 2;
+
   /** Prevents instantiation of this constants-only helper type. */
   private FcpInsertDefaults() {}
 }

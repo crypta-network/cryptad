@@ -49,8 +49,6 @@ class FCPConnectionHandlerTest {
   @Mock private Socket socket;
   @Mock private RuntimePorts runtimePorts;
   @Mock private RandomnessPort randomnessPort;
-  @Mock private FcpInsertRuntimeSupport insertRuntimeSupport;
-
   private FCPConnectionHandler handler;
 
   @BeforeEach
@@ -61,9 +59,7 @@ class FCPConnectionHandlerTest {
     lenient().when(server.serverRuntimeSupport()).thenReturn(serverRuntimeSupport);
     lenient().when(serverRuntimeSupport.clientContext()).thenReturn(clientContext);
     lenient().when(server.runtime()).thenReturn(runtimePorts);
-    lenient().when(server.insertRuntimeSupport()).thenReturn(insertRuntimeSupport);
     lenient().when(runtimePorts.randomness()).thenReturn(randomnessPort);
-    lenient().when(insertRuntimeSupport.clientContext()).thenReturn(clientContext);
     lenient()
         .doAnswer(
             invocation -> {

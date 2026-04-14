@@ -13,7 +13,6 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.BaseClientPutter;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventDispatchContext;
@@ -23,7 +22,6 @@ import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.StartedCompressionEvent;
 import network.crypta.keys.FreenetURI;
-import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,10 +32,11 @@ import org.slf4j.LoggerFactory;
  * <p>The class centralizes common state tracking for {@link ClientPut} and {@link ClientPutDir},
  * wiring FCP-facing identifiers, scheduling metadata, persistence constraints, and node callbacks
  * into a single state machine. Instances travel through connection-bound and forever-persistent
- * modes, reattaching to {@link ClientContext}s after deserialization, driving {@link
- * BaseClientPutter} progress, and translating internal events into client-visible FCP messages. It
- * is designed to be thread-aware: mutations happen under synchronization, while outbound messages
- * are dispatched via handler abstractions to avoid deadlocks.
+ * modes, reattaching to {@link network.crypta.client.async.ClientContext ClientContext}s after
+ * deserialization, driving {@link BaseClientPutter} progress, and translating internal events into
+ * client-visible FCP messages. It is designed to be thread-aware: mutations happen under
+ * synchronization, while outbound messages are dispatched via handler abstractions to avoid
+ * deadlocks.
  *
  * <p>Typical usage involves subclassing to provide data-specific logic (single file or directory
  * tree) while relying on {@code ClientPutBase} to manage retries, metadata capture, and reporting.
@@ -63,7 +62,8 @@ public abstract class ClientPutBase extends ClientRequest
   /**
    * Per-request insert context seeded from the node defaults. It carries retry rules, redundancy
    * knobs, and compatibility flags and therefore must be explicitly cleaned up in {@link
-   * #requestWasRemoved(ClientContext)} to avoid leaking stale listeners.
+   * #requestWasRemoved(network.crypta.client.async.ClientContext) requestWasRemoved(ClientContext)}
+   * to avoid leaking stale listeners.
    */
   final InsertContext ctx;
 
@@ -236,19 +236,13 @@ public abstract class ClientPutBase extends ClientRequest
    *
    * @param uri candidate URI that may lack routing data; callers must not pass {@code null}
    * @param filename optional document name; when missing the method chooses {@code "key"}
-   * @param context client context providing the randomness source used to mint new keys
+   * @param runtimeSupport insert runtime support that owns placeholder-SSK normalization
    * @return original URI when already complete or a freshly derived insert URI with the filename
    *     applied; the result is never {@code null}
    */
-  static FreenetURI checkEmptySSK(FreenetURI uri, String filename, ClientContext context) {
-    if ("SSK".equals(uri.getKeyType()) && uri.getDocName() == null && uri.getRoutingKey() == null) {
-      if (filename == null || filename.isEmpty()) filename = "key";
-      // SSK@ = use a random SSK.
-      InsertableClientSSK key = InsertableClientSSK.createRandom(context.random, "");
-      return key.getInsertURI().setDocName(filename);
-    } else {
-      return uri;
-    }
+  static FreenetURI checkEmptySSK(
+      FreenetURI uri, String filename, FcpInsertRuntimeSupport runtimeSupport) {
+    return runtimeSupport.normalizeInsertUri(uri, filename);
   }
 
   /**
@@ -313,16 +307,16 @@ public abstract class ClientPutBase extends ClientRequest
    * leaving persistent ones untouched so they can resume later without extra chatter.
    *
    * <p>The method keeps side effects intentionally small. It does not throw nor block; instead it
-   * simply triggers {@link #cancel(ClientContext)} for requests that were declared {@link
-   * Persistence#CONNECTION}. Persistent and forever requests ignore the event because they expect
-   * to be resumed through {@link network.crypta.client.async.ClientRequester} after
-   * deserialization.
+   * simply triggers {@link #cancel(network.crypta.client.async.ClientContext)
+   * cancel(ClientContext)} for requests that were declared {@link Persistence#CONNECTION}.
+   * Persistent and forever requests ignore the event because they expect to be resumed through
+   * {@link network.crypta.client.async.ClientRequester} after deserialization.
    *
    * @param context client context that supplies cancellation helpers and resource pools; the value
    *     may be reused across many requests and must not be {@code null}
    */
   @Override
-  public void onLostConnection(ClientContext context) {
+  public void onLostConnection(network.crypta.client.async.ClientContext context) {
     if (persistence == Persistence.CONNECTION) cancel(context);
     // otherwise ignore
   }
@@ -496,7 +490,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param context client context through which cleanup helpers and factories can be reached
    */
   @Override
-  public void requestWasRemoved(ClientContext context) {
+  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
     // if the request is still running, send a PutFailed with code=canceled
     if (!finished) {
       synchronized (this) {
@@ -960,7 +954,8 @@ public abstract class ClientPutBase extends ClientRequest
 
   /**
    * Restores persistent fields during deserialization. Subclasses are expected to rebuild transient
-   * collaborators during {@link #innerResume(ClientContext)} rather than in this hook.
+   * collaborators during {@link #innerResume(network.crypta.client.async.ClientContext)
+   * innerResume(ClientContext)} rather than in this hook.
    *
    * @param in source stream containing a previously serialized form of the object
    * @throws IOException when reading fails

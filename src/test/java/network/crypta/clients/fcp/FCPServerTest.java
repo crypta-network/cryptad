@@ -4,7 +4,6 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.bridge.CoreFcpServerDependenciesFactory;
 import network.crypta.crypt.RandomSource;
@@ -38,7 +37,6 @@ class FCPServerTest {
   @Mock private TransferAccessPort coreTransferAccess;
   @Mock private ClientContext clientContext;
   @Mock private InsertContext insertContext;
-  @Mock private USKManager uskManager;
   @Mock private TempBucketFactory tempBucketFactory;
   @Mock private PersistentTempBucketFactory persistentTempBucketFactory;
   @Mock private RandomSource randomSource;
@@ -65,7 +63,6 @@ class FCPServerTest {
     lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
     lenient().when(core.getClientContext()).thenReturn(clientContext);
     lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
-    lenient().when(core.getUskManager()).thenReturn(uskManager);
     lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
     lenient().when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
     lenient().when(core.getRandom()).thenReturn(randomSource);
@@ -291,13 +288,11 @@ class FCPServerTest {
   }
 
   @Test
-  void insertRuntimeSupport_whenContextServicesQueried_delegatesToCore() {
+  void insertRuntimeSupport_whenInsertDefaultsQueried_delegatesToCore() {
     FCPServer server = newServer(false, false);
     FcpInsertRuntimeSupport support = server.insertRuntimeSupport();
 
-    assertSame(clientContext, support.clientContext());
     assertSame(insertContext, support.defaultPersistentInsertContext());
-    assertSame(uskManager, support.uskManager());
   }
 
   @Test

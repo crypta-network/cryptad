@@ -1,5 +1,7 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
+import java.io.Serializable;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 
@@ -27,4 +29,7 @@ public record ClientRequestParams(
     Persistence persistence,
     boolean realTime,
     String clientToken,
-    boolean global) {}
+    boolean global)
+    implements Serializable {
+  @Serial private static final long serialVersionUID = 1L;
+}

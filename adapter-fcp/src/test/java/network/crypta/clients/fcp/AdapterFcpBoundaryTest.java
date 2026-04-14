@@ -58,6 +58,17 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpMessageRuntimeSupport.java");
   private static final Path FCP_SERVER_PERSISTENT_OPS_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerPersistentOps.java");
+  private static final Set<Path> INSERT_FAMILY_SEAM_SOURCES =
+      Set.of(
+          ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertRuntimeSupport.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPut.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDir.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPreparedDataFactory.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPutterFactory.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutMessage.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDirMessage.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("SubscribeUSK.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java"));
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -97,6 +108,22 @@ class AdapterFcpBoundaryTest {
           "network.crypta.client.async.ClientContext",
           "network.crypta.client.async.ClientGetter",
           "network.crypta.client.async.ClientGetterRequest");
+  private static final Set<String> FORBIDDEN_INSERT_RUNTIME_IMPORTS =
+      Set.of(
+          "network.crypta.client.HighLevelSimpleClientImpl",
+          "network.crypta.client.async.ClientContext",
+          "network.crypta.client.async.ClientPutter",
+          "network.crypta.client.async.ClientPutterOptions",
+          "network.crypta.client.async.ClientPutterRequest",
+          "network.crypta.client.async.ContainerInserter",
+          "network.crypta.client.async.DefaultManifestPutter",
+          "network.crypta.client.async.InsertRequestParams",
+          "network.crypta.client.async.ManifestPutter",
+          "network.crypta.client.async.ManifestPutterParams",
+          "network.crypta.client.async.USKCallback",
+          "network.crypta.client.async.USKFoundEdition",
+          "network.crypta.client.async.USKManager",
+          "network.crypta.client.async.USKProgressCallback");
   private static final Set<Path> GET_RUNTIME_SEAM_SOURCES =
       Set.of(
           FCP_FETCH_RUNTIME_SUPPORT_SOURCE,
@@ -330,6 +357,28 @@ class AdapterFcpBoundaryTest {
     assertFalse(connectionHandler.contains("defaultPersistentFetchContext("));
     assertFalse(persistentOps.contains("fetchRuntimeSupport.clientContext()"));
     assertFalse(persistentOps.contains("defaultPersistentFetchContext("));
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingInsertFamilySeam_expectNoLiveInsertRuntimeImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source : INSERT_FAMILY_SEAM_SOURCES) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_INSERT_RUNTIME_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(source + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Insert-family adapter sources must not import live runtime insert execution types."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   private static List<Path> findJavaSources(Path root) throws IOException {
