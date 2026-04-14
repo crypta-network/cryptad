@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -106,8 +107,9 @@ final class ClientGetPersistenceCodec {
       dos.writeUTF(request.targetFileForLifecycle().toString());
     }
     dos.writeBoolean(request.binaryBlobRequested());
+    byte[] encodedFetchConfig = encodedFetchConfigForPersistence(request);
     try (DataOutputStream ctxStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-      request.runtimeFetchSupport().encodeFetchConfig(request.fetchConfig(), ctxStream);
+      ctxStream.write(encodedFetchConfig);
     }
     String extensionCheck = request.extensionCheckForGetter();
     if (extensionCheck != null) {
@@ -284,6 +286,40 @@ final class ClientGetPersistenceCodec {
     } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad return type " + code);
     }
+  }
+
+  private static byte[] encodedFetchConfigForPersistence(ClientGet request) throws IOException {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupportForPersistence(request);
+    if (fetchRuntimeSupport != null) {
+      try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+          DataOutputStream encoded = new DataOutputStream(buffer)) {
+        fetchRuntimeSupport.encodeFetchConfig(request.fetchConfig(), encoded);
+        byte[] encodedFetchConfig = buffer.toByteArray();
+        request.setPersistedFetchConfigEncoding(encodedFetchConfig);
+        return encodedFetchConfig;
+      }
+    }
+    byte[] cachedEncoding = request.persistedFetchConfigEncoding();
+    if (cachedEncoding != null) {
+      return cachedEncoding;
+    }
+    throw new IOException("No runtime fetch support or cached fetch configuration encoding");
+  }
+
+  private static FcpFetchRuntimeSupport runtimeFetchSupportForPersistence(ClientGet request) {
+    FcpFetchRuntimeSupport runtimeFetchSupport = request.runtimeFetchSupport();
+    if (runtimeFetchSupport != null) {
+      return runtimeFetchSupport;
+    }
+    PersistentRequestClient client = request.client;
+    if (client == null) {
+      return null;
+    }
+    FCPConnectionHandler connection = client.getConnection();
+    if (connection == null) {
+      return null;
+    }
+    return connection.getServer().fetchRuntimeSupport();
   }
 
   /**

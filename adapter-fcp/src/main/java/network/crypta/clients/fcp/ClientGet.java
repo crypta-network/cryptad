@@ -1,9 +1,11 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -88,6 +90,15 @@ public final class ClientGet extends ClientRequest {
 
   /** Runtime bridge used to encode fetch configuration and create live execution on demand. */
   private final transient FcpFetchRuntimeSupport runtimeFetchSupport;
+
+  /**
+   * Last canonical fetch-configuration encoding written into a serialized request snapshot.
+   *
+   * <p>This allows recovery-data checkpoints to preserve the existing binary fetch-context format
+   * even when a request was reloaded through Java serialization and therefore no longer carries a
+   * live {@link FcpFetchRuntimeSupport} reference.
+   */
+  private byte[] persistedFetchConfigEncoding;
 
   private transient ClientGetHelpers helpers;
 
@@ -325,6 +336,7 @@ public final class ClientGet extends ClientRequest {
     extensionCheck = null;
     initialMetadata = null;
     runtimeFetchSupport = null;
+    persistedFetchConfigEncoding = null;
   }
 
   private void initHelpers() {
@@ -734,6 +746,15 @@ public final class ClientGet extends ClientRequest {
 
   FcpFetchRuntimeSupport runtimeFetchSupport() {
     return runtimeFetchSupport;
+  }
+
+  byte[] persistedFetchConfigEncoding() {
+    return persistedFetchConfigEncoding == null ? null : persistedFetchConfigEncoding.clone();
+  }
+
+  void setPersistedFetchConfigEncoding(byte[] persistedFetchConfigEncoding) {
+    this.persistedFetchConfigEncoding =
+        persistedFetchConfigEncoding == null ? null : persistedFetchConfigEncoding.clone();
   }
 
   /**
@@ -1206,6 +1227,25 @@ public final class ClientGet extends ClientRequest {
   @Override
   public boolean fullyResumed() {
     return execution != null && execution.resumedFetcher();
+  }
+
+  @Serial
+  private void writeObject(ObjectOutputStream out) throws IOException {
+    refreshPersistedFetchConfigEncoding();
+    out.defaultWriteObject();
+  }
+
+  private void refreshPersistedFetchConfigEncoding() {
+    if (runtimeFetchSupport == null || fetchConfig == null) {
+      return;
+    }
+    try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        DataOutputStream encoded = new DataOutputStream(buffer)) {
+      runtimeFetchSupport.encodeFetchConfig(fetchConfig, encoded);
+      persistedFetchConfigEncoding = buffer.toByteArray();
+    } catch (IOException e) {
+      LOG.warn("Unable to refresh cached fetch configuration encoding for {}", identifier, e);
+    }
   }
 
   /**

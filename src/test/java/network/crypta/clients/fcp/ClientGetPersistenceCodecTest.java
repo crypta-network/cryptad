@@ -5,10 +5,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
+import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -179,6 +184,62 @@ class ClientGetPersistenceCodecTest {
     }
   }
 
+  @Test
+  void serializedRequest_whenRuntimeFetchSupportPresent_cachesFetchConfigEncoding()
+      throws Exception {
+    ClientGet request = persistenceReadyRequest();
+    FcpFetchRuntimeSupport fetchRuntimeSupport = mock(FcpFetchRuntimeSupport.class);
+    byte[] encodedFetchConfig = new byte[] {4, 5, 6};
+    Mockito.doAnswer(
+            invocation -> {
+              DataOutputStream encoded = invocation.getArgument(1);
+              encoded.write(encodedFetchConfig);
+              return null;
+            })
+        .when(fetchRuntimeSupport)
+        .encodeFetchConfig(eq(request.fetchConfig()), any(DataOutputStream.class));
+    setField(request, ClientGet.class, "runtimeFetchSupport", fetchRuntimeSupport);
+
+    ClientGet restored = serializeAndDeserialize(request);
+
+    assertArrayEquals(encodedFetchConfig, restored.persistedFetchConfigEncoding());
+  }
+
+  @Test
+  void writeClientDetail_whenRuntimeFetchSupportMissing_usesCachedFetchConfigEncoding()
+      throws Exception {
+    ClientGet request = persistenceReadyRequest();
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    byte[] cachedEncoding = new byte[] {1, 2, 3};
+    setField(request, ClientGet.class, "execution", execution);
+    request.setPersistedFetchConfigEncoding(cachedEncoding);
+    Mockito.when(execution.writeTrivialProgress(any(DataOutputStream.class))).thenReturn(false);
+    ChecksumChecker checker = mock(ChecksumChecker.class);
+    ByteArrayOutputStream encodedFetchConfig = new ByteArrayOutputStream();
+    AtomicInteger checksummedWriterCalls = new AtomicInteger();
+
+    try (MockedStatic<ClientGetGetterFactory> mocked =
+        Mockito.mockStatic(ClientGetGetterFactory.class)) {
+      mocked
+          .when(
+              () ->
+                  ClientGetGetterFactory.checksummedWriter(
+                      any(DataOutputStream.class), eq(checker)))
+          .thenAnswer(
+              invocation ->
+                  new DataOutputStream(
+                      checksummedWriterCalls.getAndIncrement() == 0
+                          ? encodedFetchConfig
+                          : new ByteArrayOutputStream()));
+
+      ClientGetPersistenceCodec.writeClientDetail(
+          request, new DataOutputStream(new ByteArrayOutputStream()), checker);
+    }
+
+    assertArrayEquals(cachedEncoding, encodedFetchConfig.toByteArray());
+    Mockito.verify(execution).writeTrivialProgress(any(DataOutputStream.class));
+  }
+
   private static ClientGet finishedDirectRequest() throws Exception {
     ClientGet request = new ClientGet();
     setField(request, ClientRequest.class, "identifier", "req-finished-direct");
@@ -187,6 +248,27 @@ class ClientGetPersistenceCodecTest {
     setField(request, ClientGet.class, "returnType", ClientGet.ReturnType.DIRECT);
     request.state().setSucceeded(true);
     return request;
+  }
+
+  private static ClientGet persistenceReadyRequest() throws Exception {
+    ClientGet request = new ClientGet();
+    setField(request, ClientRequest.class, "identifier", "req-persist");
+    setField(request, ClientRequest.class, "global", false);
+    setField(request, ClientRequest.class, "uri", new FreenetURI("KSK@persist"));
+    setField(request, ClientGet.class, "fetchConfig", new ClientGetFetchConfig());
+    setField(request, ClientGet.class, "returnType", ClientGet.ReturnType.DIRECT);
+    return request;
+  }
+
+  private static ClientGet serializeAndDeserialize(ClientGet request) throws Exception {
+    ByteArrayOutputStream serialized = new ByteArrayOutputStream();
+    try (ObjectOutputStream out = new ObjectOutputStream(serialized)) {
+      out.writeObject(request);
+    }
+    try (ObjectInputStream in =
+        new ObjectInputStream(new ByteArrayInputStream(serialized.toByteArray()))) {
+      return (ClientGet) in.readObject();
+    }
   }
 
   private static DataInputStream input(byte[] payload) {
