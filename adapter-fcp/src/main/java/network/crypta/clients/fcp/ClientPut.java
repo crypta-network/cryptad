@@ -2,20 +2,17 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InvalidObjectException;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertException;
 import network.crypta.client.MetadataUnresolvedException;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientPutter;
-import network.crypta.client.async.ClientPutterOptions;
-import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.InsertRequestParams;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -30,7 +27,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The class mediates between user requests and the asynchronous node core: it validates disk
  * access, synthesizes redirect metadata, resolves MIME metadata, and constructs the underlying
- * {@link ClientPutter}. Instances encapsulate all mutable states needed to monitor progress,
+ * {@link ClientPutExecution}. Instances encapsulate all mutable states needed to monitor progress,
  * respond to retries, and surface status updates across reconnections. Persistent requests are
  * serialized so the node can resume in-flight inserts after restart without reloading the client’s
  * original configuration.
@@ -64,34 +61,52 @@ public final class ClientPut extends ClientPutBase {
   /** Serialization version for persistent request snapshots. */
   @Serial private static final long serialVersionUID = 1L;
 
-  /**
-   * Active {@link ClientPutter} driving the insert; nulled only after FOREVER persistence removal.
-   */
-  ClientPutter putter;
+  private static final String LEGACY_PUTTER_TYPE = "network.crypta.client.async.ClientPutter";
+
+  private static final String BRIDGE_RUNTIME_SUPPORT =
+      "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport";
+
+  @SuppressWarnings("UnusedVariable")
+  private static final ObjectStreamField[] serialPersistentFields =
+      new ObjectStreamField[] {
+        new ObjectStreamField("putter", requiredClass(LEGACY_PUTTER_TYPE)),
+        new ObjectStreamField("uploadFrom", UploadFrom.class),
+        new ObjectStreamField("origFilename", File.class),
+        new ObjectStreamField("targetURI", FreenetURI.class),
+        new ObjectStreamField("data", RandomAccessBucket.class),
+        new ObjectStreamField("clientMetadata", ClientMetadata.class),
+        new ObjectStreamField("finishedSize", long.class),
+        new ObjectStreamField("targetFilename", String.class),
+        new ObjectStreamField("binaryBlob", boolean.class),
+        new ObjectStreamField("compressed", boolean.class)
+      };
+
+  /** Active execution handle driving the insert; nulled only after FOREVER persistence removal. */
+  ClientPutExecution putter;
 
   /** Describes how payload bytes are obtained (direct, disk, redirect, or in-memory). */
-  private final UploadFrom uploadFrom;
+  private UploadFrom uploadFrom;
 
   /** Original filename if from disk, otherwise null. Purely for PersistentPut. */
-  private final File origFilename;
+  private File origFilename;
 
   /** If uploadFrom==UPLOAD_FROM_REDIRECT, this is the target of the redirect */
-  private final FreenetURI targetURI;
+  private FreenetURI targetURI;
 
   /** Bucket storing user data or generated redirect metadata for the pending insert. */
   private RandomAccessBucket data;
 
   /** MIME and ancillary metadata persisted for status reporting and manifest/CHK generation. */
-  private final ClientMetadata clientMetadata;
+  private ClientMetadata clientMetadata;
 
   /** We store the size of inserted data before freeing it */
   private volatile long finishedSize;
 
   /** Filename if the file has one */
-  private final String targetFilename;
+  private String targetFilename;
 
   /** If true, we are inserting a binary blob: No metadata, no URI is generated. */
-  private final boolean binaryBlob;
+  private boolean binaryBlob;
 
   /** Indicates whether compression is currently scheduled since the last restart. */
   private transient boolean compressing;
@@ -105,11 +120,11 @@ public final class ClientPut extends ClientPutBase {
    * Creates a persistent insert originating from a long-lived client or FProxy.
    *
    * <p>The constructor enforces disk-access policy, builds redirect metadata when needed, captures
-   * MIME hints, and sets up {@link ClientPutter} with the retry and redundancy settings supplied by
-   * the caller. It is intended for uploads that must survive restarts, so the node takes ownership
-   * of persistence and retry state while the caller keeps the backing bucket readable for the
-   * request’s lifetime. Compression settings are honored exactly as supplied, allowing clients to
-   * trade throughput for deterministic behavior.
+   * MIME hints, and sets up the backing {@link ClientPutExecution} with the retry and redundancy
+   * settings supplied by the caller. It is intended for uploads that must survive restarts, so the
+   * node takes ownership of persistence and retry state while the caller keeps the backing bucket
+   * readable for the request’s lifetime. Compression settings are honored exactly as supplied,
+   * allowing clients to trade throughput for deterministic behavior.
    *
    * @param request persistent request metadata including URI, identifier, and queue settings; must
    *     not be {@code null} and should reflect the intended persistence scope.
@@ -133,7 +148,7 @@ public final class ClientPut extends ClientPutBase {
     FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(request.uri(), upload.targetFilename(), runtimeSupport.clientContext()),
+            checkEmptySSK(request.uri(), upload.targetFilename(), runtimeSupport),
             ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
             request.verbosity(),
             request.priorityClass(),
@@ -181,21 +196,22 @@ public final class ClientPut extends ClientPutBase {
     this.data = preparedData.bucket();
     this.clientMetadata = cm;
     this.targetURI = preparedData.targetUri();
-
-    ClientPutterRequest putterRequest =
-        new ClientPutterRequest(
-            new InsertRequestParams(this, this.uri, ctx, priorityClass),
-            data,
-            cm,
-            preparedData.isMetadata());
-    ClientPutterOptions putterOptions =
-        new ClientPutterOptions(
-            this.uri.getDocName() == null ? uploadTargetFilename : null,
-            this.binaryBlob,
-            options.overrideSplitfileCryptoKey(),
-            -1);
-    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
-    applyDiagnosticIdentifier(putter);
+    putter =
+        ClientPutPutterFactory.create(
+            runtimeSupport,
+            new ClientPutExecutionSpec(
+                this,
+                requestParams,
+                ctx,
+                data,
+                cm,
+                preparedData.isMetadata(),
+                new ClientPutExecutionSpec.ExecutionOptions(
+                    this.uri.getDocName() == null ? uploadTargetFilename : null,
+                    this.binaryBlob,
+                    options.overrideSplitfileCryptoKey(),
+                    -1)));
+    applyDiagnosticIdentifier(putter.requester());
   }
 
   /**
@@ -206,8 +222,8 @@ public final class ClientPut extends ClientPutBase {
    * by the client before crafting in-memory buckets or redirecting metadata. Because the handler
    * may multiplex many inserts, identifier validation is performed against the connection’s map to
    * avoid collisions that would otherwise corrupt status routing. All costly bucket conversions
-   * happen before {@link ClientPutter} starts so any validation errors surface immediately to the
-   * client.
+   * happen before the {@link ClientPutExecution} starts so any validation errors surface
+   * immediately to the client.
    *
    * @param handler live FCP connection handler coordinating per-connection identifiers and DDA
    *     rights; must not be {@code null} and should represent the active socket.
@@ -217,7 +233,7 @@ public final class ClientPut extends ClientPutBase {
    *     {@code null}.
    * @throws IdentifierCollisionException if another request on the connection already uses the
    *     identifier.
-   * @throws MessageInvalidException when client supplied fields (hashes, MIME, permissions) are
+   * @throws MessageInvalidException when client-supplied fields (hashes, MIME, permissions) are
    *     invalid or violate protocol constraints.
    * @throws IOException when message-provided buckets cannot be read to compute salted hashes.
    */
@@ -244,7 +260,7 @@ public final class ClientPut extends ClientPutBase {
             message.overrideSplitfileCryptoKey);
     ClientRequestParams requestParams =
         new ClientRequestParams(
-            checkEmptySSK(message.uri, message.targetFilename, runtimeSupport.clientContext()),
+            checkEmptySSK(message.uri, message.targetFilename, runtimeSupport),
             ensureConnectionIdentifierAvailable(handler, message),
             message.verbosity,
             message.priorityClass,
@@ -291,20 +307,22 @@ public final class ClientPut extends ClientPutBase {
     ClientPutDiskUploadValidator.verifySaltedHash(diskContext, data, identifier, global);
 
     if (LOG.isDebugEnabled()) LOG.debug(MESSAGE_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
-    ClientPutterRequest putterRequest =
-        new ClientPutterRequest(
-            new InsertRequestParams(this, this.uri, ctx, priorityClass),
-            data,
-            cm,
-            preparedData.isMetadata());
-    ClientPutterOptions putterOptions =
-        new ClientPutterOptions(
-            this.uri.getDocName() == null ? targetFilename : null,
-            binaryBlob,
-            message.overrideSplitfileCryptoKey,
-            message.metadataThreshold);
-    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
-    applyDiagnosticIdentifier(putter);
+    putter =
+        ClientPutPutterFactory.create(
+            runtimeSupport,
+            new ClientPutExecutionSpec(
+                this,
+                requestParams,
+                ctx,
+                data,
+                cm,
+                preparedData.isMetadata(),
+                new ClientPutExecutionSpec.ExecutionOptions(
+                    this.uri.getDocName() == null ? targetFilename : null,
+                    binaryBlob,
+                    message.overrideSplitfileCryptoKey,
+                    message.metadataThreshold)));
+    applyDiagnosticIdentifier(putter.requester());
   }
 
   /**
@@ -367,7 +385,7 @@ public final class ClientPut extends ClientPutBase {
    * <p>No operational fields are initialized here because {@link ObjectInputStream} populates them
    * immediately afterward. The placeholder values merely satisfy the JVM’s requirement for an
    * accessible no-arg constructor so saved queue snapshots can be deserialized before relinking to
-   * live {@link ClientPutter} instances.
+   * live {@link ClientPutExecution} instances.
    */
   ClientPut() {
     // For serialization.
@@ -392,7 +410,18 @@ public final class ClientPut extends ClientPutBase {
     if (data != null && !(data instanceof Serializable)) {
       throw new NotSerializableException(data.getClass().getName());
     }
-    out.defaultWriteObject();
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put("putter", legacyPutterForSerialization());
+    fields.put("uploadFrom", uploadFrom);
+    fields.put("origFilename", origFilename);
+    fields.put("targetURI", targetURI);
+    fields.put("data", data);
+    fields.put("clientMetadata", clientMetadata);
+    fields.put("finishedSize", finishedSize);
+    fields.put("targetFilename", targetFilename);
+    fields.put("binaryBlob", binaryBlob);
+    fields.put("compressed", compressed);
+    out.writeFields();
   }
 
   /**
@@ -404,7 +433,66 @@ public final class ClientPut extends ClientPutBase {
    */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+    ObjectInputStream.GetField fields = in.readFields();
+    putter = wrapLegacySingleFileExecution(fields.get("putter", null));
+    uploadFrom = (UploadFrom) fields.get("uploadFrom", null);
+    origFilename = (File) fields.get("origFilename", null);
+    targetURI = (FreenetURI) fields.get("targetURI", null);
+    data = (RandomAccessBucket) fields.get("data", null);
+    clientMetadata = (ClientMetadata) fields.get("clientMetadata", null);
+    finishedSize = fields.get("finishedSize", 0L);
+    targetFilename = (String) fields.get("targetFilename", null);
+    binaryBlob = fields.get("binaryBlob", false);
+    compressed = fields.get("compressed", false);
+  }
+
+  private Object legacyPutterForSerialization() throws NotSerializableException {
+    if (putter == null) {
+      return null;
+    }
+    Object requester = putter.requester();
+    if (requester == null) {
+      return null;
+    }
+    if (!requiredClass(LEGACY_PUTTER_TYPE).isInstance(requester)) {
+      throw new NotSerializableException(
+          "Single-file putter requester is not compatible with "
+              + LEGACY_PUTTER_TYPE
+              + ": "
+              + requester.getClass().getName());
+    }
+    return requester;
+  }
+
+  private static ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter)
+      throws InvalidObjectException {
+    if (legacyPutter == null) {
+      return null;
+    }
+    try {
+      Class<?> bridgeClass = Class.forName(BRIDGE_RUNTIME_SUPPORT);
+      java.lang.reflect.Method method =
+          bridgeClass.getDeclaredMethod("wrapLegacySingleFileExecution", Object.class);
+      method.setAccessible(true);
+      return (ClientPutExecution) method.invoke(null, legacyPutter);
+    } catch (ReflectiveOperationException e) {
+      InvalidObjectException failure =
+          new InvalidObjectException("Could not restore legacy single-file putter");
+      failure.initCause(rootCause(e));
+      throw failure;
+    }
+  }
+
+  private static Class<?> requiredClass(String className) {
+    try {
+      return Class.forName(className);
+    } catch (ClassNotFoundException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private static Throwable rootCause(ReflectiveOperationException e) {
+    return e.getCause() == null ? e : e.getCause();
   }
 
   @Override
@@ -417,7 +505,7 @@ public final class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Starts the underlying {@link ClientPutter}, queuing compression and insert work for this
+   * Starts the underlying {@link ClientPutExecution}, queuing compression and insert work for this
    * request.
    *
    * <p>The method is idempotent: if the request already finished or the putter previously started,
@@ -431,13 +519,13 @@ public final class ClientPut extends ClientPutBase {
    *     pools; must not be {@code null} and should be the active runtime context.
    */
   @Override
-  public void start(ClientContext context) {
+  public void start(network.crypta.client.async.ClientContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("Starting {} : {}", this, identifier);
     if (isFinishedRequest()) {
       return;
     }
     try {
-      putter.start(false, context);
+      putter.start(context);
       if (shouldQueuePersistentTag()) {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
@@ -479,7 +567,7 @@ public final class ClientPut extends ClientPutBase {
 
   @Override
   protected ClientRequester getClientRequest() {
-    return putter;
+    return putter == null ? null : putter.requester();
   }
 
   @Override
@@ -534,8 +622,8 @@ public final class ClientPut extends ClientPutBase {
   /**
    * Reports whether the put operation permanently succeeded, meaning the final URI is committed.
    *
-   * <p>The flag flips to {@code true} only after {@link ClientPutter} notifies completion and
-   * remains {@code true} even if future retries occur, allowing UIs to treat the request as
+   * <p>The flag flips to {@code true} only after the {@link ClientPutExecution} notifies completion
+   * and remains {@code true} even if future retries occur, allowing UIs to treat the request as
    * immutable history. It is safe to poll frequently because the underlying field is synchronized
    * via {@link ClientPutBase} access patterns.
    *
@@ -658,9 +746,9 @@ public final class ClientPut extends ClientPutBase {
    * Checks whether the insert can be retried by re-running compression and routing logic.
    *
    * <p>The method enforces the lifecycle contract: only completed yet failed requests are eligible,
-   * and {@link ClientPutter} must agree that cached state still exists. Operators typically call
-   * this before surfacing a retry action in the UI. The check is read-only and does not mutate any
-   * request state.
+   * and the {@link ClientPutExecution} must agree that cached state still exists. Operators
+   * typically call this before surfacing a retry action in the UI. The check is read-only and does
+   * not mutate any request state.
    *
    * @return {@code true} when the request finished unsuccessfully and the putter retained restart
    *     data.
@@ -675,7 +763,7 @@ public final class ClientPut extends ClientPutBase {
       LOG.debug("Cannot restart because succeeded for {}", identifier);
       return false;
     }
-    return putter.canRestart();
+    return putter != null && putter.canRestart();
   }
 
   /**
@@ -683,7 +771,7 @@ public final class ClientPut extends ClientPutBase {
    *
    * <p>Before scheduling the new attempt, the method resets the local state, updates status caches,
    * and notifies observers that the request left the finished state. Failures during {@link
-   * ClientPutter} startup are handed to {@link ClientPutBase#onFailure(InsertException,
+   * ClientPutExecution} startup are handed to {@link ClientPutBase#onFailure(InsertException,
    * network.crypta.client.async.BaseClientPutter)} so retry logic remains consistent with the
    * normal start path. The method returns immediately if the request is not eligible for restart.
    *
@@ -693,7 +781,8 @@ public final class ClientPut extends ClientPutBase {
    * @return {@code true} when the restart was scheduled successfully; {@code false} otherwise.
    */
   @Override
-  public boolean restart(ClientContext context, final boolean disableFilterData) {
+  public boolean restart(
+      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
     if (!canRestart()) return false;
     setVarsRestart();
     try {
@@ -744,8 +833,8 @@ public final class ClientPut extends ClientPutBase {
   /**
    * Handles cleanup when the request leaves the queue completely.
    *
-   * <p>FOREVER-persistent inserts null the {@link ClientPutter} reference so the object graph can
-   * be garbage-collected while the serialized form remains on disk. Subclasses may extend this
+   * <p>FOREVER-persistent inserts null the {@link ClientPutExecution} reference so the object graph
+   * can be garbage-collected while the serialized form remains on disk. Subclasses may extend this
    * point to release more resources. The provided context is the one supplied by the queue at
    * removal time.
    *
@@ -753,7 +842,7 @@ public final class ClientPut extends ClientPutBase {
    *     null}.
    */
   @Override
-  public void requestWasRemoved(ClientContext context) {
+  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
     if (persistence == Persistence.FOREVER) {
       putter = null;
     }
@@ -852,8 +941,11 @@ public final class ClientPut extends ClientPutBase {
    * @throws ResumeFailedException If any bucket cannot restore the backing store for reading.
    */
   @Override
-  public void innerResume(ClientContext context) throws ResumeFailedException {
-    applyDiagnosticIdentifier(putter);
+  public void innerResume(network.crypta.client.async.ClientContext context)
+      throws ResumeFailedException {
+    if (putter != null) {
+      applyDiagnosticIdentifier(putter.requester());
+    }
     if (data != null) data.onResume(context);
   }
 

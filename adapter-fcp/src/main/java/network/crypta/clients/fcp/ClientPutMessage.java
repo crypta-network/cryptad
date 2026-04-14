@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.Locale;
-import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
@@ -42,7 +41,6 @@ import org.slf4j.LoggerFactory;
  *
  * @see ClientPutBase
  * @see ClientRequest
- * @see HighLevelSimpleClientImpl
  */
 public final class ClientPutMessage extends DataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutMessage.class);
@@ -161,11 +159,11 @@ public final class ClientPutMessage extends DataCarryingMessage {
       forkOnCacheable = fs.getBoolean("ForkOnCacheable", false);
     else forkOnCacheable = FcpInsertDefaults.FORK_ON_CACHEABLE_DEFAULT;
     extraInsertsSingleBlock =
-        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
+        fs.getInt("ExtraInsertsSingleBlock", FcpInsertDefaults.EXTRA_INSERTS_SINGLE_BLOCK_DEFAULT);
     extraInsertsSplitfileHeaderBlock =
         fs.getInt(
             "ExtraInsertsSplitfileHeaderBlock",
-            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
+            FcpInsertDefaults.EXTRA_INSERTS_SPLITFILE_HEADER_DEFAULT);
     realTimeFlag = fs.getBoolean("RealTimeFlag", false);
     metadataThreshold = fs.getLong("MetadataThreshold", -1);
     ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);

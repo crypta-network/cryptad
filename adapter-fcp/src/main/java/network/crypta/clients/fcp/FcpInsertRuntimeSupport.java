@@ -2,9 +2,8 @@ package network.crypta.clients.fcp;
 
 import java.io.IOException;
 import network.crypta.client.InsertContext;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.USKManager;
+import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -16,9 +15,9 @@ import network.crypta.support.api.RandomAccessBucket;
  * wiring independent of direct {@code NodeClientCore} access while preserving the current runtime
  * behavior. It exposes only the insert-specific services needed by {@link ClientPutBase}, {@link
  * ClientPut}, {@link ClientPutDir}, {@link ClientPutPreparedDataFactory}, {@link ClientPutMessage},
- * and {@link SubscribeUSK}: the live {@link ClientContext}, the default persistent {@link
- * InsertContext}, transfer-policy checks, bucket factories, forever-persistent upload allocation,
- * and the {@link USKManager}.
+ * and {@link SubscribeUSK}: the default persistent {@link InsertContext}, transfer-policy checks,
+ * bucket factories, forever-persistent upload allocation, URI normalization, and opaque execution
+ * handle creation.
  *
  * <p>Typical call paths get one instance from {@link FCPServer} and thread it through request
  * constructors while they normalize URIs, validate disk access, allocate temporary buckets, and
@@ -34,18 +33,6 @@ import network.crypta.support.api.RandomAccessBucket;
  * types.
  */
 public interface FcpInsertRuntimeSupport {
-
-  /**
-   * Returns the live client context used to start, resume, or validate insert requests.
-   *
-   * <p>Insert assembly uses this context when it needs request-level defaults that still depend on
-   * the live daemon, for example, generating placeholder SSKs or starting the resulting putter from
-   * {@link FCPConnectionHandler}. Implementations should return the current context in effect for
-   * the owning node rather than a cached copy.
-   *
-   * @return current client context backing FCP insert operations
-   */
-  ClientContext clientContext();
 
   /**
    * Returns the default persistent insert context template for new put requests.
@@ -97,13 +84,44 @@ public interface FcpInsertRuntimeSupport {
       throws IOException, PersistenceDisabledException;
 
   /**
-   * Returns the live USK manager used by subscription flows.
+   * Normalizes insert URIs that omit routing or document names.
    *
-   * <p>{@link SubscribeUSK} uses the returned manager to register, poll, and later remove USK
-   * subscriptions. The seam does not abstract USK behavior further; it only provides the concrete
-   * manager instance needed by the existing FCP subscription workflow.
+   * <p>This preserves the legacy {@code SSK@} handling used by FCP insert requests while keeping
+   * the randomness source hidden behind the runtime bridge.
    *
-   * @return current USK manager backing FCP subscriptions
+   * @param uri candidate insert URI
+   * @param filename filename to apply when the URI lacks a document name
+   * @return original or normalized insert URI
    */
-  USKManager uskManager();
+  FreenetURI normalizeInsertUri(FreenetURI uri, String filename);
+
+  /**
+   * Creates a single-file insert execution handle.
+   *
+   * @param executionSpec detached execution inputs for the request attempt
+   * @return opaque live execution handle
+   * @throws IOException if the runtime cannot construct the execution
+   */
+  ClientPutExecution createSingleFileExecution(ClientPutExecutionSpec executionSpec)
+      throws IOException;
+
+  /**
+   * Creates a directory/manifest insert execution handle.
+   *
+   * @param executionSpec detached execution inputs for the request attempt
+   * @return opaque live execution handle
+   */
+  ClientPutDirExecution createDirectoryExecution(ClientPutDirExecutionSpec executionSpec)
+      throws network.crypta.client.async.TooManyFilesInsertException;
+
+  /**
+   * Creates and registers a USK subscription handle.
+   *
+   * @param message parsed subscription request
+   * @param callbacks adapter-owned callback surface receiving runtime events
+   * @param handler owning FCP connection handler
+   * @return opaque live subscription handle
+   */
+  UskSubscriptionHandle subscribeUSK(
+      SubscribeUSKMessage message, SubscribeUSKCallbacks callbacks, FCPConnectionHandler handler);
 }

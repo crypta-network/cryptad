@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.USKManager;
-import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -18,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -36,11 +34,9 @@ class SubscribeUSKMessageTest {
           + "3dAcn4fX2LyxO6uCnWFTx-2HKZ89uruurcKwLSCxbZ4,AQACAAE/Ultimate-Freenet-Index/55/";
 
   @Mock private FcpInsertRuntimeSupport runtimeSupport;
-  @Mock private USKManager uskManager;
+  @Mock private UskSubscriptionHandle subscriptionHandle;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-  @Mock private PersistentRequestClient rebootClient;
-  @Mock private RequestClient requestClient;
 
   @Test
   void constructor_whenIdentifierMissing_throwsMessageInvalidException() {
@@ -138,8 +134,8 @@ class SubscribeUSKMessageTest {
 
     when(handler.getServer()).thenReturn(server);
     when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
-    when(runtimeSupport.uskManager()).thenReturn(uskManager);
-    doNothing().when(uskManager).subscribe(any(), any(), anyBoolean(), anyBoolean(), any());
+    when(runtimeSupport.subscribeUSK(eq(message), any(SubscribeUSKCallbacks.class), eq(handler)))
+        .thenReturn(subscriptionHandle);
 
     message.run(handler);
 
@@ -174,8 +170,6 @@ class SubscribeUSKMessageTest {
   }
 
   private void wireHandlerForSuccessfulSubscribe() throws IdentifierCollisionException {
-    lenient().when(handler.getRebootClient()).thenReturn(rebootClient);
-    lenient().when(rebootClient.lowLevelClient(false)).thenReturn(requestClient);
     lenient().when(handler.getServer()).thenReturn(server);
     lenient().when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
     doNothing().when(handler).addUSKSubscription(any(), any(SubscribeUSK.class));

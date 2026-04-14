@@ -1,13 +1,20 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ContainerInserter;
+import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -17,25 +24,29 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
@@ -137,7 +148,7 @@ class ClientPutDirTest {
   @Test
   void start_whenPersistentRequestStarts_updatesCacheAndQueuesTag() throws Exception {
     ClientPutDir putDir = spy(newClientPutDir());
-    ManifestPutter putter = mock(ManifestPutter.class);
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     RequestStatusCache cache = mock(RequestStatusCache.class);
     FCPMessage tagMessage = mock(FCPMessage.class);
@@ -160,7 +171,7 @@ class ClientPutDirTest {
   @Test
   void start_whenAlreadyStarted_doesNothing() throws Exception {
     ClientPutDir putDir = newClientPutDir();
-    ManifestPutter putter = mock(ManifestPutter.class);
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     setField(ClientPutDir.class, putDir, "putter", putter);
     setField(ClientRequest.class, putDir, "started", true);
 
@@ -172,7 +183,7 @@ class ClientPutDirTest {
   @Test
   void start_whenPutterThrowsInsertException_invokesOnFailure() throws Exception {
     ClientPutDir putDir = spy(newClientPutDir());
-    ManifestPutter putter = mock(ManifestPutter.class);
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     InsertException failure = new InsertException(InsertExceptionMode.INTERNAL_ERROR, "boom", null);
     doThrow(failure).when(putter).start(any());
     setField(ClientPutDir.class, putDir, "putter", putter);
@@ -188,13 +199,14 @@ class ClientPutDirTest {
   void innerResume_whenManifestPresent_delegatesToContainerInserter() throws Exception {
     ClientPutDir putDir = newClientPutDir();
     Map<String, Object> manifest = new HashMap<>();
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     setField(ClientPutDir.class, putDir, "manifestElements", manifest);
+    setField(ClientPutDir.class, putDir, "putter", putter);
     ClientContext context = mock(ClientContext.class);
 
-    try (MockedStatic<ContainerInserter> mocked = mockStatic(ContainerInserter.class)) {
-      putDir.innerResume(context);
-      mocked.verify(() -> ContainerInserter.resumeMetadata(manifest, context));
-    }
+    putDir.innerResume(context);
+
+    verify(putter).resumeMetadata(manifest, context);
   }
 
   @Test
@@ -217,10 +229,44 @@ class ClientPutDirTest {
   @Test
   void canRestart_whenFinishedAndFailed_returnsTrue() throws Exception {
     ClientPutDir putDir = newClientPutDir();
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     setField(ClientRequest.class, putDir, "finished", true);
     setField(ClientPutBase.class, putDir, "succeeded", false);
+    setField(ClientPutDir.class, putDir, "putter", putter);
+    when(putter.canRestart()).thenReturn(true);
 
     assertTrue(putDir.canRestart());
+  }
+
+  @Test
+  void restart_whenPersistentRequestRestarts_requeuesTagAndUpdatesCache() throws Exception {
+    ClientPutDir putDir = spy(newClientPutDir());
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    RequestStatusCache cache = mock(RequestStatusCache.class);
+    FCPMessage tagMessage = mock(FCPMessage.class);
+    ClientContext context = mock(ClientContext.class);
+    when(client.getRequestStatusCache()).thenReturn(cache);
+    when(putter.canRestart()).thenReturn(true);
+    when(putter.restart(context)).thenReturn(true);
+    doReturn(tagMessage).when(putDir).persistentTagMessage();
+    setField(ClientPutDir.class, putDir, "putter", putter);
+    setField(ClientRequest.class, putDir, "identifier", "dir-restart");
+    setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.REBOOT);
+    setField(ClientRequest.class, putDir, "client", client);
+    setField(ClientRequest.class, putDir, "finished", true);
+    setField(ClientPutBase.class, putDir, "succeeded", false);
+    setField(ClientPutBase.class, putDir, "generatedURI", mock(FreenetURI.class));
+
+    boolean restarted = putDir.restart(context, false);
+
+    assertTrue(restarted);
+    assertNull(getField(ClientPutBase.class, putDir, "generatedURI"));
+    assertTrue((boolean) getField(ClientRequest.class, putDir, "started"));
+    InOrder order = inOrder(cache);
+    order.verify(cache).updateStarted("dir-restart", false);
+    order.verify(cache).updateStarted("dir-restart", true);
+    verify(client).queueClientRequestMessage(tagMessage, 0);
   }
 
   @Test
@@ -231,7 +277,7 @@ class ClientPutDirTest {
   @Test
   void requestWasRemoved_whenForeverPersistence_clearsPutter() throws Exception {
     ClientPutDir putDir = newClientPutDir();
-    ManifestPutter putter = mock(ManifestPutter.class);
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     setField(ClientPutDir.class, putDir, "putter", putter);
     setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.FOREVER);
     setField(ClientRequest.class, putDir, "client", persistentRequestClient);
@@ -242,12 +288,85 @@ class ClientPutDirTest {
     assertNull(getField(ClientPutDir.class, putDir, "putter"));
     verify(persistentRequestClient)
         .queueClientRequestMessage(any(PersistentRequestRemovedMessage.class), anyInt());
-    verify(putter, never()).cancel(any());
+    verifyNoInteractions(putter);
   }
 
   @Test
   void fullyResumed_alwaysReturnsFalse() {
     assertFalse(newClientPutDir().fullyResumed());
+  }
+
+  @Test
+  void serializationFields_whenInspected_keepLegacyManifestPutterType() {
+    ObjectStreamClass descriptor = ObjectStreamClass.lookup(ClientPutDir.class);
+
+    assertEquals(
+        "network.crypta.client.async.ManifestPutter",
+        descriptor.getField("putter").getType().getName());
+  }
+
+  @Test
+  void serialization_whenRoundTripped_restoresExecutionFromLegacyManifestPutter() throws Exception {
+    ClientPutDir putDir = newClientPutDir();
+    ManifestPutter legacyPutter = mock(ManifestPutter.class, withSettings().serializable());
+    ClientPutDirExecution execution = mock(ClientPutDirExecution.class);
+    when(execution.requester()).thenReturn(legacyPutter);
+    setField(ClientPutDir.class, putDir, "putter", execution);
+    setField(ClientPutDir.class, putDir, "manifestElements", new HashMap<>());
+    setField(ClientPutDir.class, putDir, "defaultName", "index.html");
+    setField(
+        ClientPutBase.class,
+        putDir,
+        "ctx",
+        mock(InsertContext.class, withSettings().serializable()));
+    setField(ClientRequest.class, putDir, "identifier", "put-dir");
+    setField(ClientRequest.class, putDir, "uri", new FreenetURI("CHK", "target"));
+    setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.REBOOT);
+
+    ClientPutDir restored = roundTrip(putDir);
+
+    assertInstanceOf(ClientPutDirExecution.class, getField(ClientPutDir.class, restored, "putter"));
+    assertInstanceOf(ManifestPutter.class, restored.getClientRequest());
+  }
+
+  @Test
+  void
+      serialization_whenExecutionRequesterIsNotLegacyManifestPutter_throwsNotSerializableException()
+          throws Exception {
+    ClientPutDir putDir = newClientPutDir();
+    ClientRequester requester = mock(ClientRequester.class, withSettings().serializable());
+    ClientPutDirExecution execution = mock(ClientPutDirExecution.class);
+    when(execution.requester()).thenReturn(requester);
+    setField(ClientPutDir.class, putDir, "putter", execution);
+
+    assertThrows(NotSerializableException.class, () -> roundTrip(putDir));
+  }
+
+  @Test
+  void executionSpecPriorityClass_whenRequestReprioritized_returnsCurrentPriority()
+      throws Exception {
+    ClientPutDir putDir = newClientPutDir();
+    Map<String, Object> manifest = new HashMap<>();
+    setField(ClientRequest.class, putDir, "priorityClass", (short) 6);
+    setField(ClientPutDir.class, putDir, "manifestElements", manifest);
+    ClientPutDirExecutionSpec spec =
+        new ClientPutDirExecutionSpec(
+            putDir,
+            new ClientRequestParams(
+                new FreenetURI("CHK", "target"),
+                "put-dir",
+                0,
+                (short) 1,
+                ClientRequest.Persistence.REBOOT,
+                false,
+                null,
+                false),
+            mock(InsertContext.class, withSettings().serializable()),
+            "index.html",
+            null);
+
+    assertEquals(6, spec.priorityClass());
+    assertSame(manifest, spec.manifestElements());
   }
 
   private static ClientPutDir newClientPutDir() {
@@ -277,6 +396,20 @@ class ClientPutDirTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  private static ClientPutDir roundTrip(ClientPutDir value) throws Exception {
+    byte[] serialized;
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
+      objectOutput.writeObject(value);
+      objectOutput.flush();
+      serialized = output.toByteArray();
+    }
+    try (ObjectInputStream objectInput =
+        new ObjectInputStream(new ByteArrayInputStream(serialized))) {
+      return (ClientPutDir) objectInput.readObject();
+    }
   }
 
   private static final Field MANIFEST_ELEMENTS_FIELD;

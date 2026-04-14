@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.net.MalformedURLException;
 import java.util.Locale;
 import java.util.Optional;
-import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -194,11 +193,11 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     String compressorDescriptor = parseCompressorDescriptor(fs, identifier, global);
     boolean forkOnCacheable = parseForkOnCacheable(fs);
     int extraInsertsSingleBlock =
-        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
+        fs.getInt("ExtraInsertsSingleBlock", FcpInsertDefaults.EXTRA_INSERTS_SINGLE_BLOCK_DEFAULT);
     int extraInsertsSplitfileHeaderBlock =
         fs.getInt(
             "ExtraInsertsSplitfileHeaderBlock",
-            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
+            FcpInsertDefaults.EXTRA_INSERTS_SPLITFILE_HEADER_DEFAULT);
     boolean realTimeFlag = fs.getBoolean("RealTimeFlag", false);
     String targetFilename = fs.get("TargetFilename");
     boolean ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
